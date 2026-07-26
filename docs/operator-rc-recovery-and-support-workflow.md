@@ -179,6 +179,34 @@ behavior, and redaction.
 
 The older `operator-beta.*` evidence and `operator-beta-ux-and-recovery` row remain as
 compatibility evidence for the beta route and dashboard fallback.
+
+## Stable build lifecycle status
+
+The operator dashboard and support bundle include the local `coreSupportLifecycle` projection.
+It contains only the running build/status, support deadlines, nullable current and recommended
+builds, bounded advisory/reason ids, replacement or recovery guidance, descriptor edition/digest,
+verification time, and stale/unknown warnings. A recovery-only revocation of the current tip shows
+no invented current or replacement build. It never includes the raw descriptor, update URI,
+private insertion material, tokens, local paths, identity material, or raw advisory/support
+content.
+
+`recommendedBuild` is optional upgrade guidance. A fully supported superseded build remains
+`supported-maintenance` and does not acquire a `requiredReplacementBuild`; that field is reserved
+for authenticated policy-required guidance from `security-fixes-only`, `deprecated`,
+`end-of-support`, or `revoked`. If a future-effective descriptor is staged locally, the dashboard
+does not expose its changed guidance early. It preserves an already-effective predecessor
+revocation and its bounded recovery path, or reports ordinary support state as unknown until the
+descriptor activates.
+
+Unknown and stale lifecycle state are not reported as supported. `end-of-support` and `revoked`
+are critical operator states, but recovery remains non-destructive: the workflow does not shut down
+the node, delete data, uninstall apps, disable FProxy browse, or claim an update completed merely
+because a download was requested. Web Shell treats the lifecycle read as best-effort: a transient
+failure renders lifecycle status as unknown without disabling a successful core-updater panel.
+Installer and store actions are reauthorized against the daemon's current package selection and
+effective lifecycle state when the process is launched, so a stale form cannot consume a
+superseded or revoked target. See [Stable 1.0 support lifecycle and deprecation
+governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).
 PR-277 adds `app-platform.privacy-preserving-beta-diagnostics` and the
 `privacy-preserving-diagnostics-risk` row so release certification can block production beta when
 support-bundle schema, preview/export, safe lifecycle summaries, or redaction fixtures regress.

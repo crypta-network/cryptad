@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-publication-receipt-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "generatedAt", "stableMilestone", "descriptorEdition", "descriptorDigest", "descriptorBytesDigest", "ledgerDigest", "updateKeyIdentityDigest", "updateKeyScope", "updateKeyDocName", "publicRequestUri", "previousDescriptorEdition", "previousDescriptorDigest", "publicationPlanDigest", "authorizationDigest", "operation", "publicationState", "verificationStatus", "conflict", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-support-lifecycle-publication-receipt"}, "generatedAt": {"type": "string", "format": "date-time"}, "stableMilestone": {"const": "1.0"},
+    "descriptorEdition": {"type": "integer", "minimum": 1}, "descriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "descriptorBytesDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "ledgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "updateKeyIdentityDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "updateKeyScope": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}/support-lifecycle/0$"}, "updateKeyDocName": {"const": "support-lifecycle"}, "publicRequestUri": {"type": "string", "format": "uri"},
+    "previousDescriptorEdition": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}, "previousDescriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"}, "publicationPlanDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "authorizationDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "operation": {"enum": ["not-performed", "inserted", "verified-existing"]}, "publicationState": {"enum": ["not-published", "publication-complete", "publication-verification-failed"]}, "verificationStatus": {"enum": ["not-verified", "verified", "conflict"]}, "conflict": {"type": "boolean"}, "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}
+  }
+}

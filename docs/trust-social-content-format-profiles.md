@@ -194,3 +194,14 @@ change requires a separately versioned profile and an explicit migration plan.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Lifecycle governance projection
+
+Stable lifecycle certification reuses the authenticated profile registry and frozen Stable 1.0
+profile identities. The report carries each profile's active/deprecated state, replacement id,
+migration guidance, canonicalization digest, signature-payload contract, and version policy. It
+does not change signed document bytes or introduce a competing profile authority.
+
+Deprecating a frozen profile requires a separately versioned replacement and explicit migration
+policy. A maintenance baseline or lifecycle descriptor cannot change v1 canonicalization,
+signature rules, field meanings, or the original deprecation clock in place. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

@@ -79,6 +79,9 @@ For Stable 1.0, also verify:
 - [ ] For a later Stable 1.0 release, `stable-maintenance` authenticated the immutable GA root and
       latest published predecessor, and the protected receipt verifies exact candidate bytes before
       the manual no-squash, `--no-ff` merge-back.
+- [ ] Any Stable 1.0 support-state change uses the separate protected `support-lifecycle`
+      descriptor workflow after authenticating the complete published chain; it does not rewrite a
+      tag, Release asset, baseline, receipt, history entry, or historical `core-info.json`.
 
 ## Git identity policy (must follow)
 ### GitHub operation identity

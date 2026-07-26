@@ -2,10 +2,12 @@ package network.crypta.clients.http.updater;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ToadletContainer;
@@ -24,6 +26,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -181,7 +185,8 @@ class CoreActionToadletTest {
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt())).thenReturn(invalidPath);
-    when(coreUpdateActionPort.resolveDownloadedInstaller(invalidPath)).thenReturn(Optional.empty());
+    when(coreUpdateActionPort.withDownloadedInstaller(eq(invalidPath), any()))
+        .thenReturn(Optional.empty());
 
     stubHtmlContext(ctx);
 
@@ -210,8 +215,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
         .thenReturn(installer.getAbsolutePath());
-    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
-        .thenReturn(Optional.of(installer.toPath()));
+    authorizeInstaller(coreUpdateActionPort, installer);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -251,6 +255,35 @@ class CoreActionToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenRenderedStoreTargetIsNoLongerCurrent_expectActionRejected()
+      throws Exception {
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
+    String storeUrl = "https://flathub.org/apps/network.crypta.Cryptad";
+
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("openStore");
+    when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("flatpak");
+    when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("network.crypta.Cryptad");
+    when(request.getPartAsStringFailsafe(eq("url"), anyInt())).thenReturn(storeUrl);
+    when(coreUpdateActionPort.withCurrentStoreTarget(
+            eq("flatpak"), eq("network.crypta.Cryptad"), eq(storeUrl), any()))
+        .thenReturn(Optional.empty());
+    AppEnv appEnv = mock(AppEnv.class);
+    replaceAppEnv(toadlet, appEnv);
+    stubHtmlContext(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
+
+    String html = captureWrittenHtml(ctx);
+    assertTrue(html.contains("no longer the current verified update target"));
+    verify(appEnv, never()).osKind();
+  }
+
+  @Test
   void handleMethodPOST_whenInstallSnapInsideSnapSandbox_expectGuidancePage() throws Exception {
     // Arrange
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
@@ -269,8 +302,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
         .thenReturn(installer.getAbsolutePath());
-    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
-        .thenReturn(Optional.of(installer.toPath()));
+    authorizeInstaller(coreUpdateActionPort, installer);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -309,6 +341,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("snap");
     when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("network.crypta");
     when(request.getPartAsStringFailsafe(eq("url"), anyInt())).thenReturn("");
+    authorizeSnapStoreTarget(coreUpdateActionPort);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -327,6 +360,40 @@ class CoreActionToadletTest {
     String html = captureWrittenHtml(ctx);
     assertTrue(html.contains("cannot perform snap installs"));
     assertTrue(html.contains("sudo snap install network.crypta"));
+  }
+
+  @Test
+  void readSystemdEscapeOutput_whenHelperTimesOut_expectProcessDestroyed() throws Exception {
+    Process process = mock(Process.class);
+    when(process.waitFor(anyLong(), eq(TimeUnit.SECONDS))).thenReturn(false);
+    Method method =
+        CoreActionToadlet.class.getDeclaredMethod("readSystemdEscapeOutput", Process.class);
+    method.setAccessible(true);
+
+    Object output = method.invoke(null, process);
+
+    assertNull(output);
+    verify(process).destroyForcibly();
+  }
+
+  private static void authorizeInstaller(CoreUpdateActionPort port, File installer) {
+    doAnswer(
+            invocation -> {
+              CoreUpdateActionPort.InstallerAction<?> action = invocation.getArgument(1);
+              return Optional.of(action.execute(installer.toPath()));
+            })
+        .when(port)
+        .withDownloadedInstaller(eq(installer.getAbsolutePath()), any());
+  }
+
+  private static void authorizeSnapStoreTarget(CoreUpdateActionPort port) {
+    doAnswer(
+            invocation -> {
+              CoreUpdateActionPort.StoreAction<?> action = invocation.getArgument(3);
+              return Optional.of(action.execute());
+            })
+        .when(port)
+        .withCurrentStoreTarget(eq("snap"), eq("network.crypta"), eq(""), any());
   }
 
   private static ToadletContext contextWithJavascript(boolean javascriptEnabled) {

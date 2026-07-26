@@ -200,3 +200,15 @@ bundle bytes require a strictly newer version so installed clients can select th
 The [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md) defines the fail-closed delta and
 authorization process.
+
+## Lifecycle governance projection
+
+Stable lifecycle certification reuses this policy and the signed catalog's existing channel,
+support, deprecation, replacement, advisory, denylist, and review metadata. Its public projection
+must retain all seven first-party app ids and fail on app removal, id substitution, support-level
+downgrade, missing replacement guidance where policy requires it, or loss of migration and
+backup/restore commitments. The projection informs core support decisions but does not replace the
+signed catalog or trusted-review governance model.
+
+A new core maintenance build does not reset an app's deprecation clock or silently rename,
+uninstall, or replace the app. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

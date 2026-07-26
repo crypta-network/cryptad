@@ -11,7 +11,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
@@ -54,6 +59,10 @@ import org.slf4j.LoggerFactory;
  *   <li>Managing asynchronous package fetch lifecycle and error state.
  *   <li>Rendering updater properties, forms, and links for the web UI.
  * </ul>
+ *
+ * <p>A descriptor's release identity and selected package are published together as one immutable
+ * snapshot. Package actions must consume one snapshot instance so a concurrent descriptor
+ * replacement cannot authorize a package with another descriptor's build identity.
  */
 public class CoreUpdater extends NodeUpdater {
   private static final String LOG_TAG = "[CoreUpdater]";
@@ -68,12 +77,38 @@ public class CoreUpdater extends NodeUpdater {
   private final Logger log = LoggerFactory.getLogger(CoreUpdater.class);
   private final AppEnv appEnv = new AppEnv();
 
-  private final AtomicReference<CoreInfo> latestInfo = new AtomicReference<>();
-  private final AtomicReference<Integer> latestVersionBuild = new AtomicReference<>();
-  private volatile String selectedKey; // "<arch>.<ext>"
-  private final AtomicReference<PackageSpec> selectedSpec = new AtomicReference<>();
+  private final AtomicReference<DescriptorSelection> descriptorSelection = new AtomicReference<>();
   private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
-  private final AtomicReference<AppEnv.EnvDetection> env = new AtomicReference<>();
+  private final Object packageFetchLifecycleLock = new Object();
+  private boolean packageFetchesStopped;
+
+  /**
+   * Immutable descriptor identity and the package selected from that same descriptor.
+   *
+   * <p>Package visibility is intentionally limited to the updater package so focused tests can
+   * install complete selections without recreating descriptor fetches. The active instance is still
+   * owned by this updater and published only through {@link #descriptorSelection}.
+   */
+  record DescriptorSelection(
+      CoreInfo info,
+      Integer buildVersion,
+      AppEnv.EnvDetection environment,
+      String packageKey,
+      PackageSpec packageSpec,
+      Object selectionIdentity) {
+    DescriptorSelection {
+      Objects.requireNonNull(selectionIdentity, "selectionIdentity");
+    }
+
+    DescriptorSelection(
+        CoreInfo info,
+        Integer buildVersion,
+        AppEnv.EnvDetection environment,
+        String packageKey,
+        PackageSpec packageSpec) {
+      this(info, buildVersion, environment, packageKey, packageSpec, new Object());
+    }
+  }
 
   /**
    * Creates a core updater bound to the shared node updater manager context.
@@ -113,27 +148,35 @@ public class CoreUpdater extends NodeUpdater {
   @Override
   protected void maybeParseManifest(FetchResult result, int build) {
     CoreInfo info = parseInfo(result);
-    latestInfo.set(info);
     Integer parsedBuild = parseStrictIntegerVersion(info.version());
-    latestVersionBuild.set(parsedBuild);
     AppEnv.EnvDetection detected = appEnv.detectEnvironment();
-    env.set(detected);
-    selectArtifact(info, detected);
-    logParsedDescriptor(info, detected, parsedBuild);
+    Map.Entry<String, PackageSpec> selectedArtifact = selectArtifact(info, detected);
+    DescriptorSelection selection =
+        new DescriptorSelection(
+            info,
+            parsedBuild,
+            detected,
+            selectedArtifact != null ? selectedArtifact.getKey() : null,
+            selectedArtifact != null ? selectedArtifact.getValue() : null);
+    synchronized (packageFetchLifecycleLock) {
+      descriptorSelection.set(selection);
+    }
+    logParsedDescriptor(selection);
 
-    PackageSpec selected = selectedSpec.get();
+    PackageSpec selected = selection.packageSpec();
     if (manager.isAutoUpdateAllowed()
         && selected != null
         && selected.chk() != null
         && isNewerThanCurrentBuild(parsedBuild)
-        && !hasUsableFetcher()) {
-      tryStartDownload();
+        && !hasUsableFetcher(selection)) {
+      tryStartDownload(selection);
     }
   }
 
-  private void logParsedDescriptor(
-      CoreInfo info, AppEnv.EnvDetection detected, Integer parsedBuild) {
+  private void logParsedDescriptor(DescriptorSelection selection) {
     try {
+      CoreInfo info = selection.info();
+      AppEnv.EnvDetection detected = selection.environment();
       String versionLabel = info.version() != null ? info.version() : "?";
       String managers = String.join(",", detected.getAvailableManagers());
       logInfo(
@@ -146,7 +189,7 @@ public class CoreUpdater extends NodeUpdater {
               + " managers="
               + managers
               + " selectedKey="
-              + (selectedKey != null ? selectedKey : "none"));
+              + (selection.packageKey() != null ? selection.packageKey() : "none"));
       if (info.releasePageUrl() != null && !info.releasePageUrl().isBlank()) {
         logInfo("release_page_url=" + info.releasePageUrl());
       }
@@ -158,7 +201,7 @@ public class CoreUpdater extends NodeUpdater {
                 + ", full="
                 + (info.fullChangelogChk() != null ? info.fullChangelogChk() : "-"));
       }
-      if (parsedBuild == null) {
+      if (selection.buildVersion() == null) {
         log.warn(
             "{} Ignoring core-info version '{}' for release gating: expected an integer build",
             LOG_TAG,
@@ -170,8 +213,9 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   @Override
-  protected void processSuccess(int fetched, FetchResult result, File blobFile) {
+  protected boolean processSuccess(int fetched, FetchResult result, File blobFile) {
     // Nothing to persist from info JSON beyond the in-memory state.
+    return true;
   }
 
   /**
@@ -180,7 +224,7 @@ public class CoreUpdater extends NodeUpdater {
    * @return short changelog CHK string, or {@code null} when unavailable
    */
   public String getShortChangelogCHK() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.changelogChk() : null;
   }
 
@@ -190,7 +234,7 @@ public class CoreUpdater extends NodeUpdater {
    * @return full changelog CHK string, or {@code null} when unavailable
    */
   public String getFullChangelogCHK() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.fullChangelogChk() : null;
   }
 
@@ -200,13 +244,20 @@ public class CoreUpdater extends NodeUpdater {
    * @return descriptor version label, or {@code null} when unavailable
    */
   public String getAdvertisedVersionLabel() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.version() : null;
+  }
+
+  private CoreInfo selectedInfo() {
+    DescriptorSelection selection = descriptorSelection.get();
+    return selection != null ? selection.info() : null;
   }
 
   @Override
   public synchronized boolean canUpdateNow() {
-    return isNewerThanCurrentBuild(latestVersionBuild.get());
+    DescriptorSelection selection = descriptorSelection.get();
+    Integer advertisedBuild = selection != null ? selection.buildVersion() : null;
+    return isNewerThanCurrentBuild(advertisedBuild) && !isBuildRevoked(advertisedBuild);
   }
 
   /**
@@ -221,12 +272,12 @@ public class CoreUpdater extends NodeUpdater {
    * @return {@code true} when the current selected package is directly downloadable
    */
   public boolean isUiDownloadAvailable() {
-    PackageSpec spec = selectedSpec.get();
-    if (!canPrepareUiDownload(spec)) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (isSelectedBuildRevoked(selection) || !canPrepareUiDownload(selection)) {
       return false;
     }
 
-    PackageFetcher matchingFetcher = fetcherMatchesSelection();
+    PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
     if (matchingFetcher != null) {
       return !matchingFetcher.isInProgress() && !matchingFetcher.isSuccess();
     }
@@ -235,20 +286,87 @@ public class CoreUpdater extends NodeUpdater {
     return inFlight == null || !inFlight.isInProgress();
   }
 
-  private boolean canPrepareUiDownload(PackageSpec spec) {
-    if (spec == null || spec.chk() == null || selectedKey == null) {
+  /**
+   * Executes a store handoff while its submitted target remains the selected package.
+   *
+   * <p>The manager, package-selection, and lifecycle-state monitors remain held until the supplied
+   * action returns. This makes target validation and process launch one ordered operation with
+   * updater replacement, URI changes, descriptor replacement, update-key compromise, and build
+   * revocation.
+   *
+   * @param kind submitted package-store kind
+   * @param id submitted package identifier, or an empty string when absent
+   * @param url submitted public store URL, or an empty string when absent
+   * @param action bounded launch action that must not re-enter updater control methods
+   * @param <T> non-null launch outcome type
+   * @return action outcome, or empty when the target or authorization is no longer current
+   */
+  public <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, Supplier<T> action) {
+    Objects.requireNonNull(action, FORM_FIELD_ACTION);
+    return manager.withCurrentCoreUpdaterAction(
+        this, () -> withCurrentStoreTargetSelection(kind, id, url, action));
+  }
+
+  private <T> Optional<T> withCurrentStoreTargetSelection(
+      String kind, String id, String url, Supplier<T> action) {
+    synchronized (packageFetchLifecycleLock) {
+      DescriptorSelection selection = descriptorSelection.get();
+      if (!matchesCurrentStoreTarget(selection, kind, id, url)) {
+        return Optional.empty();
+      }
+      return manager.withNonRevokedCorePackageAction(selection.buildVersion(), action);
+    }
+  }
+
+  private boolean matchesCurrentStoreTarget(
+      DescriptorSelection selection, String kind, String id, String url) {
+    if (selection == null
+        || !isEligibleStoreBuild(selection.buildVersion())
+        || selection.packageSpec() == null
+        || !isCurrentSelection(selection)) {
+      return false;
+    }
+    String expectedKind = storeKind(selection.packageKey());
+    String expectedUrl = selection.packageSpec().storeUrl();
+    String expectedId = deriveStoreId(expectedKind, expectedUrl);
+    return expectedKind != null
+        && hasText(expectedUrl)
+        && expectedKind.equals(kind)
+        && Objects.equals(expectedId, optionalFormValue(id))
+        && expectedUrl.equals(url);
+  }
+
+  private static boolean isEligibleStoreBuild(Integer buildVersion) {
+    return buildVersion == null || isNewerThanCurrentBuild(buildVersion);
+  }
+
+  private boolean isCurrentSelection(DescriptorSelection selection) {
+    return selection != null && descriptorSelection.compareAndSet(selection, selection);
+  }
+
+  private static String optionalFormValue(String value) {
+    return hasText(value) ? value : null;
+  }
+
+  private boolean canPrepareUiDownload(DescriptorSelection selection) {
+    if (selection == null) {
+      return false;
+    }
+    PackageSpec spec = selection.packageSpec();
+    if (spec == null || spec.chk() == null || selection.packageKey() == null) {
       return false;
     }
     try {
       new FreenetURI(spec.chk());
-      return canPrepareDownloadTargetPath();
+      return canPrepareDownloadTargetPath(selection);
     } catch (MalformedURLException _) {
       return false;
     }
   }
 
-  private boolean canPrepareDownloadTargetPath() {
-    File versionDir = updatesDir();
+  private boolean canPrepareDownloadTargetPath(DescriptorSelection selection) {
+    File versionDir = updatesDir(selection);
     if (versionDir.exists()) {
       return versionDir.isDirectory() && versionDir.canWrite();
     }
@@ -267,23 +385,33 @@ public class CoreUpdater extends NodeUpdater {
 
   @Override
   public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
-    resetDescriptorStateForUriChange();
-    super.onChangeURI(newUri, subscribeEditionSeed);
+    changeSubscriptionScope(
+        newUri,
+        () -> {
+          resetDescriptorStateForUriChange();
+          return subscribeEditionSeed;
+        });
   }
 
   private void resetDescriptorStateForUriChange() {
-    cancelPackageFetchForUriChange();
-    latestInfo.set(null);
-    latestVersionBuild.set(null);
-    selectedKey = null;
-    selectedSpec.set(null);
-    env.set(null);
-  }
-
-  private void cancelPackageFetchForUriChange() {
-    PackageFetcher previous = fetcher.getAndSet(null);
+    PackageFetcher previous;
+    synchronized (packageFetchLifecycleLock) {
+      previous = fetcher.getAndSet(null);
+      descriptorSelection.set(null);
+    }
     if (previous != null) {
       previous.cancelForUriChange();
+    }
+  }
+
+  private void cancelPackageFetchForUpdaterStop() {
+    PackageFetcher previous;
+    synchronized (packageFetchLifecycleLock) {
+      packageFetchesStopped = true;
+      previous = fetcher.getAndSet(null);
+    }
+    if (previous != null) {
+      previous.cancelForUpdaterStop();
     }
   }
 
@@ -332,7 +460,7 @@ public class CoreUpdater extends NodeUpdater {
     return parsedBuild != null && parsedBuild > Version.currentBuildNumber();
   }
 
-  private void selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
+  private Map.Entry<String, PackageSpec> selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
     Map<String, PackageSpec> pkgs = info.packages();
     String arch = env.getArch();
     List<String> order = preferredExtensions(env);
@@ -349,8 +477,7 @@ public class CoreUpdater extends NodeUpdater {
     if (chosen == null) {
       chosen = firstAvailableForArch(pkgs, arch);
     }
-    selectedKey = chosen != null ? chosen.getKey() : null;
-    selectedSpec.set(chosen != null ? chosen.getValue() : null);
+    return chosen;
   }
 
   private static boolean isSelectableArtifact(
@@ -433,18 +560,18 @@ public class CoreUpdater extends NodeUpdater {
     return null;
   }
 
-  private File updatesDir() {
-    CoreInfo info = latestInfo.get();
+  private File updatesDir(DescriptorSelection selection) {
+    CoreInfo info = selection != null ? selection.info() : null;
     String version = info != null && info.version() != null ? info.version() : UNKNOWN_VERSION;
     return new File(getUpdatesRoot(), version);
   }
 
-  private File downloadTarget() {
-    String key = selectedKey;
+  private File downloadTarget(DescriptorSelection selection) {
+    String key = selection != null ? selection.packageKey() : null;
     if (key == null) {
       return null;
     }
-    File outDir = updatesDir();
+    File outDir = updatesDir(selection);
     if (!outDir.exists() && !outDir.mkdirs()) {
       logError("Failed to create updates directory at " + outDir.getAbsolutePath(), null);
       return null;
@@ -452,26 +579,37 @@ public class CoreUpdater extends NodeUpdater {
     return new File(outDir, key);
   }
 
-  private PackageFetcher fetcherMatchesSelection() {
-    PackageSpec spec = selectedSpec.get();
+  private PackageFetcher fetcherMatchesSelection(DescriptorSelection selection) {
+    PackageSpec spec = selection != null ? selection.packageSpec() : null;
     if (spec == null || spec.chk() == null) {
       return null;
     }
     PackageFetcher f = fetcher.get();
-    if (f != null && f.matchesChk(spec.chk())) {
+    if (f != null && f.matchesSelection(selection)) {
       return f;
     }
     return null;
   }
 
-  private boolean hasUsableFetcher() {
-    PackageFetcher f = fetcherMatchesSelection();
+  private boolean hasUsableFetcher(DescriptorSelection selection) {
+    PackageFetcher f = fetcherMatchesSelection(selection);
     return f != null && !f.hasFailed();
   }
 
-  private boolean tryStartDownload() {
-    PackageSpec spec = selectedSpec.get();
-    File target = downloadTarget();
+  private boolean tryStartDownload(DescriptorSelection selection) {
+    if (selection == null) {
+      return false;
+    }
+    if (manager.isBlown()) {
+      logInfo("Skipping package download start because updater trust is unavailable");
+      return false;
+    }
+    if (isSelectedBuildRevoked(selection)) {
+      logInfo("Skipping package download start because the advertised build is revoked");
+      return false;
+    }
+    PackageSpec spec = selection.packageSpec();
+    File target = downloadTarget(selection);
     if (spec == null || target == null || spec.chk() == null) {
       return false;
     }
@@ -483,11 +621,49 @@ public class CoreUpdater extends NodeUpdater {
       logError("Invalid CHK URI for selected package: " + chk, e);
       return false;
     }
-    PackageFetcher f = new PackageFetcher(target, uri, chk);
+    PackageFetcher f = new PackageFetcher(selection, target, uri);
+    boolean started =
+        manager
+            .withCurrentCoreUpdaterAction(
+                this, () -> tryStartAuthorizedDownload(selection, f, target, chk))
+            .orElse(false);
+    if (started) {
+      onSupportLifecycleStateChanged();
+    }
+    return started;
+  }
+
+  private Optional<Boolean> tryStartAuthorizedDownload(
+      DescriptorSelection selection, PackageFetcher f, File target, String chk) {
+    synchronized (packageFetchLifecycleLock) {
+      if (packageFetchesStopped || manager.isBlown()) {
+        logInfo("Skipping package download start because updater trust is unavailable");
+        return Optional.of(false);
+      }
+      if (!isCurrentSelection(selection)) {
+        logInfo("Skipping package download start because the selected descriptor changed");
+        return Optional.of(false);
+      }
+      PackageFetcher current = fetcher.get();
+      if (current != null && current.isInProgress()) {
+        logInfo("Skipping download start: another package download is still running");
+        return Optional.of(false);
+      }
+      if (current != null && current.matchesSelection(selection) && current.isSuccess()) {
+        logInfo("Skipping download start: selected package is already downloaded");
+        return Optional.of(false);
+      }
+      return manager.withNonRevokedCorePackageAction(
+          selection.buildVersion(), () -> startPackageFetcher(selection, f, target, chk));
+    }
+  }
+
+  private boolean startPackageFetcher(
+      DescriptorSelection selection, PackageFetcher f, File target, String chk) {
     fetcher.set(f);
     logInfo(
         "starting download: key="
-            + (selectedKey != null ? selectedKey : "?")
+            + (selection.packageKey() != null ? selection.packageKey() : "?")
             + ", target="
             + target.getAbsolutePath()
             + ", chk="
@@ -497,10 +673,11 @@ public class CoreUpdater extends NodeUpdater {
 
   /** Start downloading the currently selected package if not already in progress. */
   public boolean startDownloadFromUI() {
-    if (selectedSpec.get() == null) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (selection == null || selection.packageSpec() == null) {
       return false;
     }
-    PackageFetcher matchingFetcher = fetcherMatchesSelection();
+    PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
     if (matchingFetcher != null) {
       if (matchingFetcher.isInProgress() || matchingFetcher.isSuccess()) {
         return false;
@@ -512,7 +689,25 @@ public class CoreUpdater extends NodeUpdater {
         return false;
       }
     }
-    return tryStartDownload();
+    return tryStartDownload(selection);
+  }
+
+  @Override
+  public void preKill() {
+    synchronized (packageFetchLifecycleLock) {
+      packageFetchesStopped = true;
+    }
+    super.preKill();
+  }
+
+  @Override
+  void kill() {
+    preKill();
+    try {
+      cancelPackageFetchForUpdaterStop();
+    } finally {
+      super.kill();
+    }
   }
 
   /**
@@ -521,11 +716,71 @@ public class CoreUpdater extends NodeUpdater {
    * @return the downloaded package file when fetch completed successfully, otherwise {@code null}
    */
   public File getDownloadedFile() {
-    PackageFetcher f = fetcherMatchesSelection();
-    if (f != null && f.isSuccess()) {
-      return f.completedFileOrNull();
+    DescriptorSelection selection = descriptorSelection.get();
+    if (isSelectedBuildRevoked(selection)) {
+      return null;
+    }
+    PackageFetcher f = fetcherMatchesSelection(selection);
+    return downloadedFile(selection, f);
+  }
+
+  private File downloadedFile(DescriptorSelection selection, PackageFetcher matchingFetcher) {
+    if (matchingFetcher != null && matchingFetcher.isSuccess()) {
+      File completedFile = matchingFetcher.completedFileOrNull();
+      if (!isSelectedBuildRevoked(selection) && isCurrentSelection(selection)) {
+        return completedFile;
+      }
     }
     return null;
+  }
+
+  /**
+   * Executes an installer action while one completed package remains the authorized selection.
+   *
+   * <p>The manager, package-selection, and lifecycle-state monitors remain held until the supplied
+   * action returns. This gives updater replacement, URI changes, update-key blows, descriptor
+   * replacement, lifecycle acceptance, and process launch one linear order instead of returning a
+   * detached path that can become stale before use.
+   *
+   * @param submittedFile canonical installer submitted by the runtime adapter
+   * @param action bounded launch action that must not re-enter updater control methods
+   * @param <T> non-null launch outcome type
+   * @return action outcome, or empty when the file or its authorization is no longer current
+   */
+  public <T> Optional<T> withDownloadedInstaller(File submittedFile, Function<File, T> action) {
+    Objects.requireNonNull(submittedFile, "submittedFile");
+    Objects.requireNonNull(action, FORM_FIELD_ACTION);
+    return manager.withCurrentCoreUpdaterAction(
+        this, () -> withDownloadedInstallerSelection(submittedFile, action));
+  }
+
+  private <T> Optional<T> withDownloadedInstallerSelection(
+      File submittedFile, Function<File, T> action) {
+    synchronized (packageFetchLifecycleLock) {
+      DescriptorSelection selection = descriptorSelection.get();
+      PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
+      if (selection == null
+          || isSelectedBuildRevoked(selection)
+          || matchingFetcher == null
+          || !matchingFetcher.isSuccess()) {
+        return Optional.empty();
+      }
+      File completedFile = matchingFetcher.completedFileOrNull();
+      if (completedFile == null || !isCurrentSelection(selection)) {
+        return Optional.empty();
+      }
+      try {
+        File canonicalSubmitted = submittedFile.getCanonicalFile();
+        File canonicalCompleted = completedFile.getCanonicalFile();
+        if (!canonicalSubmitted.equals(canonicalCompleted)) {
+          return Optional.empty();
+        }
+        return manager.withNonRevokedCorePackageAction(
+            selection.buildVersion(), () -> action.apply(canonicalCompleted));
+      } catch (java.io.IOException _) {
+        return Optional.empty();
+      }
+    }
   }
 
   /**
@@ -534,27 +789,26 @@ public class CoreUpdater extends NodeUpdater {
    * @param alertNode parent HTML node that receives updater status content and forms
    */
   public void renderProperties(HTMLNode alertNode) {
-    CoreInfo info = latestInfo.get();
-    if (info == null) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (selection == null) {
       return;
     }
+    CoreInfo info = selection.info();
+    AppEnv.EnvDetection envNow = selection.environment();
+    String chosen = selection.packageKey();
+    PackageSpec spec = selection.packageSpec();
 
-    AppEnv.EnvDetection envNow = env.get();
-    if (envNow == null) {
-      envNow = appEnv.detectEnvironment();
-      env.set(envNow);
+    if (isSelectedBuildRevoked(selection)) {
+      addRevokedPackageWarning(alertNode);
+      return;
     }
-
-    String chosen = selectedKey;
-    PackageSpec spec = selectedSpec.get();
-
     addHeader(alertNode, info, envNow, chosen, spec);
-    alertNode.addChild(buildLinksNode(info, spec, chosen));
+    alertNode.addChild(buildLinksNode(info, spec, chosen, envNow));
 
-    PackageFetcher f = fetcherMatchesSelection();
+    PackageFetcher f = fetcherMatchesSelection(selection);
     if (f == null) {
       if (spec != null && spec.chk() != null) {
-        alertNode.addChild(buildDownloadForm());
+        alertNode.addChild(buildDownloadForm(selection));
       }
       return;
     }
@@ -564,15 +818,59 @@ public class CoreUpdater extends NodeUpdater {
       HTMLNode p = new HTMLNode("p");
       p.addChild("#", "Download failed: " + msg);
       alertNode.addChild(p);
-      alertNode.addChild(buildRetryForm(!f.isFatalFailure()));
+      alertNode.addChild(buildRetryForm(selection, !f.isFatalFailure()));
       return;
     }
 
     alertNode.addChild(buildProgressNode(f));
-    boolean ready = f.isSuccess();
-    File downloaded = getDownloadedFile();
+    File downloaded = downloadedFile(selection, f);
+    boolean ready = downloaded != null;
     String path = downloaded != null ? downloaded.getAbsolutePath() : null;
     alertNode.addChild(buildInstallForm(ready, path));
+  }
+
+  /** Cancels a selected package fetch when newly accepted policy revokes its build. */
+  void onSupportLifecycleStateChanged() {
+    PackageFetcher revokedFetcher = null;
+    OptionalLong pendingRevocationDelay = OptionalLong.empty();
+    synchronized (packageFetchLifecycleLock) {
+      PackageFetcher activeFetcher = fetcher.get();
+      if (activeFetcher == null) {
+        return;
+      }
+      Integer activeBuild = activeFetcher.originatingBuildVersion();
+      if (isBuildRevoked(activeBuild)) {
+        revokedFetcher = fetcher.getAndSet(null);
+      } else if (activeBuild != null) {
+        pendingRevocationDelay = manager.pendingCorePackageBuildRevocationDelayMillis(activeBuild);
+      }
+    }
+    if (revokedFetcher != null) {
+      revokedFetcher.cancelForBuildRevocation();
+    } else if (pendingRevocationDelay.isPresent()) {
+      manager
+          .getNode()
+          .network()
+          .ticker()
+          .queueTimedJob(this::onSupportLifecycleStateChanged, pendingRevocationDelay.getAsLong());
+    }
+  }
+
+  private boolean isSelectedBuildRevoked(DescriptorSelection selection) {
+    return selection != null && isBuildRevoked(selection.buildVersion());
+  }
+
+  private boolean isBuildRevoked(Integer buildVersion) {
+    return buildVersion != null && manager.isCorePackageBuildRevoked(buildVersion);
+  }
+
+  private static void addRevokedPackageWarning(HTMLNode alertNode) {
+    HTMLNode warning = new HTMLNode("p");
+    warning.addChild(
+        "#",
+        "This advertised package build is revoked. Use the authenticated support-lifecycle "
+            + "recovery guidance instead.");
+    alertNode.addChild(warning);
   }
 
   private void addHeader(
@@ -601,14 +899,15 @@ public class CoreUpdater extends NodeUpdater {
     }
   }
 
-  private HTMLNode buildLinksNode(CoreInfo info, PackageSpec spec, String chosenKey) {
+  private HTMLNode buildLinksNode(
+      CoreInfo info, PackageSpec spec, String chosenKey, AppEnv.EnvDetection environment) {
     HTMLNode links = new HTMLNode("p");
     addReleaseNotesLink(links, info.releasePageUrl());
 
     String storeUrl = spec != null ? spec.storeUrl() : null;
     String kind = storeKind(chosenKey);
 
-    if (shouldRenderStoreForm(storeUrl, kind)) {
+    if (shouldRenderStoreForm(storeUrl, kind, environment)) {
       String id = deriveStoreId(kind, storeUrl);
       links.addChild(buildOpenStoreForm(kind, id, storeUrl));
       links.addChild("#", "  ");
@@ -648,13 +947,13 @@ public class CoreUpdater extends NodeUpdater {
     return chosenKey.substring(idx + 1).toLowerCase(Locale.ROOT);
   }
 
-  private boolean shouldRenderStoreForm(String storeUrl, String kind) {
-    return hasText(storeUrl) && kind != null && isLinuxEnvironment();
+  private boolean shouldRenderStoreForm(
+      String storeUrl, String kind, AppEnv.EnvDetection environment) {
+    return hasText(storeUrl) && kind != null && isLinuxEnvironment(environment);
   }
 
-  private boolean isLinuxEnvironment() {
-    AppEnv.EnvDetection detected = env.get();
-    return (detected != null && detected.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
+  private boolean isLinuxEnvironment(AppEnv.EnvDetection environment) {
+    return (environment != null && environment.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
   }
 
   private static boolean hasText(String value) {
@@ -739,24 +1038,24 @@ public class CoreUpdater extends NodeUpdater {
     node.addChild("input", attrs.toArray(String[]::new), vals.toArray(String[]::new));
   }
 
-  private HTMLNode buildDownloadForm() {
+  private HTMLNode buildDownloadForm(DescriptorSelection selection) {
     HTMLNode form = newPostForm();
     hiddenInput(form, FORM_FIELD_ACTION, "download");
     hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
-    submitButton(form, defaultDownloadLabel(), "start", false);
+    submitButton(form, defaultDownloadLabel(selection), "start", false);
     return form;
   }
 
-  private HTMLNode buildRetryForm(boolean isRetry) {
+  private HTMLNode buildRetryForm(DescriptorSelection selection, boolean isRetry) {
     HTMLNode form = newPostForm();
     hiddenInput(form, FORM_FIELD_ACTION, "download");
     hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
-    submitButton(form, isRetry ? "Retry" : defaultDownloadLabel(), "start", false);
+    submitButton(form, isRetry ? "Retry" : defaultDownloadLabel(selection), "start", false);
     return form;
   }
 
-  private String defaultDownloadLabel() {
-    PackageSpec spec = selectedSpec.get();
+  private static String defaultDownloadLabel(DescriptorSelection selection) {
+    PackageSpec spec = selection != null ? selection.packageSpec() : null;
     Long bytes = spec != null ? spec.size() : null;
     if (bytes != null && bytes > 0) {
       return "Download (" + SizeUtil.formatSize(bytes, true) + ")";
@@ -791,11 +1090,16 @@ public class CoreUpdater extends NodeUpdater {
     return form;
   }
 
-  /** Lightweight fetcher for a single CHK saved directly to a file. */
+  /**
+   * Lightweight fetcher for one package selected by one immutable core descriptor snapshot.
+   *
+   * <p>The snapshot identity is retained after download so a later descriptor cannot consume the
+   * completed file merely by reusing its CHK while changing the advertised build or package key.
+   */
   class PackageFetcher implements ClientGetCallback, RequestClient, ClientEventListener {
+    private final DescriptorSelection originatingSelection;
     private final File outFile;
     private final FreenetURI chk;
-    private final String chkString;
     private final AtomicReference<FetchContext> fetchContext = new AtomicReference<>();
     private final AtomicReference<ClientGetter> clientGetter = new AtomicReference<>();
 
@@ -807,14 +1111,20 @@ public class CoreUpdater extends NodeUpdater {
     private volatile boolean failed = false;
     private volatile String errorMsg;
     private volatile boolean fatal = false;
+    private boolean cancelled;
 
-    PackageFetcher(File outFile, FreenetURI chk, String chkString) {
+    PackageFetcher(DescriptorSelection originatingSelection, File outFile, FreenetURI chk) {
+      this.originatingSelection =
+          Objects.requireNonNull(originatingSelection, "originatingSelection");
       this.outFile = outFile;
       this.chk = chk;
-      this.chkString = chkString;
     }
 
-    boolean start() {
+    synchronized boolean start() {
+      if (cancelled) {
+        markStartFailure("Package download was cancelled before it started", false);
+        return false;
+      }
       var ctx =
           manager
               .getNode()
@@ -856,6 +1166,19 @@ public class CoreUpdater extends NodeUpdater {
     }
 
     void cancelForUriChange() {
+      cancel("update URI change");
+    }
+
+    void cancelForUpdaterStop() {
+      cancel("updater stop");
+    }
+
+    void cancelForBuildRevocation() {
+      cancel("build revocation");
+    }
+
+    private synchronized void cancel(String reason) {
+      cancelled = true;
       ClientGetter getter = clientGetter.get();
       if (getter == null || getter.isFinished()) {
         detachProgressListener();
@@ -863,10 +1186,10 @@ public class CoreUpdater extends NodeUpdater {
       }
       try {
         getter.cancel(manager.getNode().services().clientCore().getClientContext());
-        CoreUpdater.this.logInfo("Cancelled in-flight package download after update URI change");
+        CoreUpdater.this.logInfo("Cancelled in-flight package download after " + reason);
       } catch (Exception e) {
         CoreUpdater.this.logError(
-            "Error while cancelling in-flight package download after URI change", e);
+            "Error while cancelling in-flight package download after " + reason, e);
       } finally {
         detachProgressListener();
       }
@@ -907,8 +1230,36 @@ public class CoreUpdater extends NodeUpdater {
       return failed && fatal;
     }
 
-    boolean matchesChk(String candidate) {
-      return candidate != null && candidate.equals(chkString);
+    boolean matchesSelection(DescriptorSelection candidate) {
+      return candidate != null
+          && originatingSelection.selectionIdentity().equals(candidate.selectionIdentity());
+    }
+
+    Integer originatingBuildVersion() {
+      return originatingSelection.buildVersion();
+    }
+
+    /**
+     * Starts a newer automatic selection after this fetch has completed.
+     *
+     * <p>All current trust, lifecycle, and shutdown gates are rechecked by {@link
+     * CoreUpdater#tryStartDownload(DescriptorSelection)} before the replacement fetch starts.
+     */
+    private void retrySupersedingAutomaticSelection() {
+      DescriptorSelection currentSelection = descriptorSelection.get();
+      PackageSpec currentSpec = currentSelection != null ? currentSelection.packageSpec() : null;
+      Integer currentBuild = currentSelection != null ? currentSelection.buildVersion() : null;
+      if (fetcher.get() != this
+          || !manager.isAutoUpdateAllowed()
+          || currentSpec == null
+          || currentSpec.chk() == null
+          || matchesSelection(currentSelection)
+          || !isNewerThanCurrentBuild(currentBuild)) {
+        return;
+      }
+      CoreUpdater.this.logInfo(
+          "Starting package selected while the previous package download was running");
+      CoreUpdater.this.tryStartDownload(currentSelection);
     }
 
     @Override
@@ -921,6 +1272,7 @@ public class CoreUpdater extends NodeUpdater {
       errorMsg = null;
       CoreUpdater.this.logInfo(
           "download complete: " + outFile.getAbsolutePath() + " (size=" + outFile.length() + ")");
+      retrySupersedingAutomaticSelection();
     }
 
     @Override
@@ -936,11 +1288,11 @@ public class CoreUpdater extends NodeUpdater {
         fatal = false;
       }
       errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-      if (e.mode == FetchExceptionMode.CANCELLED) {
-        return;
+      if (e.mode != FetchExceptionMode.CANCELLED) {
+        CoreUpdater.this.logError(
+            "Package download failed: " + (errorMsg != null ? errorMsg : "unknown error"), e);
       }
-      CoreUpdater.this.logError(
-          "Package download failed: " + (errorMsg != null ? errorMsg : "unknown error"), e);
+      retrySupersedingAutomaticSelection();
     }
 
     @Override
@@ -1075,7 +1427,12 @@ final class JsonMini {
 
   static Map<String, Object> parseObject(String s) {
     P p = new P(s);
-    return parseObjectInPlace(p);
+    Map<String, Object> result = parseObjectInPlace(p);
+    skipWs(p);
+    if (p.i != p.s.length()) {
+      throw new IllegalArgumentException("Unexpected trailing JSON content at " + p.i);
+    }
+    return result;
   }
 
   private static Map<String, Object> parseObjectInPlace(P p) {
@@ -1094,6 +1451,9 @@ final class JsonMini {
       expect(p, ':');
       skipWs(p);
       Object value = parseValue(p);
+      if (out.containsKey(key)) {
+        throw new IllegalArgumentException("Duplicate JSON object key at " + p.i);
+      }
       out.put(key, value);
       skipWs(p);
       char ch = next(p);
@@ -1159,20 +1519,84 @@ final class JsonMini {
 
   private static Number parseNumber(P p) {
     int start = p.i;
+    consumeNumberSign(p);
+    consumeIntegerPart(p);
+    boolean hasFraction = consumeFraction(p);
+    boolean hasExponent = consumeExponent(p);
+    return convertNumber(p, start, !hasFraction && !hasExponent);
+  }
+
+  private static void consumeNumberSign(P p) {
     if (peek(p) == '-') {
       p.i++;
     }
-    while (Character.isDigit(peek(p))) {
+  }
+
+  private static void consumeIntegerPart(P p) {
+    if (peek(p) == '0') {
+      p.i++;
+      if (isAsciiDigit(peek(p))) {
+        throw new IllegalArgumentException("Leading zero in JSON number at " + p.i);
+      }
+      return;
+    }
+    if (peek(p) < '1' || peek(p) > '9') {
+      throw new IllegalArgumentException("Invalid JSON number at " + p.i);
+    }
+    consumeAsciiDigits(p);
+  }
+
+  private static boolean consumeFraction(P p) {
+    if (peek(p) != '.') {
+      return false;
+    }
+    p.i++;
+    if (!isAsciiDigit(peek(p))) {
+      throw new IllegalArgumentException("Invalid JSON fraction at " + p.i);
+    }
+    consumeAsciiDigits(p);
+    return true;
+  }
+
+  private static boolean consumeExponent(P p) {
+    if (peek(p) != 'e' && peek(p) != 'E') {
+      return false;
+    }
+    p.i++;
+    if (peek(p) == '+' || peek(p) == '-') {
       p.i++;
     }
-    if (peek(p) == '.') {
-      do {
-        p.i++;
-      } while (Character.isDigit(peek(p)));
+    if (!isAsciiDigit(peek(p))) {
+      throw new IllegalArgumentException("Invalid JSON exponent at " + p.i);
     }
+    consumeAsciiDigits(p);
+    return true;
+  }
+
+  private static void consumeAsciiDigits(P p) {
+    while (isAsciiDigit(peek(p))) {
+      p.i++;
+    }
+  }
+
+  private static Number convertNumber(P p, int start, boolean integral) {
     String sub = p.s.substring(start, p.i);
-    double d = Double.parseDouble(sub);
-    return d % 1.0 == 0.0 ? (long) d : d;
+    try {
+      if (integral) {
+        return Long.parseLong(sub);
+      }
+      double value = Double.parseDouble(sub);
+      if (!Double.isFinite(value)) {
+        throw new IllegalArgumentException("Non-finite JSON number at " + start);
+      }
+      return value;
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("JSON number is outside supported range at " + start, e);
+    }
+  }
+
+  private static boolean isAsciiDigit(char value) {
+    return value >= '0' && value <= '9';
   }
 
   private static String parseString(P p) {
@@ -1183,27 +1607,47 @@ final class JsonMini {
       if (ch == '"') {
         return sb.toString();
       }
-      if (ch == '\\') {
-        char e = next(p);
-        switch (e) {
-          case '"' -> sb.append('"');
-          case '\\' -> sb.append('\\');
-          case '/' -> sb.append('/');
-          case 'b' -> sb.append('\b');
-          case 'f' -> sb.append('\f');
-          case 'n' -> sb.append('\n');
-          case 'r' -> sb.append('\r');
-          case 't' -> sb.append('\t');
-          case 'u' -> {
-            String hex = p.s.substring(p.i, p.i + 4);
-            p.i += 4;
-            sb.append((char) Integer.parseInt(hex, 16));
-          }
-          default -> throw new IllegalArgumentException("Bad escape \\" + e + " at " + p.i);
-        }
-      } else {
-        sb.append(ch);
-      }
+      appendStringCharacter(p, sb, ch);
+    }
+  }
+
+  private static void appendStringCharacter(P p, StringBuilder sb, char ch) {
+    if (ch == '\\') {
+      appendEscapedCharacter(p, sb);
+      return;
+    }
+    if (ch < 0x20) {
+      throw new IllegalArgumentException("Unescaped JSON control character at " + p.i);
+    }
+    sb.append(ch);
+  }
+
+  private static void appendEscapedCharacter(P p, StringBuilder sb) {
+    char escape = next(p);
+    switch (escape) {
+      case '"' -> sb.append('"');
+      case '\\' -> sb.append('\\');
+      case '/' -> sb.append('/');
+      case 'b' -> sb.append('\b');
+      case 'f' -> sb.append('\f');
+      case 'n' -> sb.append('\n');
+      case 'r' -> sb.append('\r');
+      case 't' -> sb.append('\t');
+      case 'u' -> appendUnicodeEscape(p, sb);
+      default -> throw new IllegalArgumentException("Bad escape \\" + escape + " at " + p.i);
+    }
+  }
+
+  private static void appendUnicodeEscape(P p, StringBuilder sb) {
+    if (p.i + 4 > p.s.length()) {
+      throw new IllegalArgumentException("Incomplete Unicode escape at " + p.i);
+    }
+    String hex = p.s.substring(p.i, p.i + 4);
+    p.i += 4;
+    try {
+      sb.append((char) Integer.parseInt(hex, 16));
+    } catch (NumberFormatException exception) {
+      throw new IllegalArgumentException("Invalid Unicode escape at " + (p.i - 4), exception);
     }
   }
 
@@ -1214,6 +1658,9 @@ final class JsonMini {
   }
 
   private static char next(P p) {
+    if (p.i >= p.s.length()) {
+      throw new IllegalArgumentException("Unexpected end of JSON input at " + p.i);
+    }
     return p.s.charAt(p.i++);
   }
 

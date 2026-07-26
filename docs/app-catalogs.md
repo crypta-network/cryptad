@@ -111,7 +111,7 @@ app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.pn
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
-app.queue-manager.api.maximumTestedVersion=10
+app.queue-manager.api.maximumTestedVersion=23
 app.queue-manager.api.targetStability=stable
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
@@ -271,7 +271,7 @@ app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
 app.trust-graph.api.minimumVersion=22
-app.trust-graph.api.maximumTestedVersion=22
+app.trust-graph.api.maximumTestedVersion=23
 app.trust-graph.api.targetStability=experimental
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1

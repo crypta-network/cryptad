@@ -58,9 +58,9 @@ public record PlatformApiContract(
   /**
    * Integer compatibility contract version used by app manifests and catalogs.
    *
-   * <p>The value increases when published Platform API compatibility metadata changes in a way that
-   * tooling should be able to compare. It is not the Cryptad build number, and it is not the URL
-   * API version.
+   * <p>The value increases when published app-facing Platform API compatibility metadata changes in
+   * a way that tooling should be able to compare. Operator-only descriptors do not advance it. It
+   * is not the Cryptad build number, and it is not the URL API version.
    */
   public static final int CURRENT_CONTRACT_VERSION = 23;
 
@@ -105,6 +105,13 @@ public record PlatformApiContract(
   private static final int CATALOG_OPERATIONS_CONTRACT_VERSION = 23;
 
   /**
+   * Contract snapshot version that first records the operator-only support lifecycle descriptor.
+   *
+   * <p>Operator-only routes do not advance the app-facing compatibility version.
+   */
+  private static final int SUPPORT_LIFECYCLE_DESCRIPTOR_VERSION = 23;
+
+  /**
    * Stable producer label written into generated contract snapshots.
    *
    * <p>The label identifies the contract source without embedding host-specific details. Snapshot
@@ -147,6 +154,8 @@ public record PlatformApiContract(
           + CATALOG_OPERATIONS_CONTRACT_VERSION
           + " adds signed catalog operations for mirrors, source health, rollback, key-rotation"
           + " status, and emergency advisory refresh"
+          + ". The operator-only support-lifecycle descriptor does not advance the app-facing"
+          + " compatibility version"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -164,6 +173,7 @@ public record PlatformApiContract(
   private static final String ROUTE_FAMILY_QUEUE = "queue";
   private static final String ROUTE_FAMILY_SECURITY_LEVELS = "security-levels";
   private static final String ROUTE_FAMILY_TRUST_GRAPH = "trust-graph";
+  private static final String ROUTE_FAMILY_UPDATES = "updates";
   private static final String ROUTE_APP_VAULT_SECRET = "/app-vault/secrets/{name}";
   private static final String ROUTE_IDENTITY_VAULT_GRANT = "/identity-vault/grants/{grantId}";
   private static final String METHOD_DELETE = "DELETE";
@@ -629,13 +639,14 @@ public record PlatformApiContract(
         List.of(PlatformApiCapabilities.SECURITY_WRITE),
         "Change the physical threat level.");
     builder.get(
-        "updates",
+        ROUTE_FAMILY_UPDATES,
         "/updates/core",
         PlatformApiCapabilities.UPDATES_READ,
         PlatformApiCapabilities.UPDATES_READ,
         "Read core update state.");
+    builder.supportLifecycleGet();
     builder.post(
-        "updates",
+        ROUTE_FAMILY_UPDATES,
         "/updates/core/download",
         "updates.core.download",
         List.of(PlatformApiCapabilities.UPDATES_WRITE),
@@ -1138,6 +1149,22 @@ public record PlatformApiContract(
               true,
               true,
               description));
+    }
+
+    private void supportLifecycleGet() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_UPDATES,
+              METHOD_GET,
+              "/updates/support-lifecycle",
+              PlatformApiCapabilities.UPDATES_READ,
+              List.of(PlatformApiCapabilities.UPDATES_READ),
+              SUPPORT_LIFECYCLE_DESCRIPTOR_VERSION,
+              true,
+              false,
+              false,
+              PlatformApiStabilityLevel.OPERATOR_ONLY,
+              "Read the local authenticated Stable 1.0 support-lifecycle state."));
     }
 
     private void post(

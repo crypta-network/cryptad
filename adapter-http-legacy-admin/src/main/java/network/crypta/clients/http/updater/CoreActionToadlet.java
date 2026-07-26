@@ -6,13 +6,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ReplyHeaders;
@@ -91,6 +91,7 @@ public class CoreActionToadlet extends Toadlet {
   private static final String HTML_ATTR_CLASS = "class";
   private static final String SHELL_UPDATES_URL = WebShellPaths.SHELL_ROOT + "#updates";
   private static final String LEGACY_UPDATES_URL = "/alerts/";
+  private static final long SYSTEMD_ESCAPE_TIMEOUT_SECONDS = 5;
   private static final List<String> TRUSTED_UNIX_BIN_DIRS =
       List.of("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin");
 
@@ -102,8 +103,8 @@ public class CoreActionToadlet extends Toadlet {
    * Creates the toadlet that handles core-update action requests from the updater UI.
    *
    * <p>The provided runtime port is used to access updater availability, download start, and
-   * installer path validation while the toadlet keeps runtime environment and response rendering
-   * behavior in the HTTP layer.
+   * installer and store-target validation while the toadlet keeps runtime environment and response
+   * rendering behavior in the HTTP layer.
    *
    * @param coreUpdateActionPort runtime port that exposes the remaining daemon-backed updater
    *     actions needed by this toadlet
@@ -179,15 +180,22 @@ public class CoreActionToadlet extends Toadlet {
     String path = request.getPartAsStringFailsafe("path", 4096);
     logInfo("POST /core-update action=" + ACTION_INSTALL + " path=" + path);
 
-    File candidate =
-        coreUpdateActionPort.resolveDownloadedInstaller(path).map(Path::toFile).orElse(null);
-    if (candidate == null) {
+    InstallAttempt attempt =
+        coreUpdateActionPort
+            .withDownloadedInstaller(
+                path,
+                installer -> {
+                  File candidate = installer.toFile();
+                  return new InstallAttempt(candidate, tryInstall(candidate));
+                })
+            .orElse(null);
+    if (attempt == null) {
       logInfo("install rejected: invalid path");
       writeMessage(ctx, false, t("invalidPath"));
       return;
     }
 
-    InstallOutcome outcome = tryInstall(candidate);
+    InstallOutcome outcome = attempt.outcome();
     logInfo(
         "install result: success="
             + outcome.success
@@ -195,7 +203,7 @@ public class CoreActionToadlet extends Toadlet {
             + outcome.message.key
             + ", replacements="
             + outcome.message.replacements);
-    writeInstallResult(ctx, outcome.success, outcome.message.render(this), candidate);
+    writeInstallResult(ctx, outcome.success, outcome.message.render(this), attempt.installer());
   }
 
   private void handleOpenStore(HTTPRequest request, ToadletContext ctx)
@@ -205,6 +213,20 @@ public class CoreActionToadlet extends Toadlet {
     String url = request.getPartAsStringFailsafe("url", 2048);
     logInfo("POST /core-update action=openStore kind=" + kind + " id=" + id + " url=" + url);
 
+    StoreOutcome outcome =
+        coreUpdateActionPort
+            .withCurrentStoreTarget(kind, id, url, () -> tryOpenStore(kind, id, url))
+            .orElse(null);
+    if (outcome == null) {
+      logInfo("store handoff rejected: submitted target is no longer selected");
+      writeMessage(ctx, false, t("store.targetUnavailable"));
+      return;
+    }
+
+    writeMessage(ctx, outcome.success(), outcome.message().render(this));
+  }
+
+  private StoreOutcome tryOpenStore(String kind, String id, String url) {
     InstallerDelegate delegate =
         switch (appEnv.osKind()) {
           case LINUX -> linuxOpenStore(kind, blankToNull(id), blankToNull(url));
@@ -233,20 +255,20 @@ public class CoreActionToadlet extends Toadlet {
     if (delegate instanceof InstallerDelegate.Spawn(ProcessBuilder pb, LocalMessage message)) {
       try {
         pb.start();
-        writeMessage(ctx, true, message.render(this));
+        return new StoreOutcome(true, message);
       } catch (Exception throwable) {
         String reason =
             throwable.getMessage() != null
                 ? throwable.getMessage()
                 : throwable.getClass().getSimpleName();
-        writeMessage(ctx, false, msg("store.openFailed", Map.of("reason", reason)).render(this));
+        return new StoreOutcome(false, msg("store.openFailed", Map.of("reason", reason)));
       }
-      return;
     }
 
     if (delegate instanceof InstallerDelegate.Manual(LocalMessage message)) {
-      writeMessage(ctx, false, message.render(this));
+      return new StoreOutcome(false, message);
     }
+    return new StoreOutcome(false, msg("store.unsupportedPlatform"));
   }
 
   private InstallOutcome tryInstall(File file) {
@@ -664,32 +686,41 @@ public class CoreActionToadlet extends Toadlet {
       return null;
     }
 
+    Process escape = null;
     try {
       ProcessBuilder escapeBuilder =
           processBuilder(CMD_SYSTEMD_ESCAPE, "--path", file.getAbsolutePath());
       if (escapeBuilder == null) {
         return null;
       }
-      Process escape = escapeBuilder.redirectErrorStream(true).start();
-      String escaped;
-      try (BufferedReader reader =
-          new BufferedReader(
-              new InputStreamReader(escape.getInputStream(), StandardCharsets.UTF_8))) {
-        escaped = reader.readLine();
-      }
-      escape.waitFor();
+      escape = escapeBuilder.redirectErrorStream(true).start();
+      String escaped = readSystemdEscapeOutput(escape);
 
-      if (escape.exitValue() != 0 || escaped == null || escaped.isBlank()) {
+      if (escaped == null || escape.exitValue() != 0 || escaped.isBlank()) {
         return null;
       }
 
       String unit = "cryptad-core-install@" + escaped.trim() + ".service";
       return spawn(CMD_SYSTEMCTL, msg("linux.headlessUnit", Map.of("unit", unit)), "start", unit);
     } catch (InterruptedException _) {
+      escape.destroyForcibly();
       Thread.currentThread().interrupt();
       return null;
     } catch (Exception _) {
       return null;
+    }
+  }
+
+  private static String readSystemdEscapeOutput(Process escape)
+      throws InterruptedException, IOException {
+    if (!escape.waitFor(SYSTEMD_ESCAPE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+      escape.destroyForcibly();
+      return null;
+    }
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(escape.getInputStream(), StandardCharsets.UTF_8))) {
+      return reader.readLine();
     }
   }
 
@@ -698,13 +729,14 @@ public class CoreActionToadlet extends Toadlet {
   }
 
   private void redirect(ToadletContext ctx) throws ToadletContextClosedException, IOException {
+    ToadletContext responseContext = Objects.requireNonNull(ctx, "ctx");
     MultiValueTable<String, String> headers =
-        MultiValueTable.from("Location", updatesRedirectUrl(ctx));
-    ctx.sendReplyHeaders(302, "Found", headers, null, 0);
+        MultiValueTable.from("Location", updatesRedirectUrl(responseContext));
+    responseContext.sendReplyHeaders(302, "Found", headers, null, 0);
   }
 
   private static String updatesRedirectUrl(ToadletContext ctx) {
-    ToadletContainer container = ctx == null ? null : ctx.getContainer();
+    ToadletContainer container = ctx.getContainer();
     if (container != null && container.isFProxyJavascriptEnabled()) {
       return SHELL_UPDATES_URL;
     }
@@ -861,6 +893,10 @@ public class CoreActionToadlet extends Toadlet {
   }
 
   private record InstallOutcome(boolean success, LocalMessage message) {}
+
+  private record InstallAttempt(File installer, InstallOutcome outcome) {}
+
+  private record StoreOutcome(boolean success, LocalMessage message) {}
 
   private sealed interface InstallerDelegate {
     record Spawn(ProcessBuilder pb, LocalMessage message) implements InstallerDelegate {}

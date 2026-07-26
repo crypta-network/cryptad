@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, signed app bundles/catalogs and mirrors, app review, production security, Trust Graph/Social Inbox RCs, app update/data/backup/services/UI/SDK, sandbox and support evidence, production beta gates, Stable 1.0 RC/GA and later maintenance compatibility, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, signed app bundles/catalogs and mirrors, app review, production security, Trust Graph/Social Inbox RCs, app update/data/backup/services/UI/SDK, sandbox and support evidence, production beta gates, Stable 1.0 RC/GA, maintenance, lifecycle/deprecation governance, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -62,6 +62,8 @@ Load only the docs needed for the change:
   `docs/stable-1.0-rc-validation-and-ga-promotion.md`
 - Stable 1.0 maintenance and security hotfix path:
   `docs/stable-1.0-maintenance-release-and-hotfix-path.md`
+- Stable 1.0 support lifecycle and deprecation governance:
+  `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
@@ -79,7 +81,8 @@ Load only the docs needed for the change:
   operation routes for mirror management, source health, revision history, rollback, key-rotation
   status, and emergency advisory refresh; the host/operator-only beta dashboard, subscription
   recovery wrappers, typed operator RC recovery action planning/execution, safe network-budget
-  snapshots, support-bundle preview metadata, and redacted support-bundle assembly.
+  snapshots, support-bundle preview metadata, redacted support-bundle assembly, and the
+  host/operator-only Stable 1.0 lifecycle snapshot route.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -124,7 +127,8 @@ Load only the docs needed for the change:
   operator views, catalog source/mirror health and guarded catalog operations, the operator beta
   dashboard/support-bundle panel, the Operator RC Recovery surface, subscription recovery
   controls, app-data backup/restore controls, app-service dependency/grant-bundle review UI,
-  security response status rendering, and explicit legacy security/diagnostic fallback actions.
+  security response and Stable 1.0 lifecycle status rendering, and explicit legacy
+  security/diagnostic fallback actions.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
   mutating catalog-operation form-password guard, operator recovery/subscription form-password
@@ -308,6 +312,12 @@ Load only the docs needed for the change:
   principals, and should not bump the integer contract version. Support bundles and dashboard
   summaries must exclude raw bodies, private insert URIs, app/session/process tokens, form
   passwords, local paths, command lines, and app-private values.
+- `GET /api/v1/updates/support-lifecycle` is likewise host/operator-only and
+  `OPERATOR_ONLY` in the compatibility contract. Keep the app-readable
+  `GET /api/v1/updates/core` response limited to updater availability and download readiness; do
+  not expose lifecycle state through it as a shortcut around the direct-route principal check.
+  Web Shell must treat failure of the lifecycle request as an unknown best-effort diagnostic while
+  preserving a successful core response and its independently authorized controls.
 - Operator RC recovery routes must stay typed and allowlisted. Clients request an
   `OperatorRecoveryPlan` for a known `OperatorRecoveryActionId`, then execute that exact action
   with the matching one-time `planToken`; destructive actions require explicit confirmation. Do
@@ -436,6 +446,8 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 python3 tools/release-certification/certify.py self-test all
 python3 tools/release-certification/certify.py stable-rc --self-test
 python3 tools/release-certification/certify.py stable-ga --self-test
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+python3 tools/release-certification/certify.py stable-lifecycle --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -489,3 +501,30 @@ Bind all app/catalog/update and durable-state scenarios to the exact candidate a
 digests. A security hotfix cannot waive these gates; only policy-listed observation windows may be
 shortened, creating a follow-up obligation. Follow
 `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.
+
+## Stable 1.0 lifecycle and deprecation governance
+
+Platform API 1.0 deprecation clocks are historical commitments. A maintenance baseline may carry
+them forward but must not move `deprecatedSinceContractVersion` or scheduled removal later to reset
+the clock. Do not remove a stable endpoint or capability while an authenticated supported Stable
+1.0 build or required stable third-party sample depends on it. Lifecycle end-of-support never
+rewrites a published contract snapshot or makes a prohibited critical-removal waiver valid.
+
+Reuse signed catalog, review, app-maintenance, advisory/denylist, and content-profile metadata when
+building lifecycle governance output. The projection informs certification and operator support;
+it does not replace those trust models. Keep first-party app IDs and support commitments stable,
+require explicit replacement/migration guidance for deprecation where policy requires it, preserve
+backup/restore commitments, and never change a frozen content-profile canonicalization or signature
+rule in place.
+
+Expose the running build's lifecycle through the detached updater SPI, read-only update/operator
+routes, the redacted support bundle, and the Web Shell. Distinguish unknown, stale, full support,
+security-only, deprecated, end-of-support, and revoked states. Show integer build identifiers and
+safe replacement guidance, and offer an update action only when the existing updater can honor it.
+Use `recommendedBuild` for an optional upgrade from `supported-maintenance`; do not label it as a
+required replacement. Do not expose changed future-effective guidance early. An already-effective
+terminal revocation remains visible with its predecessor-authenticated recovery guidance until the
+successor activates, including when the last-known-good descriptor is stale. Do not include raw
+descriptors, private update URIs, advisory bodies, local paths, app data, or node identity in these
+surfaces. Follow
+`docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`.

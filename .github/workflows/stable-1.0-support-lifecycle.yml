@@ -1,0 +1,1183 @@
+name: Stable 1.0 Support Lifecycle
+run-name: >-
+  Stable 1.0 lifecycle ${{ inputs.release_id }} build ${{ inputs.build_version }}
+  (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Closed lifecycle operation; only publish may mutate public lifecycle state.
+        required: true
+        type: choice
+        options:
+          - prove-genesis
+          - evaluate
+          - prepare-transition
+          - validate-authorization
+          - publish
+          - verify-publication
+      release_id:
+        description: Exact path-safe lifecycle evaluation identity.
+        required: true
+        type: string
+      build_version:
+        description: Authenticated positive-integer Stable maintenance chain tip.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase workflow-dispatch commit on protected main or the exact build release/hotfix ref.
+        required: true
+        type: string
+      bundle_run_id:
+        description: Exact authenticated producer/prior-phase run containing the lifecycle bundle.
+        required: true
+        type: string
+      bundle_artifact_name:
+        description: Exact lifecycle input or prior-phase artifact name.
+        required: true
+        type: string
+      bundle_artifact_digest:
+        description: Exact sha256 Actions artifact digest for the lifecycle bundle.
+        required: true
+        type: string
+      publication_backend_run_id:
+        description: Exact lifecycle publication-provider producer run; publish/verify only.
+        required: false
+        default: ''
+        type: string
+      publication_backend_artifact_name:
+        description: Exact lifecycle publication-provider artifact; publish/verify only.
+        required: false
+        default: ''
+        type: string
+      publication_backend_artifact_digest:
+        description: Exact sha256 lifecycle provider artifact digest; publish/verify only.
+        required: false
+        default: ''
+        type: string
+
+# Every Stable lifecycle edition competes for one predecessor edition/digest.  Never allow two
+# builds or retries to race while a protected approval is pending.
+concurrency:
+  # Maintenance activation and lifecycle mutation share one lock so the freshly observed
+  # maintenance pointer cannot advance between observation and lifecycle insertion.
+  group: stable-1-0-maintenance-publication
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-dispatch:
+    name: Authenticate operation and exact producer coordinates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      bundle_signer_workflow: ${{ steps.validate.outputs.bundle_signer_workflow }}
+      input_signer_workflow: ${{ steps.validate.outputs.input_signer_workflow }}
+      trusted_source_ref: ${{ steps.source-trust.outputs.trusted_source_ref }}
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind workflow and checkout to exact source
+        id: source-trust
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle workflows require main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The selected lifecycle source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::The selected lifecycle source branch is not protected."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle source is not reachable from the authenticated protected ref."
+            exit 1
+          fi
+          echo "trusted_source_ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Validate closed inputs and producer run
+        id: validate
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RUN_ID: ${{ inputs.bundle_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.bundle_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.bundle_artifact_digest }}
+          INPUT_BACKEND_RUN_ID: ${{ inputs.publication_backend_run_id }}
+          INPUT_BACKEND_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
+          INPUT_BACKEND_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          EXPECTED_INPUT_SIGNER: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_INPUT_SIGNER_WORKFLOW }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Lifecycle identity or bundle coordinates are malformed."
+            exit 1
+          fi
+          canonical_input_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-input-producer.yml"
+          canonical_lifecycle_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle.yml"
+          if [[ "$EXPECTED_INPUT_SIGNER" != "$canonical_input_signer" ]]; then
+            echo "::error::The exact canonical lifecycle input signer workflow is not configured."
+            exit 1
+          fi
+          bundle_signer="$canonical_input_signer"
+          if [[ "$INPUT_OPERATION" == "publish" || "$INPUT_OPERATION" == "verify-publication" ]]; then
+            bundle_signer="$canonical_lifecycle_signer"
+          fi
+          if [[ "$INPUT_OPERATION" == "prove-genesis" || "$INPUT_OPERATION" == "publish" || "$INPUT_OPERATION" == "verify-publication" ]]; then
+            if [[ ! "$INPUT_BACKEND_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_BACKEND_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_BACKEND_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Publish and verification require exact lifecycle backend coordinates."
+              exit 1
+            fi
+          elif [[ -n "$INPUT_BACKEND_RUN_ID$INPUT_BACKEND_ARTIFACT_NAME$INPUT_BACKEND_ARTIFACT_DIGEST" ]]; then
+            echo "::error::Side-effect-free local operations cannot receive a publication backend."
+            exit 1
+          fi
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          expected_path="${bundle_signer#crypta-network/cryptad/}"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_SOURCE_COMMIT" \
+            --arg workflow_path "$expected_path" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == $workflow_path
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          echo "bundle_signer_workflow=$bundle_signer" >> "$GITHUB_OUTPUT"
+          echo "input_signer_workflow=$canonical_input_signer" >> "$GITHUB_OUTPUT"
+
+  local-evaluation:
+    name: Side-effect-free lifecycle evaluation/preparation
+    if: >-
+      (inputs.operation == 'evaluate' || inputs.operation == 'prepare-transition')
+      && github.ref_protected
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1.0-lifecycle-evidence
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Bind workflow and checkout to exact source
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download exact lifecycle input bundle
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bundle_run_id }}
+          name: ${{ inputs.bundle_artifact_name }}
+          path: build/stable-lifecycle-input
+      - name: Verify producer-attested inputs and hydrate the closed workspace
+        env:
+          EXPECTED_INPUT_SIGNER: ${{ needs.validate-dispatch.outputs.input_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-lifecycle-input/manifest/stable-lifecycle-manifest.json"
+          protected="build/stable-lifecycle-input/protected-inputs"
+          if [[ ! -f "$manifest" || ! -d "$protected" \
+                || -n "$(find build/stable-lifecycle-input -type l -print -quit)" ]]; then
+            echo "::error::Lifecycle producer bundle layout is incomplete or unsafe."
+            exit 1
+          fi
+          gh attestation verify "$manifest" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          while IFS= read -r path; do
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          done < <(find "$protected" -type f -print | sort)
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .release == {
+              id: $release_id,
+              version: $build_version,
+              profile: "stable-review"
+            }' "$manifest" >/dev/null
+          rm -rf build/protected-inputs
+          cp -R "$protected" build/protected-inputs
+      - name: Run side-effect-free lifecycle certification
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-lifecycle-input/manifest/stable-lifecycle-manifest.json"
+          jq -e --arg mode "$INPUT_OPERATION" '
+            .commands["stable-lifecycle"].mode == $mode
+            and .release.profile == "stable-review"' "$manifest" >/dev/null
+          python3 tools/release-certification/certify.py stable-lifecycle --manifest "$manifest"
+          component="build/release-certification/${{ inputs.release_id }}/stable-lifecycle"
+          jq -e --arg mode "$INPUT_OPERATION" --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build_version "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .payload.legacy.releaseId == $release_id
+            and .payload.legacy.buildVersion == $build_version
+            and .payload.legacy.commandMode == $mode
+            and .redaction.status == "pass"
+            and .payload.legacy.publicationState == "not-published"' \
+            "$component/summary.json" >/dev/null
+          adapter="tools/release-certification/protected/stable_lifecycle_publication.py"
+          python3 "$adapter" \
+            --mode "$INPUT_OPERATION" \
+            --bundle "$component" \
+            --out build/stable-lifecycle-protected-evaluation.json \
+            --no-side-effects
+      - name: Stage public-safe local result
+        run: |
+          set -euo pipefail
+          stage="build/stable-lifecycle-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage/component" "$stage/manifest"
+          cp -R "build/release-certification/${{ inputs.release_id }}/stable-lifecycle/." "$stage/component/"
+          cp build/stable-lifecycle-input/manifest/stable-lifecycle-manifest.json \
+            "$stage/manifest/stable-lifecycle-manifest.json"
+          cp build/stable-lifecycle-protected-evaluation.json "$stage/"
+          python3 tools/release-certification/protected/stable_lifecycle_publication.py \
+            --mode "${{ inputs.operation }}" \
+            --bundle "$stage" \
+            --out build/stable-lifecycle-stage-redaction-validation.json \
+            --no-side-effects
+          if rg -n --hidden --glob '!stable-1.0-support-lifecycle-report.md' \
+            '(USK@.*insert|Authorization: Bearer|/home/runner/|[A-Za-z]:\\)' "$stage"; then
+            echo "::error::Lifecycle stage failed final redaction."
+            exit 1
+          fi
+      - name: Upload side-effect-free lifecycle result
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-${{ inputs.operation }}-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-lifecycle-stage/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Record non-publication boundary
+        run: |
+          echo "Lifecycle ${{ inputs.operation }} completed without publication." >> "$GITHUB_STEP_SUMMARY"
+          echo "No tag, GitHub Release, catalog, core-info, maintenance candidate, or update-key edition was created." >> "$GITHUB_STEP_SUMMARY"
+
+  prove-genesis:
+    name: Prove first lifecycle publication against live public state
+    if: >-
+      inputs.operation == 'prove-genesis'
+      && github.ref_protected
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1.0-lifecycle-evidence
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Bind workflow and checkout to exact source
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download exact attested genesis request
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bundle_run_id }}
+          name: ${{ inputs.bundle_artifact_name }}
+          path: build/stable-lifecycle-genesis-input
+      - name: Verify request and materialize exact read-only provider
+        id: backend
+        env:
+          EXPECTED_INPUT_SIGNER: ${{ needs.validate-dispatch.outputs.input_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RUN_ID: ${{ inputs.publication_backend_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          EXPECTED_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          EXPECTED_PROVIDER_SOURCE: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          EXPECTED_WHEEL_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          EXPECTED_SIGNER: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          EXPECTED_ENTRYPOINT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-lifecycle-genesis-input/manifest/stable-lifecycle-manifest.json"
+          request="build/stable-lifecycle-genesis-input/genesis-request/stable-1.0-support-lifecycle-genesis-proof-request.json"
+          canonical_signer='crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml'
+          canonical_artifact='stable-1.0-support-lifecycle-publication-backend'
+          canonical_entrypoint='cryptad_stable_maintenance_backend:lifecycle_factory'
+          if [[ ! -f "$manifest" || ! -f "$request" \
+                || -n "$(find build/stable-lifecycle-genesis-input -type l -print -quit)" ]]; then
+            echo "::error::Genesis proof request is missing or unsafe."
+            exit 1
+          fi
+          gh attestation verify "$manifest" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          gh attestation verify "$request" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .release == {
+              id: $release_id,
+              version: $build_version,
+              profile: "stable-review"
+            }' "$manifest" >/dev/null
+          jq -e --arg build_version "$INPUT_BUILD_VERSION" '
+            .buildVersion == $build_version' "$request" >/dev/null
+          if [[ "$EXPECTED_SIGNER" != "$canonical_signer" \
+                || "$EXPECTED_ARTIFACT_NAME" != "$canonical_artifact" \
+                || "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+                || "$EXPECTED_ENTRYPOINT" != "$canonical_entrypoint" \
+                || ! "$EXPECTED_PROVIDER_SOURCE" =~ ^[0-9a-f]{40}$ \
+                || ! "$EXPECTED_WHEEL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Genesis proof provider identity is incomplete."
+            exit 1
+          fi
+          jq -e --arg source "$EXPECTED_PROVIDER_SOURCE" --arg digest "$EXPECTED_WHEEL_DIGEST" \
+            --arg signer "$canonical_signer" '
+              .provider == {sourceCommit: $source, artifactDigest: $digest, signerWorkflow: $signer}' \
+            "$request" >/dev/null
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repo "$GITHUB_REPOSITORY" --arg commit "$EXPECTED_PROVIDER_SOURCE" \
+            --arg path "${canonical_signer#crypta-network/cryptad/}" '
+              .repository.full_name == $repo and .head_sha == $commit and .path == $path
+              and .event == "workflow_dispatch" and .conclusion == "success"' \
+            <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="$RUNNER_TEMP/stable-lifecycle-genesis-backend"
+          mkdir -p "$root/download" "$root/site"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$root/download"
+          wheel="$(find "$root/download" -type f -name '*.whl' -print)"
+          if [[ -z "$wheel" || "$(find "$root/download" -type f -name '*.whl' | wc -l)" -ne 1 \
+                || "sha256:$(sha256sum "$wheel" | cut -d' ' -f1)" != "$EXPECTED_WHEEL_DIGEST" ]]; then
+            echo "::error::Genesis proof provider wheel is missing or substituted."
+            exit 1
+          fi
+          gh attestation verify "$wheel" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER" --source-digest "$EXPECTED_PROVIDER_SOURCE" \
+            --deny-self-hosted-runners >/dev/null
+          python3 -m pip install --no-index --no-deps --no-compile \
+            --target "$root/site" "$wheel" >/dev/null
+          echo "request=$request" >> "$GITHUB_OUTPUT"
+          echo "site=$root/site" >> "$GITHUB_OUTPUT"
+          echo "entrypoint=$EXPECTED_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+      - name: Observe exact first-publication target
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND: ${{ steps.backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SITE: ${{ steps.backend.outputs.site }}
+          CRYPTAD_STABLE_LIFECYCLE_PROOF_ENVIRONMENT: 'true'
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_lifecycle_publication.py \
+            --mode prove-genesis \
+            --genesis-request '${{ steps.backend.outputs.request }}' \
+            --out build/stable-1.0-support-lifecycle-genesis-proof.json \
+            --no-side-effects
+      - name: Attest exact genesis proof
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/stable-1.0-support-lifecycle-genesis-proof.json
+      - name: Upload exact genesis proof
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-genesis-proof-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-1.0-support-lifecycle-genesis-proof.json
+          if-no-files-found: error
+          retention-days: 90
+
+  validate-authorization:
+    name: Validate exact protected lifecycle authorization
+    if: >-
+      inputs.operation == 'validate-authorization'
+      && github.ref_protected
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1.0-lifecycle-authorization
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Bind workflow and checkout to exact source
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download exact authorization bundle
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bundle_run_id }}
+          name: ${{ inputs.bundle_artifact_name }}
+          path: build/stable-lifecycle-authorization-input
+      - name: Verify exact protected approval inputs and regenerate authorization outputs
+        env:
+          EXPECTED_INPUT_SIGNER: ${{ needs.validate-dispatch.outputs.input_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          input="build/stable-lifecycle-authorization-input"
+          manifest="$input/manifest/stable-lifecycle-manifest.json"
+          protected="$input/protected-inputs"
+          if [[ ! -f "$manifest" || ! -d "$protected" \
+                || -n "$(find "$input" -type l -print -quit)" ]]; then
+            echo "::error::Protected lifecycle approval bundle is incomplete or unsafe."
+            exit 1
+          fi
+          gh attestation verify "$manifest" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          while IFS= read -r path; do
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          done < <(find "$protected" -type f -print | sort)
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .commands["stable-lifecycle"].mode == "validate-authorization"
+            and .release == {
+              id: $release_id,
+              version: $build_version,
+              profile: "stable-review"
+            }' "$manifest" >/dev/null
+          rm -rf build/protected-inputs build/release-certification
+          cp -R "$protected" build/protected-inputs
+          python3 tools/release-certification/certify.py stable-lifecycle --manifest "$manifest"
+          component="build/release-certification/${{ inputs.release_id }}/stable-lifecycle"
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .payload.legacy.releaseId == $release_id
+            and .payload.legacy.buildVersion == $build_version
+            and .payload.legacy.commandMode == "validate-authorization"
+            and .payload.legacy.authorizationReady == true
+            and .payload.legacy.publicationState == "not-published"
+            and .redaction.status == "pass"' "$component/summary.json" >/dev/null
+          adapter="tools/release-certification/protected/stable_lifecycle_publication.py"
+          python3 "$adapter" \
+            --mode validate-authorization \
+            --bundle "$component" \
+            --out build/stable-lifecycle-authorization-validation.json \
+            --no-side-effects
+          jq -e '.status == "pass" and .sideEffectsPerformed == false' \
+            build/stable-lifecycle-authorization-validation.json >/dev/null
+      - name: Stage exact authorized bundle
+        run: |
+          set -euo pipefail
+          stage="build/stable-lifecycle-authorized-stage"
+          rm -rf "$stage"
+          cp -R build/stable-lifecycle-authorization-input "$stage"
+          rm -rf "$stage/component"
+          cp -R "build/release-certification/${{ inputs.release_id }}/stable-lifecycle" \
+            "$stage/component"
+          cp build/stable-lifecycle-authorization-validation.json "$stage/"
+      - name: Upload authorized lifecycle bundle
+        id: upload-authorized
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-authorized-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-lifecycle-authorized-stage/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Attest authorization, plan, descriptor, and transition set
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            build/stable-lifecycle-authorized-stage/component/summary.json
+            build/stable-lifecycle-authorized-stage/component/artifacts/legacy/stable-1.0-support-lifecycle-authorization-summary.json
+            build/stable-lifecycle-authorized-stage/component/artifacts/legacy/stable-1.0-support-lifecycle-publication-plan.json
+            build/stable-lifecycle-authorized-stage/component/artifacts/legacy/stable-1.0-support-lifecycle-ledger.json
+            build/stable-lifecycle-authorized-stage/component/artifacts/legacy/stable-1.0-support-lifecycle-descriptor.json
+            build/stable-lifecycle-authorized-stage/component/artifacts/legacy/stable-1.0-support-lifecycle-transition-set.json
+
+  protected-publication:
+    name: Insert or verify exact lifecycle descriptor bytes
+    if: >-
+      inputs.operation == 'publish'
+      && github.ref_protected
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: stable-1.0-lifecycle-publication
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind workflow and checkout to exact source
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle publication requires main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The lifecycle publication source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::Lifecycle publication requires a protected source branch."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle publication source left its authenticated protected ref."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download exact authorized lifecycle bundle
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bundle_run_id }}
+          name: ${{ inputs.bundle_artifact_name }}
+          path: build/stable-lifecycle-publication
+      - name: Verify exact authorization and lifecycle subjects
+        env:
+          EXPECTED_SIGNER_WORKFLOW: ${{ needs.validate-dispatch.outputs.bundle_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="build/stable-lifecycle-publication"
+          summary="$root/component/summary.json"
+          subjects="$root/component/artifacts/legacy"
+          if [[ ! -f "$summary" || ! -d "$subjects" \
+                || -n "$(find "$root" -type l -print -quit)" ]]; then
+            echo "::error::Authorized lifecycle subject directory is missing or unsafe."
+            exit 1
+          fi
+          gh attestation verify "$summary" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          for name in \
+            stable-1.0-support-lifecycle-authorization-summary.json \
+            stable-1.0-support-lifecycle-publication-plan.json \
+            stable-1.0-support-lifecycle-ledger.json \
+            stable-1.0-support-lifecycle-descriptor.json \
+            stable-1.0-support-lifecycle-transition-set.json; do
+            path="$subjects/$name"
+            if [[ ! -f "$path" ]]; then
+              echo "::error::Canonical authorized lifecycle subject $name is missing."
+              exit 1
+            fi
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          done
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .payload.legacy.releaseId == $release_id
+            and .payload.legacy.buildVersion == $build_version' "$summary" >/dev/null
+          jq -e --arg build_version "$INPUT_BUILD_VERSION" '
+            (.entries | length) > 0
+            and .entries[-1].buildVersion == $build_version' \
+            "$subjects/stable-1.0-support-lifecycle-ledger.json" >/dev/null
+          jq -e --arg build_version "$INPUT_BUILD_VERSION" '
+            (.entries | length) > 0
+            and .entries[-1].buildVersion == $build_version' \
+            "$subjects/stable-1.0-support-lifecycle-descriptor.json" >/dev/null
+      - name: Re-authenticate exact GA and maintenance history immediately before publication
+        env:
+          EXPECTED_INPUT_SIGNER: ${{ needs.validate-dispatch.outputs.input_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="build/stable-lifecycle-publication"
+          manifest="$root/manifest/stable-lifecycle-manifest.json"
+          protected="$root/protected-inputs"
+          if [[ ! -f "$manifest" || ! -d "$protected" \
+                || -n "$(find "$root" -type l -print -quit)" ]]; then
+            echo "::error::Authorized lifecycle bundle cannot be freshly authenticated."
+            exit 1
+          fi
+          gh attestation verify "$manifest" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          while IFS= read -r path; do
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$EXPECTED_INPUT_SIGNER" \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          done < <(find "$protected" -type f -print | sort)
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .commands["stable-lifecycle"].mode == "validate-authorization"
+            and .release == {
+              id: $release_id,
+              version: $build_version,
+              profile: "stable-review"
+            }' "$manifest" >/dev/null
+          rm -rf build/protected-inputs build/release-certification
+          cp -R "$protected" build/protected-inputs
+          python3 tools/release-certification/certify.py stable-lifecycle --manifest "$manifest"
+          fresh="build/release-certification/${{ inputs.release_id }}/stable-lifecycle"
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .payload.legacy.releaseId == $release_id
+            and .payload.legacy.buildVersion == $build_version
+            and .payload.legacy.commandMode == "validate-authorization"
+            and .payload.legacy.authorizationReady == true
+            and .payload.legacy.publicationState == "not-published"
+            and .redaction.status == "pass"' "$fresh/summary.json" >/dev/null
+          python3 tools/release-certification/protected/stable_lifecycle_publication.py \
+            --mode validate-authorization \
+            --bundle "$fresh" \
+            --out build/stable-lifecycle-fresh-authorization-validation.json \
+            --no-side-effects
+      - name: Materialize exact lifecycle-only publication backend
+        id: backend
+        env:
+          INPUT_RUN_ID: ${{ inputs.publication_backend_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          EXPECTED_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          EXPECTED_SOURCE_COMMIT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          EXPECTED_WHEEL_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          EXPECTED_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          EXPECTED_ENTRYPOINT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml"
+          canonical_artifact="stable-1.0-support-lifecycle-publication-backend"
+          canonical_entrypoint="cryptad_stable_maintenance_backend:lifecycle_factory"
+          if [[ "$EXPECTED_SIGNER_WORKFLOW" != "$canonical_signer" \
+                || "$EXPECTED_ARTIFACT_NAME" != "$canonical_artifact" \
+                || "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+                || ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$EXPECTED_WHEEL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$EXPECTED_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+            echo "::error::Lifecycle publication backend identity is incomplete or ambiguous."
+            exit 1
+          fi
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repository "$GITHUB_REPOSITORY" --arg commit "$EXPECTED_SOURCE_COMMIT" \
+            --arg path "${canonical_signer#crypta-network/cryptad/}" '
+              .repository.full_name == $repository and .head_sha == $commit and .path == $path
+              and .event == "workflow_dispatch" and .conclusion == "success"' \
+            <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="$RUNNER_TEMP/stable-lifecycle-backend"
+          download="$root/download"
+          site="$root/site-packages"
+          rm -rf "$root"
+          mkdir -p "$download" "$site"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+          wheels=()
+          while IFS= read -r path; do wheels+=("$path"); done < <(find "$download" -type f -name '*.whl' -print)
+          if [[ "${#wheels[@]}" -ne 1 || -n "$(find "$download" -type l -print -quit)" ]]; then
+            echo "::error::Lifecycle provider artifact must contain one safe wheel."
+            exit 1
+          fi
+          wheel="${wheels[0]}"
+          actual="sha256:$(sha256sum "$wheel" | cut -d' ' -f1)"
+          if [[ "$actual" != "$EXPECTED_WHEEL_DIGEST" ]]; then
+            echo "::error::Lifecycle provider wheel differs from its reviewed digest."
+            exit 1
+          fi
+          gh attestation verify "$wheel" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" >/dev/null
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "entrypoint=$EXPECTED_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+      - name: Publish exact descriptor once and verify public state
+        id: publish
+        continue-on-error: true
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND: ${{ steps.backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SITE: ${{ steps.backend.outputs.site }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT: ${{ secrets.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT }}
+          CRYPTAD_STABLE_LIFECYCLE_PROTECTED_ENVIRONMENT: 'true'
+        run: |
+          set -euo pipefail
+          adapter="tools/release-certification/protected/stable_lifecycle_publication.py"
+          if [[ -z "$CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT" ]]; then
+            echo "::error::The distinct protected support-lifecycle insert input is required."
+            exit 1
+          fi
+          : > build/stable-lifecycle-side-effect-boundary-started
+          python3 "$adapter" \
+            --mode publish \
+            --bundle build/stable-lifecycle-publication/component \
+            --reauthenticated-bundle "build/release-certification/${{ inputs.release_id }}/stable-lifecycle" \
+            --out build/stable-lifecycle-publication-summary.json \
+            --receipt build/stable-1.0-support-lifecycle-publication-receipt.json \
+            --preflight build/stable-1.0-support-lifecycle-publication-preflight.json \
+            --insert-input-env CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT \
+            --idempotency exact-match-only \
+            --conflict-action fail \
+            --forbid-overwrite \
+            --verify-after-publication
+      - name: Stage the closed post-publication verification bundle
+        if: steps.publish.outcome == 'success'
+        run: |
+          set -euo pipefail
+          source="build/stable-lifecycle-publication"
+          stage="build/stable-lifecycle-published-stage"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          cp -R "$source/component" "$stage/component"
+          cp build/stable-lifecycle-publication-summary.json "$stage/"
+          cp build/stable-1.0-support-lifecycle-publication-preflight.json "$stage/"
+          cp build/stable-1.0-support-lifecycle-publication-receipt.json "$stage/"
+          if [[ -e "$stage/protected-inputs" || -e "$stage/manifest" ]]; then
+            echo "::error::Published lifecycle verification bundle contains protected inputs."
+            exit 1
+          fi
+          receipt="$stage/stable-1.0-support-lifecycle-publication-receipt.json"
+          jq -e '
+            .publicationState == "publication-complete"
+            and .verificationStatus == "verified"
+            and .conflict == false
+            and .redaction.status == "pass"' "$receipt" >/dev/null
+          if rg -n '(USK@.*insert|Authorization: Bearer|/home/runner/|[A-Za-z]:\\)' "$stage"; then
+            echo "::error::Complete published lifecycle bundle failed final redaction."
+            exit 1
+          fi
+      - name: Upload complete post-publication lifecycle bundle
+        if: steps.publish.outcome == 'success'
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-published-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-lifecycle-published-stage/
+          if-no-files-found: error
+          retention-days: 365
+      - name: Attest the independently verified publication receipt
+        if: steps.publish.outcome == 'success'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/stable-lifecycle-published-stage/stable-1.0-support-lifecycle-publication-receipt.json
+      - name: Retain truthful redacted publication result
+        if: always()
+        run: |
+          set -euo pipefail
+          audit="build/stable-1.0-support-lifecycle-publication-failure-audit.json"
+          adapter_audit="$(find build/stable-lifecycle-publication -type f \
+            -name stable-1.0-support-lifecycle-publication-failure-audit.json -print -quit)"
+          if [[ -n "$adapter_audit" && ! -f "$audit" ]]; then
+            cp "$adapter_audit" "$audit"
+          fi
+          if [[ "${{ steps.publish.outcome }}" != "success" && ! -f "$audit" ]]; then
+            jq -n --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+              --arg attempted "$(test -f build/stable-lifecycle-side-effect-boundary-started && echo true || echo false)" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-support-lifecycle-publication-failure-audit",
+                generatedAt: $generated_at,
+                stableMilestone: "1.0",
+                descriptorEdition: null,
+                descriptorDigest: null,
+                descriptorByteDigest: null,
+                publicationPlanDigest: null,
+                authorizationDigest: null,
+                publicationAttempted: ($attempted == "true"),
+                sideEffectsMayHaveOccurred: ($attempted == "true"),
+                failureCode: "protected-workflow-publication-failed",
+                recoveryAction: "observe-and-verify-exact-public-state-before-retry",
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$audit"
+          fi
+          stage="build/stable-lifecycle-publication-audit"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          for path in \
+            build/stable-lifecycle-publication-summary.json \
+            build/stable-1.0-support-lifecycle-publication-preflight.json \
+            build/stable-1.0-support-lifecycle-publication-failure-audit.json \
+            build/stable-1.0-support-lifecycle-publication-receipt.json; do
+            if [[ -f "$path" ]]; then cp "$path" "$stage/"; fi
+          done
+          if rg -n '(USK@.*insert|Authorization: Bearer|/home/runner/|[A-Za-z]:\\)' "$stage"; then
+            echo "::error::Protected lifecycle publication audit failed redaction."
+            exit 1
+          fi
+      - name: Upload lifecycle publication receipt or failure audit
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-publication-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-lifecycle-publication-audit/
+          if-no-files-found: error
+          retention-days: 365
+      - name: Fail after retaining publication audit
+        if: steps.publish.outcome != 'success'
+        run: |
+          echo "::error::Lifecycle publication failed closed; no conflict was overwritten."
+          exit 1
+
+  verify-publication:
+    name: Independently re-fetch exact lifecycle descriptor
+    if: >-
+      inputs.operation == 'verify-publication'
+      && github.ref_protected
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1.0-lifecycle-evidence
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Bind workflow and checkout to exact source
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle workflow and checkout must be the exact reviewed source commit."
+            exit 1
+          fi
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download exact published lifecycle bundle
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.bundle_run_id }}
+          name: ${{ inputs.bundle_artifact_name }}
+          path: build/stable-lifecycle-verification
+      - name: Verify exact authorization and lifecycle subjects
+        env:
+          EXPECTED_SIGNER_WORKFLOW: ${{ needs.validate-dispatch.outputs.bundle_signer_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="build/stable-lifecycle-verification"
+          summary="$root/component/summary.json"
+          subjects="$root/component/artifacts/legacy"
+          if [[ ! -f "$summary" || ! -d "$subjects" \
+                || -n "$(find "$root" -type l -print -quit)" ]]; then
+            echo "::error::Published lifecycle subject directory is missing or unsafe."
+            exit 1
+          fi
+          gh attestation verify "$summary" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          for name in \
+            stable-1.0-support-lifecycle-authorization-summary.json \
+            stable-1.0-support-lifecycle-publication-plan.json \
+            stable-1.0-support-lifecycle-ledger.json \
+            stable-1.0-support-lifecycle-descriptor.json \
+            stable-1.0-support-lifecycle-transition-set.json; do
+            path="$subjects/$name"
+            if [[ ! -f "$path" ]]; then
+              echo "::error::Canonical published lifecycle subject $name is missing."
+              exit 1
+            fi
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          done
+          jq -e --arg release_id "$INPUT_RELEASE_ID" --arg build_version "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .payload.legacy.releaseId == $release_id
+            and .payload.legacy.buildVersion == $build_version' "$summary" >/dev/null
+          jq -e --arg build_version "$INPUT_BUILD_VERSION" '
+            (.entries | length) > 0
+            and .entries[-1].buildVersion == $build_version' \
+            "$subjects/stable-1.0-support-lifecycle-ledger.json" >/dev/null
+          jq -e --arg build_version "$INPUT_BUILD_VERSION" '
+            (.entries | length) > 0
+            and .entries[-1].buildVersion == $build_version' \
+            "$subjects/stable-1.0-support-lifecycle-descriptor.json" >/dev/null
+          published_receipt="build/stable-lifecycle-verification/stable-1.0-support-lifecycle-publication-receipt.json"
+          gh attestation verify "$published_receipt" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          jq -e '
+            .publicationState == "publication-complete"
+            and .verificationStatus == "verified"
+            and .conflict == false
+            and .redaction.status == "pass"' "$published_receipt" >/dev/null
+      - name: Materialize exact read-only lifecycle provider
+        id: backend
+        env:
+          INPUT_RUN_ID: ${{ inputs.publication_backend_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          EXPECTED_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          EXPECTED_SOURCE_COMMIT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          EXPECTED_WHEEL_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          EXPECTED_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          EXPECTED_ENTRYPOINT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml"
+          canonical_artifact="stable-1.0-support-lifecycle-publication-backend"
+          canonical_entrypoint="cryptad_stable_maintenance_backend:lifecycle_factory"
+          if [[ "$EXPECTED_SIGNER_WORKFLOW" != "$canonical_signer" \
+                || "$EXPECTED_ARTIFACT_NAME" != "$canonical_artifact" \
+                || "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+                || ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$EXPECTED_WHEEL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$EXPECTED_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+            echo "::error::Lifecycle verification backend identity is incomplete or ambiguous."
+            exit 1
+          fi
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repository "$GITHUB_REPOSITORY" --arg commit "$EXPECTED_SOURCE_COMMIT" \
+            --arg path "${canonical_signer#crypta-network/cryptad/}" '
+              .repository.full_name == $repository and .head_sha == $commit and .path == $path
+              and .event == "workflow_dispatch" and .conclusion == "success"' \
+            <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="$RUNNER_TEMP/stable-lifecycle-verification-backend"
+          download="$root/download"
+          site="$root/site-packages"
+          rm -rf "$root"
+          mkdir -p "$download" "$site"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+          wheels=()
+          while IFS= read -r path; do wheels+=("$path"); done < <(find "$download" -type f -name '*.whl' -print)
+          if [[ "${#wheels[@]}" -ne 1 || -n "$(find "$download" -type l -print -quit)" ]]; then
+            exit 1
+          fi
+          wheel="${wheels[0]}"
+          if [[ "sha256:$(sha256sum "$wheel" | cut -d' ' -f1)" != "$EXPECTED_WHEEL_DIGEST" ]]; then
+            exit 1
+          fi
+          gh attestation verify "$wheel" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" >/dev/null
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "entrypoint=$EXPECTED_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+      - name: Re-fetch and verify exact descriptor bytes without insert material
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND: ${{ steps.backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SITE: ${{ steps.backend.outputs.site }}
+        run: |
+          set -euo pipefail
+          adapter="tools/release-certification/protected/stable_lifecycle_publication.py"
+          receipt="build/stable-1.0-support-lifecycle-independent-verification-receipt.json"
+          python3 "$adapter" \
+            --mode verify-publication \
+            --bundle build/stable-lifecycle-verification \
+            --out build/stable-lifecycle-verification-summary.json \
+            --receipt "$receipt" \
+            --no-side-effects
+          jq -e '
+            .publicationState == "publication-complete"
+            and .verificationStatus == "verified"
+            and .conflict == false
+            and (.operation == "inserted" or .operation == "verified-existing")
+            and .redaction.status == "pass"' "$receipt" >/dev/null
+          echo "The exact public lifecycle descriptor receipt is ready for an independent read-only provider re-fetch." \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo "This job received no lifecycle insert URI or publication credential." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload independently verified lifecycle receipt
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-verification-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/stable-lifecycle-verification-summary.json
+            build/stable-1.0-support-lifecycle-independent-verification-receipt.json
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 365

@@ -2,6 +2,7 @@ package network.crypta.platform.api;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -10,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.InMemoryAppDataStore;
@@ -112,13 +114,19 @@ import network.crypta.runtime.spi.SecurityLevelsSnapshot;
 import network.crypta.runtime.spi.SecurityNetworkThreatLevel;
 import network.crypta.runtime.spi.SecurityPhysicalThreatLevel;
 import network.crypta.runtime.spi.UnknownPeerException;
+import network.crypta.support.URLEncoder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -154,56 +162,60 @@ class PlatformApiRouterTest {
   private static final String FIRST_PARTY_TRUSTED_KEY_ID = "first-party-catalog";
   private static final String CATALOG_MINIMUM_CRYPTA_VERSION = "1400";
 
-  @Mock private RuntimePorts runtimePorts;
-  @Mock private NodeInfoPort nodeInfoPort;
-  @Mock private PeerPort peerPort;
-  @Mock private DarknetConnectionsPort darknetConnectionsPort;
-  @Mock private ConfigPort configPort;
-  @Mock private ConnectivityPort connectivityPort;
-  @Mock private SecurityLevelsPort securityLevelsPort;
-  @Mock private CoreUpdateActionPort coreUpdateActionPort;
-  @Mock private FirstTimeWizardPort firstTimeWizardPort;
-  @Mock private DiagnosticPort diagnosticPort;
-  @Mock private QueuePagePort queuePagePort;
-  @Mock private QueueMutationPort queueMutationPort;
-  @Mock private QueueDownloadPort queueDownloadPort;
-  @Mock private QueueInsertPort queueInsertPort;
-  @Mock private QueueSupportPort queueSupportPort;
-  @Mock private QueueCompletionPort queueCompletionPort;
-  @Mock private AlertFeedPort alertFeedPort;
-  @Mock private AlertMutationPort alertMutationPort;
+  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+  private RuntimePorts runtimePorts;
+
+  private NodeInfoPort nodeInfoPort;
+  private PeerPort peerPort;
+  private DarknetConnectionsPort darknetConnectionsPort;
+  private ConfigPort configPort;
+  private ConnectivityPort connectivityPort;
+  private SecurityLevelsPort securityLevelsPort;
+  private CoreUpdateActionPort coreUpdateActionPort;
+  private FirstTimeWizardPort firstTimeWizardPort;
+  private DiagnosticPort diagnosticPort;
+  private QueuePagePort queuePagePort;
+  private QueueMutationPort queueMutationPort;
+  private QueueDownloadPort queueDownloadPort;
+  private QueueInsertPort queueInsertPort;
+  private QueueSupportPort queueSupportPort;
+  private QueueCompletionPort queueCompletionPort;
+  private AlertFeedPort alertFeedPort;
+  private AlertMutationPort alertMutationPort;
   @Mock private AppHost appHost;
+  @Mock private AppUiOriginRegistry appUiOriginRegistry;
+  @Spy private AppAuditLog appAuditLog = new AppAuditLog();
 
   @TempDir private Path tempDir;
 
-  private PlatformApiRouter router;
+  @InjectMocks private PlatformApiRouter router;
 
   @BeforeEach
   void setUp() throws IOException {
-    when(runtimePorts.nodeInfo()).thenReturn(nodeInfoPort);
-    when(runtimePorts.peer()).thenReturn(peerPort);
-    when(runtimePorts.darknetConnections()).thenReturn(darknetConnectionsPort);
-    when(runtimePorts.config()).thenReturn(configPort);
-    when(runtimePorts.connectivity()).thenReturn(connectivityPort);
-    when(runtimePorts.securityLevels()).thenReturn(securityLevelsPort);
-    when(runtimePorts.coreUpdateAction()).thenReturn(coreUpdateActionPort);
-    when(runtimePorts.firstTimeWizard()).thenReturn(firstTimeWizardPort);
-    when(runtimePorts.diagnostic()).thenReturn(diagnosticPort);
-    when(runtimePorts.queuePage()).thenReturn(queuePagePort);
-    when(runtimePorts.queueMutation()).thenReturn(queueMutationPort);
-    when(runtimePorts.queueDownload()).thenReturn(queueDownloadPort);
-    when(runtimePorts.queueInsert()).thenReturn(queueInsertPort);
-    when(runtimePorts.queueSupport()).thenReturn(queueSupportPort);
-    when(runtimePorts.queueCompletion()).thenReturn(queueCompletionPort);
-    when(runtimePorts.alertFeed()).thenReturn(alertFeedPort);
-    when(runtimePorts.alertMutation()).thenReturn(alertMutationPort);
+    nodeInfoPort = runtimePorts.nodeInfo();
+    peerPort = runtimePorts.peer();
+    darknetConnectionsPort = runtimePorts.darknetConnections();
+    configPort = runtimePorts.config();
+    connectivityPort = runtimePorts.connectivity();
+    securityLevelsPort = runtimePorts.securityLevels();
+    coreUpdateActionPort = runtimePorts.coreUpdateAction();
+    firstTimeWizardPort = runtimePorts.firstTimeWizard();
+    diagnosticPort = runtimePorts.diagnostic();
+    queuePagePort = runtimePorts.queuePage();
+    queueMutationPort = runtimePorts.queueMutation();
+    queueDownloadPort = runtimePorts.queueDownload();
+    queueInsertPort = runtimePorts.queueInsert();
+    queueSupportPort = runtimePorts.queueSupport();
+    queueCompletionPort = runtimePorts.queueCompletion();
+    alertFeedPort = runtimePorts.alertFeed();
+    alertMutationPort = runtimePorts.alertMutation();
+    verifyNoInteractions(appUiOriginRegistry, appAuditLog);
     lenient()
         .when(appHost.runtimeStatus(any()))
         .thenAnswer(invocation -> stoppedRuntimeStatus(invocation.getArgument(0)));
     lenient()
         .when(appHost.inactiveSandboxStatus(any()))
         .thenAnswer(invocation -> AppSandboxProviders.inactiveStatus(invocation.getArgument(0)));
-    router = new PlatformApiRouter(runtimePorts, appHost);
   }
 
   private PlatformApiRouter routerWithVault() throws IOException {
@@ -264,8 +276,8 @@ class PlatformApiRouterTest {
 
   @Test
   void route_whenAlertsRequested_expectStructuredAlertSnapshotJson() {
-    AlertListSnapshot snapshot = org.mockito.Mockito.mock(AlertListSnapshot.class);
-    AlertSnapshot alert = org.mockito.Mockito.mock(AlertSnapshot.class);
+    AlertListSnapshot snapshot = mock(AlertListSnapshot.class);
+    AlertSnapshot alert = mock(AlertSnapshot.class);
     when(alert.id()).thenReturn(42);
     when(alert.title()).thenReturn("Update available");
     when(alert.shortText()).thenReturn("Updater");
@@ -1021,7 +1033,7 @@ class PlatformApiRouterTest {
 
   @Test
   void route_whenStringArrayConfigOverrideUsesDecodedValue_expectAccepted() {
-    String canonicalValue = network.crypta.support.URLEncoder.encode("/home/alice/My Files", false);
+    String canonicalValue = URLEncoder.encode("/home/alice/My Files", false);
     when(configPort.export(EnumSet.of(ConfigSection.CURRENT, ConfigSection.DATA_TYPES)))
         .thenReturn(
             verificationConfigSnapshot(
@@ -1350,6 +1362,7 @@ class PlatformApiRouterTest {
 
     assertEquals(200, response.statusCode());
     assertEquals("{\"available\":true,\"downloadAllowed\":true}", response.body());
+    assertFalse(response.body().contains("supportLifecycle"));
   }
 
   @Test
@@ -2583,12 +2596,12 @@ class PlatformApiRouterTest {
             AppIdentityKind.LOCAL_ED25519_SIGNING,
             "Operator publisher",
             null,
-            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED));
     var grant =
         vaultService.grantIdentity(
             identity.identityId(),
             APP_ID,
-            java.util.Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
+            Set.of(AppIdentityGrantScope.SIGN_DOMAIN_SEPARATED),
             "operator",
             "test grant",
             null,
@@ -2614,7 +2627,7 @@ class PlatformApiRouterTest {
         APP_ID,
         "api-token",
         "generic",
-        "retained-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        "retained-secret".getBytes(StandardCharsets.UTF_8),
         Map.of());
     PlatformApiRouter updateRouter =
         new PlatformApiRouter(
@@ -4624,8 +4637,7 @@ class PlatformApiRouterTest {
     return "/apps/" + appId + "/" + appUiEntry.substring(0, lastSlash + 1);
   }
 
-  private static final class TwoStepOptionalAnswer<T>
-      implements org.mockito.stubbing.Answer<Optional<T>> {
+  private static final class TwoStepOptionalAnswer<T> implements Answer<Optional<T>> {
     private T current;
     private final T next;
 
@@ -4635,7 +4647,7 @@ class PlatformApiRouterTest {
     }
 
     @Override
-    public Optional<T> answer(org.mockito.invocation.InvocationOnMock invocation) {
+    public Optional<T> answer(InvocationOnMock invocation) {
       T result = current;
       current = next;
       return Optional.ofNullable(result);

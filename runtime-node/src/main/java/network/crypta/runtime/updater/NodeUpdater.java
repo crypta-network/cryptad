@@ -9,6 +9,10 @@ import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.IntSupplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import network.crypta.client.FetchContext;
@@ -121,6 +125,41 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   private boolean isFetching;
   private final String blobFilenamePrefix;
 
+  /** Monotonic identity for the configured update-key subscription scope. */
+  private long subscriptionGeneration;
+
+  /** Per-fetch ownership metadata for the currently active fetch. */
+  private FetchAttempt activeFetch;
+
+  /** Monotonic identity for fetch-attempt ordering within and across subscription scopes. */
+  private long fetchAttemptSequence;
+
+  /**
+   * Serializes USK subscription registration with shutdown.
+   *
+   * <p>This lock is deliberately separate from the updater monitor because the USK manager is
+   * external code. If shutdown wins, a later start observes {@link #isRunning} as false and cannot
+   * register a detached subscription. If start wins, shutdown waits for registration and then
+   * unsubscribes it.
+   */
+  private final Object subscriptionLifecycleLock = new Object();
+
+  /**
+   * Keeps fetched-result commits inside one subscription scope while allowing same-scope
+   * completions to finish independently.
+   *
+   * <p>Fetch post-processing holds the read side. URI changes and shutdown hold the write side from
+   * generation invalidation through state rebinding, so bytes authenticated by an old key cannot
+   * mutate state owned by its replacement.
+   */
+  private final ReentrantReadWriteLock subscriptionScopeLock = new ReentrantReadWriteLock(true);
+
+  /** Shared scope claim held while one fetched result performs side-effecting post-processing. */
+  private final Lock subscriptionScopeCommitLock = subscriptionScopeLock.readLock();
+
+  /** Exclusive scope claim held while a subscription is stopped or rebound. */
+  private final Lock subscriptionScopeChangeLock = subscriptionScopeLock.writeLock();
+
   /**
    * Temporary file used during the current fetch. On success, the file is renamed to a finalized
    * {@code .fblob}. Subclasses may read or delete it as part of deployment.
@@ -149,6 +188,9 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     this.isRunning = true;
     this.cg = null;
     this.isFetching = false;
+    this.subscriptionGeneration = 0;
+    this.activeFetch = null;
+    this.fetchAttemptSequence = 0;
     this.blobFilenamePrefix = params.blobFilenamePrefix();
     this.maxDeployVersion = params.max();
     this.minDeployVersion = params.min();
@@ -164,16 +206,21 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   private void subscribe(Runnable onError) {
-    try {
-      FreenetURI localUri;
-      synchronized (this) {
-        localUri = this.uri;
+    synchronized (subscriptionLifecycleLock) {
+      if (!isRunning || isFetchingBlockedByManagerState()) {
+        return;
       }
-      USK myUsk = USK.create(localUri);
-      core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
-    } catch (MalformedURLException _) {
-      LOG.error("The auto-update URI isn't valid and can't be used");
-      onError.run();
+      try {
+        FreenetURI localUri;
+        synchronized (this) {
+          localUri = this.uri;
+        }
+        USK myUsk = USK.create(localUri);
+        core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
+      } catch (MalformedURLException _) {
+        LOG.error("The auto-update URI isn't valid and can't be used");
+        onError.run();
+      }
     }
   }
 
@@ -192,7 +239,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       if (!isRunning) return;
       found = (int) foundEdition.key().suggestedEdition;
 
-      realAvailableVersion = found;
+      realAvailableVersion = Math.max(realAvailableVersion, found);
       if (found > maxDeployVersion) {
         if (LOG.isWarnEnabled())
           LOG.warn(
@@ -203,6 +250,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
               maxDeployVersion);
         found = maxDeployVersion;
       }
+
+      found = selectDiscoveredEdition(found);
 
       if (found <= availableVersion) return;
       if (LOG.isInfoEnabled()) LOG.info("Found {} update edition {}", artifactName(), found);
@@ -245,9 +294,10 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    */
   public void maybeUpdate() {
     ClientGetter toStart = null;
-    if (!manager.isEnabled()) return;
-    if (manager.isBlown()) return;
+    if (!isFetchingEnabled()) return;
+    if (isFetchingBlockedByManagerState()) return;
     ClientGetter cancelled = null;
+    FetchAttempt cancelledAttempt = null;
     synchronized (this) {
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -261,7 +311,9 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       if (shouldCancelPreviousFetchLocked()) {
         LOG.info("Cancelling previous fetch");
         cancelled = cg;
+        cancelledAttempt = activeFetch;
         cg = null;
+        activeFetch = null;
       }
 
       fetchingVersion = availableVersion;
@@ -281,13 +333,43 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         node.services().clientCore().getClientContext().start(toStart);
       } catch (FetchException e) {
         LOG.error("Error while starting the fetching: {}", e, e);
-        synchronized (this) {
-          isFetching = false;
-        }
+        cleanupFailedStart(toStart);
       } catch (PersistenceDisabledException _) {
-        // Impossible
+        cleanupFailedStart(toStart);
       }
-    if (cancelled != null) cancelled.cancel(core.getClientContext());
+    try {
+      if (cancelled != null) cancelled.cancel(core.getClientContext());
+    } catch (RuntimeException e) {
+      LOG.debug("Unable to cancel replaced {} fetch", artifactName(), e);
+    } finally {
+      cleanupAttemptFile(cancelledAttempt, "after replacing fetch");
+    }
+  }
+
+  /**
+   * Returns whether this subscriber may fetch from its configured update-key document.
+   *
+   * <p>Package update subscribers follow the operator's updater enablement setting. Read-only
+   * policy subscribers may override this gate when their security and support information must
+   * remain current independently of package installation settings.
+   *
+   * @return {@code true} when this subscriber may start a fetch
+   */
+  protected boolean isFetchingEnabled() {
+    return manager.isEnabled();
+  }
+
+  /**
+   * Returns whether the manager's failure state blocks this subscriber's fetches.
+   *
+   * <p>Package update subscribers stop after any updater blow because package installation is no
+   * longer safe. Read-only trust consumers may override this gate to distinguish a local package
+   * updater failure from an authenticated compromise of the update key.
+   *
+   * @return {@code true} when this subscriber must not fetch in the current manager state
+   */
+  protected boolean isFetchingBlockedByManagerState() {
+    return manager.isBlown();
   }
 
   private boolean shouldSkipUpdateLocked() {
@@ -298,6 +380,19 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   private boolean shouldCancelPreviousFetchLocked() {
     return fetchingVersion < minDeployVersion || fetchingVersion == currentVersion;
+  }
+
+  @SuppressWarnings("ReferenceEquality")
+  private void cleanupFailedStart(ClientGetter failedGetter) {
+    FetchAttempt failedAttempt = null;
+    synchronized (this) {
+      if (activeFetch != null && activeFetch.getter() == failedGetter && cg == failedGetter) {
+        failedAttempt = activeFetch;
+        detachActiveFetchLocked(activeFetch.tempBlobFile());
+        isFetching = false;
+      }
+    }
+    cleanupAttemptFile(failedAttempt, "after fetch start failure");
   }
 
   private void logStartUpdateIfNeeded(int version) {
@@ -314,23 +409,37 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         LOG.debug("Scheduling request for {}", this.uri.setSuggestedEdition(version));
       if (version > currentVersion && LOG.isInfoEnabled())
         LOG.info("Starting {} fetch for {}", artifactName(), version);
-      tempBlobFile =
+      File newTempBlobFile =
           File.createTempFile(
               blobFilenamePrefix + version + "-",
               ".fblob.tmp",
               manager.getNode().services().clientCore().getPersistentTempDir());
-      FreenetURI uskUri = this.uri.setSuggestedEdition(version);
-      uskUri = uskUri.sskForUSK();
-      cg =
-          new ClientGetter(
-              this,
-              uskUri,
-              ctx,
-              RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
-              null,
-              new BinaryBlobWriter(new FileBucket(tempBlobFile, false, false, false, false)),
-              null);
-      return cg;
+      try {
+        FreenetURI uskUri = this.uri.setSuggestedEdition(version);
+        uskUri = uskUri.sskForUSK();
+        long attemptSequence = fetchAttemptSequence + 1;
+        FetchAttempt attempt =
+            new FetchAttempt(
+                this, newTempBlobFile, version, uskUri, subscriptionGeneration, attemptSequence);
+        ClientGetter getter =
+            new ClientGetter(
+                attempt,
+                uskUri,
+                ctx,
+                RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+                null,
+                new BinaryBlobWriter(new FileBucket(newTempBlobFile, false, false, false, false)),
+                null);
+        attempt.bindGetter(getter);
+        fetchAttemptSequence = attemptSequence;
+        tempBlobFile = newTempBlobFile;
+        cg = getter;
+        activeFetch = attempt;
+        return getter;
+      } catch (RuntimeException e) {
+        cleanupTempBlobFile(newTempBlobFile, "after fetch preparation failure");
+        throw e;
+      }
     } else {
       if (LOG.isInfoEnabled())
         LOG.info(
@@ -355,48 +464,277 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   @Override
+  @SuppressWarnings("ReferenceEquality")
   public void onSuccess(FetchResult result, ClientGetter state) {
+    FetchAttempt attempt;
     File localTempBlobFile;
     int localFetchingVersion;
+    long localSubscriptionGeneration;
+    FreenetURI localUpdateKey;
     FreenetURI fetchedUri = state != null ? state.getURI() : null;
     synchronized (this) {
+      // Callback ownership is an object-identity contract: an equal-looking getter from an old
+      // subscription must never be allowed to commit into the active scope.
+      attempt = activeFetch;
+      if (state != null && (attempt == null || state != cg || state != attempt.getter())) {
+        discardStaleResult(result);
+        return;
+      }
       localTempBlobFile = tempBlobFile;
       localFetchingVersion = fetchingVersion;
+      localSubscriptionGeneration =
+          state == null ? subscriptionGeneration : attempt.subscriptionGeneration();
+      localUpdateKey = uri;
     }
-    onSuccess(result, localTempBlobFile, localFetchingVersion, fetchedUri);
+    onSuccess(
+        result,
+        localTempBlobFile,
+        localFetchingVersion,
+        fetchedUri != null ? fetchedUri : localUpdateKey,
+        localSubscriptionGeneration,
+        attempt);
+  }
+
+  @SuppressWarnings("ReferenceEquality")
+  private void onAttemptSuccess(
+      FetchAttempt attempt, FetchResult result, ClientGetter callbackGetter) {
+    if (callbackGetter != attempt.getter()) {
+      discardStaleAttempt(result, attempt);
+      return;
+    }
+    synchronized (this) {
+      if (attempt != activeFetch
+          || callbackGetter != cg
+          || attempt.subscriptionGeneration() != subscriptionGeneration) {
+        discardStaleAttempt(result, attempt);
+        return;
+      }
+    }
+    onSuccess(
+        result,
+        attempt.tempBlobFile(),
+        attempt.fetchedVersion(),
+        callbackGetter.getURI() != null ? callbackGetter.getURI() : attempt.fetchedUri(),
+        attempt.subscriptionGeneration(),
+        attempt);
   }
 
   void onSuccess(FetchResult result, File tempBlobFile, int fetchedVersion, FreenetURI fetchedUri) {
-    // Debug gating derives from LOG.isDebugEnabled() where needed
-    File blobFile;
+    long localSubscriptionGeneration;
+    FreenetURI localUpdateKey;
     synchronized (this) {
-      if (shouldSkipAlreadyFetched(fetchedVersion)) {
-        cleanupAlreadyFetched(result, tempBlobFile);
+      localSubscriptionGeneration = subscriptionGeneration;
+      localUpdateKey = uri;
+    }
+    onSuccess(
+        result,
+        tempBlobFile,
+        fetchedVersion,
+        fetchedUri != null ? fetchedUri : localUpdateKey,
+        localSubscriptionGeneration,
+        null);
+  }
+
+  private void onSuccess(
+      FetchResult result,
+      File tempBlobFile,
+      int fetchedVersion,
+      FreenetURI fetchedUri,
+      long fetchSubscriptionGeneration,
+      FetchAttempt expectedAttempt) {
+    FetchPreparation preparation =
+        prepareFetchedResult(
+            result, tempBlobFile, fetchedVersion, fetchSubscriptionGeneration, expectedAttempt);
+    if (!preparation.readyForProcessing()) {
+      return;
+    }
+    boolean accepted;
+    FetchCompletion completion;
+    subscriptionScopeCommitLock.lock();
+    try {
+      if (!isSubscriptionGenerationCurrent(fetchSubscriptionGeneration)) {
+        discardStaleResult(result);
+        cleanupTempBlobFile(preparation.blobFile(), "from superseded subscription");
         return;
       }
+      accepted = processSuccess(fetchedVersion, result, preparation.blobFile());
+      completion =
+          completeFetch(fetchedVersion, fetchSubscriptionGeneration, expectedAttempt, accepted);
+    } finally {
+      subscriptionScopeCommitLock.unlock();
+    }
+    if (!completion.currentSubscription()) {
+      return;
+    }
+    if (!accepted) {
+      scheduleRejectedFetch(completion.ownsNewestAttempt());
+      return;
+    }
+    if (!completion.acceptedAsNewestEdition()) {
+      return;
+    }
+    logAcceptedFetch(fetchedVersion);
+    recordSuccessfulFetch(fetchedUri, fetchedVersion);
+    if (completion.fetchNextAvailableEdition()) {
+      node.network().ticker().queueTimedJob(this::maybeUpdate, 0);
+    }
+  }
+
+  private FetchPreparation prepareFetchedResult(
+      FetchResult result,
+      File tempBlobFile,
+      int fetchedVersion,
+      long fetchSubscriptionGeneration,
+      FetchAttempt expectedAttempt) {
+    synchronized (this) {
+      if (isStaleFetchCompletion(fetchSubscriptionGeneration, expectedAttempt)) {
+        discardStaleResult(result);
+        cleanupTempBlobFile(tempBlobFile, "from superseded subscription");
+        return FetchPreparation.SKIPPED;
+      }
+      if (shouldSkipAlreadyFetched(fetchedVersion)) {
+        detachActiveFetchLocked(tempBlobFile);
+        isFetching = false;
+        cleanupAlreadyFetched(result, tempBlobFile);
+        return FetchPreparation.SKIPPED;
+      }
       if (isEmptyResult(result)) {
-        try {
-          Files.delete(tempBlobFile.toPath());
-        } catch (IOException ex) {
-          LOG.warn("Unable to delete temp blob {}", tempBlobFile, ex);
-        }
+        detachActiveFetchLocked(tempBlobFile);
+        isFetching = false;
+        cleanupTempBlobFile(tempBlobFile, "after empty result");
         LOG.error("Cannot update: result either null or empty for {}", availableVersion);
         // Try again immediately; no need to inspect Bucket here
         node.network().ticker().queueTimedJob(this::maybeUpdate, 0);
-        return;
+        return FetchPreparation.SKIPPED;
       }
-      blobFile = tryFinalizeBlobFile(tempBlobFile, fetchedVersion);
-      this.fetchedVersion = fetchedVersion;
-      if (LOG.isInfoEnabled()) LOG.info("Found {} version {}", artifactName(), fetchedVersion);
-      if (fetchedVersion > currentVersion)
-        LOG.info(
-            "Found version {}, setting up a new UpdatedVersionAvailableUserAlert", fetchedVersion);
+      File blobFile = tryFinalizeBlobFile(tempBlobFile, fetchedVersion);
       maybeParseManifest(result, fetchedVersion);
-      this.cg = null;
+      detachActiveFetchLocked(tempBlobFile);
+      return new FetchPreparation(true, blobFile);
     }
-    processSuccess(fetchedVersion, result, blobFile);
-    manager.recordSuccessfulCoreInfoFetch(
-        fetchedUri != null ? fetchedUri : getUpdateKey(), fetchedVersion);
+  }
+
+  private boolean isStaleFetchCompletion(
+      long fetchSubscriptionGeneration, FetchAttempt expectedAttempt) {
+    return fetchSubscriptionGeneration != subscriptionGeneration
+        || (expectedAttempt != null && expectedAttempt != activeFetch);
+  }
+
+  private synchronized boolean isSubscriptionGenerationCurrent(long fetchSubscriptionGeneration) {
+    return fetchSubscriptionGeneration == subscriptionGeneration;
+  }
+
+  private FetchCompletion completeFetch(
+      int fetchedVersion,
+      long fetchSubscriptionGeneration,
+      FetchAttempt expectedAttempt,
+      boolean accepted) {
+    boolean fetchNextAvailableEdition = false;
+    boolean ownsNewestAttempt;
+    boolean acceptedAsNewestEdition = false;
+    synchronized (this) {
+      if (fetchSubscriptionGeneration != subscriptionGeneration) {
+        return FetchCompletion.STALE;
+      }
+      ownsNewestAttempt =
+          expectedAttempt == null || expectedAttempt.sequence() == fetchAttemptSequence;
+      if (ownsNewestAttempt) {
+        isFetching = false;
+      }
+      if (accepted && fetchedVersion > this.fetchedVersion) {
+        this.fetchedVersion = fetchedVersion;
+        acceptedAsNewestEdition = true;
+        if (fetchIntermediateEditionsSequentially() && fetchedVersion < realAvailableVersion) {
+          availableVersion = fetchedVersion + 1;
+        }
+        fetchNextAvailableEdition = fetchedVersion < availableVersion;
+      }
+    }
+    return new FetchCompletion(
+        true, ownsNewestAttempt, acceptedAsNewestEdition, fetchNextAvailableEdition);
+  }
+
+  private void scheduleRejectedFetch(boolean ownsNewestAttempt) {
+    if (!ownsNewestAttempt) {
+      return;
+    }
+    long retryDelay = rejectedFetchRetryDelayMillis();
+    if (retryDelay < 0) {
+      return;
+    }
+    node.network().ticker().queueTimedJob(this::maybeUpdate, retryDelay);
+  }
+
+  private void logAcceptedFetch(int fetchedVersion) {
+    if (!LOG.isInfoEnabled()) {
+      return;
+    }
+    LOG.info("Found {} version {}", artifactName(), fetchedVersion);
+    if (fetchedVersion > currentVersion) {
+      LOG.info("Accepted {} edition {}", artifactName(), fetchedVersion);
+    }
+  }
+
+  private record FetchPreparation(boolean readyForProcessing, File blobFile) {
+    private static final FetchPreparation SKIPPED = new FetchPreparation(false, null);
+  }
+
+  private record FetchCompletion(
+      boolean currentSubscription,
+      boolean ownsNewestAttempt,
+      boolean acceptedAsNewestEdition,
+      boolean fetchNextAvailableEdition) {
+    private static final FetchCompletion STALE = new FetchCompletion(false, false, false, false);
+  }
+
+  /**
+   * Selects which edition to fetch when a subscription announces a newer highest known edition.
+   *
+   * <p>Most updater documents are independent and use the announced edition directly. Digest-chain
+   * consumers may override this to fetch an authenticated missing successor first.
+   *
+   * @param discoveredEdition highest bounded edition announced by the subscription
+   * @return positive edition to make available for the next fetch
+   */
+  protected int selectDiscoveredEdition(int discoveredEdition) {
+    return discoveredEdition;
+  }
+
+  /**
+   * Returns whether accepted editions should catch up one at a time to the highest announcement.
+   *
+   * @return {@code true} only for formats whose immediate-predecessor digest must be verified
+   */
+  protected boolean fetchIntermediateEditionsSequentially() {
+    return false;
+  }
+
+  /**
+   * Records an accepted fetched edition for restart seeding.
+   *
+   * <p>The default preserves core-info persistence. Updaters with an independent edition space and
+   * durable last-known-good store override this hook so their editions cannot contaminate the
+   * core-info build-number seed.
+   *
+   * @param fetchedUri exact public fetch URI used for the accepted edition
+   * @param fetchedEdition accepted USK edition number
+   */
+  protected void recordSuccessfulFetch(FreenetURI fetchedUri, int fetchedEdition) {
+    manager.recordSuccessfulCoreInfoFetch(fetchedUri, fetchedEdition);
+  }
+
+  /**
+   * Returns the delay before fetching a rejected post-fetch result again.
+   *
+   * <p>The default avoids repeatedly fetching immutable invalid editions. Implementations may
+   * return a non-negative delay for transient local failures such as an unavailable persistence
+   * filesystem. Implementations own their retry policy and should back off repeated failures rather
+   * than creating a tight fetch-and-process loop.
+   *
+   * @return retry delay in milliseconds, or a negative value to wait for another external event
+   */
+  protected long rejectedFetchRetryDelayMillis() {
+    return -1;
   }
 
   private boolean shouldSkipAlreadyFetched(int fetchedVersion) {
@@ -404,11 +742,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   private void cleanupAlreadyFetched(FetchResult result, File tmp) {
-    try {
-      Files.delete(tmp.toPath());
-    } catch (IOException ex) {
-      LOG.warn("Unable to delete temp file {}", tmp, ex);
-    }
+    cleanupTempBlobFile(tmp, "for already-fetched edition");
     if (result != null) {
       Bucket toFree = result.asBucket();
       if (toFree != null) {
@@ -416,6 +750,54 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           if (LOG.isDebugEnabled()) LOG.debug("Releasing fetched result bucket");
         }
       }
+    }
+  }
+
+  /** Releases fetched bytes delivered by a callback from a superseded subscription scope. */
+  private void discardStaleResult(FetchResult result) {
+    if (result == null) {
+      return;
+    }
+    Bucket toFree = result.asBucket();
+    if (toFree == null) {
+      return;
+    }
+    try (toFree) {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Discarding fetched result from a superseded {} scope", artifactName());
+      }
+    }
+  }
+
+  /** Releases fetched bytes and the exact temporary file owned by a superseded fetch. */
+  private void discardStaleAttempt(FetchResult result, FetchAttempt attempt) {
+    discardStaleResult(result);
+    cleanupAttemptFile(attempt, "from superseded fetch");
+  }
+
+  private void detachActiveFetchLocked(File ownedTempBlobFile) {
+    assert Thread.holdsLock(this);
+    if (activeFetch != null && activeFetch.tempBlobFile().equals(ownedTempBlobFile)) {
+      activeFetch = null;
+      cg = null;
+      tempBlobFile = null;
+    }
+  }
+
+  private static void cleanupAttemptFile(FetchAttempt attempt, String context) {
+    if (attempt != null) {
+      cleanupTempBlobFile(attempt.tempBlobFile(), context);
+    }
+  }
+
+  private static void cleanupTempBlobFile(File file, String context) {
+    if (file == null) {
+      return;
+    }
+    try {
+      Files.deleteIfExists(file.toPath());
+    } catch (IOException ex) {
+      LOG.warn("Unable to delete temp blob {} {}", file, context, ex);
     }
   }
 
@@ -454,17 +836,18 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   /**
-   * Called after a fetch has completed successfully to perform post‑processing.
+   * Called after transport fetch completion to validate and perform post-processing.
    *
    * <p>Implementations typically validate compatibility, persist or rename files, update alerts,
-   * and schedule deployment. The call happens after internal state has been updated to reflect the
-   * new {@code fetchedVersion}.
+   * and schedule deployment. The base class advances its accepted fetched edition only when this
+   * method returns {@code true}.
    *
-   * @param fetched the fetched edition number that completed successfully; strictly positive
+   * @param fetched the fetched edition number whose transport fetch completed; strictly positive
    * @param result the fetch result containing the fetched bytes and associated metadata
    * @param blobFile the finalized on‑disk blob, or {@code null} when the rename failed
+   * @return {@code true} only when validation and required persistence have completed successfully
    */
-  protected abstract void processSuccess(int fetched, FetchResult result, File blobFile);
+  protected abstract boolean processSuccess(int fetched, FetchResult result, File blobFile);
 
   /**
    * Parses metadata from the freshly fetched result while internal locks are held.
@@ -682,9 +1065,46 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   @Override
   public void onFailure(FetchException e) {
+    FetchAttempt attempt;
+    synchronized (this) {
+      attempt = activeFetch;
+    }
+    if (attempt != null) {
+      onAttemptFailure(attempt, e);
+      return;
+    }
+    onUnownedFailure(e);
+  }
+
+  @SuppressWarnings("ReferenceEquality")
+  private void onAttemptFailure(FetchAttempt attempt, FetchException e) {
+    boolean owned;
+    synchronized (this) {
+      owned =
+          isRunning
+              && attempt == activeFetch
+              && attempt.getter() == cg
+              && attempt.subscriptionGeneration() == subscriptionGeneration;
+      if (owned) {
+        detachActiveFetchLocked(attempt.tempBlobFile());
+        isFetching = false;
+        if (e.isFatal() && e.getMode() != FetchExceptionMode.CANCELLED) {
+          rearmSequentialEditionAfterFatalFailureLocked();
+        }
+      }
+    }
+    cleanupAttemptFile(attempt, owned ? "on failure" : "from superseded failure");
+    if (!owned) {
+      return;
+    }
+    finishFailure(e, attempt.getter());
+  }
+
+  private void onUnownedFailure(FetchException e) {
     // Debug gating derives from LOG.isDebugEnabled() where needed
     if (!isRunning) return;
     FetchExceptionMode errorCode = e.getMode();
+    boolean shouldReschedule = errorCode == FetchExceptionMode.CANCELLED || !e.isFatal();
 
     File localTempBlobFile;
     ClientGetter localCg;
@@ -693,18 +1113,18 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       localCg = this.cg;
       this.cg = null;
       isFetching = false;
+      if (!shouldReschedule) rearmSequentialEditionAfterFatalFailureLocked();
     }
 
-    try {
-      if (localTempBlobFile != null) {
-        Files.delete(localTempBlobFile.toPath());
-      }
-    } catch (IOException ex) {
-      LOG.warn("Unable to delete temp blob {} on failure", localTempBlobFile, ex);
-    }
+    cleanupTempBlobFile(localTempBlobFile, "on failure");
+    finishFailure(e, localCg);
+  }
 
-    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, localCg);
-    if (errorCode == FetchExceptionMode.CANCELLED || !e.isFatal()) {
+  private void finishFailure(FetchException e, ClientGetter failedGetter) {
+    FetchExceptionMode errorCode = e.getMode();
+    boolean shouldReschedule = errorCode == FetchExceptionMode.CANCELLED || !e.isFatal();
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, failedGetter);
+    if (shouldReschedule) {
       long retryDelay = retryDelayForFailure(errorCode);
       LOG.info("Rescheduling update request after {} with delay {} ms", errorCode, retryDelay);
       ticker.queueTimedJob(this::maybeUpdate, retryDelay);
@@ -712,6 +1132,23 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       LOG.error("Canceling fetch : {}", e.getMessage());
       LOG.error("Unexpected error fetching update: {}", e.getMessage());
       // Fatal error: wait for the next version; do not reschedule now.
+    }
+  }
+
+  /**
+   * Makes a fatally failed intermediate edition eligible for a later key announcement.
+   *
+   * <p>The method deliberately does not queue a retry. Digest-chained subscribers wait until the
+   * update key is announced again, while ordinary latest-edition subscribers retain their existing
+   * fatal-failure behavior.
+   */
+  private void rearmSequentialEditionAfterFatalFailureLocked() {
+    assert Thread.holdsLock(this);
+    if (!fetchIntermediateEditionsSequentially()) {
+      return;
+    }
+    if (availableVersion == fetchingVersion && fetchingVersion > fetchedVersion) {
+      availableVersion = fetchedVersion;
     }
   }
 
@@ -726,18 +1163,45 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   /** Cancels any active fetch and unsubscribes from the USK. Safe to call multiple times. */
   void kill() {
-    try {
-      ClientGetter c;
-      synchronized (this) {
-        isRunning = false;
-        USK myUsk = USK.create(this.uri.setSuggestedEdition(currentVersion));
-        core.getUskManager().unsubscribe(myUsk, this);
-        c = cg;
-        cg = null;
+    stopSubscription();
+  }
+
+  private void stopSubscription() {
+    synchronized (subscriptionLifecycleLock) {
+      subscriptionScopeChangeLock.lock();
+      try {
+        ClientGetter stoppedGetter;
+        FetchAttempt stoppedAttempt;
+        FreenetURI stoppedUri;
+        synchronized (this) {
+          isRunning = false;
+          subscriptionGeneration++;
+          stoppedUri = this.uri;
+          stoppedGetter = cg;
+          stoppedAttempt = activeFetch;
+          cg = null;
+          activeFetch = null;
+          tempBlobFile = null;
+          isFetching = false;
+        }
+        try {
+          USK myUsk = USK.create(stoppedUri.setSuggestedEdition(currentVersion));
+          core.getUskManager().unsubscribe(myUsk, this);
+        } catch (Exception e) {
+          LOG.debug("Cannot unsubscribe stopped {} updater", artifactName(), e);
+        }
+        try {
+          if (stoppedGetter != null) {
+            stoppedGetter.cancel(core.getClientContext());
+          }
+        } catch (RuntimeException e) {
+          LOG.debug("Cannot cancel stopped {} fetch", artifactName(), e);
+        } finally {
+          cleanupAttemptFile(stoppedAttempt, "while stopping updater");
+        }
+      } finally {
+        subscriptionScopeChangeLock.unlock();
       }
-      c.cancel(core.getClientContext());
-    } catch (Exception e) {
-      LOG.debug("Cannot kill NodeUpdater", e);
     }
   }
 
@@ -767,26 +1231,69 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param subscribeEditionSeed edition to use when subscribing to the new update key
    */
   public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
-    String previousDocName;
-    synchronized (this) {
-      previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
+    changeSubscriptionScope(newUri, () -> subscribeEditionSeed);
+  }
+
+  /**
+   * Replaces the subscription scope while excluding post-processing from the superseded scope.
+   *
+   * <p>The seed supplier runs after the previous subscription generation has been stopped and
+   * before the replacement URI becomes active. Subclasses may use it to reset or rebind state that
+   * {@link #processSuccess(int, FetchResult, File)} mutates. A successful old-scope fetch either
+   * finishes before this transition or observes the advanced generation and is discarded; it can
+   * never commit after the supplier has rebound that state.
+   *
+   * @param newUri replacement public update URI
+   * @param subscribeEditionSeed supplies the replacement subscription seed while the scope claim is
+   *     exclusive
+   */
+  protected final void changeSubscriptionScope(
+      FreenetURI newUri, IntSupplier subscribeEditionSeed) {
+    synchronized (subscriptionLifecycleLock) {
+      subscriptionScopeChangeLock.lock();
+      try {
+        String previousDocName;
+        synchronized (this) {
+          previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
+        }
+        stopSubscription();
+        int nextSubscribeEditionSeed = subscribeEditionSeed.getAsInt();
+        FreenetURI nextUri =
+            (previousDocName != null
+                    && (newUri.getDocName() == null || newUri.getDocName().isEmpty()))
+                ? newUri.setDocName(previousDocName)
+                : newUri;
+        synchronized (this) {
+          this.uri = nextUri.setSuggestedEdition(nextSubscribeEditionSeed);
+          subscriptionGeneration++;
+          activeFetch = null;
+          availableVersion = -1;
+          realAvailableVersion = -1;
+          fetchingVersion = -1;
+          fetchedVersion = fetchedEditionAfterUriChange(nextSubscribeEditionSeed);
+          isFetching = false;
+          isRunning = true;
+        }
+        subscribe(() -> {});
+      } finally {
+        subscriptionScopeChangeLock.unlock();
+      }
     }
-    kill(); // unsubscribes from the old uri
-    FreenetURI nextUri =
-        (previousDocName != null && (newUri.getDocName() == null || newUri.getDocName().isEmpty()))
-            ? newUri.setDocName(previousDocName)
-            : newUri;
-    synchronized (this) {
-      this.uri = nextUri.setSuggestedEdition(subscribeEditionSeed);
-      availableVersion = -1;
-      realAvailableVersion = -1;
-      fetchingVersion = -1;
-      fetchedVersion = currentVersion;
-      isFetching = false;
-      isRunning = true;
-    }
-    subscribe(() -> {});
     maybeUpdate();
+  }
+
+  /**
+   * Selects the accepted-edition marker retained when a subscription URI changes.
+   *
+   * <p>Ordinary update descriptors are reset to the running build. Digest-chained subscribers may
+   * override this hook when their separately persisted last-known-good state remains authoritative
+   * across the new subscription.
+   *
+   * @param subscribeEditionSeed edition used to seed the replacement subscription
+   * @return accepted edition to retain before processing announcements from the replacement URI
+   */
+  protected int fetchedEditionAfterUriChange(int subscribeEditionSeed) {
+    return currentVersion;
   }
 
   /**
@@ -804,7 +1311,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @return {@code true} if a fetch is active for a newer edition; otherwise {@code false}
    */
   public synchronized boolean isFetching() {
-    return availableVersion > fetchedVersion && availableVersion > currentVersion;
+    return isRunning && availableVersion > fetchedVersion && availableVersion > currentVersion;
   }
 
   /**
@@ -903,6 +1410,82 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   @Override
   public boolean realTimeFlag() {
     return false;
+  }
+
+  /** Immutable fetch resources captured by the callback that owns them. */
+  private static final class FetchAttempt implements ClientGetCallback {
+    private final NodeUpdater owner;
+    private final File tempBlobFile;
+    private final int fetchedVersion;
+    private final FreenetURI fetchedUri;
+    private final long subscriptionGeneration;
+    private final long sequence;
+    private final AtomicReference<ClientGetter> getter = new AtomicReference<>();
+
+    private FetchAttempt(
+        NodeUpdater owner,
+        File tempBlobFile,
+        int fetchedVersion,
+        FreenetURI fetchedUri,
+        long subscriptionGeneration,
+        long sequence) {
+      this.owner = owner;
+      this.tempBlobFile = tempBlobFile;
+      this.fetchedVersion = fetchedVersion;
+      this.fetchedUri = fetchedUri;
+      this.subscriptionGeneration = subscriptionGeneration;
+      this.sequence = sequence;
+    }
+
+    private void bindGetter(ClientGetter getter) {
+      if (!this.getter.compareAndSet(null, getter)) {
+        throw new IllegalStateException("fetch getter is already bound");
+      }
+    }
+
+    private ClientGetter getter() {
+      return getter.get();
+    }
+
+    private File tempBlobFile() {
+      return tempBlobFile;
+    }
+
+    private int fetchedVersion() {
+      return fetchedVersion;
+    }
+
+    private FreenetURI fetchedUri() {
+      return fetchedUri;
+    }
+
+    private long subscriptionGeneration() {
+      return subscriptionGeneration;
+    }
+
+    private long sequence() {
+      return sequence;
+    }
+
+    @Override
+    public void onSuccess(FetchResult result, ClientGetter state) {
+      owner.onAttemptSuccess(this, result, state);
+    }
+
+    @Override
+    public void onFailure(FetchException e) {
+      owner.onAttemptFailure(this, e);
+    }
+
+    @Override
+    public void onResume(ClientContext context) {
+      owner.onResume(context);
+    }
+
+    @Override
+    public RequestClient getRequestClient() {
+      return owner.getRequestClient();
+    }
   }
 
   @Override

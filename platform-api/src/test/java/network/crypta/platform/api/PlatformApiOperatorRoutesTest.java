@@ -31,6 +31,9 @@ import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchPort;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
+import network.crypta.runtime.spi.CoreSupportLifecycleStatus;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -58,6 +61,73 @@ class PlatformApiOperatorRoutesTest {
   private static final HexFormat HEX = HexFormat.of();
 
   @Test
+  void route_whenSupportLifecycleRequested_expectReadOnlyFailClosedSnapshot() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("updates", "support-lifecycle"), Map.of()));
+    PlatformApiResponse mutation =
+        router.route(request("POST", List.of("updates", "support-lifecycle"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"known\":false"));
+    assertTrue(response.body().contains("\"runningStatus\":null"));
+    assertTrue(response.body().contains("\"lifecycle_runtime_snapshot_unavailable\""));
+    assertEquals(405, mutation.statusCode());
+  }
+
+  @Test
+  void route_whenSupportLifecycleIsKnown_expectAuthenticatedOperatorProjection() {
+    RuntimePorts ports = runtimePorts();
+    CoreUpdateActionPort actionPort = mock(CoreUpdateActionPort.class);
+    when(ports.coreUpdateAction()).thenReturn(actionPort);
+    when(actionPort.supportLifecycleSnapshot()).thenReturn(revokedLifecycleSnapshot());
+    PlatformApiRouter router = new PlatformApiRouter(ports);
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("updates", "support-lifecycle"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"known\":true"));
+    assertTrue(response.body().contains("\"runningStatus\":\"revoked\""));
+    assertTrue(response.body().contains("\"requiredReplacementBuild\":101"));
+    assertTrue(response.body().contains("\"advisoryIds\":[\"CRYPTA-2026-001\"]"));
+    assertTrue(response.body().contains("\"descriptorEdition\":2"));
+  }
+
+  @Test
+  void route_whenAppPrincipalRequestsSupportLifecycle_expectOperatorOnlyDenial() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+    List<String> route = List.of("updates", "support-lifecycle");
+    List<String> permissions = List.of(PlatformApiCapabilities.UPDATES_READ);
+
+    PlatformApiResponse appProcessResponse =
+        router.route(
+            request("GET", route, Map.of(), PlatformApiPrincipal.appToken(APP_ID, permissions)));
+    PlatformApiResponse appBrowserResponse =
+        router.route(
+            request(
+                "GET",
+                route,
+                Map.of(),
+                PlatformApiPrincipal.appBrowserSession(APP_ID, permissions)));
+    PlatformApiResponse appReadableCoreResponse =
+        router.route(
+            request(
+                "GET",
+                List.of("updates", "core"),
+                Map.of(),
+                PlatformApiPrincipal.appToken(APP_ID, permissions)));
+
+    assertEquals(403, appProcessResponse.statusCode());
+    assertTrue(appProcessResponse.body().contains("\"code\":\"forbidden\""));
+    assertEquals(403, appBrowserResponse.statusCode());
+    assertTrue(appBrowserResponse.body().contains("\"code\":\"forbidden\""));
+    assertEquals(200, appReadableCoreResponse.statusCode());
+    assertFalse(appReadableCoreResponse.body().contains("supportLifecycle"));
+  }
+
+  @Test
   void route_whenOperatorDashboardRequested_expectSectionShape() {
     PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
 
@@ -71,6 +141,8 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"subscriptions\""));
     assertTrue(response.body().contains("\"trustGraph\""));
     assertTrue(response.body().contains("\"supportWarningCount\""));
+    assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"known\":false"));
   }
 
   @Test
@@ -266,6 +338,8 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"recoveryContext\""));
     assertTrue(response.body().contains("\"redactedLineCount\":3"));
     assertTrue(response.body().contains("\"redaction\":{\"status\":\"pass\""));
+    assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"lifecycle_runtime_snapshot_unavailable\""));
   }
 
   @Test
@@ -904,6 +978,28 @@ class PlatformApiOperatorRoutesTest {
           Class<?> returnType = invocation.getMethod().getReturnType();
           return returnType.isInterface() ? mock(returnType) : null;
         });
+  }
+
+  private static CoreSupportLifecycleSnapshot revokedLifecycleSnapshot() {
+    return new CoreSupportLifecycleSnapshot(
+        true,
+        false,
+        new CoreSupportLifecycleSnapshot.RunningBuild(
+            100,
+            CoreSupportLifecycleStatus.REVOKED,
+            "2026-06-01T00:00:00Z",
+            null,
+            null,
+            null,
+            "2026-06-01T00:00:00Z",
+            101,
+            null,
+            List.of("CRYPTA-2026-001"),
+            List.of("critical-release-defect")),
+        new CoreSupportLifecycleSnapshot.Recommendation(101, 101, true),
+        new CoreSupportLifecycleSnapshot.DescriptorVerification(
+            2L, "sha256:" + "a".repeat(64), "2026-06-01T00:05:00Z"),
+        List.of("build_revoked"));
   }
 
   private static final class RecordingFetchPort implements ContentFetchPort {

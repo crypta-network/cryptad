@@ -125,8 +125,9 @@ jobs:
           INPUT_CATALOG_ROLLBACK_URI: ${{ inputs.catalog_rollback_uri }}
         run: |
           set -euo pipefail
-          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "::error::release_id must be path-safe."
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::release_id must be path-safe and at most 128 characters."
             exit 1
           fi
           if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then

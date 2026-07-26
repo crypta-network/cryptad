@@ -32,12 +32,15 @@ from cryptad_certification.engines import (
     stable_1_0_maintenance_core as core,
 )
 from cryptad_certification.engines.stable_1_0_maintenance import (
+    _apply_lifecycle_promotion_gate,
     _authorization,
     _authorization_expected,
     _close_authorization_errors,
     _concurrent_follow_up_errors,
     _core_receipt_errors,
+    _lifecycle_input_presence_errors,
     _lineage,
+    _public_lifecycle_observation_errors,
     _public_assets,
     _public_checksum_payload_paths,
     _receipt_errors,
@@ -814,6 +817,11 @@ class StableMaintenanceRegistrationTest(unittest.TestCase):
             "maintenanceEvidence",
             "stableGaMaintenanceBaseline",
             "predecessorPublicationReceipt",
+            "previousStableLifecycleLedger",
+            "previousStableLifecycleDescriptor",
+            "stableLifecycleAuthorization",
+            "stableLifecyclePublicationPlan",
+            "stableLifecyclePublicationReceipt",
             "coreUpdatePublicationReceipt",
             "hotfixFollowUpEvidence",
         ):
@@ -1014,6 +1022,188 @@ class StableMaintenanceRegistrationTest(unittest.TestCase):
                         Path(directory), release_class=release_class, mode=mode, inputs=inputs
                     )
                     _validate_stable_maintenance_manifest(context.manifest)
+
+    def test_manifest_requires_the_exact_lifecycle_authority_chain_when_any_is_named(
+        self,
+    ) -> None:
+        lifecycle_inputs = {
+            "previousStableLifecycleLedger": "inputs/lifecycle-ledger.json",
+            "previousStableLifecycleDescriptor": "inputs/lifecycle-descriptor.json",
+            "stableLifecycleAuthorization": "inputs/lifecycle-authorization.json",
+            "stableLifecyclePublicationPlan": "inputs/lifecycle-plan.json",
+            "stableLifecyclePublicationReceipt": "inputs/lifecycle-receipt.json",
+        }
+        for count in (1, 2, 3, 4):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as directory:
+                inputs = {
+                    **_required_inputs(),
+                    "stableMaintenanceAuthorization": "inputs/authorization.json",
+                    **dict(list(lifecycle_inputs.items())[:count]),
+                }
+                context = _context(Path(directory), inputs=inputs)
+
+                with self.assertRaisesRegex(ValueError, "exact ledger, descriptor"):
+                    _validate_stable_maintenance_manifest(context.manifest)
+
+        with tempfile.TemporaryDirectory() as directory:
+            context = _context(
+                Path(directory),
+                inputs={
+                    **_required_inputs(),
+                    "stableMaintenanceAuthorization": "inputs/authorization.json",
+                    **lifecycle_inputs,
+                },
+            )
+
+            _validate_stable_maintenance_manifest(context.manifest)
+
+    def test_lifecycle_presence_gate_allows_ga_genesis_and_follow_up_closure_omission(
+        self,
+    ) -> None:
+        absent = (None, None, None, None, None)
+        complete = (
+            {"ledger": True},
+            {"descriptor": True},
+            {"authorization": True},
+            {"plan": True},
+            {"receipt": True},
+        )
+
+        self.assertEqual([], _lifecycle_input_presence_errors(absent, 0))
+        genesis_result = {"promotionReady": True, "decision": "go"}
+        _apply_lifecycle_promotion_gate(genesis_result, False)
+        self.assertEqual(
+            {"promotionReady": False, "decision": "no-go"}, genesis_result
+        )
+        self.assertTrue(_lifecycle_input_presence_errors(absent, 1))
+        # Closing a follow-up emits an overlay for an already-published carrier. It neither
+        # promotes a successor nor activates lifecycle state, so successor authority is irrelevant.
+        self.assertEqual(
+            [],
+            _lifecycle_input_presence_errors(
+                absent, 1, require_activation=False
+            ),
+        )
+        self.assertTrue(
+            _lifecycle_input_presence_errors(
+                (complete[0], None, complete[2], complete[3], complete[4]), 0
+            )
+        )
+        self.assertTrue(
+            _lifecycle_input_presence_errors(
+                (complete[0], None, complete[2], complete[3], complete[4]), 1
+            )
+        )
+        self.assertEqual([], _lifecycle_input_presence_errors(complete, 1))
+        activated_result = {"promotionReady": True, "decision": "go"}
+        _apply_lifecycle_promotion_gate(activated_result, True)
+        self.assertEqual(
+            {"promotionReady": True, "decision": "go"}, activated_result
+        )
+
+    def test_public_lifecycle_observation_enforces_exact_tip_and_short_freshness(
+        self,
+    ) -> None:
+        digest = "sha256:" + "a" * 64
+        other_digest = "sha256:" + "b" * 64
+        redaction = {"status": "pass", "findingCount": 0, "findings": []}
+        ledger = {"ledgerDigest": digest}
+        descriptor = {
+            "descriptorEdition": 7,
+            "descriptorDigest": other_digest,
+            "previousDescriptorEdition": 6,
+            "previousDescriptorDigest": digest,
+            "updateKeyIdentityDigest": digest,
+            "updateKeyScope": f"{digest}/support-lifecycle/0",
+            "updateKeyDocName": "support-lifecycle",
+        }
+        authorization = {"decision": "approved"}
+        plan = {
+            "publicRequestUri": "https://93.184.216.34/support-lifecycle/7",
+            "publicationPlanDigest": other_digest,
+        }
+        publication_receipt = {"generatedAt": "2026-07-21T11:00:00Z"}
+        observation = {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-support-lifecycle-publication-receipt",
+            "generatedAt": "2026-07-21T11:50:00Z",
+            "stableMilestone": "1.0",
+            "descriptorEdition": 7,
+            "descriptorDigest": other_digest,
+            "descriptorBytesDigest": digest,
+            "ledgerDigest": digest,
+            "previousDescriptorEdition": 6,
+            "previousDescriptorDigest": digest,
+            "updateKeyIdentityDigest": digest,
+            "updateKeyScope": f"{digest}/support-lifecycle/0",
+            "updateKeyDocName": "support-lifecycle",
+            "publicRequestUri": plan["publicRequestUri"],
+            "publicationPlanDigest": other_digest,
+            "authorizationDigest": digest,
+            "operation": "verified-existing",
+            "publicationState": "publication-complete",
+            "verificationStatus": "verified",
+            "conflict": False,
+            "redaction": redaction,
+        }
+        now = datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc)
+
+        self.assertEqual(
+            [],
+            _public_lifecycle_observation_errors(
+                observation,
+                ledger,
+                descriptor,
+                authorization,
+                plan,
+                publication_receipt,
+                digest,
+                digest,
+                now,
+                30,
+            ),
+        )
+        for generated_at in (
+            "2026-07-21T11:29:59Z",
+            "2026-07-21T12:00:01Z",
+            "2026-07-21T10:59:59Z",
+        ):
+            with self.subTest(generated_at=generated_at):
+                changed = dict(observation)
+                changed["generatedAt"] = generated_at
+                errors = _public_lifecycle_observation_errors(
+                    changed,
+                    ledger,
+                    descriptor,
+                    authorization,
+                    plan,
+                    publication_receipt,
+                    digest,
+                    digest,
+                    now,
+                    30,
+                )
+                self.assertTrue(any("stale, future-dated" in error for error in errors))
+
+        superseded = dict(observation)
+        superseded["descriptorEdition"] = 8
+        self.assertTrue(
+            any(
+                "exact authorized edition" in error
+                for error in _public_lifecycle_observation_errors(
+                    superseded,
+                    ledger,
+                    descriptor,
+                    authorization,
+                    plan,
+                    publication_receipt,
+                    digest,
+                    digest,
+                    now,
+                    30,
+                )
+            )
+        )
 
     def test_follow_up_closure_allows_a_later_carrier_predecessor(self) -> None:
         inputs = {
@@ -3560,6 +3750,33 @@ class StableMaintenanceAuthorizationAndPublicationTest(unittest.TestCase):
                 stable_1_0_maintenance._targets(context, state)  # noqa: SLF001
 
                 self.assertTrue(state.blockers)
+
+    def test_configurable_publication_targets_remain_fail_closed(self) -> None:
+        unsafe_uris = (
+            "http://93.184.216.34/stable/catalog.json",
+            "https://localhost/stable/catalog.json",
+            "https://169.254.169.254/stable/catalog.json",
+            "https://user:password@93.184.216.34/stable/catalog.json",
+            "https://93.184.216.34/stable/catalog.json?edition=301",
+            "https://93.184.216.34/stable/catalog.json#fragment",
+        )
+        for unsafe_uri in unsafe_uris:
+            with self.subTest(
+                unsafe_uri=unsafe_uri
+            ), tempfile.TemporaryDirectory() as directory:
+                context = _context(Path(directory))
+                context.manifest.policies["metadata"]["catalogRollbackUri"] = unsafe_uri
+                state = ValidationState()
+
+                stable_1_0_maintenance._targets(context, state)  # noqa: SLF001
+
+                self.assertTrue(
+                    any(
+                        "public credential-free HTTPS" in row["summary"]
+                        for row in state.blockers
+                    ),
+                    state.blockers,
+                )
 
     def test_concrete_publication_destinations_are_distinct(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

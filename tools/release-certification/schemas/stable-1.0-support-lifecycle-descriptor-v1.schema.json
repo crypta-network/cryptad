@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-descriptor-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "stableMilestone", "descriptorEdition", "updateKeyIdentityDigest", "updateKeyScope", "updateKeyDocName", "generatedAt", "effectiveAt", "staleAt", "ledgerDigest", "inventoryDigest", "currentStableBuild", "minimumSupportedBuild", "minimumSecuritySupportedBuild", "recommendedBuild", "entries", "previousDescriptorEdition", "previousDescriptorDigest", "redaction", "descriptorDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-support-lifecycle-descriptor"}, "stableMilestone": {"const": "1.0"},
+    "descriptorEdition": {"type": "integer", "minimum": 1}, "updateKeyIdentityDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "updateKeyScope": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}/support-lifecycle/0$"}, "updateKeyDocName": {"const": "support-lifecycle"},
+    "generatedAt": {"type": "string", "format": "date-time"}, "effectiveAt": {"type": "string", "format": "date-time"}, "staleAt": {"type": "string", "format": "date-time"},
+    "ledgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "inventoryDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "currentStableBuild": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableBuild"}, "minimumSupportedBuild": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableBuild"},
+    "minimumSecuritySupportedBuild": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableBuild"}, "recommendedBuild": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableBuild"},
+    "entries": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/descriptorEntry"}},
+    "previousDescriptorEdition": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}, "previousDescriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}, "descriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}
+  }
+}

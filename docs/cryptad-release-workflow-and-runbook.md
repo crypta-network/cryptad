@@ -709,3 +709,37 @@ python3 tools/release-certification/certify.py stable-maintenance --self-test
 Those commands do not replace hosted Windows Authenticode production, macOS Developer ID signing
 and notarization, Linux package production, protected catalog-signature verification, or public
 publication verification.
+
+## Stable 1.0 support lifecycle activation
+
+Maintenance publication and support-state publication are distinct protected operations. After an
+already published GA, maintenance build, or security hotfix has an authenticated receipt and
+activated successor baseline, run `stable-lifecycle` against that complete history. Do not modify
+the release's historical `core-info.json`, release assets, publication receipt, or baseline to
+change its support status.
+
+The protected lifecycle workflow has six closed operations:
+
+1. `prove-genesis` obtains a short-lived attested HTTP `404` proof before the first descriptor;
+2. `evaluate` authenticates history and evaluates policy without mutation;
+3. `prepare-transition` freezes the proposed ledger, descriptor, plan, and authorization request;
+4. `validate-authorization` reruns certification against the exact protected approval;
+5. `publish` inserts or exactly verifies one authorization-bound descriptor edition; and
+6. `verify-publication` independently re-fetches the published bytes without publication
+   credentials.
+
+Each phase consumes the exact prior run id, artifact name, Actions artifact digest, source commit,
+release id, and authenticated chain-tip build. Lifecycle publication shares the maintenance
+publication lock, reauthenticates the current maintenance pointer immediately before mutation, and
+never creates a branch, tag, GitHub Release, maintenance candidate, or catalog entry. Only
+`publish` receives the purpose-specific private insert capability.
+
+Run the focused side-effect-free validation locally:
+
+```bash
+python3 tools/release-certification/certify.py stable-lifecycle --self-test
+```
+
+Follow the [Stable 1.0 support lifecycle and deprecation governance
+runbook](stable-1.0-support-lifecycle-and-deprecation-governance.md) for the manifest, policy,
+authorization roles, descriptor rollback protection, emergency revocation, and recovery process.

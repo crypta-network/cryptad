@@ -21,7 +21,7 @@
       "additionalProperties": false,
       "required": ["id", "version", "profile"],
       "properties": {
-        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "id": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
         "version": {"type": ["string", "null"], "minLength": 1},
         "profile": {
           "enum": ["pr", "nightly", "developer-dry-run", "release-candidate", "production-beta", "stable-review"]
@@ -105,6 +105,16 @@
           "stableKnownLimitations",
           "stableMaintenanceAuthorization",
           "stableMaintenancePublicationReceipt",
+          "stableMaintenanceHistory",
+          "stableLifecyclePolicy",
+          "stableLifecycleGenesisProof",
+          "previousStableLifecycleLedger",
+          "previousStableLifecycleDescriptor",
+          "stableLifecycleTransitionRequest",
+          "stableLifecycleAuthorization",
+          "stableLifecyclePublicationPlan",
+          "stableLifecyclePublicationReceipt",
+          "stableLifecyclePublicObservationReceipt",
           "stableRcFreezeExceptions",
           "stableRcValidation",
           "stableReadiness",
@@ -150,6 +160,8 @@
         },
         "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
         "stableRcFreezeMode": {"enum": ["first-freeze", "refreeze"]},
+        "lifecycleDescriptorPublicUri": {"type": "string", "format": "uri"},
+        "latestMaintenancePointerPublicUri": {"type": "string", "format": "uri"},
         "metadata": {
           "type": "object",
           "additionalProperties": {"type": "string", "minLength": 1}
@@ -192,6 +204,7 @@
           "stable-rc",
           "stable-ga",
           "stable-maintenance",
+          "stable-lifecycle",
           "multi-node-beta",
           "security-response"
         ]

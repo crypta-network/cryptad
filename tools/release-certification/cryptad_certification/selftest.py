@@ -28,6 +28,10 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_maintenance_publication",
         "cryptad_certification.tests.test_stable_maintenance_workflows",
     ],
+    "stable-lifecycle": [
+        "cryptad_certification.tests.test_stable_lifecycle",
+        "cryptad_certification.tests.test_stable_lifecycle_publication",
+    ],
     "migration": ["cryptad_certification.tests.test_core"],
 }
 

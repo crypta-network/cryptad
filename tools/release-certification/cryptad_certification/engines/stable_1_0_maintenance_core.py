@@ -297,6 +297,7 @@ def _maintenance_public_redaction_view(value: Any) -> Any:
             "allowedPublicationScopes": "allowedPublicOperationScopes",
             "approverIdentity": "publicApproverLabel",
             "hotfixPolicyAuthorizationDigest": "hotfixPublicApprovalDigest",
+            "stableLifecycleAuthorization": "stableLifecyclePublicApproval",
         }
         return {
             safe_labels.get(str(key), str(key)): _maintenance_public_redaction_view(child)

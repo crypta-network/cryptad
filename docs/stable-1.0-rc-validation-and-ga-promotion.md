@@ -607,3 +607,13 @@ immediately preceding published Stable 1.0 release and advance a separate succes
 Use the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md) for candidate freeze, compatibility
 comparison, authorization, protected exact-byte publication, and hotfix follow-up closure.
+
+After GA publication is independently verified, establish the separate mutable support-lifecycle
+state. The first lifecycle edition requires a protected proof that the exact public
+`support-lifecycle` target has never existed and currently returns HTTP `404`; a tombstone does not
+qualify. That edition authenticates the GA publication receipt and immutable maintenance baseline,
+then records GA as `current-stable` without changing either historical artifact.
+
+Use the [Stable 1.0 support lifecycle and deprecation governance
+runbook](stable-1.0-support-lifecycle-and-deprecation-governance.md) for genesis, later maintenance
+transitions, protected publication, independent verification, and local runtime behavior.

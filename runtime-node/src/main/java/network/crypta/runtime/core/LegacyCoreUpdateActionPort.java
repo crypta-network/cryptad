@@ -3,9 +3,12 @@ package network.crypta.runtime.core;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import network.crypta.node.Node;
+import network.crypta.node.Version;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.updater.CoreUpdater;
 import network.crypta.runtime.updater.NodeUpdateManager;
@@ -17,12 +20,12 @@ import network.crypta.runtime.updater.NodeUpdateManager;
  * without letting HTTP-layer code depend on {@link Node}, {@link NodeUpdateManager}, or {@link
  * CoreUpdater}. It preserves the legacy behavior that matters to the admin shell: availability
  * depends on whether a live core updater service is wired, UI download requests delegate to {@code
- * startDownloadFromUI()}, and installer validation accepts only canonical paths beneath the node's
+ * startDownloadFromUI()}, and installer actions accept only canonical paths beneath the node's
  * {@code updates/core} directory.
  *
- * <p>The adapter does not launch installers, open stores, or interpret HTTP results. Those
- * operator-visible choices remain inside the toadlet, which means this class stays focused on
- * daemon lookups and filesystem containment checks.
+ * <p>The adapter does not choose how to launch installers, open stores, or interpret HTTP results.
+ * Those operator-visible choices remain inside the toadlet, while the supplied installer action
+ * executes before the daemon releases its selection and lifecycle authorization.
  */
 final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   private static final String CORE_UPDATE_DIRECTORY = "updates/core";
@@ -58,7 +61,25 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   }
 
   @Override
-  public Optional<Path> resolveDownloadedInstaller(String rawPath) {
+  public <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, StoreAction<T> action) {
+    Objects.requireNonNull(action, "action");
+    return getCoreUpdater()
+        .flatMap(updater -> updater.withCurrentStoreTarget(kind, id, url, action::execute));
+  }
+
+  @Override
+  public CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
+    NodeUpdateManager manager = node.services().nodeUpdater();
+    return manager == null
+        ? CoreSupportLifecycleSnapshot.unknown(
+            Version.currentBuildNumber(), List.of("lifecycle_updater_unavailable"))
+        : manager.supportLifecycleSnapshot();
+  }
+
+  @Override
+  public <T> Optional<T> withDownloadedInstaller(String rawPath, InstallerAction<T> action) {
+    Objects.requireNonNull(action, "action");
     if (rawPath == null || rawPath.isBlank()) {
       return Optional.empty();
     }
@@ -67,9 +88,14 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
       File base = new File(node.getNodeDir(), CORE_UPDATE_DIRECTORY).getCanonicalFile();
       File candidate = new File(rawPath).getCanonicalFile();
       Path candidatePath = candidate.toPath();
-      return candidatePath.startsWith(base.toPath())
-          ? Optional.of(candidatePath)
-          : Optional.empty();
+      if (!candidatePath.startsWith(base.toPath())) {
+        return Optional.empty();
+      }
+      return getCoreUpdater()
+          .flatMap(
+              updater ->
+                  updater.withDownloadedInstaller(
+                      candidate, installer -> action.execute(installer.toPath())));
     } catch (IOException _) {
       return Optional.empty();
     }

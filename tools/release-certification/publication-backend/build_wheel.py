@@ -46,6 +46,7 @@ def _metadata() -> dict[str, bytes]:
 def build(output: Path) -> Path:
     files = {
         f"{NAME}/__init__.py": (SOURCE / "__init__.py").read_bytes(),
+        f"{NAME}/lifecycle.py": (SOURCE / "lifecycle.py").read_bytes(),
         f"{NAME}/provider.py": (SOURCE / "provider.py").read_bytes(),
         **_metadata(),
     }

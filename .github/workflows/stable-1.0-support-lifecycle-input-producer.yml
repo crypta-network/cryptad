@@ -1,0 +1,456 @@
+name: Stable 1.0 Support Lifecycle Input Producer
+run-name: >-
+  Stable 1.0 lifecycle ${{ inputs.operation }} inputs ${{ inputs.release_id }}
+  build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Exact side-effect-free lifecycle consumer phase.
+        required: true
+        type: choice
+        options:
+          - prove-genesis
+          - evaluate
+          - prepare-transition
+          - validate-authorization
+      release_id:
+        description: Exact path-safe lifecycle release identity.
+        required: true
+        type: string
+      build_version:
+        description: Authenticated positive-integer maintenance-chain tip.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase workflow-dispatch commit on protected main or the exact build release/hotfix ref.
+        required: true
+        type: string
+      input_bundle_sha256:
+        description: Exact sha256 digest of the reviewed public-safe ZIP.
+        required: true
+        type: string
+
+concurrency:
+  group: >-
+    stable-1-0-lifecycle-input-${{ inputs.release_id }}-${{ inputs.operation }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-dispatch:
+    name: Authenticate exact protected lifecycle source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      trusted_source_ref: ${{ steps.source-trust.outputs.trusted_source_ref }}
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind checkout to an authenticated protected source
+        id: source-trust
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle input source does not match the dispatch identity."
+            exit 1
+          fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle input production requires main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The lifecycle input source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::Lifecycle input production requires a protected source branch."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle input source is not reachable from the protected ref."
+            exit 1
+          fi
+          echo "trusted_source_ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+
+  authenticate-and-attest:
+    name: Authenticate and attest the exact lifecycle input set
+    if: >-
+      github.ref_protected
+      && (github.ref == 'refs/heads/main'
+      || github.ref == format('refs/heads/release/{0}', inputs.build_version)
+      || github.ref == format('refs/heads/hotfix/{0}', inputs.build_version))
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.operation == 'validate-authorization' && 'stable-1.0-lifecycle-authorization' || 'stable-1.0-lifecycle-evidence' }}
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate dispatch identity and pristine source
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$INPUT_BUNDLE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle input producer identity is malformed or at the wrong source."
+            exit 1
+          fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle input production requires main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The lifecycle input source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::Lifecycle input production requires a protected source branch."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle input source is not reachable from the protected ref."
+            exit 1
+          fi
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Fetch and safely expand the exact reviewed bundle
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_URL: ${{ secrets.CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_URL }}
+          CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_BEARER_TOKEN: ${{ secrets.CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_BEARER_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_lifecycle_input_producer.py \
+            --expected-digest '${{ inputs.input_bundle_sha256 }}' \
+            --out build/stable-lifecycle-input-stage
+
+      - name: Validate the closed manifest, exact input set, and side-effect-free result
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          stage="build/stable-lifecycle-input-stage"
+          manifest_path="$stage/manifest/stable-lifecycle-manifest.json"
+          protected="$stage/protected-inputs"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+
+          stage = Path("build/stable-lifecycle-input-stage")
+          manifest_path = stage / "manifest/stable-lifecycle-manifest.json"
+          protected = stage / "protected-inputs"
+          if set(path.name for path in stage.iterdir()) != {"manifest", "protected-inputs"}:
+              raise SystemExit("lifecycle bundle has unexpected top-level entries")
+          if not manifest_path.is_file() or not protected.is_dir():
+              raise SystemExit("lifecycle bundle layout is incomplete")
+          if any(path.is_symlink() for path in stage.rglob("*")):
+              raise SystemExit("lifecycle bundle contains a symbolic link")
+          raw = manifest_path.read_bytes()
+          value = json.loads(raw.decode("utf-8"))
+          canonical = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True).encode() + b"\n"
+          if raw != canonical:
+              raise SystemExit("lifecycle manifest bytes are not canonical")
+          if (
+              value.get("release")
+              != {
+                  "id": os.environ["INPUT_RELEASE_ID"],
+                  "version": os.environ["INPUT_BUILD_VERSION"],
+                  "profile": "stable-review",
+              }
+              or value.get("commands", {}).get("stable-lifecycle")
+              != {
+                  "args": [],
+                  "mode": (
+                      "evaluate"
+                      if os.environ["INPUT_OPERATION"] == "prove-genesis"
+                      else os.environ["INPUT_OPERATION"]
+                  ),
+              }
+              or value.get("output")
+              != {"reset": True, "root": "build/release-certification"}
+          ):
+              raise SystemExit("lifecycle manifest is not bound to this exact producer phase")
+          expected_execution = {
+              "allowDirtyWorkspace": False,
+              "allowTestSigningInProduction": False,
+              "collectEvidence": False,
+              "collectLiveNetwork": False,
+              "emergencySkipBuild": False,
+              "emergencySkipLiveNetwork": False,
+              "fixtureEvidence": False,
+              "generateStableReadiness": False,
+              "runMultiNodeSoak": False,
+              "runThirdPartyIntakeSampleFlow": False,
+              "skipFullBuild": True,
+              "skipGitMetadata": False,
+              "skipGradle": True,
+              "writeHistory": False,
+          }
+          if value.get("execution") != expected_execution:
+              raise SystemExit("lifecycle input producer requires the exact production-safe execution profile")
+          inputs = value.get("inputs")
+          if not isinstance(inputs, dict):
+              raise SystemExit("lifecycle manifest inputs are missing")
+          policy = inputs.get("stableLifecyclePolicy")
+          if policy != "tools/release-certification/stable-1.0-support-lifecycle-policy.json":
+              raise SystemExit("lifecycle policy path is not the reviewed repository policy")
+          approval_present = "stableLifecycleAuthorization" in inputs
+          if approval_present != (os.environ["INPUT_OPERATION"] == "validate-authorization"):
+              raise SystemExit("protected approval presence does not match the producer phase")
+          expected = set()
+          for name, raw_path in inputs.items():
+              if name == "stableLifecyclePolicy":
+                  continue
+              if not isinstance(raw_path, str):
+                  raise SystemExit("lifecycle input path is not a string")
+              path = PurePosixPath(raw_path)
+              prefix = PurePosixPath("build/protected-inputs")
+              try:
+                  relative = path.relative_to(prefix)
+              except ValueError as exc:
+                  raise SystemExit("lifecycle input escapes the protected input root") from exc
+              if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+                  raise SystemExit("lifecycle input path is ambiguous")
+              expected.add(relative.as_posix())
+          actual = {
+              path.relative_to(protected).as_posix()
+              for path in protected.rglob("*")
+              if path.is_file()
+          }
+          if actual != expected or not actual:
+              raise SystemExit("protected lifecycle inputs are missing, unreferenced, or substituted")
+          PY
+          proof_path="$(jq -r '.inputs.stableLifecycleGenesisProof // empty' "$manifest_path")"
+          if [[ -n "$proof_path" ]]; then
+            proof_relative="${proof_path#build/protected-inputs/}"
+            proof="$protected/$proof_relative"
+            if [[ "$proof_relative" == "$proof_path" || ! -f "$proof" ]]; then
+              echo "::error::Lifecycle genesis proof path is not confined."
+              exit 1
+            fi
+            gh attestation verify "$proof" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow 'crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle.yml' \
+              --source-digest "$EXPECTED_SOURCE_COMMIT" --deny-self-hosted-runners >/dev/null
+          fi
+          rm -rf build/protected-inputs build/release-certification
+          cp -R build/stable-lifecycle-input-stage/protected-inputs build/protected-inputs
+          manifest="build/stable-lifecycle-input-stage/manifest/stable-lifecycle-manifest.json"
+          set +e
+          python3 tools/release-certification/certify.py stable-lifecycle --manifest "$manifest"
+          certification_status=$?
+          set -e
+          component="build/release-certification/${{ inputs.release_id }}/stable-lifecycle"
+          if [[ "$INPUT_OPERATION" == "prove-genesis" ]]; then
+            if [[ "$certification_status" -eq 0 ]]; then
+              echo "::error::Genesis proof preparation unexpectedly found prior lifecycle history."
+              exit 1
+            fi
+            jq -e '
+              .schemaVersion == 2
+              and .payload.legacy.commandMode == "evaluate"
+              and .payload.legacy.publicationState == "not-published"
+              and .redaction.status == "pass"
+              and (.payload.legacy.blockers | length == 1)
+              and (.payload.legacy.blockers[0].summary
+                   | contains("genesis requires a fresh protected absence proof"))' \
+              "$component/summary.json" >/dev/null
+            jq -e '
+              .status == "pass"
+              and .redaction.status == "pass"
+              and (.entries | length >= 1)' \
+              "$component/artifacts/legacy/stable-1.0-support-lifecycle-inventory.json" \
+              >/dev/null
+            request="$component/artifacts/legacy/stable-1.0-support-lifecycle-genesis-proof-request.json"
+            INPUT_PROVIDER_SOURCE_COMMIT='${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}' \
+            INPUT_PROVIDER_WHEEL_DIGEST='${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}' \
+            python3 - "$manifest" "$component/artifacts/legacy/stable-1.0-support-lifecycle-inventory.json" "$request" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          inventory = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          tip = inventory["entries"][-1]
+          policy = json.loads(Path("tools/release-certification/stable-1.0-support-lifecycle-policy.json").read_text(encoding="utf-8"))
+          key = policy["descriptor"]["updateKeyIdentityDigest"]
+          value = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-support-lifecycle-genesis-proof-request",
+              "generatedAt": manifest["policies"]["metadata"]["lifecycleEvaluationAt"],
+              "stableMilestone": "1.0",
+              "publicRequestUri": manifest["policies"]["lifecycleDescriptorPublicUri"],
+              "updateKeyIdentityDigest": key,
+              "updateKeyScope": f"{key}/support-lifecycle/0",
+              "updateKeyDocName": "support-lifecycle",
+              "inventoryDigest": inventory["inventoryDigest"],
+              "gaRootDigest": inventory["gaRootDigest"],
+              "latestPointerDigest": inventory["latestPointerDigest"],
+              "chainDepth": inventory["chainDepth"],
+              "releaseId": tip["releaseId"],
+              "buildVersion": tip["buildVersion"],
+              "baselineDigest": tip["baselineDigest"],
+              "publicationReceiptDigest": tip["publicationReceiptDigest"],
+              "provider": {
+                  "sourceCommit": os.environ["INPUT_PROVIDER_SOURCE_COMMIT"],
+                  "artifactDigest": os.environ["INPUT_PROVIDER_WHEEL_DIGEST"],
+                  "signerWorkflow": "crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml",
+              },
+              "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+          }
+          Path(sys.argv[3]).write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            python3 - "$request" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "tools/release-certification")
+          from cryptad_certification.schema_validation import validate_schema
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          errors = validate_schema(value, "stable-1.0-support-lifecycle-genesis-proof-request-v1.schema.json")
+          if errors:
+              raise SystemExit("; ".join(errors))
+          PY
+            mkdir -p build/stable-lifecycle-input-stage/genesis-request
+            cp "$request" \
+              build/stable-lifecycle-input-stage/genesis-request/stable-1.0-support-lifecycle-genesis-proof-request.json
+            exit 0
+          fi
+          if [[ "$certification_status" -ne 0 ]]; then
+            exit "$certification_status"
+          fi
+          jq -e --arg mode "$INPUT_OPERATION" '
+            .schemaVersion == 2
+            and .payload.legacy.commandMode == $mode
+            and .payload.legacy.publicationState == "not-published"
+            and .redaction.status == "pass"
+            and (if $mode == "validate-authorization"
+                 then .payload.legacy.authorizationReady == true
+                 else true end)' "$component/summary.json" >/dev/null
+          if rg -n --hidden \
+            '(USK@.*insert|SSK@.*insert|Authorization: Bearer|/home/runner/|[A-Za-z]:\\)' \
+            build/stable-lifecycle-input-stage; then
+            echo "::error::Lifecycle input producer redaction failed."
+            exit 1
+          fi
+
+      - name: Upload exact public-safe lifecycle input bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-lifecycle-input-${{ inputs.operation }}-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-lifecycle-input-stage/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Attest the exact manifest and every protected input
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            build/stable-lifecycle-input-stage/manifest/stable-lifecycle-manifest.json
+            build/stable-lifecycle-input-stage/protected-inputs/**
+
+      - name: Attest the exact genesis-proof request
+        if: inputs.operation == 'prove-genesis'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/stable-lifecycle-input-stage/genesis-request/stable-1.0-support-lifecycle-genesis-proof-request.json
+
+      - name: Record the non-publication boundary
+        run: |
+          echo "Produced and attested exact public-safe inputs for ${{ inputs.operation }}." >> "$GITHUB_STEP_SUMMARY"
+          echo "No lifecycle descriptor, maintenance release, tag, catalog, or update-key edition was published." >> "$GITHUB_STEP_SUMMARY"

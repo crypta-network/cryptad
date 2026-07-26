@@ -44,6 +44,7 @@ class PlatformApiContractTest {
           Map.entry("/trust-graph/import-preview", 22),
           Map.entry("/trust-graph/import-preview-uri", 22),
           Map.entry("/trust-graph/audit", 10),
+          Map.entry("/updates/support-lifecycle", 23),
           Map.entry("/app-vault/identities/{identityId}/social-message", 11),
           Map.entry("/app-vault/identities/{identityId}/trust-statement", 7),
           Map.entry("/queue/inserts/app-document", 5),
@@ -439,6 +440,25 @@ class PlatformApiContractTest {
     assertTrue(endpoint.appProcessAllowed());
     assertTrue(endpoint.appBrowserAllowed());
     assertEquals(List.of(CAP_CONTENT_FETCH), endpoint.requiredCapabilities());
+  }
+
+  @Test
+  void current_whenInspectingSupportLifecycleEndpoint_expectHostOperatorOnlyAccess() {
+    PlatformApiEndpointDescriptor endpoint =
+        PlatformApiContract.current().endpoints().stream()
+            .filter(
+                descriptor ->
+                    descriptor.method().equals("GET")
+                        && descriptor.routeTemplate().equals("/updates/support-lifecycle"))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(23, endpoint.sinceContractVersion());
+    assertEquals(PlatformApiStabilityLevel.OPERATOR_ONLY, endpoint.stability());
+    assertTrue(endpoint.hostOperatorBypassAllowed());
+    assertFalse(endpoint.appProcessAllowed());
+    assertFalse(endpoint.appBrowserAllowed());
+    assertEquals(List.of(PlatformApiCapabilities.UPDATES_READ), endpoint.requiredCapabilities());
   }
 
   @Test
@@ -891,6 +911,9 @@ class PlatformApiContractTest {
 
   private static PlatformApiStabilityLevel expectedStability(
       PlatformApiEndpointDescriptor endpoint) {
+    if (endpoint.routeTemplate().equals("/updates/support-lifecycle")) {
+      return PlatformApiStabilityLevel.OPERATOR_ONLY;
+    }
     if (endpoint.routeTemplate().startsWith("/trust-graph")
         || endpoint.routeTemplate().startsWith("/app-vault")
         || endpoint.routeTemplate().startsWith("/app-services")) {

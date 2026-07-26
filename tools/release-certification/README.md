@@ -21,6 +21,8 @@ python3 tools/release-certification/certify.py release-certification --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
 python3 tools/release-certification/certify.py stable-rc --self-test
 python3 tools/release-certification/certify.py stable-ga --self-test
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+python3 tools/release-certification/certify.py stable-lifecycle --self-test
 ```
 
 Run a CI-safe app-platform collection with the checked-in manifest:
@@ -52,6 +54,8 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-readiness` | Evaluate the Stable 1.0 promotion gate. |
 | `stable-rc` | Execute, freeze, package, and verify a protected Stable 1.0 release candidate. |
 | `stable-ga` | Validate and prepare explicit promotion of one exact frozen Stable 1.0 RC without rebuilding or publishing it. |
+| `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
+| `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
 
@@ -541,6 +545,18 @@ release id, build, and product digest; all non-GA rows forbid those GA fields. N
 hotfix follow-up closure enforce both identities, so a later successor cannot relabel its immediate
 predecessor as the direct-GA upgrade source.
 
+The standard manifest supplies `previousStableLifecycleLedger`,
+`previousStableLifecycleDescriptor`, `stableLifecycleAuthorization`,
+`stableLifecyclePublicationPlan`, and `stableLifecyclePublicationReceipt` from
+`build/protected-inputs/lifecycle/`. The five inputs are indivisible: the engine authenticates the
+predecessor's lifecycle eligibility, exact mutable descriptor edition and bytes, approved
+authorization digest, authorized plan digest, trusted update-key scope, ledger digest, and verified
+public receipt before it can report promotion readiness. Every post-GA successor predecessor
+requires the exact five-artifact authority chain. A chain-depth-0 GA genesis run may omit all five
+only to evaluate the first proposal; that bootstrap result is deliberately
+`promotionReady=false` and `decision=no-go` until the separately protected GA-rooted lifecycle
+descriptor has been published and verified.
+
 The protected maintenance workflow uses four closed operations in four runs:
 `freeze-candidate`, `prepare-authorization`, `validate-authorization`, and `publish`. Freeze is the
 only operation that builds packages; it signs, notarizes, staples, and verifies the DMG before
@@ -557,6 +573,15 @@ workflow issues a separate activation-only authorization, valid for at most one 
 the exact verified receipt, successor, history, original authorization, and predecessor pointer.
 That renewable grant prevents an environment wait from stranding already-published exact bytes;
 activation audit state is uploaded even if post-mutation verification fails.
+
+The protected input producer requires the lifecycle authority chain's exact five files in the normal post-GA
+freeze and preparation bundles. Authorization validation still accepts only the approval JSON, so
+the maintenance workflow restores the complete prepared manifest and protected-input tree, proves
+that only the mode and authorization field changed, and stages exact lifecycle audit copies again.
+Publish consumes the authorized artifact unchanged and retains those copies in its publication
+audit; it cannot substitute a new lifecycle state at a later phase. Before re-attesting the phase
+manifest, the producer verifies every lifecycle file against the canonical lifecycle workflow and
+the exact reviewed lifecycle source commit.
 
 Hotfix closure authenticates the already published successor baseline, publication receipt,
 latest-published pointer, original authorization, and obligation, then emits a separately versioned
@@ -624,3 +649,98 @@ The protected workflow performs current-time revalidation before exact-byte publ
 independent receipt verification afterward. See the [Stable 1.0 maintenance release and security
 hotfix path](../../docs/stable-1.0-maintenance-release-and-hotfix-path.md) for required inputs,
 lineage, evidence, authorization, private secret boundaries, idempotency, and recovery.
+
+## Stable 1.0 support lifecycle certification
+
+The lifecycle command authenticates the immutable Stable 1.0 GA root and every published
+maintenance or security-hotfix successor before it assigns support state:
+
+```bash
+python3 tools/release-certification/certify.py stable-lifecycle \
+  --manifest build/stable-1.0-support-lifecycle.json
+```
+
+The command has four side-effect-free modes: `evaluate`, `prepare-transition`,
+`validate-authorization`, and `verify-publication`. It writes below
+`build/release-certification/<release-id>/stable-lifecycle/`. Evaluation derives the release
+inventory from exact GA and maintenance publication receipts, successor baselines, history links,
+and the latest published pointer. A manifest label cannot add a release to that inventory.
+
+`stable-1.0-support-lifecycle-policy.json` is the reviewed source of product support windows,
+transition rules, authorization roles, descriptor freshness, Platform API removal constraints,
+governance references, and non-waivable blockers. The closed lifecycle order is
+`current-stable`, `supported-maintenance`, `security-fixes-only`, `deprecated`, and
+`end-of-support`. Any non-revoked state can instead enter the separately authorized terminal
+`revoked` state. The engine does not infer update-key compromise from build revocation.
+
+Normal descriptors select exactly one `current-stable` authenticated chain tip. The versioned
+policy permits zero current builds only when that exact tip is explicitly revoked before a safe
+successor is available. Recovery-only transitions keep current, recommended, and replacement build
+fields null and publish bounded recovery guidance; certification never manufactures the unsafe tip
+as its own replacement.
+
+Generated descriptors must remain directly consumable by the runtime parser. The complete
+inventory is capped at 256 entries, each `statusEffectiveAt` is no later than descriptor
+`effectiveAt`, and a revoked entry uses the same value for `statusEffectiveAt` and
+`securityRevocationEffectiveAt`. A `supported-maintenance` entry leaves `replacementBuild` null;
+the descriptor-level `recommendedBuild` carries its optional upgrade guidance. Certification and
+the protected adapter reject schema/runtime text or release-identity mismatches before
+publication.
+
+Lifecycle output includes the authenticated inventory, append-only digest-chained ledger, proposed
+transition set, runtime descriptor, Platform API deprecation timeline, catalog/app/content-profile
+governance projection, publication plan, provenance, checksums, summary, report, and redaction
+report. Historical GA and maintenance artifacts, including already published `core-info.json`
+files, remain immutable. Changing support state produces a new edition of the separately
+authenticated `support-lifecycle` update-key document.
+
+Descriptor edition 1 requires a fresh protected proof that the exact lifecycle target returned
+HTTP `404` and has never been published. Bootstrap may occur against the authenticated GA alone or
+against a complete no-fork history containing already-published maintenance/hotfix builds. The
+proof binds the inventory digest, GA root, chain tip, public URI, and update-key scope. HTTP `410`
+is a tombstone, not absence, and fails closed. Once edition 1 exists, both
+`previousStableLifecycleLedger` and `previousStableLifecycleDescriptor` are mandatory.
+
+Ordinary certification never inserts that document. The protected
+`stable-1.0-support-lifecycle-input-producer.yml` workflow first fetches one reviewed public-safe
+ZIP by exact digest, rejects redirects, private endpoints, unsafe archives, unreferenced files, and
+non-production execution flags, then attests its manifest and every protected input. The
+`stable-1.0-support-lifecycle.yml` consumer pins that canonical producer identity.
+
+Lifecycle input and publication jobs run only from protected `main`, the exact
+`release/<build_version>`, or the exact `hotfix/<build_version>` ref. Their job conditions first
+require GitHub's protected-ref context. The `source_commit` input must equal both the
+workflow-dispatch `GITHUB_SHA` and the checked-out `HEAD`, which keeps GitHub's attested source
+digest aligned with the code handling protected inputs. The jobs then query the live GitHub branch
+record, require `protected=true`, fetch the same remote branch, and require the dispatch commit to
+remain its ancestor. This ancestry check tolerates the branch advancing after dispatch; it does not
+permit an independently selected older commit. The publication job repeats that proof before
+insert material is made available; the input producer first completes it in a credential-free job
+before requesting its environment, then repeats it before receiving the protected bundle locator
+and bearer token.
+
+Configure the lifecycle evidence, authorization, and publication environments with deployment
+branch rules limited to protected `main`, `release/*`, and `hotfix/*` refs. Workflow job conditions
+retain the exact-build allowlist independently of those repository settings.
+
+Authorization validation restores those attested inputs and reruns `stable-lifecycle`; it does not
+trust a caller-assembled authorization summary or publication plan. Publication repeats the same
+certification immediately before mutation, then performs a live read of the separately bound
+maintenance latest-pointer URI. GA-only history requires pointer absence. Post-GA history requires
+the exact pointer digest and tip identity. Lifecycle and maintenance publication share the
+`stable-1-0-maintenance-publication` concurrency lock so the pointer cannot advance between that
+read and lifecycle insertion within the protected workflows.
+
+Publication material is supplied only through the protected lifecycle environment. The publisher
+accepts identical existing bytes as an idempotent verification, rejects conflicting bytes without
+overwrite, fetches the public result again, and emits an exact-byte receipt. It preserves the
+authorized component and its checksum closure unchanged; the actual receipt, preflight, and
+operation summary are root-level siblings in the complete published bundle. Independent
+verification consumes that complete bundle, proves the original publication receipt was generated
+inside the bound authorization window, and writes a separate receipt. The read-only re-fetch may
+run after that approval expires; validation and publication may not. Pull requests,
+self-tests, and the default `evaluate` path cannot invoke publication.
+
+See the [support lifecycle and deprecation governance runbook](../../docs/stable-1.0-support-lifecycle-and-deprecation-governance.md)
+for policy clocks, descriptor rollback protection, runtime behavior, Platform API and ecosystem
+deprecation rules, security revocation, protected operations, recovery, and public-data boundaries.

@@ -8,18 +8,72 @@ import java.util.Optional;
  *
  * <p>This SPI is intentionally small. Implementations answer whether a live core updater is
  * currently wired, start the same UI-triggered download flow that the legacy admin page expects,
- * and validate installer paths that come back from form submissions. The interface keeps those
- * live-daemon checks behind the runtime boundary while avoiding direct exposure of {@code Node},
- * updater services, or daemon-specific transport and config classes.
+ * and run installer actions for paths that come back from form submissions. The interface keeps
+ * those live-daemon checks behind the runtime boundary while avoiding direct exposure of {@code
+ * Node}, updater services, or daemon-specific transport and config classes.
  *
  * <p>{@code CoreActionToadlet} continues to own request parsing, redirects, result pages, {@code
  * AppEnv} checks, and OS-specific installer or store-launching behavior. Callers typically fetch
  * the port from {@link RuntimePorts}, check availability for one request, and then invoke either a
- * download trigger or installer-path validation step.
+ * download trigger, guarded installer action, or guarded store-target action.
  *
  * @see RuntimePorts#coreUpdateAction()
  */
 public interface CoreUpdateActionPort {
+  /**
+   * Performs one caller-owned action with a currently authorized downloaded installer.
+   *
+   * <p>The runtime invokes this action only after validating the submitted path and retains its
+   * updater-selection and lifecycle authorization until the action returns. Implementations must
+   * not return the installer path for later use. Callers should perform only the bounded launch
+   * operation inside the callback and render responses after it returns.
+   *
+   * @param <T> action result returned to the caller after authorization is released
+   */
+  @FunctionalInterface
+  interface InstallerAction<T> {
+    /**
+     * Executes the bounded installer launch operation.
+     *
+     * @param installer canonical installer path retained under runtime authorization
+     * @return non-null launch outcome for later response rendering
+     */
+    T execute(Path installer);
+  }
+
+  /**
+   * Performs one caller-owned action with the currently authorized package-store target.
+   *
+   * <p>The runtime invokes this action only after matching the submitted target to its selected
+   * package and retains updater-selection and lifecycle authorization until the action returns.
+   * Callers should perform only the bounded process launch inside the callback and render responses
+   * after it returns.
+   *
+   * @param <T> action result returned to the caller after authorization is released
+   */
+  @FunctionalInterface
+  interface StoreAction<T> {
+    /**
+     * Executes the bounded package-store launch operation.
+     *
+     * @return non-null launch outcome for later response rendering
+     */
+    T execute();
+  }
+
+  /**
+   * Returns the last locally verified Stable 1.0 build-support lifecycle snapshot.
+   *
+   * <p>The default keeps older or partial runtime adapters fail-closed: it reports unknown rather
+   * than inferring support from the current build or ordinary update availability. Full daemon
+   * adapters should override this method with their persisted last-known-good lifecycle view.
+   *
+   * @return public-safe lifecycle snapshot suitable for Platform API and operator diagnostics
+   */
+  default CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
+    return CoreSupportLifecycleSnapshot.unknown(-1, java.util.List.of("lifecycle_unavailable"));
+  }
+
   /**
    * Returns whether the package-based core updater is currently available.
    *
@@ -57,18 +111,41 @@ public interface CoreUpdateActionPort {
   boolean startCoreDownloadFromUi();
 
   /**
-   * Resolves one raw installer path to a canonical downloaded-installer path when it stays within
-   * the legacy core-updater download area.
+   * Executes a store action while the submitted target remains the authorized selection.
+   *
+   * <p>The default is fail-closed so partial runtime adapters cannot authorize a client-supplied
+   * store target. Full daemon adapters must require an exact match for the selected package kind,
+   * derived package identifier, and public store URL. Selection, updater scope, and lifecycle
+   * authorization must remain held through {@link StoreAction#execute()} so a concurrently revoked
+   * or superseded target cannot be launched after validation.
+   *
+   * @param kind package-store kind submitted by the updater form
+   * @param id package identifier submitted by the updater form, or an empty string when absent
+   * @param url public store URL submitted by the updater form, or an empty string when absent
+   * @param action bounded launch action to invoke while the target remains authorized
+   * @param <T> non-null launch outcome type
+   * @return action outcome when the target stayed authorized through launch; otherwise {@link
+   *     Optional#empty()}
+   */
+  default <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, StoreAction<T> action) {
+    return Optional.empty();
+  }
+
+  /**
+   * Executes an installer action while the submitted package remains the authorized selection.
    *
    * <p>Implementations preserve the existing {@code <nodeDir>/updates/core} containment check and
-   * return an empty result for blank, invalid, or out-of-tree inputs. The returned path is
-   * canonical, detached from daemon-only file-wrapper types, and suitable for later launcher or
-   * installer handling in the HTTP layer. The method validates location only; callers still handle
-   * later file existence or execution failures through the normal installation flow.
+   * return an empty result for blank, invalid, out-of-tree, superseded, lifecycle-revoked, or
+   * update-key-invalidated inputs. Selection, updater-scope, and lifecycle authorization must
+   * remain held through {@link InstallerAction#execute(Path)} so a concurrently revoked or
+   * superseded package cannot be launched through a detached path.
    *
    * @param rawPath raw installer path string read from the HTTP request body or query data
-   * @return canonical installer path when accepted; otherwise {@link Optional#empty()} for blank,
-   *     malformed, or out-of-tree input
+   * @param action bounded launch action to invoke with the canonical authorized installer
+   * @param <T> non-null launch outcome type
+   * @return action outcome when the package stayed authorized through launch; otherwise {@link
+   *     Optional#empty()}
    */
-  Optional<Path> resolveDownloadedInstaller(String rawPath);
+  <T> Optional<T> withDownloadedInstaller(String rawPath, InstallerAction<T> action);
 }

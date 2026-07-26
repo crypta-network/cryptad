@@ -124,8 +124,9 @@ jobs:
           INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
         run: |
-          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "::error::candidate_release_id must be a path-safe release ID."
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::candidate_release_id must be a path-safe release ID of at most 128 characters."
             exit 1
           fi
           if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then

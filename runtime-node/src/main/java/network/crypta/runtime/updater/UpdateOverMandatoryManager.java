@@ -143,6 +143,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
       Pattern.compile("^main(?:-jar)?-(\\d+-)?(\\d+)\\.fblob\\.tmp*$");
   private static final Pattern revocationTempBuildNumberPattern =
       Pattern.compile("^revocation(?:-jar)?-(\\d+-)?(\\d+)\\.fblob\\.tmp*$");
+  private static final Pattern nodeUpdaterTempBlobPattern =
+      Pattern.compile(
+          "^(?:core-info-\\d+-\\d+\\.fblob\\.tmp|support-lifecycle-\\d+"
+              + "(?:-\\d+\\.fblob\\.tmp|\\.fblob))$");
 
   // Revocation and dependency flows only; main-jar UOM is disabled.
 
@@ -1285,7 +1289,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
         return false;
       }
     }
-    return mainTempBuildNumberMatcher.matches() || revocationTempBuildNumberMatcher.matches();
+    return mainTempBuildNumberMatcher.matches()
+        || revocationTempBuildNumberMatcher.matches()
+        || nodeUpdaterTempBlobPattern.matcher(fileName).matches();
   }
 
   /** {@inheritDoc} */

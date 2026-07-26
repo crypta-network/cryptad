@@ -98,6 +98,8 @@ Endpoint descriptors contain:
 
 The runtime app authorization path reads the same endpoint descriptors that the snapshot publishes,
 so the contract and route-to-capability policy do not maintain separate route lists.
+Host/operator-only descriptors can be recorded for local audit and Web Shell routing without
+advancing the app-facing contract version.
 
 ## Stability levels
 

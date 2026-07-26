@@ -463,7 +463,7 @@ signatures, or absolute staging paths in descriptor notes, generated catalog met
 evidence.
 
 A Feed Reader catalog descriptor should include the content-subscription, content-fetch, durable
-app-data, generated-document publication permissions, and minimum-v9, tested-through-v12 API
+app-data, generated-document publication permissions, and minimum-v9, tested-through-v24 API
 compatibility metadata:
 
 ```properties
@@ -499,7 +499,7 @@ private insert URIs, app process tokens, browser-session tokens, form passwords,
 local paths.
 
 A Social Inbox RC catalog descriptor should include threaded inbox permissions, app-service request
-metadata, and contract-v12 compatibility metadata:
+metadata, and contract-v24 compatibility metadata:
 
 ```properties
 artifact.path=dist/apps/social-inbox-1.0.0.zip
@@ -851,7 +851,7 @@ review keys outside the repository.
    deprecation.status=none
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=10
+   api.maximumTestedVersion=23
    api.targetStability=stable
    review.status=reviewed
    changelog.summary=First public beta catalog entry.

@@ -130,6 +130,57 @@ missing receipt, skipped published predecessor, mismatched product, unverified p
 unpublished candidate presented as current stable state. Build numbers must increase strictly but
 do not need to be consecutive.
 
+The standard maintenance manifest also carries the exact active support-lifecycle authority chain:
+
+```text
+inputs.previousStableLifecycleLedger
+inputs.previousStableLifecycleDescriptor
+inputs.stableLifecycleAuthorization
+inputs.stableLifecyclePublicationPlan
+inputs.stableLifecyclePublicationReceipt
+```
+
+These five inputs are one authority and therefore must be supplied together. The ledger
+authenticates the predecessor's release identity and eligibility, the descriptor is the current
+mutable public projection, the approved authorization binds the exact lifecycle target, the
+authorized plan binds that approval to the descriptor and ledger, and the verified publication
+receipt binds the exact plan, descriptor bytes, edition, update-key scope, and ledger digest. Every
+post-GA successor predecessor requires all five. Missing files, a partial authority chain, stale
+descriptor, mismatched digest, non-current predecessor, or unverified publication keeps the
+candidate non-promotion-ready or fails certification.
+
+The five files authenticate what was published, but they do not prove that their edition is still
+the public tip. For authorization preparation and validation, the protected maintenance workflow
+therefore installs the independently attested lifecycle-only provider and re-fetches the exact
+public descriptor while holding the shared `stable-1-0-maintenance-publication` lock. It emits and
+attests a separate `stableLifecyclePublicObservationReceipt`; this sixth item is deliberately
+regenerated instead of becoming part of the immutable five-file handoff. The receipt must report
+`verified-existing` and bind the exact edition, semantic and byte digests, ledger, plan,
+authorization, public request URI, and update-key identity/scope/docname. Its maximum age is the
+policy field `supportWindows.maximumPublicObservationAgeMinutes` (30 minutes in policy v1); future,
+expired, or pre-publication observations fail closed. The publish operation repeats the same
+read-only exact-byte observation immediately before its side-effect-free maintenance preflight.
+Because lifecycle mutation uses the same lock, a newer edition cannot race between that observation
+and the protected maintenance publication. No package, tag, catalog, updater, or lifecycle insert
+secret is available to the observation operation.
+
+The maintenance workflow reads the lifecycle provider run id, fixed artifact name, and Actions
+artifact digest from the repository variables
+`CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID`,
+`CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME`, and
+`CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST`. These are not manual dispatch
+inputs. The workflow still verifies the canonical producer workflow, reviewed source commit,
+pinned wheel digest, artifact digest, attestation, and lifecycle-only entrypoint before each
+read-only observation. `freeze-candidate` does not materialize or invoke this provider.
+
+The only omission exception is a chain-depth-0 GA genesis evaluation. That exception permits
+operators to inspect the first maintenance proposal while bootstrapping the initial lifecycle
+descriptor, but it explicitly returns `promotionReady=false` and `decision=no-go`. It is not an
+authorization or publication bypass. Publish and verify the GA-rooted lifecycle descriptor through
+the protected lifecycle workflow, then use its exact five-artifact authority chain—ledger,
+descriptor, approved authorization, authorized publication plan, and verified receipt—before
+authorizing the first maintenance build.
+
 ## Successor baseline and history
 
 A verified maintenance or hotfix publication produces a reusable Stable 1.0 successor maintenance
@@ -436,10 +487,10 @@ name, and `sha256:<hex>` Actions artifact digest:
 
 | Consumer operation | Authenticated inputs | Output for the next phase |
 | --- | --- | --- |
-| `freeze-candidate` | `freeze-candidate` phase bundle plus the Windows producer artifact and EXE SHA-256 | Attested frozen-candidate artifact containing the one built asset set. |
-| `prepare-authorization` | `prepare-authorization` phase bundle plus the exact frozen-candidate artifact | Attested prepared-candidate artifact; its candidate asset directory is reconstructed only from the prior freeze. |
-| `validate-authorization` | `validate-authorization` phase bundle plus the exact prepared-candidate artifact | Attested authorized-candidate artifact. |
-| `publish` | Exact authorized-candidate artifact plus the authenticated publication-backend wheel | Publication audit, independent verification, and activation artifacts; no replacement phase bundle is accepted. |
+| `freeze-candidate` | `freeze-candidate` phase bundle, including the exact five-artifact lifecycle authority chain for the standard post-GA path, plus the Windows producer artifact and EXE SHA-256 | Attested frozen-candidate artifact containing the one built asset set and retained protected lifecycle inputs. |
+| `prepare-authorization` | `prepare-authorization` phase bundle with the same exact lifecycle authority chain plus the exact frozen-candidate artifact | Attested prepared-candidate artifact; its candidate asset directory is reconstructed only from the prior freeze, and authenticated-input audit copies retain the lifecycle authority chain. |
+| `validate-authorization` | Approval-only `validate-authorization` phase bundle plus the exact prepared-candidate artifact | Attested authorized-candidate artifact. The workflow restores the prepared manifest and protected lifecycle inputs, changes only the command mode, and adds the exact authorization. |
+| `publish` | Exact authorized-candidate artifact plus the authenticated publication-backend wheel | Publication audit, independent verification, and activation artifacts retain authenticated-input audit copies; no replacement phase bundle is accepted. |
 
 Use the protected environments `stable-1.0-maintenance-evidence`,
 `stable-1.0-maintenance-publication`, and `stable-1.0-security-hotfix-publication` with
@@ -508,6 +559,13 @@ authenticated, pristine candidate checkout and the engine reauthenticates its ex
 other file or directory input remains confined beneath `build/protected-inputs/`. The locator and
 credential are never uploaded or serialized. Environment approval, exact bundle and artifact
 digests, and the same-commit workflow attestation authenticate the producer; a URL alone does not.
+For a post-GA predecessor, the producer requires the lifecycle ledger, descriptor, approved
+authorization, authorized publication plan, and verified receipt keys and files as one complete
+authority chain. It verifies all five files against the canonical lifecycle workflow and the exact
+reviewed lifecycle source commit before re-attesting the phase manifest. The maintenance workflow
+stages exact audit copies, retains the protected inputs when it derives authorization validation
+from the prepared artifact, and carries them unchanged into the authorized and publication
+artifacts.
 
 Publication dispatches identify an exact protected provider artifact by run id, artifact name, and
 artifact digest. The canonical provider wheel is produced only by
@@ -597,6 +655,15 @@ that rejects unrelated feature work. The candidate declares the closed
 `changeScope.shortenedEvidenceIds` set; the authorization binds that exact set and its dedicated
 hotfix-policy authorization digest.
 
+Lifecycle predecessor eligibility is release-class-specific. Routine `maintenance` still requires
+the exact authenticated `current-stable` predecessor. A `security-hotfix` may recover from a
+policy-eligible `security-fixes-only`, `deprecated`, or `revoked` predecessor only when its exact
+incident and protected hotfix-policy authorization are bound. For a revoked tip with no safe
+current build, the append-only lifecycle transition must additionally preserve that incident,
+affected build, public security evidence, publication-target digest, authorization-request digest,
+advisory, and reason. This emergency path never makes the same predecessor routine-maintenance
+eligible and never admits an end-of-support predecessor.
+
 The hotfix policy may shorten only its closed prepublication evidence durations or an explicitly
 proved unaffected target matrix. It cannot skip candidate identity, archive and signing integrity,
 redaction, API/content compatibility, updater integrity, affected-platform packaging/install,
@@ -674,3 +741,26 @@ Publication does not merge branches. After the release manager verifies the rece
 See [the standard Git workflow](standard-git-branching-and-release-workflow.md) for branch
 operations and [the release runbook](cryptad-release-workflow-and-runbook.md) for the wider release
 gate checklist.
+
+## Support lifecycle activation
+
+A verified maintenance publication is a prerequisite for lifecycle activation, not a substitute
+for it. `stable-maintenance` prepares a deterministic lifecycle transition set, but the candidate
+cannot become `current-stable` until its publication receipt and successor baseline authenticate
+the new chain tip and the separately protected `support-lifecycle` descriptor publication verifies
+the exact authorized bytes. The previous current build normally becomes
+`supported-maintenance` in that same transition set.
+
+The lifecycle policy and runtime parser both cap the complete schema-v1 release projection at 256
+entries. Maintenance certification computes the proposed successor inventory from the
+authenticated chain depth and blocks publication before a candidate would become entry 257. It
+does not truncate history or invent an unreviewed rollover.
+
+Routine maintenance must not treat an `end-of-support` or `revoked` predecessor as ordinarily
+supported. A security hotfix from a `security-fixes-only` or revoked predecessor requires the
+exact advisory/incident scope and lifecycle security authorization. Support, security, and
+deprecation clocks carry forward; publishing another maintenance baseline does not reset them.
+
+See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md)
+for the authenticated inventory, append-only ledger, mutable descriptor, protected publication,
+operator behavior, and Platform API/app/profile governance rules.

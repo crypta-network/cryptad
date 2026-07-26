@@ -1764,6 +1764,102 @@
         ["Download action", data.downloadAllowed ? "Ready" : "Unavailable"],
       ], data.available ? "" : "is-warning"),
     );
+    sections.updates.append(renderSupportLifecycle(data.supportLifecycle));
+  }
+
+  function lifecycleBuildLabel(value) {
+    return Number.isInteger(value) && value > 0 ? `v${value}` : "Unknown";
+  }
+
+  function supportLifecyclePresentation(lifecycle) {
+    if (!lifecycle || lifecycle.known !== true) {
+      return {
+        label: "Unknown",
+        guidance: "No authenticated local lifecycle state is available. Support must not be assumed.",
+        tone: "is-warning",
+      };
+    }
+    const presentations = {
+      "current-stable": {
+        label: "Current stable",
+        guidance: "This build is the authenticated current Stable 1.0 release.",
+        tone: "",
+      },
+      "supported-maintenance": {
+        label: "Supported maintenance",
+        guidance: "This build remains fully supported; upgrading to the current build is recommended.",
+        tone: "",
+      },
+      "security-fixes-only": {
+        label: "Security fixes only",
+        guidance: "Full maintenance has ended. Prioritize an authenticated security update.",
+        tone: "is-warning",
+      },
+      deprecated: {
+        label: "Deprecated",
+        guidance: "Persistent upgrade guidance is active for this build.",
+        tone: "is-warning",
+      },
+      "end-of-support": {
+        label: "End of support",
+        guidance: "This build is unsupported. Normal browsing and local data remain available while you upgrade.",
+        tone: "is-warning",
+      },
+      revoked: {
+        label: "Revoked build",
+        guidance: "An authenticated security decision marks this build unsafe. Follow only the verified replacement or recovery guidance shown here.",
+        tone: "is-warning",
+      },
+    };
+    const presentation = presentations[lifecycle.runningStatus] || {
+      label: "Unknown",
+      guidance: "The lifecycle status is not recognized. Support must not be assumed.",
+      tone: "is-warning",
+    };
+    if (lifecycle.stale !== true) {
+      return presentation;
+    }
+    const terminalStatus =
+      lifecycle.runningStatus === "end-of-support" || lifecycle.runningStatus === "revoked";
+    if (terminalStatus) {
+      return {
+        label: `${presentation.label} — descriptor stale`,
+        guidance: `${presentation.guidance} The last-known-good descriptor is also stale; refresh it without treating this build as supported or safe.`,
+        tone: "is-warning",
+      };
+    }
+    return {
+      label: "Stale — verification required",
+      guidance: "The last-known-good descriptor is stale. Refresh it before relying on support claims.",
+      tone: "is-warning",
+    };
+  }
+
+  function renderSupportLifecycle(lifecycle) {
+    const safeLifecycle = lifecycle && typeof lifecycle === "object" ? lifecycle : {};
+    const presentation = supportLifecyclePresentation(safeLifecycle);
+    const advisoryIds = Array.isArray(safeLifecycle.advisoryIds)
+      ? safeLifecycle.advisoryIds.join(", ")
+      : "";
+    const warnings = Array.isArray(safeLifecycle.warnings)
+      ? safeLifecycle.warnings.join(", ")
+      : "";
+    return summaryCard("Stable 1.0 support lifecycle", [
+      ["Status", presentation.label],
+      ["Running build", lifecycleBuildLabel(safeLifecycle.runningBuild)],
+      ["Current stable", lifecycleBuildLabel(safeLifecycle.currentStableBuild)],
+      ["Recommended", lifecycleBuildLabel(safeLifecycle.recommendedBuild)],
+      ["Full support until", safeLifecycle.fullSupportUntil || "Not available"],
+      ["Security fixes until", safeLifecycle.securityFixesUntil || "Not available"],
+      ["End of support", safeLifecycle.endOfSupportAt || "Not available"],
+      ["Required replacement", lifecycleBuildLabel(safeLifecycle.requiredReplacementBuild)],
+      ["Recovery guidance", safeLifecycle.recoveryGuidance || "Not available"],
+      ["Advisories", advisoryIds || "None published"],
+      ["Descriptor edition", safeLifecycle.descriptorEdition ?? "Unknown"],
+      ["Last verified", safeLifecycle.lastVerifiedAt || "Never"],
+      ["Guidance", presentation.guidance],
+      ["Warnings", warnings || "None"],
+    ], presentation.tone);
   }
 
   function publisherSourceType(form) {
@@ -6696,11 +6792,14 @@
     updateUpdatesToolbar();
 
     try {
-      const snapshot = await loadJson(apiUrl("updates/core"));
+      const [snapshot, supportLifecycle] = await Promise.all([
+        loadJson(apiUrl("updates/core")),
+        loadBestEffortOptionalJson(apiUrl("updates/support-lifecycle")),
+      ]);
       if (loadGeneration !== updatesLoadGeneration) {
         return;
       }
-      renderUpdates(snapshot);
+      renderUpdates({ ...snapshot, supportLifecycle });
     } catch (error) {
       if (loadGeneration !== updatesLoadGeneration) {
         return;

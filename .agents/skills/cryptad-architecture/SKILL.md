@@ -70,7 +70,8 @@ Use this skill when you need to:
     subscriptions, durable app data and internal update snapshots, app-data backup/restore routes,
     unified consent preview/decision/audit routes, local app-service discovery/dependency
     graph/grant-bundle routes, app-update lifecycle/scheduler, and host/operator-only beta
-    dashboard/support-bundle, typed operator RC recovery, and safe network-budget snapshot routes)
+    dashboard/support-bundle, typed operator RC recovery, safe network-budget snapshots, and the
+    host/operator-only Stable 1.0 support-lifecycle snapshot route)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -105,15 +106,16 @@ Use this skill when you need to:
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
     including Apps, catalog, update, review, unified consent review, operator beta
     dashboard/support-bundle, catalog source/mirror health and guarded catalog operation controls,
-    security response status rendering, Operator RC Recovery, subscription recovery, app-data
-    backup/restore, app-service dependency/grant-bundle review, and explicit legacy
-    security/diagnostic fallback surfaces)
+    security response and Stable 1.0 lifecycle status rendering, Operator RC Recovery,
+    subscription recovery, app-data backup/restore, app-service dependency/grant-bundle review,
+    and explicit legacy security/diagnostic fallback surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
     `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
     `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
-    transport/message execution code in `network.crypta.io*`, and the remaining daemon-coupled
+    transport/message execution code in `network.crypta.io*`, the package updater and Stable 1.0
+    support-lifecycle subscriber/parser/store/state integration, and the remaining daemon-coupled
     `network.crypta.support` / `network.crypta.support.io` / `network.crypta.support.api` subset
   - `:adapter-fcp` → the detached protocol-side `network.crypta.clients.fcp` package tree
   - `:bridge-fcp-runtime` → the concrete runtime-binding FCP bridge package
@@ -244,10 +246,16 @@ Use this skill when you need to:
 
 - `tools/release-certification/cryptad_certification/engines/` owns side-effect-free policy and
   evidence evaluation. Stable 1.0 GA remains in `stable_1_0_ga*`; later routine maintenance and
-  security hotfixes share the `stable_1_0_maintenance*` engine family and one closed policy.
+  security hotfixes share the `stable_1_0_maintenance*` engine family and one closed policy;
+  authenticated build lifecycle and deprecation governance live in the
+  `stable_1_0_lifecycle*` engine family and its separate closed policy.
 - `tools/release-certification/protected/stable_maintenance_publication.py` owns protected-boundary
   materialization, exact-state revalidation, publication receipt verification, and successor
   activation. Do not import a publication client into the certification engine.
+- `tools/release-certification/protected/stable_lifecycle_input_producer.py` owns closed,
+  public-safe lifecycle input expansion. `stable_lifecycle_publication.py` owns lifecycle
+  authorization/publication/verification revalidation; neither belongs in the side-effect-free
+  engine.
 - `tools/release-certification/publication-backend/` is the separately built, attested provider
   wheel. Hosted publication jobs load it only from the authenticated installation directory; the
   candidate checkout is not a provider source.
@@ -255,6 +263,10 @@ Use this skill when you need to:
   backend-wheel, candidate-freeze, authorization, publication, independent-verification, and
   activation orchestration. These workflows validate refs and exact artifacts but never create or
   merge release/hotfix branches.
+- `.github/workflows/stable-1.0-support-lifecycle*.yml` owns lifecycle input attestation,
+  one-time genesis proof, evaluation, transition preparation, authorization validation, exact
+  descriptor publication, and independent verification. Lifecycle mutation shares the maintenance
+  publication lock so the authenticated chain tip cannot advance between observation and insert.
 - `build-logic/src/main/kotlin/cryptad/PortableArchiveNormalizer.kt` and the distribution/runtime
   convention plugins own deterministic portable archive construction. The independent Python
   archive gate verifies those bytes; neither layer is a substitute for the other.
@@ -421,8 +433,9 @@ Use this skill when you need to:
   app-document inserts, bounded content fetch, shared app-network budget service/store, durable
   content subscriptions, durable app data and update migration snapshots, app-data backup/restore
   routes, local app-service
-  discovery/dependency graph/grant-bundle routes, and the deterministic Platform API compatibility
-  contract plus the frozen Platform API 1.0 stable-baseline metadata,
+  discovery/dependency graph/grant-bundle routes, the host/operator-only Stable 1.0
+  support-lifecycle snapshot route, and the deterministic Platform API compatibility contract plus
+  the frozen Platform API 1.0 stable-baseline metadata,
   and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
   browser-session authorization decisions, bounded process-local app audit logs, and local
   app-update lifecycle/scheduler coordination above AppHost, signed catalog, vault, app-data,
@@ -487,8 +500,8 @@ Use this skill when you need to:
   review, catalog source/mirror health, fallback warnings, rollback candidates, key-rotation
   status, emergency advisory refresh controls, unified consent previews, update candidate, staged
   update, policy, health-gate, rollback, app-data backup/restore controls, advertised app-service
-  dependencies, grant-bundle approval/renewal state, and explicit legacy security/diagnostic
-  fallback actions for operators.
+  dependencies, grant-bundle approval/renewal state, Stable 1.0 lifecycle status/recovery guidance,
+  and explicit legacy security/diagnostic fallback actions for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
@@ -509,8 +522,9 @@ Use this skill when you need to:
   `QueuePageSnapshot`, `QueuePersistenceStatusSnapshot`, `QueueInsertOutcome`,
   `SecurityLevelsSnapshot`, `PageChromeSnapshot`, `FirstTimeWizardSnapshot`,
   `FirstTimeWizardCurrentBandwidthLimits`, `ToadletSymlinkEntry`, `WelcomePageSnapshot`,
-  `AlertListSnapshot`, `AlertSnapshot`, `AlertSeverity`, `LegacyAdminUsageSnapshot`, and
-  `LegacyAdminSurfaceUsage`
+  `AlertListSnapshot`, `AlertSnapshot`, `AlertSeverity`, `LegacyAdminUsageSnapshot`,
+  `LegacyAdminSurfaceUsage`, `CoreSupportLifecycleSnapshot`, and
+  `CoreSupportLifecycleStatus`
 - Daemon-backed adapters in `network.crypta.runtime.core` (currently in `:runtime-node`):
   `LegacyRuntimePorts`, `LegacyConfigPort`,
   `LegacyConnectivityPort`, `LegacyNodeInfoPort`, `LegacyPeerPort`, `LegacyRequestQueuePort`,
@@ -655,6 +669,23 @@ Use this skill when you need to:
 ### Update system (high level)
 - `NodeUpdateManager` coordinates updates.
 - Core updates use the package-based `CoreUpdater` (see the CoreUpdater skill for details).
+- Stable 1.0 support state uses the separate `CoreSupportLifecycleUpdater` under the trusted
+  `support-lifecycle` docname. It validates sequential descriptor editions and persists exact
+  last-known-good bytes without changing historical `core-info.json`.
+- Lifecycle state retains at most one future-effective descriptor. A validated next edition is
+  deferred until that predecessor activates locally, so an intermediate status or recovery path
+  cannot be skipped when the node clock trails the publisher.
+- `CoreUpdateActionPort` exposes the redacted lifecycle snapshot to the host/operator-only
+  `/api/v1/updates/support-lifecycle` route. The app-readable `/api/v1/updates/core` route contains
+  only updater availability and download readiness. Web Shell treats the lifecycle read as
+  best-effort so a transient diagnostic failure does not disable valid core-updater controls.
+- Disabling package updates leaves lifecycle polling active. Authenticated update-key compromise
+  durably invalidates both cached lifecycle authority and package-update authority across restart;
+  build lifecycle `revoked` does not trigger that key-compromise path.
+- Core package selection is an immutable descriptor/build/environment/package snapshot. Package
+  fetch, installer launch, and store handoff retain that exact identity and run beneath ordered
+  manager, selection, and lifecycle authorization. An update-URI change fences both subscribers and
+  package actions until the new trust scope is active.
 - The legacy plugin runtime has been removed; there is no separate plugin updater path in the
   current node.
 - Core updater state is exposed through CorePackage APIs in `NodeUpdateManager`:

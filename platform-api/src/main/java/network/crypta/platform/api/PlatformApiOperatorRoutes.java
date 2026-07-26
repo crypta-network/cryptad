@@ -23,6 +23,8 @@ import network.crypta.platform.appcatalog.FileAppSubmissionIntakeStore;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
+import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.spi.LegacyAdminUsagePort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -97,6 +99,9 @@ final class PlatformApiOperatorRoutes {
   /** Path-free Cryptad version label included in backup manifests. */
   private final Supplier<String> currentCryptaVersion;
 
+  /** Detached source for redacted last-known-good core support-lifecycle state. */
+  private final CoreUpdateActionPort coreUpdateActionPort;
+
   /**
    * Required route-composition inputs that come from the top-level router.
    *
@@ -166,6 +171,7 @@ final class PlatformApiOperatorRoutes {
     contentSubscriptionService = appServices.contentSubscriptionService();
     appDataService = appServices.appDataService();
     currentCryptaVersion = dependencies.currentCryptaVersion();
+    coreUpdateActionPort = dependencies.runtimePorts().coreUpdateAction();
     dashboardService =
         new OperatorBetaDashboardService(
             new OperatorBetaDashboardService.HandlerSources(
@@ -192,7 +198,7 @@ final class PlatformApiOperatorRoutes {
                 dashboardService,
                 appRoutes::clearAppStateAfterUninstall,
                 currentCryptaVersion,
-                dashboardService::supportBundle));
+                this::supportBundleWithoutRecoveryContext));
   }
 
   /**
@@ -230,7 +236,7 @@ final class PlatformApiOperatorRoutes {
       if (!METHOD_GET.equals(request.method())) {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
       }
-      return PlatformApiResponse.ok(dashboardService.dashboard());
+      return PlatformApiResponse.ok(dashboard());
     }
     if ("rc-dashboard".equals(resource)) {
       if (!METHOD_GET.equals(request.method())) {
@@ -348,7 +354,7 @@ final class PlatformApiOperatorRoutes {
 
   private Map<String, Object> rcDashboard() {
     LinkedHashMap<String, Object> dashboard = LinkedHashMap.newLinkedHashMap(16);
-    dashboard.putAll(dashboardService.dashboard());
+    dashboard.putAll(dashboard());
     dashboard.put("dashboardKind", "operator-rc-recovery-dashboard");
     dashboard.put(
         "betaCompatibility",
@@ -367,7 +373,29 @@ final class PlatformApiOperatorRoutes {
 
   private Map<String, Object> supportBundle() {
     return supportBundleForExport(
-        dashboardService.supportBundle(), recoveryService.supportContext());
+        supportBundleWithoutRecoveryContext(), recoveryService.supportContext());
+  }
+
+  private Map<String, Object> dashboard() {
+    LinkedHashMap<String, Object> dashboard = new LinkedHashMap<>(dashboardService.dashboard());
+    dashboard.put("coreSupportLifecycle", lifecycleSnapshot());
+    return dashboard;
+  }
+
+  private Map<String, Object> supportBundleWithoutRecoveryContext() {
+    LinkedHashMap<String, Object> bundle = new LinkedHashMap<>(dashboardService.supportBundle());
+    bundle.put("coreSupportLifecycle", lifecycleSnapshot());
+    bundle.put("supportDigest", OperatorBetaDashboardService.supportDigestForPayload(bundle));
+    return bundle;
+  }
+
+  private Map<String, Object> lifecycleSnapshot() {
+    CoreSupportLifecycleSnapshot snapshot = coreUpdateActionPort.supportLifecycleSnapshot();
+    return (snapshot == null
+            ? CoreSupportLifecycleSnapshot.unknown(
+                -1, List.of("lifecycle_runtime_snapshot_unavailable"))
+            : snapshot)
+        .toJsonValue();
   }
 
   static Map<String, Object> supportBundleForExport(

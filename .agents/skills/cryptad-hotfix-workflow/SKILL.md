@@ -123,3 +123,10 @@ publication-boundary requirements. Pin the two producer identities to the checke
 `.github/workflows/stable-1.0-maintenance-input-producer.yml` and
 `.github/workflows/stable-1.0-maintenance-windows-package-producer.yml` workflows at the exact
 candidate commit; do not substitute a generic artifact upload or a URL-only producer.
+
+If the hotfix replaces a lifecycle-revoked or security-fixes-only build, its lifecycle transition
+must bind the same public advisory/incident authorization and authenticated hotfix publication.
+Only the separate protected lifecycle workflow may make the verified hotfix `current-stable` and
+retain the predecessor's revocation or support history. Build revocation never blows the update key
+and cannot be cleared by routine maintenance. Follow
+`docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`.

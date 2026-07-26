@@ -41,7 +41,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,7 +83,7 @@ class RevocationCheckerTest {
     when(node.network().ticker()).thenReturn(ticker);
 
     // Fetch context for constructor path
-    HighLevelSimpleClient hlsc = Mockito.mock(HighLevelSimpleClient.class);
+    HighLevelSimpleClient hlsc = mock(HighLevelSimpleClient.class);
     when(core.makeClient(Mockito.anyShort(), Mockito.anyBoolean(), Mockito.anyBoolean()))
         .thenReturn(hlsc);
     when(hlsc.getFetchContext()).thenReturn(getFetchContext());
@@ -106,14 +109,39 @@ class RevocationCheckerTest {
   }
 
   @Test
-  void start_whenManagerAlreadyBlown_expectFalseAndNoStart() throws Exception {
-    // Arrange
+  void start_whenManagerLocallyBlown_expectRevocationFetchStarts() throws Exception {
     when(manager.isBlown()).thenReturn(true);
+    when(manager.isUpdateKeyCompromised()).thenReturn(false);
 
-    // Act
     boolean alreadyRunning = checker.start(true, true);
 
-    // Assert
+    assertFalse(alreadyRunning);
+    verify(clientContext).start(Mockito.<ClientGetter>any());
+  }
+
+  @Test
+  void start_whenCompromiseRestoredWithoutCertificate_expectRevocationFetchStarts()
+      throws Exception {
+    when(manager.isBlown()).thenReturn(true);
+    when(manager.isUpdateKeyCompromised()).thenReturn(true);
+
+    boolean alreadyRunning = checker.start(true, true);
+
+    assertFalse(alreadyRunning);
+    verify(clientContext).start(Mockito.<ClientGetter>any());
+  }
+
+  @Test
+  void start_whenAuthenticatedCompromiseCertificateAlreadyLoaded_expectNoStart() throws Exception {
+    when(manager.isBlown()).thenReturn(true);
+    when(manager.isUpdateKeyCompromised()).thenReturn(true);
+    FetchResult result = mock(FetchResult.class);
+    when(result.asByteArray()).thenReturn("Revoked".getBytes(StandardCharsets.UTF_8));
+    when(result.getMimeType()).thenReturn("text/plain");
+    checker.onSuccess(result, null, new ArrayBucket("BLOB".getBytes(StandardCharsets.UTF_8)));
+
+    boolean alreadyRunning = checker.start(true, true);
+
     assertFalse(alreadyRunning);
     verify(clientContext, never()).start(Mockito.<ClientGetter>any());
   }
@@ -138,7 +166,7 @@ class RevocationCheckerTest {
 
     // Replace internal getter with a spy so we can verify cancel()
     ClientGetter original = cgCap.getValue();
-    ClientGetter spyGetter = Mockito.spy(original);
+    ClientGetter spyGetter = spy(original);
     java.lang.reflect.Field f = RevocationChecker.class.getDeclaredField("revocationGetter");
     f.setAccessible(true);
     f.set(checker, spyGetter);
@@ -159,7 +187,7 @@ class RevocationCheckerTest {
     // Spy the internal getter to observe cancel()
     ArgumentCaptor<ClientGetter> cgCap = ArgumentCaptor.forClass(ClientGetter.class);
     verify(clientContext).start(cgCap.capture());
-    ClientGetter spyGetter = Mockito.spy(cgCap.getValue());
+    ClientGetter spyGetter = spy(cgCap.getValue());
     java.lang.reflect.Field f = RevocationChecker.class.getDeclaredField("revocationGetter");
     f.setAccessible(true);
     f.set(checker, spyGetter);
@@ -167,7 +195,7 @@ class RevocationCheckerTest {
     // Act
     checker.onChangeRevocationURI();
 
-    // Assert: old getter cancelled and a new start queued
+    // Assert: old getter canceled and a new start queued
     verify(spyGetter, times(1)).cancel(clientContext);
     verify(clientContext, times(2)).start(Mockito.<ClientGetter>any());
   }
@@ -203,7 +231,7 @@ class RevocationCheckerTest {
   @Test
   void start_whenStartThrowsRecentlyFailed_expectFalse_andNoBlow() throws Exception {
     // Arrange
-    Mockito.doThrow(new FetchException(FetchExceptionMode.RECENTLY_FAILED))
+    doThrow(new FetchException(FetchExceptionMode.RECENTLY_FAILED))
         .when(clientContext)
         .start(Mockito.<ClientGetter>any());
 
@@ -219,7 +247,7 @@ class RevocationCheckerTest {
   void start_whenStartThrowsOtherFetchException_expectFalse_andBlowTrue() throws Exception {
     // Arrange
     Mockito.reset(clientContext); // clear any previous stubbing
-    Mockito.doThrow(new FetchException(FetchExceptionMode.BUCKET_ERROR))
+    doThrow(new FetchException(FetchExceptionMode.BUCKET_ERROR))
         .when(clientContext)
         .start(Mockito.<ClientGetter>any());
 
@@ -297,7 +325,7 @@ class RevocationCheckerTest {
     String message = "Revoked!";
     byte[] blobBytes = "BLOB".getBytes(StandardCharsets.UTF_8);
     ArrayBucket blob = new ArrayBucket(blobBytes);
-    FetchResult result = Mockito.mock(FetchResult.class);
+    FetchResult result = mock(FetchResult.class);
     when(result.asByteArray()).thenReturn(message.getBytes(StandardCharsets.UTF_8));
     when(result.getMimeType()).thenReturn("text/plain");
 
@@ -412,7 +440,7 @@ class RevocationCheckerTest {
     try (FileOutputStream fos = new FileOutputStream(blobFile)) {
       fos.write("OLD".getBytes(StandardCharsets.UTF_8));
     }
-    UpdateOverMandatoryManager uom = Mockito.mock(UpdateOverMandatoryManager.class);
+    UpdateOverMandatoryManager uom = mock(UpdateOverMandatoryManager.class);
     when(manager.getUpdateOverMandatory()).thenReturn(uom);
 
     // Act

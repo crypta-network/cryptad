@@ -55,7 +55,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["role", "fileName", "digest", "sizeBytes", "publicUri"],
       "properties": {
-        "role": {"enum": ["product", "package", "release-notes", "known-limitations", "checksums", "provenance", "authorization", "core-info", "stable-catalog", "stable-catalog-signature"]},
+        "role": {"enum": ["product", "package", "release-notes", "known-limitations", "checksums", "provenance", "authorization", "core-info", "pending-lifecycle-transition", "stable-catalog", "stable-catalog-signature"]},
         "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
         "digest": {"$ref": "#/$defs/digest"},
         "sizeBytes": {"type": "integer", "minimum": 1},

@@ -1,4 +1,4 @@
-# Stable maintenance publication backend
+# Stable maintenance and lifecycle publication backends
 
 This directory contains the dependency-free provider used by the protected Stable 1.0
 maintenance workflow. It is the concrete implementation behind
@@ -14,6 +14,18 @@ dispatch additionally supplies the exact producer run id and Actions artifact di
 action verifies all six bindings and the GitHub attestation before installing the wheel without
 dependency resolution.
 
+The same deterministic wheel also carries the separate lifecycle-only factory
+`cryptad_stable_maintenance_backend:lifecycle_factory`. It returns an object whose only operations
+are `observe_lifecycle`, `observe_latest_maintenance_tip`, `publish_lifecycle`, and
+`verify_lifecycle`; it cannot create a tag or
+release, publish catalog/CoreUpdater state, activate a maintenance pointer, or revoke an update
+key. The canonical lifecycle producer is
+`.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml`. The protected
+lifecycle workflow independently pins that producer, source commit, artifact digest, wheel digest,
+fixed artifact name, and fixed lifecycle factory before loading it outside the repository checkout.
+The lifecycle insert capability is supplied only to the publication call and is never available
+during provider import or read-only verification.
+
 Configure these immutable public-safe identity pins where the evidence verifier and both
 publication environments can read the same values:
 
@@ -27,6 +39,46 @@ Each `publish` dispatch separately supplies the producer run id, fixed artifact 
 artifact digest. Keep the catalog, CoreUpdater, and latest-pointer capability values in their
 purpose-specific protected environments; they are not provider identity configuration and must not
 be visible while the wheel is imported or while an unrelated target is observed or mutated.
+
+The lifecycle evidence and publication environments use corresponding immutable pins:
+
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID`, set to the successful canonical producer
+  run that owns the pinned artifact;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME`, fixed to
+  `stable-1.0-support-lifecycle-publication-backend`;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST`, set to that run's exact Actions
+  artifact digest;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT`;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256`;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW`, fixed to the canonical lifecycle
+  producer above;
+- `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND`, fixed to
+  `cryptad_stable_maintenance_backend:lifecycle_factory`.
+
+The protected maintenance workflow reads the run id, artifact name, and artifact digest from these
+repository variables instead of adding them to its already full manual-dispatch contract. Every
+authorization or publication run reauthenticates the run, artifact, attestation, source, wheel,
+signer, and entrypoint. The dedicated lifecycle publication workflow continues to accept explicit
+backend coordinates for its own protected publication and verification operations.
+
+The distinct `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT` protected secret is required only in the
+publication environment. It identifies the narrowly scoped compare-and-swap deployment capability;
+the read-only verification job receives no insert material.
+
+For lifecycle state, the configured public request URI serves the canonical descriptor bytes.
+Immediately before a lifecycle insertion, the read-only
+`observe_latest_maintenance_tip` operation fetches the separately authorization-bound maintenance
+pointer URI. GA-only state requires a public `404` or `410`. Post-GA state requires the exact
+pointer bytes, digest, release id, integer build, baseline digest, and publication-receipt digest
+from the authenticated lifecycle inventory. This method has no maintenance mutation capability.
+Observation accepts only an exact authorized target or its exact declared predecessor; redirects,
+private DNS answers, malformed JSON, noncanonical bytes, unrelated editions, and digest or
+update-key-scope changes fail closed. The protected capability accepts one canonical
+`cryptad-stable-support-lifecycle-publication-request` carrying the exact descriptor bytes and
+previous edition/digest. It must compare-and-swap rather than overwrite a conflict, and return the
+closed `cryptad-stable-support-lifecycle-publication-result`. Success is not trusted until the
+provider fetches the public request URI again and the protected adapter verifies the exact bytes.
+An update-key revocation operation is deliberately absent from this lifecycle protocol.
 
 ## Protected deployment-service protocol
 

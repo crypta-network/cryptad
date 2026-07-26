@@ -311,3 +311,17 @@ rollback gates for affected apps.
 Core package discovery remains a separate package-based CoreUpdater operation. See the [Stable 1.0
 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Core lifecycle interaction
+
+The signed app catalog and app-update service remain the authorities for app availability,
+advisories, exact-version denylists, review trust, and replacement metadata. The Stable 1.0 core
+lifecycle report projects that authenticated state for support decisions; it does not create a
+second app lifecycle or override catalog signatures.
+
+An unsupported or revoked core build does not automatically uninstall an app, erase app data,
+apply an app update, or bypass consent, review, migration, backup, and rollback checks. Any narrow
+restriction on a security-sensitive app operation must be named by the versioned lifecycle policy,
+shown to the operator, and removed after a verified core upgrade.
+
+See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

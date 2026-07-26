@@ -6,11 +6,18 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
@@ -23,6 +30,7 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.fs.AppEnv;
+import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -32,12 +40,15 @@ import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerMessenger;
 import network.crypta.node.PeerNode;
+import network.crypta.node.PeerTransport;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.Version;
+import network.crypta.runtime.alerts.RevocationKeyFoundUserAlert;
 import network.crypta.runtime.alerts.UserAlert;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.Ticker;
 import network.crypta.support.io.ArrayBucket;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,15 +57,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+
+import static org.mockito.Mockito.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -79,6 +93,7 @@ class NodeUpdateManagerTest {
   @Mock PeerManager peerManager;
   @Mock PeerMessenger peerMessenger;
   @Mock NodeStats nodeStats;
+  @Mock Ticker ticker;
 
   private NodeUpdateManager manager;
   private Config config;
@@ -87,6 +102,11 @@ class NodeUpdateManagerTest {
   private static final String VALID_TEST_CHK =
       "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
           + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml";
+
+  private static final String SUPPORT_LIFECYCLE_IDENTITY_DIGEST =
+      "sha256:b6386982e7eed893448339eed564fcdc140547266b0dc70978ddfa345f6136d7";
+  private static final String SUPPORT_LIFECYCLE_STATE_PATH =
+      "updates/core/support-lifecycle-last-known-good.json";
 
   @BeforeEach
   void setUp() throws Exception {
@@ -104,6 +124,7 @@ class NodeUpdateManagerTest {
     when(nodeCore.getPersistentTempDir()).thenReturn(persistentTmpDir);
     when(nodeCore.getAlerts()).thenReturn(alerts);
     when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
     when(peerManager.messenger()).thenReturn(peerMessenger);
     when(node.network().stats()).thenReturn(nodeStats);
 
@@ -120,15 +141,25 @@ class NodeUpdateManagerTest {
     when(node.nodeDir()).thenReturn(nodeProgramDir);
 
     // Minimal fetch context for RevocationChecker construction
-    HighLevelSimpleClient hlsc = Mockito.mock(HighLevelSimpleClient.class);
+    HighLevelSimpleClient hlsc = mock(HighLevelSimpleClient.class);
     FetchContext fctx = getFetchContext();
-    when(nodeCore.makeClient(Mockito.anyShort(), Mockito.anyBoolean(), Mockito.anyBoolean()))
-        .thenReturn(hlsc);
+    when(nodeCore.makeClient(anyShort(), anyBoolean(), anyBoolean())).thenReturn(hlsc);
     when(hlsc.getFetchContext()).thenReturn(fctx);
     when(nodeCore.getClientContext()).thenReturn(clientContext);
 
     config = new Config();
     manager = new NodeUpdateManager(node, config);
+  }
+
+  @Test
+  void supportLifecycleTrustBinding_whenUsingCanonicalUpdateKey_expectPinnedOpaqueScope() {
+    CoreSupportLifecycleParser.TrustBinding binding = manager.supportLifecycleTrustBinding();
+
+    assertEquals("support-lifecycle", manager.getSupportLifecycleURI().getDocName());
+    assertEquals(SUPPORT_LIFECYCLE_IDENTITY_DIGEST, binding.updateKeyIdentityDigest());
+    assertEquals(
+        SUPPORT_LIFECYCLE_IDENTITY_DIGEST + "/support-lifecycle/0", binding.updateKeyScope());
+    assertEquals("support-lifecycle", binding.updateKeyDocName());
   }
 
   private static @NotNull FetchContext getFetchContext() {
@@ -151,6 +182,45 @@ class NodeUpdateManagerTest {
     coreUpdaterField.set(manager, updater);
   }
 
+  private void setSupportLifecycleUpdater(CoreSupportLifecycleUpdater updater) throws Exception {
+    Field updaterField = NodeUpdateManager.class.getDeclaredField("supportLifecycleUpdater");
+    updaterField.setAccessible(true);
+    updaterField.set(manager, updater);
+  }
+
+  private CoreSupportLifecycleUpdater getSupportLifecycleUpdater() throws Exception {
+    return getSupportLifecycleUpdater(manager);
+  }
+
+  private static CoreSupportLifecycleUpdater getSupportLifecycleUpdater(NodeUpdateManager target)
+      throws Exception {
+    Field updaterField = NodeUpdateManager.class.getDeclaredField("supportLifecycleUpdater");
+    updaterField.setAccessible(true);
+    return (CoreSupportLifecycleUpdater) updaterField.get(target);
+  }
+
+  private CoreSupportLifecycleState getSupportLifecycleState() throws Exception {
+    return getSupportLifecycleState(manager);
+  }
+
+  private static CoreSupportLifecycleState getSupportLifecycleState(NodeUpdateManager target)
+      throws Exception {
+    Field stateField = NodeUpdateManager.class.getDeclaredField("supportLifecycleState");
+    stateField.setAccessible(true);
+    return (CoreSupportLifecycleState) stateField.get(target);
+  }
+
+  private RevocationKeyFoundUserAlert getRevocationAlert() throws Exception {
+    return getRevocationAlert(manager);
+  }
+
+  private static RevocationKeyFoundUserAlert getRevocationAlert(NodeUpdateManager target)
+      throws Exception {
+    Field alertField = NodeUpdateManager.class.getDeclaredField("revocationAlert");
+    alertField.setAccessible(true);
+    return (RevocationKeyFoundUserAlert) alertField.get(target);
+  }
+
   @Test
   void isEnabled_initiallyFalse_thenStartCoreUpdater_true() {
     // Arrange + Act
@@ -166,9 +236,378 @@ class NodeUpdateManagerTest {
   }
 
   @Test
+  void enable_whenPackageUpdatesAreDisabled_expectLifecycleSubscriberRemainsActive()
+      throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.enable(true);
+    CoreSupportLifecycleUpdater lifecycleUpdater = getSupportLifecycleUpdater();
+
+    manager.enable(false);
+
+    assertFalse(manager.isEnabled());
+    assertNull(manager.getCoreUpdater());
+    assertSame(lifecycleUpdater, getSupportLifecycleUpdater());
+    assertTrue(lifecycleUpdater.isFetchingEnabled());
+  }
+
+  @Test
+  void enable_whenPackageUpdatesStartDisabled_expectLifecycleSubscriberStarts() throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+
+    manager.enable(false);
+
+    CoreSupportLifecycleUpdater lifecycleUpdater = getSupportLifecycleUpdater();
+    assertFalse(manager.isEnabled());
+    assertNotNull(lifecycleUpdater);
+    assertTrue(lifecycleUpdater.isFetchingEnabled());
+    verify(uskManager).subscribe(any(), same(lifecycleUpdater), eq(true), same(lifecycleUpdater));
+  }
+
+  @Test
+  void enable_whenCalledRepeatedly_expectLifecycleSubscriberIsNotDuplicated() throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.enable(false);
+    CoreSupportLifecycleUpdater lifecycleUpdater = getSupportLifecycleUpdater();
+
+    manager.enable(true);
+    manager.enable(true);
+
+    assertSame(lifecycleUpdater, getSupportLifecycleUpdater());
+    verify(uskManager).subscribe(any(), same(lifecycleUpdater), eq(true), same(lifecycleUpdater));
+  }
+
+  @Test
+  void enable_whenUpdateKeyIsBlown_expectLifecycleSubscriberRemainsStopped() throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.enable(false);
+    assertNotNull(getSupportLifecycleUpdater());
+
+    manager.blow("revoked", false);
+    manager.enable(false);
+
+    assertNull(getSupportLifecycleUpdater());
+    assertTrue(manager.isUpdateKeyCompromised());
+  }
+
+  @Test
+  void start_whenRestartRestoresCompromise_expectUpdateSubscribersStoppedAndRevocationRearmed()
+      throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.blow("authenticated update-key compromise", false);
+    clearInvocations(alerts, clientContext, uskManager);
+    NodeUpdateManager restarted = new NodeUpdateManager(node, new Config());
+    RevocationKeyFoundUserAlert restoredAlert = getRevocationAlert(restarted);
+
+    restarted.start();
+    restarted.startCoreUpdater();
+    restarted.startSupportLifecycleUpdater();
+
+    assertNotNull(restoredAlert);
+    assertTrue(restarted.isBlown());
+    assertTrue(restarted.isUpdateKeyCompromised());
+    assertFalse(restarted.isEnabled());
+    assertNull(restarted.getCoreUpdater());
+    assertNull(getSupportLifecycleUpdater(restarted));
+    verify(alerts).register(same(restoredAlert));
+    verifyNoInteractions(uskManager);
+    ArgumentCaptor<ClientGetter> getterCaptor = ArgumentCaptor.forClass(ClientGetter.class);
+    verify(clientContext).start(getterCaptor.capture());
+    assertEquals(restarted.getRevocationURI(), getterCaptor.getValue().getURI());
+  }
+
+  @Test
+  void start_whenPersistedCompromiseMarkerIsMalformed_expectFailClosedAlertAndNoUpdaters()
+      throws Exception {
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+    Files.createDirectories(tempDir.resolve("node/updates/core"));
+    Files.writeString(trustInvalidationMarker(descriptor), "malformed");
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    NodeUpdateManager restarted = new NodeUpdateManager(node, new Config());
+    RevocationKeyFoundUserAlert restoredAlert = getRevocationAlert(restarted);
+
+    restarted.start();
+
+    assertNotNull(restoredAlert);
+    assertTrue(restarted.isBlown());
+    assertTrue(restarted.isUpdateKeyCompromised());
+    assertFalse(restarted.supportLifecycleSnapshot().known());
+    assertEquals(
+        List.of("lifecycle_trust_invalidation_marker_invalid"),
+        restarted.supportLifecycleSnapshot().warnings());
+    assertNull(restarted.getCoreUpdater());
+    assertNull(getSupportLifecycleUpdater(restarted));
+    verify(alerts).register(same(restoredAlert));
+    verifyNoInteractions(uskManager);
+    ArgumentCaptor<ClientGetter> getterCaptor = ArgumentCaptor.forClass(ClientGetter.class);
+    verify(clientContext).start(getterCaptor.capture());
+    assertEquals(restarted.getRevocationURI(), getterCaptor.getValue().getURI());
+  }
+
+  @Test
+  void blow_whenRestartedCheckerRecoversCertificate_expectRevocationUomRearmed() throws Exception {
+    manager.blow("authenticated update-key compromise", false);
+    clearInvocations(peerMessenger);
+    NodeUpdateManager restarted = new NodeUpdateManager(node, new Config());
+    FetchResult result = mock(FetchResult.class);
+    when(result.asByteArray()).thenReturn("revoked".getBytes(StandardCharsets.UTF_8));
+    when(result.getMimeType()).thenReturn("text/plain");
+    PeerNode newlyConnectedPeer = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(newlyConnectedPeer.getNodeName()).thenReturn("Cryptad");
+    when(newlyConnectedPeer.getBuildNumber()).thenReturn(Version.currentBuildNumber());
+    when(newlyConnectedPeer.transport()).thenReturn(transport);
+
+    restarted
+        .getRevocationChecker()
+        .onSuccess(result, null, new ArrayBucket("blob".getBytes(StandardCharsets.UTF_8)));
+    restarted.maybeSendUOMAnnounce(newlyConnectedPeer);
+
+    assertTrue(restarted.getRevocationChecker().hasBlown());
+    verify(peerMessenger)
+        .localBroadcast(
+            any(Message.class),
+            eq(true),
+            eq(true),
+            same(restarted.getByteCounter()),
+            eq(NodeUpdateManager.TRANSITION_VERSION),
+            eq(Integer.MAX_VALUE));
+    ArgumentCaptor<Message> announcement = ArgumentCaptor.forClass(Message.class);
+    verify(transport).sendAsync(announcement.capture(), isNull(), same(restarted.getByteCounter()));
+    assertTrue(announcement.getValue().getBoolean(DMT.HAVE_REVOCATION_KEY));
+  }
+
+  @Test
+  void blow_whenUpdateKeyIsCompromised_expectLifecycleTrustInvalidated() throws Exception {
+    CoreSupportLifecycleState lifecycleState = getSupportLifecycleState();
+    lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
+    Path persisted = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+    assertTrue(manager.supportLifecycleSnapshot().known());
+    assertTrue(Files.isRegularFile(persisted));
+
+    manager.blow("revoked", false);
+
+    assertFalse(manager.supportLifecycleSnapshot().known());
+    assertEquals(
+        List.of("lifecycle_trust_invalidated"), manager.supportLifecycleSnapshot().warnings());
+    assertFalse(Files.exists(persisted));
+    assertTrue(Files.isRegularFile(trustInvalidationMarker(persisted)));
+  }
+
+  @Test
+  void constructor_whenNodeDirectoryRootIsSymbolicLink_expectLifecycleStateUsesPinnedTarget()
+      throws Exception {
+    Path realNode = Files.createDirectory(tempDir.resolve("real-node"));
+    Path configuredNode = tempDir.resolve("configured-node");
+    Files.createSymbolicLink(configuredNode, realNode);
+    ProgramDirectory nodeProgramDir = new ProgramDirectory();
+    nodeProgramDir.move(configuredNode.toString());
+    when(node.nodeDir()).thenReturn(nodeProgramDir);
+    NodeUpdateManager symlinked = new NodeUpdateManager(node, new Config());
+    CoreSupportLifecycleState lifecycleState = getSupportLifecycleState(symlinked);
+    Path persisted = realNode.resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+
+    lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
+    assertTrue(Files.isRegularFile(persisted));
+    assertTrue(symlinked.supportLifecycleSnapshot().known());
+
+    symlinked.blow("authenticated update-key compromise", false);
+
+    assertFalse(Files.exists(persisted));
+    assertTrue(Files.isRegularFile(trustInvalidationMarker(persisted)));
+    assertTrue(
+        Files.isRegularFile(
+            realNode.resolve(NodeUpdateManager.UPDATE_KEY_TRUST_INVALIDATION_FILE)));
+    assertTrue(symlinked.isUpdateKeyCompromised());
+  }
+
+  @Test
+  void blow_whenUpdateKeyIsCompromised_expectSubscribersStoppedBeforeTrustPersistence()
+      throws Exception {
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+    Path marker = trustInvalidationMarker(descriptor);
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    AtomicInteger preparedSubscribers = new AtomicInteger();
+    AtomicInteger stoppedSubscribers = new AtomicInteger();
+    setCoreUpdater(coreUpdater);
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    doAnswer(
+            _ -> {
+              assertTrue(manager.isBlown());
+              assertTrue(manager.isUpdateKeyCompromised());
+              assertFalse(Files.exists(marker));
+              preparedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(coreUpdater)
+        .preKill();
+    doAnswer(
+            _ -> {
+              assertTrue(manager.isBlown());
+              assertTrue(manager.isUpdateKeyCompromised());
+              assertFalse(Files.exists(marker));
+              preparedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .preKill();
+    doAnswer(
+            _ -> {
+              assertFalse(Files.exists(marker));
+              stoppedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(coreUpdater)
+        .kill();
+    doAnswer(
+            _ -> {
+              assertFalse(Files.exists(marker));
+              stoppedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .kill();
+
+    manager.blow("authenticated update-key compromise", false);
+
+    assertEquals(2, preparedSubscribers.get());
+    assertEquals(2, stoppedSubscribers.get());
+    verify(coreUpdater).kill();
+    verify(lifecycleUpdater).kill();
+    assertTrue(Files.isRegularFile(marker));
+  }
+
+  @Test
+  void blow_whenCompromiseMarkersCannotPersist_expectRetryRestoresDurableRestartLatch()
+      throws Exception {
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+    Path siblingMarker = trustInvalidationMarker(descriptor);
+    Path fallbackMarker =
+        tempDir.resolve("node").resolve(NodeUpdateManager.UPDATE_KEY_TRUST_INVALIDATION_FILE);
+    Files.createDirectories(siblingMarker);
+    Files.createDirectory(fallbackMarker);
+
+    manager.blow("authenticated update-key compromise", false);
+
+    assertTrue(manager.isBlown());
+    assertTrue(manager.isUpdateKeyCompromised());
+    assertFalse(manager.supportLifecycleSnapshot().known());
+    assertEquals(
+        List.of("lifecycle_trust_invalidation_persistence_failed"),
+        manager.supportLifecycleSnapshot().warnings());
+    ArgumentCaptor<Runnable> retry = ArgumentCaptor.forClass(Runnable.class);
+    verify(ticker).queueTimedJob(retry.capture(), eq(TimeUnit.SECONDS.toMillis(1)));
+
+    Files.delete(siblingMarker);
+    Files.delete(fallbackMarker);
+    retry.getValue().run();
+    NodeUpdateManager restarted = new NodeUpdateManager(node, new Config());
+
+    assertTrue(Files.isRegularFile(siblingMarker));
+    assertTrue(Files.isRegularFile(fallbackMarker));
+    assertEquals(
+        List.of("lifecycle_trust_invalidated"), manager.supportLifecycleSnapshot().warnings());
+    assertTrue(restarted.isBlown());
+    assertTrue(restarted.isUpdateKeyCompromised());
+    assertFalse(restarted.supportLifecycleSnapshot().known());
+    verify(ticker, times(1)).queueTimedJob(any(Runnable.class), eq(TimeUnit.SECONDS.toMillis(1)));
+  }
+
+  @Test
+  void blow_whenLocalFailurePrecedesCompromise_expectLifecycleTrustInvalidatedOnlyByCompromise()
+      throws Exception {
+    USKManager uskManager = mock(USKManager.class);
+    when(nodeCore.getUskManager()).thenReturn(uskManager);
+    manager.enable(false);
+    CoreSupportLifecycleUpdater lifecycleUpdater = getSupportLifecycleUpdater();
+    CoreSupportLifecycleState lifecycleState = getSupportLifecycleState();
+    lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
+    Path persisted = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+
+    manager.blow("local updater failure", true);
+
+    assertTrue(manager.supportLifecycleSnapshot().known());
+    assertTrue(Files.isRegularFile(persisted));
+    assertFalse(manager.isUpdateKeyCompromised());
+    assertSame(lifecycleUpdater, getSupportLifecycleUpdater());
+    assertFalse(lifecycleUpdater.isFetchingBlockedByManagerState());
+
+    manager.blow("later authenticated compromise", false);
+
+    assertFalse(manager.supportLifecycleSnapshot().known());
+    assertEquals(
+        List.of("lifecycle_trust_invalidated"), manager.supportLifecycleSnapshot().warnings());
+    assertFalse(Files.exists(persisted));
+    assertTrue(Files.isRegularFile(trustInvalidationMarker(persisted)));
+    assertTrue(manager.isUpdateKeyCompromised());
+    assertNull(getSupportLifecycleUpdater());
+    assertTrue(lifecycleUpdater.isFetchingBlockedByManagerState());
+  }
+
+  @Test
+  void blow_whenLocalAlertRegistrationRacesWithCompromise_expectOnlyCompromiseAlertRemains()
+      throws Exception {
+    Set<UserAlert> registeredAlerts = ConcurrentHashMap.newKeySet();
+    AtomicInteger registrationCalls = new AtomicInteger();
+    CountDownLatch firstRegistrationEntered = new CountDownLatch(1);
+    CountDownLatch releaseFirstRegistration = new CountDownLatch(1);
+    CountDownLatch authenticatedRegistrationEntered = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              UserAlert alert = invocation.getArgument(0);
+              int call = registrationCalls.incrementAndGet();
+              if (call == 1) {
+                firstRegistrationEntered.countDown();
+                assertTrue(releaseFirstRegistration.await(5, TimeUnit.SECONDS));
+              } else {
+                authenticatedRegistrationEntered.countDown();
+              }
+              registeredAlerts.add(alert);
+              return null;
+            })
+        .when(alerts)
+        .register(any(UserAlert.class));
+    doAnswer(
+            invocation -> {
+              UserAlert alert = invocation.getArgument(0);
+              registeredAlerts.remove(alert);
+              return null;
+            })
+        .when(alerts)
+        .unregister(any(UserAlert.class));
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      try {
+        Future<?> localFailure = executor.submit(() -> manager.blow("local updater failure", true));
+        assertTrue(firstRegistrationEntered.await(5, TimeUnit.SECONDS));
+        Future<?> authenticatedCompromise =
+            executor.submit(() -> manager.blow("authenticated update-key compromise", false));
+
+        assertFalse(authenticatedRegistrationEntered.await(1, TimeUnit.SECONDS));
+        releaseFirstRegistration.countDown();
+        localFailure.get(5, TimeUnit.SECONDS);
+        authenticatedCompromise.get(5, TimeUnit.SECONDS);
+
+        assertTrue(manager.isUpdateKeyCompromised());
+        assertEquals(1, registeredAlerts.size());
+        assertTrue(registeredAlerts.contains(getRevocationAlert()));
+      } finally {
+        releaseFirstRegistration.countDown();
+        executor.shutdownNow();
+      }
+    }
+  }
+
+  @Test
   void hasNewCorePackage_whenUpdaterCallBlocks_expectManagerMonitorReleased() throws Exception {
     // Arrange
-    CoreUpdater coreUpdater = Mockito.mock(CoreUpdater.class);
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
     CountDownLatch enteredUpdater = new CountDownLatch(1);
     CountDownLatch releaseUpdater = new CountDownLatch(1);
     when(coreUpdater.canUpdateNow())
@@ -180,21 +619,57 @@ class NodeUpdateManagerTest {
             });
     setCoreUpdater(coreUpdater);
 
-    ExecutorService executor = Executors.newFixedThreadPool(2);
-    try {
-      // Act
-      Future<Boolean> hasNewCorePackage = executor.submit(manager::hasNewCorePackage);
-      assertTrue(enteredUpdater.await(5, TimeUnit.SECONDS));
-      Future<Boolean> autoUpdateAllowed = executor.submit(manager::isAutoUpdateAllowed);
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      try {
+        // Act
+        Future<Boolean> hasNewCorePackage = executor.submit(manager::hasNewCorePackage);
+        assertTrue(enteredUpdater.await(5, TimeUnit.SECONDS));
+        Future<Boolean> autoUpdateAllowed = executor.submit(manager::isAutoUpdateAllowed);
 
-      // Assert
-      assertFalse(autoUpdateAllowed.get(1, TimeUnit.SECONDS));
-      releaseUpdater.countDown();
-      assertTrue(hasNewCorePackage.get(5, TimeUnit.SECONDS));
-    } finally {
-      releaseUpdater.countDown();
-      executor.shutdownNow();
+        // Assert
+        assertFalse(autoUpdateAllowed.get(1, TimeUnit.SECONDS));
+        releaseUpdater.countDown();
+        assertTrue(hasNewCorePackage.get(5, TimeUnit.SECONDS));
+      } finally {
+        releaseUpdater.countDown();
+        executor.shutdownNow();
+      }
     }
+  }
+
+  private static byte[] lifecycleDescriptorForRunningBuild() throws Exception {
+    Map<String, Object> descriptor =
+        JsonMini.parseObject(
+            Files.readString(
+                Path.of(
+                    "tools/release-certification/fixtures/stable-lifecycle/"
+                        + "runtime-descriptor-v1.json"),
+                StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> entry =
+        (Map<String, Object>) ((List<?>) descriptor.get("entries")).getFirst();
+    String build = Integer.toString(Version.currentBuildNumber());
+    String runtimeRevision = Version.gitRevision();
+    String sourceCommit = "a".repeat(40);
+    if (runtimeRevision.matches("[0-9a-f]{7,40}")) {
+      sourceCommit = runtimeRevision + "0".repeat(40 - runtimeRevision.length());
+    }
+    entry.put("releaseId", "stable-1.0-build-" + build);
+    entry.put("buildVersion", build);
+    entry.put("tag", "v" + build);
+    entry.put("sourceCommit", sourceCommit);
+    descriptor.put("currentStableBuild", build);
+    descriptor.put("minimumSupportedBuild", build);
+    descriptor.put("minimumSecuritySupportedBuild", build);
+    descriptor.put("recommendedBuild", build);
+    descriptor.remove("descriptorDigest");
+    descriptor.put("descriptorDigest", CoreSupportLifecycleParser.semanticDigest(descriptor));
+    return CoreSupportLifecycleParser.canonicalJson(descriptor).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static Path trustInvalidationMarker(Path persistedDescriptor) {
+    return persistedDescriptor.resolveSibling(
+        persistedDescriptor.getFileName() + ".trust-invalidated");
   }
 
   // CHK preference path requires CoreUpdater state; fallback is exercised below.
@@ -238,6 +713,114 @@ class NodeUpdateManagerTest {
     assertEquals(
         newUri.setSuggestedEdition(Version.currentBuildNumber()).toString(false, false),
         manager.getURI().toString(false, false));
+  }
+
+  @Test
+  void setURI_whenUpdaterRebindBlocks_expectManagerMonitorReleased() throws Exception {
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CountDownLatch enteredRebind = new CountDownLatch(1);
+    CountDownLatch releaseRebind = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              enteredRebind.countDown();
+              assertTrue(releaseRebind.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(coreUpdater)
+        .onChangeURI(any(FreenetURI.class), anyInt());
+    setCoreUpdater(coreUpdater);
+    FreenetURI newUri = manager.getURI().setDocName("manager-lock-test");
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
+      assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
+      Future<Boolean> autoUpdateAllowed = executor.submit(manager::isAutoUpdateAllowed);
+
+      try {
+        assertFalse(autoUpdateAllowed.get(1, TimeUnit.SECONDS));
+      } finally {
+        releaseRebind.countDown();
+      }
+      uriChange.get(5, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  void setURI_whenLifecycleRebindBlocks_expectUriAndCoreUpdaterStartWait() throws Exception {
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    CountDownLatch enteredRebind = new CountDownLatch(1);
+    CountDownLatch releaseRebind = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              enteredRebind.countDown();
+              assertTrue(releaseRebind.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .onChangeURI(any(FreenetURI.class), any(CoreSupportLifecycleParser.TrustBinding.class));
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    FreenetURI newUri = manager.getURI().setDocName("startup-lock-test");
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
+      Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
+      assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
+      Future<?> updaterStart = executor.submit(manager::startCoreUpdater);
+      Future<FreenetURI> uriRead = executor.submit(manager::getURI);
+
+      try {
+        assertThrows(TimeoutException.class, () -> updaterStart.get(100, TimeUnit.MILLISECONDS));
+        assertThrows(TimeoutException.class, () -> uriRead.get(100, TimeUnit.MILLISECONDS));
+      } finally {
+        releaseRebind.countDown();
+      }
+      uriChange.get(5, TimeUnit.SECONDS);
+      updaterStart.get(5, TimeUnit.SECONDS);
+      assertEquals(
+          newUri.setSuggestedEdition(Version.currentBuildNumber()),
+          uriRead.get(5, TimeUnit.SECONDS));
+      assertNotNull(manager.getCoreUpdater());
+    }
+  }
+
+  @Test
+  void setURI_whenLifecycleRebindBlocks_expectPackageActionFailsClosed() throws Exception {
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    CountDownLatch enteredRebind = new CountDownLatch(1);
+    CountDownLatch releaseRebind = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              enteredRebind.countDown();
+              assertTrue(releaseRebind.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .onChangeURI(any(FreenetURI.class), any(CoreSupportLifecycleParser.TrustBinding.class));
+    setCoreUpdater(coreUpdater);
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    AtomicInteger actionInvocations = new AtomicInteger();
+    FreenetURI newUri = manager.getURI().setDocName("package-action-lock-test");
+
+    try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+      Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
+      assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
+
+      try {
+        Optional<Boolean> result =
+            manager.withCurrentCoreUpdaterAction(
+                coreUpdater,
+                () -> {
+                  actionInvocations.incrementAndGet();
+                  return Optional.of(true);
+                });
+
+        assertTrue(result.isEmpty());
+        assertEquals(0, actionInvocations.get());
+      } finally {
+        releaseRebind.countDown();
+      }
+      uriChange.get(5, TimeUnit.SECONDS);
+    }
   }
 
   @Test
@@ -536,7 +1119,7 @@ class NodeUpdateManagerTest {
   @Test
   void setURI_whenScopeChanges_expectHasNewCorePackageReset() {
     // Arrange
-    USKManager uskManager = Mockito.mock(USKManager.class);
+    USKManager uskManager = mock(USKManager.class);
     when(nodeCore.getUskManager()).thenReturn(uskManager);
     manager.startCoreUpdater();
     CoreUpdater updater = manager.getCoreUpdater();
@@ -568,7 +1151,7 @@ class NodeUpdateManagerTest {
   @Test
   void setURI_whenPackageDownloadInProgress_expectActiveDownloadCancelled() throws Exception {
     // Arrange
-    USKManager uskManager = Mockito.mock(USKManager.class);
+    USKManager uskManager = mock(USKManager.class);
     when(nodeCore.getUskManager()).thenReturn(uskManager);
     manager.startCoreUpdater();
     CoreUpdater updater = manager.getCoreUpdater();
@@ -798,7 +1381,7 @@ class NodeUpdateManagerTest {
   @Test
   void maybeSendUOMAnnounce_whenNothingToAnnounce_expectNoSend() {
     // Arrange
-    PeerNode peer = Mockito.mock(PeerNode.class);
+    PeerNode peer = mock(PeerNode.class);
     when(peer.getNodeName()).thenReturn("Cryptad");
     when(peer.getBuildNumber()).thenReturn(Version.currentBuildNumber());
     // Do not call blow() or broadcastUOMAnnounces(), so nothing should be sent.

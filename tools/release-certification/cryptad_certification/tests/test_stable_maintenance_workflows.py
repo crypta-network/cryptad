@@ -20,9 +20,15 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[4]
+RC_RELEASE = ROOT / ".github/workflows/stable-1.0-rc-release.yml"
+GA_PROMOTION = ROOT / ".github/workflows/stable-1.0-ga-promotion.yml"
 WINDOWS = ROOT / ".github/workflows/stable-1.0-maintenance-windows-package-producer.yml"
 INPUTS = ROOT / ".github/workflows/stable-1.0-maintenance-input-producer.yml"
 RELEASE = ROOT / ".github/workflows/stable-1.0-maintenance-release.yml"
+LIFECYCLE_INPUTS = (
+    ROOT / ".github/workflows/stable-1.0-support-lifecycle-input-producer.yml"
+)
+LIFECYCLE_RELEASE = ROOT / ".github/workflows/stable-1.0-support-lifecycle.yml"
 EXAMPLE = (
     ROOT
     / "tools/release-certification/manifests/stable-1.0-maintenance.example.json"
@@ -61,7 +67,280 @@ def _input_producer_fetch_script() -> str:
     return textwrap.dedent(workflow[script_start:script_end])
 
 
+def _release_lifecycle_handoff_script() -> str:
+    workflow = RELEASE.read_text(encoding="utf-8")
+    step_start = workflow.index("      - name: Stage exact redaction-safe candidate")
+    command = (
+        "              python3 - \\\n"
+        "                build/prior-validated-candidate/authenticated-inputs \\\n"
+        "                \"$root/authenticated-inputs\" <<'PY'\n"
+    )
+    script_start = workflow.index(command, step_start) + len(command)
+    script_end = workflow.index("\n          PY\n", script_start)
+    return textwrap.dedent(workflow[script_start:script_end])
+
+
+def _release_lifecycle_authority_presence_script() -> str:
+    workflow = RELEASE.read_text(encoding="utf-8")
+    step_start = workflow.index(
+        "      - name: Inspect exact lifecycle authority-chain presence"
+    )
+    command = "          python3 - <<'PY'\n"
+    script_start = workflow.index(command, step_start) + len(command)
+    script_end = workflow.index("\n          PY\n", script_start)
+    return textwrap.dedent(workflow[script_start:script_end])
+
+
 class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
+    def test_stable_release_workflows_enforce_runtime_release_id_bound(self) -> None:
+        bash_workflows = (
+            RC_RELEASE,
+            GA_PROMOTION,
+            INPUTS,
+            RELEASE,
+            LIFECYCLE_INPUTS,
+            LIFECYCLE_RELEASE,
+        )
+        for workflow_path in bash_workflows:
+            with self.subTest(workflow=workflow_path.name):
+                workflow = workflow_path.read_text(encoding="utf-8")
+                self.assertIn("${#INPUT_RELEASE_ID} -gt 128", workflow)
+        self.assertIn(
+            "$env:INPUT_RELEASE_ID.Length -gt 128",
+            WINDOWS.read_text(encoding="utf-8"),
+        )
+
+    def test_ga_genesis_skips_lifecycle_observation_but_post_ga_remains_closed(
+        self,
+    ) -> None:
+        script = _release_lifecycle_authority_presence_script()
+        authority_files = {
+            "previousStableLifecycleLedger": (
+                "stable-1.0-support-lifecycle-ledger.json"
+            ),
+            "previousStableLifecycleDescriptor": (
+                "stable-1.0-support-lifecycle-descriptor.json"
+            ),
+            "stableLifecycleAuthorization": (
+                "stable-1.0-support-lifecycle-authorization-summary.json"
+            ),
+            "stableLifecyclePublicationPlan": (
+                "stable-1.0-support-lifecycle-publication-plan.json"
+            ),
+            "stableLifecyclePublicationReceipt": (
+                "stable-1.0-support-lifecycle-publication-receipt.json"
+            ),
+        }
+
+        def run_presence_check(
+            *,
+            operation: str,
+            predecessor_schema: int,
+            configured_keys: tuple[str, ...] = (),
+        ) -> tuple[subprocess.CompletedProcess[str], str]:
+            with tempfile.TemporaryDirectory() as directory:
+                checkout = Path(directory)
+                protected = checkout / "build/protected-inputs"
+                lifecycle = protected / "lifecycle"
+                protected.mkdir(parents=True)
+                predecessor = protected / "predecessor.json"
+                predecessor.write_text(
+                    json.dumps(
+                        {
+                            "schemaVersion": predecessor_schema,
+                            "kind": (
+                                "stable-1.0-maintenance-baseline"
+                                if predecessor_schema == 1
+                                else "stable-1.0-maintenance-successor-baseline"
+                            ),
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                inputs = {
+                    "predecessorBaseline": "build/protected-inputs/predecessor.json"
+                }
+                for key in configured_keys:
+                    lifecycle.mkdir(exist_ok=True)
+                    name = authority_files[key]
+                    path = lifecycle / name
+                    path.write_text("{}\n", encoding="utf-8")
+                    inputs[key] = f"build/protected-inputs/lifecycle/{name}"
+                manifest = checkout / "build/stable-1.0-maintenance.json"
+                manifest.write_text(
+                    json.dumps({"inputs": inputs}), encoding="utf-8"
+                )
+                github_output = checkout / "github-output"
+                completed = subprocess.run(
+                    [sys.executable, "-c", script],
+                    cwd=checkout,
+                    env={
+                        **os.environ,
+                        "INPUT_OPERATION": operation,
+                        "GITHUB_OUTPUT": str(github_output),
+                    },
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                output = (
+                    github_output.read_text(encoding="utf-8")
+                    if github_output.exists()
+                    else ""
+                )
+                return completed, output
+
+        genesis, genesis_output = run_presence_check(
+            operation="prepare-authorization", predecessor_schema=1
+        )
+        self.assertEqual(0, genesis.returncode, genesis.stderr)
+        self.assertEqual("present=false\n", genesis_output)
+
+        complete, complete_output = run_presence_check(
+            operation="prepare-authorization",
+            predecessor_schema=2,
+            configured_keys=tuple(authority_files),
+        )
+        self.assertEqual(0, complete.returncode, complete.stderr)
+        self.assertEqual("present=true\n", complete_output)
+
+        partial, _ = run_presence_check(
+            operation="prepare-authorization",
+            predecessor_schema=2,
+            configured_keys=("previousStableLifecycleLedger",),
+        )
+        self.assertNotEqual(0, partial.returncode)
+        self.assertIn("exact five-artifact authority chain", partial.stderr)
+
+        post_ga, _ = run_presence_check(
+            operation="prepare-authorization", predecessor_schema=2
+        )
+        self.assertNotEqual(0, post_ga.returncode)
+        self.assertIn("only GA-genesis", post_ga.stderr)
+
+        validate_genesis, _ = run_presence_check(
+            operation="validate-authorization", predecessor_schema=1
+        )
+        self.assertNotEqual(0, validate_genesis.returncode)
+        self.assertIn("only GA-genesis", validate_genesis.stderr)
+
+        workflow = RELEASE.read_text(encoding="utf-8")
+        observation_gate = "steps.lifecycle-authority.outputs.present == 'true'"
+        self.assertGreaterEqual(workflow.count(observation_gate), 4)
+        self.assertIn(
+            "lifecycle_authority_present: "
+            "${{ steps.lifecycle-authority.outputs.present }}",
+            workflow,
+        )
+        self.assertIn(
+            "needs.freeze-and-validate.outputs.lifecycle_authority_present == 'true'",
+            workflow,
+        )
+
+    def test_lifecycle_observation_is_live_attested_and_shared_lock_bound(self) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+
+        self.assertIn("group: stable-1-0-maintenance-publication", workflow)
+        self.assertIn(
+            "- name: Re-fetch exact public lifecycle edition under the shared publication lock",
+            workflow,
+        )
+        observation = workflow.index(
+            "- name: Re-fetch exact public lifecycle edition under the shared publication lock"
+        )
+        attestation = workflow.index(
+            "- name: Attest the fresh exact public lifecycle observation", observation
+        )
+        verification = workflow.index(
+            "- name: Verify fresh lifecycle observation provenance before certification",
+            attestation,
+        )
+        certification = workflow.index(
+            "- name: Validate exact frozen candidate without publication", verification
+        )
+        self.assertLess(observation, attestation)
+        self.assertLess(attestation, verification)
+        self.assertLess(verification, certification)
+        validation_slice = workflow[observation:certification]
+        self.assertIn("--mode observe-authorized-state", validation_slice)
+        self.assertIn("actions/attest@", validation_slice)
+        self.assertIn("gh attestation verify", validation_slice)
+        self.assertIn(
+            "stableLifecyclePublicObservationReceipt = $path", validation_slice
+        )
+
+        publication_observation = workflow.index(
+            "- name: Re-observe exact lifecycle edition immediately before maintenance preflight"
+        )
+        preflight = workflow.index(
+            "- name: Preflight predecessor, authorization, freeze, and public conflicts",
+            publication_observation,
+        )
+        mutation = workflow.index(
+            "- name: Publish or idempotently verify exact bytes", preflight
+        )
+        self.assertLess(publication_observation, preflight)
+        self.assertLess(preflight, mutation)
+        self.assertIn(
+            "--mode observe-authorized-state",
+            workflow[publication_observation:preflight],
+        )
+
+    def test_lifecycle_observation_provider_is_phase_scoped_and_exact(self) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        dispatch_inputs = workflow[
+            workflow.index("    inputs:") : workflow.index("\nconcurrency:")
+        ]
+        input_names = [
+            line.strip()[:-1]
+            for line in dispatch_inputs.splitlines()
+            if len(line) - len(line.lstrip()) == 6
+            and line.strip().endswith(":")
+        ]
+
+        self.assertLessEqual(len(input_names), 25)
+        self.assertNotIn("lifecycle_publication_backend_run_id", input_names)
+        self.assertNotIn("lifecycle_publication_backend_artifact_name", input_names)
+        self.assertNotIn("lifecycle_publication_backend_artifact_digest", input_names)
+        self.assertGreaterEqual(
+            workflow.count(
+                "vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID"
+            ),
+            3,
+        )
+        self.assertGreaterEqual(
+            workflow.count(
+                "vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST"
+            ),
+            3,
+        )
+        self.assertIn(
+            "Authorization and publication require the exact read-only lifecycle provider",
+            workflow,
+        )
+        self.assertGreaterEqual(
+            workflow.count(
+                'canonical_artifact="stable-1.0-support-lifecycle-publication-backend"'
+            ),
+            2,
+        )
+        self.assertGreaterEqual(
+            workflow.count(
+                'canonical_entrypoint="cryptad_stable_maintenance_backend:lifecycle_factory"'
+            ),
+            2,
+        )
+        staging = workflow[
+            workflow.index("- name: Stage exact redaction-safe candidate") :
+            workflow.index("- name: Upload exact validated candidate")
+        ]
+        self.assertIn(
+            'if [[ "$INPUT_OPERATION" == prepare-authorization', staging
+        )
+        self.assertIn("stableLifecyclePublicObservationReceipt", staging)
+        immutable_names = _release_lifecycle_handoff_script()
+        self.assertNotIn("public-observation", immutable_names)
+
     def test_publication_backend_wheel_is_deterministic_and_loadable_in_isolation(
         self,
     ) -> None:
@@ -902,6 +1181,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             "maintenanceCandidateAssets": "build/protected-inputs/candidate/assets",
             "maintenanceCandidate": "build/protected-inputs/candidate/candidate.json",
             "maintenancePolicy": canonical_policy,
+            "predecessorBaseline": "build/protected-inputs/predecessor/maintenance-baseline.json",
         }
 
         with tempfile.TemporaryDirectory() as directory:
@@ -929,6 +1209,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 signature_payload: bytes = b"detached-signature\n",
                 extra_asset_directory: bool = False,
                 extra_file: str | None = None,
+                predecessor_baseline: dict[str, object] | None = None,
             ) -> None:
                 manifest_member = zipfile.ZipInfo("stable-1.0-maintenance.json")
                 manifest_member.create_system = 3
@@ -947,6 +1228,55 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                         ).encode("utf-8"),
                     )
                     bundle.writestr(protected_member, b"")
+                    predecessor = predecessor_baseline or {
+                        "kind": "stable-1.0-maintenance-baseline",
+                        "schemaVersion": 1,
+                    }
+                    predecessor_member = zipfile.ZipInfo(
+                        "protected-inputs/predecessor/maintenance-baseline.json"
+                    )
+                    predecessor_member.create_system = 3
+                    predecessor_member.external_attr = (stat.S_IFREG | 0o644) << 16
+                    bundle.writestr(
+                        predecessor_member,
+                        (
+                            json.dumps(
+                                predecessor,
+                                ensure_ascii=False,
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            + "\n"
+                        ).encode("utf-8"),
+                    )
+                    for key in (
+                        "previousStableLifecycleLedger",
+                        "previousStableLifecycleDescriptor",
+                        "stableLifecycleAuthorization",
+                        "stableLifecyclePublicationPlan",
+                        "stableLifecyclePublicationReceipt",
+                    ):
+                        configured = manifest["inputs"].get(key)
+                        if not isinstance(configured, str):
+                            continue
+                        relative = configured.removeprefix("build/protected-inputs/")
+                        lifecycle_member = zipfile.ZipInfo(
+                            f"protected-inputs/{relative}"
+                        )
+                        lifecycle_member.create_system = 3
+                        lifecycle_member.external_attr = (stat.S_IFREG | 0o644) << 16
+                        bundle.writestr(
+                            lifecycle_member,
+                            (
+                                json.dumps(
+                                    {"kind": key, "status": "pass"},
+                                    ensure_ascii=False,
+                                    indent=2,
+                                    sort_keys=True,
+                                )
+                                + "\n"
+                            ).encode("utf-8"),
+                        )
                     if phase == "freeze-candidate":
                         catalog_bytes = b"catalog.version=1\n"
                         signature_bytes = b"detached-signature\n"
@@ -1021,6 +1351,111 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                         check=False,
                     )
                     self.assertEqual(0, completed.returncode, completed.stderr)
+
+            successor = json.loads(json.dumps(example))
+            successor["commands"]["stable-maintenance"]["mode"] = (
+                "prepare-authorization"
+            )
+            successor_baseline = {
+                "chainDepth": 1,
+                "kind": "stable-1.0-maintenance-successor-baseline",
+                "schemaVersion": 2,
+            }
+            write_bundle(
+                successor,
+                "prepare-authorization",
+                predecessor_baseline=successor_baseline,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "prepare-authorization"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("post-GA maintenance requires the exact lifecycle", completed.stderr)
+
+            successor_freeze = json.loads(json.dumps(successor))
+            successor_freeze["commands"]["stable-maintenance"]["mode"] = "validate-only"
+            write_bundle(
+                successor_freeze,
+                "freeze-candidate",
+                predecessor_baseline=successor_baseline,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "freeze-candidate"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("post-GA maintenance requires the exact lifecycle", completed.stderr)
+
+            partial = json.loads(json.dumps(successor))
+            partial["inputs"]["previousStableLifecycleLedger"] = (
+                "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-ledger.json"
+            )
+            write_bundle(
+                partial,
+                "prepare-authorization",
+                predecessor_baseline=successor_baseline,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "prepare-authorization"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("exact ledger, descriptor", completed.stderr)
+
+            complete = json.loads(json.dumps(successor))
+            complete["inputs"].update(
+                {
+                    "previousStableLifecycleLedger": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-ledger.json",
+                    "previousStableLifecycleDescriptor": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-descriptor.json",
+                    "stableLifecycleAuthorization": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-authorization-summary.json",
+                    "stableLifecyclePublicationPlan": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-publication-plan.json",
+                    "stableLifecyclePublicationReceipt": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-publication-receipt.json",
+                }
+            )
+            write_bundle(
+                complete,
+                "prepare-authorization",
+                predecessor_baseline=successor_baseline,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "prepare-authorization"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+
+            complete_freeze = json.loads(json.dumps(complete))
+            complete_freeze["commands"]["stable-maintenance"]["mode"] = "validate-only"
+            write_bundle(
+                complete_freeze,
+                "freeze-candidate",
+                predecessor_baseline=successor_baseline,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "freeze-candidate"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
 
             mutated_signature = json.loads(json.dumps(example))
             write_bundle(
@@ -1112,6 +1547,177 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 "maintenanceCandidate does not use the canonical protected-input root",
                 completed.stderr,
             )
+
+    def test_lifecycle_authority_chain_is_documented_and_retained_across_protected_handoffs(
+        self,
+    ) -> None:
+        expected = {
+            "previousStableLifecycleLedger": (
+                "build/protected-inputs/lifecycle/"
+                "stable-1.0-support-lifecycle-ledger.json"
+            ),
+            "previousStableLifecycleDescriptor": (
+                "build/protected-inputs/lifecycle/"
+                "stable-1.0-support-lifecycle-descriptor.json"
+            ),
+            "stableLifecycleAuthorization": (
+                "build/protected-inputs/lifecycle/"
+                "stable-1.0-support-lifecycle-authorization-summary.json"
+            ),
+            "stableLifecyclePublicationPlan": (
+                "build/protected-inputs/lifecycle/"
+                "stable-1.0-support-lifecycle-publication-plan.json"
+            ),
+            "stableLifecyclePublicationReceipt": (
+                "build/protected-inputs/lifecycle/"
+                "stable-1.0-support-lifecycle-publication-receipt.json"
+            ),
+        }
+        manifest = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            expected,
+            {key: manifest["inputs"].get(key) for key in expected},
+        )
+
+        producer = INPUTS.read_text(encoding="utf-8")
+        self.assertIn("configured_lifecycle_keys", producer)
+        self.assertIn("post-GA maintenance requires the exact lifecycle", producer)
+        for key in expected:
+            with self.subTest(producer_key=key):
+                self.assertIn(f'"{key}"', producer)
+
+        release = RELEASE.read_text(encoding="utf-8")
+        for key, staged_name in (
+            ("previousStableLifecycleLedger", "stable-lifecycle-ledger.json"),
+            ("previousStableLifecycleDescriptor", "stable-lifecycle-descriptor.json"),
+            (
+                "stableLifecycleAuthorization",
+                "stable-lifecycle-authorization-summary.json",
+            ),
+            (
+                "stableLifecyclePublicationPlan",
+                "stable-lifecycle-publication-plan.json",
+            ),
+            (
+                "stableLifecyclePublicationReceipt",
+                "stable-lifecycle-publication-receipt.json",
+            ),
+        ):
+            with self.subTest(release_key=key):
+                self.assertIn(f"{key} {staged_name}", release)
+        self.assertIn(
+            "cp -R build/prior-validated-candidate/protected-inputs build/protected-inputs",
+            release,
+        )
+        self.assertIn(
+            'mkdir -p "$root/freeze" "$root/packages" "$root/authenticated-inputs"',
+            release,
+        )
+        self.assertIn(
+            "build/prior-validated-candidate/authenticated-inputs",
+            release,
+        )
+        self.assertIn(
+            "lifecycle state changed after the prior attested phase",
+            release,
+        )
+        self.assertIn(
+            'cp -R build/stable-maintenance-publication/authenticated-inputs "$root/authenticated-inputs"',
+            release,
+        )
+
+    def test_lifecycle_authority_chain_presence_cannot_change_across_protected_handoffs(
+        self,
+    ) -> None:
+        script = _release_lifecycle_handoff_script()
+        names = (
+            "stable-lifecycle-ledger.json",
+            "stable-lifecycle-descriptor.json",
+            "stable-lifecycle-authorization-summary.json",
+            "stable-lifecycle-publication-plan.json",
+            "stable-lifecycle-publication-receipt.json",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prior = root / "prior"
+            current = root / "current"
+            prior.mkdir()
+            current.mkdir()
+
+            def set_authority_chain(path: Path, present: bool) -> None:
+                for name in names:
+                    candidate = path / name
+                    if present:
+                        candidate.write_bytes((name + "\n").encode("utf-8"))
+                    else:
+                        candidate.unlink(missing_ok=True)
+
+            for prior_present, current_present in ((True, False), (False, True)):
+                with self.subTest(
+                    prior_present=prior_present,
+                    current_present=current_present,
+                ):
+                    set_authority_chain(prior, prior_present)
+                    set_authority_chain(current, current_present)
+
+                    completed = subprocess.run(
+                        [sys.executable, "-c", script, str(prior), str(current)],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertNotEqual(0, completed.returncode)
+                    self.assertIn(
+                        "lifecycle authority-chain presence changed",
+                        completed.stderr,
+                    )
+
+            set_authority_chain(prior, True)
+            set_authority_chain(current, True)
+            completed = subprocess.run(
+                [sys.executable, "-c", script, str(prior), str(current)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+
+    def test_input_producer_authenticates_all_five_lifecycle_artifacts(self) -> None:
+        workflow = INPUTS.read_text(encoding="utf-8")
+        self.assertIn(
+            'if "stableLifecyclePublicObservationReceipt" in inputs:', workflow
+        )
+        self.assertIn(
+            "generated only by the protected maintenance workflow under the shared publication lock",
+            workflow,
+        )
+        step = workflow[workflow.index(
+            "      - name: Independently authenticate the exact lifecycle authority chain"
+        ):]
+        step = step[: step.index("\n      - name:", 8)]
+
+        self.assertIn(
+            "if: ${{ inputs.phase != 'validate-authorization' }}", step
+        )
+        self.assertIn(
+            'signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle.yml"',
+            step,
+        )
+        self.assertIn('gh attestation verify "$path"', step)
+        self.assertIn('--source-digest "$INPUT_LIFECYCLE_SOURCE_COMMIT"', step)
+        self.assertIn("--deny-self-hosted-runners", step)
+        self.assertIn("^[0-9a-f]{40}$", step)
+        for name in (
+            "stable-1.0-support-lifecycle-ledger.json",
+            "stable-1.0-support-lifecycle-descriptor.json",
+            "stable-1.0-support-lifecycle-authorization-summary.json",
+            "stable-1.0-support-lifecycle-publication-plan.json",
+            "stable-1.0-support-lifecycle-publication-receipt.json",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(name, step)
 
     def test_release_consumer_rebinds_exact_windows_bytes_and_signer(self) -> None:
         text = RELEASE.read_text(encoding="utf-8")

@@ -232,7 +232,7 @@ deprecation.status=none
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=22
-api.maximumTestedVersion=22
+api.maximumTestedVersion=23
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```

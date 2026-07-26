@@ -89,15 +89,17 @@ Use this skill when you need to:
   checks for leaf ownership/import boundaries. The runtime, kernel, platform, FCP, and HTTP
   boundary suites also enforce
   `package-info.java` coverage for the production packages they own.
-- `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
-  root test tree and run through the root build.
+- `:runtime-spi` is the JDK-only runtime/config API leaf. Leaf-owned focused tests, including the
+  support-lifecycle snapshot contract, live under `runtime-spi/src/test/java`; remaining broad
+  runtime/bootstrap SPI tests still run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
   Platform API 1.0 stable-baseline metadata, app capability/audit decisions, app-vault route
   handlers, content/app-data/subscription/service routes, app-data backup/restore planning and
   commit routes, app-service dependency graph and grant-bundle routes, shared app-network budget
   service/store, app-update lifecycle service, app-data migration planning/execution and internal
   update snapshots, host/operator-only catalog operation routes, and host/operator-only beta
-  dashboard/support-bundle, typed operator RC recovery, and network-budget snapshot routes. Its
+  dashboard/support-bundle, typed operator RC recovery, network-budget snapshots, and the
+  host/operator-only Stable 1.0 support-lifecycle snapshot route. Its
   focused leaf tests now live under
   `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
@@ -134,15 +136,17 @@ Use this skill when you need to:
 - `:platform-web-shell` owns the browser-facing Web Shell leaf, including app/catalog/update/review
   views, catalog source/mirror health and guarded catalog operation controls, app-service
   dependency/grant-bundle review, operator beta dashboard, Operator RC Recovery, app-data
-  backup/restore controls, legacy explicit fallback actions, and focused leaf tests under
+  backup/restore controls, Stable 1.0 lifecycle status and recovery guidance, legacy explicit
+  fallback actions, and focused leaf tests under
   `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
   subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine side of
   `network.crypta.node`, the retained node-coupled transport/message execution code in
-  `network.crypta.io*`, `network.crypta.runtime.*`, and the remaining daemon-coupled support
-  helpers.
+  `network.crypta.io*`, `network.crypta.runtime.*`, the package updater and Stable 1.0
+  support-lifecycle subscriber/parser/store/state integration, and the remaining daemon-coupled
+  support helpers.
 - `:adapter-fcp` owns the detached protocol-side `network.crypta.clients.fcp` tree.
 - `:bridge-fcp-runtime` owns the concrete runtime-binding
   `network.crypta.clients.fcp.bridge` implementations, remains the only FCP leaf with the direct
@@ -212,6 +216,16 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :adapter-http-legacy-browse:test`
 - Run the remaining root-owned Platform API/bootstrap slice explicitly against the root project:
   - `./gradlew :test --tests *DefaultNodeRuntimeBridgeFactoriesTest --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
+- Run the focused Stable 1.0 lifecycle runtime and operator surface together:
+  - `./gradlew :runtime-spi:test :runtime-node:test :platform-api:test :platform-web-shell:test`
+- When changing lifecycle parsing, persistence, activation ordering, or revocation projection, run:
+  - `./gradlew :runtime-node:test --tests '*CoreSupportLifecycleParserTest' --tests '*CoreSupportLifecycleStateTest' --tests '*CoreSupportLifecycleStoreTest' --tests '*CoreSupportLifecycleTransitionTest'`
+- When changing subscriber scheduling, URI-scope fencing, package-action authorization, or
+  update-key compromise handling, run the root-owned updater integration tests:
+  - `./gradlew :test --tests '*CoreSupportLifecycleUpdaterTest' --tests '*CoreUpdaterTest' --tests '*NodeUpdateManagerTest' --tests '*NodeUpdaterTest' --tests '*RevocationCheckerTest' --tests '*UpdateOverMandatoryManagerTest'`
+- When changing installer/store handoff or the detached updater SPI, also run:
+  - `./gradlew :runtime-spi:test :adapter-http-legacy-admin:test`
+  - `./gradlew :test --tests '*LegacyCoreUpdateActionPortTest' --tests '*CoreActionToadletTest'`
 
 ## Compile-only / quick checks
 - Compile only:

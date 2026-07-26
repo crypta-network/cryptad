@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-authenticated-history-v1.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schemaVersion", "kind", "stableMilestone", "links", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-maintenance-authenticated-history"}, "stableMilestone": {"const": "1.0"},
+    "links": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["baselineDigest", "publicationReceiptDigest", "successorBaseline", "publicationReceipt"], "properties": {"baselineDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "publicationReceiptDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "successorBaseline": {"$ref": "stable-1.0-maintenance-successor-baseline-v2.schema.json"}, "publicationReceipt": {"$ref": "stable-1.0-maintenance-publication-receipt-v1.schema.json"}}}},
+    "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}
+  }
+}

@@ -14,6 +14,7 @@ from cryptad_certification.migration import execute as migrate
 from cryptad_certification.models import EvidenceEnvelope
 from cryptad_certification.legacy import execute as execute_engine
 from cryptad_certification.redaction import scan_value
+from cryptad_certification.schema_validation import validate_schema
 from cryptad_certification.tests.support import workspace_root, write_manifest
 from cryptad_certification.workspace import (
     WorkspaceError,
@@ -80,6 +81,23 @@ class ManifestTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ManifestError, "missing release fields: version"):
                 load_manifest(path, root)
+
+    def test_manifest_release_id_matches_runtime_length_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            accepted = write_manifest(
+                root,
+                release={"id": "r" * 128, "version": "1", "profile": "pr"},
+            )
+
+            self.assertEqual(128, len(load_manifest(accepted, root).release.release_id))
+
+            rejected = write_manifest(
+                root,
+                release={"id": "r" * 129, "version": "1", "profile": "pr"},
+            )
+            with self.assertRaisesRegex(ManifestError, "at most 128 characters"):
+                load_manifest(rejected, root)
 
     def test_secret_like_manifest_field_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -310,12 +328,63 @@ class SchemaContractTest(unittest.TestCase):
         properties = schema["properties"]
 
         self.assertEqual(1, properties["release"]["properties"]["version"]["minLength"])
+        self.assertEqual(128, properties["release"]["properties"]["id"]["maxLength"])
         self.assertEqual(1, properties["output"]["properties"]["root"]["minLength"])
         self.assertEqual(
             1,
             properties["commands"]["additionalProperties"]["properties"]["mode"][
                 "minLength"
             ],
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            oversized = read_json(write_manifest(root))
+            oversized["release"]["id"] = "r" * 129
+            self.assertTrue(
+                any(
+                    "release.id is longer than the schema maximum" in error
+                    for error in validate_schema(
+                        oversized, "release-run-v1.schema.json"
+                    )
+                )
+            )
+
+    def test_lifecycle_schema_release_id_matches_runtime_length_bound(self) -> None:
+        schema = read_json(
+            workspace_root()
+            / "tools/release-certification/schemas/stable-1.0-support-lifecycle-common-v1.schema.json"
+        )
+
+        self.assertEqual(128, schema["$defs"]["releaseId"]["maxLength"])
+        self.assertEqual(
+            "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            schema["$defs"]["releaseId"]["pattern"],
+        )
+        for definition in ("inventoryEntry", "ledgerEntry", "descriptorEntry"):
+            self.assertEqual(
+                {"$ref": "#/$defs/releaseId"},
+                schema["$defs"][definition]["properties"]["releaseId"],
+            )
+
+    def test_manifest_schema_rejects_unknown_input_and_invalid_command_values(self) -> None:
+        example = read_json(
+            workspace_root()
+            / "tools/release-certification/manifests/stable-1.0-support-lifecycle.example.json"
+        )
+        unknown_input = copy.deepcopy(example)
+        unknown_input["inputs"]["unexpectedLifecycleInput"] = "unexpected.json"
+        invalid_command = copy.deepcopy(example)
+        invalid_command["commands"]["stable-lifecycle"]["mode"] = 24
+
+        input_errors = validate_schema(unknown_input, "release-run-v1.schema.json")
+        command_errors = validate_schema(invalid_command, "release-run-v1.schema.json")
+
+        self.assertTrue(
+            any("unexpectedLifecycleInput" in error for error in input_errors), input_errors
+        )
+        self.assertTrue(
+            any("stable-lifecycle.mode" in error for error in command_errors), command_errors
         )
 
 

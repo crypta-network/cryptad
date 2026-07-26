@@ -33,3 +33,10 @@ Use this skill when the task is mostly about words rather than code.
   baselines, state the hosted Windows, macOS, Linux, protected-input, and publication-provider
   boundaries honestly, and never claim publication, latest-baseline activation, or follow-up
   closure without the applicable independently verified receipt.
+- For Stable 1.0 support-state or deprecation prose, use
+  `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md` as the canonical runbook.
+  Keep mutable lifecycle descriptors separate from immutable `core-info.json` and release
+  artifacts, distinguish build revocation from update-key compromise, and describe
+  `GET /api/v1/updates/support-lifecycle` as host/operator-only. Do not claim lifecycle activation
+  from a prepared transition or authorization alone; require the exact protected publication and
+  independent-verification receipts.
