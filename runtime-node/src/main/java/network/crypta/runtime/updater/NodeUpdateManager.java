@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
@@ -149,7 +150,7 @@ public final class NodeUpdateManager {
 
   // Installer/seednodes length caps removed with deprecated auto-fetch paths
 
-  private FreenetURI updateURI;
+  private final AtomicReference<FreenetURI> updateURI;
   private FreenetURI revocationURI;
   private final Object updateUriTransitionLock = new Object();
   private volatile int lastKnownGoodFetchedEdition;
@@ -259,18 +260,20 @@ public final class NodeUpdateManager {
         new UpdateURICallback());
 
     String configuredUpdateUriValue = updaterConfig.getString("URI");
+    FreenetURI configuredUpdateUri;
     try {
-      updateURI = parseConfiguredUpdateURI(configuredUpdateUriValue);
+      configuredUpdateUri = parseConfiguredUpdateURI(configuredUpdateUriValue);
     } catch (MalformedURLException e) {
       throw new InvalidConfigValueException(
           l10n("invalidUpdateURI", L10N_PARAM_ERROR, e.getLocalizedMessage()));
     }
+    updateURI = new AtomicReference<>(configuredUpdateUri);
     migrateLegacyUpdateUriValueIfNeeded(updaterConfig, configuredUpdateUriValue);
 
-    if (updateURI.hasMetaStrings()) {
+    if (configuredUpdateUri.hasMetaStrings()) {
       throw new InvalidConfigValueException(l10n("updateURIMustHaveNoMetaStrings"));
     }
-    if (!updateURI.isUSK()) {
+    if (!configuredUpdateUri.isUSK()) {
       throw new InvalidConfigValueException(l10n("updateURIMustBeAUSK"));
     }
 
@@ -624,7 +627,7 @@ public final class NodeUpdateManager {
     FreenetURI localUpdateURI;
     FreenetURI localRevocationURI;
     synchronized (this) {
-      localUpdateURI = updateURI;
+      localUpdateURI = updateURI.get();
       localRevocationURI = revocationURI;
     }
     int fetchedVersion = (blobSize <= 0) ? -1 : Version.currentBuildNumber();
@@ -811,9 +814,7 @@ public final class NodeUpdateManager {
    * @return a {@link FreenetURI} representing the update USK, never {@code null}
    */
   public FreenetURI getURI() {
-    synchronized (updateUriTransitionLock) {
-      return updateURI;
-    }
+    return updateURI.get();
   }
 
   /**
@@ -823,7 +824,7 @@ public final class NodeUpdateManager {
    * @return a {@link FreenetURI} pointing to the {@code info} document under the update USK
    */
   public synchronized FreenetURI getCoreInfoURI() {
-    return updateURI.setDocName("info");
+    return updateURI.get().setDocName("info");
   }
 
   /**
@@ -832,7 +833,7 @@ public final class NodeUpdateManager {
    * @return public USK using the exact {@code support-lifecycle} docname
    */
   public synchronized FreenetURI getSupportLifecycleURI() {
-    return updateURI.setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
+    return updateURI.get().setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
   }
 
   /**
@@ -841,7 +842,7 @@ public final class NodeUpdateManager {
    * @return a {@link FreenetURI} that resolves to the short changelog document
    */
   public synchronized FreenetURI getChangelogURI() {
-    return updateURI.setDocName("changelog");
+    return updateURI.get().setDocName("changelog");
   }
 
   /**
@@ -850,7 +851,7 @@ public final class NodeUpdateManager {
    * @return a {@link FreenetURI} that resolves to the full changelog document
    */
   public synchronized FreenetURI getDeveloperChangelogURI() {
-    return updateURI.setDocName("fullchangelog");
+    return updateURI.get().setDocName("fullchangelog");
   }
 
   /**
@@ -925,13 +926,14 @@ public final class NodeUpdateManager {
       int subscribeEditionSeed;
       CoreSupportLifecycleParser.TrustBinding lifecycleTrust;
       synchronized (this) {
-        if (updateURI.equals(uri)) {
+        FreenetURI currentUri = updateURI.get();
+        if (currentUri.equals(uri)) {
           return;
         }
-        String oldUpdateScope = normalizeFetchedEditionScope(updateURI);
-        updateURI = uri;
-        updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
-        String newUpdateScope = normalizeFetchedEditionScope(updateURI);
+        String oldUpdateScope = normalizeFetchedEditionScope(currentUri);
+        FreenetURI normalizedUri = uri.setSuggestedEdition(Version.currentBuildNumber());
+        updateURI.set(normalizedUri);
+        String newUpdateScope = normalizeFetchedEditionScope(normalizedUri);
         if (!newUpdateScope.equals(oldUpdateScope)) {
           resetLastKnownGoodFetchedEditionLocked(newUpdateScope);
         }
@@ -964,7 +966,7 @@ public final class NodeUpdateManager {
     }
     synchronized (this) {
       String fetchedScope = normalizeFetchedEditionScope(fetchedUri);
-      String currentScope = normalizeFetchedEditionScope(updateURI);
+      String currentScope = normalizeFetchedEditionScope(updateURI.get());
       if (!currentScope.equals(fetchedScope)) {
         if (LOG.isDebugEnabled()) {
           LOG.debug(
@@ -1765,8 +1767,9 @@ public final class NodeUpdateManager {
   }
 
   private synchronized void alignLastKnownGoodFetchedEditionToCurrentUpdateScope() {
-    String currentUpdateScope = normalizeFetchedEditionScope(updateURI);
-    if (alignLegacyBareFetchedEditionScope(currentUpdateScope)) {
+    FreenetURI currentUri = updateURI.get();
+    String currentUpdateScope = normalizeFetchedEditionScope(currentUri);
+    if (alignLegacyBareFetchedEditionScope(currentUri, currentUpdateScope)) {
       return;
     }
     if (!currentUpdateScope.equals(lastKnownGoodFetchedEditionKey)) {
@@ -1784,11 +1787,12 @@ public final class NodeUpdateManager {
     lastKnownGoodFetchedEdition = sanitizeFetchedEdition(lastKnownGoodFetchedEdition);
   }
 
-  private boolean alignLegacyBareFetchedEditionScope(String currentUpdateScope) {
+  private boolean alignLegacyBareFetchedEditionScope(
+      FreenetURI currentUri, String currentUpdateScope) {
     if (!isBarePublicKey(lastKnownGoodFetchedEditionKey)) {
       return false;
     }
-    if (!extractPublicKeyMaterial(updateURI).equals(lastKnownGoodFetchedEditionKey)) {
+    if (!extractPublicKeyMaterial(currentUri).equals(lastKnownGoodFetchedEditionKey)) {
       if (LOG.isDebugEnabled()) {
         LOG.debug(
             "Resetting persisted fetched edition {} due to legacy key mismatch: persisted={},"
@@ -1801,7 +1805,7 @@ public final class NodeUpdateManager {
       return true;
     }
     String legacyInfoScope =
-        normalizeFetchedEditionScope(updateURI.setDocName(UPDATE_URI_DOC_NAME));
+        normalizeFetchedEditionScope(currentUri.setDocName(UPDATE_URI_DOC_NAME));
     if (!legacyInfoScope.equals(currentUpdateScope)) {
       if (LOG.isDebugEnabled()) {
         LOG.debug(
@@ -2001,12 +2005,13 @@ public final class NodeUpdateManager {
         || supportLifecycleState.isUpdateKeyTrustInvalidated()) {
       return;
     }
+    FreenetURI currentUri = updateURI.get();
     int subscribeEditionSeed =
-        computeCoreUpdaterSubscribeEditionSeedLocked(normalizeFetchedEditionScope(updateURI));
+        computeCoreUpdaterSubscribeEditionSeedLocked(normalizeFetchedEditionScope(currentUri));
     NodeUpdaterParams params =
         new NodeUpdaterParams(
             this,
-            getURI(),
+            currentUri,
             Version.currentBuildNumber(),
             -1,
             Integer.MAX_VALUE,
@@ -2122,7 +2127,7 @@ public final class NodeUpdateManager {
   CoreSupportLifecycleParser.TrustBinding supportLifecycleTrustBinding() {
     FreenetURI lifecycleUri;
     synchronized (this) {
-      lifecycleUri = updateURI.setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
+      lifecycleUri = updateURI.get().setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
     }
     String identityDigest =
         CoreSupportLifecycleParser.exactBytesDigest(

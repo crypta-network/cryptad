@@ -743,6 +743,36 @@ class NodeUpdateManagerTest {
   }
 
   @Test
+  void setURI_whenLifecycleRebindBlocks_expectCoreUpdaterStartDoesNotWait() throws Exception {
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    CountDownLatch enteredRebind = new CountDownLatch(1);
+    CountDownLatch releaseRebind = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              enteredRebind.countDown();
+              assertTrue(releaseRebind.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .onChangeURI(any(FreenetURI.class), any(CoreSupportLifecycleParser.TrustBinding.class));
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    FreenetURI newUri = manager.getURI().setDocName("startup-lock-test");
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
+      assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
+      Future<?> updaterStart = executor.submit(manager::startCoreUpdater);
+
+      try {
+        updaterStart.get(1, TimeUnit.SECONDS);
+      } finally {
+        releaseRebind.countDown();
+      }
+      uriChange.get(5, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
   void updateUriCallback_whenGivenPublicKeyOnly_expectExpandedToUskInfoUri() throws Exception {
     // Arrange
     NodeUpdateManager.UpdateURICallback callback = manager.new UpdateURICallback();
