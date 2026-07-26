@@ -1990,6 +1990,19 @@ class StableLifecycleWorkflowTest(unittest.TestCase):
             self.assertIn(expected, protected)
             self.assertLess(protected.index(expected), protected.index(secret))
 
+    def test_provider_job_enters_environment_only_from_protected_main(
+        self,
+    ) -> None:
+        job = self.producer.split("  build-and-attest:", 1)[1]
+        before_environment = job.split(
+            "    environment: stable-1.0-lifecycle-evidence", 1
+        )[0]
+
+        self.assertIn(
+            "if: github.ref_protected && github.ref == 'refs/heads/main'",
+            before_environment,
+        )
+
     def test_input_producer_rejects_unprotected_refs_before_credentials(
         self,
     ) -> None:

@@ -153,6 +153,7 @@ public final class NodeUpdateManager {
   private final AtomicReference<FreenetURI> updateURI;
   private FreenetURI revocationURI;
   private final Object updateUriTransitionLock = new Object();
+  private boolean updateUriTransitionInProgress;
   private volatile int lastKnownGoodFetchedEdition;
   private volatile String lastKnownGoodFetchedEditionKey;
 
@@ -706,11 +707,13 @@ public final class NodeUpdateManager {
     // off, it's something the user should probably know about.
     // 2. When the key is blown, we turn off auto-update!!!!
     getRevocationChecker().start(false);
-    EnableTransition transition;
-    synchronized (this) {
-      transition = updateEnablementState(enable);
+    synchronized (updateUriTransitionLock) {
+      EnableTransition transition;
+      synchronized (this) {
+        transition = updateEnablementState(enable);
+      }
+      completeEnablementTransition(enable, transition);
     }
-    completeEnablementTransition(enable, transition);
   }
 
   private EnableTransition updateEnablementState(boolean enable) {
@@ -725,7 +728,7 @@ public final class NodeUpdateManager {
     if (supportLifecycleUpdater != null || updateKeyCompromised) {
       return null;
     }
-    startSupportLifecycleUpdater();
+    startSupportLifecycleUpdaterLocked();
     return supportLifecycleUpdater;
   }
 
@@ -742,7 +745,7 @@ public final class NodeUpdateManager {
   private EnableTransition enableCoreUpdater(CoreSupportLifecycleUpdater startedLifecycleUpdater) {
     CoreUpdater startedCoreUpdater = null;
     if (coreUpdater == null) {
-      startCoreUpdater();
+      startCoreUpdaterLocked();
       startedCoreUpdater = coreUpdater;
     }
     // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons.
@@ -814,7 +817,9 @@ public final class NodeUpdateManager {
    * @return a {@link FreenetURI} representing the update USK, never {@code null}
    */
   public FreenetURI getURI() {
-    return updateURI.get();
+    synchronized (updateUriTransitionLock) {
+      return updateURI.get();
+    }
   }
 
   /**
@@ -932,6 +937,7 @@ public final class NodeUpdateManager {
         }
         String oldUpdateScope = normalizeFetchedEditionScope(currentUri);
         FreenetURI normalizedUri = uri.setSuggestedEdition(Version.currentBuildNumber());
+        updateUriTransitionInProgress = true;
         updateURI.set(normalizedUri);
         String newUpdateScope = normalizeFetchedEditionScope(normalizedUri);
         if (!newUpdateScope.equals(oldUpdateScope)) {
@@ -943,13 +949,19 @@ public final class NodeUpdateManager {
         lifecycleTrust = supportLifecycleTrustBinding();
         lifecycleUri = getSupportLifecycleURI();
       }
-      if (updater != null) {
-        updater.onChangeURI(uri, subscribeEditionSeed);
-      }
-      if (lifecycleUpdater != null) {
-        lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleTrust);
-      } else {
-        supportLifecycleState.changeTrust(lifecycleTrust);
+      try {
+        if (updater != null) {
+          updater.onChangeURI(uri, subscribeEditionSeed);
+        }
+        if (lifecycleUpdater != null) {
+          lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleTrust);
+        } else {
+          supportLifecycleState.changeTrust(lifecycleTrust);
+        }
+      } finally {
+        synchronized (this) {
+          updateUriTransitionInProgress = false;
+        }
       }
     }
   }
@@ -1999,7 +2011,15 @@ public final class NodeUpdateManager {
   // --- Core updater wiring ---
 
   /** Create and wire the package‑based {@link CoreUpdater} if not already present. */
-  public synchronized void startCoreUpdater() {
+  public void startCoreUpdater() {
+    synchronized (updateUriTransitionLock) {
+      synchronized (this) {
+        startCoreUpdaterLocked();
+      }
+    }
+  }
+
+  private void startCoreUpdaterLocked() {
     if (coreUpdater != null
         || updateKeyCompromised
         || supportLifecycleState.isUpdateKeyTrustInvalidated()) {
@@ -2021,7 +2041,15 @@ public final class NodeUpdateManager {
   }
 
   /** Creates the dedicated lifecycle descriptor subscriber when it is not already wired. */
-  synchronized void startSupportLifecycleUpdater() {
+  void startSupportLifecycleUpdater() {
+    synchronized (updateUriTransitionLock) {
+      synchronized (this) {
+        startSupportLifecycleUpdaterLocked();
+      }
+    }
+  }
+
+  private void startSupportLifecycleUpdaterLocked() {
     if (supportLifecycleUpdater != null
         || updateKeyCompromised
         || supportLifecycleState.isUpdateKeyTrustInvalidated()) {
@@ -2046,7 +2074,9 @@ public final class NodeUpdateManager {
    * @return detached snapshot that never invents support when descriptor state is unknown
    */
   public CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
-    return supportLifecycleState.snapshot();
+    synchronized (updateUriTransitionLock) {
+      return supportLifecycleState.snapshot();
+    }
   }
 
   /**
@@ -2075,24 +2105,30 @@ public final class NodeUpdateManager {
   /**
    * Executes one action only while the expected core updater remains active and trusted.
    *
-   * <p>The manager monitor is retained through the action so an update-URI change, updater
-   * replacement, disablement, or update-key blow cannot overtake a package launch. The supplied
-   * action is expected to acquire the core updater's package-selection lock before authorizing a
-   * concrete target.
+   * <p>The manager monitor is retained through the action so updater replacement, disablement, or
+   * update-key blow cannot overtake a package launch. An update-URI transition sets a
+   * manager-guarded latch before publishing the new URI, causing actions to fail closed until both
+   * subscriptions have rebound. The supplied action is expected to acquire the core updater's
+   * package-selection lock before authorizing a concrete target.
    *
    * @param expectedUpdater exact updater instance whose selection is being consumed
    * @param action bounded package action that returns an optional outcome
    * @param <T> action outcome type
    * @return the action outcome, or empty when the updater is no longer current or trusted
    */
-  synchronized <T> Optional<T> withCurrentCoreUpdaterAction(
+  <T> Optional<T> withCurrentCoreUpdaterAction(
       CoreUpdater expectedUpdater, Supplier<Optional<T>> action) {
     Objects.requireNonNull(expectedUpdater, "expectedUpdater");
     Objects.requireNonNull(action, "action");
-    if (coreUpdater != expectedUpdater || hasBeenBlown || updateKeyCompromised) {
-      return Optional.empty();
+    synchronized (this) {
+      if (updateUriTransitionInProgress
+          || coreUpdater != expectedUpdater
+          || hasBeenBlown
+          || updateKeyCompromised) {
+        return Optional.empty();
+      }
+      return Objects.requireNonNull(action.get(), "action result");
     }
-    return Objects.requireNonNull(action.get(), "action result");
   }
 
   /**

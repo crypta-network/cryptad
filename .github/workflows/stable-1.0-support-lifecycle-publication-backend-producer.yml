@@ -17,6 +17,7 @@ permissions: {}
 jobs:
   build-and-attest:
     name: Build and attest deterministic lifecycle provider wheel
+    if: github.ref_protected && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: stable-1.0-lifecycle-evidence

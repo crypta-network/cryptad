@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -15,6 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
@@ -66,6 +68,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -743,7 +746,7 @@ class NodeUpdateManagerTest {
   }
 
   @Test
-  void setURI_whenLifecycleRebindBlocks_expectCoreUpdaterStartDoesNotWait() throws Exception {
+  void setURI_whenLifecycleRebindBlocks_expectUriAndCoreUpdaterStartWait() throws Exception {
     CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
     CountDownLatch enteredRebind = new CountDownLatch(1);
     CountDownLatch releaseRebind = new CountDownLatch(1);
@@ -758,13 +761,61 @@ class NodeUpdateManagerTest {
     setSupportLifecycleUpdater(lifecycleUpdater);
     FreenetURI newUri = manager.getURI().setDocName("startup-lock-test");
 
-    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+    try (ExecutorService executor = Executors.newFixedThreadPool(3)) {
       Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
       assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
       Future<?> updaterStart = executor.submit(manager::startCoreUpdater);
+      Future<FreenetURI> uriRead = executor.submit(manager::getURI);
 
       try {
-        updaterStart.get(1, TimeUnit.SECONDS);
+        assertThrows(TimeoutException.class, () -> updaterStart.get(100, TimeUnit.MILLISECONDS));
+        assertThrows(TimeoutException.class, () -> uriRead.get(100, TimeUnit.MILLISECONDS));
+      } finally {
+        releaseRebind.countDown();
+      }
+      uriChange.get(5, TimeUnit.SECONDS);
+      updaterStart.get(5, TimeUnit.SECONDS);
+      assertEquals(
+          newUri.setSuggestedEdition(Version.currentBuildNumber()),
+          uriRead.get(5, TimeUnit.SECONDS));
+      assertNotNull(manager.getCoreUpdater());
+    }
+  }
+
+  @Test
+  void setURI_whenLifecycleRebindBlocks_expectPackageActionFailsClosed() throws Exception {
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    CountDownLatch enteredRebind = new CountDownLatch(1);
+    CountDownLatch releaseRebind = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              enteredRebind.countDown();
+              assertTrue(releaseRebind.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .onChangeURI(any(FreenetURI.class), any(CoreSupportLifecycleParser.TrustBinding.class));
+    setCoreUpdater(coreUpdater);
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    AtomicInteger actionInvocations = new AtomicInteger();
+    FreenetURI newUri = manager.getURI().setDocName("package-action-lock-test");
+
+    try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+      Future<?> uriChange = executor.submit(() -> manager.setURI(newUri));
+      assertTrue(enteredRebind.await(5, TimeUnit.SECONDS));
+
+      try {
+        Optional<Boolean> result =
+            manager.withCurrentCoreUpdaterAction(
+                coreUpdater,
+                () -> {
+                  actionInvocations.incrementAndGet();
+                  return Optional.of(true);
+                });
+
+        assertTrue(result.isEmpty());
+        assertEquals(0, actionInvocations.get());
       } finally {
         releaseRebind.countDown();
       }

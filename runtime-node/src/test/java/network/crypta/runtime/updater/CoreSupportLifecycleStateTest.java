@@ -320,8 +320,8 @@ class CoreSupportLifecycleStateTest {
     state.accept(successor, 2);
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertFalse(state.snapshot().known());
-    assertTrue(state.snapshot().warnings().contains(BUILD_REVOKED_WARNING));
+    assertEffectiveRevocationSnapshot(state.snapshot());
+    assertEffectiveRevocationSnapshot(restarted.snapshot());
     assertTrue(state.isBuildRevoked(100));
     assertTrue(restarted.isBuildRevoked(100));
   }
@@ -338,8 +338,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertFalse(restarted.snapshot().known());
-    assertTrue(restarted.snapshot().warnings().contains(BUILD_REVOKED_WARNING));
+    assertEffectiveRevocationSnapshot(restarted.snapshot());
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -355,8 +354,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertFalse(restarted.snapshot().known());
-    assertTrue(restarted.snapshot().warnings().contains(BUILD_REVOKED_WARNING));
+    assertEffectiveRevocationSnapshot(restarted.snapshot());
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -399,6 +397,13 @@ class CoreSupportLifecycleStateTest {
 
   private static CoreSupportLifecycleState state(Path tempDir, Instant now) {
     return state(tempDir, now, "a".repeat(40));
+  }
+
+  private static void assertEffectiveRevocationSnapshot(CoreSupportLifecycleSnapshot snapshot) {
+    assertTrue(snapshot.known());
+    assertEquals("revoked", snapshot.running().status().wireValue());
+    assertTrue(snapshot.warnings().contains(BUILD_REVOKED_WARNING));
+    assertTrue(snapshot.warnings().contains("lifecycle_descriptor_not_effective"));
   }
 
   private static Path revocationStatePath(Path tempDir) {

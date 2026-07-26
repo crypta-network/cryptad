@@ -185,6 +185,8 @@ final class CoreSupportLifecycleState {
 
     Instant now = clock.instant();
     boolean effective = !now.isBefore(descriptor.effectiveAt());
+    boolean effectiveRevocation = isBuildRevoked(runningBuild);
+    boolean runningStatusKnown = effective || effectiveRevocation;
     boolean stale = !now.isBefore(descriptor.staleAt());
     ArrayList<String> warningCodes = new ArrayList<>();
     if (!effective) {
@@ -195,7 +197,7 @@ final class CoreSupportLifecycleState {
     }
     if (effective) {
       addStatusWarning(warningCodes, running.lifecycleStatus());
-    } else if (isBuildRevoked(runningBuild)) {
+    } else if (effectiveRevocation) {
       warningCodes.add("build_revoked");
     }
     if (lastFailureCode != null) {
@@ -204,8 +206,8 @@ final class CoreSupportLifecycleState {
     CoreSupportLifecycleSnapshot.RunningBuild runningSnapshot =
         new CoreSupportLifecycleSnapshot.RunningBuild(
             runningBuild,
-            effective ? running.lifecycleStatus() : null,
-            effective ? text(running.statusEffectiveAt()) : null,
+            runningStatusKnown ? running.lifecycleStatus() : null,
+            runningStatusKnown ? text(running.statusEffectiveAt()) : null,
             text(running.fullSupportUntil()),
             text(running.securityFixesUntil()),
             text(running.deprecationEffectiveAt()),
@@ -215,7 +217,7 @@ final class CoreSupportLifecycleState {
             running.advisoryIds(),
             running.reasonCodes());
     return new CoreSupportLifecycleSnapshot(
-        effective,
+        runningStatusKnown,
         stale,
         runningSnapshot,
         new CoreSupportLifecycleSnapshot.Recommendation(
