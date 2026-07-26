@@ -19,6 +19,11 @@ import org.slf4j.LoggerFactory;
  * against the exact key identity digest, opaque public scope, docname, semantic predecessor chain,
  * release inventory, and running build identity before replacing persisted last-known-good state.
  *
+ * <p>When a valid successor arrives before the retained descriptor becomes locally effective, the
+ * updater leaves the retained edition unchanged and retries the exact successor at that activation
+ * boundary. This serializes future-effective policy intervals without inventing a parallel
+ * descriptor queue.
+ *
  * <p>Fetch or validation failures retain the prior descriptor and expose only bounded failure
  * codes. The implementation never logs raw descriptor bodies or URIs, and a build whose lifecycle
  * status is {@code revoked} does not call update-key revocation or blow code.
@@ -42,6 +47,9 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
 
   /** Saturating exponent used to back off persistence retries for one edition. */
   private int persistenceFailureExponent;
+
+  /** Exact positive delay before retrying the deferred successor edition. */
+  private long activationDeferredRetryDelayMillis = -1;
 
   /**
    * Creates a lifecycle subscriber over the same public key as the package updater.
@@ -84,12 +92,21 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
   protected boolean processSuccess(int fetched, FetchResult result, File blobFile) {
     try {
       byte[] descriptorBytes = readBounded(result);
-      lifecycleState.accept(descriptorBytes, fetched);
-      clearPersistenceFailureBackoff();
+      CoreSupportLifecycleState.AcceptanceResult acceptance =
+          lifecycleState.accept(descriptorBytes, fetched);
+      if (!acceptance.accepted()) {
+        recordActivationDeferral(acceptance.retryDelayMillis());
+        LOG.info(
+            "Deferred Stable 1.0 support-lifecycle descriptor edition {} until its predecessor"
+                + " becomes effective",
+            fetched);
+        return false;
+      }
+      clearRejectedFetchRetry();
       LOG.info("Accepted Stable 1.0 support-lifecycle descriptor edition {}", fetched);
       return true;
     } catch (IllegalArgumentException _) {
-      clearPersistenceFailureBackoff();
+      clearRejectedFetchRetry();
       lifecycleState.recordFailure("lifecycle_validation_failed");
       LOG.warn("Rejected Stable 1.0 support-lifecycle descriptor edition {}", fetched);
       return false;
@@ -105,6 +122,9 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
 
   @Override
   protected synchronized long rejectedFetchRetryDelayMillis() {
+    if (activationDeferredRetryDelayMillis >= 0) {
+      return activationDeferredRetryDelayMillis;
+    }
     if (persistenceFailureEdition < 0) {
       return -1;
     }
@@ -149,6 +169,7 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
 
   /** Starts or advances the saturating persistence retry backoff for one descriptor edition. */
   private synchronized void recordPersistenceFailure(int fetchedEdition) {
+    activationDeferredRetryDelayMillis = -1;
     if (persistenceFailureEdition != fetchedEdition) {
       persistenceFailureEdition = fetchedEdition;
       persistenceFailureExponent = 0;
@@ -160,10 +181,18 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
     }
   }
 
-  /** Clears persistence retry state after an accepted descriptor or permanent validation error. */
-  private synchronized void clearPersistenceFailureBackoff() {
+  /** Schedules one exact successor retry at its predecessor's local activation boundary. */
+  private synchronized void recordActivationDeferral(long retryDelayMillis) {
     persistenceFailureEdition = -1;
     persistenceFailureExponent = 0;
+    activationDeferredRetryDelayMillis = retryDelayMillis;
+  }
+
+  /** Clears retry state after an accepted descriptor or permanent validation error. */
+  private synchronized void clearRejectedFetchRetry() {
+    persistenceFailureEdition = -1;
+    persistenceFailureExponent = 0;
+    activationDeferredRetryDelayMillis = -1;
   }
 
   /**

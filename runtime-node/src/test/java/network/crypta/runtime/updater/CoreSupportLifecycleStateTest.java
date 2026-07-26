@@ -353,15 +353,15 @@ class CoreSupportLifecycleStateTest {
     CoreSupportLifecycleState activated =
         state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
 
-    assertEffectiveRevocationSnapshot(state.snapshot(), true);
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertEffectiveRevocationSnapshot(state.snapshot(), ACTIVE_RECOVERY_GUIDANCE);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), ACTIVE_RECOVERY_GUIDANCE);
     assertEquals(FUTURE_RECOVERY_GUIDANCE, activated.snapshot().running().recoveryGuidance());
     assertTrue(state.isBuildRevoked(100));
     assertTrue(restarted.isBuildRevoked(100));
   }
 
   @Test
-  void snapshot_whenTwoSuccessorsRemainFutureEffective_expectPriorGuidanceSurvivesRestart(
+  void accept_whenTwoFutureSuccessorsArrive_expectEachGuidanceActivatesInOrder(
       @TempDir Path tempDir) throws Exception {
     CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
     byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
@@ -372,15 +372,32 @@ class CoreSupportLifecycleStateTest {
     byte[] secondSuccessor =
         secondFutureEffectiveSuccessor(firstSuccessor, state.snapshot().descriptor().digest());
 
-    state.accept(secondSuccessor, 3);
+    CoreSupportLifecycleState.AcceptanceResult deferred = state.accept(secondSuccessor, 3);
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
-    CoreSupportLifecycleState activated =
+    CoreSupportLifecycleState firstSuccessorActivated =
+        state(tempDir, Instant.parse("2026-01-03T12:00:00Z"));
+    CoreSupportLifecycleState.AcceptanceResult accepted =
+        firstSuccessorActivated.accept(secondSuccessor, 3);
+    CoreSupportLifecycleState intervalRestarted =
+        state(tempDir, Instant.parse("2026-01-03T12:00:00Z"));
+    CoreSupportLifecycleState secondSuccessorActivated =
         state(tempDir, Instant.parse(SECOND_FUTURE_DESCRIPTOR_EFFECTIVE_AT));
 
-    assertEffectiveRevocationSnapshot(state.snapshot(), true);
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertFalse(deferred.accepted());
     assertEquals(
-        SECOND_FUTURE_RECOVERY_GUIDANCE, activated.snapshot().running().recoveryGuidance());
+        Duration.between(VERIFIED_AT, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT)).toMillis(),
+        deferred.retryDelayMillis());
+    assertEquals(2, state.acceptedEditionSeed());
+    assertEffectiveRevocationSnapshot(state.snapshot(), ACTIVE_RECOVERY_GUIDANCE);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), ACTIVE_RECOVERY_GUIDANCE);
+    assertTrue(accepted.accepted());
+    assertEquals(
+        FUTURE_RECOVERY_GUIDANCE, firstSuccessorActivated.snapshot().running().recoveryGuidance());
+    assertEquals(
+        FUTURE_RECOVERY_GUIDANCE, intervalRestarted.snapshot().running().recoveryGuidance());
+    assertEquals(
+        SECOND_FUTURE_RECOVERY_GUIDANCE,
+        secondSuccessorActivated.snapshot().running().recoveryGuidance());
   }
 
   @Test
@@ -396,15 +413,18 @@ class CoreSupportLifecycleStateTest {
     byte[] persistedFirstSuccessor = Files.readAllBytes(descriptorPath);
     byte[] secondSuccessor =
         secondFutureEffectiveSuccessor(firstSuccessor, state.snapshot().descriptor().digest());
-    state.accept(secondSuccessor, 3);
+    CoreSupportLifecycleState ready = state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
+    ready.accept(secondSuccessor, 3);
     Files.write(descriptorPath, persistedFirstSuccessor);
 
-    CoreSupportLifecycleState interrupted = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState interrupted =
+        state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
     interrupted.accept(secondSuccessor, 3);
-    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState restarted =
+        state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
 
-    assertEffectiveRevocationSnapshot(interrupted.snapshot(), true);
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertEffectiveRevocationSnapshot(interrupted.snapshot(), FUTURE_RECOVERY_GUIDANCE);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), FUTURE_RECOVERY_GUIDANCE);
   }
 
   @Test
@@ -418,7 +438,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), ACTIVE_RECOVERY_GUIDANCE);
   }
 
   @Test
@@ -452,7 +472,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), null);
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -468,7 +488,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), null);
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -484,7 +504,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), null);
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -530,7 +550,7 @@ class CoreSupportLifecycleStateTest {
   }
 
   private static void assertEffectiveRevocationSnapshot(
-      CoreSupportLifecycleSnapshot snapshot, boolean preservedGuidanceAvailable) {
+      CoreSupportLifecycleSnapshot snapshot, String expectedRecoveryGuidance) {
     assertTrue(snapshot.known());
     assertEquals(REVOKED_STATUS, snapshot.running().status().wireValue());
     assertEquals(REVOCATION_EFFECTIVE_AT, snapshot.running().statusEffectiveAt());
@@ -539,9 +559,7 @@ class CoreSupportLifecycleStateTest {
     assertNull(snapshot.running().deprecationEffectiveAt());
     assertNull(snapshot.running().endOfSupportAt());
     assertNull(snapshot.running().requiredReplacementBuild());
-    assertEquals(
-        preservedGuidanceAvailable ? ACTIVE_RECOVERY_GUIDANCE : null,
-        snapshot.running().recoveryGuidance());
+    assertEquals(expectedRecoveryGuidance, snapshot.running().recoveryGuidance());
     assertEquals(List.of(SECURITY_ADVISORY_ID), snapshot.running().advisoryIds());
     assertEquals(List.of(REVOCATION_REASON_CODE), snapshot.running().reasonCodes());
     assertRecommendationHidden(snapshot);

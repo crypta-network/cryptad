@@ -116,6 +116,24 @@ class CoreSupportLifecycleUpdaterTest {
   }
 
   @Test
+  void processSuccess_whenPredecessorActivationIsPending_expectExactTimedRetry() throws Exception {
+    FetchResult result = fetchedDescriptor();
+    when(lifecycleState.accept(any(byte[].class), anyLong()))
+        .thenReturn(CoreSupportLifecycleState.AcceptanceResult.deferred(45_000L))
+        .thenReturn(CoreSupportLifecycleState.AcceptanceResult.acceptedResult());
+
+    boolean deferred = updater.processSuccess(2, result, null);
+    long retryDelay = updater.rejectedFetchRetryDelayMillis();
+    boolean accepted = updater.processSuccess(2, result, null);
+
+    assertFalse(deferred);
+    assertEquals(45_000L, retryDelay);
+    assertTrue(accepted);
+    assertEquals(-1, updater.rejectedFetchRetryDelayMillis());
+    verify(lifecycleState, never()).recordFailure(any());
+  }
+
+  @Test
   void recordSuccessfulFetch_whenDescriptorIsAccepted_expectPackageTargetReconciled() {
     updater.recordSuccessfulFetch(null, 1);
 
@@ -224,7 +242,7 @@ class CoreSupportLifecycleUpdaterTest {
               if (!continueAcceptance.await(5, TimeUnit.SECONDS)) {
                 throw new AssertionError("timed out waiting to continue lifecycle acceptance");
               }
-              return null;
+              return CoreSupportLifecycleState.AcceptanceResult.acceptedResult();
             })
         .when(lifecycleState)
         .accept(any(byte[].class), anyLong());

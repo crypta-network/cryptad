@@ -96,18 +96,28 @@ final class CoreSupportLifecycleState {
   /**
    * Accepts and durably replaces state with one exact authenticated descriptor successor.
    *
+   * <p>A validated successor is deferred without persistence when its immediate predecessor is
+   * still future-effective on the local clock. This keeps every authenticated activation boundary
+   * observable instead of replacing an intermediate descriptor before its policy can take effect.
+   * Callers should retry the exact successor after the returned delay.
+   *
    * @param bytes exact fetched descriptor bytes
    * @param fetchedEdition actual support-lifecycle USK edition
+   * @return accepted state, or a positive retry delay when the predecessor is not yet effective
    * @throws IllegalArgumentException if descriptor or transition validation fails
    * @throws IOException if last-known-good persistence fails
    */
-  synchronized void accept(byte[] bytes, long fetchedEdition) throws IOException {
+  synchronized AcceptanceResult accept(byte[] bytes, long fetchedEdition) throws IOException {
     if (trustInvalidated) {
       throw new IllegalArgumentException("lifecycle update-key trust has been invalidated");
     }
     CoreSupportLifecycleDescriptor candidate = parser.parse(bytes, fetchedEdition, trust);
     validateRunningIdentity(candidate);
     validateSuccessor(descriptor, candidate);
+    AcceptanceResult timing = acceptanceTiming(descriptor);
+    if (!timing.accepted()) {
+      return timing;
+    }
     Map<Integer, Instant> candidateRevocationActivations =
         revocationActivationsForSuccessor(descriptor, candidate);
     RunningRevocationProjection candidateRunningRevocationProjection =
@@ -123,6 +133,24 @@ final class CoreSupportLifecycleState {
     runningRevocationProjection = candidateRunningRevocationProjection;
     lastVerifiedAt = verifiedAt;
     lastFailureCode = null;
+    return AcceptanceResult.acceptedResult();
+  }
+
+  private AcceptanceResult acceptanceTiming(CoreSupportLifecycleDescriptor previous) {
+    if (previous == null) {
+      return AcceptanceResult.acceptedResult();
+    }
+    Instant now = clock.instant();
+    if (!now.isBefore(previous.effectiveAt())) {
+      return AcceptanceResult.acceptedResult();
+    }
+    long delay;
+    try {
+      delay = Duration.between(now, previous.effectiveAt()).toMillis();
+    } catch (ArithmeticException _) {
+      delay = Long.MAX_VALUE;
+    }
+    return AcceptanceResult.deferred(Math.max(1, delay));
   }
 
   /** Records one bounded failure code while retaining prior last-known-good state. */
@@ -595,36 +623,12 @@ final class CoreSupportLifecycleState {
         || now.isBefore(previousRunning.statusEffectiveAt())) {
       return null;
     }
-    if (now.isBefore(previous.effectiveAt())) {
-      return rebindRunningRevocationProjection(previous, candidate);
-    }
     return new RunningRevocationProjection(
         runningBuild,
         previous.descriptorDigest(),
         candidate.descriptorDigest(),
         previousRunning.replacementBuild(),
         previousRunning.recoveryGuidance());
-  }
-
-  private RunningRevocationProjection rebindRunningRevocationProjection(
-      CoreSupportLifecycleDescriptor previous, CoreSupportLifecycleDescriptor candidate) {
-    RunningRevocationProjection projection = runningRevocationProjection;
-    if (projection == null) {
-      return null;
-    }
-    if (projection.sourceDescriptorDigest().equals(previous.descriptorDigest())
-        && projection.targetDescriptorDigest().equals(candidate.descriptorDigest())) {
-      return projection;
-    }
-    if (!projection.targetDescriptorDigest().equals(previous.descriptorDigest())) {
-      return null;
-    }
-    return new RunningRevocationProjection(
-        projection.buildVersion(),
-        previous.descriptorDigest(),
-        candidate.descriptorDigest(),
-        projection.replacementBuild(),
-        projection.recoveryGuidance());
   }
 
   private byte[] encodeRevocationState(
@@ -941,6 +945,25 @@ final class CoreSupportLifecycleState {
       String targetDescriptorDigest,
       Integer replacementBuild,
       String recoveryGuidance) {}
+
+  record AcceptanceResult(boolean accepted, long retryDelayMillis) {
+    private static final AcceptanceResult ACCEPTED_RESULT = new AcceptanceResult(true, -1);
+
+    AcceptanceResult {
+      boolean valid = accepted ? retryDelayMillis == -1 : retryDelayMillis > 0;
+      if (!valid) {
+        throw new IllegalArgumentException("invalid lifecycle acceptance result");
+      }
+    }
+
+    static AcceptanceResult acceptedResult() {
+      return ACCEPTED_RESULT;
+    }
+
+    static AcceptanceResult deferred(long retryDelayMillis) {
+      return new AcceptanceResult(false, retryDelayMillis);
+    }
+  }
 
   private static String text(Instant instant) {
     return instant == null ? null : instant.toString();
