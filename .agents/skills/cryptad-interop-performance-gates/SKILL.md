@@ -508,6 +508,13 @@ transition request, previous state, resulting ledger, descriptor edition/digest,
 Publication then binds the authorization and exact descriptor bytes. Do not create a circular
 authorization/ledger digest or represent a self-derived row digest as protected approval.
 
+Keep producer output inside the runtime's closed descriptor contract: at most 256 complete
+inventory entries; entry `statusEffectiveAt` no later than descriptor `effectiveAt`; identical
+status/security effective timestamps for revocation; and bounded safe recovery text accepted by
+both schema and Java parser. `supported-maintenance` carries no mandatory `replacementBuild`;
+descriptor-level `recommendedBuild` provides the optional upgrade. A schema-valid producer result
+that runtime nodes cannot parse or activate is a release blocker.
+
 The protected workflow has six closed operations: `prove-genesis`, `evaluate`,
 `prepare-transition`, `validate-authorization`, `publish`, and `verify-publication`. Bind every
 dispatch to the exact release id, chain-tip integer build, source commit, producer run, artifact

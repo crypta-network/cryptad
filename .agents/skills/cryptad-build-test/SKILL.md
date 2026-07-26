@@ -218,6 +218,14 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :test --tests *DefaultNodeRuntimeBridgeFactoriesTest --tests *PlatformApiRouterTest --tests *PlatformApiAppsIntegrationTest`
 - Run the focused Stable 1.0 lifecycle runtime and operator surface together:
   - `./gradlew :runtime-spi:test :runtime-node:test :platform-api:test :platform-web-shell:test`
+- When changing lifecycle parsing, persistence, activation ordering, or revocation projection, run:
+  - `./gradlew :runtime-node:test --tests '*CoreSupportLifecycleParserTest' --tests '*CoreSupportLifecycleStateTest' --tests '*CoreSupportLifecycleStoreTest' --tests '*CoreSupportLifecycleTransitionTest'`
+- When changing subscriber scheduling, URI-scope fencing, package-action authorization, or
+  update-key compromise handling, run the root-owned updater integration tests:
+  - `./gradlew :test --tests '*CoreSupportLifecycleUpdaterTest' --tests '*CoreUpdaterTest' --tests '*NodeUpdateManagerTest' --tests '*NodeUpdaterTest' --tests '*RevocationCheckerTest' --tests '*UpdateOverMandatoryManagerTest'`
+- When changing installer/store handoff or the detached updater SPI, also run:
+  - `./gradlew :runtime-spi:test :adapter-http-legacy-admin:test`
+  - `./gradlew :test --tests '*LegacyCoreUpdateActionPortTest' --tests '*CoreActionToadletTest'`
 
 ## Compile-only / quick checks
 - Compile only:

@@ -171,15 +171,23 @@ each immediate descriptor transition. The binding must remain valid with the old
 the sidecar rename and with the new descriptor after its rename. Retain at most one
 future-effective descriptor: validate but defer its exact successor until the persisted predecessor
 becomes locally effective, then retry that edition so every intermediate status and recovery
-guidance interval remains observable. Discard the projection when its binding is absent or invalid.
-If the derived activation state is absent or invalid, fail closed from each authenticated revoked
-entry's own effective time rather than suspending a potentially prior terminal revocation. Clear
-all derived revocation state with the descriptor after update-key compromise.
+guidance interval remains observable. Deferral is not a validation failure and must leave the
+accepted edition seed unchanged. Keep the highest announced USK edition monotonic while fetching
+the immediate digest-linked successor. Discard the projection when its binding is absent or
+invalid. If the derived activation state is absent or invalid, fail closed from each authenticated
+revoked entry's own effective time rather than suspending a potentially prior terminal revocation.
+Clear all derived revocation state with the descriptor after update-key compromise.
 
 Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
 active; only authenticated update-key compromise invalidates documents under that key. Package
 payload downloads remain serialized, but completion of an older CHK fetch must retry a newer
 automatic selection that was advertised while the older fetch was active.
+
+Treat an update-URI change as an exclusive trust-scope transition. Set the manager's transition
+latch before publishing the new URI, block updater startup and package actions until both
+subscriptions and lifecycle trust are rebound, and preserve an accepted edition seed only inside
+the same normalized scope. `NodeUpdater` callbacks must retain a generation/scope claim through
+side-effecting post-processing and delete their owned temporary blobs when superseded.
 
 Lifecycle persistence is crash-durable and platform-aware. Force completed temporary bytes before
 publishing them; synchronize the parent-directory entry where supported and use the Windows native
@@ -216,6 +224,19 @@ submissions must exactly match the daemon's current selected kind, derived id, a
 the HTTP adapter may open or install them. Any platform helper invoked inside that guarded callback
 must have a hard execution timeout so it cannot indefinitely block trust invalidation or URI
 changes.
+
+Bind each `PackageFetcher` to the complete originating selection identity, not only its CHK. When a
+new selection appears during a serialized download, completion or failure of the old fetch should
+retry the new automatic selection through current trust and lifecycle gates. Lifecycle acceptance
+must inspect the active fetcher's originating build, cancel it when already revoked, and schedule a
+state-derived recheck for a future activation time. Do not wait for another descriptor announcement
+to enforce an already authenticated future revocation.
+
+For descriptor entry timing, require `statusEffectiveAt <= effectiveAt` and require a revoked
+entry's `securityRevocationEffectiveAt` to equal `statusEffectiveAt`. Before a future descriptor
+activates, hide its ordinary guidance and recommendation. Preserve only an already-effective
+predecessor revocation and its bounded predecessor guidance. Keep `replacementBuild` null for
+`supported-maintenance`; optional upgrades use descriptor-level `recommendedBuild`.
 
 The lifecycle descriptor's public schema, protected publication, and operator behavior are defined
 in `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`. Use deterministic local

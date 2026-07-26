@@ -388,3 +388,18 @@ for update-key compromise; a build lifecycle transition never blows the update k
 security hotfix can replace a revoked build after its normal exact-byte publication and lineage
 checks pass, but it cannot delete the original revocation event or hide a hotfix follow-up
 obligation. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).
+
+On a node, an effective build revocation is enforced at the selected package boundary. CoreUpdater
+binds each fetch to the complete originating descriptor selection, cancels that build's active
+download immediately or at a scheduled future activation, and rechecks the build while starting a
+download, launching a downloaded installer, or handing a target to a Linux store process. These
+checks do not shut down the node, delete data, disable FProxy browse, or mark the shared update key
+as compromised.
+
+An authenticated update-key compromise follows the separate fail-closed path. The manager first
+latches compromise and detaches package and lifecycle subscribers, then writes crash-durable
+fixed-content markers with bounded retry. Restart restores the critical alert and blocks
+update-key-derived package, lifecycle, and IP-to-country fetches. The revocation checker may still
+load or fetch the authenticated certificate needed to relay revocation announcements to peers.
+A local-only updater failure does not create this durable compromise latch and must leave both
+lifecycle and revocation polling active.

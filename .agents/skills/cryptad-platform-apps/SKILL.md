@@ -316,6 +316,8 @@ Load only the docs needed for the change:
   `OPERATOR_ONLY` in the compatibility contract. Keep the app-readable
   `GET /api/v1/updates/core` response limited to updater availability and download readiness; do
   not expose lifecycle state through it as a shortcut around the direct-route principal check.
+  Web Shell must treat failure of the lifecycle request as an unknown best-effort diagnostic while
+  preserving a successful core response and its independently authorized controls.
 - Operator RC recovery routes must stay typed and allowlisted. Clients request an
   `OperatorRecoveryPlan` for a known `OperatorRecoveryActionId`, then execute that exact action
   with the matching one-time `planToken`; destructive actions require explicit confirmation. Do
@@ -519,6 +521,10 @@ Expose the running build's lifecycle through the detached updater SPI, read-only
 routes, the redacted support bundle, and the Web Shell. Distinguish unknown, stale, full support,
 security-only, deprecated, end-of-support, and revoked states. Show integer build identifiers and
 safe replacement guidance, and offer an update action only when the existing updater can honor it.
-Do not include raw descriptors, private update URIs, advisory bodies, local paths, app data, or node
-identity in these surfaces. Follow
+Use `recommendedBuild` for an optional upgrade from `supported-maintenance`; do not label it as a
+required replacement. Do not expose changed future-effective guidance early. An already-effective
+terminal revocation remains visible with its predecessor-authenticated recovery guidance until the
+successor activates, including when the last-known-good descriptor is stale. Do not include raw
+descriptors, private update URIs, advisory bodies, local paths, app data, or node identity in these
+surfaces. Follow
 `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`.

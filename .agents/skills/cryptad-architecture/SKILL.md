@@ -672,12 +672,20 @@ Use this skill when you need to:
 - Stable 1.0 support state uses the separate `CoreSupportLifecycleUpdater` under the trusted
   `support-lifecycle` docname. It validates sequential descriptor editions and persists exact
   last-known-good bytes without changing historical `core-info.json`.
+- Lifecycle state retains at most one future-effective descriptor. A validated next edition is
+  deferred until that predecessor activates locally, so an intermediate status or recovery path
+  cannot be skipped when the node clock trails the publisher.
 - `CoreUpdateActionPort` exposes the redacted lifecycle snapshot to the host/operator-only
   `/api/v1/updates/support-lifecycle` route. The app-readable `/api/v1/updates/core` route contains
-  only updater availability and download readiness.
+  only updater availability and download readiness. Web Shell treats the lifecycle read as
+  best-effort so a transient diagnostic failure does not disable valid core-updater controls.
 - Disabling package updates leaves lifecycle polling active. Authenticated update-key compromise
   durably invalidates both cached lifecycle authority and package-update authority across restart;
   build lifecycle `revoked` does not trigger that key-compromise path.
+- Core package selection is an immutable descriptor/build/environment/package snapshot. Package
+  fetch, installer launch, and store handoff retain that exact identity and run beneath ordered
+  manager, selection, and lifecycle authorization. An update-URI change fences both subscribers and
+  package actions until the new trust scope is active.
 - The legacy plugin runtime has been removed; there is no separate plugin updater path in the
   current node.
 - Core updater state is exposed through CorePackage APIs in `NodeUpdateManager`:

@@ -679,6 +679,14 @@ successor is available. Recovery-only transitions keep current, recommended, and
 fields null and publish bounded recovery guidance; certification never manufactures the unsafe tip
 as its own replacement.
 
+Generated descriptors must remain directly consumable by the runtime parser. The complete
+inventory is capped at 256 entries, each `statusEffectiveAt` is no later than descriptor
+`effectiveAt`, and a revoked entry uses the same value for `statusEffectiveAt` and
+`securityRevocationEffectiveAt`. A `supported-maintenance` entry leaves `replacementBuild` null;
+the descriptor-level `recommendedBuild` carries its optional upgrade guidance. Certification and
+the protected adapter reject schema/runtime text or release-identity mismatches before
+publication.
+
 Lifecycle output includes the authenticated inventory, append-only digest-chained ledger, proposed
 transition set, runtime descriptor, Platform API deprecation timeline, catalog/app/content-profile
 governance projection, publication plan, provenance, checksums, summary, report, and redaction

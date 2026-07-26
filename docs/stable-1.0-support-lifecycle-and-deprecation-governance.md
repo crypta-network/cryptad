@@ -202,6 +202,14 @@ current-build cardinality, a no-current state whose chain tip is not revoked, un
 guidance, and any attempt to change an authenticated running-build identity. A failed fetch or
 parse does not replace the last-known-good descriptor.
 
+Producer and runtime validation use the same activation constraints. An entry's
+`statusEffectiveAt` cannot be later than the descriptor's `effectiveAt`; for `revoked`, it must
+equal `securityRevocationEffectiveAt`. `supported-maintenance` uses the descriptor-level
+`recommendedBuild` for optional upgrade guidance and leaves `replacementBuild` null.
+`replacementBuild` is reserved for policy-required guidance from `security-fixes-only`,
+`deprecated`, `end-of-support`, or `revoked` and must identify an authenticated
+security-supported release.
+
 Release certification does not infer the current public edition from an older valid receipt. The
 versioned policy sets `supportWindows.maximumPublicObservationAgeMinutes` to 30 minutes. Protected
 maintenance authorization re-fetches the exact descriptor bytes through the lifecycle-only
@@ -230,14 +238,42 @@ temporary file before replacement and durably records the rename with platform-a
 semantics: parent-directory synchronization on supported non-Windows filesystems and a native
 write-through move on Windows.
 
+The subscriber retains at most one future-effective descriptor. It can accept edition N while the
+current descriptor is already effective, but it validates and defers edition N+1 when N has not yet
+reached its local `effectiveAt`. It retries that exact edition at N's activation boundary without
+recording a validation failure. This preserves every authenticated status and recovery-guidance
+interval instead of skipping an intermediate descriptor when the local clock trails the publisher.
+The highest announced USK edition remains monotonic while the subscriber catches up one edition at
+a time.
+
+The sibling
+`support-lifecycle-last-known-good.json.revocation-activations` stores bounded derived activation
+times and predecessor-effective recovery guidance. It is written before the descriptor so an
+interrupted replacement can bind safely to either side of the immediate transition. Before a
+future-effective successor activates, ordinary support status and new guidance remain unknown;
+only a terminal revocation already effective under the predecessor remains active, with the
+predecessor's authenticated replacement or recovery guidance. Descriptor staleness never makes
+that terminal revocation safe.
+
+Changing `node.updater.URI` is a trust-scope transition, not a normal edition advance. The manager
+blocks package actions and updater startup while both subscribers rebind, preserves only a
+same-scope accepted edition seed, and changes the lifecycle parser's key identity and scope
+together. Each fetch carries its subscription generation and owned temporary blob through
+post-processing; a callback from the old URI cannot persist bytes, advance fetched state, or leave
+a transport blob in the new scope.
+
 An authenticated update-key compromise creates fixed-content invalidation markers beside the
 descriptor and at the independent node-level fallback location. Either marker prevents the old
 descriptor from loading and blocks package and lifecycle subscribers after restart. An existing
 malformed, symbolic, or unreadable marker fails closed as compromise evidence; a symlinked node
 directory with no marker is not itself treated as proof of compromise. If marker persistence
 temporarily fails, the in-memory compromise latch remains active and retries with bounded backoff.
-The critical compromise alert is restored on restart. Local-only updater failures do not create
-this durable compromise state and do not stop lifecycle polling.
+The manager latches compromise and stops package and lifecycle activity before it performs
+potentially blocking marker persistence. The critical compromise alert is restored on restart,
+the update-key-derived IP-to-country pull stays disabled, and the revocation checker may recover
+the authenticated certificate needed to re-arm revocation UOM announcements to peers. Local-only
+updater failures do not create this durable compromise state; they leave lifecycle and revocation
+polling active.
 
 ## Protected publication
 
@@ -346,14 +382,31 @@ advisories, or node/app data.
 Web Shell renders current, supported, security-only, deprecated, end-of-support, revoked, stale,
 and unknown states distinctly. It offers a package-download action only when the existing updater
 reports that it can honor that action. Acceptance of a download request is not presented as a
-completed update.
+completed update. A transient failure of the optional lifecycle route renders lifecycle state as
+unknown without discarding a successful `/updates/core` response or disabling otherwise valid
+core-updater controls.
 
-CoreUpdater rechecks effective build revocation when a package download starts, when a downloaded
-installer path is resolved, and when a Linux store handoff is submitted. A store submission must
-still exactly match the daemon's selected package kind, derived package id, and public store URL;
-an already-rendered form cannot launch a superseded or revoked target. A successor lifecycle
-descriptor whose activation time is ahead of the local clock does not suspend a terminal
-revocation whose entry-level effective time has already passed.
+CoreUpdater publishes the parsed `core-info.json`, integer build, detected environment, selected
+package key, and package specification as one immutable selection. A `PackageFetcher` retains that
+exact originating selection; reusing the same CHK in a later descriptor does not make an older
+download valid for a different build or package key. Completion of an older serialized download
+retries a newer automatic selection through all current trust and lifecycle gates.
+
+Every package action follows one authorization order: the manager verifies the current updater and
+trust scope, CoreUpdater verifies the exact immutable selection, and lifecycle state verifies that
+selection's build. Download startup, installer process launch, and Linux store process launch occur
+inside the resulting bounded callback rather than after returning a detached path or boolean. A
+store submission must exactly match the daemon's selected package kind, derived package id, and
+public store URL, so an already-rendered form cannot launch a superseded or revoked target.
+Platform helper processes used inside that guard have hard timeouts and must not re-enter updater
+control methods.
+
+Lifecycle acceptance also reconciles the active fetcher's originating build, not merely the newest
+advertised selection. It cancels a fetch whose build is already revoked and schedules a clock-based
+recheck when that revocation becomes effective later. A successor descriptor whose activation time
+is ahead of the local clock does not suspend a terminal revocation already effective under its
+predecessor, and it does not activate a newly introduced revocation before the successor's own
+`effectiveAt`.
 
 Lifecycle state does not silently shut down the node, delete user-owned data, uninstall apps,
 disable FProxy browse or content filtering, restore the legacy plugin runtime, or force an update.

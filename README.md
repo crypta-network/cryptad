@@ -1278,6 +1278,12 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
   are disabled, persists only authenticated public-safe last-known-good bytes, and exposes unknown
   or stale state explicitly. The operator-only Platform API route and Web Shell show this local
   projection; the app-readable core-update response does not embed lifecycle data.
+- Lifecycle editions are digest-linked and consumed in order. A node retains at most one
+  future-effective descriptor and defers its exact successor until the intermediate policy
+  activates, so support or recovery guidance cannot skip an authenticated interval. Effective
+  build revocation is checked against the package fetch's complete originating selection at
+  download, installer-launch, and store-handoff boundaries; it remains separate from update-key
+  compromise.
 - Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
 - JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.

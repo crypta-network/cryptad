@@ -218,6 +218,13 @@ An authenticated recovery-only revocation exposes bounded public guidance while 
 recommended, and replacement build fields remain null. Support bundles preserve that distinction
 and do not include a raw advisory or descriptor body.
 
+Support output does not expose policy from a descriptor before its authenticated `effectiveAt`.
+When a future descriptor follows an already-effective build revocation, diagnostics keep the
+predecessor's bounded replacement or recovery guidance until the successor activates. When there
+is no prior terminal revocation, staged future status and guidance remain unknown. A stale
+last-known-good descriptor continues to label an already terminal `revoked` or `end-of-support`
+build accurately while also reporting the stale warning.
+
 Lifecycle status is evaluated locally from authenticated update-key content and the persisted
 last-known-good descriptor. There is no centralized support telemetry, installation counter,
 background report, or automatic support-bundle upload. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).
