@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -378,6 +379,22 @@ class CoreSupportLifecycleStateTest {
     assertFalse(state.isBuildRevoked(100));
     assertFalse(restartedBeforeActivation.isBuildRevoked(100));
     assertTrue(restartedAfterActivation.isBuildRevoked(100));
+  }
+
+  @Test
+  void pendingBuildRevocationDelay_whenFutureSuccessorIntroducesRevocation_expectActivationDelay(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] previous = CoreSupportLifecycleParserTest.fixtureBytes();
+    state.accept(previous, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+
+    state.accept(futureEffectiveRevocationSuccessor(previous, predecessorDigest), 2);
+
+    assertEquals(
+        Duration.between(VERIFIED_AT, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT)).toMillis(),
+        state.pendingBuildRevocationDelayMillis(100).orElseThrow());
+    assertTrue(state.pendingBuildRevocationDelayMillis(101).isEmpty());
   }
 
   private static CoreSupportLifecycleState state(Path tempDir, Instant now) {

@@ -9,6 +9,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -39,6 +40,7 @@ import network.crypta.support.Ticker;
 import network.crypta.support.http.ExternalLinkSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -663,6 +666,27 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void lifecycleChange_whenActiveFetchRevocationIsFutureEffective_expectCancellationAtActivation()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
+    setField(updater, "fetcher", fetcher);
+    when(fetcher.originatingBuildVersion()).thenReturn(advertisedBuild);
+    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(false, true);
+    when(updater.manager.pendingCorePackageBuildRevocationDelayMillis(advertisedBuild))
+        .thenReturn(java.util.OptionalLong.of(1_500L));
+    Ticker ticker = updater.manager.getNode().network().ticker();
+    ArgumentCaptor<Runnable> recheck = ArgumentCaptor.forClass(Runnable.class);
+
+    updater.onSupportLifecycleStateChanged();
+    verify(ticker).queueTimedJob(recheck.capture(), eq(1_500L));
+    recheck.getValue().run();
+
+    verify(fetcher).cancelForBuildRevocation();
+  }
+
+  @Test
   void withDownloadedInstaller_whenUriChangesDuringLaunch_expectChangeWaitsForLaunch()
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
@@ -791,6 +815,8 @@ class CoreUpdaterTest {
               Supplier<Object> action = invocation.getArgument(1, Supplier.class);
               return Optional.of(action.get());
             });
+    when(manager.pendingCorePackageBuildRevocationDelayMillis(anyInt()))
+        .thenReturn(OptionalLong.empty());
     return updater;
   }
 

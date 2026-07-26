@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
@@ -150,6 +151,7 @@ public final class NodeUpdateManager {
 
   private FreenetURI updateURI;
   private FreenetURI revocationURI;
+  private final Object updateUriTransitionLock = new Object();
   private volatile int lastKnownGoodFetchedEdition;
   private volatile String lastKnownGoodFetchedEditionKey;
 
@@ -808,8 +810,10 @@ public final class NodeUpdateManager {
    *
    * @return a {@link FreenetURI} representing the update USK, never {@code null}
    */
-  public synchronized FreenetURI getURI() {
-    return updateURI;
+  public FreenetURI getURI() {
+    synchronized (updateUriTransitionLock) {
+      return updateURI;
+    }
   }
 
   /**
@@ -913,36 +917,38 @@ public final class NodeUpdateManager {
    *
    * @param uri the new USK; must be a valid USK without meta-strings (non‑null)
    */
-  public synchronized void setURI(FreenetURI uri) {
-    NodeUpdater updater;
-    CoreSupportLifecycleUpdater lifecycleUpdater;
-    FreenetURI lifecycleUri;
-    int subscribeEditionSeed;
-    CoreSupportLifecycleParser.TrustBinding lifecycleTrust;
-    synchronized (this) {
-      if (updateURI.equals(uri)) {
-        return;
+  public void setURI(FreenetURI uri) {
+    synchronized (updateUriTransitionLock) {
+      NodeUpdater updater;
+      CoreSupportLifecycleUpdater lifecycleUpdater;
+      FreenetURI lifecycleUri;
+      int subscribeEditionSeed;
+      CoreSupportLifecycleParser.TrustBinding lifecycleTrust;
+      synchronized (this) {
+        if (updateURI.equals(uri)) {
+          return;
+        }
+        String oldUpdateScope = normalizeFetchedEditionScope(updateURI);
+        updateURI = uri;
+        updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
+        String newUpdateScope = normalizeFetchedEditionScope(updateURI);
+        if (!newUpdateScope.equals(oldUpdateScope)) {
+          resetLastKnownGoodFetchedEditionLocked(newUpdateScope);
+        }
+        subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
+        updater = coreUpdater;
+        lifecycleUpdater = supportLifecycleUpdater;
+        lifecycleTrust = supportLifecycleTrustBinding();
+        lifecycleUri = getSupportLifecycleURI();
       }
-      String oldUpdateScope = normalizeFetchedEditionScope(updateURI);
-      updateURI = uri;
-      updateURI = updateURI.setSuggestedEdition(Version.currentBuildNumber());
-      String newUpdateScope = normalizeFetchedEditionScope(updateURI);
-      if (!newUpdateScope.equals(oldUpdateScope)) {
-        resetLastKnownGoodFetchedEditionLocked(newUpdateScope);
+      if (updater != null) {
+        updater.onChangeURI(uri, subscribeEditionSeed);
       }
-      subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
-      updater = coreUpdater;
-      lifecycleUpdater = supportLifecycleUpdater;
-      lifecycleTrust = supportLifecycleTrustBinding();
-      lifecycleUri = getSupportLifecycleURI();
-    }
-    if (updater != null) {
-      updater.onChangeURI(uri, subscribeEditionSeed);
-    }
-    if (lifecycleUpdater != null) {
-      lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleTrust);
-    } else {
-      supportLifecycleState.changeTrust(lifecycleTrust);
+      if (lifecycleUpdater != null) {
+        lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleTrust);
+      } else {
+        supportLifecycleState.changeTrust(lifecycleTrust);
+      }
     }
   }
 
@@ -2049,6 +2055,16 @@ public final class NodeUpdateManager {
    */
   boolean isCorePackageBuildRevoked(int buildVersion) {
     return supportLifecycleState.isBuildRevoked(buildVersion);
+  }
+
+  /**
+   * Returns when a future-effective authenticated revocation must be rechecked for one package.
+   *
+   * @param buildVersion integer build owned by the active package fetch
+   * @return positive state-derived delay, or empty when no future revocation is pending
+   */
+  OptionalLong pendingCorePackageBuildRevocationDelayMillis(int buildVersion) {
+    return supportLifecycleState.pendingBuildRevocationDelayMillis(buildVersion);
   }
 
   /**

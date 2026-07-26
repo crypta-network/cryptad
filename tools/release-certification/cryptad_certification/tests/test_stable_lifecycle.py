@@ -1415,6 +1415,50 @@ class StableLifecycleLedgerTest(unittest.TestCase):
                 self.assertEqual(entry["statusEffectiveAt"], expected)
                 self.assertNotEqual(entry["statusEffectiveAt"], published_at)
 
+    def test_supported_successor_is_recommended_without_required_replacement(self) -> None:
+        genesis, _, genesis_errors = build_ledger(
+            inventory([release(1, "2026-01-01T00:00:00Z")]),
+            POLICY,
+            DIGEST,
+            "2026-01-02T00:00:00Z",
+            None,
+            None,
+        )
+        published = inventory(
+            [
+                release(1, "2026-01-01T00:00:00Z"),
+                release(2, "2026-01-10T00:00:00Z"),
+            ]
+        )
+
+        ledger, proposed, ledger_errors = build_ledger(
+            published,
+            POLICY,
+            DIGEST,
+            "2026-01-11T00:00:00Z",
+            genesis,
+            None,
+        )
+        descriptor, descriptor_errors = build_descriptor(
+            ledger,
+            POLICY,
+            "2026-01-11T00:00:00Z",
+            None,
+            POLICY["descriptor"]["updateKeyIdentityDigest"],
+        )
+
+        self.assertEqual(genesis_errors, [])
+        self.assertEqual(ledger_errors, [])
+        self.assertEqual(descriptor_errors, [])
+        self.assertEqual(ledger["entries"][0]["lifecycleStatus"], "supported-maintenance")
+        self.assertIsNone(ledger["entries"][0]["replacementBuild"])
+        self.assertEqual(
+            [(row["toStatus"], row["replacementBuild"]) for row in proposed],
+            [("supported-maintenance", None)],
+        )
+        self.assertEqual(descriptor["recommendedBuild"], "2")
+        self.assertIsNone(descriptor["entries"][0]["replacementBuild"])
+
     def test_successor_and_overdue_windows_append_every_adjacent_transition(self) -> None:
         first_inventory = inventory([release(1, "2024-01-01T00:00:00Z")])
         previous, _, errors = build_ledger(

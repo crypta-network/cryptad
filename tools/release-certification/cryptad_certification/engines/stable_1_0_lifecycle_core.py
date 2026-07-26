@@ -422,6 +422,19 @@ def due_status(entry: dict[str, Any], policy: dict[str, Any], now: dt.datetime, 
     return "end-of-support"
 
 
+def _normal_replacement_build(
+    status: str,
+    build: str,
+    tip: str,
+    requested: str | None = None,
+) -> str | None:
+    """Return required normal-transition guidance, excluding optional upgrades."""
+
+    if build == tip or status in {"current-stable", "supported-maintenance"}:
+        return None
+    return requested or tip
+
+
 def _initial_status_effective_at(
     entry: dict[str, Any],
     status: str,
@@ -893,7 +906,12 @@ def build_ledger(
                 "replacementBuild": (
                     (requested_row or {}).get("replacementBuild")
                     if next_status == "revoked"
-                    else (requested_row or {}).get("replacementBuild") or tip
+                    else _normal_replacement_build(
+                        next_status,
+                        build,
+                        tip,
+                        (requested_row or {}).get("replacementBuild"),
+                    )
                 ),
                 "recoveryGuidance": (requested_row or {}).get("recoveryGuidance"),
                 "previousLedgerDigest": previous_ledger_digest,
@@ -940,7 +958,7 @@ def build_ledger(
                 if entering_revocation
                 else prior.get("replacementBuild")
                 if target == "revoked" and prior
-                else (tip if build != tip else None)
+                else _normal_replacement_build(target, build, tip)
             ),
             "recoveryGuidance": (
                 (requested_row or {}).get("recoveryGuidance")

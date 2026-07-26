@@ -3,6 +3,7 @@ package network.crypta.runtime.updater;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
@@ -257,6 +259,33 @@ final class CoreSupportLifecycleState {
         && activation != null
         && !now.isBefore(activation)
         && !now.isBefore(entry.statusEffectiveAt());
+  }
+
+  /**
+   * Returns the delay until one authenticated build revocation becomes enforceable.
+   *
+   * <p>The delay is derived from the persisted activation state and this component's clock. It is
+   * absent for unknown, non-revoked, or already-effective builds. Callers must recheck {@link
+   * #isBuildRevoked(int)} when the delay expires because a newer descriptor or a wall-clock
+   * adjustment may have changed the effective state.
+   *
+   * @param buildVersion integer package build advertised by {@code core-info.json}
+   * @return a positive delay in milliseconds, or empty when no future recheck is required
+   */
+  synchronized OptionalLong pendingBuildRevocationDelayMillis(int buildVersion) {
+    if (descriptor == null) {
+      return OptionalLong.empty();
+    }
+    CoreSupportLifecycleEntry entry = descriptor.entriesByBuild().get(buildVersion);
+    Instant activation = revocationActivationByBuild.get(buildVersion);
+    Instant now = clock.instant();
+    if (entry == null
+        || entry.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED
+        || activation == null
+        || !now.isBefore(activation)) {
+      return OptionalLong.empty();
+    }
+    return OptionalLong.of(Math.max(1, Duration.between(now, activation).toMillis()));
   }
 
   /**

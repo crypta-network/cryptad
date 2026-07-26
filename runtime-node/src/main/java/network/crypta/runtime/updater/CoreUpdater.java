@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -621,10 +622,15 @@ public class CoreUpdater extends NodeUpdater {
       return false;
     }
     PackageFetcher f = new PackageFetcher(selection, target, uri);
-    return manager
-        .withCurrentCoreUpdaterAction(
-            this, () -> tryStartAuthorizedDownload(selection, f, target, chk))
-        .orElse(false);
+    boolean started =
+        manager
+            .withCurrentCoreUpdaterAction(
+                this, () -> tryStartAuthorizedDownload(selection, f, target, chk))
+            .orElse(false);
+    if (started) {
+      onSupportLifecycleStateChanged();
+    }
+    return started;
   }
 
   private Optional<Boolean> tryStartAuthorizedDownload(
@@ -825,16 +831,28 @@ public class CoreUpdater extends NodeUpdater {
 
   /** Cancels a selected package fetch when newly accepted policy revokes its build. */
   void onSupportLifecycleStateChanged() {
-    PackageFetcher revokedFetcher;
+    PackageFetcher revokedFetcher = null;
+    OptionalLong pendingRevocationDelay = OptionalLong.empty();
     synchronized (packageFetchLifecycleLock) {
       PackageFetcher activeFetcher = fetcher.get();
-      if (activeFetcher == null || !isBuildRevoked(activeFetcher.originatingBuildVersion())) {
+      if (activeFetcher == null) {
         return;
       }
-      revokedFetcher = fetcher.getAndSet(null);
+      Integer activeBuild = activeFetcher.originatingBuildVersion();
+      if (isBuildRevoked(activeBuild)) {
+        revokedFetcher = fetcher.getAndSet(null);
+      } else if (activeBuild != null) {
+        pendingRevocationDelay = manager.pendingCorePackageBuildRevocationDelayMillis(activeBuild);
+      }
     }
     if (revokedFetcher != null) {
       revokedFetcher.cancelForBuildRevocation();
+    } else if (pendingRevocationDelay.isPresent()) {
+      manager
+          .getNode()
+          .network()
+          .ticker()
+          .queueTimedJob(this::onSupportLifecycleStateChanged, pendingRevocationDelay.getAsLong());
     }
   }
 
