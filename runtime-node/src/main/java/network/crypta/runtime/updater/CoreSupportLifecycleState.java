@@ -163,31 +163,49 @@ final class CoreSupportLifecycleState {
    * @return detached snapshot that distinguishes unknown, stale, and every closed build status
    */
   synchronized CoreSupportLifecycleSnapshot snapshot() {
-    if (descriptor == null) {
+    CoreSupportLifecycleDescriptor currentDescriptor = descriptor;
+    if (currentDescriptor == null) {
       return CoreSupportLifecycleSnapshot.unknown(
           runningBuild, List.of(lastFailureCode == null ? "lifecycle_unknown" : lastFailureCode));
     }
-    Map<Integer, CoreSupportLifecycleEntry> byBuild = descriptor.entriesByBuild();
+    Instant now = clock.instant();
+    boolean effective = !now.isBefore(currentDescriptor.effectiveAt());
+    boolean stale = !now.isBefore(currentDescriptor.staleAt());
+    Map<Integer, CoreSupportLifecycleEntry> byBuild = currentDescriptor.entriesByBuild();
     CoreSupportLifecycleEntry running = byBuild.get(runningBuild);
     if (running == null) {
       return new CoreSupportLifecycleSnapshot(
           false,
-          !clock.instant().isBefore(descriptor.staleAt()),
+          stale,
           CoreSupportLifecycleSnapshot.RunningBuild.unknown(runningBuild),
-          new CoreSupportLifecycleSnapshot.Recommendation(
-              descriptor.currentStableBuild(),
-              descriptor.recommendedBuild(),
-              descriptor.recommendedBuild() != null
-                  && descriptor.recommendedBuild() > runningBuild),
-          verification(),
-          runningBuildMissingWarnings());
+          recommendation(currentDescriptor, effective),
+          verification(currentDescriptor),
+          runningBuildMissingWarnings(effective));
     }
+    return snapshotForRunningBuild(currentDescriptor, running, effective, stale);
+  }
 
-    Instant now = clock.instant();
-    boolean effective = !now.isBefore(descriptor.effectiveAt());
+  private CoreSupportLifecycleSnapshot snapshotForRunningBuild(
+      CoreSupportLifecycleDescriptor currentDescriptor,
+      CoreSupportLifecycleEntry running,
+      boolean effective,
+      boolean stale) {
     boolean effectiveRevocation = isBuildRevoked(runningBuild);
     boolean runningStatusKnown = effective || effectiveRevocation;
-    boolean stale = !now.isBefore(descriptor.staleAt());
+    return new CoreSupportLifecycleSnapshot(
+        runningStatusKnown,
+        stale,
+        runningBuildSnapshot(running, effective, effectiveRevocation),
+        recommendation(currentDescriptor, effective),
+        verification(currentDescriptor),
+        snapshotWarnings(running.lifecycleStatus(), effective, stale, effectiveRevocation));
+  }
+
+  private List<String> snapshotWarnings(
+      CoreSupportLifecycleStatus status,
+      boolean effective,
+      boolean stale,
+      boolean effectiveRevocation) {
     ArrayList<String> warningCodes = new ArrayList<>();
     if (!effective) {
       warningCodes.add("lifecycle_descriptor_not_effective");
@@ -196,36 +214,57 @@ final class CoreSupportLifecycleState {
       warningCodes.add("lifecycle_descriptor_stale");
     }
     if (effective) {
-      addStatusWarning(warningCodes, running.lifecycleStatus());
+      addStatusWarning(warningCodes, status);
     } else if (effectiveRevocation) {
       warningCodes.add("build_revoked");
     }
     if (lastFailureCode != null) {
       warningCodes.add(lastFailureCode);
     }
-    CoreSupportLifecycleSnapshot.RunningBuild runningSnapshot =
-        new CoreSupportLifecycleSnapshot.RunningBuild(
-            runningBuild,
-            runningStatusKnown ? running.lifecycleStatus() : null,
-            runningStatusKnown ? text(running.statusEffectiveAt()) : null,
-            text(running.fullSupportUntil()),
-            text(running.securityFixesUntil()),
-            text(running.deprecationEffectiveAt()),
-            text(running.endOfSupportAt()),
-            running.replacementBuild(),
-            running.recoveryGuidance(),
-            running.advisoryIds(),
-            running.reasonCodes());
-    return new CoreSupportLifecycleSnapshot(
-        runningStatusKnown,
-        stale,
-        runningSnapshot,
-        new CoreSupportLifecycleSnapshot.Recommendation(
-            descriptor.currentStableBuild(),
-            descriptor.recommendedBuild(),
-            descriptor.recommendedBuild() != null && descriptor.recommendedBuild() > runningBuild),
-        verification(),
-        List.copyOf(warningCodes));
+    return List.copyOf(warningCodes);
+  }
+
+  private CoreSupportLifecycleSnapshot.RunningBuild runningBuildSnapshot(
+      CoreSupportLifecycleEntry running, boolean effective, boolean effectiveRevocation) {
+    if (effective) {
+      return activeRunningBuildSnapshot(running);
+    }
+    if (effectiveRevocation) {
+      return effectiveRevocationSnapshot(running);
+    }
+    return CoreSupportLifecycleSnapshot.RunningBuild.unknown(runningBuild);
+  }
+
+  private CoreSupportLifecycleSnapshot.RunningBuild activeRunningBuildSnapshot(
+      CoreSupportLifecycleEntry running) {
+    return new CoreSupportLifecycleSnapshot.RunningBuild(
+        runningBuild,
+        running.lifecycleStatus(),
+        text(running.statusEffectiveAt()),
+        text(running.fullSupportUntil()),
+        text(running.securityFixesUntil()),
+        text(running.deprecationEffectiveAt()),
+        text(running.endOfSupportAt()),
+        running.replacementBuild(),
+        running.recoveryGuidance(),
+        running.advisoryIds(),
+        running.reasonCodes());
+  }
+
+  private CoreSupportLifecycleSnapshot.RunningBuild effectiveRevocationSnapshot(
+      CoreSupportLifecycleEntry running) {
+    return new CoreSupportLifecycleSnapshot.RunningBuild(
+        runningBuild,
+        running.lifecycleStatus(),
+        text(running.statusEffectiveAt()),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        List.of(),
+        List.of());
   }
 
   /** Returns the currently accepted descriptor edition for subscription seeding. */
@@ -611,15 +650,36 @@ final class CoreSupportLifecycleState {
     return Map.copyOf(activations);
   }
 
-  private CoreSupportLifecycleSnapshot.DescriptorVerification verification() {
+  private CoreSupportLifecycleSnapshot.DescriptorVerification verification(
+      CoreSupportLifecycleDescriptor currentDescriptor) {
     return new CoreSupportLifecycleSnapshot.DescriptorVerification(
-        descriptor.descriptorEdition(), descriptor.descriptorDigest(), text(lastVerifiedAt));
+        currentDescriptor.descriptorEdition(),
+        currentDescriptor.descriptorDigest(),
+        text(lastVerifiedAt));
   }
 
-  private List<String> runningBuildMissingWarnings() {
-    return lastFailureCode == null
-        ? List.of(RUNNING_BUILD_NOT_IN_LIFECYCLE_INVENTORY_WARNING)
-        : List.of(RUNNING_BUILD_NOT_IN_LIFECYCLE_INVENTORY_WARNING, lastFailureCode);
+  private CoreSupportLifecycleSnapshot.Recommendation recommendation(
+      CoreSupportLifecycleDescriptor currentDescriptor, boolean effective) {
+    if (!effective) {
+      return new CoreSupportLifecycleSnapshot.Recommendation(null, null, false);
+    }
+    Integer recommendedBuild = currentDescriptor.recommendedBuild();
+    return new CoreSupportLifecycleSnapshot.Recommendation(
+        currentDescriptor.currentStableBuild(),
+        recommendedBuild,
+        recommendedBuild != null && recommendedBuild > runningBuild);
+  }
+
+  private List<String> runningBuildMissingWarnings(boolean effective) {
+    ArrayList<String> warnings = new ArrayList<>();
+    warnings.add(RUNNING_BUILD_NOT_IN_LIFECYCLE_INVENTORY_WARNING);
+    if (!effective) {
+      warnings.add("lifecycle_descriptor_not_effective");
+    }
+    if (lastFailureCode != null) {
+      warnings.add(lastFailureCode);
+    }
+    return List.copyOf(warnings);
   }
 
   private static void addStatusWarning(List<String> warnings, CoreSupportLifecycleStatus status) {

@@ -34,7 +34,10 @@ class CoreSupportLifecycleStateTest {
   private static final String LIFECYCLE_STATE_PATH = "updates/core/lifecycle.json";
   private static final String REVOCATION_STATE_SUFFIX = ".revocation-activations";
   private static final String DESCRIPTOR_DIGEST_FIELD = "descriptorDigest";
+  private static final String REVOCATION_EFFECTIVE_AT = "2026-01-02T00:00:00Z";
   private static final String FUTURE_DESCRIPTOR_EFFECTIVE_AT = "2026-01-03T00:00:00Z";
+  private static final String FUTURE_RECOVERY_GUIDANCE =
+      "Use the successor recovery procedure only after descriptor activation.";
 
   @Test
   void accept_whenCertificationFixtureIsValid_expectKnownCurrentStableSnapshot(
@@ -299,6 +302,24 @@ class CoreSupportLifecycleStateTest {
   }
 
   @Test
+  void snapshot_whenSuccessorActivationIsAheadOfClock_expectCandidateGuidanceHidden(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] current = CoreSupportLifecycleParserTest.fixtureBytes();
+    state.accept(current, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+
+    state.accept(futureEffectiveSuccessor(current, predecessorDigest), 2);
+
+    CoreSupportLifecycleSnapshot snapshot = state.snapshot();
+    assertFalse(snapshot.known());
+    assertNull(snapshot.running().status());
+    assertNull(snapshot.running().statusEffectiveAt());
+    assertInactiveGuidanceHidden(snapshot);
+    assertTrue(snapshot.warnings().contains("lifecycle_descriptor_not_effective"));
+  }
+
+  @Test
   void isBuildRevoked_whenEntryEffectiveTimeIsAheadOfClock_expectBuildNotYetBlocked(
       @TempDir Path tempDir) throws Exception {
     CoreSupportLifecycleState state = state(tempDir, Instant.parse("2026-01-01T12:00:00Z"));
@@ -402,8 +423,24 @@ class CoreSupportLifecycleStateTest {
   private static void assertEffectiveRevocationSnapshot(CoreSupportLifecycleSnapshot snapshot) {
     assertTrue(snapshot.known());
     assertEquals("revoked", snapshot.running().status().wireValue());
+    assertEquals(REVOCATION_EFFECTIVE_AT, snapshot.running().statusEffectiveAt());
+    assertInactiveGuidanceHidden(snapshot);
     assertTrue(snapshot.warnings().contains(BUILD_REVOKED_WARNING));
     assertTrue(snapshot.warnings().contains("lifecycle_descriptor_not_effective"));
+  }
+
+  private static void assertInactiveGuidanceHidden(CoreSupportLifecycleSnapshot snapshot) {
+    assertNull(snapshot.running().fullSupportUntil());
+    assertNull(snapshot.running().securityFixesUntil());
+    assertNull(snapshot.running().deprecationEffectiveAt());
+    assertNull(snapshot.running().endOfSupportAt());
+    assertNull(snapshot.running().requiredReplacementBuild());
+    assertNull(snapshot.running().recoveryGuidance());
+    assertTrue(snapshot.running().advisoryIds().isEmpty());
+    assertTrue(snapshot.running().reasonCodes().isEmpty());
+    assertNull(snapshot.recommendation().currentStableBuild());
+    assertNull(snapshot.recommendation().recommendedBuild());
+    assertFalse(snapshot.recommendation().upgradeAvailable());
   }
 
   private static Path revocationStatePath(Path tempDir) {
@@ -450,6 +487,11 @@ class CoreSupportLifecycleStateTest {
 
   private static byte[] futureEffectiveSuccessor(byte[] previous, String previousDigest) {
     Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> entry = (Map<String, Object>) ((List<?>) root.get("entries")).getFirst();
+    if ("revoked".equals(entry.get("lifecycleStatus"))) {
+      entry.put("recoveryGuidance", FUTURE_RECOVERY_GUIDANCE);
+    }
     root.put("generatedAt", "2026-01-02T06:00:00Z");
     root.put("effectiveAt", FUTURE_DESCRIPTOR_EFFECTIVE_AT);
     root.put("staleAt", "2026-01-10T00:00:00Z");
@@ -466,8 +508,8 @@ class CoreSupportLifecycleStateTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> entry = (Map<String, Object>) ((List<?>) root.get("entries")).getFirst();
     entry.put("lifecycleStatus", "revoked");
-    entry.put("statusEffectiveAt", "2026-01-02T00:00:00Z");
-    entry.put("securityRevocationEffectiveAt", "2026-01-02T00:00:00Z");
+    entry.put("statusEffectiveAt", REVOCATION_EFFECTIVE_AT);
+    entry.put("securityRevocationEffectiveAt", REVOCATION_EFFECTIVE_AT);
     entry.put("replacementBuild", null);
     entry.put(
         "recoveryGuidance",
