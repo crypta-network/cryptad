@@ -3,6 +3,7 @@ package network.crypta.runtime.updater;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -131,6 +132,57 @@ class CoreSupportLifecycleUpdaterTest {
     assertTrue(accepted);
     assertEquals(-1, updater.rejectedFetchRetryDelayMillis());
     verify(lifecycleState, never()).recordFailure(any());
+  }
+
+  @Test
+  void processSuccess_whenFetchResultIsMissing_expectValidationFailure() throws Exception {
+    boolean accepted = updater.processSuccess(1, null, null);
+
+    assertFalse(accepted);
+    assertEquals(-1, updater.rejectedFetchRetryDelayMillis());
+    verify(lifecycleState).recordFailure("lifecycle_validation_failed");
+    verify(lifecycleState, never()).accept(any(byte[].class), anyLong());
+  }
+
+  @Test
+  void processSuccess_whenActualPayloadExceedsLimit_expectValidationFailure() throws Exception {
+    FetchResult result = oversizedFetchedDescriptor();
+
+    boolean accepted = updater.processSuccess(1, result, null);
+
+    assertFalse(accepted);
+    verify(lifecycleState).recordFailure("lifecycle_validation_failed");
+    verify(lifecycleState, never()).accept(any(byte[].class), anyLong());
+  }
+
+  @Test
+  void processSuccess_whenLifecycleValidationRejectsPayload_expectValidationFailure()
+      throws Exception {
+    FetchResult result = fetchedDescriptor();
+    doThrow(new IllegalArgumentException("descriptor rejected"))
+        .when(lifecycleState)
+        .accept(any(byte[].class), anyLong());
+
+    boolean accepted = updater.processSuccess(1, result, null);
+
+    assertFalse(accepted);
+    verify(lifecycleState).recordFailure("lifecycle_validation_failed");
+  }
+
+  @Test
+  void processSuccess_whenTransportBlobCannotBeDeleted_expectAcceptedStatePreserved()
+      throws Exception {
+    FetchResult result = fetchedDescriptor();
+    Path nonemptyDirectory = Files.createDirectory(tempDir.resolve("transport-blob"));
+    Files.writeString(nonemptyDirectory.resolve("retained"), "still in use");
+    when(lifecycleState.accept(any(byte[].class), anyLong()))
+        .thenReturn(CoreSupportLifecycleState.AcceptanceResult.acceptedResult());
+
+    boolean accepted = updater.processSuccess(1, result, nonemptyDirectory.toFile());
+
+    assertTrue(accepted);
+    assertTrue(Files.exists(nonemptyDirectory));
+    verify(lifecycleState).accept(any(byte[].class), anyLong());
   }
 
   @Test
@@ -286,9 +338,18 @@ class CoreSupportLifecycleUpdaterTest {
 
   private static FetchResult fetchedDescriptor() throws IOException {
     byte[] bytes = "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    return fetchedDescriptor(bytes, bytes.length);
+  }
+
+  private static FetchResult oversizedFetchedDescriptor() throws IOException {
+    byte[] bytes = new byte[CoreSupportLifecycleParser.MAX_DESCRIPTOR_BYTES + 1];
+    return fetchedDescriptor(bytes, 1);
+  }
+
+  private static FetchResult fetchedDescriptor(byte[] bytes, long declaredSize) throws IOException {
     FetchResult result = mock(FetchResult.class);
     Bucket bucket = mock(Bucket.class);
-    when(result.size()).thenReturn((long) bytes.length);
+    when(result.size()).thenReturn(declaredSize);
     when(result.asBucket()).thenReturn(bucket);
     when(bucket.getInputStream()).thenAnswer(_ -> new ByteArrayInputStream(bytes));
     return result;

@@ -101,6 +101,15 @@ class LegacyCoreUpdateActionPortTest {
   }
 
   @Test
+  void startCoreDownloadFromUi_whenManagerMissing_expectFalse() {
+    when(node.services().nodeUpdater()).thenReturn(null);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertFalse(port.startCoreDownloadFromUi());
+  }
+
+  @Test
   void withCurrentStoreTarget_whenUpdaterApprovesSelection_expectActionRunsThroughCoreUpdater() {
     String url = "https://flathub.org/apps/network.crypta.Cryptad";
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
@@ -149,6 +158,37 @@ class LegacyCoreUpdateActionPortTest {
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
     assertEquals(snapshot, port.supportLifecycleSnapshot());
+  }
+
+  @Test
+  void supportLifecycleSnapshot_whenManagerMissing_expectFailClosedUnknownState() {
+    when(node.services().nodeUpdater()).thenReturn(null);
+
+    CoreSupportLifecycleSnapshot snapshot =
+        new LegacyCoreUpdateActionPort(node).supportLifecycleSnapshot();
+
+    assertFalse(snapshot.known());
+    assertEquals(java.util.List.of("lifecycle_updater_unavailable"), snapshot.warnings());
+  }
+
+  @Test
+  void withDownloadedInstaller_whenPathIsBlank_expectEmpty() {
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    Optional<String> result = port.withDownloadedInstaller(" \t", Path::toString);
+
+    assertTrue(result.isEmpty());
+  }
+
+  @Test
+  void withDownloadedInstaller_whenPathContainsNul_expectEmpty() {
+    File nodeDir = tempDir.resolve("node").toFile();
+    when(node.getNodeDir()).thenReturn(nodeDir);
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    Optional<String> result = port.withDownloadedInstaller("\0", Path::toString);
+
+    assertTrue(result.isEmpty());
   }
 
   @Test

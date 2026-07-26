@@ -96,16 +96,16 @@ class CoreSupportLifecycleStoreTest {
   }
 
   @Test
-  void save_whenStatePublicationFails_expectPersistenceFailure(@TempDir Path tempDir) {
+  void save_whenStatePublicationFails_expectPersistenceFailure(@TempDir Path tempDir)
+      throws IOException {
     Path descriptor = tempDir.resolve(DESCRIPTOR_PATH);
     RecordingPersistenceSync persistenceSync = new RecordingPersistenceSync();
     persistenceSync.failPublication = true;
     CoreSupportLifecycleStore store =
         new CoreSupportLifecycleStore(descriptor, null, persistenceSync);
+    byte[] descriptorBytes = CoreSupportLifecycleParserTest.fixtureBytes();
 
-    assertThrows(
-        IOException.class,
-        () -> store.save(CoreSupportLifecycleParserTest.fixtureBytes(), VERIFIED_AT));
+    assertThrows(IOException.class, () -> store.save(descriptorBytes, VERIFIED_AT));
   }
 
   @Test
@@ -117,10 +117,9 @@ class CoreSupportLifecycleStoreTest {
     CoreSupportLifecycleStore store =
         CoreSupportLifecycleStore.underAcceptedRoot(
             nodeRoot, Path.of(DESCRIPTOR_PATH), Path.of(FALLBACK_MARKER_PATH));
+    byte[] descriptorBytes = CoreSupportLifecycleParserTest.fixtureBytes();
 
-    assertThrows(
-        IOException.class,
-        () -> store.save(CoreSupportLifecycleParserTest.fixtureBytes(), VERIFIED_AT));
+    assertThrows(IOException.class, () -> store.save(descriptorBytes, VERIFIED_AT));
   }
 
   @Test
@@ -206,9 +205,7 @@ class CoreSupportLifecycleStoreTest {
 
     assertNull(store.load());
     assertTrue(store.isTrustInvalidated());
-    assertThrows(
-        IOException.class,
-        () -> store.save(CoreSupportLifecycleParserTest.fixtureBytes(), LATER_VERIFIED_AT));
+    assertThrows(IOException.class, () -> store.save(bytes, LATER_VERIFIED_AT));
   }
 
   @Test
@@ -344,14 +341,13 @@ class CoreSupportLifecycleStoreTest {
     Path markerTarget = Files.writeString(tempDir.resolve("outside-marker"), "untrusted");
     Files.createSymbolicLink(invalidationMarker(descriptor), markerTarget);
     CoreSupportLifecycleStore store = new CoreSupportLifecycleStore(descriptor);
+    byte[] descriptorBytes = CoreSupportLifecycleParserTest.fixtureBytes();
 
     assertTrue(store.isTrustInvalidated());
     assertEquals(
         CoreSupportLifecycleStore.TrustInvalidationStatus.INVALID, store.trustInvalidationStatus());
     assertNull(store.load());
-    assertThrows(
-        IOException.class,
-        () -> store.save(CoreSupportLifecycleParserTest.fixtureBytes(), LATER_VERIFIED_AT));
+    assertThrows(IOException.class, () -> store.save(descriptorBytes, LATER_VERIFIED_AT));
   }
 
   @Test
@@ -361,14 +357,13 @@ class CoreSupportLifecycleStoreTest {
     Files.createDirectories(tempDir.resolve("updates/core"));
     Files.writeString(invalidationMarker(descriptor), "malformed");
     CoreSupportLifecycleStore store = new CoreSupportLifecycleStore(descriptor);
+    byte[] descriptorBytes = CoreSupportLifecycleParserTest.fixtureBytes();
 
     assertTrue(store.isTrustInvalidated());
     assertEquals(
         CoreSupportLifecycleStore.TrustInvalidationStatus.INVALID, store.trustInvalidationStatus());
     assertNull(store.load());
-    assertThrows(
-        IOException.class,
-        () -> store.save(CoreSupportLifecycleParserTest.fixtureBytes(), LATER_VERIFIED_AT));
+    assertThrows(IOException.class, () -> store.save(descriptorBytes, LATER_VERIFIED_AT));
   }
 
   private static Path invalidationMarker(Path descriptor) {
