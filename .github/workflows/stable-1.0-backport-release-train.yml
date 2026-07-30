@@ -196,11 +196,11 @@ jobs:
             evaluate-intake)
               predecessor_coordinates="$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF"
               if [[ -n "$predecessor_coordinates" ]] && (
-                  [[ ! "$PREDECESSOR_COMPLETION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-                  || [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
-                  || [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-                  || [[ ! "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-                  || [[ "$PREDECESSOR_COMPLETION_WORKFLOW_REF" != "crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$PREDECESSOR_COMPLETION_SOURCE_COMMIT" ]]
+                  [[ ! "$PREDECESSOR_COMPLETION_RUN_ID" =~ ^[1-9][0-9]*$ ]] ||
+                  [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+                  [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+                  [[ ! "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] ||
+                  [[ "$PREDECESSOR_COMPLETION_WORKFLOW_REF" != "crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$PREDECESSOR_COMPLETION_SOURCE_COMMIT" ]]
                 ); then
                 echo "::error::Predecessor completion handoff coordinates are incomplete or ambiguous."
                 exit 1

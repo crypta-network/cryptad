@@ -47,6 +47,49 @@ class StableBackportWorkflowTests(unittest.TestCase):
             ],
         )
 
+    @unittest.skipUnless(shutil.which("bash"), "workflow syntax test requires bash")
+    def test_every_multiline_workflow_shell_block_parses(self) -> None:
+        for workflow_path in (WORKFLOW, REVIEW_WORKFLOW):
+            lines = workflow_path.read_text(encoding="utf-8").splitlines()
+            scripts: list[tuple[int, str]] = []
+            for index, line in enumerate(lines):
+                marker = re.match(r"^(\s*)run:\s*\|[-+]?\s*$", line)
+                if marker is None:
+                    continue
+                marker_indent = len(marker.group(1))
+                body_indent = marker_indent + 2
+                body: list[str] = []
+                for candidate in lines[index + 1 :]:
+                    leading = len(candidate) - len(candidate.lstrip())
+                    if candidate.strip() and leading <= marker_indent:
+                        break
+                    body.append(
+                        candidate[body_indent:]
+                        if len(candidate) >= body_indent
+                        else ""
+                    )
+                scripts.append((index + 1, "\n".join(body) + "\n"))
+
+            self.assertTrue(scripts, f"no shell blocks found in {workflow_path}")
+            for line_number, script in scripts:
+                with self.subTest(
+                    workflow=workflow_path.name,
+                    line=line_number,
+                ):
+                    completed = subprocess.run(
+                        ("bash", "-n"),
+                        input=script,
+                        check=False,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    self.assertEqual(
+                        0,
+                        completed.returncode,
+                        completed.stdout + completed.stderr,
+                    )
+
     def test_protected_environments_require_credential_free_ref_preflight(
         self,
     ) -> None:
