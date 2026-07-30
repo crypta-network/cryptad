@@ -31,6 +31,7 @@ _SUPPORTED_SCHEMA_KEYS = frozenset(
         "minLength",
         "maxLength",
         "minimum",
+        "maximum",
         "minItems",
         "maxItems",
         "uniqueItems",
@@ -198,6 +199,8 @@ def _schema_errors(
             errors.append(f"{path} violates the lifecycle recovery-guidance text contract")
     if type(value) is int and type(schema.get("minimum")) is int and value < schema["minimum"]:
         errors.append(f"{path} is below the schema minimum")
+    if type(value) is int and type(schema.get("maximum")) is int and value > schema["maximum"]:
+        errors.append(f"{path} is above the schema maximum")
     if isinstance(value, dict):
         properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []

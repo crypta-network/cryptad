@@ -21,6 +21,7 @@ python3 tools/release-certification/certify.py release-certification --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
 python3 tools/release-certification/certify.py stable-rc --self-test
 python3 tools/release-certification/certify.py stable-ga --self-test
+python3 tools/release-certification/certify.py stable-backport --self-test
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
 ```
@@ -54,6 +55,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-readiness` | Evaluate the Stable 1.0 promotion gate. |
 | `stable-rc` | Execute, freeze, package, and verify a protected Stable 1.0 release candidate. |
 | `stable-ga` | Validate and prepare explicit promotion of one exact frozen Stable 1.0 RC without rebuilding or publishing it. |
+| `stable-backport` | Classify Stable 1.0 fixes, authenticate source-to-candidate provenance, account for one release train, and verify completion without changing Git or public state. |
 | `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -508,6 +510,239 @@ new public state as `publication-complete`.
 Follow the [production security response runbook](../../docs/production-security-response-runbook.md)
 when collecting release-blocking drill evidence or responding to an app ecosystem incident.
 
+## Stable 1.0 backport and release-train certification
+
+Use `stable-backport` before `stable-maintenance` to govern the exact contents of one routine or
+security-hotfix candidate:
+
+```bash
+python3 tools/release-certification/certify.py stable-backport \
+  --manifest build/stable-1.0-backport.json
+```
+
+The component has four side-effect-free modes:
+
+- `evaluate` validates intake, policy, lifecycle coverage, prior queue state, and proposed
+  dispositions before any accepted fix is required to be landed;
+- `prepare-candidate` binds the exact candidate, source-to-candidate provenance, evidence, and
+  complete commit/change coverage;
+- `validate-authorization` validates a narrow authorization for the exact train composition and
+  candidate handoff;
+- `verify-release-completion` authenticates publication, lifecycle activation or an explicit
+  pending state, and no-squash `--no-ff` reconciliation into `main` and `develop`.
+
+The candidate may advance between `evaluate` and `prepare-candidate` while approved fixes are
+landed. Candidate equality is frozen from `prepare-candidate` through authorization, maintenance,
+and completion; it is not required for the pre-landing evaluation handoff.
+
+The versioned policy closes classifications, dispositions, states, provenance modes, deadlines,
+roles, Git object rules, queue bounds, evidence windows, redaction, and non-waivable blockers. The
+two release lanes are `routine-maintenance` and `security-hotfix`; `future-milestone`, `deferred`,
+and `rejected` keep ineligible or unscheduled work outside a Stable candidate.
+
+Git evidence uses full canonical commit object ids and verified object graph operations. It rejects
+abbreviations, symbolic revision syntax, wrong repositories, spoofed branch roles, wrong bases,
+parallel predecessors, patch-id misuse, missing candidate ancestry, and incomplete manual conflict
+evidence. Routine manifests carry `policies.developmentLineageCommit`: the protected workflow
+resolves and freezes the exact protected `develop` tip independently of `candidateBaseCommit`,
+then the engine requires the declared base to be the exact candidate/lineage merge base and a
+member of that protected tip's first-parent chain. A merged side-parent tip is not an authenticated
+`develop` base. Patch
+identity supports a reviewed `clean-cherry-pick`; it never authorizes one.
+Clean cherry-pick and manual-conflict records also require an exact
+`stableBackportReviewAuthorizations` protected input. Each row comes from the successful
+`.github/workflows/stable-1.0-backport-review-authorization.yml` producer in the
+`stable-1.0-backport-review` environment and binds the reviewer role, policy, source,
+predecessor, candidate, normalized diff, path inventory, focused tests, validity interval, run,
+workflow, and artifact. Matching caller-provided digests without that producer artifact fail.
+Security-hotfix manifests instead carry `policies.mainLineageCommit`, independently resolved from
+the exact protected `main` tip. The hotfix base must equal that tip, while the tagged publication
+predecessor must remain its ancestor; branching directly from the predecessor cannot omit a later
+`main` reconciliation merge or its resolution.
+
+The queue is append-only and digest chained. It carries unresolved accepted fixes, deferred and
+rejected history, superseding relationships, critical obligations, hotfix follow-up, and prior
+merge-back obligations. Candidate coverage assigns every commit or change to an accepted fix,
+approved release metadata/tooling/docs, explained merge context, or `unaccounted`; any
+`unaccounted` entry blocks the train.
+
+Each evidence row carries the exact reviewed policy and queue digests. The queue digest normalizes
+only its embedded evidence queue-binding slots before hashing, which provides deterministic
+self-binding without excluding the evidence content or any other queue field. Policy-designated
+protected evidence must remain `visibility: protected`.
+
+Landed fix provenance is immutable. Resolving a carried obligation requires a new evidence digest,
+and both that digest and its resolution timestamp are immutable after resolution.
+Security incident/advisory identity and severity are immutable across queue snapshots. A disposition
+or lane change must be explained by an appended state transition, which prevents a critical
+security record from being relabeled as noncritical routine work.
+
+GA is the sole queue genesis. A later maintenance successor must provide both
+`previousStableBackportQueue` and `previousStableBackportValidation`; the published successor
+baseline authenticates the validation file digest, and that validation binds the exact queue
+digest and predecessor commit. Critical 4/8/12-hour response windows are computed from state
+transition timestamps, not from a caller-selected final deadline. An expired critical deferral
+review remains blocking. Rejecting a critical record does not remove it from the blocker index;
+an append-only authorized `rejected`-to-`triaged` transition reopens investigation without
+rewriting that history. The record remains critical and blocking throughout re-triage.
+superseding one requires a critical replacement with the same incident, advisory, and affected
+scope.
+
+Every accepted `security-hotfix` row is a critical `security-fix` under one incident/advisory pair;
+package, app, or tooling effects are recorded in the security fix’s affected scope and evidence,
+not as unrelated ordinary rows. A superseding hotfix may carry one publication-created follow-up
+even when it was not present in the prior authorized train queue: the first queue projection must
+bind the authenticated predecessor baseline’s exact open/overdue obligation digest, build/train and
+generation time to the prior queue’s critical source fixes. Subsequent queues inherit it unchanged.
+
+A new transition to `released` is valid only from an authenticated prior queue and with the exact
+`previousStableBackportCompletion` artifact. The fix transition and its
+`stable-backport.release-completion` evidence row both bind that artifact's file digest, train,
+queue, and candidate identity. The immutable per-fix provenance commit must be an ancestor of the
+publication tip; it is not required to equal that tip. The intake snapshot, completion-evidence
+row, and final state transition must be timestamped no earlier than the authenticated maintenance
+publication receipt, completion artifact, and protected completion handoff. Backdating any of
+those events cannot make a later train authorization appear to postdate publication.
+Every fix included by the prior authorized validation must complete this released-state proof
+before it can be superseded.
+When an otherwise authenticated reconciliation merge contains non-automatic content, strict Git
+inspection does not certify that content as reconciled. Completion instead derives the exact
+policy-named blocker, marks `reconciliationStatus: content-review-required`, and binds its evidence
+digest to the merge record and bounded resolution-path digest. The next intake must seed that exact
+completion-created obligation before moving the published fixes to `released`; its queue remains
+blocked pending separately authenticated content-review evidence. Other Git, parent, branch-tip,
+or attestation failures still produce no completion artifact.
+The successor also requires `previousStableBackportCompletionHandoff`. The protected workflow
+creates this record only after authenticating the successful prior completion run and exact
+Actions artifact, byte-comparing its completion and validation, resolving current protected
+`main`/`develop`, and proving both merge commits remain on their first-parent chains.
+
+Stable 1.0 remains one successor chain. Historical `supported-maintenance`,
+`security-fixes-only`, or `deprecated` builds are upgrade/advisory coverage sources.
+`end-of-support` and `revoked` builds are recovery sources only when policy explicitly permits it.
+They are never mutable release targets or parallel LTS branches.
+
+Every train re-authenticates the full existing GA promotion, validation, authorization-summary,
+publication-plan, receipt, checksums, provenance, and maintenance-baseline bundle as its immutable
+root. For the first post-GA train, the exact authenticated GA baseline and publication receipt are
+the predecessor and `latestPublishedMaintenancePointer` must be absent. Every later train requires
+that input and verifies that it selects the exact immediate maintenance predecessor. This matches
+the existing `stable-maintenance` genesis/no-fork invariant.
+The lifecycle authority input also includes a fresh public observation receipt bound to the exact
+descriptor edition, descriptor bytes, ledger, publication plan, update-key scope, and prior
+authorization. Train authorization must be issued no earlier than that observation or any state,
+evidence, obligation, or intake event it approves.
+The checked-in `stable-1.0-backport.example.json` deliberately models only that first post-GA
+shape. Replace its complete predecessor identity—integer build, release id, and product
+digest—before use. A later successor must add `latestPublishedMaintenancePointer`,
+`previousStableBackportQueue`, and `previousStableBackportValidation`; copying the genesis shape
+unchanged is rejected.
+
+When an authenticated `hotfixFollowUpClosure` closes the predecessor's publication-created
+shortened-window follow-up, the backport command uses the maintenance authority's closure-adjusted
+predecessor state. Its protected queue, candidate, lineage, and validation bind the closure digest
+so the next routine train can proceed without mutating the published baseline; the public
+validation omits that protected digest, and train authorization cannot predate the closure.
+
+Successful applicable modes write the canonical intake, plan, lineage, authoritative queue,
+public queue projection, candidate,
+authoritative validation, filtered public validation, authorization summary, optional completion,
+train summary/report, checksums,
+provenance, redaction, and component summary records below
+`build/release-certification/<release-id>/stable-backport/`. Failure does not manufacture
+placeholder success artifacts.
+
+The authorization-summary filename contains the complete schema-validated train authorization.
+The protected `validate-authorization` envelope contains that exact file together with the exact
+train validation. `stable-maintenance` requires both manifest inputs, recomputes their complete
+binding, and the protected maintenance workflow resolves the source run, workflow, candidate,
+artifact name, and Actions artifact digest from the manifest’s
+`stableBackportRunId`, `stableBackportArtifactName`, and
+`stableBackportArtifactDigest` metadata. Producer copies must match the authenticated artifact
+byte-for-byte. Maintenance then reseals those two authoritative files for every freeze,
+preparation, validation, publication, and independent-verification handoff. Repository-readable
+maintenance artifacts contain the encrypted envelope and no plaintext duplicate under either
+`authenticated-inputs` or staged `protected-inputs`. Train `candidateDigest` is the candidate JSON
+file digest and is intentionally not the maintenance candidate’s separate semantic
+`candidateIdentityDigest`.
+
+The protected `.github/workflows/stable-1.0-backport-release-train.yml` workflow maps
+`evaluate-intake`, `prepare-candidate`, `validate-authorization`, and
+`verify-release-completion` to those command modes. It binds an exact checkout and reviewed input
+digest, runs with a read-only token, and separates the exact protected handoff from an allowlisted
+public-safe projection. It
+does not create or modify branches, commits, tags, pull requests, releases, catalogs, update
+descriptors, or lifecycle state.
+
+The authoritative `stable-1.0-release-train-queue.json` remains inside the protected component
+and input chain. The workflow uploads two distinct artifacts: an authenticated encrypted envelope
+for the next protected phase or maintenance consumer, and an allowlisted public artifact. The
+latter contains
+`stable-1.0-release-train-queue-public.json` and
+`stable-1.0-release-train-validation-public.json`, not the authoritative queue, full validation,
+authorization record, completion record, predecessor-completion handoff, or internal
+checksums/provenance. The public schemas exclude touched/conflict paths, protected evidence ids
+and digests, private-record digests, and exact per-fix source/backport internals while retaining
+digest-bound public disposition, decision, and status projections.
+
+Each non-initial phase resolves and downloads the exact prior Actions artifact and authenticates
+its run, workflow, commit, operation, run attempt, digest, and encrypted-envelope binding before
+decrypting the checksums, provenance, queue, and validation inside a protected environment. Use
+the same canonical base64 32-byte
+`CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64` secret in the protected backport-review,
+backport-evidence, backport-authorization, maintenance-evidence,
+`stable-1.0-maintenance-publication`, and
+`stable-1.0-security-hotfix-publication` environments. Never expose that key in an input,
+variable, log, summary, or artifact, and retain required plaintext records only in the separately
+access-controlled support-lifetime input archive. The
+completion phase uses that downloaded validation as `stableBackportFrozenValidation`. It also
+supports a support-lifetime predecessor-completion reauthentication path: the protected input
+bundle retains the exact completion, validation, authoritative queue, receipt, and lifecycle
+authority after Actions retention expires. A new protected evaluation rechecks that digest-pinned
+bundle and the current protected `main` and `develop` first-parent histories, then emits the exact
+handoff consumed by later phases. Supplying an unexpired completion artifact remains an optional
+byte-comparison fast path.
+
+The release-train candidate-handoff authorization is bounded to 72 hours. That covers the required
+24-hour post-freeze routine-maintenance soak plus up to 48 hours for evidence review and handoff;
+it remains separate from, and never substitutes for, maintenance publication authorization.
+The protected publisher requires that grant to have been current at the exact
+maintenance-authorization handoff frozen into the bundle. It does not re-age that composition-only
+grant against each later publication target or retry. Candidate evidence freshness and the separate
+maintenance publication/activation authorizations retain their existing current-time checks.
+
+The evaluate-to-prepare handoff is deliberately different from the later frozen-candidate
+handoffs: the candidate may advance while approved fixes are landed, but the evaluated composition
+may not be exchanged. The public queue contains a digest commitment to the protected immutable
+fix/obligation composition and opaque transition digests. `prepare-candidate` requires the same
+fix and obligation identities, the same composition commitment, and prefix-only state-transition
+evolution. The obligation commitment includes its exact source train and source-fix identities;
+otherwise rerun `evaluate-intake`.
+The workflow resolves the protected `main` and `develop` tips and binds their exact reachability
+evidence.
+Routine phase provenance carries the frozen protected-development commit; a later phase rejects
+the handoff if that commit is no longer reachable from the live protected `develop` tip.
+Completion fetches the exact GitHub-API-selected protected-tip commit identities from the canonical
+origin before checking their local object types and ancestry, so a protected branch advancing
+after checkout does not create a false missing-object failure.
+
+Completion verifies separate no-ff merges of the same published release/hotfix candidate into
+`main` and `develop`; the `develop` merge does not name the `main` merge commit as its merged tip.
+Because completion is read-only proof over the already published train digest, it may run after
+the original candidate-handoff authorization expires. The receipt-bound frozen validation is
+replayed at authorization issuance rather than re-aging candidate evidence against completion
+time.
+
+Authorization projections preserve the exact schema-valid `expiresAt` text from the full
+authorization, including fractional seconds or an explicit UTC offset.
+Protected provenance-review authorization uses an exclusive expiry boundary: it is invalid when
+the captured validation time equals `expiresAt`.
+
+See the [backport and release-train
+runbook](../../docs/stable-1.0-backport-and-release-train-governance.md) for the full fix model,
+Git provenance contract, security projection, maintenance integration, release-note behavior, and
+manual operations.
+
 ## Stable 1.0 maintenance and security hotfix certification
 
 Use one command and policy family for both release classes:
@@ -544,6 +779,11 @@ Production evidence rows bind the immediate predecessor build and product. The
 release id, build, and product digest; all non-GA rows forbid those GA fields. Normal validation and
 hotfix follow-up closure enforce both identities, so a later successor cannot relabel its immediate
 predecessor as the direct-GA upgrade source.
+For immutable security hotfixes published before release-train governance, the v1 maintenance
+authorization schema continues to accept an absent `backportReleaseTrainDigest` only so
+`close-hotfix-follow-up` can authenticate the original authorization digest. Current preparation,
+validation, and protected publication still require that field semantically and reject its
+absence.
 
 The standard manifest supplies `previousStableLifecycleLedger`,
 `previousStableLifecycleDescriptor`, `stableLifecycleAuthorization`,

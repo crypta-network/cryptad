@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import os
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from cryptad_certification.io import write_json, write_text
+from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.models import RunContext
 from cryptad_certification.schema_validation import validate_schema
 from cryptad_certification.workspace import reset_confined_directory
@@ -73,7 +74,9 @@ from .stable_1_0_maintenance_core import (
     VALIDATION_SCHEMA,
     Candidate,
     GaRoot,
+    LoadedJson,
     Predecessor,
+    _maintenance_public_redaction_findings,
     add_blockers,
     authenticate_candidate,
     authenticate_ga_root,
@@ -872,6 +875,7 @@ def _pending_lifecycle_transition(
     predecessor: Predecessor,
     candidate: Candidate,
     predecessor_status: str,
+    backport_release_train_digest: str,
 ) -> dict[str, Any]:
     """Describe publication-contingent lifecycle changes without activating them."""
 
@@ -902,11 +906,446 @@ def _pending_lifecycle_transition(
             "proposedStatus": proposed_predecessor_status,
         },
         "activationCondition": "maintenance-publication-receipt-verified-and-lifecycle-publication-authorized",
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "activeLedgerChanged": False,
         "redaction": dict(_PASS_REDACTION),
     }
     value["proposalDigest"] = semantic_digest(value)
     return value
+
+
+def _release_train_evidence_freshness_errors(
+    evidence_results: list[Any],
+    *,
+    now: dt.datetime,
+    maximum_age: dt.timedelta,
+) -> list[str]:
+    errors: list[str] = []
+    for evidence_result in evidence_results:
+        evidence_generated_at = (
+            parse_timestamp(evidence_result.get("generatedAt"))
+            if isinstance(evidence_result, dict)
+            else None
+        )
+        evidence_expires_at = (
+            parse_timestamp(evidence_result.get("expiresAt"))
+            if isinstance(evidence_result, dict)
+            else None
+        )
+        evidence_deadline_at = (
+            parse_timestamp(evidence_result.get("freshnessDeadlineAt"))
+            if isinstance(evidence_result, dict)
+            else None
+        )
+        if (
+            evidence_generated_at is None
+            or evidence_expires_at is None
+            or evidence_deadline_at is None
+            or evidence_generated_at > now
+            or evidence_expires_at <= evidence_generated_at
+            or evidence_deadline_at
+            != min(evidence_expires_at, evidence_generated_at + maximum_age)
+            or evidence_deadline_at < now
+            or evidence_result.get("generatedAt")
+            != _timestamp(evidence_generated_at.isoformat())
+            or evidence_result.get("expiresAt")
+            != _timestamp(evidence_expires_at.isoformat())
+            or evidence_result.get("freshnessDeadlineAt")
+            != _timestamp(evidence_deadline_at.isoformat())
+        ):
+            errors.append(
+                "release-train candidate evidence is stale, expired, or "
+                "has an inconsistent freshness deadline"
+            )
+            break
+    return errors
+
+
+def _authenticate_backport_release_train(
+    context: RunContext,
+    predecessor: Predecessor,
+    candidate: Candidate,
+    state: ValidationState,
+) -> tuple[LoadedJson, bool]:
+    """Authenticate the exact authorized train handoff for this maintenance candidate."""
+
+    loaded = load_json_input(context, "stableBackportReleaseTrainValidation")
+    authorization_loaded = load_json_input(
+        context, "stableBackportReleaseTrainAuthorization"
+    )
+    assert loaded
+    assert authorization_loaded
+    value = loaded.value
+    full_authorization = authorization_loaded.value
+    errors = validate_schema(
+        value, "stable-1.0-release-train-validation-v1.schema.json"
+    )
+    errors.extend(
+        validate_schema(
+            full_authorization,
+            "stable-1.0-release-train-authorization-v1.schema.json",
+        )
+    )
+    release = value.get("release")
+    release = release if isinstance(release, dict) else {}
+    expected_lane = (
+        "routine-maintenance"
+        if context.manifest.policies.get("releaseClass") == "maintenance"
+        else "security-hotfix"
+    )
+    expected_validation_digest = semantic_digest(
+        {key: item for key, item in value.items() if key != "validationDigest"}
+    )
+    train_authorization = value.get("authorization")
+    train_authorization = (
+        train_authorization if isinstance(train_authorization, dict) else {}
+    )
+    expected_role = (
+        "stable-maintenance-train-manager"
+        if expected_lane == "routine-maintenance"
+        else "stable-security-train-manager"
+    )
+    required_fix_ids = value.get("requiredFixIds")
+    included_fix_ids = value.get("includedFixIds")
+    public_fixes = value.get("publicFixes")
+    deferred_fix_ids = value.get("deferredFixIds")
+    required_fix_ids = required_fix_ids if isinstance(required_fix_ids, list) else []
+    included_fix_ids = included_fix_ids if isinstance(included_fix_ids, list) else []
+    public_fixes = public_fixes if isinstance(public_fixes, list) else []
+    deferred_fix_ids = (
+        deferred_fix_ids if isinstance(deferred_fix_ids, list) else []
+    )
+    public_fix_ids = [
+        row.get("fixId") for row in public_fixes if isinstance(row, dict)
+    ]
+    evidence_results = value.get("evidenceResults")
+    evidence_results = (
+        evidence_results if isinstance(evidence_results, list) else []
+    )
+    evidence_subjects = [
+        (str(row.get("fixId")), str(row.get("evidenceId")))
+        for row in evidence_results
+        if isinstance(row, dict)
+    ]
+    if (
+        value.get("kind") != "stable-1.0-release-train-validation"
+        or value.get("mode") != "validate-authorization"
+        or release.get("releaseId") != context.manifest.release.release_id
+        or release.get("buildVersion") != context.manifest.release.version
+        or release.get("releaseClass")
+        != context.manifest.policies.get("releaseClass")
+        or release.get("tag") != f"v{context.manifest.release.version}"
+        or value.get("predecessorCommit") != predecessor.source_commit
+        or value.get("candidateCommit") != candidate.source.get("commit")
+        or value.get("hotfixFollowUpClosureDigest")
+        != predecessor.follow_up_closure_digest
+        or value.get("decision") != "go"
+        or value.get("authorizationRequired") is not True
+        or value.get("blockers") != []
+        or value.get("omittedFixIds") != []
+        or value.get("unaccountedCommitIds") != []
+        or not required_fix_ids
+        or required_fix_ids != sorted(required_fix_ids)
+        or required_fix_ids != included_fix_ids
+        or required_fix_ids != public_fix_ids
+        or deferred_fix_ids != sorted(set(deferred_fix_ids))
+        or len(public_fix_ids) != len(set(public_fix_ids))
+        or not evidence_results
+        or len(evidence_subjects) != len(evidence_results)
+        or evidence_subjects != sorted(evidence_subjects)
+        or len(evidence_subjects) != len(set(evidence_subjects))
+        or {subject[0] for subject in evidence_subjects}
+        != set(included_fix_ids)
+        or any(
+            not isinstance(row, dict)
+            or row.get("status") != "pass"
+            or row.get("candidateBound") is not True
+            or row.get("predecessorBound") is not True
+            or row.get("fresh") is not True
+            for row in evidence_results
+        )
+        or value.get("validationDigest") != expected_validation_digest
+        or train_authorization.get("status") != "valid"
+        or train_authorization.get("role") != expected_role
+        or not isinstance(train_authorization.get("authorizationDigest"), str)
+        or value.get("redaction") != _PASS_REDACTION
+    ):
+        errors.append(
+            "release-train validation does not authorize the exact predecessor, "
+            "candidate, lane, and fully accounted fix set"
+        )
+    policy_path = (
+        context.workspace_root
+        / "tools/release-certification/stable-1.0-backport-release-train-policy.json"
+    )
+    authorization_policy: dict[str, Any] = {}
+    try:
+        if value.get("policyDigest") != file_digest(policy_path):
+            errors.append(
+                "release-train validation does not bind the exact checked-in train policy"
+            )
+        train_policy = read_json(policy_path)
+        evidence_policy = (
+            train_policy.get("evidencePolicy", {})
+            if isinstance(train_policy, dict)
+            else {}
+        )
+        classification_policy = (
+            train_policy.get("classificationEligibility", {})
+            if isinstance(train_policy, dict)
+            else {}
+        )
+        authorization_policy = (
+            train_policy.get("authorization", {})
+            if isinstance(train_policy, dict)
+            else {}
+        )
+        maximum_age_hours = (
+            evidence_policy.get("routineMaximumAgeDays", 14) * 24
+            if expected_lane == "routine-maintenance"
+            else evidence_policy.get("securityHotfixMaximumAgeHours", 24)
+        )
+        for public_fix in public_fixes:
+            if not isinstance(public_fix, dict):
+                errors.append("release-train public fix projection is malformed")
+                continue
+            expected_fix_projection = semantic_digest(
+                {
+                    "fixId": public_fix.get("fixId"),
+                    "classification": public_fix.get("classification"),
+                    "publicSummary": public_fix.get("publicSummary"),
+                }
+            )
+            if public_fix.get("publicProjectionDigest") != expected_fix_projection:
+                errors.append(
+                    "release-train public fix projection digest is inconsistent"
+                )
+            classification = public_fix.get("classification")
+            eligibility = (
+                classification_policy.get(classification, {})
+                if isinstance(classification_policy, dict)
+                else {}
+            )
+            if expected_lane not in eligibility.get("allowedLanes", []):
+                errors.append(
+                    "release-train public fix classification is ineligible for its lane"
+                )
+            security_fields = (
+                public_fix.get("incidentOpaqueId"),
+                public_fix.get("advisoryOpaqueId"),
+                public_fix.get("publicSecuritySummary"),
+                public_fix.get("securityPublicProjectionDigest"),
+                public_fix.get("disclosureState"),
+            )
+            if classification == "security-fix":
+                expected_security_projection = semantic_digest(
+                    {
+                        "fixId": public_fix.get("fixId"),
+                        "incidentOpaqueId": public_fix.get("incidentOpaqueId"),
+                        "advisoryOpaqueId": public_fix.get("advisoryOpaqueId"),
+                        "severity": public_fix.get("severity"),
+                        "disclosureState": public_fix.get("disclosureState"),
+                        "publicSafeSummary": public_fix.get(
+                            "publicSecuritySummary"
+                        ),
+                    }
+                )
+                if (
+                    not public_fix.get("incidentOpaqueId")
+                    or public_fix.get("securityPublicProjectionDigest")
+                    != expected_security_projection
+                ):
+                    errors.append(
+                        "release-train public security projection is incomplete or inconsistent"
+                    )
+                if (
+                    public_fix.get("severity") == "critical"
+                    and expected_lane != "security-hotfix"
+                ):
+                    errors.append(
+                        "critical release-train security fix is assigned to the wrong lane"
+                    )
+                if (
+                    expected_lane == "security-hotfix"
+                    and public_fix.get("severity") != "critical"
+                ):
+                    errors.append(
+                        "noncritical release-train security fix uses the security-hotfix lane"
+                    )
+            elif any(field is not None for field in security_fields):
+                errors.append(
+                    "non-security release-train fix carries a security projection"
+                )
+        if expected_lane == "security-hotfix" and not any(
+            isinstance(row, dict)
+            and row.get("classification") == "security-fix"
+            and row.get("severity") == "critical"
+            for row in public_fixes
+        ):
+            errors.append(
+                "security-hotfix train lacks a critical incident-bound security fix"
+            )
+    except (OSError, ValueError):
+        errors.append("checked-in release-train policy is missing or malformed")
+        maximum_age_hours = 0
+    generated_at = parse_timestamp(value.get("generatedAt"))
+    authorization_expires = parse_timestamp(train_authorization.get("expiresAt"))
+    now = _now()
+    errors.extend(
+        _release_train_evidence_freshness_errors(
+            evidence_results,
+            now=now,
+            maximum_age=dt.timedelta(hours=maximum_age_hours),
+        )
+    )
+    if (
+        generated_at is None
+        or generated_at > now
+        or generated_at < now - dt.timedelta(hours=maximum_age_hours)
+    ):
+        errors.append("release-train validation is stale or future-dated")
+    if authorization_expires is None or authorization_expires <= now:
+        errors.append("release-train authorization is expired or malformed")
+    if not _canonical_json_input(loaded.path, value):
+        errors.append("release-train validation JSON is not canonical deterministic JSON")
+    if not _canonical_json_input(authorization_loaded.path, full_authorization):
+        errors.append(
+            "release-train authorization JSON is not canonical deterministic JSON"
+        )
+    prepare_validation = copy.deepcopy(value)
+    prepare_validation["mode"] = "prepare-candidate"
+    prepare_validation["authorization"] = None
+    prepare_validation.pop("validationDigest", None)
+    prepare_validation_digest = semantic_digest(prepare_validation)
+    expected_scopes = authorization_policy.get("candidateHandoffScopes")
+    maximum_validity_hours = authorization_policy.get("maximumValidityHours")
+    expected_security_ids = sorted(
+        {
+            str(row["incidentOpaqueId"])
+            for row in public_fixes
+            if isinstance(row, dict)
+            and isinstance(row.get("incidentOpaqueId"), str)
+        }
+    )
+    expected_candidate_security_ids = sorted(
+        {
+            str(row.get("advisoryOpaqueId") or row["incidentOpaqueId"])
+            for row in public_fixes
+            if isinstance(row, dict)
+            and isinstance(row.get("incidentOpaqueId"), str)
+        }
+    )
+    if expected_lane == "security-hotfix":
+        candidate_scope = candidate.input_value.get("changeScope")
+        candidate_scope = (
+            candidate_scope if isinstance(candidate_scope, dict) else {}
+        )
+        security_fix_ids = sorted(
+            str(row["fixId"])
+            for row in public_fixes
+            if isinstance(row, dict)
+            and row.get("classification") == "security-fix"
+            and isinstance(row.get("fixId"), str)
+        )
+        incident_scope_rows = [
+            row
+            for row in evidence_results
+            if isinstance(row, dict)
+            and row.get("evidenceId")
+            == "stable-backport.security-incident-scope"
+        ]
+        if (
+            expected_candidate_security_ids
+            != [candidate_scope.get("incidentId")]
+            or candidate_scope.get("severity") != "critical"
+            or sorted(
+                str(row.get("fixId")) for row in incident_scope_rows
+            )
+            != security_fix_ids
+            or any(
+                row.get("evidenceDigest")
+                != candidate_scope.get("hotfixPolicyAuthorizationDigest")
+                for row in incident_scope_rows
+            )
+        ):
+            errors.append(
+                "security-hotfix train incident and policy authorization do not "
+                "match the maintenance candidate change scope"
+            )
+    issued_at = parse_timestamp(full_authorization.get("issuedAt"))
+    expires_at = parse_timestamp(full_authorization.get("expiresAt"))
+    expected_authorization = {
+        "stableMilestone": STABLE_MILESTONE,
+        "trainId": value.get("trainId"),
+        "release": value.get("release"),
+        "repositoryIdentity": "github.com/crypta-network/cryptad",
+        "workflowIdentity": (
+            "github.com/crypta-network/cryptad/.github/workflows/"
+            "stable-1.0-backport-release-train.yml@"
+            f"{candidate.source.get('commit')}"
+        ),
+        "policyDigest": value.get("policyDigest"),
+        "queueDigest": value.get("queueDigest"),
+        "planDigest": value.get("planDigest"),
+        "validationDigest": prepare_validation_digest,
+        "predecessorCommit": value.get("predecessorCommit"),
+        "candidateCommit": value.get("candidateCommit"),
+        "acceptedFixes": public_fixes,
+        "securityOpaqueIds": expected_security_ids,
+        "allowedOperation": "candidate-handoff",
+        "role": expected_role,
+        "scope": expected_scopes,
+        "decision": "go",
+        "redaction": _PASS_REDACTION,
+    }
+    if (
+        not isinstance(expected_scopes, list)
+        or type(maximum_validity_hours) is not int
+        or maximum_validity_hours < 1
+        or any(
+            full_authorization.get(field) != expected
+            for field, expected in expected_authorization.items()
+        )
+        or full_authorization.get("authorizationDigest")
+        != semantic_digest(
+            {
+                key: item
+                for key, item in full_authorization.items()
+                if key != "authorizationDigest"
+            }
+        )
+        or train_authorization
+        != {
+            "authorizationDigest": full_authorization.get(
+                "authorizationDigest"
+            ),
+            "status": "valid",
+            "expiresAt": full_authorization.get("expiresAt"),
+            "role": full_authorization.get("role"),
+        }
+        or issued_at is None
+        or expires_at is None
+        or issued_at > now
+        or expires_at <= now
+        or expires_at <= issued_at
+        or expires_at - issued_at
+        > dt.timedelta(hours=maximum_validity_hours)
+    ):
+        errors.append(
+            "full release-train authorization does not bind the exact protected "
+            "candidate handoff"
+        )
+    if _maintenance_public_redaction_findings(value):
+        errors.append("release-train validation contains unsafe public material")
+    if _maintenance_public_redaction_findings(full_authorization):
+        errors.append("release-train authorization contains unsafe public material")
+    add_blockers(
+        state,
+        "stable-maintenance.backport-release-train",
+        errors,
+        "Regenerate and authorize the exact candidate-bound Stable backport release train.",
+    )
+    return loaded, not errors
 
 
 def _lineage(
@@ -1016,6 +1455,7 @@ def _provenance(
     evidence_digest: str,
     core_info_digest: str,
     pending_lifecycle_transition_digest: str,
+    backport_release_train_digest: str,
 ) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
@@ -1043,6 +1483,7 @@ def _provenance(
         "evidenceDigest": evidence_digest,
         "coreInfoDigest": core_info_digest,
         "pendingLifecycleTransitionDigest": pending_lifecycle_transition_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "assets": [
             {
                 "name": name,
@@ -1070,6 +1511,7 @@ def _authorization_expected(
     release_notes_digest: str,
     targets_digest: str,
     follow_up_digest: str | None,
+    backport_release_train_digest: str,
 ) -> dict[str, Any]:
     scope = candidate.input_value.get("changeScope")
     scope = scope if isinstance(scope, dict) else {}
@@ -1101,6 +1543,7 @@ def _authorization_expected(
         "knownLimitationsDeltaDigest": candidate.input_value.get("limitations", {}).get("deltaDigest"),
         "releaseNotesDigest": release_notes_digest,
         "publicationTargetsDigest": targets_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "allowedPublicationScopes": list(AUTHORIZATION_SCOPE),
         "acceptedWarningIds": sorted(
             row.get("warningId")
@@ -1322,6 +1765,7 @@ def _publication_plan(
     targets_digest: str,
     authorization_path: Path,
     authorization_digest: str,
+    backport_release_train_digest: str,
     authorized: bool,
     state: ValidationState,
 ) -> dict[str, Any]:
@@ -1345,6 +1789,7 @@ def _publication_plan(
         "checksumsDigest": file_digest(out / CHECKSUMS_FILE),
         "provenanceDigest": file_digest(out / PROVENANCE_FILE),
         "authorizationDigest": authorization_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "releaseNotesDigest": file_digest(out / RELEASE_NOTES_FILE),
         "coreInfoDigest": file_digest(out / CORE_INFO_FILE),
         "stableCatalogDigest": catalog.get("digest"),
@@ -1548,6 +1993,8 @@ def _receipt_errors(
         or value.get("checksumsDigest") != plan.get("checksumsDigest")
         or value.get("provenanceDigest") != plan.get("provenanceDigest")
         or value.get("authorizationDigest") != plan.get("authorizationDigest")
+        or value.get("backportReleaseTrainDigest")
+        != plan.get("backportReleaseTrainDigest")
         or value.get("coreUpdateReceiptDigest") != core_receipt_digest
         or value.get("publicationPlanDigest") != file_digest(plan_path)
         or value.get("releaseNotesDigest") != plan.get("releaseNotesDigest")
@@ -1607,6 +2054,7 @@ def _history_entry(
     receipt_identity_digest: str,
     core_info_digest: str,
     evidence_digest: str,
+    backport_release_train_digest: str,
 ) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
@@ -1627,6 +2075,7 @@ def _history_entry(
         "publicationReceiptIdentityDigest": receipt_identity_digest,
         "coreInfoDigest": core_info_digest,
         "evidenceDigest": evidence_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "status": "published-and-verified",
         "redaction": dict(_PASS_REDACTION),
     }
@@ -1642,6 +2091,7 @@ def _successor(
     evidence_digest: str,
     receipt: dict[str, Any],
     history_digest: str,
+    backport_release_train_digest: str,
     follow_up: dict[str, Any] | None,
     follow_up_digest: str | None,
 ) -> dict[str, Any]:
@@ -1861,6 +2311,13 @@ def _successor(
             "completedEvidenceDigest": evidence_digest,
         },
         "hotfixFollowUp": hotfix_follow_up,
+        "releaseTrain": {
+            "validationDigest": backport_release_train_digest,
+            "requiredEvidenceId": "stable-maintenance.backport-release-train",
+            "candidateCommit": candidate.source.get("commit"),
+            "predecessorCommit": predecessor.source_commit,
+            "unresolvedObligationsCarried": bool(effective_follow_up),
+        },
         "releaseHistoryDigest": history_digest,
         "redaction": dict(_PASS_REDACTION),
     }
@@ -1902,6 +2359,7 @@ def _verify_receipts(
     descriptor: dict[str, Any],
     core_plan: dict[str, Any],
     plan: dict[str, Any],
+    backport_release_train_digest: str,
     follow_up: dict[str, Any] | None,
     follow_up_digest: str | None,
     state: ValidationState,
@@ -1944,6 +2402,7 @@ def _verify_receipts(
         receipt_id,
         file_digest(out / CORE_INFO_FILE),
         evidence_digest,
+        backport_release_train_digest,
     )
     write_json(out / HISTORY_FILE, history)
     history_digest = file_digest(out / HISTORY_FILE)
@@ -1957,6 +2416,7 @@ def _verify_receipts(
         evidence_digest,
         receipt_loaded.value,
         history_digest,
+        backport_release_train_digest,
         follow_up,
         follow_up_digest,
     )
@@ -2004,6 +2464,7 @@ def _verify_receipts(
         "publicationReceiptIdentityDigest": receipt_id,
         "lineageDigest": successor["lineage"]["lineageDigest"],
         "historyDigest": history_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "compareAndSwapPredecessorBaselineDigest": predecessor.baseline_digest,
         "status": "active",
         "redaction": dict(_PASS_REDACTION),
@@ -2025,6 +2486,8 @@ def _validation(
     checksums_digest: str,
     provenance_digest: str,
     pending_lifecycle_transition_digest: str,
+    backport_release_train_digest: str,
+    backport_release_train_authenticated: bool,
     authorization_digest: str,
     authorization_valid: bool,
     publication_state: str,
@@ -2042,6 +2505,18 @@ def _validation(
         for row in evidence.get("evidenceRows", [])
         if isinstance(row, dict)
     ]
+    if backport_release_train_authenticated:
+        evidence_results.append(
+            {
+                "evidenceId": "stable-maintenance.backport-release-train",
+                "status": "pass",
+                "evidenceDigest": backport_release_train_digest,
+                "candidateBound": True,
+                "predecessorBound": True,
+                "fresh": True,
+                "production": True,
+            }
+        )
     decision = (
         "no-go"
         if state.blockers
@@ -2063,6 +2538,7 @@ def _validation(
         "checksumsDigest": checksums_digest,
         "provenanceDigest": provenance_digest,
         "pendingLifecycleTransitionDigest": pending_lifecycle_transition_digest,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "evidenceResults": evidence_results,
         "blockers": [
             {
@@ -2120,6 +2596,7 @@ def _summary(
     candidate: Candidate | None,
     publication_state: str,
     authorization_valid: bool,
+    backport_release_train_digest: str | None,
     artifacts: dict[str, str],
     redaction: dict[str, Any],
 ) -> dict[str, Any]:
@@ -2151,6 +2628,7 @@ def _summary(
             else ("go-with-waivers" if state.warnings else "go")
         ),
         "publicationState": publication_state,
+        "backportReleaseTrainDigest": backport_release_train_digest,
         "blockers": state.blockers,
         "warnings": state.warnings,
         "waivers": [],
@@ -2319,6 +2797,21 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         allow_published_product=closing_follow_up,
         freeze_predecessor_observation=freeze_predecessor_observation,
     )
+    if closing_follow_up:
+        backport_release_train = None
+        backport_release_train_authenticated = False
+    else:
+        (
+            backport_release_train,
+            backport_release_train_authenticated,
+        ) = _authenticate_backport_release_train(
+            context, predecessor, candidate, state
+        )
+    backport_release_train_digest = (
+        backport_release_train.digest
+        if backport_release_train is not None
+        else None
+    )
     if lifecycle_presence_errors:
         add_blockers(
             state,
@@ -2482,6 +2975,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
             candidate,
             "publication-complete",
             False,
+            None,
             artifacts,
             redaction,
         )
@@ -2496,6 +2990,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         predecessor,
         candidate,
         predecessor_lifecycle_status,
+        str(backport_release_train_digest),
     )
     add_blockers(
         state,
@@ -2551,6 +3046,9 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         predecessor.build_version,
         candidate.input_value,
         "validated",
+        list(backport_release_train.value.get("publicFixes", [])),
+        list(backport_release_train.value.get("deferredFixIds", [])),
+        str(backport_release_train_digest),
     )
     write_text(out / RELEASE_NOTES_FILE, notes)
     provenance = _provenance(
@@ -2564,6 +3062,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         evidence_digest,
         file_digest(out / CORE_INFO_FILE),
         lifecycle_proposal["proposalDigest"],
+        str(backport_release_train_digest),
     )
     write_json(out / PROVENANCE_FILE, provenance)
     _write_checksums(
@@ -2583,6 +3082,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         file_digest(out / RELEASE_NOTES_FILE),
         targets_digest,
         follow_up_digest,
+        str(backport_release_train_digest),
     )
     authorization, authorization_digest, authorization_valid = _authorization(
         context, expected, policy, state, prepare
@@ -2619,6 +3119,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         targets_digest,
         authorization_path,
         authorization_digest,
+        str(backport_release_train_digest),
         authorization_valid,
         state,
     )
@@ -2638,6 +3139,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
             descriptor,
             core_plan,
             plan,
+            str(backport_release_train_digest),
             follow_up,
             follow_up_digest,
             state,
@@ -2655,6 +3157,8 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         file_digest(out / CHECKSUMS_FILE),
         file_digest(out / PROVENANCE_FILE),
         lifecycle_proposal["proposalDigest"],
+        str(backport_release_train_digest),
+        backport_release_train_authenticated,
         authorization_digest,
         authorization_valid,
         publication_state,
@@ -2737,6 +3241,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         candidate,
         publication_state,
         authorization_valid,
+        backport_release_train_digest,
         artifacts,
         redaction,
     )
@@ -2763,7 +3268,7 @@ def _write_fail_closed(context: RunContext, out: Path, state: ValidationState) -
         ],
         "guarantees": {"unsafeInputExcluded": True},
     }
-    summary = _summary(context, state, None, "validated", False, {}, redaction)
+    summary = _summary(context, state, None, "validated", False, None, {}, redaction)
     write_json(out / SUMMARY_FILE, summary)
     write_text(out / REPORT_FILE, render_go_no_go(summary))
     write_json(out / REDACTION_REPORT_FILE, redaction)

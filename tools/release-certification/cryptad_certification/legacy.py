@@ -32,6 +32,7 @@ KIND_BY_COMMAND = {
     "stable-readiness": "stable-1.0-readiness",
     "stable-rc": "stable-1.0-rc",
     "stable-ga": "stable-1.0-ga-promotion",
+    "stable-backport": "stable-1.0-backport-release-train",
     "stable-maintenance": "stable-1.0-maintenance-promotion",
     "stable-lifecycle": "stable-1.0-support-lifecycle",
 }
@@ -933,6 +934,16 @@ def _run_stable_maintenance(context: RunContext) -> tuple[int, Path, Path | None
     return engine.run(context)
 
 
+def _run_stable_backport(context: RunContext) -> tuple[int, Path, Path | None]:
+    """Run side-effect-free Stable 1.0 fix-intake and release-train certification."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError("stable-backport requires release.profile stable-review")
+    from .engines import stable_1_0_backport as engine
+
+    return engine.run(context)
+
+
 def _run_stable_lifecycle(context: RunContext) -> tuple[int, Path, Path | None]:
     """Run side-effect-free Stable 1.0 support lifecycle certification."""
 
@@ -1059,6 +1070,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "stable-readiness": _run_stable_readiness,
     "stable-rc": _run_stable_rc,
     "stable-ga": _run_stable_ga,
+    "stable-backport": _run_stable_backport,
     "stable-maintenance": _run_stable_maintenance,
     "stable-lifecycle": _run_stable_lifecycle,
 }

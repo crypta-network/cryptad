@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-fix-intake-v1.schema.json",
+  "title": "Cryptad Stable 1.0 fix intake v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "policyDigest",
+    "repositoryIdentity",
+    "intakeId",
+    "previousQueueDigest",
+    "fixes",
+    "obligations",
+    "intakeDigest",
+    "publicProjectionDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-fix-intake"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "intakeId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/intakeId"
+    },
+    "previousQueueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "fixes": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixRecord"
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseTrainObligation"
+      }
+    },
+    "intakeDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "publicProjectionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  }
+}

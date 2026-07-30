@@ -511,6 +511,35 @@ Maintenance validation can prepare deterministic lifecycle transition bytes. It 
 them. The newly published build becomes `current-stable` only after the maintenance publication is
 complete and the protected lifecycle descriptor publication is independently verified.
 
+`stable-backport` consumes the same authenticated inventory while it plans and completes the
+release train. It does not create another support vocabulary or a parallel publication line.
+
+The train input also carries a fresh read-only public-observation receipt. Certification binds it
+to the exact descriptor edition and bytes, ledger, publication plan, update-key scope, and prior
+lifecycle authorization, then applies the lifecycle policy’s public-observation age limit. A
+still-unexpired descriptor and its historical publication receipt are not sufficient if that
+public observation is absent, stale, or names a different edition.
+
+Lifecycle treatment remains:
+
+- `current-stable` is the ordinary authenticated predecessor;
+- `supported-maintenance` and `security-fixes-only` builds are upgrade and advisory coverage
+  sources;
+- `deprecated` builds carry accurate upgrade guidance and may be policy-approved test sources;
+- `end-of-support` and `revoked` builds are recovery sources only when explicitly authorized;
+- historical build bytes are never changed.
+
+The train binds its lifecycle coverage and pending transition context into
+`stable-maintenance.backport-release-train`. A critical fix remains incomplete while an in-scope
+supported build lacks a safe upgrade or recovery path. Queue updates cannot reset lifecycle,
+Platform API deprecation, catalog/app, content-profile, advisory, or hotfix-follow-up clocks.
+
+After publication, `stable-backport` completion verification accepts either the exact independently
+verified lifecycle activation or an explicit pending-activation state. It does not claim
+`current-stable` from a maintenance receipt alone. See the [backport and release-train
+runbook](stable-1.0-backport-and-release-train-governance.md) for the queue, coverage, and
+post-release reconciliation contracts.
+
 ## Privacy and local-only operation
 
 Lifecycle evaluation needs no centralized telemetry. Cryptad does not report node identifiers, IP

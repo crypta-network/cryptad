@@ -8,7 +8,8 @@
     "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
     "sourceCommit", "githubReleasePageUri", "deploymentServicePublicUri",
     "latestPointerPublicUri", "candidateIdentityDigest", "productDigest", "checksumsDigest",
-    "provenanceDigest", "authorizationDigest", "publicationPlanDigest", "releaseNotesDigest", "coreInfoDigest", "coreUpdateReceiptDigest",
+    "provenanceDigest", "authorizationDigest", "publicationPlanDigest", "releaseNotesDigest",
+    "coreInfoDigest", "coreUpdateReceiptDigest",
     "successorBaselineDigest", "releaseHistoryDigest", "tag", "githubRelease", "assets",
     "stableCatalog", "coreUpdate", "workflow", "publicObservations", "publicationState",
     "finalVerificationStatus", "failureCategory", "redaction"
@@ -29,6 +30,7 @@
     "checksumsDigest": {"$ref": "#/$defs/digest"},
     "provenanceDigest": {"$ref": "#/$defs/digest"},
     "authorizationDigest": {"$ref": "#/$defs/digest"},
+    "backportReleaseTrainDigest": {"$ref": "#/$defs/digest"},
     "publicationPlanDigest": {"$ref": "#/$defs/digest"},
     "releaseNotesDigest": {"$ref": "#/$defs/digest"},
     "coreInfoDigest": {"$ref": "#/$defs/digest"},

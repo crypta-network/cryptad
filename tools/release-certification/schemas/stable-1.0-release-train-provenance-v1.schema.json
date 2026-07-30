@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-provenance-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train provenance v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "trainId",
+    "release",
+    "repositoryIdentity",
+    "objectFormat",
+    "policyDigest",
+    "queueDigest",
+    "candidateCommit",
+    "predecessorCommit",
+    "mergeBaseCommit",
+    "sourceInputs",
+    "outputDigests",
+    "gitCommandsWereReadOnly",
+    "networkAccessPerformed",
+    "sideEffectsPerformed",
+    "provenanceDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-provenance"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "objectFormat": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/objectFormat"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "predecessorCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "mergeBaseCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "sourceInputs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/artifactDigest"
+      }
+    },
+    "outputDigests": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/artifactDigest"
+      }
+    },
+    "gitCommandsWereReadOnly": {
+      "const": true
+    },
+    "networkAccessPerformed": {
+      "const": false
+    },
+    "sideEffectsPerformed": {
+      "const": false
+    },
+    "provenanceDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "artifactDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "digest"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+        },
+        "digest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        }
+      }
+    }
+  }
+}

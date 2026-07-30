@@ -1,0 +1,527 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": 1,
+  "kind": "stable-1.0-backport-release-train-policy",
+  "component": "stable-backport",
+  "profile": "stable-review",
+  "stableMilestone": "1.0",
+  "repository": {
+    "identity": "github.com/crypta-network/cryptad",
+    "allowedObjectFormats": [
+      "sha1",
+      "sha256"
+    ],
+    "fullObjectIdsRequired": true,
+    "commitObjectsRequired": true,
+    "symbolicRevisionsAllowed": false,
+    "abbreviatedObjectIdsAllowed": false,
+    "remoteFetchDuringEvaluationAllowed": false,
+    "maximumGitOutputBytes": 8388608,
+    "gitCommandTimeoutSeconds": 30
+  },
+  "classifications": [
+    "compatible-bug-fix",
+    "security-fix",
+    "platform-api-compatible-addition",
+    "platform-api-deprecation",
+    "stable-catalog-app-patch",
+    "packaging-installer-fix",
+    "release-tooling-fix",
+    "documentation-support-fix",
+    "unsupported-feature-change",
+    "breaking-change"
+  ],
+  "dispositions": [
+    "routine-maintenance",
+    "security-hotfix",
+    "future-milestone",
+    "deferred",
+    "rejected"
+  ],
+  "releaseLanes": [
+    "routine-maintenance",
+    "security-hotfix"
+  ],
+  "fixStates": [
+    "submitted",
+    "triaged",
+    "accepted",
+    "scheduled",
+    "landed",
+    "verified",
+    "released",
+    "deferred",
+    "rejected",
+    "superseded"
+  ],
+  "provenanceModes": [
+    "inherited",
+    "clean-cherry-pick",
+    "manual-conflict-resolution"
+  ],
+  "candidateCoverageCategories": [
+    "accepted-fix",
+    "approved-release-metadata",
+    "approved-release-tooling",
+    "approved-docs-support",
+    "merge-context",
+    "unaccounted"
+  ],
+  "classificationEligibility": {
+    "compatible-bug-fix": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "future-milestone",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.affected-component-scope",
+        "stable-backport.candidate-bound-tests",
+        "stable-backport.compatibility"
+      ],
+      "nonWaivable": false
+    },
+    "security-fix": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "security-hotfix",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance",
+        "security-hotfix"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.security-incident-scope",
+        "stable-backport.security-public-projection",
+        "stable-backport.candidate-bound-tests"
+      ],
+      "nonWaivable": false
+    },
+    "platform-api-compatible-addition": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "future-milestone",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.platform-api-compatibility-window",
+        "stable-backport.platform-api-stable-samples",
+        "stable-backport.candidate-bound-tests"
+      ],
+      "nonWaivable": false
+    },
+    "platform-api-deprecation": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "future-milestone",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.platform-api-original-deprecation-clock",
+        "stable-backport.platform-api-supported-consumer-coverage",
+        "stable-backport.public-developer-guidance"
+      ],
+      "nonWaivable": false
+    },
+    "stable-catalog-app-patch": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.catalog-app-compatibility",
+        "stable-backport.catalog-app-review",
+        "stable-backport.catalog-app-permission-delta",
+        "stable-backport.app-data-migration",
+        "stable-backport.app-data-backup-restore",
+        "stable-backport.catalog-app-signing"
+      ],
+      "nonWaivable": false
+    },
+    "packaging-installer-fix": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.affected-package-keys",
+        "stable-backport.exact-package-verification",
+        "stable-backport.package-matrix"
+      ],
+      "nonWaivable": false
+    },
+    "release-tooling-fix": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.release-tooling-byte-truth",
+        "stable-backport.release-authority-preservation",
+        "stable-backport.tooling-security-boundaries"
+      ],
+      "nonWaivable": false
+    },
+    "documentation-support-fix": {
+      "allowedDispositions": [
+        "routine-maintenance",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [
+        "routine-maintenance"
+      ],
+      "requiredEvidenceIds": [
+        "stable-backport.docs-behavior-match",
+        "stable-backport.public-support-redaction"
+      ],
+      "nonWaivable": false
+    },
+    "unsupported-feature-change": {
+      "allowedDispositions": [
+        "future-milestone",
+        "deferred",
+        "rejected"
+      ],
+      "allowedLanes": [],
+      "requiredEvidenceIds": [
+        "stable-backport.ineligible-change-rationale"
+      ],
+      "nonWaivable": true
+    },
+    "breaking-change": {
+      "allowedDispositions": [
+        "future-milestone",
+        "rejected"
+      ],
+      "allowedLanes": [],
+      "requiredEvidenceIds": [
+        "stable-backport.breaking-change-rationale"
+      ],
+      "nonWaivable": true
+    }
+  },
+  "stateTransitions": {
+    "submitted": [
+      "triaged",
+      "rejected"
+    ],
+    "triaged": [
+      "accepted",
+      "deferred",
+      "rejected"
+    ],
+    "accepted": [
+      "scheduled",
+      "deferred",
+      "rejected",
+      "superseded"
+    ],
+    "scheduled": [
+      "landed",
+      "deferred",
+      "superseded"
+    ],
+    "landed": [
+      "verified",
+      "superseded"
+    ],
+    "verified": [
+      "released",
+      "superseded"
+    ],
+    "released": [],
+    "deferred": [
+      "triaged",
+      "rejected",
+      "superseded"
+    ],
+    "rejected": [
+      "triaged"
+    ],
+    "superseded": []
+  },
+  "releaseLanePolicy": {
+    "routine-maintenance": {
+      "releaseClass": "maintenance",
+      "branchRole": "routine-release-candidate",
+      "branchPattern": "^release/[1-9][0-9]*$",
+      "baseRole": "canonical-development",
+      "protectedDevelopmentLineageRequired": true,
+      "exactDevelopmentMergeBaseRequired": true,
+      "developmentFirstParentBaseRequired": true,
+      "latestPublishablePredecessorRequired": true,
+      "completePackageMatrixRequired": true,
+      "criticalSecurityAllowed": false
+    },
+    "security-hotfix": {
+      "releaseClass": "security-hotfix",
+      "branchRole": "security-hotfix-candidate",
+      "branchPattern": "^hotfix/[1-9][0-9]*$",
+      "baseRole": "authenticated-published-main",
+      "protectedDevelopmentLineageRequired": false,
+      "exactDevelopmentMergeBaseRequired": false,
+      "developmentFirstParentBaseRequired": false,
+      "latestPublishablePredecessorRequired": true,
+      "completePackageMatrixRequired": false,
+      "criticalSecurityAllowed": true
+    }
+  },
+  "provenancePolicy": {
+    "inherited": {
+      "exactSourceCommitMustBeAncestor": true,
+      "candidateHistoryRequired": true,
+      "patchIdRequired": false
+    },
+    "clean-cherry-pick": {
+      "distinctCommitRequired": true,
+      "candidateHistoryRequired": true,
+      "stablePatchIdRequired": true,
+      "patchIdIsAuthorization": false,
+      "exactTreeAndDiffDigestsRequired": true,
+      "exactTouchedPathInventoryRequired": true,
+      "reviewerAuthorizationRequired": true,
+      "reviewEvidenceId": "stable-backport.clean-cherry-pick-review",
+      "mergeCommitsAllowed": false,
+      "emptyCommitsAllowed": false
+    },
+    "manual-conflict-resolution": {
+      "distinctCommitRequired": true,
+      "candidateHistoryRequired": true,
+      "exactSourceAndCandidateCommitRequired": true,
+      "exactSourceTargetAndMergeBaseRequired": true,
+      "conflictPathsRequired": true,
+      "normalizedDiffEvidenceRequired": true,
+      "additionalReviewerAuthorizationRequired": true,
+      "reviewEvidenceId": "stable-backport.manual-conflict-review",
+      "candidateBoundFocusedTestsRequired": true,
+      "noUnrelatedFeatureConfirmationRequired": true,
+      "rawExploitPatchAllowedInPublicArtifacts": false,
+      "equivalentReimplementationShortcutAllowed": false
+    }
+  },
+  "criticalFixPolicy": {
+    "severity": "critical",
+    "requiredLane": "security-hotfix",
+    "intakeToTriageDeadlineHours": 4,
+    "triageToDecisionDeadlineHours": 8,
+    "acceptedToScheduledDeadlineHours": 12,
+    "maximumDeferralHours": 24,
+    "deferralSecurityDecisionEvidenceId": "stable-backport.critical-deferral-security-decision",
+    "explicitSecurityDecisionRequiredForDeferral": true,
+    "overdueDeferralRemainsBlocker": true,
+    "omissionIsNonWaivable": true,
+    "followUpDeadlineHours": 168
+  },
+  "evidencePolicy": {
+    "routineMaximumAgeDays": 14,
+    "securityHotfixMaximumAgeHours": 24,
+    "candidateBindingRequired": true,
+    "predecessorBindingRequired": true,
+    "policyDigestBindingRequired": true,
+    "queueDigestBindingRequired": true,
+    "testsMustCompleteBeforeValidation": true,
+    "supportedBuildUpgradeEvidenceId": "stable-backport.supported-build-upgrade-coverage",
+    "deprecatedBuildGuidanceEvidenceId": "stable-backport.deprecated-build-upgrade-guidance",
+    "recoverySourceEvidenceId": "stable-backport.authorized-recovery-source",
+    "criticalOperationalCoverageEvidenceId": "stable-backport.critical-operational-coverage",
+    "releasedStateCompletionEvidenceId": "stable-backport.release-completion",
+    "protectedEvidenceIds": [
+      "stable-backport.security-incident-scope",
+      "stable-backport.clean-cherry-pick-review",
+      "stable-backport.manual-conflict-review",
+      "stable-backport.release-train-authorization",
+      "stable-backport.post-release-reconciliation"
+    ]
+  },
+  "queuePolicy": {
+    "appendOnly": true,
+    "previousQueueDigestRequiredAfterGenesis": true,
+    "deterministicOrdering": [
+      "state-priority",
+      "deadline",
+      "fix-id"
+    ],
+    "maximumActiveFixes": 512,
+    "maximumHistoricalFixes": 4096,
+    "maximumStateTransitionsPerFix": 64,
+    "maximumEvidenceRowsPerFix": 256,
+    "silentTruncationAllowed": false,
+    "authenticatedCheckpointRequiredForRollover": true,
+    "unresolvedAcceptedFixesCarryForward": true,
+    "deferredRejectedAndSupersededHistoryCarryForward": true,
+    "criticalObligationsCarryForward": true,
+    "postReleaseObligationsCarryForward": true,
+    "securityHotfixAllowedCarriedObligationTypes": [
+      "hotfix-follow-up"
+    ],
+    "securityHotfixMaximumCarriedFollowUps": 1,
+    "publicationCreatedFollowUpBaselineBindingRequired": true
+  },
+  "candidatePolicy": {
+    "everyCommitAccounted": true,
+    "unaccountedCategoryBlocks": true,
+    "duplicateCommitAccountingAllowed": false,
+    "mergeContextRequiresExactParents": true,
+    "generatedArtifactsRequireTrainBinding": true,
+    "acceptedScheduledFixesMustBeLanded": true,
+    "landedFixesMustBeCandidateBound": true,
+    "candidateBoundVerificationRequired": true,
+    "unsupportedFeatureAllowed": false,
+    "breakingChangeAllowed": false
+  },
+  "noFork": {
+    "singleAuthenticatedPublicationChain": true,
+    "latestPointerImmediatePredecessorRequired": true,
+    "historicalBuildBytesImmutable": true,
+    "parallelStableBranchesAllowed": false
+  },
+  "historicalBuildCoverage": {
+    "current-stable": "publication-predecessor",
+    "supported-maintenance": "upgrade-and-recovery-source",
+    "security-fixes-only": "upgrade-and-recovery-source",
+    "deprecated": "upgrade-guidance-and-authorized-test-source",
+    "end-of-support": "explicitly-authorized-recovery-test-source-only",
+    "revoked": "explicitly-authorized-recovery-test-source-only",
+    "historicalBytesModified": false,
+    "lifecycleClocksResetAllowed": false
+  },
+  "authorization": {
+    "routineRole": "stable-maintenance-train-manager",
+    "securityHotfixRole": "stable-security-train-manager",
+    "cleanCherryPickReviewerRole": "stable-backport-cherry-pick-reviewer",
+    "manualConflictReviewerRole": "stable-backport-conflict-reviewer",
+    "provenanceReviewWorkflow": ".github/workflows/stable-1.0-backport-review-authorization.yml",
+    "provenanceReviewEnvironment": "stable-1.0-backport-review",
+    "provenanceReviewMaximumValidityHours": 72,
+    "allowedOperations": [
+      "candidate-handoff"
+    ],
+    "candidateHandoffScopes": [
+      "train:composition",
+      "candidate:handoff"
+    ],
+    "maximumValidityHours": 72,
+    "expirationRequired": true,
+    "wildcardScopeAllowed": false,
+    "publicationAuthorizationIncluded": false,
+    "exactWorkflowIdentityRequired": true
+  },
+  "postReleaseReconciliation": {
+    "publicationReceiptRequired": true,
+    "lifecycleActivationOrPendingStateRequired": true,
+    "noFfMainMergeRequired": true,
+    "noFfDevelopMergeRequired": true,
+    "hotfixPresenceInDevelopRequired": true,
+    "exactMergeParentsRequired": true,
+    "automaticMergeTreeRequired": true,
+    "manualResolutionCreatesCarriedObligation": true,
+    "manualResolutionObligationTypes": {
+      "main": "post-release-main-merge",
+      "routineDevelop": "post-release-develop-merge",
+      "hotfixDevelop": "hotfix-develop-merge-back"
+    },
+    "manualResolutionObligationIdPrefix": "stable-reconciliation",
+    "protectedWorkflowAttestationRequired": true,
+    "publishedCandidateBytesMayChange": false,
+    "incompleteReconciliationBlocksNextTrain": true
+  },
+  "maintenanceIntegration": {
+    "requiredEvidenceId": "stable-maintenance.backport-release-train",
+    "policyGatedInputRequired": true,
+    "trainDigestBoundToValidation": true,
+    "trainDigestBoundToReleaseNotes": true,
+    "trainDigestBoundToChecksumsAndProvenance": true,
+    "trainDigestBoundToPublicationPlan": true,
+    "trainDigestBoundToHistory": true,
+    "trainDigestBoundToSuccessorGovernance": true,
+    "pendingLifecycleTransitionContextRequired": true
+  },
+  "releaseNotes": {
+    "publicSafeOnly": true,
+    "fixIdRequired": true,
+    "classificationRequired": true,
+    "affectedComponentSummaryRequired": true,
+    "provenanceModeRequired": true,
+    "lineageDigestRequired": true,
+    "advisoryOnlyAfterDisclosure": true,
+    "deferredKnownIssuesRequired": true,
+    "trainDigestRequired": true,
+    "releasedClaimRequiresVerifiedPublication": true
+  },
+  "redaction": {
+    "publicProjectionDigestRequired": true,
+    "privateAndPublicFixIdentityMustMatch": true,
+    "maximumPublicTitleLength": 160,
+    "maximumPublicSummaryLength": 512,
+    "prohibitedPublicValueClasses": [
+      "embargoed-vulnerability-detail",
+      "private-issue-url",
+      "private-fork-name",
+      "credential",
+      "token",
+      "private-key",
+      "private-insert-uri",
+      "raw-exploit-patch",
+      "raw-support-data",
+      "raw-app-data",
+      "raw-content-data",
+      "identity-material",
+      "absolute-local-path"
+    ],
+    "unsafeMarkdownOrHtmlAllowed": false,
+    "absolutePathsAllowed": false
+  },
+  "bounds": {
+    "maximumFixesPerIntake": 512,
+    "maximumCandidateCommits": 4096,
+    "maximumTouchedPathsPerFix": 1024,
+    "maximumConflictPathsPerFix": 256,
+    "maximumAffectedComponentsPerFix": 128,
+    "maximumPublicArtifacts": 32,
+    "maximumSafeTextLength": 512
+  },
+  "nonWaivableBlockers": [
+    "stable-maintenance.backport-release-train",
+    "stable-backport.policy-authentication",
+    "stable-backport.repository-identity",
+    "stable-backport.full-git-object-identity",
+    "stable-backport.branch-role-and-base",
+    "stable-backport.latest-pointer-no-fork",
+    "stable-backport.queue-chain",
+    "stable-backport.required-fix-coverage",
+    "stable-backport.critical-security-obligations",
+    "stable-backport.candidate-change-accounting",
+    "stable-backport.provenance-authorization",
+    "stable-backport.breaking-change",
+    "stable-backport.embargo-redaction",
+    "stable-backport.authorization",
+    "stable-backport.post-release-reconciliation"
+  ]
+}

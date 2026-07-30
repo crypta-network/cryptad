@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-summary-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "mode",
+    "trainId",
+    "release",
+    "policyDigest",
+    "queueDigest",
+    "candidateCommit",
+    "validationDigest",
+    "completionDigest",
+    "fixCounts",
+    "decision",
+    "promotionReady",
+    "sideEffectsPerformed",
+    "principalArtifacts",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-summary"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "mode": {
+      "enum": [
+        "evaluate",
+        "prepare-candidate",
+        "validate-authorization",
+        "verify-release-completion"
+      ]
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "validationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "completionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "fixCounts": {
+      "$ref": "#/$defs/fixCounts"
+    },
+    "decision": {
+      "enum": [
+        "go",
+        "no-go"
+      ]
+    },
+    "promotionReady": {
+      "type": "boolean"
+    },
+    "sideEffectsPerformed": {
+      "const": false
+    },
+    "principalArtifacts": {
+      "$ref": "#/$defs/principalArtifacts"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "fixCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "submitted",
+        "triaged",
+        "accepted",
+        "scheduled",
+        "landed",
+        "verified",
+        "deferred",
+        "rejected",
+        "superseded",
+        "released"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "submitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "triaged": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accepted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scheduled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "landed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deferred": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "superseded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "released": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "principalArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixIntake",
+        "backportPlan",
+        "backportLineage",
+        "queue",
+        "publicQueue",
+        "candidate",
+        "validation",
+        "publicValidation",
+        "authorizationSummary",
+        "completion",
+        "report",
+        "checksums",
+        "provenance",
+        "redactionReport"
+      ],
+      "properties": {
+        "fixIntake": {
+          "const": "stable-1.0-fix-intake.json"
+        },
+        "backportPlan": {
+          "const": "stable-1.0-backport-plan.json"
+        },
+        "backportLineage": {
+          "const": "stable-1.0-backport-lineage.json"
+        },
+        "queue": {
+          "const": "stable-1.0-release-train-queue.json"
+        },
+        "publicQueue": {
+          "const": "stable-1.0-release-train-queue-public.json"
+        },
+        "candidate": {
+          "const": "stable-1.0-release-train-candidate.json"
+        },
+        "validation": {
+          "const": "stable-1.0-release-train-validation.json"
+        },
+        "publicValidation": {
+          "const": "stable-1.0-release-train-validation-public.json"
+        },
+        "authorizationSummary": {
+          "oneOf": [
+            {
+              "const": "stable-1.0-release-train-authorization-summary.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completion": {
+          "oneOf": [
+            {
+              "const": "stable-1.0-release-train-completion.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "report": {
+          "const": "stable-1.0-release-train-report.md"
+        },
+        "checksums": {
+          "const": "stable-1.0-release-train-checksums.txt"
+        },
+        "provenance": {
+          "const": "stable-1.0-release-train-provenance.json"
+        },
+        "redactionReport": {
+          "const": "redaction-report.json"
+        }
+      }
+    }
+  }
+}

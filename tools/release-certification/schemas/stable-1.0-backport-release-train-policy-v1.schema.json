@@ -1,0 +1,1275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-backport-release-train-policy-v1.schema.json",
+  "title": "Cryptad Stable 1.0 backport and release-train policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "policyVersion",
+    "kind",
+    "component",
+    "profile",
+    "stableMilestone",
+    "repository",
+    "classifications",
+    "dispositions",
+    "releaseLanes",
+    "fixStates",
+    "provenanceModes",
+    "candidateCoverageCategories",
+    "classificationEligibility",
+    "stateTransitions",
+    "releaseLanePolicy",
+    "provenancePolicy",
+    "criticalFixPolicy",
+    "evidencePolicy",
+    "queuePolicy",
+    "candidatePolicy",
+    "noFork",
+    "historicalBuildCoverage",
+    "authorization",
+    "postReleaseReconciliation",
+    "maintenanceIntegration",
+    "releaseNotes",
+    "redaction",
+    "bounds",
+    "nonWaivableBlockers"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "policyVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-backport-release-train-policy"
+    },
+    "component": {
+      "const": "stable-backport"
+    },
+    "profile": {
+      "const": "stable-review"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "repository": {
+      "$ref": "#/$defs/repository"
+    },
+    "classifications": {
+      "$ref": "#/$defs/classifications"
+    },
+    "dispositions": {
+      "$ref": "#/$defs/dispositions"
+    },
+    "releaseLanes": {
+      "$ref": "#/$defs/releaseLanes"
+    },
+    "fixStates": {
+      "$ref": "#/$defs/fixStates"
+    },
+    "provenanceModes": {
+      "$ref": "#/$defs/provenanceModes"
+    },
+    "candidateCoverageCategories": {
+      "$ref": "#/$defs/coverageCategories"
+    },
+    "classificationEligibility": {
+      "$ref": "#/$defs/classificationEligibility"
+    },
+    "stateTransitions": {
+      "$ref": "#/$defs/stateTransitions"
+    },
+    "releaseLanePolicy": {
+      "$ref": "#/$defs/releaseLanePolicy"
+    },
+    "provenancePolicy": {
+      "$ref": "#/$defs/provenancePolicy"
+    },
+    "criticalFixPolicy": {
+      "$ref": "#/$defs/criticalFixPolicy"
+    },
+    "evidencePolicy": {
+      "$ref": "#/$defs/evidencePolicy"
+    },
+    "queuePolicy": {
+      "$ref": "#/$defs/queuePolicy"
+    },
+    "candidatePolicy": {
+      "$ref": "#/$defs/candidatePolicy"
+    },
+    "noFork": {
+      "$ref": "#/$defs/noFork"
+    },
+    "historicalBuildCoverage": {
+      "$ref": "#/$defs/historicalBuildCoverage"
+    },
+    "authorization": {
+      "$ref": "#/$defs/authorization"
+    },
+    "postReleaseReconciliation": {
+      "$ref": "#/$defs/postReleaseReconciliation"
+    },
+    "maintenanceIntegration": {
+      "$ref": "#/$defs/maintenanceIntegration"
+    },
+    "releaseNotes": {
+      "$ref": "#/$defs/releaseNotes"
+    },
+    "redaction": {
+      "$ref": "#/$defs/redactionPolicy"
+    },
+    "bounds": {
+      "$ref": "#/$defs/bounds"
+    },
+    "nonWaivableBlockers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+      }
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "allowedObjectFormats",
+        "fullObjectIdsRequired",
+        "commitObjectsRequired",
+        "symbolicRevisionsAllowed",
+        "abbreviatedObjectIdsAllowed",
+        "remoteFetchDuringEvaluationAllowed",
+        "maximumGitOutputBytes",
+        "gitCommandTimeoutSeconds"
+      ],
+      "properties": {
+        "identity": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+        },
+        "allowedObjectFormats": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/objectFormat"
+          }
+        },
+        "fullObjectIdsRequired": {
+          "const": true
+        },
+        "commitObjectsRequired": {
+          "const": true
+        },
+        "symbolicRevisionsAllowed": {
+          "const": false
+        },
+        "abbreviatedObjectIdsAllowed": {
+          "const": false
+        },
+        "remoteFetchDuringEvaluationAllowed": {
+          "const": false
+        },
+        "maximumGitOutputBytes": {
+          "type": "integer",
+          "minimum": 1048576
+        },
+        "gitCommandTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "classifications": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/classification"
+      }
+    },
+    "dispositions": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/disposition"
+      }
+    },
+    "releaseLanes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "routine-maintenance",
+          "security-hotfix"
+        ]
+      }
+    },
+    "fixStates": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixState"
+      }
+    },
+    "provenanceModes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "inherited",
+          "clean-cherry-pick",
+          "manual-conflict-resolution"
+        ]
+      }
+    },
+    "coverageCategories": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/coverageCategory"
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowedDispositions",
+        "allowedLanes",
+        "requiredEvidenceIds",
+        "nonWaivable"
+      ],
+      "properties": {
+        "allowedDispositions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/disposition"
+          }
+        },
+        "allowedLanes": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "routine-maintenance",
+              "security-hotfix"
+            ]
+          }
+        },
+        "requiredEvidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+          }
+        },
+        "nonWaivable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "classificationEligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compatible-bug-fix",
+        "security-fix",
+        "platform-api-compatible-addition",
+        "platform-api-deprecation",
+        "stable-catalog-app-patch",
+        "packaging-installer-fix",
+        "release-tooling-fix",
+        "documentation-support-fix",
+        "unsupported-feature-change",
+        "breaking-change"
+      ],
+      "properties": {
+        "compatible-bug-fix": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "security-fix": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "platform-api-compatible-addition": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "platform-api-deprecation": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "stable-catalog-app-patch": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "packaging-installer-fix": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "release-tooling-fix": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "documentation-support-fix": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "unsupported-feature-change": {
+          "$ref": "#/$defs/eligibility"
+        },
+        "breaking-change": {
+          "$ref": "#/$defs/eligibility"
+        }
+      }
+    },
+    "transitionTargets": {
+      "type": "array",
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixState"
+      }
+    },
+    "stateTransitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitted",
+        "triaged",
+        "accepted",
+        "scheduled",
+        "landed",
+        "verified",
+        "released",
+        "deferred",
+        "rejected",
+        "superseded"
+      ],
+      "properties": {
+        "submitted": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "triaged": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "accepted": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "scheduled": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "landed": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "verified": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "released": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "deferred": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "rejected": {
+          "$ref": "#/$defs/transitionTargets"
+        },
+        "superseded": {
+          "$ref": "#/$defs/transitionTargets"
+        }
+      }
+    },
+    "lanePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseClass",
+        "branchRole",
+        "branchPattern",
+        "baseRole",
+        "protectedDevelopmentLineageRequired",
+        "exactDevelopmentMergeBaseRequired",
+        "developmentFirstParentBaseRequired",
+        "latestPublishablePredecessorRequired",
+        "completePackageMatrixRequired",
+        "criticalSecurityAllowed"
+      ],
+      "properties": {
+        "releaseClass": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseClass"
+        },
+        "branchRole": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/branchRole"
+        },
+        "branchPattern": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "baseRole": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/branchRole"
+        },
+        "protectedDevelopmentLineageRequired": {
+          "type": "boolean"
+        },
+        "exactDevelopmentMergeBaseRequired": {
+          "type": "boolean"
+        },
+        "developmentFirstParentBaseRequired": {
+          "type": "boolean"
+        },
+        "latestPublishablePredecessorRequired": {
+          "const": true
+        },
+        "completePackageMatrixRequired": {
+          "type": "boolean"
+        },
+        "criticalSecurityAllowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "releaseLanePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routine-maintenance",
+        "security-hotfix"
+      ],
+      "properties": {
+        "routine-maintenance": {
+          "$ref": "#/$defs/lanePolicy"
+        },
+        "security-hotfix": {
+          "$ref": "#/$defs/lanePolicy"
+        }
+      }
+    },
+    "provenancePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inherited",
+        "clean-cherry-pick",
+        "manual-conflict-resolution"
+      ],
+      "properties": {
+        "inherited": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exactSourceCommitMustBeAncestor",
+            "candidateHistoryRequired",
+            "patchIdRequired"
+          ],
+          "properties": {
+            "exactSourceCommitMustBeAncestor": {
+              "const": true
+            },
+            "candidateHistoryRequired": {
+              "const": true
+            },
+            "patchIdRequired": {
+              "const": false
+            }
+          }
+        },
+        "clean-cherry-pick": {
+          "$ref": "#/$defs/cleanCherryPickPolicy"
+        },
+        "manual-conflict-resolution": {
+          "$ref": "#/$defs/manualConflictPolicy"
+        }
+      }
+    },
+    "cleanCherryPickPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "distinctCommitRequired",
+        "candidateHistoryRequired",
+        "stablePatchIdRequired",
+        "patchIdIsAuthorization",
+        "exactTreeAndDiffDigestsRequired",
+        "exactTouchedPathInventoryRequired",
+        "reviewerAuthorizationRequired",
+        "reviewEvidenceId",
+        "mergeCommitsAllowed",
+        "emptyCommitsAllowed"
+      ],
+      "properties": {
+        "distinctCommitRequired": {
+          "const": true
+        },
+        "candidateHistoryRequired": {
+          "const": true
+        },
+        "stablePatchIdRequired": {
+          "const": true
+        },
+        "patchIdIsAuthorization": {
+          "const": false
+        },
+        "exactTreeAndDiffDigestsRequired": {
+          "const": true
+        },
+        "exactTouchedPathInventoryRequired": {
+          "const": true
+        },
+        "reviewerAuthorizationRequired": {
+          "const": true
+        },
+        "reviewEvidenceId": {
+          "const": "stable-backport.clean-cherry-pick-review"
+        },
+        "mergeCommitsAllowed": {
+          "const": false
+        },
+        "emptyCommitsAllowed": {
+          "const": false
+        }
+      }
+    },
+    "manualConflictPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "distinctCommitRequired",
+        "candidateHistoryRequired",
+        "exactSourceAndCandidateCommitRequired",
+        "exactSourceTargetAndMergeBaseRequired",
+        "conflictPathsRequired",
+        "normalizedDiffEvidenceRequired",
+        "additionalReviewerAuthorizationRequired",
+        "reviewEvidenceId",
+        "candidateBoundFocusedTestsRequired",
+        "noUnrelatedFeatureConfirmationRequired",
+        "rawExploitPatchAllowedInPublicArtifacts",
+        "equivalentReimplementationShortcutAllowed"
+      ],
+      "properties": {
+        "distinctCommitRequired": {
+          "const": true
+        },
+        "candidateHistoryRequired": {
+          "const": true
+        },
+        "exactSourceAndCandidateCommitRequired": {
+          "const": true
+        },
+        "exactSourceTargetAndMergeBaseRequired": {
+          "const": true
+        },
+        "conflictPathsRequired": {
+          "const": true
+        },
+        "normalizedDiffEvidenceRequired": {
+          "const": true
+        },
+        "additionalReviewerAuthorizationRequired": {
+          "const": true
+        },
+        "reviewEvidenceId": {
+          "const": "stable-backport.manual-conflict-review"
+        },
+        "candidateBoundFocusedTestsRequired": {
+          "const": true
+        },
+        "noUnrelatedFeatureConfirmationRequired": {
+          "const": true
+        },
+        "rawExploitPatchAllowedInPublicArtifacts": {
+          "const": false
+        },
+        "equivalentReimplementationShortcutAllowed": {
+          "const": false
+        }
+      }
+    },
+    "criticalFixPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "requiredLane",
+        "intakeToTriageDeadlineHours",
+        "triageToDecisionDeadlineHours",
+        "acceptedToScheduledDeadlineHours",
+        "maximumDeferralHours",
+        "deferralSecurityDecisionEvidenceId",
+        "explicitSecurityDecisionRequiredForDeferral",
+        "overdueDeferralRemainsBlocker",
+        "omissionIsNonWaivable",
+        "followUpDeadlineHours"
+      ],
+      "properties": {
+        "severity": {
+          "const": "critical"
+        },
+        "requiredLane": {
+          "const": "security-hotfix"
+        },
+        "intakeToTriageDeadlineHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "triageToDecisionDeadlineHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "acceptedToScheduledDeadlineHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumDeferralHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deferralSecurityDecisionEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "explicitSecurityDecisionRequiredForDeferral": {
+          "const": true
+        },
+        "overdueDeferralRemainsBlocker": {
+          "const": true
+        },
+        "omissionIsNonWaivable": {
+          "const": true
+        },
+        "followUpDeadlineHours": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "evidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routineMaximumAgeDays",
+        "securityHotfixMaximumAgeHours",
+        "candidateBindingRequired",
+        "predecessorBindingRequired",
+        "policyDigestBindingRequired",
+        "queueDigestBindingRequired",
+        "testsMustCompleteBeforeValidation",
+        "supportedBuildUpgradeEvidenceId",
+        "deprecatedBuildGuidanceEvidenceId",
+        "recoverySourceEvidenceId",
+        "criticalOperationalCoverageEvidenceId",
+        "releasedStateCompletionEvidenceId",
+        "protectedEvidenceIds"
+      ],
+      "properties": {
+        "routineMaximumAgeDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "securityHotfixMaximumAgeHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "candidateBindingRequired": {
+          "const": true
+        },
+        "predecessorBindingRequired": {
+          "const": true
+        },
+        "policyDigestBindingRequired": {
+          "const": true
+        },
+        "queueDigestBindingRequired": {
+          "const": true
+        },
+        "testsMustCompleteBeforeValidation": {
+          "const": true
+        },
+        "supportedBuildUpgradeEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "deprecatedBuildGuidanceEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "recoverySourceEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "criticalOperationalCoverageEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "releasedStateCompletionEvidenceId": {
+          "const": "stable-backport.release-completion"
+        },
+        "protectedEvidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+          }
+        }
+      }
+    },
+    "queuePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appendOnly",
+        "previousQueueDigestRequiredAfterGenesis",
+        "deterministicOrdering",
+        "maximumActiveFixes",
+        "maximumHistoricalFixes",
+        "maximumStateTransitionsPerFix",
+        "maximumEvidenceRowsPerFix",
+        "silentTruncationAllowed",
+        "authenticatedCheckpointRequiredForRollover",
+        "unresolvedAcceptedFixesCarryForward",
+        "deferredRejectedAndSupersededHistoryCarryForward",
+        "criticalObligationsCarryForward",
+        "postReleaseObligationsCarryForward",
+        "securityHotfixAllowedCarriedObligationTypes",
+        "securityHotfixMaximumCarriedFollowUps",
+        "publicationCreatedFollowUpBaselineBindingRequired"
+      ],
+      "properties": {
+        "appendOnly": {
+          "const": true
+        },
+        "previousQueueDigestRequiredAfterGenesis": {
+          "const": true
+        },
+        "deterministicOrdering": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "state-priority",
+              "deadline",
+              "fix-id"
+            ]
+          }
+        },
+        "maximumActiveFixes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumHistoricalFixes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumStateTransitionsPerFix": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumEvidenceRowsPerFix": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "silentTruncationAllowed": {
+          "const": false
+        },
+        "authenticatedCheckpointRequiredForRollover": {
+          "const": true
+        },
+        "unresolvedAcceptedFixesCarryForward": {
+          "const": true
+        },
+        "deferredRejectedAndSupersededHistoryCarryForward": {
+          "const": true
+        },
+        "criticalObligationsCarryForward": {
+          "const": true
+        },
+        "postReleaseObligationsCarryForward": {
+          "const": true
+        },
+        "securityHotfixAllowedCarriedObligationTypes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "const": "hotfix-follow-up"
+          }
+        },
+        "securityHotfixMaximumCarriedFollowUps": {
+          "const": 1
+        },
+        "publicationCreatedFollowUpBaselineBindingRequired": {
+          "const": true
+        }
+      }
+    },
+    "candidatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "everyCommitAccounted",
+        "unaccountedCategoryBlocks",
+        "duplicateCommitAccountingAllowed",
+        "mergeContextRequiresExactParents",
+        "generatedArtifactsRequireTrainBinding",
+        "acceptedScheduledFixesMustBeLanded",
+        "landedFixesMustBeCandidateBound",
+        "candidateBoundVerificationRequired",
+        "unsupportedFeatureAllowed",
+        "breakingChangeAllowed"
+      ],
+      "properties": {
+        "everyCommitAccounted": {
+          "const": true
+        },
+        "unaccountedCategoryBlocks": {
+          "const": true
+        },
+        "duplicateCommitAccountingAllowed": {
+          "const": false
+        },
+        "mergeContextRequiresExactParents": {
+          "const": true
+        },
+        "generatedArtifactsRequireTrainBinding": {
+          "const": true
+        },
+        "acceptedScheduledFixesMustBeLanded": {
+          "const": true
+        },
+        "landedFixesMustBeCandidateBound": {
+          "const": true
+        },
+        "candidateBoundVerificationRequired": {
+          "const": true
+        },
+        "unsupportedFeatureAllowed": {
+          "const": false
+        },
+        "breakingChangeAllowed": {
+          "const": false
+        }
+      }
+    },
+    "noFork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "singleAuthenticatedPublicationChain",
+        "latestPointerImmediatePredecessorRequired",
+        "historicalBuildBytesImmutable",
+        "parallelStableBranchesAllowed"
+      ],
+      "properties": {
+        "singleAuthenticatedPublicationChain": {
+          "const": true
+        },
+        "latestPointerImmediatePredecessorRequired": {
+          "const": true
+        },
+        "historicalBuildBytesImmutable": {
+          "const": true
+        },
+        "parallelStableBranchesAllowed": {
+          "const": false
+        }
+      }
+    },
+    "historicalBuildCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current-stable",
+        "supported-maintenance",
+        "security-fixes-only",
+        "deprecated",
+        "end-of-support",
+        "revoked",
+        "historicalBytesModified",
+        "lifecycleClocksResetAllowed"
+      ],
+      "properties": {
+        "current-stable": {
+          "const": "publication-predecessor"
+        },
+        "supported-maintenance": {
+          "const": "upgrade-and-recovery-source"
+        },
+        "security-fixes-only": {
+          "const": "upgrade-and-recovery-source"
+        },
+        "deprecated": {
+          "const": "upgrade-guidance-and-authorized-test-source"
+        },
+        "end-of-support": {
+          "const": "explicitly-authorized-recovery-test-source-only"
+        },
+        "revoked": {
+          "const": "explicitly-authorized-recovery-test-source-only"
+        },
+        "historicalBytesModified": {
+          "const": false
+        },
+        "lifecycleClocksResetAllowed": {
+          "const": false
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routineRole",
+        "securityHotfixRole",
+        "cleanCherryPickReviewerRole",
+        "manualConflictReviewerRole",
+        "provenanceReviewWorkflow",
+        "provenanceReviewEnvironment",
+        "provenanceReviewMaximumValidityHours",
+        "allowedOperations",
+        "candidateHandoffScopes",
+        "maximumValidityHours",
+        "expirationRequired",
+        "wildcardScopeAllowed",
+        "publicationAuthorizationIncluded",
+        "exactWorkflowIdentityRequired"
+      ],
+      "properties": {
+        "routineRole": {
+          "const": "stable-maintenance-train-manager"
+        },
+        "securityHotfixRole": {
+          "const": "stable-security-train-manager"
+        },
+        "cleanCherryPickReviewerRole": {
+          "const": "stable-backport-cherry-pick-reviewer"
+        },
+        "manualConflictReviewerRole": {
+          "const": "stable-backport-conflict-reviewer"
+        },
+        "provenanceReviewWorkflow": {
+          "const": ".github/workflows/stable-1.0-backport-review-authorization.yml"
+        },
+        "provenanceReviewEnvironment": {
+          "const": "stable-1.0-backport-review"
+        },
+        "provenanceReviewMaximumValidityHours": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allowedOperations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "const": "candidate-handoff"
+          }
+        },
+        "candidateHandoffScopes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "train:composition",
+              "candidate:handoff",
+              "completion:verification"
+            ]
+          }
+        },
+        "maximumValidityHours": {
+          "type": "integer",
+          "minimum": 48,
+          "maximum": 168
+        },
+        "expirationRequired": {
+          "const": true
+        },
+        "wildcardScopeAllowed": {
+          "const": false
+        },
+        "publicationAuthorizationIncluded": {
+          "const": false
+        },
+        "exactWorkflowIdentityRequired": {
+          "const": true
+        }
+      }
+    },
+    "postReleaseReconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicationReceiptRequired",
+        "lifecycleActivationOrPendingStateRequired",
+        "noFfMainMergeRequired",
+        "noFfDevelopMergeRequired",
+        "hotfixPresenceInDevelopRequired",
+        "exactMergeParentsRequired",
+        "automaticMergeTreeRequired",
+        "manualResolutionCreatesCarriedObligation",
+        "manualResolutionObligationTypes",
+        "manualResolutionObligationIdPrefix",
+        "protectedWorkflowAttestationRequired",
+        "publishedCandidateBytesMayChange",
+        "incompleteReconciliationBlocksNextTrain"
+      ],
+      "properties": {
+        "publicationReceiptRequired": {
+          "const": true
+        },
+        "lifecycleActivationOrPendingStateRequired": {
+          "const": true
+        },
+        "noFfMainMergeRequired": {
+          "const": true
+        },
+        "noFfDevelopMergeRequired": {
+          "const": true
+        },
+        "hotfixPresenceInDevelopRequired": {
+          "const": true
+        },
+        "exactMergeParentsRequired": {
+          "const": true
+        },
+        "automaticMergeTreeRequired": {
+          "const": true
+        },
+        "manualResolutionCreatesCarriedObligation": {
+          "const": true
+        },
+        "manualResolutionObligationTypes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "main",
+            "routineDevelop",
+            "hotfixDevelop"
+          ],
+          "properties": {
+            "main": {
+              "const": "post-release-main-merge"
+            },
+            "routineDevelop": {
+              "const": "post-release-develop-merge"
+            },
+            "hotfixDevelop": {
+              "const": "hotfix-develop-merge-back"
+            }
+          }
+        },
+        "manualResolutionObligationIdPrefix": {
+          "const": "stable-reconciliation"
+        },
+        "protectedWorkflowAttestationRequired": {
+          "const": true
+        },
+        "publishedCandidateBytesMayChange": {
+          "const": false
+        },
+        "incompleteReconciliationBlocksNextTrain": {
+          "const": true
+        }
+      }
+    },
+    "maintenanceIntegration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiredEvidenceId",
+        "policyGatedInputRequired",
+        "trainDigestBoundToValidation",
+        "trainDigestBoundToReleaseNotes",
+        "trainDigestBoundToChecksumsAndProvenance",
+        "trainDigestBoundToPublicationPlan",
+        "trainDigestBoundToHistory",
+        "trainDigestBoundToSuccessorGovernance",
+        "pendingLifecycleTransitionContextRequired"
+      ],
+      "properties": {
+        "requiredEvidenceId": {
+          "const": "stable-maintenance.backport-release-train"
+        },
+        "policyGatedInputRequired": {
+          "const": true
+        },
+        "trainDigestBoundToValidation": {
+          "const": true
+        },
+        "trainDigestBoundToReleaseNotes": {
+          "const": true
+        },
+        "trainDigestBoundToChecksumsAndProvenance": {
+          "const": true
+        },
+        "trainDigestBoundToPublicationPlan": {
+          "const": true
+        },
+        "trainDigestBoundToHistory": {
+          "const": true
+        },
+        "trainDigestBoundToSuccessorGovernance": {
+          "const": true
+        },
+        "pendingLifecycleTransitionContextRequired": {
+          "const": true
+        }
+      }
+    },
+    "releaseNotes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicSafeOnly",
+        "fixIdRequired",
+        "classificationRequired",
+        "affectedComponentSummaryRequired",
+        "provenanceModeRequired",
+        "lineageDigestRequired",
+        "advisoryOnlyAfterDisclosure",
+        "deferredKnownIssuesRequired",
+        "trainDigestRequired",
+        "releasedClaimRequiresVerifiedPublication"
+      ],
+      "properties": {
+        "publicSafeOnly": {
+          "const": true
+        },
+        "fixIdRequired": {
+          "const": true
+        },
+        "classificationRequired": {
+          "const": true
+        },
+        "affectedComponentSummaryRequired": {
+          "const": true
+        },
+        "provenanceModeRequired": {
+          "const": true
+        },
+        "lineageDigestRequired": {
+          "const": true
+        },
+        "advisoryOnlyAfterDisclosure": {
+          "const": true
+        },
+        "deferredKnownIssuesRequired": {
+          "const": true
+        },
+        "trainDigestRequired": {
+          "const": true
+        },
+        "releasedClaimRequiresVerifiedPublication": {
+          "const": true
+        }
+      }
+    },
+    "redactionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicProjectionDigestRequired",
+        "privateAndPublicFixIdentityMustMatch",
+        "maximumPublicTitleLength",
+        "maximumPublicSummaryLength",
+        "prohibitedPublicValueClasses",
+        "unsafeMarkdownOrHtmlAllowed",
+        "absolutePathsAllowed"
+      ],
+      "properties": {
+        "publicProjectionDigestRequired": {
+          "const": true
+        },
+        "privateAndPublicFixIdentityMustMatch": {
+          "const": true
+        },
+        "maximumPublicTitleLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumPublicSummaryLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prohibitedPublicValueClasses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/reasonCode"
+          }
+        },
+        "unsafeMarkdownOrHtmlAllowed": {
+          "const": false
+        },
+        "absolutePathsAllowed": {
+          "const": false
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximumFixesPerIntake",
+        "maximumCandidateCommits",
+        "maximumTouchedPathsPerFix",
+        "maximumConflictPathsPerFix",
+        "maximumAffectedComponentsPerFix",
+        "maximumPublicArtifacts",
+        "maximumSafeTextLength"
+      ],
+      "properties": {
+        "maximumFixesPerIntake": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumCandidateCommits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumTouchedPathsPerFix": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumConflictPathsPerFix": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumAffectedComponentsPerFix": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumPublicArtifacts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximumSafeTextLength": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,12 @@ This path starts after Stable 1.0 GA publication. It does not replace the Stable
 promotion process. Stable 1.0 remains a product and API milestone; Cryptad releases continue to use
 one integer build number and an annotated `v<build-number>` tag.
 
+Before freezing a candidate, classify and account for its fixes with the
+[Stable 1.0 backport and release-train governance
+runbook](stable-1.0-backport-and-release-train-governance.md). The train gate proves that the
+candidate uses the one authenticated publication chain, contains every required accepted fix, has
+no unaccounted changes, and carries unresolved obligations forward.
+
 ## Command and scope
 
 Copy the checked-in example, replace every placeholder with public-safe release data, and keep
@@ -43,6 +49,20 @@ build/release-certification/<release-id>/stable-maintenance/
 No mode creates a branch, merge, tag, GitHub Release, catalog revision, update descriptor, CHK or
 USK insert, public announcement, or latest-baseline activation. Self-tests, pull-request workflows,
 and ordinary local runs cannot publish.
+
+The maintenance manifest consumes the exact successful `stable-backport` result through the
+non-waivable evidence id:
+
+```text
+stable-maintenance.backport-release-train
+```
+
+The evidence binds the backport policy and queue digests, release lane, candidate build and commit,
+predecessor, accepted fix set, complete candidate-change coverage, authorization, outstanding
+obligations, and freshness window. `maintenance` must agree with `routine-maintenance`;
+`security-hotfix` must agree with the identically named release-train lane. A wrong lane, switched
+candidate, stale train, omitted critical fix, unaccounted commit, parallel predecessor, or missing
+prior reconciliation is a non-waivable blocker.
 
 ## Deterministic artifact set
 
@@ -194,7 +214,9 @@ baseline schema v2. It records:
   clocks;
 - stable catalog, first-party app, content-profile, limitation, security, support, and legacy
   state;
-- the evidence-window policy and any security-hotfix follow-up state.
+- the evidence-window policy and any security-hotfix follow-up state;
+- the exact release-train policy, queue, validation, and authorization digests plus unresolved fix
+  and branch-reconciliation obligations.
 
 The protected workflow writes a deterministic release-history entry and atomically replaces the
 latest-published pointer only after independent publication verification passes. A failed or
@@ -237,6 +259,8 @@ The freeze binds:
 
 - release id, integer build, release class, branch, immutable ref, source commit, and clean source
   state;
+- the exact release-train digest, accepted fix ids, zero-unaccounted coverage result, and
+  `stable-maintenance.backport-release-train` evidence;
 - Java and Gradle toolchain identity plus dependency-verification state;
 - deterministic product archive and every package or installer digest, size, mode, and name;
 - stable catalog bytes and detached-signature sidecar as separate exact assets, plus the signing
@@ -442,6 +466,11 @@ candidate, GA baseline, predecessor, freeze, product, package, compatibility del
 evidence, catalog, `core-info.json`, limitation delta, notes, publication targets, and, for a
 hotfix, incident and follow-up digests.
 
+Release-train authorization is a separate, narrower approval. It authorizes the exact fix
+composition and candidate handoff but never authorizes a tag, GitHub Release, catalog,
+CoreUpdater insertion, or latest-pointer update. Maintenance publication authorization consumes
+and binds the train authorization; it does not replace or broaden it.
+
 Authorization requires the policy-defined role, named approver, expiration, and exact closed
 scopes. Wildcard scopes are forbidden. Routine maintenance normally requires `go`.
 `go-with-waivers` is limited to policy-allowlisted noncritical operational warnings; it cannot
@@ -487,10 +516,25 @@ name, and `sha256:<hex>` Actions artifact digest:
 
 | Consumer operation | Authenticated inputs | Output for the next phase |
 | --- | --- | --- |
-| `freeze-candidate` | `freeze-candidate` phase bundle, including the exact five-artifact lifecycle authority chain for the standard post-GA path, plus the Windows producer artifact and EXE SHA-256 | Attested frozen-candidate artifact containing the one built asset set and retained protected lifecycle inputs. |
-| `prepare-authorization` | `prepare-authorization` phase bundle with the same exact lifecycle authority chain plus the exact frozen-candidate artifact | Attested prepared-candidate artifact; its candidate asset directory is reconstructed only from the prior freeze, and authenticated-input audit copies retain the lifecycle authority chain. |
+| `freeze-candidate` | `freeze-candidate` phase bundle, including the exact authorized release-train validation and full train authorization, the exact five-artifact lifecycle authority chain for the standard post-GA path, plus the Windows producer artifact and EXE SHA-256 | Attested frozen-candidate artifact containing the one built asset set, an authenticated encrypted train-authority envelope, and retained public lifecycle inputs. |
+| `prepare-authorization` | `prepare-authorization` phase bundle with the same exact train validation/authorization and lifecycle authority chain plus the exact frozen-candidate artifact | Attested prepared-candidate artifact; its candidate asset directory is reconstructed only from the prior freeze, and byte-for-byte comparisons preserve the decrypted train authority before it is resealed for the next phase. |
 | `validate-authorization` | Approval-only `validate-authorization` phase bundle plus the exact prepared-candidate artifact | Attested authorized-candidate artifact. The workflow restores the prepared manifest and protected lifecycle inputs, changes only the command mode, and adds the exact authorization. |
-| `publish` | Exact authorized-candidate artifact plus the authenticated publication-backend wheel | Publication audit, independent verification, and activation artifacts retain authenticated-input audit copies; no replacement phase bundle is accepted. |
+| `publish` | Exact authorized-candidate artifact plus the authenticated publication-backend wheel | The protected publisher and independent verifier reopen the frozen train authority. Repository-readable publication audit artifacts retain only its authenticated encrypted envelope; no replacement phase bundle is accepted. |
+
+The release-train artifact consumed by `freeze-candidate` is an authenticated encrypted Actions
+envelope, not a plaintext protected record set. The maintenance evidence environment reconstructs
+its exact run-attempt binding and decrypts it with
+`CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64`; the same canonical base64 32-byte key must be
+configured in the protected backport-review, backport-evidence, backport-authorization, and
+maintenance-evidence environments and in `stable-1.0-maintenance-publication` and
+`stable-1.0-security-hotfix-publication`. Maintenance opens the incoming train only inside a
+protected job, byte-compares it across phases, and reseals the exact validation and authorization
+before every Actions upload. The publication and independent-verification jobs repeat that
+bounded open-and-reseal pattern; staged protected inputs and audit artifacts contain no duplicate
+plaintext train authority. The repository-readable public train artifact remains the exact
+two-file queue/validation projection. The train authorization may be valid for at most 72 hours
+so it can span the mandatory 24-hour post-freeze soak plus bounded review and handoff time; it
+still authorizes no publication operation.
 
 Use the protected environments `stable-1.0-maintenance-evidence`,
 `stable-1.0-maintenance-publication`, and `stable-1.0-security-hotfix-publication` with
@@ -612,9 +656,12 @@ Actions token has read-only repository permission and remains limited to workflo
 attestation authentication; it is not a fallback publication identity.
 
 Before each mutation, revalidate that the immutable ref did not move, the latest predecessor did
-not change, no conflicting publication is active, authorization is current, candidate and public
-artifact-base bytes match, tag/Release/catalog/update targets are conflict-free, and signing keys
-remain uncompromised.
+not change, no conflicting publication is active, the maintenance publication authorization is
+current, candidate evidence remains fresh, candidate and public artifact-base bytes match,
+tag/Release/catalog/update targets are conflict-free, and signing keys remain uncompromised. The
+composition-only release-train authorization is checked at the exact maintenance-authorization
+handoff time frozen into the bundle. Its later wall-clock expiry does not invalidate a
+byte-identical resumable prefix or verify-only retry; it never authorizes a publication mutation.
 The canonical provider is verify-only for the artifact base. An independent protected deployment
 must pre-stage every planned artifact-base object at its authorized URI before publication
 preflight. An entirely absent, partially populated, or byte-mismatched artifact base is a hard stop;
@@ -653,7 +700,10 @@ incident/advisory identity, a correctly based `hotfix/<build>` branch, the exact
 and platforms, explicit Stable security release-manager authorization, and a source-scope audit
 that rejects unrelated feature work. The candidate declares the closed
 `changeScope.shortenedEvidenceIds` set; the authorization binds that exact set and its dedicated
-hotfix-policy authorization digest.
+hotfix-policy authorization digest. Every accepted release-train row is itself a critical
+`security-fix` under the same incident/advisory pair. Incident-required packaging, app, or
+release-tooling work is represented in that security fix’s affected scope and evidence, not as a
+separate ordinary-classification row.
 
 Lifecycle predecessor eligibility is release-class-specific. Routine `maintenance` still requires
 the exact authenticated `current-stable` predecessor. A `security-hotfix` may recover from a
@@ -690,8 +740,22 @@ latest publication-receipt digest and receipt identity, latest-pointer digest, o
 and exact original authorization digest. Its lineage records the exact closure digest that cleared
 the obligation. An overdue or failed
 obligation becomes a release incident and blocks the next routine maintenance publication. A
-separately authorized superseding security hotfix may carry the obligation forward only when the
-policy permits it.
+pre-release-train v1 authorization remains valid only for this closure check: the v1 schema keeps
+`backportReleaseTrainDigest` optional so immutable historical authorization bytes can still be
+authenticated. Every newly prepared or publication-capable authorization must bind the exact
+train digest through the maintenance engine and protected publication adapter; omitting it there
+remains a non-waivable blocker. A separately authorized superseding security hotfix may carry the
+obligation forward only when the
+release-train policy permits it: the obligation must be the sole open `hotfix-follow-up`, must be
+seeded from the authenticated predecessor baseline if publication created it after the predecessor
+train queue was authorized, and must remain listed in release-train completion. That first
+projection binds the baseline’s exact obligation digest, obligated build/train and generation time
+to the authenticated predecessor queue’s critical source-fix identities; every later projection is
+inherited unchanged from the immediately prior queue. A second or unbound follow-up, or any open
+branch-reconciliation obligation, blocks the superseding hotfix. The protected maintenance handoff
+accepts the resulting `blocked` queue only when its exact successful `security-hotfix` validation
+identifies that single carried id and the matching row is the sole open obligation. A routine train,
+`ready`/`blocked` status mismatch, or any other blocked composition remains rejected.
 
 ## Public and private data boundaries
 
@@ -737,6 +801,41 @@ Publication does not merge branches. After the release manager verifies the rece
 - back-merge the same branch into `develop` with `--no-ff` and no squash;
 - verify `main` contains the shipped commit and the annotated `v<build>` tag and publication
   receipt identify that exact commit. The `main` tip is normally the later `--no-ff` merge commit.
+
+Run `stable-backport` in `verify-release-completion` mode against the exact publication receipt,
+lifecycle activation or explicit pending-activation state, and protected merge evidence. It checks
+the merge commit and parent graph, authenticates the exact protected `main` and `develop` tips,
+verifies those tips contain the attested merges and published candidate, and, for a hotfix, proves
+that the security fix reached `develop`. Each recorded reconciliation tree must equal Git's
+isolated automatic merge result; the current completion contract rejects a manual resolution
+because it has no separate protected content-review authorization. It performs no merge. After the
+merge graph, protected tip, parent identities, and workflow attestation authenticate, that typed
+content-review rejection is converted into a protected completion with
+`reconciliationStatus: content-review-required` and an exact digest-bound reconciliation
+obligation. The next queue must seed the exact completion-created row before the published fixes
+can transition to `released`; that queue remains blocked until new authenticated content-review
+evidence resolves the obligation. Other Git failures remain hard failures and do not create a
+completion artifact. An unresolved conflict, absent no-squash `--no-ff` merge, or missing hotfix
+back-merge becomes an explicit carried obligation and blocks the next incompatible train.
+
+The `main` merge and the separate `develop` back-merge must each record the exact published
+`release/<build>` or `hotfix/<build>` candidate as the merged tip. The `main` merge commit is not
+the merged tip for the `develop` record. Completion is read-only and may occur after the earlier
+train-composition authorization expires; maintenance publication remains bound to the exact
+authorized validation digest that was accepted while that handoff authorization was current.
+Completion consumes that exact prior `stableBackportFrozenValidation` and replays time-bound gates
+at authorization issuance instead of aging them against the later reconciliation run.
+
+Before any non-publication maintenance phase, the manifest metadata names the exact successful
+protected backport run, artifact name, and Actions artifact digest as
+`stableBackportRunId`, `stableBackportArtifactName`, and
+`stableBackportArtifactDigest`. The workflow downloads that exact
+`validate-authorization` artifact, verifies its workflow/candidate/release identity, and
+materializes both the full train authorization and validation. A generic maintenance input bundle
+cannot replace either file. The freeze artifact first retains both files, and prepare and
+authorization validation compare them byte for byte against the preceding attested artifact.
+Those two exact files remain in `authenticated-inputs/` through the frozen, prepared, authorized,
+and publication bundles.
 
 See [the standard Git workflow](standard-git-branching-and-release-workflow.md) for branch
 operations and [the release runbook](cryptad-release-workflow-and-runbook.md) for the wider release

@@ -11,6 +11,10 @@
 
 {{fixes}}
 
+## Stable 1.0 maintenance train
+
+{{BACKPORT_RELEASE_TRAIN}}
+
 ## Security advisory
 
 {{security}}

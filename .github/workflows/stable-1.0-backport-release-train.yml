@@ -1,0 +1,1661 @@
+name: Stable 1.0 Backport Release Train
+run-name: >-
+  Stable 1.0 ${{ inputs.release_lane }} train ${{ inputs.release_id }}
+  build ${{ inputs.build_version }} (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Closed side-effect-free release-train operation.
+        required: true
+        type: choice
+        options:
+          - evaluate-intake
+          - prepare-candidate
+          - validate-authorization
+          - verify-release-completion
+      release_id:
+        description: Exact path-safe release-train identity.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive integer candidate build.
+        required: true
+        type: string
+      release_lane:
+        description: Closed Stable 1.0 release-train lane.
+        required: true
+        type: choice
+        options:
+          - routine-maintenance
+          - security-hotfix
+      source_commit:
+        description: Exact lowercase workflow and checkout commit on the protected dispatch ref.
+        required: true
+        type: string
+      candidate_commit:
+        description: Exact lowercase release-train candidate commit.
+        required: true
+        type: string
+      input_bundle_sha256:
+        description: Exact sha256 digest of the reviewed protected input ZIP.
+        required: true
+        type: string
+      prior_run_id:
+        description: Exact prior train phase run; empty only for evaluate-intake.
+        required: false
+        default: ''
+        type: string
+      prior_artifact_name:
+        description: Exact prior protected train handoff; empty only for evaluate-intake.
+        required: false
+        default: ''
+        type: string
+      prior_artifact_digest:
+        description: Exact sha256 Actions artifact digest; empty only for evaluate-intake.
+        required: false
+        default: ''
+        type: string
+      prior_source_commit:
+        description: Exact prior producing workflow source commit; empty only for evaluate-intake.
+        required: false
+        default: ''
+        type: string
+      prior_workflow_ref:
+        description: Exact prior producing workflow identity at prior_source_commit; empty only for evaluate-intake.
+        required: false
+        default: ''
+        type: string
+      predecessor_completion_run_id:
+        description: Optional unexpired prior completion-workflow run; durable reauthentication is used when empty.
+        required: false
+        default: ''
+        type: string
+      predecessor_completion_artifact_name:
+        description: Exact unexpired prior completion artifact; empty with the durable reauthentication path.
+        required: false
+        default: ''
+        type: string
+      predecessor_completion_artifact_digest:
+        description: Exact sha256 Actions digest when the optional prior artifact remains available.
+        required: false
+        default: ''
+        type: string
+      predecessor_completion_source_commit:
+        description: Exact source commit when the optional prior completion artifact is used.
+        required: false
+        default: ''
+        type: string
+      predecessor_completion_workflow_ref:
+        description: Exact prior completion workflow identity when the optional artifact is used.
+        required: false
+        default: ''
+        type: string
+      review_authorization_handoffs:
+        description: Canonical JSON array of exact protected provenance-review artifact coordinates.
+        required: false
+        default: '[]'
+        type: string
+
+concurrency:
+  group: >-
+    stable-1-0-backport-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.operation }}
+  cancel-in-progress: false
+
+# Validation never receives a Git or GitHub mutation capability.
+permissions: {}
+
+jobs:
+  protected-ref-preflight:
+    name: Authenticate protected dispatch before environments
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+
+    steps:
+      - name: Validate workflow, ref, operation, and candidate identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          PREDECESSOR_COMPLETION_RUN_ID: ${{ inputs.predecessor_completion_run_id }}
+          PREDECESSOR_COMPLETION_ARTIFACT_NAME: ${{ inputs.predecessor_completion_artifact_name }}
+          PREDECESSOR_COMPLETION_ARTIFACT_DIGEST: ${{ inputs.predecessor_completion_artifact_digest }}
+          PREDECESSOR_COMPLETION_SOURCE_COMMIT: ${{ inputs.predecessor_completion_source_commit }}
+          PREDECESSOR_COMPLETION_WORKFLOW_REF: ${{ inputs.predecessor_completion_workflow_ref }}
+          REVIEW_AUTHORIZATION_HANDOFFS: ${{ inputs.review_authorization_handoffs }}
+        run: |
+          set -euo pipefail
+          expected_workflow_ref="$REPOSITORY/.github/workflows/stable-1.0-backport-release-train.yml@$GITHUB_REF"
+          if (( ${#REVIEW_AUTHORIZATION_HANDOFFS} > 65535 )) \
+              || ! jq -e '
+                type == "array"
+                and length <= 512
+                and all(.[];
+                  (keys | sort) == [
+                    "artifactDigest",
+                    "artifactName",
+                    "fixId",
+                    "runId",
+                    "sourceCommit",
+                    "workflowRef"
+                  ]
+                  and (.fixId | test("^stable-fix-[a-z0-9]{16,64}$"))
+                  and (.runId | test("^[1-9][0-9]*$"))
+                  and (.artifactName
+                    | test("^stable-1\\.0-backport-review-stable-fix-[a-z0-9]{16,64}-[0-9a-f]{40}$"))
+                  and (.artifactDigest | test("^sha256:[0-9a-f]{64}$"))
+                  and (.sourceCommit | test("^[0-9a-f]{40}$"))
+                  and .workflowRef == (
+                    "crypta-network/cryptad/.github/workflows/"
+                    + "stable-1.0-backport-review-authorization.yml@"
+                    + .sourceCommit
+                  ))
+                and ([.[].fixId] | unique | length) == length' \
+                <<< "$REVIEW_AUTHORIZATION_HANDOFFS" >/dev/null; then
+            echo "::error::Protected provenance-review handoff list is malformed."
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" != workflow_dispatch \
+                || "$REF_PROTECTED" != true \
+                || "$WORKFLOW_REF" != "$expected_workflow_ref" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$INPUT_CANDIDATE_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ \
+                || ! "$INPUT_BUNDLE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Release-train dispatch is not bound to the exact protected workflow ref."
+            exit 1
+          fi
+          case "$INPUT_RELEASE_LANE" in
+            routine-maintenance)
+              candidate_ref="refs/heads/release/$INPUT_BUILD_VERSION"
+              ;;
+            security-hotfix)
+              candidate_ref="refs/heads/hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Unknown release-train lane."
+              exit 1
+              ;;
+          esac
+          case "$INPUT_OPERATION" in
+            evaluate-intake)
+              predecessor_coordinates="$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF"
+              if [[ -n "$predecessor_coordinates" ]] && (
+                  [[ ! "$PREDECESSOR_COMPLETION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+                  || [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+                  || [[ ! "$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+                  || [[ ! "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+                  || [[ "$PREDECESSOR_COMPLETION_WORKFLOW_REF" != "crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$PREDECESSOR_COMPLETION_SOURCE_COMMIT" ]]
+                ); then
+                echo "::error::Predecessor completion handoff coordinates are incomplete or ambiguous."
+                exit 1
+              fi
+              if [[ "$GITHUB_REF" != refs/heads/main \
+                    && "$GITHUB_REF" != refs/heads/develop \
+                    && "$GITHUB_REF" != "$candidate_ref" ]]; then
+                echo "::error::Intake evaluation requires protected main, develop, or the exact candidate ref."
+                exit 1
+              fi
+              ;;
+            prepare-candidate|validate-authorization)
+              if [[ -n "$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF" ]]; then
+                echo "::error::Only intake evaluation may introduce a predecessor completion handoff."
+                exit 1
+              fi
+              if [[ "$GITHUB_REF" != "$candidate_ref" \
+                    || "$INPUT_SOURCE_COMMIT" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+                echo "::error::Candidate preparation and authorization require the exact release/hotfix ref."
+                exit 1
+              fi
+              ;;
+            verify-release-completion)
+              if [[ -n "$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF" ]]; then
+                echo "::error::Only intake evaluation may introduce a predecessor completion handoff."
+                exit 1
+              fi
+              if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+                echo "::error::Completion verification must execute from protected main."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unknown release-train operation."
+              exit 1
+              ;;
+          esac
+          current_artifact_name="stable-1.0-backport-$INPUT_OPERATION-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION"
+          if (( ${#current_artifact_name} > 256 )); then
+            echo "::error::Generated release-train artifact name exceeds its bounded contract."
+            exit 1
+          fi
+
+  validate-release-train:
+    name: Validate exact Stable 1.0 release train
+    needs: protected-ref-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # The evidence environment must allow only protected main, develop, release/*,
+    # and hotfix/* refs; the authorization environment only release/* and hotfix/*.
+    # The preflight is the credential-free first gate.
+    environment: >-
+      ${{ inputs.operation == 'validate-authorization'
+      && 'stable-1.0-backport-authorization'
+      || 'stable-1.0-backport-evidence' }}
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out exact workflow source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Authenticate operation, source, and prior handoff
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          INPUT_PRIOR_RUN_ID: ${{ inputs.prior_run_id }}
+          INPUT_PRIOR_ARTIFACT_NAME: ${{ inputs.prior_artifact_name }}
+          INPUT_PRIOR_ARTIFACT_DIGEST: ${{ inputs.prior_artifact_digest }}
+          INPUT_PRIOR_SOURCE_COMMIT: ${{ inputs.prior_source_commit }}
+          INPUT_PRIOR_WORKFLOW_REF: ${{ inputs.prior_workflow_ref }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_PROTECTED" != true \
+                || ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$INPUT_CANDIDATE_COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ \
+                || ! "$INPUT_BUNDLE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$GITHUB_WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Release-train workflow identity is malformed or not protected."
+            exit 1
+          fi
+          case "$INPUT_OPERATION" in
+            evaluate-intake)
+              command_mode=evaluate
+              if [[ -n "$INPUT_PRIOR_RUN_ID$INPUT_PRIOR_ARTIFACT_NAME$INPUT_PRIOR_ARTIFACT_DIGEST$INPUT_PRIOR_SOURCE_COMMIT$INPUT_PRIOR_WORKFLOW_REF" ]]; then
+                echo "::error::Initial intake evaluation cannot consume a prior train handoff."
+                exit 1
+              fi
+              ;;
+            prepare-candidate)
+              command_mode=prepare-candidate
+              ;;
+            validate-authorization)
+              command_mode=validate-authorization
+              ;;
+            verify-release-completion)
+              command_mode=verify-release-completion
+              ;;
+            *)
+              echo "::error::Unknown release-train operation."
+              exit 1
+              ;;
+          esac
+          current_artifact_name="stable-1.0-backport-$INPUT_OPERATION-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION"
+          if (( ${#current_artifact_name} > 256 )); then
+            echo "::error::Generated release-train artifact name exceeds its bounded contract."
+            exit 1
+          fi
+          case "$INPUT_RELEASE_LANE" in
+            routine-maintenance)
+              candidate_ref="refs/heads/release/$INPUT_BUILD_VERSION"
+              ;;
+            security-hotfix)
+              candidate_ref="refs/heads/hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Unknown release-train lane."
+              exit 1
+              ;;
+          esac
+          case "$INPUT_OPERATION" in
+            evaluate-intake)
+              if [[ "$GITHUB_REF" != refs/heads/main \
+                    && "$GITHUB_REF" != refs/heads/develop \
+                    && "$GITHUB_REF" != "$candidate_ref" ]]; then
+                echo "::error::Intake evaluation requires protected main, develop, or the exact candidate ref."
+                exit 1
+              fi
+              ;;
+            prepare-candidate|validate-authorization)
+              if [[ "$GITHUB_REF" != "$candidate_ref" \
+                    || "$INPUT_SOURCE_COMMIT" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+                echo "::error::Candidate preparation and authorization require the exact release/hotfix ref."
+                exit 1
+              fi
+              ;;
+            verify-release-completion)
+              if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+                echo "::error::Completion verification must execute from protected main."
+                exit 1
+              fi
+              ;;
+          esac
+          if [[ "$INPUT_OPERATION" != evaluate-intake ]]; then
+            expected_workflow_ref="crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$INPUT_PRIOR_SOURCE_COMMIT"
+            case "$INPUT_OPERATION" in
+              prepare-candidate)
+                expected_prior_operation=evaluate-intake
+                ;;
+              validate-authorization)
+                expected_prior_operation=prepare-candidate
+                ;;
+              verify-release-completion)
+                expected_prior_operation=validate-authorization
+                ;;
+            esac
+            expected_artifact_name="stable-1.0-backport-$expected_prior_operation-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION"
+            if [[ ! "$INPUT_PRIOR_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ${#INPUT_PRIOR_ARTIFACT_NAME} -gt 256 \
+                  || ! "$INPUT_PRIOR_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_PRIOR_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                  || ! "$INPUT_PRIOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                  || "$INPUT_PRIOR_WORKFLOW_REF" != "$expected_workflow_ref" \
+                  || "$INPUT_PRIOR_ARTIFACT_NAME" != "$expected_artifact_name" ]]; then
+              echo "::error::Prior release-train handoff coordinates are incomplete or ambiguous."
+              exit 1
+            fi
+            printf '%s\n' "$expected_prior_operation" > "$RUNNER_TEMP/stable-backport-prior-operation"
+          fi
+          printf '%s\n' "$command_mode" > "$RUNNER_TEMP/stable-backport-command-mode"
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Authenticate and download exact prior phase artifact
+        if: inputs.operation != 'evaluate-intake'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_PRIOR_RUN_ID: ${{ inputs.prior_run_id }}
+          INPUT_PRIOR_ARTIFACT_NAME: ${{ inputs.prior_artifact_name }}
+          INPUT_PRIOR_ARTIFACT_DIGEST: ${{ inputs.prior_artifact_digest }}
+          INPUT_PRIOR_SOURCE_COMMIT: ${{ inputs.prior_source_commit }}
+          INPUT_PRIOR_WORKFLOW_REF: ${{ inputs.prior_workflow_ref }}
+        run: |
+          set -euo pipefail
+          expected_operation="$(cat "$RUNNER_TEMP/stable-backport-prior-operation")"
+          prior=build/stable-backport-prior
+          sealed=build/stable-backport-prior-sealed
+          metadata="$RUNNER_TEMP/stable-backport-prior-metadata"
+          mkdir -p "$sealed" "$metadata"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_PRIOR_RUN_ID" \
+            > "$metadata/run.json"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$INPUT_PRIOR_SOURCE_COMMIT" \
+            --arg workflow ".github/workflows/stable-1.0-backport-release-train.yml" '
+              (.id | tostring) == env.INPUT_PRIOR_RUN_ID
+              and .repository.full_name == $repository
+              and .head_sha == $sha
+              and .path == $workflow
+              and .status == "completed"
+              and .conclusion == "success"
+              and .event == "workflow_dispatch"' \
+            "$metadata/run.json" >/dev/null
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_PRIOR_RUN_ID/artifacts?per_page=100" \
+            > "$metadata/artifacts.json"
+          jq -e \
+            --arg name "$INPUT_PRIOR_ARTIFACT_NAME" \
+            --arg digest "$INPUT_PRIOR_ARTIFACT_DIGEST" '
+              [.artifacts[]
+                | select(.name == $name and .digest == $digest and .expired == false)]
+              | length == 1' "$metadata/artifacts.json" >/dev/null
+          gh run download "$INPUT_PRIOR_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_PRIOR_ARTIFACT_NAME" \
+            --dir "$sealed"
+          prior_binding="$RUNNER_TEMP/stable-backport-prior-binding.json"
+          jq -nS \
+            --arg artifactKind release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$INPUT_PRIOR_WORKFLOW_REF" \
+            --arg workflowCommit "$INPUT_PRIOR_SOURCE_COMMIT" \
+            --arg runId "$INPUT_PRIOR_RUN_ID" \
+            --arg runAttempt "$(jq -er '.run_attempt | tostring' "$metadata/run.json")" \
+            --arg operation "$expected_operation" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseLane "$INPUT_RELEASE_LANE" \
+            --arg sourceCommit "$INPUT_PRIOR_SOURCE_COMMIT" \
+            --arg artifactName "$INPUT_PRIOR_ARTIFACT_NAME" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseLane: $releaseLane,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$prior_binding"
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            open \
+            --bundle "$sealed" \
+            --out "$prior" \
+            --binding "$prior_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          (
+            cd "$prior"
+            sha256sum --check --strict workflow-handoff-checksums.txt
+          )
+          provenance="$prior/stable-1.0-release-train-workflow-provenance.json"
+          validation="$prior/stable-1.0-release-train-validation.json"
+          queue="$prior/stable-1.0-release-train-queue-public.json"
+          if [[ ! -f "$provenance" || -L "$provenance" \
+                || ! -f "$validation" || -L "$validation" \
+                || ! -f "$queue" || -L "$queue" ]]; then
+            echo "::error::Prior protected release-train handoff is incomplete."
+            exit 1
+          fi
+          jq -e \
+            --slurpfile validation "$validation" '
+              .kind == "stable-1.0-release-train-queue-public"
+              and .queueDigest == $validation[0].queueDigest
+              and .candidateCommit == $validation[0].candidateCommit' \
+            "$queue" >/dev/null
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$INPUT_PRIOR_WORKFLOW_REF" \
+            --arg workflowCommit "$INPUT_PRIOR_SOURCE_COMMIT" \
+            --arg runId "$INPUT_PRIOR_RUN_ID" \
+            --arg operation "$expected_operation" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg lane "$INPUT_RELEASE_LANE" \
+            --arg candidate "$INPUT_CANDIDATE_COMMIT" '
+              .repository == $repository
+              and .workflow == $workflow
+              and .workflowCommit == $workflowCommit
+              and .runId == $runId
+              and .operation == $operation
+              and .releaseId == $releaseId
+              and .buildVersion == $build
+              and .releaseLane == $lane
+              and (
+                $operation == "evaluate-intake"
+                or .candidateCommit == $candidate
+              )
+              and (
+                if $lane == "routine-maintenance" then
+                  ((.developmentLineageCommit // "")
+                    | test("^[0-9a-f]{40}$"))
+                  and .mainLineageCommit == null
+                else
+                  .developmentLineageCommit == null
+                  and ((.mainLineageCommit // "")
+                    | test("^[0-9a-f]{40}$"))
+                end
+              )' "$provenance" >/dev/null
+
+      - name: Fetch and safely expand exact protected inputs
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_URL: ${{ secrets.CRYPTAD_STABLE_BACKPORT_INPUT_BUNDLE_URL }}
+          CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE_BEARER_TOKEN: ${{ secrets.CRYPTAD_STABLE_BACKPORT_INPUT_BUNDLE_BEARER_TOKEN }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_lifecycle_input_producer.py \
+            --expected-digest "$INPUT_BUNDLE_DIGEST" \
+            --out build/stable-backport-input
+          test ! -L build/stable-backport-input
+          test -f build/stable-backport-input/manifest/stable-backport-manifest.json
+          test ! -L build/stable-backport-input/manifest/stable-backport-manifest.json
+          if find build/stable-backport-input -type l -print -quit | grep -q .; then
+            echo "::error::Protected release-train inputs contain a symbolic link."
+            exit 1
+          fi
+          while IFS= read -r path; do
+            case "$path" in
+              build/stable-backport-input/manifest/stable-backport-manifest.json|\
+              build/stable-backport-input/protected-inputs/*)
+                ;;
+              *)
+                echo "::error::Protected release-train ZIP contains an unreferenced file."
+                exit 1
+                ;;
+            esac
+          done < <(find build/stable-backport-input -type f -print | LC_ALL=C sort)
+
+      - name: Authenticate independent provenance-review authorizations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          REVIEW_AUTHORIZATION_HANDOFFS: ${{ inputs.review_authorization_handoffs }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          intake_relative="$(jq -er '.inputs.stableFixIntake' "$manifest")"
+          policy_relative="$(jq -er '.inputs.stableBackportPolicy' "$manifest")"
+          for relative in "$intake_relative" "$policy_relative"; do
+            case "$relative" in
+              build/stable-backport-input/protected-inputs/*|\
+              tools/release-certification/stable-1.0-backport-release-train-policy.json)
+                ;;
+              *)
+                echo "::error::Review authorization subject escaped its confined input roots."
+                exit 1
+                ;;
+            esac
+            if [[ ! -f "$relative" || -L "$relative" ]]; then
+              echo "::error::Review authorization subject is missing or unsafe."
+              exit 1
+            fi
+          done
+          reviewed_fix_ids="$(
+            jq -cS '[
+              .fixes[]
+              | select(
+                  (
+                    .provenance.mode == "clean-cherry-pick"
+                    or .provenance.mode == "manual-conflict-resolution"
+                  )
+                  and (
+                    .state != "released"
+                    and .state != "rejected"
+                    and .state != "superseded"
+                  )
+                )
+              | .fixId
+            ] | sort' "$intake_relative"
+          )"
+          supplied_fix_ids="$(
+            jq -cS '[.[].fixId] | sort' <<< "$REVIEW_AUTHORIZATION_HANDOFFS"
+          )"
+          if [[ "$reviewed_fix_ids" != "$supplied_fix_ids" ]]; then
+            echo "::error::Protected reviewer artifacts do not exactly cover reviewed fixes."
+            exit 1
+          fi
+          if [[ "$reviewed_fix_ids" == "[]" ]]; then
+            if jq -e '.inputs | has("stableBackportReviewAuthorizations")' \
+                "$manifest" >/dev/null; then
+              echo "::error::Review authorization input appeared without a reviewed fix."
+              exit 1
+            fi
+            exit 0
+          fi
+          collection_root="$RUNNER_TEMP/stable-backport-review-authorizations"
+          mkdir -p "$collection_root"
+          while IFS= read -r handoff; do
+            fix_id="$(jq -er '.fixId' <<< "$handoff")"
+            run_id="$(jq -er '.runId' <<< "$handoff")"
+            artifact_name="$(jq -er '.artifactName' <<< "$handoff")"
+            artifact_digest="$(jq -er '.artifactDigest' <<< "$handoff")"
+            source_commit="$(jq -er '.sourceCommit' <<< "$handoff")"
+            workflow_ref="$(jq -er '.workflowRef' <<< "$handoff")"
+            metadata="$collection_root/$fix_id-metadata"
+            artifact="$collection_root/$fix_id-artifact"
+            sealed_artifact="$collection_root/$fix_id-sealed-artifact"
+            mkdir -p "$metadata" "$sealed_artifact"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              > "$metadata/run.json"
+            jq -e \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg runId "$run_id" \
+              --arg sha "$source_commit" '
+                (.id | tostring) == $runId
+                and .repository.full_name == $repository
+                and .head_sha == $sha
+                and .path == ".github/workflows/stable-1.0-backport-review-authorization.yml"
+                and .status == "completed"
+                and .conclusion == "success"
+                and .event == "workflow_dispatch"' \
+              "$metadata/run.json" >/dev/null
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+              > "$metadata/artifacts.json"
+            jq -e \
+              --arg name "$artifact_name" \
+              --arg digest "$artifact_digest" '
+                [.artifacts[]
+                  | select(.name == $name and .digest == $digest and .expired == false)]
+                | length == 1' "$metadata/artifacts.json" >/dev/null
+            gh run download "$run_id" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "$artifact_name" \
+              --dir "$sealed_artifact"
+            review_binding="$collection_root/$fix_id-binding.json"
+            jq -nS \
+              --arg artifactKind provenance-review \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg workflow "$workflow_ref" \
+              --arg workflowCommit "$source_commit" \
+              --arg runId "$run_id" \
+              --arg runAttempt "$(jq -er '.run_attempt | tostring' "$metadata/run.json")" \
+              --arg operation authorize-provenance-review \
+              --arg fixId "$fix_id" \
+              --arg candidateCommit "$(jq -er \
+                --arg fixId "$fix_id" \
+                '.fixes[] | select(.fixId == $fixId) | .provenance.candidateCommit' \
+                "$intake_relative")" \
+              --arg artifactName "$artifact_name" '
+                {
+                  artifactKind: $artifactKind,
+                  repository: $repository,
+                  workflow: $workflow,
+                  workflowCommit: $workflowCommit,
+                  runId: $runId,
+                  runAttempt: $runAttempt,
+                  operation: $operation,
+                  fixId: $fixId,
+                  candidateCommit: $candidateCommit,
+                  artifactName: $artifactName
+                }' > "$review_binding"
+            python3 \
+              tools/release-certification/protected/stable_backport_protected_handoff.py \
+              open \
+              --bundle "$sealed_artifact" \
+              --out "$artifact" \
+              --binding "$review_binding" \
+              --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+            actual_files="$(
+              find "$artifact" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+                | LC_ALL=C sort
+            )"
+            expected_files="$(
+              printf '%s\n' \
+                stable-1.0-backport-review-authorization.json \
+                workflow-review-checksums.txt \
+                | LC_ALL=C sort
+            )"
+            if [[ "$actual_files" != "$expected_files" \
+                  || -n "$(find "$artifact" -mindepth 1 ! -type f -print -quit)" ]]; then
+              echo "::error::Protected reviewer artifact has an unsafe file set."
+              exit 1
+            fi
+            (
+              cd "$artifact"
+              sha256sum --check --strict workflow-review-checksums.txt
+            )
+            authorization="$artifact/stable-1.0-backport-review-authorization.json"
+            jq -e \
+              --arg fixId "$fix_id" \
+              --arg workflow "$workflow_ref" \
+              --arg sourceCommit "$source_commit" \
+              --arg runId "$run_id" \
+              --arg artifactName "$artifact_name" '
+                .schemaVersion == 1
+                and .kind == "stable-1.0-backport-review-authorization"
+                and .redaction.status == "pass"
+                and .redaction.findingCount == 0
+                and .authorization.fixId == $fixId
+                and .authorization.producer.workflowIdentity == $workflow
+                and .authorization.producer.workflowCommit == $sourceCommit
+                and .authorization.producer.runId == $runId
+                and .authorization.producer.environment
+                  == "stable-1.0-backport-review"
+                and .authorization.producer.operation
+                  == "authorize-provenance-review"
+                and .authorization.producer.artifactName == $artifactName
+                and .authorization.producerAuthenticated == true' \
+              "$authorization" >/dev/null
+            jq -cS '.authorization' "$authorization" \
+              > "$collection_root/$fix_id.json"
+          done < <(jq -cS '.[]' <<< "$REVIEW_AUTHORIZATION_HANDOFFS")
+          authorizations="$(
+            find "$collection_root" -mindepth 1 -maxdepth 1 \
+              -name 'stable-fix-*.json' -type f -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 jq -sS 'sort_by(.fixId)'
+          )"
+          destination=build/stable-backport-input/protected-inputs/review-authorizations.json
+          if [[ -e "$destination" || -L "$destination" ]]; then
+            echo "::error::Protected review authorization destination was pre-populated."
+            exit 1
+          fi
+          policy_digest="sha256:$(sha256sum "$policy_relative" | awk '{print $1}')"
+          generated_at="$(jq -er 'map(.issuedAt) | max' <<< "$authorizations")"
+          authenticated_artifacts="$(
+            jq -cS 'sort_by(.fixId)' <<< "$REVIEW_AUTHORIZATION_HANDOFFS"
+          )"
+          jq -nS \
+            --arg generatedAt "$generated_at" \
+            --arg policyDigest "$policy_digest" \
+            --argjson authorizations "$authorizations" \
+            --argjson authenticatedArtifacts "$authenticated_artifacts" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-backport-review-authorizations",
+                generatedAt: $generatedAt,
+                stableMilestone: "1.0",
+                repositoryIdentity: "github.com/crypta-network/cryptad",
+                policyDigest: $policyDigest,
+                authorizations: $authorizations,
+                authenticatedArtifacts: $authenticatedArtifacts,
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$destination"
+          set_digest="$(
+            jq -j -cS . "$destination" | sha256sum | awk '{print "sha256:" $1}'
+          )"
+          temporary="$RUNNER_TEMP/review-authorizations.json"
+          jq -S --arg digest "$set_digest" \
+            '.authorizationSetDigest = $digest' \
+            "$destination" > "$temporary"
+          mv "$temporary" "$destination"
+          temporary="$RUNNER_TEMP/stable-backport-manifest-with-review.json"
+          jq '
+            .inputs.stableBackportReviewAuthorizations =
+              "build/stable-backport-input/protected-inputs/review-authorizations.json"' \
+            "$manifest" > "$temporary"
+          mv "$temporary" "$manifest"
+
+      - name: Authenticate predecessor completion workflow and protected refs
+        if: inputs.operation == 'evaluate-intake'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          PREDECESSOR_COMPLETION_RUN_ID: ${{ inputs.predecessor_completion_run_id }}
+          PREDECESSOR_COMPLETION_ARTIFACT_NAME: ${{ inputs.predecessor_completion_artifact_name }}
+          PREDECESSOR_COMPLETION_ARTIFACT_DIGEST: ${{ inputs.predecessor_completion_artifact_digest }}
+          PREDECESSOR_COMPLETION_SOURCE_COMMIT: ${{ inputs.predecessor_completion_source_commit }}
+          PREDECESSOR_COMPLETION_WORKFLOW_REF: ${{ inputs.predecessor_completion_workflow_ref }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          CURRENT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          configured_completion="$(jq -r '.inputs.previousStableBackportCompletion // ""' "$manifest")"
+          if [[ -z "$configured_completion" ]]; then
+            if [[ -n "$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF" ]]; then
+              echo "::error::A predecessor completion handoff was supplied at queue genesis."
+              exit 1
+            fi
+            exit 0
+          fi
+          completion_coordinates="$PREDECESSOR_COMPLETION_RUN_ID$PREDECESSOR_COMPLETION_ARTIFACT_NAME$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST$PREDECESSOR_COMPLETION_SOURCE_COMMIT$PREDECESSOR_COMPLETION_WORKFLOW_REF"
+          use_actions_artifact=false
+          if [[ -n "$completion_coordinates" ]]; then
+            if [[ ! "$PREDECESSOR_COMPLETION_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                  || ! "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                  || "$PREDECESSOR_COMPLETION_WORKFLOW_REF" != "crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$PREDECESSOR_COMPLETION_SOURCE_COMMIT" ]]; then
+              echo "::error::Predecessor completion artifact coordinates are incomplete."
+              exit 1
+            fi
+            use_actions_artifact=true
+          fi
+          confined_input() {
+            local key="$1"
+            local value
+            value="$(jq -er --arg key "$key" '.inputs[$key]' "$manifest")"
+            case "$value" in
+              build/stable-backport-input/protected-inputs/*) ;;
+              *)
+                echo "::error::$key must remain in the protected input root."
+                exit 1
+                ;;
+            esac
+            if [[ ! -f "$value" || -L "$value" ]]; then
+              echo "::error::$key is missing or unsafe."
+              exit 1
+            fi
+            printf '%s\n' "$value"
+          }
+          configured_validation="$(confined_input previousStableBackportValidation)"
+          configured_queue="$(confined_input previousStableBackportQueue)"
+          case "$configured_completion" in
+            build/stable-backport-input/protected-inputs/*) ;;
+            *)
+              echo "::error::Previous completion must remain in the protected input root."
+              exit 1
+              ;;
+          esac
+          if [[ ! -f "$configured_completion" || -L "$configured_completion" ]]; then
+            echo "::error::Previous completion is missing or unsafe."
+            exit 1
+          fi
+          metadata="$RUNNER_TEMP/stable-backport-predecessor-completion"
+          mkdir -p "$metadata"
+          if [[ "$use_actions_artifact" == true ]]; then
+            root=build/stable-backport-predecessor-completion
+            sealed_root=build/stable-backport-predecessor-completion-sealed
+            mkdir -p "$sealed_root"
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_COMPLETION_RUN_ID" \
+              > "$metadata/run.json"
+            jq -e \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg sha "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" \
+              --arg workflow ".github/workflows/stable-1.0-backport-release-train.yml" '
+                (.id | tostring) == env.PREDECESSOR_COMPLETION_RUN_ID
+                and .repository.full_name == $repository
+                and .head_sha == $sha
+                and .path == $workflow
+                and .status == "completed"
+                and .conclusion == "success"
+                and .event == "workflow_dispatch"' \
+              "$metadata/run.json" >/dev/null
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_COMPLETION_RUN_ID/artifacts?per_page=100" \
+              > "$metadata/artifacts.json"
+            jq -e \
+              --arg name "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" \
+              --arg digest "$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST" '
+                [.artifacts[]
+                  | select(.name == $name and .digest == $digest and .expired == false)]
+                | length == 1' "$metadata/artifacts.json" >/dev/null
+            gh run download "$PREDECESSOR_COMPLETION_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" \
+              --dir "$sealed_root"
+            predecessor_release_id="$(
+              jq -er '.release.releaseId' "$configured_completion"
+            )"
+            predecessor_build="$(
+              jq -er '.release.buildVersion' "$configured_completion"
+            )"
+            predecessor_lane=routine-maintenance
+            if [[ "$(jq -er '.release.releaseClass' "$configured_completion")" \
+                  == security-hotfix ]]; then
+              predecessor_lane=security-hotfix
+            fi
+            completion_binding="$RUNNER_TEMP/stable-backport-predecessor-completion-binding.json"
+            jq -nS \
+              --arg artifactKind release-train-phase \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg workflow "$PREDECESSOR_COMPLETION_WORKFLOW_REF" \
+              --arg workflowCommit "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" \
+              --arg runId "$PREDECESSOR_COMPLETION_RUN_ID" \
+              --arg runAttempt "$(jq -er '.run_attempt | tostring' "$metadata/run.json")" \
+              --arg operation verify-release-completion \
+              --arg releaseId "$predecessor_release_id" \
+              --arg buildVersion "$predecessor_build" \
+              --arg releaseLane "$predecessor_lane" \
+              --arg sourceCommit "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" \
+              --arg artifactName "$PREDECESSOR_COMPLETION_ARTIFACT_NAME" '
+                {
+                  artifactKind: $artifactKind,
+                  repository: $repository,
+                  workflow: $workflow,
+                  workflowCommit: $workflowCommit,
+                  runId: $runId,
+                  runAttempt: $runAttempt,
+                  operation: $operation,
+                  releaseId: $releaseId,
+                  buildVersion: $buildVersion,
+                  releaseLane: $releaseLane,
+                  sourceCommit: $sourceCommit,
+                  artifactName: $artifactName
+                }' > "$completion_binding"
+            python3 \
+              tools/release-certification/protected/stable_backport_protected_handoff.py \
+              open \
+              --bundle "$sealed_root" \
+              --out "$root" \
+              --binding "$completion_binding" \
+              --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+            (
+              cd "$root"
+              sha256sum --check --strict workflow-handoff-checksums.txt
+            )
+            downloaded_completion="$root/stable-1.0-release-train-completion.json"
+            downloaded_validation="$root/stable-1.0-release-train-validation.json"
+            downloaded_queue="$root/stable-1.0-release-train-queue.json"
+            downloaded_public_queue="$root/stable-1.0-release-train-queue-public.json"
+            downloaded_provenance="$root/stable-1.0-release-train-workflow-provenance.json"
+            for required in \
+                "$downloaded_completion" \
+                "$downloaded_validation" \
+                "$downloaded_queue" \
+                "$downloaded_public_queue" \
+                "$downloaded_provenance"; do
+              if [[ ! -f "$required" || -L "$required" ]]; then
+                echo "::error::Predecessor completion artifact is incomplete."
+                exit 1
+              fi
+            done
+            cmp --silent "$configured_completion" "$downloaded_completion"
+            cmp --silent "$configured_validation" "$downloaded_validation"
+            cmp --silent "$configured_queue" "$downloaded_queue"
+            jq -e \
+              --slurpfile publicQueue "$downloaded_public_queue" '
+                .kind == "stable-1.0-release-train-queue"
+                and .queueDigest == $publicQueue[0].queueDigest
+                and .candidateCommit == $publicQueue[0].candidateCommit
+                and $publicQueue[0].kind
+                  == "stable-1.0-release-train-queue-public"' \
+              "$downloaded_queue" >/dev/null
+            jq -e \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg workflow "$PREDECESSOR_COMPLETION_WORKFLOW_REF" \
+              --arg commit "$PREDECESSOR_COMPLETION_SOURCE_COMMIT" \
+              --arg runId "$PREDECESSOR_COMPLETION_RUN_ID" '
+                .repository == $repository
+                and .workflow == $workflow
+                and .workflowCommit == $commit
+                and .runId == $runId
+                and .operation == "verify-release-completion"' \
+              "$downloaded_provenance" >/dev/null
+            producer_workflow="$PREDECESSOR_COMPLETION_WORKFLOW_REF"
+            producer_commit="$PREDECESSOR_COMPLETION_SOURCE_COMMIT"
+            producer_run_id="$PREDECESSOR_COMPLETION_RUN_ID"
+            producer_run_attempt="$(jq -er '.runAttempt' "$downloaded_provenance")"
+            producer_operation=verify-release-completion
+            producer_evidence_source=actions-artifact
+            producer_evidence_digest="$PREDECESSOR_COMPLETION_ARTIFACT_DIGEST"
+            producer_artifact_name="$PREDECESSOR_COMPLETION_ARTIFACT_NAME"
+          else
+            downloaded_completion="$configured_completion"
+            downloaded_validation="$configured_validation"
+            downloaded_queue="$configured_queue"
+            producer_workflow="crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$CURRENT_SOURCE_COMMIT"
+            producer_commit="$CURRENT_SOURCE_COMMIT"
+            producer_run_id="$CURRENT_RUN_ID"
+            producer_run_attempt="$CURRENT_RUN_ATTEMPT"
+            producer_operation=reauthenticate-predecessor-completion
+            producer_evidence_source=protected-input-bundle
+            producer_evidence_digest="$INPUT_BUNDLE_DIGEST"
+            producer_artifact_name=
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$metadata/main.json"
+          gh api "repos/$GITHUB_REPOSITORY/branches/develop" > "$metadata/develop.json"
+          main_tip="$(jq -er 'select(.protected == true) | .commit.sha' "$metadata/main.json")"
+          develop_tip="$(jq -er 'select(.protected == true) | .commit.sha' "$metadata/develop.json")"
+          git fetch --no-tags --no-prune origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/develop:refs/remotes/origin/develop"
+          first_parent_contains() {
+            local merge_commit="$1"
+            local tip="$2"
+            local cursor="$tip"
+            local traversed=0
+            while [[ "$cursor" != "$merge_commit" ]]; do
+              if (( traversed >= 100000 )); then
+                return 1
+              fi
+              cursor="$(git rev-parse "$cursor^1" 2>/dev/null)" || return 1
+              traversed=$((traversed + 1))
+            done
+          }
+          main_merge="$(jq -er '.mainMerge.mergeCommit' "$downloaded_completion")"
+          develop_merge="$(jq -er '.developMerge.mergeCommit' "$downloaded_completion")"
+          first_parent_contains "$main_merge" "$main_tip"
+          first_parent_contains "$develop_merge" "$develop_tip"
+          handoff=build/stable-backport-input/protected-inputs/predecessor-completion-handoff.json
+          if [[ -e "$handoff" || -L "$handoff" ]]; then
+            echo "::error::Predecessor completion handoff destination was pre-populated."
+            exit 1
+          fi
+          generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          completion_file_digest="sha256:$(sha256sum "$downloaded_completion" | awk '{print $1}')"
+          validation_file_digest="sha256:$(sha256sum "$downloaded_validation" | awk '{print $1}')"
+          jq -nS \
+            --arg generatedAt "$generated_at" \
+            --arg trainId "$(jq -er '.trainId' "$downloaded_completion")" \
+            --arg candidate "$(jq -er '.publicationCommit' "$downloaded_completion")" \
+            --arg workflow "$producer_workflow" \
+            --arg workflowCommit "$producer_commit" \
+            --arg runId "$producer_run_id" \
+            --arg runAttempt "$producer_run_attempt" \
+            --arg operation "$producer_operation" \
+            --arg evidenceSource "$producer_evidence_source" \
+            --arg evidenceDigest "$producer_evidence_digest" \
+            --arg artifactName "$producer_artifact_name" \
+            --arg completionFileDigest "$completion_file_digest" \
+            --arg completionDigest "$(jq -er '.completionDigest' "$downloaded_completion")" \
+            --arg validationFileDigest "$validation_file_digest" \
+            --arg validationDigest "$(jq -er '.validationDigest' "$downloaded_validation")" \
+            --arg queueDigest "$(jq -er '.queueDigest' "$downloaded_queue")" \
+            --arg mainTip "$main_tip" \
+            --arg developTip "$develop_tip" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-release-train-completion-handoff",
+                generatedAt: $generatedAt,
+                stableMilestone: "1.0",
+                repositoryIdentity: "github.com/crypta-network/cryptad",
+                trainId: $trainId,
+                candidateCommit: $candidate,
+                producer: {
+                  workflowIdentity: $workflow,
+                  workflowCommit: $workflowCommit,
+                  runId: $runId,
+                  runAttempt: $runAttempt,
+                  operation: $operation,
+                  evidenceSource: $evidenceSource,
+                  evidenceDigest: $evidenceDigest
+                } + (
+                  if $artifactName == "" then {}
+                  else {artifactName: $artifactName}
+                  end
+                ),
+                completionFileDigest: $completionFileDigest,
+                completionDigest: $completionDigest,
+                validationFileDigest: $validationFileDigest,
+                validationDigest: $validationDigest,
+                queueDigest: $queueDigest,
+                observedProtectedRefs: {
+                  main: {ref: "refs/heads/main", tip: $mainTip},
+                  develop: {ref: "refs/heads/develop", tip: $developTip}
+                },
+                producerAuthenticated: true,
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$handoff"
+          handoff_digest="$(
+            jq -j -cS . "$handoff" | sha256sum | awk '{print "sha256:" $1}'
+          )"
+          temporary="$RUNNER_TEMP/predecessor-completion-handoff.json"
+          jq -S --arg digest "$handoff_digest" \
+            '.handoffDigest = $digest' "$handoff" > "$temporary"
+          mv "$temporary" "$handoff"
+          temporary="$RUNNER_TEMP/stable-backport-manifest.json"
+          jq '
+            .inputs.previousStableBackportCompletionHandoff =
+              "build/stable-backport-input/protected-inputs/predecessor-completion-handoff.json"' \
+            "$manifest" > "$temporary"
+          mv "$temporary" "$manifest"
+
+      - name: Authenticate exact protected branch lineage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          development_lineage=
+          main_lineage=
+          if [[ "$INPUT_RELEASE_LANE" == routine-maintenance ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/branches/develop" \
+              > "$RUNNER_TEMP/stable-backport-develop-branch.json"
+            protected_develop_tip="$(
+              jq -er 'select(.protected == true) | .commit.sha' \
+                "$RUNNER_TEMP/stable-backport-develop-branch.json"
+            )"
+            if [[ "$INPUT_OPERATION" == evaluate-intake ]]; then
+              development_lineage="$protected_develop_tip"
+            else
+              development_lineage="$(
+                jq -er '.developmentLineageCommit' \
+                  build/stable-backport-prior/stable-1.0-release-train-workflow-provenance.json
+              )"
+            fi
+            if [[ ! "$development_lineage" =~ ^[0-9a-f]{40}$ \
+                  || ! "$protected_develop_tip" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Protected development lineage identity is malformed."
+              exit 1
+            fi
+            git cat-file -e "$development_lineage^{commit}"
+            git cat-file -e "$protected_develop_tip^{commit}"
+            git merge-base --is-ancestor \
+              "$development_lineage" "$protected_develop_tip"
+            jq -e --arg lineage "$development_lineage" '
+              .policies.developmentLineageCommit == $lineage
+              and (.policies | has("mainLineageCommit") | not)' \
+              "$manifest" >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/branches/main" \
+              > "$RUNNER_TEMP/stable-backport-main-branch.json"
+            protected_main_tip="$(
+              jq -er 'select(.protected == true) | .commit.sha' \
+                "$RUNNER_TEMP/stable-backport-main-branch.json"
+            )"
+            if [[ "$INPUT_OPERATION" == evaluate-intake ]]; then
+              main_lineage="$protected_main_tip"
+            else
+              main_lineage="$(
+                jq -er '.mainLineageCommit' \
+                  build/stable-backport-prior/stable-1.0-release-train-workflow-provenance.json
+              )"
+            fi
+            if [[ ! "$main_lineage" =~ ^[0-9a-f]{40}$ \
+                  || ! "$protected_main_tip" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Protected main lineage identity is malformed."
+              exit 1
+            fi
+            git cat-file -e "$main_lineage^{commit}"
+            git cat-file -e "$protected_main_tip^{commit}"
+            if [[ "$INPUT_OPERATION" == verify-release-completion ]]; then
+              if ! git merge-base --is-ancestor \
+                "$main_lineage" "$protected_main_tip"; then
+                echo "::error::Frozen protected main lineage is not an ancestor of the completion tip."
+                exit 1
+              fi
+            elif [[ "$main_lineage" != "$protected_main_tip" ]]; then
+              echo "::error::Protected main advanced after the hotfix lineage was frozen."
+              exit 1
+            fi
+            if [[ "$INPUT_OPERATION" != evaluate-intake ]]; then
+              jq -e '.developmentLineageCommit == null' \
+                build/stable-backport-prior/stable-1.0-release-train-workflow-provenance.json \
+                >/dev/null
+            fi
+            jq -e --arg lineage "$main_lineage" '
+              .policies.mainLineageCommit == $lineage
+              and (.policies | has("developmentLineageCommit") | not)' \
+              "$manifest" >/dev/null
+          fi
+          printf '%s\n' "$development_lineage" \
+            > "$RUNNER_TEMP/stable-backport-development-lineage"
+          printf '%s\n' "$main_lineage" \
+            > "$RUNNER_TEMP/stable-backport-main-lineage"
+
+      - name: Bind exact prior phase evidence into protected inputs
+        if: inputs.operation != 'evaluate-intake'
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          prior=build/stable-backport-prior
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          prior_validation="$prior/stable-1.0-release-train-validation.json"
+          expected_prior_mode=evaluate
+          case "$INPUT_OPERATION" in
+            prepare-candidate)
+              expected_prior_mode=evaluate
+              ;;
+            validate-authorization)
+              expected_prior_mode=prepare-candidate
+              ;;
+            verify-release-completion)
+              expected_prior_mode=validate-authorization
+              ;;
+          esac
+          jq -e --arg mode "$expected_prior_mode" '
+            .kind == "stable-1.0-release-train-validation"
+            and .mode == $mode
+            and .decision == "go"' "$prior_validation" >/dev/null
+          prior_completion_handoff="$prior/stable-1.0-release-train-predecessor-completion-handoff.json"
+          configured_handoff="$(jq -r '.inputs.previousStableBackportCompletionHandoff // ""' "$manifest")"
+          if [[ -f "$prior_completion_handoff" && ! -L "$prior_completion_handoff" ]]; then
+            handoff=build/stable-backport-input/protected-inputs/predecessor-completion-handoff.json
+            if [[ -e "$handoff" || -L "$handoff" ]]; then
+              echo "::error::Predecessor completion handoff destination was pre-populated."
+              exit 1
+            fi
+            cp --no-dereference "$prior_completion_handoff" "$handoff"
+            temporary="$RUNNER_TEMP/stable-backport-manifest-with-completion-handoff.json"
+            jq '
+              .inputs.previousStableBackportCompletionHandoff =
+                "build/stable-backport-input/protected-inputs/predecessor-completion-handoff.json"' \
+              "$manifest" > "$temporary"
+            mv "$temporary" "$manifest"
+          elif [[ -n "$configured_handoff" || -e "$prior_completion_handoff" ]]; then
+            echo "::error::Prior phase completion handoff is missing or unsafe."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+            authorization_relative="$(jq -er '.inputs.stableBackportAuthorization' "$manifest")"
+            case "$authorization_relative" in
+              build/stable-backport-input/protected-inputs/*) ;;
+              *)
+                echo "::error::Authorization must remain in the protected input root."
+                exit 1
+                ;;
+            esac
+            authorization="$authorization_relative"
+            if [[ ! -f "$authorization" || -L "$authorization" ]]; then
+              echo "::error::Protected train authorization is unavailable."
+              exit 1
+            fi
+            jq -e \
+              --slurpfile validation "$prior_validation" '
+                .validationDigest == $validation[0].validationDigest' \
+              "$authorization" >/dev/null
+          fi
+          if [[ "$INPUT_OPERATION" == verify-release-completion ]]; then
+            frozen=build/stable-backport-input/protected-inputs/frozen-release-train-validation.json
+            if [[ -e "$frozen" || -L "$frozen" ]]; then
+              echo "::error::Frozen validation destination was pre-populated."
+              exit 1
+            fi
+            cp --no-dereference "$prior_validation" "$frozen"
+            temporary="$RUNNER_TEMP/stable-backport-manifest.json"
+            jq '
+              .inputs.stableBackportFrozenValidation =
+                "build/stable-backport-input/protected-inputs/frozen-release-train-validation.json"' \
+              "$manifest" > "$temporary"
+            mv "$temporary" "$manifest"
+          fi
+
+      - name: Validate exact manifest operation and candidate identity
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          development_lineage="$(
+            cat "$RUNNER_TEMP/stable-backport-development-lineage"
+          )"
+          main_lineage="$(
+            cat "$RUNNER_TEMP/stable-backport-main-lineage"
+          )"
+          command_mode="$(cat "$RUNNER_TEMP/stable-backport-command-mode")"
+          release_class=maintenance
+          candidate_branch="release/$INPUT_BUILD_VERSION"
+          if [[ "$INPUT_RELEASE_LANE" == security-hotfix ]]; then
+            release_class=security-hotfix
+            candidate_branch="hotfix/$INPUT_BUILD_VERSION"
+          fi
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg mode "$command_mode" \
+            --arg lane "$INPUT_RELEASE_LANE" \
+            --arg releaseClass "$release_class" \
+            --arg candidate "$INPUT_CANDIDATE_COMMIT" \
+            --arg candidateBranch "$candidate_branch" \
+            --arg developmentLineage "$development_lineage" \
+            --arg mainLineage "$main_lineage" '
+              .release.id == $release
+              and .release.version == $build
+              and .release.profile == "stable-review"
+              and .commands["stable-backport"].mode == $mode
+              and .policies.releaseClass == $releaseClass
+              and .policies.backportReleaseLane == $lane
+              and .policies.candidateSourceCommit == $candidate
+              and .policies.candidateSourceRef == ("commit:" + $candidate)
+              and .policies.candidateSourceBranch == $candidateBranch
+              and (
+                if $lane == "routine-maintenance" then
+                  .policies.developmentLineageCommit == $developmentLineage
+                  and (.policies | has("mainLineageCommit") | not)
+                else
+                  (.policies | has("developmentLineageCommit") | not)
+                  and .policies.mainLineageCommit == $mainLineage
+                end
+              )' \
+            "$manifest" >/dev/null
+
+      - name: Authenticate protected main and develop reconciliation tips
+        if: inputs.operation == 'verify-release-completion'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          completion_relative="$(jq -er '.inputs.stableBackportCompletionEvidence' "$manifest")"
+          case "$completion_relative" in
+            build/stable-backport-input/protected-inputs/*) ;;
+            *)
+              echo "::error::Completion evidence must remain in the protected input root."
+              exit 1
+              ;;
+          esac
+          completion="$completion_relative"
+          if [[ ! -f "$completion" || -L "$completion" ]]; then
+            echo "::error::Completion evidence is unavailable."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$RUNNER_TEMP/main-branch.json"
+          gh api "repos/$GITHUB_REPOSITORY/branches/develop" > "$RUNNER_TEMP/develop-branch.json"
+          main_tip="$(jq -er 'select(.protected == true) | .commit.sha' "$RUNNER_TEMP/main-branch.json")"
+          develop_tip="$(jq -er 'select(.protected == true) | .commit.sha' "$RUNNER_TEMP/develop-branch.json")"
+          git fetch --no-tags --no-recurse-submodules origin \
+            "$main_tip" "$develop_tip"
+          if [[ "$main_tip" != "$INPUT_SOURCE_COMMIT" \
+                || "$(jq -r '.mainMerge.protectedRef' "$completion")" != refs/heads/main \
+                || "$(jq -r '.mainMerge.protectedTip' "$completion")" != "$main_tip" \
+                || "$(jq -r '.developMerge.protectedRef' "$completion")" != refs/heads/develop \
+                || "$(jq -r '.developMerge.protectedTip' "$completion")" != "$develop_tip" ]]; then
+            echo "::error::Completion does not bind the exact protected branch tips."
+            exit 1
+          fi
+          for role in main develop; do
+            merge_commit="$(jq -r ".${role}Merge.mergeCommit" "$completion")"
+            first_parent="$(jq -r ".${role}Merge.firstParent" "$completion")"
+            merged_tip="$(jq -r ".${role}Merge.mergedTip" "$completion")"
+            protected_ref="$(jq -r ".${role}Merge.protectedRef" "$completion")"
+            protected_tip="$(jq -r ".${role}Merge.protectedTip" "$completion")"
+            git cat-file -e "$merge_commit^{commit}"
+            git cat-file -e "$protected_tip^{commit}"
+            test "$(git rev-parse "$merge_commit^1")" = "$first_parent"
+            test "$(git rev-parse "$merge_commit^2")" = "$merged_tip"
+            git merge-base --is-ancestor "$merge_commit" "$protected_tip"
+            attestation="$(
+              jq -jcnS \
+                --arg repositoryIdentity "github.com/crypta-network/cryptad" \
+                --arg protectedRef "$protected_ref" \
+                --arg protectedTip "$protected_tip" \
+                --arg mergeCommit "$merge_commit" \
+                --arg firstParent "$first_parent" \
+                --arg mergedTip "$merged_tip" \
+                '{
+                  repositoryIdentity: $repositoryIdentity,
+                  protectedRef: $protectedRef,
+                  protectedTip: $protectedTip,
+                  mergeCommit: $mergeCommit,
+                  firstParent: $firstParent,
+                  mergedTip: $mergedTip
+                }' | sha256sum | awk '{print "sha256:" $1}'
+            )"
+            test "$(jq -r ".${role}Merge.workflowAttestationDigest" "$completion")" = "$attestation"
+          done
+
+      - name: Run side-effect-free release-train certification
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-backport \
+            --manifest build/stable-backport-input/manifest/stable-backport-manifest.json
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Authenticate evaluated queue evolution
+        if: inputs.operation == 'prepare-candidate'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          set -euo pipefail
+          python3 \
+            tools/release-certification/protected/stable_backport_phase_handoff.py \
+            --evaluated-queue \
+            build/stable-backport-prior/stable-1.0-release-train-queue-public.json \
+            --prepared-queue \
+            "build/release-certification/$INPUT_RELEASE_ID/stable-backport/artifacts/legacy/stable-1.0-release-train-queue-public.json"
+
+      - name: Stage protected handoff and allowlisted public-safe projection
+        env:
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_LANE: ${{ inputs.release_lane }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          INPUT_PRIOR_RUN_ID: ${{ inputs.prior_run_id }}
+          INPUT_PRIOR_ARTIFACT_NAME: ${{ inputs.prior_artifact_name }}
+          INPUT_PRIOR_ARTIFACT_DIGEST: ${{ inputs.prior_artifact_digest }}
+          INPUT_PRIOR_SOURCE_COMMIT: ${{ inputs.prior_source_commit }}
+          INPUT_PRIOR_WORKFLOW_REF: ${{ inputs.prior_workflow_ref }}
+        run: |
+          set -euo pipefail
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-backport"
+          legacy="$component/artifacts/legacy"
+          handoff=build/stable-backport-handoff
+          public_stage=build/stable-backport-public
+          if [[ -L "$component" || ! -d "$component" || -L "$legacy" || ! -d "$legacy" ]]; then
+            echo "::error::Release-train component is missing or unsafe."
+            exit 1
+          fi
+          jq -e '
+            .result.status == "pass"
+            and .result.exitCode == 0
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+          jq -e '.status == "pass" and .findingCount == 0 and .findings == []' \
+            "$component/redaction-report.json" >/dev/null
+          mkdir -p "$handoff" "$public_stage"
+          copy_to() {
+            local destination="$1"
+            local name="$2"
+            local source="$legacy/$name"
+            if [[ ! -f "$source" || -L "$source" ]]; then
+              echo "::error::Expected one canonical release-train file: $name"
+              exit 1
+            fi
+            cp --no-dereference "$source" "$destination/$name"
+          }
+          cp --no-dereference "$component/summary.json" "$handoff/summary.json"
+          cp --no-dereference \
+            "$component/redaction-report.json" \
+            "$handoff/redaction-report.json"
+          copy_to "$handoff" stable-1.0-release-train-summary.json
+          copy_to "$handoff" stable-1.0-release-train-report.md
+          copy_to "$handoff" stable-1.0-release-train-queue-public.json
+          copy_to "$handoff" stable-1.0-release-train-validation-public.json
+          copy_to "$public_stage" stable-1.0-release-train-queue-public.json
+          copy_to "$public_stage" stable-1.0-release-train-validation-public.json
+          copy_to "$handoff" stable-1.0-release-train-checksums.txt
+          copy_to "$handoff" stable-1.0-release-train-provenance.json
+          copy_to "$handoff" stable-1.0-release-train-queue.json
+          copy_to "$handoff" stable-1.0-release-train-validation.json
+          if [[ -f "$legacy/stable-1.0-release-train-predecessor-completion-handoff.json" \
+                && ! -L "$legacy/stable-1.0-release-train-predecessor-completion-handoff.json" ]]; then
+            copy_to \
+              "$handoff" \
+              stable-1.0-release-train-predecessor-completion-handoff.json
+          elif [[ -e "$legacy/stable-1.0-release-train-predecessor-completion-handoff.json" ]]; then
+            echo "::error::Predecessor completion handoff output is unsafe."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == validate-authorization \
+                || "$INPUT_OPERATION" == verify-release-completion ]]; then
+            copy_to \
+              "$handoff" \
+              stable-1.0-release-train-authorization-summary.json
+          elif [[ -e "$legacy/stable-1.0-release-train-authorization-summary.json" ]]; then
+            echo "::error::Authorization evidence appeared outside an authorized mode."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == verify-release-completion ]]; then
+            copy_to "$handoff" stable-1.0-release-train-completion.json
+          elif [[ -e "$legacy/stable-1.0-release-train-completion.json" ]]; then
+            echo "::error::Completion evidence appeared outside completion mode."
+            exit 1
+          fi
+          development_lineage="$(
+            cat "$RUNNER_TEMP/stable-backport-development-lineage"
+          )"
+          main_lineage="$(
+            cat "$RUNNER_TEMP/stable-backport-main-lineage"
+          )"
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-backport-release-train.yml@$GITHUB_WORKFLOW_SHA" \
+            --arg workflowCommit "$GITHUB_WORKFLOW_SHA" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg operation "$INPUT_OPERATION" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg lane "$INPUT_RELEASE_LANE" \
+            --arg sourceCommit "$INPUT_SOURCE_COMMIT" \
+            --arg candidateCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg developmentLineage "$development_lineage" \
+            --arg mainLineage "$main_lineage" \
+            --arg inputBundleDigest "$INPUT_BUNDLE_DIGEST" \
+            --arg priorRunId "$INPUT_PRIOR_RUN_ID" \
+            --arg priorArtifactName "$INPUT_PRIOR_ARTIFACT_NAME" \
+            --arg priorArtifactDigest "$INPUT_PRIOR_ARTIFACT_DIGEST" \
+            --arg priorSourceCommit "$INPUT_PRIOR_SOURCE_COMMIT" \
+            --arg priorWorkflowRef "$INPUT_PRIOR_WORKFLOW_REF" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-release-train-workflow-provenance",
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $build,
+                releaseLane: $lane,
+                sourceCommit: $sourceCommit,
+                candidateCommit: $candidateCommit,
+                developmentLineageCommit: (
+                  if $developmentLineage == "" then null
+                  else $developmentLineage
+                  end
+                ),
+                mainLineageCommit: (
+                  if $mainLineage == "" then null
+                  else $mainLineage
+                  end
+                ),
+                inputBundleDigest: $inputBundleDigest,
+                priorHandoff: (
+                  if $priorRunId == "" then null else {
+                    runId: $priorRunId,
+                    artifactName: $priorArtifactName,
+                    artifactDigest: $priorArtifactDigest,
+                    sourceCommit: $priorSourceCommit,
+                    workflowRef: $priorWorkflowRef
+                  } end
+                )
+              }' > "$handoff/stable-1.0-release-train-workflow-provenance.json"
+          (
+            cd "$handoff"
+            find . -maxdepth 1 -type f ! -name workflow-handoff-checksums.txt -print0 \
+              | LC_ALL=C sort -z \
+              | xargs -0 sha256sum \
+              > workflow-handoff-checksums.txt
+          )
+          expected_public_files="$(
+            printf '%s\n' \
+              stable-1.0-release-train-queue-public.json \
+              stable-1.0-release-train-validation-public.json
+          )"
+          actual_public_files="$(
+            find "$public_stage" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          if [[ "$actual_public_files" != "$expected_public_files" ]]; then
+            echo "::error::Public release-train artifact violates its exact two-file allowlist."
+            exit 1
+          fi
+          if find "$handoff" "$public_stage" -type l -print -quit | grep -q .; then
+            echo "::error::Release-train handoff contains a symbolic link."
+            exit 1
+          fi
+          handoff_artifact_name="stable-1.0-backport-$INPUT_OPERATION-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION"
+          handoff_binding="$RUNNER_TEMP/stable-backport-current-binding.json"
+          jq -nS \
+            --arg artifactKind release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-backport-release-train.yml@$GITHUB_WORKFLOW_SHA" \
+            --arg workflowCommit "$GITHUB_WORKFLOW_SHA" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg operation "$INPUT_OPERATION" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseLane "$INPUT_RELEASE_LANE" \
+            --arg sourceCommit "$INPUT_SOURCE_COMMIT" \
+            --arg artifactName "$handoff_artifact_name" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseLane: $releaseLane,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$handoff_binding"
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            seal \
+            --source "$handoff" \
+            --out build/stable-backport-protected-upload \
+            --binding "$handoff_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+
+      - name: Upload encrypted protected release-train handoff
+        id: upload-protected-train
+        uses: actions/upload-artifact@v6
+        with:
+          name: >-
+            stable-1.0-backport-${{ inputs.operation }}-${{ inputs.release_id }}-${{ inputs.build_version }}
+          path: build/stable-backport-protected-upload/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90
+
+      - name: Upload allowlisted public-safe train projection
+        id: upload-public-train
+        uses: actions/upload-artifact@v6
+        with:
+          name: >-
+            stable-1.0-backport-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-backport-public/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90
+
+      - name: Record exact uploaded artifact digest
+        env:
+          HANDOFF_DIGEST: ${{ steps.upload-protected-train.outputs.artifact-digest }}
+          HANDOFF_ID: ${{ steps.upload-protected-train.outputs.artifact-id }}
+          HANDOFF_URL: ${{ steps.upload-protected-train.outputs.artifact-url }}
+          PUBLIC_DIGEST: ${{ steps.upload-public-train.outputs.artifact-digest }}
+          PUBLIC_ID: ${{ steps.upload-public-train.outputs.artifact-id }}
+          PUBLIC_URL: ${{ steps.upload-public-train.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          normalize_digest() {
+            local digest="$1"
+            if [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+              digest="sha256:$digest"
+            fi
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              return 1
+            fi
+            printf '%s' "$digest"
+          }
+          handoff_digest="$(normalize_digest "$HANDOFF_DIGEST")"
+          public_digest="$(normalize_digest "$PUBLIC_DIGEST")"
+          if [[ ! "$HANDOFF_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$PUBLIC_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Uploaded release-train artifact identities are incomplete."
+            exit 1
+          fi
+          {
+            echo "### Stable 1.0 release-train validation"
+            echo
+            echo "- Operation: \`${{ inputs.operation }}\`"
+            echo "- Source commit: \`${{ inputs.source_commit }}\`"
+            echo "- Encrypted handoff id: \`$HANDOFF_ID\`"
+            echo "- Encrypted handoff digest: \`$handoff_digest\`"
+            echo "- Encrypted handoff URL: $HANDOFF_URL"
+            echo "- Public projection id: \`$PUBLIC_ID\`"
+            echo "- Public projection digest: \`$public_digest\`"
+            echo "- Public projection URL: $PUBLIC_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

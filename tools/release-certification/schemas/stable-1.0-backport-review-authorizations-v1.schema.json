@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-backport-review-authorizations-v1.schema.json",
+  "title": "Cryptad Stable 1.0 provenance review authorization set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "repositoryIdentity",
+    "policyDigest",
+    "authorizations",
+    "authenticatedArtifacts",
+    "authorizationSetDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-backport-review-authorizations"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "repositoryIdentity": {
+      "const": "github.com/crypta-network/cryptad"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "authorizations": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-backport-review-authorization-v1.schema.json#/$defs/authorization"
+      }
+    },
+    "authenticatedArtifacts": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/authenticatedArtifact"
+      }
+    },
+    "authorizationSetDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "authenticatedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixId",
+        "runId",
+        "artifactName",
+        "artifactDigest",
+        "sourceCommit",
+        "workflowRef"
+      ],
+      "properties": {
+        "fixId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 32
+        },
+        "artifactName": {
+          "type": "string",
+          "pattern": "^stable-1\\.0-backport-review-stable-fix-[a-z0-9]{16,64}-[0-9a-f]{40}$",
+          "maxLength": 192
+        },
+        "artifactDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "workflowRef": {
+          "type": "string",
+          "pattern": "^crypta-network/cryptad/\\.github/workflows/stable-1\\.0-backport-review-authorization\\.yml@[0-9a-f]{40}$",
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-redaction-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train redaction report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "trainId",
+    "policyDigest",
+    "scannedArtifacts",
+    "status",
+    "findingCount",
+    "findings",
+    "guarantees"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-redaction"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "scannedArtifacts": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+      }
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "findingCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "guarantees": {
+      "$ref": "#/$defs/guarantees"
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "category",
+        "summary"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+        },
+        "category": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/reasonCode"
+        },
+        "summary": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/safeText"
+        }
+      }
+    },
+    "guarantees": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "embargoedDetailsExcluded",
+        "privateIssueAndForkNamesExcluded",
+        "credentialsAndPrivateInsertUrisExcluded",
+        "rawPatchesAndUserDataExcluded",
+        "absolutePathsExcluded",
+        "unsafeMarkdownAndHtmlExcluded",
+        "sideEffectsNotPerformed"
+      ],
+      "properties": {
+        "embargoedDetailsExcluded": {
+          "type": "boolean"
+        },
+        "privateIssueAndForkNamesExcluded": {
+          "type": "boolean"
+        },
+        "credentialsAndPrivateInsertUrisExcluded": {
+          "type": "boolean"
+        },
+        "rawPatchesAndUserDataExcluded": {
+          "type": "boolean"
+        },
+        "absolutePathsExcluded": {
+          "type": "boolean"
+        },
+        "unsafeMarkdownAndHtmlExcluded": {
+          "type": "boolean"
+        },
+        "sideEffectsNotPerformed": {
+          "const": true
+        }
+      }
+    }
+  }
+}

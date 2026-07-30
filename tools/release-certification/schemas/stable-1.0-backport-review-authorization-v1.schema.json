@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-backport-review-authorization-v1.schema.json",
+  "title": "Cryptad Stable 1.0 provenance review authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "authorization",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-backport-review-authorization"
+    },
+    "authorization": {
+      "$ref": "#/$defs/authorization"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationId",
+        "fixId",
+        "provenanceMode",
+        "reviewerRole",
+        "repositoryIdentity",
+        "policyDigest",
+        "sourceCommit",
+        "predecessorCommit",
+        "candidateCommit",
+        "normalizedDiffEvidenceDigest",
+        "pathInventoryDigest",
+        "focusedTestEvidenceIds",
+        "reviewEvidenceId",
+        "producer",
+        "issuedAt",
+        "expiresAt",
+        "producerAuthenticated",
+        "authorizationDigest"
+      ],
+      "properties": {
+        "authorizationId": {
+          "type": "string",
+          "pattern": "^stable-backport-review-[a-z0-9]{16,64}$",
+          "maxLength": 96
+        },
+        "fixId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+        },
+        "provenanceMode": {
+          "enum": [
+            "clean-cherry-pick",
+            "manual-conflict-resolution"
+          ]
+        },
+        "reviewerRole": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "repositoryIdentity": {
+          "const": "github.com/crypta-network/cryptad"
+        },
+        "policyDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "sourceCommit": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+        },
+        "predecessorCommit": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+        },
+        "candidateCommit": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+        },
+        "normalizedDiffEvidenceDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "pathInventoryDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "focusedTestEvidenceIds": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+          }
+        },
+        "reviewEvidenceId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "producerAuthenticated": {
+          "const": true
+        },
+        "authorizationDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflowIdentity",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "environment",
+        "operation",
+        "artifactName"
+      ],
+      "properties": {
+        "workflowIdentity": {
+          "type": "string",
+          "pattern": "^crypta-network/cryptad/\\.github/workflows/stable-1\\.0-backport-review-authorization\\.yml@[0-9a-f]{40}$",
+          "maxLength": 256
+        },
+        "workflowCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 32
+        },
+        "runAttempt": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 16
+        },
+        "environment": {
+          "const": "stable-1.0-backport-review"
+        },
+        "operation": {
+          "const": "authorize-provenance-review"
+        },
+        "artifactName": {
+          "type": "string",
+          "pattern": "^stable-1\\.0-backport-review-stable-fix-[a-z0-9]{16,64}-[0-9a-f]{40}$",
+          "maxLength": 192
+        }
+      }
+    }
+  }
+}

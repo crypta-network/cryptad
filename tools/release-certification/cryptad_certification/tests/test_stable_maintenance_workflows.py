@@ -286,6 +286,120 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             workflow[publication_observation:preflight],
         )
 
+    def test_release_train_handoff_is_decrypted_only_in_protected_maintenance(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        step_start = workflow.index(
+            "      - name: Authenticate and materialize the exact protected "
+            "release-train handoff"
+        )
+        step_end = workflow.index("\n      - name:", step_start + 8)
+        step = workflow[step_start:step_end]
+
+        self.assertIn(
+            "CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}",
+            step,
+        )
+        self.assertIn(
+            "protected/stable_backport_protected_handoff.py",
+            step,
+        )
+        self.assertIn(
+            "--bundle \"$sealed_root\"",
+            step,
+        )
+        self.assertIn(
+            "--out \"$root\"",
+            step,
+        )
+
+    def test_release_train_authority_stays_encrypted_between_maintenance_phases(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        stage_start = workflow.index(
+            "      - name: Stage exact redaction-safe candidate"
+        )
+        stage_end = workflow.index(
+            "\n      - name: Upload exact validated candidate", stage_start
+        )
+        stage = workflow[stage_start:stage_end]
+
+        self.assertIn(
+            "CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}",
+            stage,
+        )
+        self.assertIn(
+            "protected/stable_backport_protected_handoff.py", stage
+        )
+        self.assertIn('seal \\\n              --source "$train_plaintext"', stage)
+        self.assertIn(
+            '--out "$root/stable-backport-release-train-handoff"', stage
+        )
+        self.assertIn("remove_staged_train_input", stage)
+        self.assertNotIn(
+            'cp "$configured" "$root/authenticated-inputs/$output_name"',
+            stage,
+        )
+
+        prior_open = workflow.index(
+            "      - name: Authenticate prior exact frozen or validated candidate"
+        )
+        prior_step_end = workflow.index("\n      - name:", prior_open + 8)
+        prior_step = workflow[prior_open:prior_step_end]
+        self.assertIn(
+            "--bundle "
+            "build/prior-validated-candidate/"
+            "stable-backport-release-train-handoff",
+            prior_step,
+        )
+        self.assertIn(
+            "--out build/prior-stable-backport-release-train", prior_step
+        )
+        protected_inputs = workflow.index(
+            "      - name: Authenticate and materialize public-safe protected inputs",
+            prior_open,
+        )
+        publication_open = workflow.index(
+            "      - name: Open encrypted train authority at the protected "
+            "publication boundary"
+        )
+        publication_preflight = workflow.index(
+            "      - name: Re-observe exact lifecycle edition immediately before "
+            "maintenance preflight",
+            publication_open,
+        )
+        verification_open = workflow.index(
+            "      - name: Open encrypted train authority for independent "
+            "verification"
+        )
+        verification = workflow.index(
+            "      - name: Fetch and verify public tag, assets, catalog, updater, "
+            "and package identities",
+            verification_open,
+        )
+        self.assertLess(prior_open, protected_inputs)
+        self.assertLess(publication_open, publication_preflight)
+        self.assertLess(verification_open, verification)
+
+        publication_stage_start = workflow.index(
+            "      - name: Stage publication receipt or partial-state audit record"
+        )
+        publication_stage_end = workflow.index(
+            "\n      - name: Upload publication audit record",
+            publication_stage_start,
+        )
+        publication_stage = workflow[
+            publication_stage_start:publication_stage_end
+        ]
+        self.assertIn(
+            "stable-backport-release-train-handoff", publication_stage
+        )
+        self.assertIn("remove_plaintext_train_authority", publication_stage)
+
     def test_lifecycle_observation_provider_is_phase_scoped_and_exact(self) -> None:
         workflow = RELEASE.read_text(encoding="utf-8")
         dispatch_inputs = workflow[

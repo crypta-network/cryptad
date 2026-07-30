@@ -23,8 +23,17 @@ SUITE_MODULES = {
     "stable-readiness": ["cryptad_certification.tests.test_stable"],
     "stable-rc": ["cryptad_certification.tests.test_stable_rc"],
     "stable-ga": ["cryptad_certification.tests.test_stable_ga"],
+    "stable-backport": [
+        "cryptad_certification.tests.test_stable_backport",
+        "cryptad_certification.tests.test_stable_backport_git",
+        "cryptad_certification.tests.test_stable_backport_integration",
+        "cryptad_certification.tests.test_stable_backport_protected_handoff",
+        "cryptad_certification.tests.test_stable_backport_queue_integrity",
+        "cryptad_certification.tests.test_stable_backport_workflows",
+    ],
     "stable-maintenance": [
         "cryptad_certification.tests.test_stable_maintenance",
+        "cryptad_certification.tests.test_stable_maintenance_authorization_compatibility",
         "cryptad_certification.tests.test_stable_maintenance_publication",
         "cryptad_certification.tests.test_stable_maintenance_workflows",
     ],

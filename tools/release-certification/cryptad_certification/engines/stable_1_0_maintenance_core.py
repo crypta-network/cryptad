@@ -705,39 +705,45 @@ def authenticate_ga_root(context: RunContext, state: ValidationState) -> GaRoot:
 def _receipt_identity(receipt: dict[str, Any]) -> str:
     """Return the non-circular semantic identity of one maintenance receipt."""
 
+    identity_keys = [
+        "schemaVersion",
+        "kind",
+        "releaseId",
+        "buildVersion",
+        "releaseClass",
+        "sourceCommit",
+        "githubReleasePageUri",
+        "deploymentServicePublicUri",
+        "latestPointerPublicUri",
+        "publicationState",
+        "candidateIdentityDigest",
+        "productDigest",
+        "checksumsDigest",
+        "provenanceDigest",
+        "authorizationDigest",
+        "publicationPlanDigest",
+        "releaseNotesDigest",
+        "coreInfoDigest",
+        "coreUpdateReceiptDigest",
+        "tag",
+        "githubRelease",
+        "assets",
+        "stableCatalog",
+        "coreUpdate",
+        "workflow",
+        "publicObservations",
+        "finalVerificationStatus",
+        "failureCategory",
+        "redaction",
+    ]
+    if "backportReleaseTrainDigest" in receipt:
+        identity_keys.insert(
+            identity_keys.index("publicationPlanDigest"),
+            "backportReleaseTrainDigest",
+        )
     fields = {
         key: receipt.get(key)
-        for key in (
-            "schemaVersion",
-            "kind",
-            "releaseId",
-            "buildVersion",
-            "releaseClass",
-            "sourceCommit",
-            "githubReleasePageUri",
-            "deploymentServicePublicUri",
-            "latestPointerPublicUri",
-            "publicationState",
-            "candidateIdentityDigest",
-            "productDigest",
-            "checksumsDigest",
-            "provenanceDigest",
-            "authorizationDigest",
-            "publicationPlanDigest",
-            "releaseNotesDigest",
-            "coreInfoDigest",
-            "coreUpdateReceiptDigest",
-            "tag",
-            "githubRelease",
-            "assets",
-            "stableCatalog",
-            "coreUpdate",
-            "workflow",
-            "publicObservations",
-            "finalVerificationStatus",
-            "failureCategory",
-            "redaction",
-        )
+        for key in identity_keys
     }
     return semantic_digest(fields)
 
@@ -745,35 +751,35 @@ def _receipt_identity(receipt: dict[str, Any]) -> str:
 def successor_baseline_identity(baseline: dict[str, Any]) -> str:
     """Return a non-circular identity for one v2 successor baseline."""
 
+    identity_keys = [
+        "schemaVersion",
+        "kind",
+        "generatedAt",
+        "stableMilestone",
+        "status",
+        "gaRoot",
+        "previousBaselineDigest",
+        "chainDepth",
+        "previousLineageDigest",
+        "publication",
+        "release",
+        "platformApi",
+        "stableCatalog",
+        "firstPartyApps",
+        "contentFormatProfiles",
+        "limitations",
+        "security",
+        "support",
+        "legacyBoundaries",
+        "evidenceWindowPolicy",
+        "hotfixFollowUp",
+        "releaseHistoryDigest",
+        "redaction",
+    ]
+    if "releaseTrain" in baseline:
+        identity_keys.insert(identity_keys.index("releaseHistoryDigest"), "releaseTrain")
     return semantic_digest(
-        {
-            key: baseline.get(key)
-            for key in (
-                "schemaVersion",
-                "kind",
-                "generatedAt",
-                "stableMilestone",
-                "status",
-                "gaRoot",
-                "previousBaselineDigest",
-                "chainDepth",
-                "previousLineageDigest",
-                "publication",
-                "release",
-                "platformApi",
-                "stableCatalog",
-                "firstPartyApps",
-                "contentFormatProfiles",
-                "limitations",
-                "security",
-                "support",
-                "legacyBoundaries",
-                "evidenceWindowPolicy",
-                "hotfixFollowUp",
-                "releaseHistoryDigest",
-                "redaction",
-            )
-        }
+        {key: baseline.get(key) for key in identity_keys}
     )
 
 
@@ -888,6 +894,8 @@ def authenticate_predecessor(
             or pointer.value.get("baselineDigest") != baseline.digest
             or pointer.value.get("publicationReceiptDigest") != receipt.digest
             or pointer.value.get("lineageDigest") != previous_lineage_digest
+            or pointer.value.get("backportReleaseTrainDigest")
+            != baseline.value.get("releaseTrain", {}).get("validationDigest")
             or pointer.value.get("status") != "active"
         ):
             errors.append("latest-published pointer does not select the predecessor exactly")

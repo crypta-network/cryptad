@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-candidate-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train candidate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "trainId",
+    "release",
+    "repositoryIdentity",
+    "policyDigest",
+    "queueDigest",
+    "planDigest",
+    "predecessor",
+    "candidate",
+    "branchBase",
+    "developmentLineageCommit",
+    "mainLineageCommit",
+    "lifecycleLedgerDigest",
+    "latestMaintenancePointerDigest",
+    "hotfixFollowUpClosureDigest",
+    "acceptedFixIds",
+    "landedFixIds",
+    "verifiedFixIds",
+    "coverage",
+    "unaccountedCommitIds",
+    "carriedObligationIds",
+    "noFork",
+    "status",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-candidate"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "planDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "predecessor": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/gitIdentity"
+    },
+    "candidate": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/gitIdentity"
+    },
+    "branchBase": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/gitIdentity"
+    },
+    "developmentLineageCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "mainLineageCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "lifecycleLedgerDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "latestMaintenancePointerDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "hotfixFollowUpClosureDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "acceptedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "landedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "verifiedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "coverage": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/candidateCoverageEntry"
+      }
+    },
+    "unaccountedCommitIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+      }
+    },
+    "carriedObligationIds": {
+      "type": "array",
+      "maxItems": 512,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+      }
+    },
+    "noFork": {
+      "const": true
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "blocked"
+      ]
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "fixIds": {
+      "type": "array",
+      "maxItems": 512,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+      }
+    }
+  }
+}

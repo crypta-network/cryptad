@@ -28,6 +28,7 @@ COMMANDS = (
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
 )
@@ -62,6 +63,7 @@ SELF_TEST_SUITES = (
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
     "migration",
@@ -277,6 +279,9 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
         raise ValueError(
             "stable-maintenance requires a canonical positive integer release.version"
         )
+    mode = manifest.commands.get("stable-maintenance", {}).get(
+        "mode", "validate-only"
+    )
     release_class = manifest.policies.get("releaseClass")
     if release_class not in {"maintenance", "security-hotfix"}:
         raise ValueError(
@@ -333,6 +338,9 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
         "maintenanceEvidence",
         "maintenancePolicy",
     }
+    if mode != "close-hotfix-follow-up":
+        required_inputs.add("stableBackportReleaseTrainAuthorization")
+        required_inputs.add("stableBackportReleaseTrainValidation")
     missing = sorted(required_inputs.difference(manifest.inputs))
     if missing:
         raise ValueError(
@@ -353,9 +361,6 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
             "approved authorization, authorized publication plan, and verified publication "
             "receipt together"
         )
-    mode = manifest.commands.get("stable-maintenance", {}).get(
-        "mode", "validate-only"
-    )
     allowed_modes = {
         "validate-only",
         "prepare-authorization",
@@ -416,6 +421,180 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
         raise ValueError(
             "stable-maintenance requires a canonical latest predecessor and a strictly "
             "higher release build outside follow-up closure"
+        )
+
+
+def _validate_stable_backport_manifest(manifest: RunManifest) -> None:
+    """Reject a Stable release-train run with an ambiguous lane, mode, or protected input."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-backport requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError(
+            "stable-backport requires a canonical positive integer release.version"
+        )
+    release_class = manifest.policies.get("releaseClass")
+    if release_class not in {"maintenance", "security-hotfix"}:
+        raise ValueError(
+            "stable-backport requires policies.releaseClass maintenance or security-hotfix"
+        )
+    lane = manifest.policies.get("backportReleaseLane")
+    expected_lane = (
+        "routine-maintenance"
+        if release_class == "maintenance"
+        else "security-hotfix"
+    )
+    if lane != expected_lane:
+        raise ValueError(
+            "stable-backport release lane does not match policies.releaseClass"
+        )
+    expected_branch = f"{'release' if release_class == 'maintenance' else 'hotfix'}/{version}"
+    if manifest.policies.get("candidateSourceBranch") != expected_branch:
+        raise ValueError(
+            f"stable-backport {expected_lane} requires policies.candidateSourceBranch "
+            f"{expected_branch}"
+        )
+    commit = manifest.policies.get("candidateSourceCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40,64}", commit) is None:
+        raise ValueError(
+            "stable-backport requires a canonical policies.candidateSourceCommit"
+        )
+    if manifest.policies.get("candidateSourceRef") != f"commit:{commit}":
+        raise ValueError(
+            "stable-backport requires policies.candidateSourceRef to be commit:<sha>"
+        )
+    base_commit = manifest.policies.get("candidateBaseCommit")
+    if (
+        not isinstance(base_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40,64}", base_commit) is None
+        or base_commit == commit
+    ):
+        raise ValueError(
+            "stable-backport requires a distinct canonical policies.candidateBaseCommit"
+        )
+    development_lineage = manifest.policies.get("developmentLineageCommit")
+    main_lineage = manifest.policies.get("mainLineageCommit")
+    if lane == "routine-maintenance":
+        if (
+            not isinstance(development_lineage, str)
+            or re.fullmatch(r"[0-9a-f]{40,64}", development_lineage) is None
+            or main_lineage is not None
+        ):
+            raise ValueError(
+                "routine stable-backport requires only the exact protected "
+                "developmentLineageCommit"
+            )
+    elif (
+        not isinstance(main_lineage, str)
+        or re.fullmatch(r"[0-9a-f]{40,64}", main_lineage) is None
+        or development_lineage is not None
+    ):
+        raise ValueError(
+            "security-hotfix stable-backport requires only the exact protected "
+            "mainLineageCommit"
+        )
+    required_inputs = {
+        "stableBackportPolicy",
+        "stableFixIntake",
+        "stableGaPromotionSummary",
+        "stableGaValidation",
+        "stableGaAuthorizationSummary",
+        "stableGaPublicationPlan",
+        "stableGaPublicationReceipt",
+        "stableGaChecksums",
+        "stableGaProvenance",
+        "stableGaMaintenanceBaseline",
+        "stableLifecyclePolicy",
+        "predecessorPublicationReceipt",
+        "predecessorBaseline",
+        "previousStableLifecycleLedger",
+        "previousStableLifecycleDescriptor",
+        "previousStableLifecycleAuthorization",
+        "previousStableLifecyclePublicationPlan",
+        "previousStableLifecyclePublicationReceipt",
+        "stableLifecyclePublicObservationReceipt",
+    }
+    missing = sorted(required_inputs.difference(manifest.inputs))
+    if missing:
+        raise ValueError(
+            "stable-backport requires exact intake, policy, predecessor, and lifecycle inputs: "
+            + ", ".join(missing)
+        )
+    mode = manifest.commands.get("stable-backport", {}).get("mode", "evaluate")
+    allowed_modes = {
+        "evaluate",
+        "prepare-candidate",
+        "validate-authorization",
+        "verify-release-completion",
+    }
+    if mode not in allowed_modes:
+        raise ValueError(
+            "stable-backport mode must be evaluate, prepare-candidate, "
+            "validate-authorization, or verify-release-completion"
+        )
+    protected = {
+        "stableBackportAuthorization",
+        "stableBackportFrozenValidation",
+        "stableBackportCompletionEvidence",
+        "stableMaintenancePublicationReceipt",
+        "stableLifecyclePublicationReceipt",
+        "completedStableLifecycleLedger",
+        "completedStableLifecycleDescriptor",
+    }
+    present_protected = protected.intersection(manifest.inputs)
+    if mode in {"evaluate", "prepare-candidate"} and present_protected:
+        raise ValueError(
+            f"stable-backport {mode} cannot consume protected authorization or completion inputs"
+        )
+    if mode == "validate-authorization":
+        if "stableBackportAuthorization" not in manifest.inputs:
+            raise ValueError(
+                "stable-backport validate-authorization requires "
+                "inputs.stableBackportAuthorization"
+            )
+        unexpected = present_protected - {"stableBackportAuthorization"}
+        if unexpected:
+            raise ValueError(
+                "stable-backport validate-authorization cannot consume completion inputs"
+            )
+    if mode == "verify-release-completion":
+        completion_required = protected - {
+            "stableLifecyclePublicationReceipt",
+            "completedStableLifecycleLedger",
+            "completedStableLifecycleDescriptor",
+        }
+        missing_completion = sorted(completion_required.difference(manifest.inputs))
+        if missing_completion:
+            raise ValueError(
+                "stable-backport verify-release-completion requires exact protected inputs: "
+                + ", ".join(missing_completion)
+            )
+    predecessor_build = manifest.policies.get("expectedPredecessorBuild")
+    predecessor_release_id = manifest.policies.get(
+        "expectedPredecessorReleaseId"
+    )
+    predecessor_product_digest = manifest.policies.get(
+        "expectedPredecessorProductDigest"
+    )
+    if (
+        not isinstance(predecessor_build, str)
+        or re.fullmatch(r"[1-9][0-9]*", predecessor_build) is None
+        or not isinstance(predecessor_release_id, str)
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", predecessor_release_id
+        )
+        is None
+        or not isinstance(predecessor_product_digest, str)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", predecessor_product_digest
+        )
+        is None
+        or int(version) <= int(predecessor_build)
+    ):
+        raise ValueError(
+            "stable-backport requires the complete canonical immediate predecessor "
+            "build, release id, and product digest plus a strictly higher candidate build"
         )
 
 
@@ -492,6 +671,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_rc_manifest(manifest)
     if command == "stable-ga":
         _validate_stable_ga_manifest(manifest)
+    if command == "stable-backport":
+        _validate_stable_backport_manifest(manifest)
     if command == "stable-maintenance":
         _validate_stable_maintenance_manifest(manifest)
     if command == "stable-lifecycle":

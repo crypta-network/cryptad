@@ -35,6 +35,7 @@
     "legacyBoundaries": {"$ref": "#/$defs/legacyBoundaries"},
     "evidenceWindowPolicy": {"$ref": "#/$defs/evidenceWindowPolicy"},
     "hotfixFollowUp": {"$ref": "#/$defs/hotfixFollowUp"},
+    "releaseTrain": {"$ref": "#/$defs/releaseTrain"},
     "releaseHistoryDigest": {"$ref": "#/$defs/digest"},
     "redaction": {"$ref": "#/$defs/redaction"}
   },
@@ -213,6 +214,17 @@
         "obligatedPredecessorBuild": {"$ref": "#/$defs/buildVersion"},
         "obligatedPredecessorProductDigest": {"$ref": "#/$defs/digest"},
         "authorizationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "releaseTrain": {
+      "type": "object", "additionalProperties": false,
+      "required": ["validationDigest", "requiredEvidenceId", "candidateCommit", "predecessorCommit", "unresolvedObligationsCarried"],
+      "properties": {
+        "validationDigest": {"$ref": "#/$defs/digest"},
+        "requiredEvidenceId": {"const": "stable-maintenance.backport-release-train"},
+        "candidateCommit": {"$ref": "#/$defs/commit"},
+        "predecessorCommit": {"$ref": "#/$defs/commit"},
+        "unresolvedObligationsCarried": {"type": "boolean"}
       }
     },
     "redaction": {

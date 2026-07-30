@@ -40,6 +40,8 @@
     "maintenanceCandidateProvenance": "build/protected-inputs/candidate/provenance.json",
     "maintenanceEvidence": "build/protected-inputs/evidence/stable-1.0-maintenance-evidence.json",
     "maintenancePolicy": "tools/release-certification/stable-1.0-maintenance-policy.json",
+    "stableBackportReleaseTrainAuthorization": "build/protected-inputs/release-train/stable-1.0-release-train-authorization-summary.json",
+    "stableBackportReleaseTrainValidation": "build/protected-inputs/release-train/stable-1.0-release-train-validation.json",
     "stableMaintenanceAuthorization": "build/protected-inputs/authorization/stable-1.0-maintenance-authorization.json"
   },
   "policies": {
@@ -59,8 +61,11 @@
       "coreUpdatePublicUri": "https://REPLACE_ME.invalid/core-update/info/REPLACE_WITH_INTEGER_BUILD/core-info.json",
       "deploymentServicePublicUri": "https://REPLACE_ME.invalid/stable-1.0/deployment/observe",
       "githubReleasePageUri": "https://github.com/crypta-network/cryptad/releases/tag/vREPLACE_WITH_INTEGER_BUILD",
-      "latestPointerPublicUri": "https://REPLACE_ME.invalid/stable-1.0/maintenance/latest.json",
-      "hotfixAffectedPlatforms": "not-applicable",
+    "latestPointerPublicUri": "https://REPLACE_ME.invalid/stable-1.0/maintenance/latest.json",
+    "stableBackportArtifactDigest": "sha256:REPLACE_WITH_AUTHORIZED_BACKPORT_ACTIONS_ARTIFACT_SHA256",
+    "stableBackportArtifactName": "REPLACE_WITH_AUTHORIZED_BACKPORT_ARTIFACT_NAME",
+    "stableBackportRunId": "REPLACE_WITH_AUTHORIZED_BACKPORT_RUN_ID",
+    "hotfixAffectedPlatforms": "not-applicable",
       "hotfixIncidentId": "not-applicable",
       "hotfixSeverity": "not-applicable"
     },

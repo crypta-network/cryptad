@@ -19,6 +19,8 @@ This skill covers how to draft or review a Cryptad GitHub release body and match
 - Repo-root `docs/stable-1.0-rc-execution-and-release-freeze.md` for Stable RC notes
 - Repo-root `docs/stable-1.0-rc-validation-and-ga-promotion.md` for Stable GA notes
 - Repo-root `docs/stable-1.0-maintenance-release-and-hotfix-path.md` for later Stable 1.0 notes
+- Repo-root `docs/stable-1.0-backport-and-release-train-governance.md` for fix disposition,
+  public-safe lineage, carried obligations, and release-train digest rules
 - Repo-root `docs/templates/stable-1.0-rc-release-notes.md` or
   `docs/templates/stable-1.0-ga-release-notes.md` when that generated contract is in scope
 - Repo-root `docs/templates/stable-1.0-maintenance-release-notes.md` for a maintenance or
@@ -174,6 +176,18 @@ compatibility statement, catalog/app delta, migration/backup/rollback guidance, 
 CoreUpdater availability, known-limitations delta, support guidance, and checksum/provenance links.
 A security hotfix also names the public-safe advisory and accurately describes any outstanding
 full-window follow-up without exposing embargoed details or private evidence.
+
+The generated `Stable 1.0 maintenance train` section comes from the exact authorized
+`stable-backport` result. For each non-superseded public row, include the opaque fix id, public
+classification, affected public component summary, provenance mode, safe source-to-candidate
+lineage digest or public commit link when allowed, disclosed advisory id when applicable, and
+compatibility or migration guidance. Bind the exact train digest and list deferred public known
+issues without claiming they shipped.
+
+Before disclosure, a security fix uses only its digest-bound opaque public projection and bounded
+safe wording. Reject duplicate or superseded note rows, private issue URLs, private fork names,
+embargoed titles, raw patch or exploit text, credentials, private insert URIs, local paths, raw
+support/app/content data, and unsafe Markdown or HTML.
 
 Treat the rendered note digest as part of candidate authorization. Reject placeholders, unsafe
 Markdown/control text, private URIs, tokens, raw content/data, and local paths. Before a verified
