@@ -686,10 +686,39 @@ emergency security fix stabilizes on `hotfix/<build-number>` from the published 
 use the next suitable integer build, the `stable-maintenance` command, and the same exact-byte
 candidate, package, catalog, and CoreUpdater trust model.
 
+Before the maintenance freeze, run the canonical side-effect-free release-train gate:
+
+```bash
+cp tools/release-certification/manifests/stable-1.0-backport.example.json \
+  build/stable-1.0-backport.json
+python3 tools/release-certification/certify.py stable-backport \
+  --manifest build/stable-1.0-backport.json
+```
+
+That checked-in example is specifically the first post-GA train and selects the authenticated GA
+receipt/baseline without a maintenance latest pointer or prior train queue. Every later successor
+must add the exact `latestPublishedMaintenancePointer`, `previousStableBackportQueue`, and
+`previousStableBackportValidation` inputs.
+
+Use `evaluate`, `prepare-candidate`, and `validate-authorization` as separate composition
+boundaries. The train must bind the latest authenticated predecessor, exact candidate, accepted
+fixes, Git provenance, complete commit coverage, lifecycle-aware upgrade/recovery coverage, and
+zero unaccounted changes. `stable-maintenance` consumes the result as the non-waivable
+`stable-maintenance.backport-release-train` evidence row. It rejects a switched candidate, wrong
+lane/base, parallel predecessor, omitted required fix, stale verification, unresolved prior
+merge-back, or unaccounted commit. The protected maintenance workflow downloads the exact
+successful backport `validate-authorization` artifact named by the manifest metadata and preserves
+both its full authorization and validation; the maintenance input producer cannot substitute
+either record.
+
+This is one successor chain. Historical Stable builds remain upgrade or recovery test sources and
+never receive separate patch branches, semantic patch versions, or a parallel latest pointer.
+
 The protected workflow owns annotated `v<build-number>` tag creation and publication. It never
 creates or merges branches. After a verified publication receipt, complete the existing release or
 hotfix merge-back with no squash and `--no-ff` merges. See the [Stable 1.0 maintenance release and
-security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).
+security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md) and the [backport and
+release-train runbook](stable-1.0-backport-and-release-train-governance.md).
 
 For this Stable path, do not use the earlier manual `core-info.json`, tag, GitHub Release, catalog,
 or update-key steps in this general runbook. The four protected maintenance operations are
@@ -703,12 +732,19 @@ Use Java 25 or newer for local packaging checks. The focused side-effect-free va
 
 ```bash
 python3 tools/release-certification/certify.py stable-maintenance --self-test
+python3 tools/release-certification/certify.py stable-backport --self-test
 ./gradlew verifyMacAppImageSigningArguments verifyWindowsExeInstallerArguments
 ```
 
 Those commands do not replace hosted Windows Authenticode production, macOS Developer ID signing
 and notarization, Linux package production, protected catalog-signature verification, or public
 publication verification.
+
+After publication and the manual no-squash, `--no-ff` merges, run `stable-backport` in
+`verify-release-completion` mode. It verifies the exact receipt, lifecycle activation or explicit
+pending state, merge commits and parents, and hotfix reachability from `develop`; it performs no
+Git mutation. Both merge records name the published release/hotfix candidate as their merged tip,
+and read-only completion may occur after the earlier train handoff authorization expires.
 
 ## Stable 1.0 support lifecycle activation
 

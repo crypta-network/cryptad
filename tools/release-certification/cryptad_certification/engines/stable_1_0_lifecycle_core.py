@@ -356,6 +356,10 @@ def authenticate_inventory(
             or latest_pointer.get("baselineDigest") != predecessor.baseline_digest
             or latest_pointer.get("publicationReceiptDigest") != predecessor.receipt_digest
             or latest_pointer.get("lineageDigest") != predecessor.previous_lineage_digest
+            or latest_pointer.get("backportReleaseTrainDigest")
+            != predecessor_baseline.get("releaseTrain", {}).get(
+                "validationDigest"
+            )
             or latest_pointer.get("status") != "active"
         ):
             errors.append("latest published pointer is stale or does not select the history tip")

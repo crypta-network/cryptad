@@ -19,11 +19,12 @@ _TEMPLATE = (
     / "stable-1.0-maintenance-release-notes.md"
 )
 _MARKER = "<!-- cryptad-stable-maintenance-release-notes-template:v1 -->"
-_TOKEN_RE = re.compile(r"\{\{([a-z_]+)\}\}")
+_TOKEN_RE = re.compile(r"\{\{([A-Za-z_]+)\}\}")
 _TOKENS = (
     "identity",
     "classification",
     "fixes",
+    "BACKPORT_RELEASE_TRAIN",
     "security",
     "platform_api",
     "catalog_apps",
@@ -92,6 +93,9 @@ def render_release_notes(
     predecessor_build: str,
     candidate: dict[str, Any],
     publication_state: str,
+    train_public_fixes: list[dict[str, Any]],
+    train_deferred_fix_ids: list[str],
+    train_digest: str,
 ) -> str:
     """Render one strict maintenance/hotfix note from candidate-bound public facts."""
 
@@ -112,6 +116,33 @@ def render_release_notes(
         for row in packages
         if isinstance(row, dict)
     ]
+    train_rows: list[str] = []
+    for row in train_public_fixes:
+        if not isinstance(row, dict):
+            continue
+        public_summary = _scalar(row.get("publicSummary"))
+        train_row = (
+            f"{row.get('fixId')} — {row.get('classification')} — "
+            f"{row.get('affectedComponentSummary')} — summary: {public_summary} — "
+            f"provenance: {row.get('provenanceMode')} — lineage: "
+            f"{row.get('lineageDigest')}"
+        )
+        public_security_summary = row.get("publicSecuritySummary")
+        if public_security_summary is not None:
+            train_row += (
+                f" — security summary: {_scalar(public_security_summary)}"
+            )
+        if (
+            row.get("disclosureState") == "disclosed"
+            and row.get("advisoryOpaqueId")
+        ):
+            train_row += f" — advisory {row.get('advisoryOpaqueId')}"
+        train_rows.append(train_row)
+    train_rows.append(f"Exact release-train validation digest: {train_digest}")
+    train_rows.extend(
+        f"Deferred known issue carried forward: {fix_id}"
+        for fix_id in train_deferred_fix_ids
+    )
     blocks = {
         "identity": (
             f"Cryptad Stable 1.0 build {_code(build_version)} uses annotated tag "
@@ -126,6 +157,10 @@ def render_release_notes(
         "fixes": _bullet_rows(
             scope.get("publicUserVisibleFixes"),
             empty="Candidate scope contains compatibility-preserving maintenance fixes only.",
+        ),
+        "BACKPORT_RELEASE_TRAIN": _bullet_rows(
+            train_rows,
+            empty="No authenticated release-train fix rows were supplied.",
         ),
         "security": security,
         "platform_api": (

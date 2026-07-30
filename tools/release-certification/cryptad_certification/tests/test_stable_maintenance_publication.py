@@ -19,9 +19,21 @@ from typing import Mapping
 import unittest
 from unittest import mock
 
+from cryptad_certification.engines import (
+    stable_1_0_maintenance,
+    stable_1_0_maintenance_artifacts,
+)
 from cryptad_certification.engines.stable_1_0_maintenance_core import (
     _receipt_identity as engine_receipt_identity,
     stable_catalog_verification_identity,
+)
+from cryptad_certification.engines.stable_1_0_rc_core import ValidationState
+from cryptad_certification.tests.support import release_train_evidence_result
+from cryptad_certification.tests.test_stable_maintenance import (
+    _candidate,
+    _context,
+    _digest,
+    _evidence,
 )
 
 
@@ -70,6 +82,15 @@ def timestamp(value: dt.datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
+def train_evidence_freshness() -> dict[str, str]:
+    deadline = NOW + dt.timedelta(hours=1)
+    return {
+        "generatedAt": timestamp(NOW),
+        "expiresAt": timestamp(deadline),
+        "freshnessDeadlineAt": timestamp(deadline),
+    }
+
+
 def canonical_bytes(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
@@ -88,6 +109,37 @@ def semantic_digest(value: object) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def seal_backport_handoff(
+    validation: dict[str, object], authorization: dict[str, object]
+) -> None:
+    """Recompute the exact protected handoff bindings after a test mutation."""
+
+    validation.pop("validationDigest", None)
+    validation["mode"] = "prepare-candidate"
+    validation["authorization"] = None
+    authorization["release"] = copy.deepcopy(validation["release"])
+    authorization["validationDigest"] = semantic_digest(validation)
+    authorization["acceptedFixes"] = copy.deepcopy(validation["publicFixes"])
+    authorization["securityOpaqueIds"] = sorted(
+        {
+            row["incidentOpaqueId"]
+            for row in validation["publicFixes"]
+            if isinstance(row, Mapping)
+            and isinstance(row.get("incidentOpaqueId"), str)
+        }
+    )
+    authorization.pop("authorizationDigest", None)
+    authorization["authorizationDigest"] = semantic_digest(authorization)
+    validation["mode"] = "validate-authorization"
+    validation["authorization"] = {
+        "authorizationDigest": authorization["authorizationDigest"],
+        "status": "valid",
+        "expiresAt": authorization["expiresAt"],
+        "role": authorization["role"],
+    }
+    validation["validationDigest"] = semantic_digest(validation)
 
 
 def redaction() -> dict[str, object]:
@@ -151,6 +203,117 @@ def profiles() -> list[dict[str, object]]:
             }
         )
     return result
+
+
+class StableMaintenanceReleaseNotesTest(unittest.TestCase):
+    def test_rejected_backport_train_is_not_reported_as_passing_evidence(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            context = _context(root)
+            candidate = _candidate(root)
+            state = ValidationState()
+            state.block(
+                "stable-maintenance.backport-release-train",
+                "stable-maintenance.backport-release-train",
+                "The candidate-bound release train was rejected.",
+                "Regenerate the exact candidate-bound train.",
+            )
+
+            validation = stable_1_0_maintenance._validation(  # noqa: SLF001
+                context=context,
+                state=state,
+                mode="validate-only",
+                candidate=candidate,
+                lineage_digest=_digest("0"),
+                comparison_digest=_digest("1"),
+                evidence=_evidence(),
+                evidence_digest=_digest("2"),
+                core_info_digest=_digest("3"),
+                checksums_digest=_digest("4"),
+                provenance_digest=_digest("5"),
+                pending_lifecycle_transition_digest=_digest("6"),
+                backport_release_train_digest=_digest("7"),
+                backport_release_train_authenticated=False,
+                authorization_digest=_digest("8"),
+                authorization_valid=False,
+                publication_state="validated",
+            )
+
+            self.assertEqual(validation["decision"], "no-go")
+            self.assertFalse(
+                any(
+                    row.get("evidenceId")
+                    == "stable-maintenance.backport-release-train"
+                    for row in validation["evidenceResults"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    blocker.get("category")
+                    == "stable-maintenance.backport-release-train"
+                    for blocker in validation["blockers"]
+                )
+            )
+
+    def test_train_rows_include_authenticated_public_fix_summaries(self) -> None:
+        public_summary = (
+            "Corrects request handling without changing stable contracts."
+        )
+        public_security_summary = (
+            "A bounded security correction is available."
+        )
+        notes = stable_1_0_maintenance_artifacts.render_release_notes(
+            RELEASE_ID,
+            BUILD,
+            "security-hotfix",
+            "300",
+            {
+                "changeScope": {
+                    "incidentId": "incident-opaque-287",
+                    "publicUserVisibleFixes": [],
+                },
+                "platformApi": {
+                    "baselineName": "platform-api-1.0",
+                    "currentContractVersion": "19",
+                },
+                "stableCatalog": {
+                    "catalogId": "stable",
+                    "edition": "2",
+                    "revision": "301",
+                },
+                "limitations": {
+                    "addedCount": 0,
+                    "resolvedCount": 0,
+                    "unchangedCount": 0,
+                },
+                "packages": [],
+            },
+            "validated",
+            [
+                {
+                    "fixId": "stable-fix-0000000000000301",
+                    "classification": "security-fix",
+                    "publicSummary": public_summary,
+                    "affectedComponentSummary": "node-core",
+                    "provenanceMode": "inherited",
+                    "lineageDigest": digest("train-lineage"),
+                    "advisoryOpaqueId": "advisory-opaque-287",
+                    "publicSecuritySummary": public_security_summary,
+                    "disclosureState": "protected-embargoed",
+                }
+            ],
+            [],
+            digest("train-validation"),
+        )
+
+        self.assertIn(f"summary: {public_summary}", notes)
+        self.assertIn(
+            f"security summary: {public_security_summary}",
+            notes,
+        )
+        self.assertNotIn("advisory advisory-opaque-287", notes)
 
 
 class BundleFixture:
@@ -533,6 +696,148 @@ class BundleFixture:
         self.lineage_path = self.legacy / "stable-1.0-maintenance-lineage.json"
         write_json(self.lineage_path, self.lineage)
 
+        self.backport_release_train_validation = {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-release-train-validation",
+            "generatedAt": timestamp(NOW),
+            "stableMilestone": "1.0",
+            "mode": "prepare-candidate",
+            "trainId": "stable-train-maintenance-301",
+            "release": {
+                "releaseId": RELEASE_ID,
+                "buildVersion": BUILD,
+                "releaseClass": "maintenance",
+                "tag": f"v{BUILD}",
+            },
+            "policyDigest": file_digest(
+                Path(__file__).resolve().parents[2]
+                / "stable-1.0-backport-release-train-policy.json"
+            ),
+            "queueDigest": digest("backport-queue"),
+            "planDigest": digest("backport-plan"),
+            "candidateDigest": digest("backport-candidate-artifact"),
+            "predecessorCommit": "9" * 40,
+            "candidateCommit": COMMIT,
+            "hotfixFollowUpClosureDigest": self.lineage["predecessor"][
+                "hotfixFollowUpClosureDigest"
+            ],
+            "requiredFixIds": ["stable-fix-0000000000000301"],
+            "includedFixIds": ["stable-fix-0000000000000301"],
+            "authorizationRequired": True,
+            "authorization": None,
+            "publicFixes": [
+                {
+                    "fixId": "stable-fix-0000000000000301",
+                    "classification": "compatible-bug-fix",
+                    "severity": "moderate",
+                    "publicSummary": "Updater package selection remains compatible.",
+                    "affectedComponentSummary": "Updater package selection.",
+                    "provenanceMode": "inherited",
+                    "lineageDigest": digest("train-lineage"),
+                    "publicProjectionDigest": digest("train-fix-projection"),
+                    "incidentOpaqueId": None,
+                    "advisoryOpaqueId": None,
+                    "publicSecuritySummary": None,
+                    "securityPublicProjectionDigest": None,
+                    "disclosureState": None,
+                }
+            ],
+            "evidenceResults": [
+                {
+                    "fixId": "stable-fix-0000000000000301",
+                    "evidenceId": "stable-backport.candidate-coverage",
+                    "status": "pass",
+                    "evidenceDigest": digest("train-evidence"),
+                    **train_evidence_freshness(),
+                    "candidateBound": True,
+                    "predecessorBound": True,
+                    "fresh": True,
+                }
+            ],
+            "blockers": [],
+            "omittedFixIds": [],
+            "deferredFixIds": [],
+            "unaccountedCommitIds": [],
+            "decision": "go",
+            "redaction": redaction(),
+        }
+        train_public_fix = self.backport_release_train_validation["publicFixes"][0]
+        train_public_fix["publicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": train_public_fix["fixId"],
+                "classification": train_public_fix["classification"],
+                "publicSummary": train_public_fix["publicSummary"],
+            }
+        )
+        prepare_validation_digest = semantic_digest(
+            self.backport_release_train_validation
+        )
+        self.backport_release_train_authorization = {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-release-train-authorization",
+            "stableMilestone": "1.0",
+            "trainId": self.backport_release_train_validation["trainId"],
+            "release": self.backport_release_train_validation["release"],
+            "repositoryIdentity": "github.com/crypta-network/cryptad",
+            "workflowIdentity": (
+                "github.com/crypta-network/cryptad/.github/workflows/"
+                f"stable-1.0-backport-release-train.yml@{COMMIT}"
+            ),
+            "policyDigest": self.backport_release_train_validation[
+                "policyDigest"
+            ],
+            "queueDigest": self.backport_release_train_validation["queueDigest"],
+            "planDigest": self.backport_release_train_validation["planDigest"],
+            "validationDigest": prepare_validation_digest,
+            "predecessorCommit": "9" * 40,
+            "candidateCommit": COMMIT,
+            "acceptedFixes": self.backport_release_train_validation[
+                "publicFixes"
+            ],
+            "securityOpaqueIds": [],
+            "allowedOperation": "candidate-handoff",
+            "role": "stable-maintenance-train-manager",
+            "scope": ["train:composition", "candidate:handoff"],
+            "issuedAt": timestamp(NOW - dt.timedelta(minutes=30)),
+            "expiresAt": timestamp(NOW + dt.timedelta(hours=1)),
+            "decision": "go",
+            "redaction": redaction(),
+        }
+        self.backport_release_train_authorization[
+            "authorizationDigest"
+        ] = semantic_digest(self.backport_release_train_authorization)
+        self.backport_release_train_authorization_path = (
+            self.authenticated_inputs
+            / publication.BACKPORT_RELEASE_TRAIN_AUTHORIZATION_FILE
+        )
+        write_json(
+            self.backport_release_train_authorization_path,
+            self.backport_release_train_authorization,
+        )
+        self.backport_release_train_validation["mode"] = "validate-authorization"
+        self.backport_release_train_validation["authorization"] = {
+            "authorizationDigest": self.backport_release_train_authorization[
+                "authorizationDigest"
+            ],
+            "status": "valid",
+            "expiresAt": self.backport_release_train_authorization["expiresAt"],
+            "role": self.backport_release_train_authorization["role"],
+        }
+        self.backport_release_train_validation["validationDigest"] = semantic_digest(
+            self.backport_release_train_validation
+        )
+        self.backport_release_train_validation_path = (
+            self.authenticated_inputs
+            / publication.BACKPORT_RELEASE_TRAIN_VALIDATION_FILE
+        )
+        write_json(
+            self.backport_release_train_validation_path,
+            self.backport_release_train_validation,
+        )
+        self.backport_release_train_digest = file_digest(
+            self.backport_release_train_validation_path
+        )
+
         self.core_info = {
             "version": BUILD,
             "release_page_url": f"https://github.com/crypta-network/cryptad/releases/tag/v{BUILD}",
@@ -575,6 +880,7 @@ class BundleFixture:
             "predecessorBaselineDigest": file_digest(self.predecessor_baseline_path),
             "evidenceDigest": file_digest(self.evidence_path),
             "policyDigest": digest("maintenance-policy"),
+            "backportReleaseTrainDigest": self.backport_release_train_digest,
             "redaction": redaction(),
         }
         self.provenance_path = self.legacy / "stable-1.0-maintenance-provenance.json"
@@ -621,11 +927,12 @@ class BundleFixture:
             "knownLimitationsDeltaDigest": digest("3"),
             "releaseNotesDigest": file_digest(self.notes_path),
             "publicationTargetsDigest": digest("2"),
+            "backportReleaseTrainDigest": self.backport_release_train_digest,
             "allowedPublicationScopes": list(publication.AUTHORIZATION_SCOPES),
             "acceptedWarningIds": [],
             "role": "stable-maintenance-release-manager",
             "approverIdentity": "release-manager-1",
-            "authorizedAt": timestamp(NOW - dt.timedelta(days=365)),
+            "authorizedAt": timestamp(NOW),
             "expiresAt": timestamp(NOW + dt.timedelta(days=365)),
             "decision": "go",
             "status": "approved",
@@ -705,6 +1012,7 @@ class BundleFixture:
             "checksumsDigest": file_digest(self.checksums_path),
             "provenanceDigest": file_digest(self.provenance_path),
             "authorizationDigest": file_digest(self.authorization_path),
+            "backportReleaseTrainDigest": self.backport_release_train_digest,
             "releaseNotesDigest": file_digest(self.notes_path),
             "coreInfoDigest": file_digest(self.core_info_path),
             "stableCatalogDigest": file_digest(self.catalog),
@@ -739,7 +1047,8 @@ class BundleFixture:
         write_json(self.plan_path, self.plan)
 
     def load(self) -> publication.PublicationBundle:
-        return publication._load_bundle(self.root)
+        with mock.patch.object(publication, "_utcnow", return_value=NOW):
+            return publication._load_bundle(self.root)
 
     def material(self, operation: str = "created") -> publication.VerificationMaterial:
         bundle = self.load()
@@ -798,6 +1107,7 @@ class BundleFixture:
             "checksumsDigest": file_digest(self.checksums_path),
             "provenanceDigest": file_digest(self.provenance_path),
             "authorizationDigest": file_digest(self.authorization_path),
+            "backportReleaseTrainDigest": self.backport_release_train_digest,
             "publicationPlanDigest": file_digest(self.plan_path),
             "releaseNotesDigest": file_digest(self.notes_path),
             "coreInfoDigest": file_digest(self.core_info_path),
@@ -878,6 +1188,7 @@ class BundleFixture:
             "publicationReceiptIdentityDigest": receipt_identity,
             "coreInfoDigest": file_digest(self.core_info_path),
             "evidenceDigest": file_digest(self.evidence_path),
+            "backportReleaseTrainDigest": self.backport_release_train_digest,
             "status": "published-and-verified",
             "redaction": redaction(),
         }
@@ -997,6 +1308,13 @@ class BundleFixture:
                 "closureEvidenceDigest": None,
                 "blocksRoutineMaintenance": False,
             },
+            "releaseTrain": {
+                "validationDigest": self.backport_release_train_digest,
+                "requiredEvidenceId": "stable-maintenance.backport-release-train",
+                "candidateCommit": COMMIT,
+                "predecessorCommit": "9" * 40,
+                "unresolvedObligationsCarried": False,
+            },
             "releaseHistoryDigest": history_digest,
             "redaction": redaction(),
         }
@@ -1096,11 +1414,30 @@ class FakeOperations:
 
 
 class StableMaintenancePublicationTest(unittest.TestCase):
+    def test_maintenance_handoff_rejects_expired_candidate_evidence(self) -> None:
+        evidence = release_train_evidence_result(
+            "stable-fix-abcdefghijklmnop",
+            "stable-backport.candidate-bound-tests",
+            digest("train-evidence"),
+            NOW - dt.timedelta(hours=2),
+        )
+        evidence["expiresAt"] = timestamp(NOW - dt.timedelta(minutes=1))
+        evidence["freshnessDeadlineAt"] = evidence["expiresAt"]
+
+        errors = stable_1_0_maintenance._release_train_evidence_freshness_errors(  # noqa: SLF001
+            [evidence], now=NOW, maximum_age=dt.timedelta(days=14)
+        )
+
+        self.assertTrue(errors)
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(
             prefix="stable-maintenance-publication-test-"
         )
         self.addCleanup(self.temporary.cleanup)
+        now_patch = mock.patch.object(publication, "_utcnow", return_value=NOW)
+        now_patch.start()
+        self.addCleanup(now_patch.stop)
         self.root = Path(self.temporary.name)
         self.fixture = BundleFixture(self.root / "bundle")
 
@@ -1132,6 +1469,516 @@ class StableMaintenancePublicationTest(unittest.TestCase):
         return publication.SecretMaterial(
             "maintenance-state", MAINTENANCE_STATE_SECRET
         )
+
+    def test_bundle_authenticates_exact_backport_release_train(self) -> None:
+        bundle = self.fixture.load()
+
+        self.assertNotEqual(
+            bundle.backport_release_train_validation["candidateDigest"],
+            bundle.plan["candidateIdentityDigest"],
+        )
+        self.assertEqual(
+            file_digest(bundle.backport_release_train_validation_path),
+            self.fixture.backport_release_train_digest,
+        )
+        self.assertEqual(
+            bundle.plan["backportReleaseTrainDigest"],
+            self.fixture.backport_release_train_digest,
+        )
+        self.assertEqual(
+            bundle.authorization["backportReleaseTrainDigest"],
+            self.fixture.backport_release_train_digest,
+        )
+        self.assertEqual(
+            bundle.backport_release_train_authorization[
+                "authorizationDigest"
+            ],
+            bundle.backport_release_train_validation["authorization"][
+                "authorizationDigest"
+            ],
+        )
+
+    def test_train_authorization_expiry_is_frozen_at_maintenance_handoff(
+        self,
+    ) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        validation["generatedAt"] = timestamp(NOW - dt.timedelta(hours=1))
+        evidence_result = validation["evidenceResults"][0]
+        evidence_result["generatedAt"] = validation["generatedAt"]
+        evidence_result["expiresAt"] = timestamp(NOW + dt.timedelta(hours=4))
+        evidence_result["freshnessDeadlineAt"] = evidence_result["expiresAt"]
+        seal_backport_handoff(validation, authorization)
+        publication_time = NOW + dt.timedelta(hours=2)
+
+        publication._validate_backport_release_train(  # noqa: SLF001
+            validation,
+            authorization,
+            plan=self.fixture.plan,
+            lineage=self.fixture.lineage,
+            candidate_scope={},
+            handoff_at=NOW,
+            now=publication_time,
+        )
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            publication._validate_backport_release_train(  # noqa: SLF001
+                validation,
+                authorization,
+                plan=self.fixture.plan,
+                lineage=self.fixture.lineage,
+                candidate_scope={},
+                handoff_at=publication_time,
+                now=publication_time,
+            )
+
+    def test_protected_boundary_preserves_per_fix_evidence_identity(
+        self,
+    ) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        first_public_fix = validation["publicFixes"][0]
+        second_public_fix = copy.deepcopy(first_public_fix)
+        second_public_fix["fixId"] = "stable-fix-0000000000000302"
+        second_public_fix["publicSummary"] = (
+            "A second updater package correction remains compatible."
+        )
+        second_public_fix["lineageDigest"] = digest(
+            "second-train-lineage"
+        )
+        second_public_fix["publicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": second_public_fix["fixId"],
+                "classification": second_public_fix["classification"],
+                "publicSummary": second_public_fix["publicSummary"],
+            }
+        )
+        validation["requiredFixIds"] = sorted(
+            [first_public_fix["fixId"], second_public_fix["fixId"]]
+        )
+        validation["includedFixIds"] = list(validation["requiredFixIds"])
+        validation["publicFixes"] = sorted(
+            [first_public_fix, second_public_fix],
+            key=lambda row: row["fixId"],
+        )
+        validation["evidenceResults"].append(
+            {
+                "fixId": second_public_fix["fixId"],
+                "evidenceId": "stable-backport.candidate-coverage",
+                "status": "pass",
+                "evidenceDigest": digest("second-train-evidence"),
+                **train_evidence_freshness(),
+                "candidateBound": True,
+                "predecessorBound": True,
+                "fresh": True,
+            }
+        )
+        validation["evidenceResults"].sort(
+            key=lambda row: (row["fixId"], row["evidenceId"])
+        )
+        seal_backport_handoff(validation, authorization)
+
+        publication._validate_backport_release_train(  # noqa: SLF001
+            validation,
+            authorization,
+            plan=self.fixture.plan,
+            lineage=self.fixture.lineage,
+            candidate_scope={},
+            handoff_at=NOW,
+            now=NOW,
+        )
+
+    def test_bundle_rejects_substituted_or_expired_backport_release_train(
+        self,
+    ) -> None:
+        mutations = (
+            lambda value: value.__setitem__("candidateCommit", "f" * 40),
+            lambda value: value.__setitem__(
+                "hotfixFollowUpClosureDigest",
+                digest("substituted-follow-up-closure"),
+            ),
+            lambda value: value["authorization"].__setitem__(
+                "role", "stable-security-train-manager"
+            ),
+            lambda value: value["authorization"].__setitem__(
+                "expiresAt", "2020-01-01T00:00:00Z"
+            ),
+        )
+        original = copy.deepcopy(self.fixture.backport_release_train_validation)
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                changed = copy.deepcopy(original)
+                mutate(changed)
+                changed["validationDigest"] = semantic_digest(
+                    {
+                        key: item
+                        for key, item in changed.items()
+                        if key != "validationDigest"
+                    }
+                )
+                write_json(
+                    self.fixture.backport_release_train_validation_path,
+                    changed,
+                )
+
+                with self.assertRaisesRegex(
+                    publication.AdapterError,
+                    "backport-release-train-binding-mismatch",
+                ):
+                    self.fixture.load()
+                write_json(
+                    self.fixture.backport_release_train_validation_path,
+                    original,
+                )
+
+    def test_bundle_rejects_substituted_full_backport_authorization(self) -> None:
+        changed = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        changed["candidateCommit"] = "f" * 40
+        changed["authorizationDigest"] = semantic_digest(
+            {
+                key: item
+                for key, item in changed.items()
+                if key != "authorizationDigest"
+            }
+        )
+        changed_validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        changed_validation["authorization"]["authorizationDigest"] = changed[
+            "authorizationDigest"
+        ]
+        changed_validation["validationDigest"] = semantic_digest(
+            {
+                key: item
+                for key, item in changed_validation.items()
+                if key != "validationDigest"
+            }
+        )
+        write_json(
+            self.fixture.backport_release_train_authorization_path,
+            changed,
+        )
+        write_json(
+            self.fixture.backport_release_train_validation_path,
+            changed_validation,
+        )
+
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            self.fixture.load()
+
+    def test_protected_boundary_rejects_stale_backport_release_train(self) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        validation["generatedAt"] = timestamp(
+            NOW - dt.timedelta(days=14, seconds=1)
+        )
+        seal_backport_handoff(validation, authorization)
+
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            publication._validate_backport_release_train(  # noqa: SLF001
+                validation,
+                authorization,
+                plan=self.fixture.plan,
+                lineage=self.fixture.lineage,
+                candidate_scope={},
+                handoff_at=NOW,
+                now=NOW,
+            )
+
+    def test_protected_boundary_rejects_expired_candidate_evidence(self) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        evidence_result = validation["evidenceResults"][0]
+        evidence_result["generatedAt"] = timestamp(
+            NOW - dt.timedelta(hours=2)
+        )
+        evidence_result["expiresAt"] = timestamp(
+            NOW - dt.timedelta(minutes=1)
+        )
+        evidence_result["freshnessDeadlineAt"] = evidence_result["expiresAt"]
+        seal_backport_handoff(validation, authorization)
+
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            publication._validate_backport_release_train(  # noqa: SLF001
+                validation,
+                authorization,
+                plan=self.fixture.plan,
+                lineage=self.fixture.lineage,
+                candidate_scope={},
+                handoff_at=NOW,
+                now=NOW,
+            )
+
+    def test_protected_boundary_binds_hotfix_train_to_candidate_scope(
+        self,
+    ) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        plan = copy.deepcopy(self.fixture.plan)
+        plan["releaseClass"] = "security-hotfix"
+        validation["release"]["releaseClass"] = "security-hotfix"
+        public_fix = validation["publicFixes"][0]
+        public_fix.update(
+            {
+                "classification": "security-fix",
+                "severity": "critical",
+                "incidentOpaqueId": "incident-opaque-287",
+                "advisoryOpaqueId": "advisory-opaque-287",
+                "publicSecuritySummary": (
+                    "A bounded security correction is available."
+                ),
+                "disclosureState": "protected-embargoed",
+            }
+        )
+        public_fix["publicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": public_fix["fixId"],
+                "classification": public_fix["classification"],
+                "publicSummary": public_fix["publicSummary"],
+            }
+        )
+        public_fix["securityPublicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": public_fix["fixId"],
+                "incidentOpaqueId": public_fix["incidentOpaqueId"],
+                "advisoryOpaqueId": public_fix["advisoryOpaqueId"],
+                "severity": public_fix["severity"],
+                "disclosureState": public_fix["disclosureState"],
+                "publicSafeSummary": public_fix["publicSecuritySummary"],
+            }
+        )
+        incident_scope_digest = digest("hotfix-incident-scope")
+        validation["evidenceResults"].append(
+            {
+                "fixId": public_fix["fixId"],
+                "evidenceId": "stable-backport.security-incident-scope",
+                "status": "pass",
+                "evidenceDigest": incident_scope_digest,
+                **train_evidence_freshness(),
+                "candidateBound": True,
+                "predecessorBound": True,
+                "fresh": True,
+            }
+        )
+        authorization["role"] = "stable-security-train-manager"
+        seal_backport_handoff(validation, authorization)
+        matching_scope = {
+            "incidentId": public_fix["advisoryOpaqueId"],
+            "severity": "critical",
+            "hotfixPolicyAuthorizationDigest": incident_scope_digest,
+        }
+
+        publication._validate_backport_release_train(  # noqa: SLF001
+            validation,
+            authorization,
+            plan=plan,
+            lineage=self.fixture.lineage,
+            candidate_scope=matching_scope,
+            handoff_at=NOW,
+            now=NOW,
+        )
+        stale_validation = copy.deepcopy(validation)
+        stale_authorization = copy.deepcopy(authorization)
+        stale_validation["generatedAt"] = timestamp(
+            NOW - dt.timedelta(hours=24, seconds=1)
+        )
+        seal_backport_handoff(stale_validation, stale_authorization)
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            publication._validate_backport_release_train(  # noqa: SLF001
+                stale_validation,
+                stale_authorization,
+                plan=plan,
+                lineage=self.fixture.lineage,
+                candidate_scope=matching_scope,
+                handoff_at=NOW,
+                now=NOW,
+            )
+        mismatches = (
+            {"incidentId": "advisory-opaque-other"},
+            {"hotfixPolicyAuthorizationDigest": digest("other-scope")},
+        )
+        for mismatch in mismatches:
+            with self.subTest(mismatch=mismatch):
+                candidate_scope = {**matching_scope, **mismatch}
+                with self.assertRaisesRegex(
+                    publication.AdapterError,
+                    "backport-release-train-binding-mismatch",
+                ):
+                    publication._validate_backport_release_train(  # noqa: SLF001
+                        validation,
+                        authorization,
+                        plan=plan,
+                        lineage=self.fixture.lineage,
+                        candidate_scope=candidate_scope,
+                        handoff_at=NOW,
+                        now=NOW,
+                    )
+
+    def test_protected_boundary_rejects_noncritical_security_hotfix_train(
+        self,
+    ) -> None:
+        validation = copy.deepcopy(
+            self.fixture.backport_release_train_validation
+        )
+        authorization = copy.deepcopy(
+            self.fixture.backport_release_train_authorization
+        )
+        plan = copy.deepcopy(self.fixture.plan)
+        plan["releaseClass"] = "security-hotfix"
+        validation["release"]["releaseClass"] = "security-hotfix"
+        public_fix = validation["publicFixes"][0]
+        public_fix.update(
+            {
+                "classification": "security-fix",
+                "severity": "high",
+                "incidentOpaqueId": "incident-opaque-287",
+                "advisoryOpaqueId": "advisory-opaque-287",
+                "publicSecuritySummary": "A bounded security correction is available.",
+                "disclosureState": "protected-embargoed",
+            }
+        )
+        public_fix["publicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": public_fix["fixId"],
+                "classification": public_fix["classification"],
+                "publicSummary": public_fix["publicSummary"],
+            }
+        )
+        public_fix["securityPublicProjectionDigest"] = semantic_digest(
+            {
+                "fixId": public_fix["fixId"],
+                "incidentOpaqueId": public_fix["incidentOpaqueId"],
+                "advisoryOpaqueId": public_fix["advisoryOpaqueId"],
+                "severity": public_fix["severity"],
+                "disclosureState": public_fix["disclosureState"],
+                "publicSafeSummary": public_fix["publicSecuritySummary"],
+            }
+        )
+        prepare_validation = copy.deepcopy(validation)
+        prepare_validation["mode"] = "prepare-candidate"
+        prepare_validation["authorization"] = None
+        prepare_validation.pop("validationDigest", None)
+        authorization.update(
+            {
+                "release": validation["release"],
+                "validationDigest": semantic_digest(prepare_validation),
+                "acceptedFixes": validation["publicFixes"],
+                "securityOpaqueIds": [public_fix["incidentOpaqueId"]],
+                "role": "stable-security-train-manager",
+            }
+        )
+        authorization["authorizationDigest"] = semantic_digest(
+            {
+                key: item
+                for key, item in authorization.items()
+                if key != "authorizationDigest"
+            }
+        )
+        validation["authorization"] = {
+            "authorizationDigest": authorization["authorizationDigest"],
+            "status": "valid",
+            "expiresAt": authorization["expiresAt"],
+            "role": authorization["role"],
+        }
+        validation["validationDigest"] = semantic_digest(
+            {
+                key: item
+                for key, item in validation.items()
+                if key != "validationDigest"
+            }
+        )
+
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "backport-release-train-binding-mismatch",
+        ):
+            publication._validate_backport_release_train(  # noqa: SLF001
+                validation,
+                authorization,
+                plan=plan,
+                lineage=self.fixture.lineage,
+                candidate_scope={},
+                handoff_at=NOW,
+                now=NOW,
+            )
+
+    def test_bundle_rejects_release_train_digest_claim_substitution(self) -> None:
+        changed_plan = copy.deepcopy(self.fixture.plan)
+        changed_plan["backportReleaseTrainDigest"] = digest("substituted-train")
+        write_json(self.fixture.plan_path, changed_plan)
+
+        with self.assertRaisesRegex(
+            publication.AdapterError, "authorization-binding-mismatch"
+        ):
+            self.fixture.load()
+
+    def test_successor_history_and_pointer_bind_the_exact_release_train(
+        self,
+    ) -> None:
+        bundle = self.fixture.load()
+        material = self.fixture.material()
+        pointer = publication._activated_latest_pointer(
+            material.successor_baseline,
+            digest("successor"),
+            material.maintenance_receipt,
+            digest("receipt"),
+            digest("history"),
+        )
+        self.assertEqual(
+            pointer["backportReleaseTrainDigest"],
+            self.fixture.backport_release_train_digest,
+        )
+
+        changed_successor = copy.deepcopy(material.successor_baseline)
+        changed_successor["releaseTrain"]["validationDigest"] = digest(
+            "substituted-train"
+        )
+        changed_material = publication.VerificationMaterial(
+            material.maintenance_receipt,
+            material.core_update_receipt,
+            changed_successor,
+            material.history_entry,
+        )
+        with self.assertRaisesRegex(
+            publication.AdapterError, "successor-baseline-binding-mismatch"
+        ):
+            publication._validate_verification_material(changed_material, bundle)
 
     def activation_authorization(
         self,
@@ -1859,6 +2706,7 @@ class StableMaintenancePublicationTest(unittest.TestCase):
         )
         successor = copy.deepcopy(material.successor_baseline)
         successor["hotfixFollowUp"] = dict(inherited)
+        successor["releaseTrain"]["unresolvedObligationsCarried"] = True
         successor["lineage"]["history"][-1]["baselineIdentityDigest"] = (
             publication._successor_identity(successor)
         )
@@ -2098,6 +2946,44 @@ class StableMaintenancePublicationTest(unittest.TestCase):
             "core-update-publication-receipt-mismatch", raised.exception.code
         )
 
+    def test_activation_rejects_receipt_for_a_different_release_train(self) -> None:
+        material = self.fixture.material()
+        receipt = copy.deepcopy(material.maintenance_receipt)
+        history = copy.deepcopy(material.history_entry)
+        successor = copy.deepcopy(material.successor_baseline)
+        receipt["backportReleaseTrainDigest"] = digest("different-train")
+        receipt_identity = publication._receipt_identity(receipt)
+        history["publicationReceiptIdentityDigest"] = receipt_identity
+        successor["publication"]["receiptIdentityDigest"] = receipt_identity
+        successor["release"]["publicationReceiptIdentityDigest"] = receipt_identity
+        successor["lineage"]["history"][-1][
+            "publicationReceiptIdentityDigest"
+        ] = receipt_identity
+        successor_path = self.root / "successor-wrong-train.json"
+        history_path = self.root / "history-wrong-train.json"
+        receipt_path = self.root / "receipt-wrong-train.json"
+        write_json(history_path, history)
+        successor["releaseHistoryDigest"] = file_digest(history_path)
+        write_json(successor_path, successor)
+        receipt["successorBaselineDigest"] = file_digest(successor_path)
+        receipt["releaseHistoryDigest"] = file_digest(history_path)
+        write_json(receipt_path, receipt)
+
+        with self.assertRaisesRegex(
+            publication.AdapterError,
+            "baseline-activation-input-binding-mismatch",
+        ):
+            publication._load_activation_request(  # noqa: SLF001
+                successor_path,
+                history_path,
+                receipt_path,
+                self.fixture.authorization_path,
+                self.activation_authorization(
+                    successor_path, history_path, receipt_path
+                ),
+                POINTER,
+            )
+
     def test_activation_is_compare_and_swap_and_idempotent(self) -> None:
         material = self.fixture.material()
         successor_path = self.root / "successor.json"
@@ -2143,6 +3029,7 @@ class StableMaintenancePublicationTest(unittest.TestCase):
             ),
             "lineageDigest": material.successor_baseline["lineage"]["lineageDigest"],
             "historyDigest": file_digest(history_path),
+            "backportReleaseTrainDigest": self.fixture.backport_release_train_digest,
             "compareAndSwapPredecessorBaselineDigest": material.successor_baseline[
                 "previousBaselineDigest"
             ],

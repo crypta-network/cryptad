@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-authorization-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "stableMilestone",
+    "trainId",
+    "release",
+    "repositoryIdentity",
+    "workflowIdentity",
+    "policyDigest",
+    "queueDigest",
+    "planDigest",
+    "validationDigest",
+    "predecessorCommit",
+    "candidateCommit",
+    "acceptedFixes",
+    "securityOpaqueIds",
+    "allowedOperation",
+    "role",
+    "scope",
+    "issuedAt",
+    "expiresAt",
+    "decision",
+    "authorizationDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-authorization"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "workflowIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/workflowIdentity"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "planDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "validationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "predecessorCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "acceptedFixes": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/publicFix"
+      }
+    },
+    "securityOpaqueIds": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+      }
+    },
+    "allowedOperation": {
+      "const": "candidate-handoff"
+    },
+    "role": {
+      "enum": [
+        "stable-maintenance-train-manager",
+        "stable-security-train-manager"
+      ]
+    },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "train:composition",
+          "candidate:handoff",
+          "completion:verification"
+        ]
+      }
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decision": {
+      "const": "go"
+    },
+    "authorizationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "publicFix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixId",
+        "classification",
+        "severity",
+        "publicSummary",
+        "affectedComponentSummary",
+        "provenanceMode",
+        "lineageDigest",
+        "publicProjectionDigest",
+        "incidentOpaqueId",
+        "advisoryOpaqueId",
+        "publicSecuritySummary",
+        "securityPublicProjectionDigest",
+        "disclosureState"
+      ],
+      "properties": {
+        "fixId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+        },
+        "classification": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/classification"
+        },
+        "severity": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/severity"
+        },
+        "publicSummary": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/safeText"
+        },
+        "affectedComponentSummary": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/safeText"
+        },
+        "provenanceMode": {
+          "enum": [
+            "inherited",
+            "clean-cherry-pick",
+            "manual-conflict-resolution"
+          ]
+        },
+        "lineageDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "publicProjectionDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "incidentOpaqueId": {
+          "oneOf": [
+            {"$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"},
+            {"type": "null"}
+          ]
+        },
+        "advisoryOpaqueId": {
+          "oneOf": [
+            {"$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"},
+            {"type": "null"}
+          ]
+        },
+        "publicSecuritySummary": {
+          "oneOf": [
+            {"$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/safeText"},
+            {"type": "null"}
+          ]
+        },
+        "securityPublicProjectionDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+        },
+        "disclosureState": {
+          "oneOf": [
+            {"enum": ["protected-embargoed", "public-safe-pre-disclosure", "disclosed"]},
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  }
+}

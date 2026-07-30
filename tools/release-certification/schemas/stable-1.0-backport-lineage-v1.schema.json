@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-backport-lineage-v1.schema.json",
+  "title": "Cryptad Stable 1.0 backport lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "policyDigest",
+    "repositoryIdentity",
+    "trainId",
+    "release",
+    "candidateCommit",
+    "queueDigest",
+    "hotfixFollowUpClosureDigest",
+    "fixes",
+    "lineageDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-backport-lineage"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "hotfixFollowUpClosureDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "fixes": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/lineageEntry"
+      }
+    },
+    "lineageDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "lineageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixId",
+        "source",
+        "provenance",
+        "authorizationDigest",
+        "lineageEntryDigest"
+      ],
+      "properties": {
+        "fixId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+        },
+        "source": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/sourceIdentity"
+        },
+        "provenance": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/provenance"
+        },
+        "authorizationDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "lineageEntryDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        }
+      }
+    }
+  }
+}

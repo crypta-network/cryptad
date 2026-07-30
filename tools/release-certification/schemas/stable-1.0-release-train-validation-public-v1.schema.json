@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-validation-public-v1.schema.json",
+  "title": "Cryptad Stable 1.0 public release-train validation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "mode",
+    "trainId",
+    "release",
+    "policyDigest",
+    "queueDigest",
+    "planDigest",
+    "candidateDigest",
+    "predecessorCommit",
+    "candidateCommit",
+    "requiredFixIds",
+    "includedFixIds",
+    "omittedFixIds",
+    "deferredFixIds",
+    "unaccountedCommitIds",
+    "publicFixes",
+    "evidenceResults",
+    "blockers",
+    "authorizationRequired",
+    "authorization",
+    "decision",
+    "authoritativeValidationDigest",
+    "authoritativeValidationFileDigest",
+    "publicValidationDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-validation-public"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "mode": {
+      "enum": [
+        "evaluate",
+        "prepare-candidate",
+        "validate-authorization"
+      ]
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "release": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseIdentity"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "planDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "candidateDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "predecessorCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "requiredFixIds": {
+      "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/fixIds"
+    },
+    "includedFixIds": {
+      "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/fixIds"
+    },
+    "omittedFixIds": {
+      "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/fixIds"
+    },
+    "deferredFixIds": {
+      "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/fixIds"
+    },
+    "unaccountedCommitIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+      }
+    },
+    "publicFixes": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/publicFix"
+      }
+    },
+    "evidenceResults": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/evidenceResult"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "maxItems": 512,
+      "items": {
+        "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/blocker"
+      }
+    },
+    "authorizationRequired": {
+      "const": true
+    },
+    "authorization": {
+      "oneOf": [
+        {
+          "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/authorization"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "decision": {
+      "enum": [
+        "go",
+        "no-go"
+      ]
+    },
+    "authoritativeValidationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "authoritativeValidationFileDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "publicValidationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  }
+}

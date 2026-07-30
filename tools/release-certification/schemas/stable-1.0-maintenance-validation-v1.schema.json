@@ -7,7 +7,7 @@
   "required": [
     "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
     "mode", "lineageDigest", "candidateIdentityDigest", "comparisonDigest", "evidenceDigest",
-    "coreInfoDigest", "checksumsDigest", "provenanceDigest", "pendingLifecycleTransitionDigest", "evidenceResults", "blockers",
+    "coreInfoDigest", "checksumsDigest", "provenanceDigest", "pendingLifecycleTransitionDigest", "backportReleaseTrainDigest", "evidenceResults", "blockers",
     "warnings", "waivers", "decision", "status", "publicationState", "promotionReady", "redaction"
   ],
   "properties": {
@@ -26,6 +26,7 @@
     "checksumsDigest": {"$ref": "#/$defs/digest"},
     "provenanceDigest": {"$ref": "#/$defs/digest"},
     "pendingLifecycleTransitionDigest": {"$ref": "#/$defs/digest"},
+    "backportReleaseTrainDigest": {"$ref": "#/$defs/digest"},
     "evidenceResults": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceResult"}},
     "blockers": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/issue"}},
     "warnings": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/issue"}},

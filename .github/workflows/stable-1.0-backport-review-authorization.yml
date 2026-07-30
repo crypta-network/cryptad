@@ -1,0 +1,329 @@
+name: Stable 1.0 Backport Provenance Review Authorization
+run-name: Stable 1.0 protected provenance review ${{ inputs.fix_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_id:
+        description: Exact opaque stable fix identity.
+        required: true
+        type: string
+      provenance_mode:
+        description: Exact provenance mode receiving independent review.
+        required: true
+        type: choice
+        options:
+          - clean-cherry-pick
+          - manual-conflict-resolution
+      predecessor_commit:
+        description: Exact predecessor/base commit bound by the review evidence.
+        required: true
+        type: string
+      source_fix_commit:
+        description: Exact canonical source-fix commit.
+        required: true
+        type: string
+      candidate_fix_commit:
+        description: Exact candidate commit containing the reviewed patch.
+        required: true
+        type: string
+      normalized_diff_evidence_digest:
+        description: Exact normalized-diff evidence sha256 digest.
+        required: true
+        type: string
+      path_inventory_digest:
+        description: Exact sha256 digest of sorted touched/conflict path inventories.
+        required: true
+        type: string
+      focused_test_evidence_ids:
+        description: Canonical JSON array of focused evidence ids; [] for a clean cherry-pick.
+        required: true
+        type: string
+      policy_digest:
+        description: Exact checked-in release-train policy digest.
+        required: true
+        type: string
+      issued_at:
+        description: Canonical RFC 3339 issuance time approved by the reviewer.
+        required: true
+        type: string
+      expires_at:
+        description: Canonical RFC 3339 expiration no more than 72 hours after issuance.
+        required: true
+        type: string
+      workflow_source_commit:
+        description: Exact lowercase protected workflow and checkout commit.
+        required: true
+        type: string
+
+concurrency:
+  group: >-
+    stable-1-0-backport-review-${{ inputs.fix_id }}-${{ inputs.candidate_fix_commit }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  protected-ref-preflight:
+    name: Authenticate protected review dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Validate protected workflow identity and bounded inputs
+        env:
+          REF_PROTECTED: ${{ github.ref_protected }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          FIX_ID: ${{ inputs.fix_id }}
+          PREDECESSOR_COMMIT: ${{ inputs.predecessor_commit }}
+          SOURCE_FIX_COMMIT: ${{ inputs.source_fix_commit }}
+          CANDIDATE_FIX_COMMIT: ${{ inputs.candidate_fix_commit }}
+          NORMALIZED_DIFF_DIGEST: ${{ inputs.normalized_diff_evidence_digest }}
+          PATH_INVENTORY_DIGEST: ${{ inputs.path_inventory_digest }}
+          POLICY_DIGEST: ${{ inputs.policy_digest }}
+          WORKFLOW_SOURCE_COMMIT: ${{ inputs.workflow_source_commit }}
+        run: |
+          set -euo pipefail
+          expected_workflow="$REPOSITORY/.github/workflows/stable-1.0-backport-review-authorization.yml@$GITHUB_REF"
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch \
+                || "$REF_PROTECTED" != true \
+                || "$WORKFLOW_REF" != "$expected_workflow" \
+                || "$WORKFLOW_SHA" != "$WORKFLOW_SOURCE_COMMIT" \
+                || "$GITHUB_SHA" != "$WORKFLOW_SOURCE_COMMIT" \
+                || ! "$FIX_ID" =~ ^stable-fix-[a-z0-9]{16,64}$ \
+                || ! "$PREDECESSOR_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$SOURCE_FIX_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$CANDIDATE_FIX_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$NORMALIZED_DIFF_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$PATH_INVENTORY_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$POLICY_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$WORKFLOW_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Provenance-review dispatch is not bound to the exact protected workflow."
+            exit 1
+          fi
+
+  authorize-review:
+    name: Authorize exact provenance review
+    needs: protected-ref-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: stable-1.0-backport-review
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact protected workflow source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.workflow_source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate review subject and emit exact authorization
+        env:
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          FIX_ID: ${{ inputs.fix_id }}
+          PROVENANCE_MODE: ${{ inputs.provenance_mode }}
+          PREDECESSOR_COMMIT: ${{ inputs.predecessor_commit }}
+          SOURCE_FIX_COMMIT: ${{ inputs.source_fix_commit }}
+          CANDIDATE_FIX_COMMIT: ${{ inputs.candidate_fix_commit }}
+          NORMALIZED_DIFF_DIGEST: ${{ inputs.normalized_diff_evidence_digest }}
+          PATH_INVENTORY_DIGEST: ${{ inputs.path_inventory_digest }}
+          FOCUSED_TEST_IDS: ${{ inputs.focused_test_evidence_ids }}
+          POLICY_DIGEST: ${{ inputs.policy_digest }}
+          ISSUED_AT: ${{ inputs.issued_at }}
+          EXPIRES_AT: ${{ inputs.expires_at }}
+          WORKFLOW_SOURCE_COMMIT: ${{ inputs.workflow_source_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$WORKFLOW_SOURCE_COMMIT"
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+          for commit in \
+              "$PREDECESSOR_COMMIT" \
+              "$SOURCE_FIX_COMMIT" \
+              "$CANDIDATE_FIX_COMMIT"; do
+            test "$(git cat-file -t "$commit")" = commit
+          done
+          actual_policy_digest="sha256:$(sha256sum tools/release-certification/stable-1.0-backport-release-train-policy.json | awk '{print $1}')"
+          test "$POLICY_DIGEST" = "$actual_policy_digest"
+          case "$PROVENANCE_MODE" in
+            clean-cherry-pick)
+              reviewer_role=stable-backport-cherry-pick-reviewer
+              review_evidence_id=stable-backport.clean-cherry-pick-review
+              ;;
+            manual-conflict-resolution)
+              reviewer_role=stable-backport-conflict-reviewer
+              review_evidence_id=stable-backport.manual-conflict-review
+              ;;
+            *)
+              echo "::error::Unknown provenance-review mode."
+              exit 1
+              ;;
+          esac
+          jq -e '
+            type == "array"
+            and length <= 128
+            and all(.[];
+              type == "string"
+              and test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"))
+            and (unique | length) == length
+            and . == sort' <<< "$FOCUSED_TEST_IDS" >/dev/null
+          if [[ "$PROVENANCE_MODE" == clean-cherry-pick ]] \
+              && ! jq -e 'length == 0' <<< "$FOCUSED_TEST_IDS" >/dev/null; then
+            echo "::error::Clean cherry-pick review cannot claim focused conflict tests."
+            exit 1
+          fi
+          if [[ "$PROVENANCE_MODE" == manual-conflict-resolution ]] \
+              && ! jq -e 'length > 0' <<< "$FOCUSED_TEST_IDS" >/dev/null; then
+            echo "::error::Manual conflict review requires focused tests."
+            exit 1
+          fi
+          python3 - "$ISSUED_AT" "$EXPIRES_AT" <<'PY'
+          import datetime as dt
+          import sys
+
+          def parse(value: str) -> dt.datetime:
+              parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+              if parsed.tzinfo is None:
+                  raise ValueError("timezone is required")
+              return parsed.astimezone(dt.timezone.utc)
+
+          issued = parse(sys.argv[1])
+          expires = parse(sys.argv[2])
+          now = dt.datetime.now(dt.timezone.utc)
+          if (
+              issued > now
+              or expires <= now
+              or expires <= issued
+              or expires - issued > dt.timedelta(hours=72)
+          ):
+              raise SystemExit("review authorization validity window is invalid")
+          PY
+          stage=build/stable-backport-review-authorization
+          mkdir -p "$stage"
+          authorization="$stage/authorization-subject.json"
+          artifact_name="stable-1.0-backport-review-$FIX_ID-$CANDIDATE_FIX_COMMIT"
+          authorization_id="stable-backport-review-$(
+            jq -jcnS \
+              --arg fixId "$FIX_ID" \
+              --arg mode "$PROVENANCE_MODE" \
+              --arg candidate "$CANDIDATE_FIX_COMMIT" \
+              '{fixId: $fixId, mode: $mode, candidate: $candidate}' \
+              | sha256sum | cut -c1-32
+          )"
+          jq -nS \
+            --arg authorizationId "$authorization_id" \
+            --arg fixId "$FIX_ID" \
+            --arg mode "$PROVENANCE_MODE" \
+            --arg reviewerRole "$reviewer_role" \
+            --arg policyDigest "$POLICY_DIGEST" \
+            --arg sourceCommit "$SOURCE_FIX_COMMIT" \
+            --arg predecessorCommit "$PREDECESSOR_COMMIT" \
+            --arg candidateCommit "$CANDIDATE_FIX_COMMIT" \
+            --arg normalizedDiffDigest "$NORMALIZED_DIFF_DIGEST" \
+            --arg pathInventoryDigest "$PATH_INVENTORY_DIGEST" \
+            --argjson focusedTestIds "$FOCUSED_TEST_IDS" \
+            --arg reviewEvidenceId "$review_evidence_id" \
+            --arg workflowCommit "$WORKFLOW_SOURCE_COMMIT" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg artifactName "$artifact_name" \
+            --arg issuedAt "$ISSUED_AT" \
+            --arg expiresAt "$EXPIRES_AT" '
+              {
+                authorizationId: $authorizationId,
+                fixId: $fixId,
+                provenanceMode: $mode,
+                reviewerRole: $reviewerRole,
+                repositoryIdentity: "github.com/crypta-network/cryptad",
+                policyDigest: $policyDigest,
+                sourceCommit: $sourceCommit,
+                predecessorCommit: $predecessorCommit,
+                candidateCommit: $candidateCommit,
+                normalizedDiffEvidenceDigest: $normalizedDiffDigest,
+                pathInventoryDigest: $pathInventoryDigest,
+                focusedTestEvidenceIds: $focusedTestIds,
+                reviewEvidenceId: $reviewEvidenceId,
+                producer: {
+                  workflowIdentity: (
+                    "crypta-network/cryptad/.github/workflows/"
+                    + "stable-1.0-backport-review-authorization.yml@"
+                    + $workflowCommit
+                  ),
+                  workflowCommit: $workflowCommit,
+                  runId: $runId,
+                  runAttempt: $runAttempt,
+                  environment: "stable-1.0-backport-review",
+                  operation: "authorize-provenance-review",
+                  artifactName: $artifactName
+                },
+                issuedAt: $issuedAt,
+                expiresAt: $expiresAt,
+                producerAuthenticated: true
+              }' > "$authorization"
+          authorization_digest="$(
+            jq -j -cS . "$authorization" | sha256sum | awk '{print "sha256:" $1}'
+          )"
+          jq -nS \
+            --slurpfile authorization "$authorization" \
+            --arg digest "$authorization_digest" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-backport-review-authorization",
+                authorization: (
+                  $authorization[0] + {authorizationDigest: $digest}
+                ),
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$stage/stable-1.0-backport-review-authorization.json"
+          rm "$authorization"
+          (
+            cd "$stage"
+            sha256sum stable-1.0-backport-review-authorization.json \
+              > workflow-review-checksums.txt
+          )
+          review_binding="$RUNNER_TEMP/stable-backport-review-binding.json"
+          jq -nS \
+            --arg artifactKind provenance-review \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-backport-review-authorization.yml@$WORKFLOW_SOURCE_COMMIT" \
+            --arg workflowCommit "$WORKFLOW_SOURCE_COMMIT" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg operation authorize-provenance-review \
+            --arg fixId "$FIX_ID" \
+            --arg candidateCommit "$CANDIDATE_FIX_COMMIT" \
+            --arg artifactName "$artifact_name" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                fixId: $fixId,
+                candidateCommit: $candidateCommit,
+                artifactName: $artifactName
+              }' > "$review_binding"
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            seal \
+            --source "$stage" \
+            --out build/stable-backport-review-protected-upload \
+            --binding "$review_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          printf '%s\n' "$artifact_name" > "$RUNNER_TEMP/review-artifact-name"
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Upload encrypted protected review authorization
+        uses: actions/upload-artifact@v6
+        with:
+          name: >-
+            stable-1.0-backport-review-${{ inputs.fix_id }}-${{ inputs.candidate_fix_commit }}
+          path: build/stable-backport-review-protected-upload/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90

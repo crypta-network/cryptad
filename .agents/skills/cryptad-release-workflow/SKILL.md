@@ -37,6 +37,11 @@ Build: 2
 - After Stable 1.0 GA, use `stable-maintenance` for both routine maintenance and security hotfix
   candidates. It builds and freezes one new integer-build candidate; the protected maintenance
   workflow publishes only those authorized bytes and never merges the branch.
+- Before either Stable maintenance lane reaches `stable-maintenance`, use `stable-backport`.
+  Authenticate the latest single-chain predecessor, classify every fix, bind inherited,
+  clean-cherry-pick, or reviewed manual-conflict provenance, carry prior obligations, and require
+  complete zero-unaccounted candidate coverage. The release-train authorization approves candidate
+  composition only; it never authorizes publication.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include the release certification report, first-party app
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
@@ -244,9 +249,74 @@ For a later routine Stable 1.0 release, copy
 placeholder, select `policies.releaseClass=maintenance`, and run:
 
 ```bash
+cp tools/release-certification/manifests/stable-1.0-backport.example.json \
+  build/stable-1.0-backport.json
+python3 tools/release-certification/certify.py stable-backport \
+  --manifest build/stable-1.0-backport.json
+
 python3 tools/release-certification/certify.py stable-maintenance \
   --manifest build/stable-1.0-maintenance.json
 ```
+
+The checked-in backport example is the first post-GA train: it points the predecessor fields at
+the authenticated GA receipt/baseline and omits the maintenance latest pointer and prior train
+queue. For every later successor, add the exact `latestPublishedMaintenancePointer`,
+`previousStableBackportQueue`, and `previousStableBackportValidation` inputs before running it.
+
+Use the closed `stable-backport` modes `evaluate`, `prepare-candidate`,
+`validate-authorization`, and, after publication and manual merges,
+`verify-release-completion`. Routine maintenance maps only to `routine-maintenance` on the exact
+`release/<build-number>` candidate. Historical Stable builds remain upgrade/recovery coverage
+sources and never receive independent patch branches or pointers.
+For every clean cherry-pick or manual conflict, authenticate the exact successful
+`stable-1.0-backport-review-authorization.yml` artifact from the protected review environment.
+Do not accept repeated caller-selected digests as reviewer approval. Keep the authoritative queue
+in protected inputs. The repository-readable public artifact carries only the public queue and
+validation projections; any full phase or review handoff uses an authenticated encrypted envelope
+and is decrypted only in the next protected environment.
+
+Between `evaluate-intake` and `prepare-candidate`, the candidate commit may advance as the already
+evaluated work lands. The fix and obligation identities and their protected immutable composition
+must not change: authenticate the public queue's `intakeCompositionDigest` and require each opaque
+transition-digest list to evolve by prefix-only append. If classification, routing, affected/source
+or security scope, target train, replacement identity, or the fix/obligation set changes, run
+`evaluate-intake` again.
+
+The protected initial phase independently resolves the protected `develop` tip and freezes it as
+`policies.developmentLineageCommit`. Keep that exact value through later phase manifests:
+`candidateBaseCommit` must be the candidate/development-lineage merge base and cannot authorize
+itself. It must also be on the frozen `develop` tip's first-parent chain; reachability through a
+merged side parent does not prove that the release branch was based on `develop`. A
+security-hotfix uses `policies.mainLineageCommit` instead: it is the independently
+resolved exact protected `main` tip, `candidateBaseCommit` must equal it, and the authenticated
+tagged predecessor must remain its ancestor.
+
+Carry the exact protected backport workflow run, artifact name, and Actions artifact digest in the
+maintenance manifest metadata. The maintenance workflow must download that
+protected `validate-authorization` handoff and retain both its complete train authorization and
+validation. The separately uploaded public artifact may contain only the public queue and filtered
+`stable-1.0-release-train-validation-public.json`; it must not contain protected evidence ids or
+digests, the full validation/authorization, or the predecessor-completion handoff;
+a generic input producer cannot recreate either handoff. The later read-only completion phase may
+verify reconciliation after the train-composition authorization expires by consuming the exact
+receipt-bound frozen validation. Every backport phase after initial evaluation must likewise
+resolve and authenticate its prior Actions artifact, rather than merely copying prior-run labels
+into provenance. Candidate handoff requires every included fix to be `verified`, not merely
+`landed`. Completion requires distinct `main` and `develop` no-ff merges on the respective
+protected tip's first-parent chain. Each recorded merge tree must match Git's isolated automatic
+merge result to count as reconciled. After the exact graph and protected attestation pass, a manual
+reconciliation result is emitted as `content-review-required` with the deterministic
+completion-created obligation; the next queue must seed that exact row and remains blocked until a
+separately authenticated content-review contract resolves it.
+At the first phase of the next successor, use the prior successful completion run and artifact
+while it remains available, or reauthenticate the support-lifetime protected completion bundle
+after Actions retention expires. The artifact path byte-compares completion and validation; both
+paths independently resolve protected `main`/`develop` and verify the same receipt-bound records
+and first-parent merge graph. The resulting predecessor-completion handoff is mandatory for
+released-state transitions and remains byte-identical through later phases.
+
+Do not resolve a carried obligation with its existing failure evidence. Resolution needs a new
+evidence digest, after which both the digest and resolution timestamp are immutable.
 
 The command is side-effect-free. It authenticates the immutable GA v1 baseline and complete GA
 receipt, authenticates the latest published predecessor, freezes one new candidate, enforces
@@ -284,6 +354,9 @@ staple, and verify its DMG before the freeze record is written. Publication jobs
 install the pinned provider wheel on the clean runner and recheck the remote release/hotfix ref and
 authorization before mutation. Never collapse the four operations into one run or accept a
 replacement candidate/evidence/authorization input at publication time.
+The freeze artifact must retain the exact protected train validation and full train authorization;
+prepare and authorization validation compare both files byte for byte with the preceding attested
+artifact so the train cannot change after candidate bytes are frozen.
 Record the exact producing run id, artifact name, and Actions artifact digest at every handoff.
 Freeze additionally requires the protected Windows producer coordinates and exact EXE SHA-256;
 publish additionally requires the reviewed publication-backend producer coordinates. A path,
@@ -311,6 +384,12 @@ Use the protected lifecycle workflow to authorize, publish, and verify the exact
 `support-lifecycle` descriptor edition; never rewrite the release's historical `core-info.json` or
 activate lifecycle state from an unverified/partial release publication. Follow
 `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`.
+- [ ] The exact `stable-maintenance.backport-release-train` evidence has no unaccounted changes,
+      omitted required fixes, wrong lane/base, stale candidate evidence, or prior merge-back
+      blockers.
+- [ ] After publication, `stable-backport` completion verification authenticates the exact
+      receipt, lifecycle activation or pending state, and no-squash `--no-ff` reconciliation into
+      `main` and `develop`.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

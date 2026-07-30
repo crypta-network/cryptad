@@ -2457,41 +2457,68 @@ class StableLifecycleProviderTest(unittest.TestCase):
                 "status": "active",
                 "redaction": redaction(),
             }
-            pointer_bytes = canonical_bytes(pointer)
-            plan = {
-                **bundle.plan,
-                "latestMaintenancePointerDigest": publication._byte_digest(
-                    pointer_bytes
-                ),
-            }
-            inventory = {
-                **bundle.inventory,
-                "chainDepth": 1,
-                "latestPointerDigest": plan["latestMaintenancePointerDigest"],
-                "entries": [bundle.inventory["entries"][0], tip],
-            }
-            post_ga_bundle = publication.dataclasses.replace(
-                bundle, plan=plan, inventory=inventory
-            )
-            request = publication.PublicationRequest(post_ga_bundle)
 
-            class Transport:
-                def request(self, method, uri, *, headers=None, body=None):
-                    self.assert_request(method, uri, body)
-                    return 200, {}, pointer_bytes
+            def observe(pointer_value):
+                pointer_bytes = canonical_bytes(pointer_value)
+                plan = {
+                    **bundle.plan,
+                    "latestMaintenancePointerDigest": publication._byte_digest(
+                        pointer_bytes
+                    ),
+                }
+                inventory = {
+                    **bundle.inventory,
+                    "chainDepth": 1,
+                    "latestPointerDigest": plan["latestMaintenancePointerDigest"],
+                    "entries": [bundle.inventory["entries"][0], tip],
+                }
+                post_ga_bundle = publication.dataclasses.replace(
+                    bundle, plan=plan, inventory=inventory
+                )
+                request = publication.PublicationRequest(post_ga_bundle)
 
-                @staticmethod
-                def assert_request(method, uri, body):
-                    if method != "GET" or uri != MAINTENANCE_POINTER_URI or body is not None:
-                        raise AssertionError("unexpected maintenance pointer request")
+                class Transport:
+                    def request(self, method, uri, *, headers=None, body=None):
+                        if (
+                            method != "GET"
+                            or uri != MAINTENANCE_POINTER_URI
+                            or body is not None
+                        ):
+                            raise AssertionError(
+                                "unexpected maintenance pointer request"
+                            )
+                        return 200, {}, pointer_bytes
 
-            backend = self.lifecycle.StableLifecycleBackend(transport=Transport())
+                backend = self.lifecycle.StableLifecycleBackend(
+                    transport=Transport()
+                )
+                return (
+                    backend.observe_latest_maintenance_tip(request),
+                    plan["latestMaintenancePointerDigest"],
+                )
 
-            observation = backend.observe_latest_maintenance_tip(request)
+            for accepted_pointer in (
+                pointer,
+                {
+                    **pointer,
+                    "backportReleaseTrainDigest": digest("release-train"),
+                },
+            ):
+                with self.subTest(fields=set(accepted_pointer)):
+                    observation, expected_digest = observe(accepted_pointer)
+                    self.assertEqual(observation.status, "matching")
+                    self.assertEqual(
+                        observation.pointer_digest, expected_digest
+                    )
+                    self.assertEqual(observation.build_version, "301")
 
-            self.assertEqual(observation.status, "matching")
-            self.assertEqual(observation.pointer_digest, plan["latestMaintenancePointerDigest"])
-            self.assertEqual(observation.build_version, "301")
+            for rejected_pointer in (
+                {**pointer, "backportReleaseTrainDigest": "malformed"},
+                {**pointer, "unexpectedField": digest("unexpected")},
+            ):
+                with self.subTest(rejected_fields=set(rejected_pointer)):
+                    observation, _expected_digest = observe(rejected_pointer)
+                    self.assertEqual(observation.status, "conflict")
 
 
 if __name__ == "__main__":

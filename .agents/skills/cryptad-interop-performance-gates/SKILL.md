@@ -21,6 +21,8 @@ related CI jobs, or release-gate documentation.
   `docs/stable-1.0-rc-validation-and-ga-promotion.md`
 - Stable 1.0 maintenance and security hotfix path:
   `docs/stable-1.0-maintenance-release-and-hotfix-path.md`
+- Stable 1.0 backport and release-train governance:
+  `docs/stable-1.0-backport-and-release-train-governance.md`
 - Stable 1.0 support lifecycle and deprecation governance:
   `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`
 - Stable maintenance publication provider protocol:
@@ -430,6 +432,166 @@ python3 tools/release-certification/certify.py stable-ga \
 - Release notes should mention interop, performance, or certification gate changes only when they
   affect release readiness, operator confidence, app/platform behavior, or packager workflows.
 
+## Stable 1.0 backport and release-train evidence
+
+Before Stable maintenance freezes or authorizes a candidate, run
+`python3 tools/release-certification/certify.py stable-backport`. Its closed modes are
+`evaluate`, `prepare-candidate`, `validate-authorization`, and
+`verify-release-completion`; every mode is side-effect-free.
+
+Treat `tools/release-certification/stable-1.0-backport-release-train-policy.json` as the source of
+the classification, disposition, state, provenance, evidence, deadline, role, queue, no-fork, and
+redaction contracts. Authenticate only full commit object ids and exact repository/object-graph
+relationships. Do not trust branch names, labels, trailers, or patch-id equality as authorization,
+and do not fetch arbitrary remotes during evaluation.
+
+The queue is append-only and digest chained. Carry unresolved accepted fixes, deferred/rejected
+history, superseding relationships, critical obligations, hotfix follow-up, and branch
+reconciliation forward. Account for every candidate change as an accepted fix, approved release
+metadata/tooling/docs, explained merge context, or `unaccounted`; `unaccounted` always blocks.
+GA is the only queue genesis. Every later published predecessor must authenticate both the prior
+queue and prior validation; never accept a missing prior queue as a fresh chain.
+Bind every evidence row to the exact reviewed policy and queue digests. Compute the queue identity
+by normalizing only embedded evidence queue-binding slots to the fixed all-zero SHA-256 value;
+do not omit evidence content or another queue field from that digest. Evidence ids listed as
+protected by policy must remain `visibility: protected`.
+
+Cryptad has one authenticated Stable 1.0 publication chain. Historical builds are lifecycle-aware
+upgrade, advisory, or recovery coverage sources, never independent mutable release targets.
+Routine trains use `release/<build>` and `routine-maintenance`; critical incident trains use
+`hotfix/<build>` and `security-hotfix`. Every accepted hotfix row must be a critical
+incident-bound `security-fix` under one incident/advisory pair. Record incident-required package,
+app, or release-tooling effects inside that security fix’s scope and evidence, never as an unrelated
+ordinary row.
+The protected workflow independently freezes the exact protected `main` tip as
+`mainLineageCommit` for a hotfix. Require the hotfix base to equal that tip and the tagged
+publication predecessor to remain its ancestor; the older tagged candidate is not an adequate
+base after the required no-ff `main` reconciliation.
+Candidate handoff includes only fixes in `verified` state; `landed` alone is not release
+authorization. Check every critical-fix response interval after state re-entry as well as an open
+current interval, and reject a critical deferral after its bounded review time. A rejected
+critical record remains a blocker, but a new append-only authorized `rejected`-to-`triaged`
+transition may reopen its investigation without rewriting history. Superseding a critical record
+requires an affected-scope, incident, advisory, and critical-severity equivalent replacement. A
+separately authorized
+superseding security hotfix may carry exactly one
+`hotfix-follow-up`. If maintenance publication created it after the prior train queue was
+authorized, the first queue row must bind the authenticated predecessor baseline’s exact
+obligation digest, obligated build/train and generation time to the predecessor queue’s critical
+source fixes; later queues inherit the row unchanged. Routine trains, unbound or multiple
+follow-ups, and branch-reconciliation obligations remain blocked. Preserve the obligation id
+through release completion.
+The maintenance workflow may therefore consume a `blocked` train queue only when a successful
+`security-hotfix` validation carries that one sole open follow-up; every routine, multi-obligation,
+new, wrong-type, or reconciliation-blocked queue still fails.
+
+Clean cherry-picks require the policy-defined protected review evidence in addition to matching
+patch identity. Manual conflict resolution requires the corresponding protected review plus
+focused tests. Authenticate the exact successful
+`.github/workflows/stable-1.0-backport-review-authorization.yml` run and Actions artifact in the
+`stable-1.0-backport-review` environment, then bind its role, policy, source, predecessor,
+candidate, normalized diff, path inventory, focused tests, and validity window. Repeating a
+caller-selected digest in provenance, ownership, and evidence is not authorization.
+
+`stable-maintenance` consumes the exact result as the non-waivable
+`stable-maintenance.backport-release-train` evidence row and binds the train digest into notes,
+checksums, provenance, history, successor governance, and lifecycle context. Release-train
+authorization approves composition only and does not replace maintenance publication
+authorization.
+The maintenance freeze artifact retains the exact train validation and full train authorization;
+prepare and validation byte-compare both files with the preceding attested artifact before they
+can authorize the frozen candidate.
+At the protected publication boundary, require the train authorization to have been current at the
+exact maintenance-authorization handoff recorded in that immutable bundle. Do not re-age this
+composition-only grant against each later publication target, resumable-prefix retry, or
+verify-public-state-only run. Continue to enforce current candidate-evidence deadlines plus the
+separate maintenance publication and activation authorizations at their side-effect boundaries.
+
+The maintenance handoff must retain both the exact train validation and the complete canonical
+train authorization (stored under the historical authorization-summary filename). Authenticate
+the protected backport workflow run and exact Actions artifact digest before materializing those
+files; never accept a validation or authorization synthesized only by the maintenance input
+producer. Keep the train candidate-file digest distinct from the maintenance candidate semantic
+identity digest and compare their shared exact commit/release/predecessor bindings instead.
+Before accepting a train, authenticate a fresh public lifecycle observation bound to the exact
+descriptor edition and bytes, ledger, plan, update-key scope, and prior lifecycle authorization.
+Train authorization must not predate that observation or any intake, state-transition, evidence,
+or obligation event it approves.
+
+The backport producer is manual-dispatch only. Do not add `workflow_call` without a separate
+caller-run plus referenced-workflow attestation model. A credential-free, no-checkout preflight
+must authenticate the manual event, exact workflow ref/SHA, protected source ref, source commit,
+lane, and operation before any evidence or authorization environment is requested. Retain
+environment deployment-branch restrictions as an independent second gate: evidence may run only
+on protected `main`, `develop`, `release/*`, or `hotfix/*` refs, and authorization only on
+protected `release/*` or `hotfix/*` refs. Repeat exact identity checks after checkout.
+
+Completion verifies that the published candidate itself is the merged tip in each separate no-ff
+merge to `main` and `develop`. Per-fix provenance commits may precede the publication tip but must
+be ancestors of it. Read-only completion may occur after the original train handoff authorization
+expires because the maintenance receipt freezes the exact validation digest accepted while the
+authorization was current. Consume that exact frozen validation, and require authenticated
+protected `main`/`develop` tips that contain the attested merge commits. For merge coverage, compare
+the recorded tree with Git's automatic merge and use the union of per-parent changed paths when it
+differs; combined diff alone can hide a one-parent resolution. The two reconciliation commits must
+be distinct and each must be on its protected tip's first-parent chain, not merely reachable
+through a side parent.
+If that authenticated graph contains non-automatic merge content, keep strict Git inspection
+failing it as reconciled, then let the completion layer derive the exact policy-named
+reconciliation obligation and mark `reconciliationStatus: content-review-required`. Bind the
+obligation evidence to the merge record and a digest of the bounded resolution-path inventory,
+without exposing raw paths in the obligation. The next intake may advance the published fixes to
+`released` only when it seeds the exact completion-created row; the resulting queue remains
+blocked pending separately authenticated content-review evidence. Do not convert another Git,
+branch-tip, parent, or attestation failure into an obligation.
+Do not allow a fix included by the prior authorized validation to transition directly from
+`verified` to `superseded`; authenticate publication and reconciliation and transition it to
+`released` first.
+For the next train, use the successful prior completion workflow run and exact Actions artifact
+while it remains available and byte-compare the protected completion and validation. After Actions
+retention expires, reauthenticate the same completion, validation, queue, receipt, and lifecycle
+authority from the digest-pinned support-lifetime protected input bundle. Both paths independently
+resolve current protected `main` and `develop`, require both recorded merges on those first-parent
+chains, and carry the resulting `previousStableBackportCompletionHandoff` through every phase.
+Keep the authoritative queue and validation protected. Public phase artifacts may contain only
+`stable-1.0-release-train-queue-public.json` and the filtered
+`stable-1.0-release-train-validation-public.json`; they must not contain the full validation,
+authorization record, completion record, predecessor-completion handoff, or internal
+checksums/provenance. Those public projections omit touched/conflict paths, protected evidence
+ids/digests, private-record digests, and exact per-fix source/backport internals.
+Transport authoritative phase and provenance-review handoffs through authenticated encrypted
+Actions envelopes only. Bind each envelope to the exact repository, workflow/commit, run attempt,
+operation, subject, and artifact name; decrypt it only inside the next protected environment with
+the canonical base64 32-byte `CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64` secret. Keep that same
+secret in the backport-review, backport-evidence, backport-authorization, and
+maintenance-evidence environments, plus both Stable maintenance publication environments that
+must independently reopen the frozen train at the side-effect boundary. Never put it in workflow
+inputs, repository variables, logs, summaries, or artifacts. Repository-readable Actions
+artifacts must never contain those authoritative records in plaintext. Retain support-lifetime
+plaintext only in the separately access-controlled digest-pinned input archive.
+After maintenance consumes the backport envelope, reseal the exact train validation and full
+authorization for every freeze, preparation, validation, publication, and independent-verification
+handoff. Strip duplicate plaintext copies from staged protected inputs and publication audits.
+Allow a candidate-handoff authorization at most 72 hours so the exact grant can survive the
+mandatory 24-hour post-freeze soak and bounded review/handoff time. It remains composition-only
+authority and cannot authorize publication.
+The public queue's digest-only `intakeCompositionDigest` commits those protected immutable fields.
+For `evaluate-intake` to `prepare-candidate`, require that digest and the exact fix/obligation
+identity sets to remain unchanged, and require every opaque per-fix transition-digest list to be
+an exact prefix of its prepared successor. Bind every obligation's exact `sourceTrainId`,
+`sourceFixIds`, type, identity, and generation time inside that commitment. The candidate and
+candidate-bound evidence may advance; any composition or history rewrite requires a new
+evaluation. After resolving protected completion tips through GitHub, fetch those exact
+API-selected commit identities from the canonical origin before local object and ancestry checks.
+Treat provenance-review `expiresAt` as exclusive; equality with the captured validation time is
+expired.
+
+Use the focused offline check while changing the train engine, schemas, workflow, or docs:
+
+```bash
+python3 tools/release-certification/certify.py stable-backport --self-test
+```
+
 ## Stable 1.0 maintenance evidence
 
 After GA, `python3 tools/release-certification/certify.py stable-maintenance` is the canonical
@@ -442,7 +604,10 @@ cannot satisfy production gates.
 Routine maintenance uses the complete production windows and target matrix. A policy-qualified
 critical security hotfix may shorten only the named prepublication observation windows; it still
 passes every non-waivable gate and emits a deadline-bound full-window follow-up obligation. Closing
-that obligation is side-effect-free and cannot change the published bytes. Follow
+that obligation is side-effect-free and cannot change the published bytes. Preserve immutable
+pre-release-train v1 authorizations for closure: the v1 schema may omit
+`backportReleaseTrainDigest` only on this historical path, while every current preparation,
+validation, and protected publication must require the exact train digest semantically. Follow
 `docs/stable-1.0-maintenance-release-and-hotfix-path.md` and keep protected publication separate
 from evidence production. Configure `STABLE_CATALOG_TRUSTED_KEYS_BASE64` on
 `stable-1.0-maintenance-evidence` with the public-key-only production catalog registry. The freeze

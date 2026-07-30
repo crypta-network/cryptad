@@ -1104,7 +1104,11 @@ jobs:
           INPUT_ARTIFACT_NAME: ${{ inputs.operation == 'publish' && inputs.validated_candidate_artifact_name || inputs.operation == 'validate-authorization' && inputs.prepared_candidate_artifact_name || inputs.frozen_candidate_artifact_name }}
           INPUT_ARTIFACT_DIGEST: ${{ inputs.operation == 'publish' && inputs.validated_candidate_artifact_digest || inputs.operation == 'validate-authorization' && inputs.prepared_candidate_artifact_digest || inputs.frozen_candidate_artifact_digest }}
           INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
           INPUT_OPERATION: ${{ inputs.operation }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -1143,6 +1147,74 @@ jobs:
             cp -R build/prior-validated-candidate/packages build/stable-maintenance-packages
           else
             echo "::error::Prior candidate artifact does not contain the exact frozen package set."
+            exit 1
+          fi
+          prior_operation=freeze-candidate
+          if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+            prior_operation=prepare-authorization
+          elif [[ "$INPUT_OPERATION" == publish ]]; then
+            prior_operation=validate-authorization
+          fi
+          train_binding="$RUNNER_TEMP/stable-maintenance-prior-train-binding.json"
+          jq -nS \
+            --arg artifactKind stable-maintenance-release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-maintenance-release.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg runId "$INPUT_RUN_ID" \
+            --arg runAttempt "$(jq -er '.run_attempt | tostring' <<< "$run_json")" \
+            --arg operation "$prior_operation" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseClass "$INPUT_RELEASE_CLASS" \
+            --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifactName "$INPUT_ARTIFACT_NAME" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseClass: $releaseClass,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$train_binding"
+          rm -rf build/prior-stable-backport-release-train
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            open \
+            --bundle build/prior-validated-candidate/stable-backport-release-train-handoff \
+            --out build/prior-stable-backport-release-train \
+            --binding "$train_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          prior_train_files="$(
+            find build/prior-stable-backport-release-train \
+              -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          expected_prior_train_files="$(
+            printf '%s\n' \
+              stable-1.0-release-train-authorization-summary.json \
+              stable-1.0-release-train-validation.json \
+              | LC_ALL=C sort
+          )"
+          if [[ "$prior_train_files" != "$expected_prior_train_files" \
+                || -n "$(find build/prior-stable-backport-release-train \
+                  -mindepth 1 -type d -print -quit)" \
+                || -n "$(find build/prior-stable-backport-release-train \
+                  -type l -print -quit)" ]]; then
+            echo "::error::Prior maintenance phase contains an invalid encrypted release-train authority set."
+            exit 1
+          fi
+          if find build/prior-validated-candidate -type f \
+              \( -name stable-1.0-release-train-validation.json \
+                 -o -name stable-1.0-release-train-authorization-summary.json \) \
+              -print -quit | grep -q .; then
+            echo "::error::Prior maintenance artifact exposes plaintext release-train authority."
             exit 1
           fi
 
@@ -1889,6 +1961,249 @@ jobs:
           mkdir -p "$(dirname "$authorization_path")"
           cp "$authorization" "$authorization_path"
 
+      - name: Authenticate and materialize the exact protected release-train handoff
+        if: inputs.operation != 'publish'
+        env:
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          INPUT_RUN_ID="$(jq -er '.policies.metadata.stableBackportRunId' "$manifest")"
+          INPUT_ARTIFACT_NAME="$(jq -er \
+            '.policies.metadata.stableBackportArtifactName' "$manifest")"
+          INPUT_ARTIFACT_DIGEST="$(jq -er \
+            '.policies.metadata.stableBackportArtifactDigest' "$manifest")"
+          if [[ ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The manifest lacks an exact protected release-train producer identity."
+            exit 1
+          fi
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-backport-release-train.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(
+              .name == $name and .expired == false and .digest == $digest
+            )] | length == 1' <<< "$artifacts" >/dev/null
+          root="build/authorized-backport-train"
+          sealed_root="build/authorized-backport-train-sealed"
+          rm -rf "$root"
+          rm -rf "$sealed_root"
+          mkdir -p "$sealed_root"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$sealed_root"
+          expected_lane=routine-maintenance
+          if [[ "$INPUT_RELEASE_CLASS" == security-hotfix ]]; then
+            expected_lane=security-hotfix
+          fi
+          train_binding="$RUNNER_TEMP/stable-backport-maintenance-binding.json"
+          jq -nS \
+            --arg artifactKind release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-backport-release-train.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg runId "$INPUT_RUN_ID" \
+            --arg runAttempt "$(jq -er '.run_attempt | tostring' <<< "$run_json")" \
+            --arg operation validate-authorization \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseLane "$expected_lane" \
+            --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifactName "$INPUT_ARTIFACT_NAME" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseLane: $releaseLane,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$train_binding"
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            open \
+            --bundle "$sealed_root" \
+            --out "$root" \
+            --binding "$train_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Authorized release-train artifact contains a link or special entry."
+            exit 1
+          fi
+          expected_files=(
+            redaction-report.json
+            stable-1.0-release-train-authorization-summary.json
+            stable-1.0-release-train-checksums.txt
+            stable-1.0-release-train-provenance.json
+            stable-1.0-release-train-queue.json
+            stable-1.0-release-train-queue-public.json
+            stable-1.0-release-train-report.md
+            stable-1.0-release-train-summary.json
+            stable-1.0-release-train-validation.json
+            stable-1.0-release-train-validation-public.json
+            stable-1.0-release-train-workflow-provenance.json
+            summary.json
+            workflow-handoff-checksums.txt
+          )
+          predecessor_completion_handoff="$root/stable-1.0-release-train-predecessor-completion-handoff.json"
+          if [[ -f "$predecessor_completion_handoff" \
+                && ! -L "$predecessor_completion_handoff" ]]; then
+            expected_files+=(
+              stable-1.0-release-train-predecessor-completion-handoff.json
+            )
+          elif [[ -e "$predecessor_completion_handoff" ]]; then
+            echo "::error::Authorized predecessor completion handoff is unsafe."
+            exit 1
+          fi
+          actual_files="$(
+            find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          expected_listing="$(printf '%s\n' "${expected_files[@]}" | LC_ALL=C sort)"
+          if [[ "$actual_files" != "$expected_listing" \
+                || -n "$(find "$root" -mindepth 1 -type d -print -quit)" ]]; then
+            echo "::error::Authorized release-train artifact has an unexpected file set."
+            exit 1
+          fi
+          (
+            cd "$root"
+            sha256sum --check --strict workflow-handoff-checksums.txt
+          )
+          jq -e '
+            .result.status == "pass"
+            and .result.exitCode == 0
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$root/summary.json" >/dev/null
+          jq -e '.status == "pass" and .findingCount == 0 and .findings == []' \
+            "$root/redaction-report.json" >/dev/null
+          jq -e \
+            --slurpfile validation \
+              "$root/stable-1.0-release-train-validation.json" \
+            --arg lane "$expected_lane" '
+              .kind == "stable-1.0-release-train-queue-public"
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0
+              and .queueDigest == $validation[0].queueDigest
+              and .policyDigest == $validation[0].policyDigest
+              and .candidateCommit == $validation[0].candidateCommit
+              and $validation[0].mode == "validate-authorization"
+              and $validation[0].decision == "go"
+              and $validation[0].blockers == []
+              and $validation[0].omittedFixIds == []
+              and $validation[0].unaccountedCommitIds == []
+              and $validation[0].release.releaseClass
+                == (if $lane == "security-hotfix"
+                    then "security-hotfix"
+                    else "maintenance"
+                    end)
+              and (
+                if $lane == "security-hotfix"
+                    and (.carriedObligationIds | length) == 1 then
+                  (.carriedObligationIds[0]) as $carried
+                  | .status == "blocked"
+                    and ([.obligations[]
+                      | select(
+                          .obligationId == $carried
+                          and .obligationType == "hotfix-follow-up"
+                          and .status == "open"
+                        )] | length) == 1
+                    and ([.obligations[]
+                      | select(.status == "open")] | length) == 1
+                else
+                  .status == "ready"
+                  and .carriedObligationIds == []
+                  and ([.obligations[]
+                    | select(.status == "open")] | length) == 0
+                end
+              )' \
+            "$root/stable-1.0-release-train-queue-public.json" >/dev/null
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "crypta-network/cryptad/.github/workflows/stable-1.0-backport-release-train.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg run_id "$INPUT_RUN_ID" \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg lane "$expected_lane" '
+              .repository == $repository
+              and .workflow == $workflow
+              and .workflowCommit == $commit
+              and .runId == $run_id
+              and .operation == "validate-authorization"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .releaseLane == $lane
+              and .sourceCommit == $commit
+              and .candidateCommit == $commit' \
+            "$root/stable-1.0-release-train-workflow-provenance.json" >/dev/null
+          materialize_train_input() {
+            local key="$1"
+            local source_name="$2"
+            local configured
+            configured="$(jq -er --arg key "$key" '.inputs[$key]' \
+              build/stable-1.0-maintenance.json)"
+            python3 - "$configured" "$source_name" <<'PY'
+          import sys
+          from pathlib import Path
+
+          root = Path("build/protected-inputs").resolve(strict=True)
+          target = Path(sys.argv[1])
+          expected_name = sys.argv[2]
+          if (
+              target.is_absolute()
+              or target.name != expected_name
+              or ".." in target.parts
+          ):
+              raise SystemExit(1)
+          try:
+              target.parent.resolve(strict=False).relative_to(root)
+          except (OSError, ValueError):
+              raise SystemExit(1) from None
+          target.parent.mkdir(parents=True, exist_ok=True)
+          try:
+              target.parent.resolve(strict=True).relative_to(root)
+          except (OSError, ValueError):
+              raise SystemExit(1) from None
+          if target.exists() and (target.is_symlink() or not target.is_file()):
+              raise SystemExit(1)
+          PY
+            if [[ -e "$configured" ]] \
+                && ! cmp --silent "$root/$source_name" "$configured"; then
+              echo "::error::Protected input producer substituted the authorized release train."
+              exit 1
+            fi
+            cp "$root/$source_name" "$configured"
+          }
+          materialize_train_input \
+            stableBackportReleaseTrainValidation \
+            stable-1.0-release-train-validation.json
+          materialize_train_input \
+            stableBackportReleaseTrainAuthorization \
+            stable-1.0-release-train-authorization-summary.json
+
       - name: Authenticate source ancestry and exact change scope
         if: inputs.operation != 'publish'
         env:
@@ -2348,7 +2663,10 @@ jobs:
         env:
           INPUT_RELEASE_ID: ${{ inputs.release_id }}
           INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           INPUT_OPERATION: ${{ inputs.operation }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
         run: |
           set -euo pipefail
           root="build/stable-maintenance-validation-artifact"
@@ -2377,6 +2695,7 @@ jobs:
           stage_authenticated_input() {
             local key="$1"
             local output_name="$2"
+            local output_root="${3:-$root/authenticated-inputs}"
             local configured
             configured="$(jq -er --arg key "$key" '.inputs[$key]' \
               build/stable-1.0-maintenance.json)"
@@ -2397,8 +2716,111 @@ jobs:
               echo "::error::Authenticated input $key is missing or escapes the protected-input root."
               exit 1
             fi
-            cp "$configured" "$root/authenticated-inputs/$output_name"
+            cp "$configured" "$output_root/$output_name"
           }
+          if [[ "$INPUT_OPERATION" == freeze-candidate \
+                || "$INPUT_OPERATION" == prepare-authorization \
+                || "$INPUT_OPERATION" == validate-authorization ]]; then
+            train_plaintext="$RUNNER_TEMP/stable-maintenance-train-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            rm -rf "$train_plaintext"
+            install -d -m 700 "$train_plaintext"
+            trap 'rm -rf "$train_plaintext"' EXIT
+            stage_authenticated_input \
+              stableBackportReleaseTrainValidation \
+              stable-1.0-release-train-validation.json \
+              "$train_plaintext"
+            stage_authenticated_input \
+              stableBackportReleaseTrainAuthorization \
+              stable-1.0-release-train-authorization-summary.json \
+              "$train_plaintext"
+            if [[ "$INPUT_OPERATION" == prepare-authorization \
+                  || "$INPUT_OPERATION" == validate-authorization ]]; then
+              prior_train="build/prior-stable-backport-release-train/stable-1.0-release-train-validation.json"
+              current_train="$train_plaintext/stable-1.0-release-train-validation.json"
+              prior_train_authorization="build/prior-stable-backport-release-train/stable-1.0-release-train-authorization-summary.json"
+              current_train_authorization="$train_plaintext/stable-1.0-release-train-authorization-summary.json"
+              if [[ -L "$prior_train" || ! -f "$prior_train" \
+                    || -L "$prior_train_authorization" \
+                    || ! -f "$prior_train_authorization" ]] \
+                  || ! cmp --silent "$prior_train" "$current_train" \
+                  || ! cmp --silent \
+                    "$prior_train_authorization" "$current_train_authorization"; then
+                echo "::error::Release-train validation or authorization changed across the maintenance freeze/authorization handoff."
+                exit 1
+              fi
+            fi
+            train_binding="$RUNNER_TEMP/stable-maintenance-current-train-binding.json"
+            jq -nS \
+              --arg artifactKind stable-maintenance-release-train-phase \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-maintenance-release.yml@$INPUT_CANDIDATE_COMMIT" \
+              --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+              --arg runId "$GITHUB_RUN_ID" \
+              --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+              --arg operation "$INPUT_OPERATION" \
+              --arg releaseId "$INPUT_RELEASE_ID" \
+              --arg buildVersion "$INPUT_BUILD_VERSION" \
+              --arg releaseClass "$INPUT_RELEASE_CLASS" \
+              --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+              --arg artifactName "$artifact_name" '
+                {
+                  artifactKind: $artifactKind,
+                  repository: $repository,
+                  workflow: $workflow,
+                  workflowCommit: $workflowCommit,
+                  runId: $runId,
+                  runAttempt: $runAttempt,
+                  operation: $operation,
+                  releaseId: $releaseId,
+                  buildVersion: $buildVersion,
+                  releaseClass: $releaseClass,
+                  sourceCommit: $sourceCommit,
+                  artifactName: $artifactName
+                }' > "$train_binding"
+            python3 \
+              tools/release-certification/protected/stable_backport_protected_handoff.py \
+              seal \
+              --source "$train_plaintext" \
+              --out "$root/stable-backport-release-train-handoff" \
+              --binding "$train_binding" \
+              --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+            remove_staged_train_input() {
+              local key="$1"
+              local configured
+              configured="$(jq -er --arg key "$key" '.inputs[$key]' \
+                build/stable-1.0-maintenance.json)"
+              python3 - "$configured" "$root/protected-inputs" <<'PY'
+          import sys
+          from pathlib import Path
+
+          source_root = Path("build/protected-inputs").resolve(strict=True)
+          configured = Path(sys.argv[1])
+          staged_root = Path(sys.argv[2])
+          if (
+              configured.is_absolute()
+              or configured.is_symlink()
+              or not configured.is_file()
+              or staged_root.is_symlink()
+              or not staged_root.is_dir()
+          ):
+              raise SystemExit("release-train protected input path is unsafe")
+          try:
+              relative = configured.resolve(strict=True).relative_to(source_root)
+              target = staged_root.joinpath(relative)
+              target.resolve(strict=True).relative_to(staged_root.resolve(strict=True))
+          except (OSError, ValueError):
+              raise SystemExit("release-train protected input path escapes staging") from None
+          if target.is_symlink() or not target.is_file():
+              raise SystemExit("staged release-train authority is missing or unsafe")
+          target.unlink()
+          PY
+            }
+            if [[ "$INPUT_OPERATION" == prepare-authorization \
+                  || "$INPUT_OPERATION" == validate-authorization ]]; then
+              remove_staged_train_input stableBackportReleaseTrainValidation
+              remove_staged_train_input stableBackportReleaseTrainAuthorization
+            fi
+          fi
           if [[ "$INPUT_OPERATION" == prepare-authorization \
                 || "$INPUT_OPERATION" == validate-authorization ]]; then
             stage_authenticated_input maintenanceCandidate maintenance-candidate-input.json
@@ -2507,6 +2929,13 @@ jobs:
           if [[ -n "$(find "$root" -type l -print -quit)" \
                 || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
             echo "::error::Staged candidate contains a link or special entry."
+            exit 1
+          fi
+          if find "$root" -type f \
+              \( -name stable-1.0-release-train-validation.json \
+                 -o -name stable-1.0-release-train-authorization-summary.json \) \
+              -print -quit | grep -q .; then
+            echo "::error::Staged maintenance artifact exposes plaintext release-train authority."
             exit 1
           fi
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
@@ -2745,6 +3174,98 @@ jobs:
           name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
           path: build/stable-maintenance-publication
           digest-mismatch: error
+
+      - name: Open encrypted train authority at the protected publication boundary
+        env:
+          INPUT_RUN_ID: ${{ inputs.validated_candidate_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.validated_candidate_artifact_name }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-maintenance-release.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          train_binding="$RUNNER_TEMP/stable-maintenance-publication-train-binding.json"
+          jq -nS \
+            --arg artifactKind stable-maintenance-release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-maintenance-release.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg runId "$INPUT_RUN_ID" \
+            --arg runAttempt "$(jq -er '.run_attempt | tostring' <<< "$run_json")" \
+            --arg operation validate-authorization \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseClass "$INPUT_RELEASE_CLASS" \
+            --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifactName "$INPUT_ARTIFACT_NAME" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseClass: $releaseClass,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$train_binding"
+          plaintext="$RUNNER_TEMP/stable-maintenance-publication-train"
+          rm -rf "$plaintext"
+          if find build/stable-maintenance-publication -type f \
+              \( -name stable-1.0-release-train-validation.json \
+                 -o -name stable-1.0-release-train-authorization-summary.json \) \
+              -print -quit | grep -q .; then
+            echo "::error::Protected publication input exposes plaintext release-train authority."
+            exit 1
+          fi
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            open \
+            --bundle build/stable-maintenance-publication/stable-backport-release-train-handoff \
+            --out "$plaintext" \
+            --binding "$train_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          actual="$(
+            find "$plaintext" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          expected="$(
+            printf '%s\n' \
+              stable-1.0-release-train-authorization-summary.json \
+              stable-1.0-release-train-validation.json \
+              | LC_ALL=C sort
+          )"
+          authenticated_inputs="build/stable-maintenance-publication/authenticated-inputs"
+          if [[ "$actual" != "$expected" \
+                || -n "$(find "$plaintext" -mindepth 1 -type d -print -quit)" \
+                || -n "$(find "$plaintext" -type l -print -quit)" \
+                || -e "$authenticated_inputs/stable-1.0-release-train-validation.json" \
+                || -e "$authenticated_inputs/stable-1.0-release-train-authorization-summary.json" ]]; then
+            echo "::error::Protected publication received an invalid or duplicate release-train authority set."
+            exit 1
+          fi
+          cp "$plaintext/stable-1.0-release-train-validation.json" \
+            "$authenticated_inputs/stable-1.0-release-train-validation.json"
+          cp "$plaintext/stable-1.0-release-train-authorization-summary.json" \
+            "$authenticated_inputs/stable-1.0-release-train-authorization-summary.json"
+          rm -rf "$plaintext"
 
       - name: Verify protected leumor GitHub publication identity
         env:
@@ -3186,6 +3707,22 @@ jobs:
           cp build/stable-maintenance-publication-preflight.json "$root/"
           cp -R build/stable-maintenance-publication/component "$root/component"
           cp -R build/stable-maintenance-publication/authenticated-inputs "$root/authenticated-inputs"
+          cp -R \
+            build/stable-maintenance-publication/stable-backport-release-train-handoff \
+            "$root/stable-backport-release-train-handoff"
+          remove_plaintext_train_authority() {
+            local name="$1"
+            local path="$root/authenticated-inputs/$name"
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Publication audit cannot sanitize a missing or unsafe release-train authority file."
+              exit 1
+            fi
+            rm -- "$path"
+          }
+          remove_plaintext_train_authority \
+            stable-1.0-release-train-validation.json
+          remove_plaintext_train_authority \
+            stable-1.0-release-train-authorization-summary.json
           artifact_name="stable-1-0-maintenance-publication-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
@@ -3251,6 +3788,98 @@ jobs:
           name: ${{ needs.protected-publication.outputs.artifact_name }}
           path: build/stable-maintenance-independent-verification
           digest-mismatch: error
+
+      - name: Open encrypted train authority for independent verification
+        env:
+          INPUT_RUN_ID: ${{ inputs.validated_candidate_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.validated_candidate_artifact_name }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-maintenance-release.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          train_binding="$RUNNER_TEMP/stable-maintenance-verification-train-binding.json"
+          jq -nS \
+            --arg artifactKind stable-maintenance-release-train-phase \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-maintenance-release.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg runId "$INPUT_RUN_ID" \
+            --arg runAttempt "$(jq -er '.run_attempt | tostring' <<< "$run_json")" \
+            --arg operation validate-authorization \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg releaseClass "$INPUT_RELEASE_CLASS" \
+            --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifactName "$INPUT_ARTIFACT_NAME" '
+              {
+                artifactKind: $artifactKind,
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: $operation,
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                releaseClass: $releaseClass,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName
+              }' > "$train_binding"
+          plaintext="$RUNNER_TEMP/stable-maintenance-verification-train"
+          rm -rf "$plaintext"
+          if find build/stable-maintenance-independent-verification -type f \
+              \( -name stable-1.0-release-train-validation.json \
+                 -o -name stable-1.0-release-train-authorization-summary.json \) \
+              -print -quit | grep -q .; then
+            echo "::error::Publication audit exposes plaintext release-train authority."
+            exit 1
+          fi
+          python3 \
+            tools/release-certification/protected/stable_backport_protected_handoff.py \
+            open \
+            --bundle build/stable-maintenance-independent-verification/stable-backport-release-train-handoff \
+            --out "$plaintext" \
+            --binding "$train_binding" \
+            --key-env CRYPTAD_STABLE_BACKPORT_HANDOFF_KEY_BASE64
+          actual="$(
+            find "$plaintext" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+              | LC_ALL=C sort
+          )"
+          expected="$(
+            printf '%s\n' \
+              stable-1.0-release-train-authorization-summary.json \
+              stable-1.0-release-train-validation.json \
+              | LC_ALL=C sort
+          )"
+          authenticated_inputs="build/stable-maintenance-independent-verification/authenticated-inputs"
+          if [[ "$actual" != "$expected" \
+                || -n "$(find "$plaintext" -mindepth 1 -type d -print -quit)" \
+                || -n "$(find "$plaintext" -type l -print -quit)" \
+                || -e "$authenticated_inputs/stable-1.0-release-train-validation.json" \
+                || -e "$authenticated_inputs/stable-1.0-release-train-authorization-summary.json" ]]; then
+            echo "::error::Independent verification received an invalid or duplicate release-train authority set."
+            exit 1
+          fi
+          cp "$plaintext/stable-1.0-release-train-validation.json" \
+            "$authenticated_inputs/stable-1.0-release-train-validation.json"
+          cp "$plaintext/stable-1.0-release-train-authorization-summary.json" \
+            "$authenticated_inputs/stable-1.0-release-train-authorization-summary.json"
+          rm -rf "$plaintext"
 
       - name: Fetch and verify public tag, assets, catalog, updater, and package identities
         id: verify-publication

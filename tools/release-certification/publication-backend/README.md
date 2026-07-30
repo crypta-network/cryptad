@@ -71,6 +71,10 @@ Immediately before a lifecycle insertion, the read-only
 pointer URI. GA-only state requires a public `404` or `410`. Post-GA state requires the exact
 pointer bytes, digest, release id, integer build, baseline digest, and publication-receipt digest
 from the authenticated lifecycle inventory. This method has no maintenance mutation capability.
+The observer accepts the legacy closed pointer shape and the train-aware closed shape that adds one
+valid `backportReleaseTrainDigest`; newly activated maintenance pointers use the train-aware shape.
+Unknown fields and malformed train digests remain conflicts, so this compatibility rule does not
+make the pointer contract open-ended.
 Observation accepts only an exact authorized target or its exact declared predecessor; redirects,
 private DNS answers, malformed JSON, noncanonical bytes, unrelated editions, and digest or
 update-key-scope changes fail closed. The protected capability accepts one canonical

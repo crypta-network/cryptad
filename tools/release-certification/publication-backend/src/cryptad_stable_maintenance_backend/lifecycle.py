@@ -69,6 +69,15 @@ def _semantic_digest(value: Mapping[str, Any]) -> str:
     return _digest(encoded)
 
 
+def _valid_digest(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
+
+
 class StableLifecycleBackend:
     """Exact-byte lifecycle provider with no release, tag, catalog, or key-blow methods."""
 
@@ -248,7 +257,7 @@ class StableLifecycleBackend:
             return MaintenanceTipObservation(
                 "conflict", uri, _digest(body), "", "", "", ""
             )
-        expected_fields = {
+        legacy_fields = {
             "schemaVersion",
             "kind",
             "generatedAt",
@@ -265,9 +274,17 @@ class StableLifecycleBackend:
             "status",
             "redaction",
         }
+        train_aware_fields = legacy_fields | {"backportReleaseTrainDigest"}
+        pointer_fields = set(value)
+        fields_match = pointer_fields in (legacy_fields, train_aware_fields)
+        train_digest_matches = (
+            pointer_fields == legacy_fields
+            or _valid_digest(value.get("backportReleaseTrainDigest"))
+        )
         pointer_digest = _digest(body)
         matching = (
-            set(value) == expected_fields
+            fields_match
+            and train_digest_matches
             and value.get("schemaVersion") == 1
             and value.get("kind") == "stable-1.0-maintenance-latest-published"
             and value.get("status") == "active"

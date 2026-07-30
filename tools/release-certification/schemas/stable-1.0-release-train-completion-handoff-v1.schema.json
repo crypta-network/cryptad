@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-completion-handoff-v1.schema.json",
+  "title": "Cryptad Stable 1.0 predecessor completion handoff v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "repositoryIdentity",
+    "trainId",
+    "candidateCommit",
+    "producer",
+    "completionFileDigest",
+    "completionDigest",
+    "validationFileDigest",
+    "validationDigest",
+    "queueDigest",
+    "observedProtectedRefs",
+    "producerAuthenticated",
+    "handoffDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-completion-handoff"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "repositoryIdentity": {
+      "const": "github.com/crypta-network/cryptad"
+    },
+    "trainId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/trainId"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+    },
+    "producer": {
+      "$ref": "#/$defs/producer"
+    },
+    "completionFileDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "completionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "validationFileDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "validationDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "observedProtectedRefs": {
+      "$ref": "#/$defs/protectedRefs"
+    },
+    "producerAuthenticated": {
+      "const": true
+    },
+    "handoffDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflowIdentity",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "operation",
+        "evidenceSource",
+        "evidenceDigest"
+      ],
+      "properties": {
+        "workflowIdentity": {
+          "type": "string",
+          "pattern": "^crypta-network/cryptad/\\.github/workflows/stable-1\\.0-backport-release-train\\.yml@[0-9a-f]{40}$",
+          "maxLength": 256
+        },
+        "workflowCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 32
+        },
+        "runAttempt": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$",
+          "maxLength": 16
+        },
+        "operation": {
+          "enum": [
+            "verify-release-completion",
+            "reauthenticate-predecessor-completion"
+          ]
+        },
+        "evidenceSource": {
+          "enum": [
+            "actions-artifact",
+            "protected-input-bundle"
+          ]
+        },
+        "evidenceDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+        },
+        "artifactName": {
+          "type": "string",
+          "pattern": "^stable-1\\.0-backport-verify-release-completion-[A-Za-z0-9][A-Za-z0-9._-]*-[1-9][0-9]*$",
+          "maxLength": 256
+        }
+      }
+    },
+    "protectedRefs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "main",
+        "develop"
+      ],
+      "properties": {
+        "main": {
+          "$ref": "#/$defs/protectedRef"
+        },
+        "develop": {
+          "$ref": "#/$defs/protectedRef"
+        }
+      }
+    },
+    "protectedRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "tip"
+      ],
+      "properties": {
+        "ref": {
+          "enum": [
+            "refs/heads/main",
+            "refs/heads/develop"
+          ]
+        },
+        "tip": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/commitOid"
+        }
+      }
+    }
+  }
+}

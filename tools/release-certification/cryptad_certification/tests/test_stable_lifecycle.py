@@ -1987,6 +1987,13 @@ class StableLifecycleAuthenticatedInventoryTest(unittest.TestCase):
             "previousBaselineDigest": ga_baseline_digest,
             "lineage": {"chainDepth": 1, "history": []},
             "publication": {"receiptIdentityDigest": receipt_identity(receipt)},
+            "releaseTrain": {
+                "validationDigest": "sha256:" + "9" * 64,
+                "requiredEvidenceId": "stable-maintenance.backport-release-train",
+                "candidateCommit": "2" * 40,
+                "predecessorCommit": "1" * 40,
+                "unresolvedObligationsCarried": False,
+            },
             "release": {
                 "releaseId": "stable-2",
                 "buildVersion": "2",
@@ -2040,6 +2047,9 @@ class StableLifecycleAuthenticatedInventoryTest(unittest.TestCase):
             "baselineDigest": baseline_digest,
             "publicationReceiptDigest": receipt_digest,
             "lineageDigest": lineage_digest,
+            "backportReleaseTrainDigest": baseline["releaseTrain"][
+                "validationDigest"
+            ],
             "status": "active",
         }
         return ga, predecessor, history, latest, baseline, receipt
@@ -2090,6 +2100,24 @@ class StableLifecycleAuthenticatedInventoryTest(unittest.TestCase):
             POLICY["descriptor"]["maximumEntries"],
         )
         self.assertTrue(rejected.errors)
+
+        substituted_train = copy.deepcopy(latest)
+        substituted_train["backportReleaseTrainDigest"] = OTHER_DIGEST
+        rejected_train = authenticate_inventory(
+            ga,
+            predecessor,
+            ga.receipt,
+            history,
+            baseline,
+            receipt,
+            substituted_train,
+            "2026-02-02T00:00:00Z",
+            POLICY["descriptor"]["maximumEntries"],
+        )
+        self.assertIn(
+            "latest published pointer is stale or does not select the history tip",
+            rejected_train.errors,
+        )
 
 
 class StableLifecycleDescriptorAndPublicationTest(unittest.TestCase):
@@ -2729,7 +2757,7 @@ class StableMaintenanceLifecycleIntegrationTest(unittest.TestCase):
             asset_paths={},
         )
         proposal = _pending_lifecycle_transition(
-            context, predecessor, candidate, "current-stable"
+            context, predecessor, candidate, "current-stable", DIGEST
         )
         self.assertFalse(proposal["activeLedgerChanged"])
         self.assertEqual(
@@ -2772,6 +2800,7 @@ class StableMaintenanceLifecycleIntegrationTest(unittest.TestCase):
             DIGEST,
             DIGEST,
             proposal["proposalDigest"],
+            DIGEST,
         )
         self.assertEqual(
             provenance["pendingLifecycleTransitionDigest"], proposal["proposalDigest"]
@@ -2800,6 +2829,8 @@ class StableMaintenanceLifecycleIntegrationTest(unittest.TestCase):
             DIGEST,
             DIGEST,
             proposal["proposalDigest"],
+            DIGEST,
+            True,
             DIGEST,
             False,
             "validated",
@@ -2840,6 +2871,7 @@ class StableMaintenanceLifecycleIntegrationTest(unittest.TestCase):
                     predecessor,
                     candidate,
                     authenticated_status,
+                    DIGEST,
                 )
 
                 self.assertEqual(

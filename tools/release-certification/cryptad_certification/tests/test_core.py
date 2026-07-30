@@ -111,6 +111,25 @@ class ManifestTest(unittest.TestCase):
                 load_manifest(path, root)
             self.assertNotIn(secret_key, str(raised.exception))
 
+    def test_required_public_authorization_paths_are_explicitly_allowlisted(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = {
+                "previousStableLifecycleAuthorization": (
+                    "protected/lifecycle-authorization.json"
+                ),
+                "stableBackportReleaseTrainAuthorization": (
+                    "protected/train-authorization.json"
+                ),
+            }
+            path = write_manifest(root, inputs=inputs)
+
+            manifest = load_manifest(path, root)
+
+            self.assertEqual(manifest.inputs, inputs)
+
     def test_secret_material_in_manifest_values_is_rejected_without_echoing_it(self) -> None:
         secret_values = {
             "private-uri": "SSK@private,insert,AQECAAE/release",

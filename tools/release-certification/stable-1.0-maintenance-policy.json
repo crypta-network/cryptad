@@ -128,6 +128,7 @@
   },
   "nonWaivableBlockers": [
     "stable-maintenance.ga-baseline-authentication",
+    "stable-maintenance.backport-release-train",
     "stable-maintenance.predecessor-lineage",
     "stable-maintenance.candidate-identity",
     "stable-maintenance.archive-integrity",
@@ -211,6 +212,7 @@
     "security-hotfix"
   ],
   "requiredEvidenceIds": [
+    "stable-maintenance.backport-release-train",
     "stable-maintenance.ga-baseline-authentication",
     "stable-maintenance.predecessor-lineage",
     "stable-maintenance.candidate-identity",

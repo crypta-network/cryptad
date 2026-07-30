@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-queue-v1.schema.json",
+  "title": "Cryptad Stable 1.0 release-train queue v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "policyDigest",
+    "repositoryIdentity",
+    "queueId",
+    "previousQueueDigest",
+    "latestMaintenancePointerDigest",
+    "hotfixFollowUpClosureDigest",
+    "lifecycleLedgerDigest",
+    "candidateCommit",
+    "fixes",
+    "obligations",
+    "unresolvedFixIds",
+    "criticalFixIds",
+    "deferredFixIds",
+    "rejectedFixIds",
+    "supersededFixIds",
+    "carriedObligationIds",
+    "ordering",
+    "queueDigest",
+    "transitionDigest",
+    "status",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-queue"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "queueId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/queueId"
+    },
+    "previousQueueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "latestMaintenancePointerDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "hotfixFollowUpClosureDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "lifecycleLedgerDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "fixes": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixRecord"
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/releaseTrainObligation"
+      }
+    },
+    "unresolvedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "criticalFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "deferredFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "rejectedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "supersededFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "carriedObligationIds": {
+      "type": "array",
+      "maxItems": 512,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+      }
+    },
+    "ordering": {
+      "const": "state-priority,deadline,fix-id"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "transitionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "blocked"
+      ]
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "fixIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+      }
+    }
+  }
+}

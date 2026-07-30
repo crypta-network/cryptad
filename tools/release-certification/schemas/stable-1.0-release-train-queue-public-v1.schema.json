@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-release-train-queue-public-v1.schema.json",
+  "title": "Cryptad Stable 1.0 public release-train queue projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "stableMilestone",
+    "policyDigest",
+    "repositoryIdentity",
+    "queueId",
+    "previousQueueDigest",
+    "candidateCommit",
+    "queueDigest",
+    "status",
+    "intakeCompositionDigest",
+    "publicFixes",
+    "fixEvolution",
+    "obligations",
+    "unresolvedFixIds",
+    "criticalFixIds",
+    "deferredFixIds",
+    "rejectedFixIds",
+    "supersededFixIds",
+    "carriedObligationIds",
+    "projectionDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "stable-1.0-release-train-queue-public"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stableMilestone": {
+      "const": "1.0"
+    },
+    "policyDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "repositoryIdentity": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/repositoryIdentity"
+    },
+    "queueId": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/queueId"
+    },
+    "previousQueueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+    },
+    "candidateCommit": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableCommitOid"
+    },
+    "queueDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "blocked"
+      ]
+    },
+    "intakeCompositionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "publicFixes": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "stable-1.0-release-train-validation-v1.schema.json#/$defs/publicFix"
+      }
+    },
+    "fixEvolution": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/fixEvolution"
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/publicObligation"
+      }
+    },
+    "unresolvedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "criticalFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "deferredFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "rejectedFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "supersededFixIds": {
+      "$ref": "#/$defs/fixIds"
+    },
+    "carriedObligationIds": {
+      "type": "array",
+      "maxItems": 512,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+      }
+    },
+    "projectionDigest": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+    },
+    "redaction": {
+      "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/redaction"
+    }
+  },
+  "$defs": {
+    "fixEvolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixId",
+        "transitionDigests"
+      ],
+      "properties": {
+        "fixId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+        },
+        "transitionDigests": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/digest"
+          }
+        }
+      }
+    },
+    "fixIds": {
+      "type": "array",
+      "maxItems": 4096,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/fixId"
+      }
+    },
+    "publicObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligationId",
+        "obligationType",
+        "status"
+      ],
+      "properties": {
+        "obligationId": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/componentId"
+        },
+        "obligationType": {
+          "enum": [
+            "post-release-main-merge",
+            "post-release-develop-merge",
+            "hotfix-develop-merge-back",
+            "hotfix-follow-up"
+          ]
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        }
+      }
+    }
+  }
+}

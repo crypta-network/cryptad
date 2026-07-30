@@ -29,6 +29,7 @@ COMMAND_NAMES = {
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
     "multi-node-beta",
@@ -96,10 +97,27 @@ INPUT_FIELDS = {
     "hotfixFollowUpEvidence",
     "hotfixFollowUpClosure",
     "stableMaintenanceHistory",
+    "stableBackportPolicy",
+    "stableFixIntake",
+    "stableBackportReviewAuthorizations",
+    "previousStableBackportQueue",
+    "previousStableBackportValidation",
+    "previousStableBackportCompletion",
+    "previousStableBackportCompletionHandoff",
+    "stableBackportAuthorization",
+    "stableBackportFrozenValidation",
+    "stableBackportCompletionEvidence",
+    "stableBackportReleaseTrainAuthorization",
+    "stableBackportReleaseTrainValidation",
+    "completedStableLifecycleLedger",
+    "completedStableLifecycleDescriptor",
     "stableLifecyclePolicy",
     "stableLifecycleGenesisProof",
     "previousStableLifecycleLedger",
     "previousStableLifecycleDescriptor",
+    "previousStableLifecycleAuthorization",
+    "previousStableLifecyclePublicationPlan",
+    "previousStableLifecyclePublicationReceipt",
     "stableLifecycleTransitionRequest",
     "stableLifecycleAuthorization",
     "stableLifecyclePublicationPlan",
@@ -118,6 +136,8 @@ POLICY_FIELDS = {
     "artifactBaseUri",
     "candidateSourceCommit",
     "candidateBaseCommit",
+    "developmentLineageCommit",
+    "mainLineageCommit",
     "candidateSourceRef",
     "candidateSourceBranch",
     "catalogChannel",
@@ -127,6 +147,7 @@ POLICY_FIELDS = {
     "expectedPredecessorReleaseId",
     "expectedPredecessorProductDigest",
     "releaseClass",
+    "backportReleaseLane",
     "historyDir",
     "historyLabel",
     "metadata",
@@ -175,9 +196,13 @@ SECRET_KEY_FRAGMENTS = (
     "insert_uri",
 )
 PUBLIC_AUTHORIZATION_INPUT_PATHS = {
+    "manifest.inputs.previousStableLifecycleAuthorization",
+    "manifest.inputs.stableBackportReleaseTrainAuthorization",
     "manifest.inputs.stableGaAuthorization",
     "manifest.inputs.stableGaAuthorizationSummary",
     "manifest.inputs.stableMaintenanceAuthorization",
+    "manifest.inputs.stableBackportAuthorization",
+    "manifest.inputs.stableBackportReviewAuthorizations",
     "manifest.inputs.stableLifecycleAuthorization",
 }
 
@@ -268,6 +293,11 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         "security-hotfix",
     }:
         raise ManifestError("policies.releaseClass is invalid")
+    if "backportReleaseLane" in policies and policies["backportReleaseLane"] not in {
+        "routine-maintenance",
+        "security-hotfix",
+    }:
+        raise ManifestError("policies.backportReleaseLane is invalid")
     if "candidateSourceCommit" in policies and re.fullmatch(
         r"[0-9a-f]{40,64}", policies["candidateSourceCommit"]
     ) is None:
@@ -276,6 +306,18 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         r"[0-9a-f]{40,64}", policies["candidateBaseCommit"]
     ) is None:
         raise ManifestError("policies.candidateBaseCommit must be a lowercase Git commit id")
+    if "developmentLineageCommit" in policies and re.fullmatch(
+        r"[0-9a-f]{40,64}", policies["developmentLineageCommit"]
+    ) is None:
+        raise ManifestError(
+            "policies.developmentLineageCommit must be a lowercase Git commit id"
+        )
+    if "mainLineageCommit" in policies and re.fullmatch(
+        r"[0-9a-f]{40,64}", policies["mainLineageCommit"]
+    ) is None:
+        raise ManifestError(
+            "policies.mainLineageCommit must be a lowercase Git commit id"
+        )
     if "expectedPreviousProductDigest" in policies and re.fullmatch(
         r"sha256:[0-9a-f]{64}", policies["expectedPreviousProductDigest"]
     ) is None:

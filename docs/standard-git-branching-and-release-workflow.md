@@ -144,10 +144,30 @@ For a Stable 1.0 GA publication, also confirm:
 
 Stable 1.0 maintenance keeps the same branch model: `release/<build-number>` starts from
 `develop`, while an urgent `hotfix/<build-number>` starts from the currently published `main` state.
+Before transferring a fix, record its classification, disposition, state, source commit, intended
+candidate, evidence, and provenance through `stable-backport`. Routine maintenance accepts only
+the `routine-maintenance` lane; a critical incident uses the existing `security-hotfix` lane.
+
+Cryptad publishes one Stable 1.0 successor chain. A historical supported or deprecated build may
+be an upgrade-test or advisory-coverage source, but it never gets a mutable patch branch. Do not
+create `release/<old-build>-patch`, a parallel LTS branch, or another latest pointer.
+
+An accepted fix may reach the candidate as an authenticated inherited commit, a reviewed clean
+cherry-pick with supporting patch identity, or a reviewed manual conflict resolution. Patch-id
+equality does not authorize a release, and no mode of `stable-backport` performs the transfer.
+
 The protected maintenance workflow validates the immutable ref and creates the annotated
 `v<build-number>` tag only when exact-byte publication is authorized. It never merges either branch.
 Release and hotfix merge-backs remain explicit, no-squash, `--no-ff` operations.
 
+After publication and the manual merges, run `stable-backport` in
+`verify-release-completion` mode. Missing main/develop reconciliation and incomplete hotfix
+merge-back remain carried blockers for the next train. The release/hotfix candidate is the merged
+tip in both independent no-ff merge records; the later `main` merge commit is not the tip merged
+into `develop`.
+
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md) for the complete lineage, authorization,
-publication, and recovery rules.
+publication, and recovery rules. See the [Stable 1.0 backport and release-train
+runbook](stable-1.0-backport-and-release-train-governance.md) for intake, change accounting,
+candidate handoff, and reconciliation.
