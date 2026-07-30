@@ -736,7 +736,7 @@ def _completion_handoff(
 
 class Fixture:
     def __init__(self, root: Path, *, extra_unaccounted_commit: bool = False) -> None:
-        self.root = root
+        self.root = root = root.resolve(strict=True)
         _git(root, "init", "-b", "develop")
         (root / "build.gradle.kts").write_text(
             'version = "301"\n',

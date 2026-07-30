@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -27,6 +28,20 @@ from .test_stable_backport import (
     _intake,
     _security_fix,
 )
+
+
+class StableBackportFixtureTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "test requires directory symlinks")
+    def test_fixture_canonicalizes_temporary_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            real_root = Path(directory) / "real"
+            real_root.mkdir()
+            alias_root = Path(directory) / "alias"
+            alias_root.symlink_to(real_root, target_is_directory=True)
+
+            fixture = Fixture(alias_root)
+
+            self.assertEqual(real_root.resolve(strict=True), fixture.root)
 
 
 class StableBackportQueueIntegrityTest(unittest.TestCase):
