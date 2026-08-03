@@ -40,6 +40,7 @@
     "maintenanceCandidateProvenance": "build/protected-inputs/candidate/provenance.json",
     "maintenanceEvidence": "build/protected-inputs/evidence/stable-1.0-maintenance-evidence.json",
     "maintenancePolicy": "tools/release-certification/stable-1.0-maintenance-policy.json",
+    "stableVulnerabilitySummary": "stable-1.0-vulnerability-summary.json",
     "stableBackportReleaseTrainAuthorization": "build/protected-inputs/release-train/stable-1.0-release-train-authorization-summary.json",
     "stableBackportReleaseTrainValidation": "build/protected-inputs/release-train/stable-1.0-release-train-validation.json",
     "stableMaintenanceAuthorization": "build/protected-inputs/authorization/stable-1.0-maintenance-authorization.json"
@@ -70,7 +71,8 @@
       "hotfixSeverity": "not-applicable"
     },
     "publicationIntent": "prepare-explicit-protected-publication",
-    "releaseClass": "maintenance"
+    "releaseClass": "maintenance",
+    "stableVulnerabilityGovernance": "required"
   },
   "execution": {
     "allowDirtyWorkspace": false,

@@ -47,6 +47,54 @@ class StableBackportWorkflowTests(unittest.TestCase):
             ],
         )
 
+    def test_workflow_materializes_the_required_vulnerability_summary_handoff(
+        self,
+    ) -> None:
+        self.assertIn(
+            "Materialize authenticated vulnerability summary outside public roots",
+            self.workflow,
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT",
+            self.workflow,
+        )
+        self.assertIn(
+            '.policies.stableVulnerabilityGovernance == "required"',
+            self.workflow,
+        )
+        self.assertIn(
+            "stable-1.0-vulnerability-summary.json",
+            self.workflow,
+        )
+        for expected in (
+            "stable_backport_protected_handoff.py open",
+            "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64",
+            "stable-1.0-vulnerability-successor-binding.json",
+            "stable-1.0-vulnerability-summary-provenance.json",
+            "sealed-successor/stable-1.0-protected-handoff.enc",
+            "sealed-successor/stable-1.0-protected-handoff.json",
+            "stable_vulnerability_actions_tip.py",
+            "verify-promotion",
+            '--environment-file "$GITHUB_ENV"',
+        ):
+            self.assertIn(expected, self.workflow)
+        self.assertIn(
+            "concurrency:\n"
+            "      group: >-\n"
+            "        ${{ inputs.operation != 'verify-release-completion'\n"
+            "        && 'stable-1-0-vulnerability-ledger'",
+            self.workflow,
+        )
+        self.assertIn("      cancel-in-progress: false", self.workflow)
+        self.assertIn(
+            'if [[ "$OPERATION" != verify-release-completion ]]',
+            self.workflow,
+        )
+        self.assertNotIn(
+            'source="build/stable-backport-input/protected-inputs/$summary_name"',
+            self.workflow,
+        )
+
     @unittest.skipUnless(shutil.which("bash"), "workflow syntax test requires bash")
     def test_every_multiline_workflow_shell_block_parses(self) -> None:
         for workflow_path in (WORKFLOW, REVIEW_WORKFLOW):

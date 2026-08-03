@@ -3,6 +3,29 @@
 Use this template for app ecosystem security advisories, emergency catalog updates, reviewer-key
 responses, catalog signing key rotations, and app signing key compromise responses.
 
+## Stable vulnerability advisory identity
+
+- Advisory id: `<authorized-csa-id>`
+- Advisory edition: `<positive-integer-edition>`
+- Previous advisory digest: `<sha256-or-none>`
+- Status: `<published|updated|superseded|withdrawn>`
+- Authorized exact content digest: `<sha256>`
+- Opaque public case binding: `<authorized-case-id-or-public-case-digest>`
+- Stable milestone: `1.0`
+- Integer fixed or mitigated build: `<build-number-or-not-applicable>`
+- Exact affected public identities: `<approved-build-package-app-component-list>`
+- Exact fixed or mitigated public identities: `<approved-build-package-app-component-list>`
+- Mitigation versus fix: `<fixed|temporarily-mitigated>`
+- Release/catalog/lifecycle references: `<exact-authorized-public-references>`
+- External identifiers: `<optional-authorized-cve-ghsa-osv-vendor-references>`
+- Supersedes/superseded by: `<immutable-advisory-id-or-none>`
+- Redaction status: `<pass>`
+
+Do not fill these fields from an issue, pull request, branch, commit message, mutable `latest`
+target, or external identifier. Use the exact protected disclosure authorization and verified
+publication receipt. For a Stable vulnerability advisory, render these values from the canonical
+advisory bytes; do not manually repeat or broaden them in the generic fields below.
+
 ## Advisory
 
 - Advisory id:
@@ -18,7 +41,7 @@ responses, catalog signing key rotations, and app signing key compromise respons
 ## Impact
 
 - Impact summary:
-- Trigger signal:
+- Public-safe impact category:
 - Required operator action:
 - Known limitations:
 
@@ -63,6 +86,15 @@ containing secrets, local absolute paths, CI secret values, and reporter private
 
 ## Credits
 
-- Reporter or team:
-- Acknowledgements:
-- Private reporter details retained outside public notes:
+Omit the reporter-credit field entirely unless the exact protected opt-in consent record authorizes
+the exact public-safe text. Do not include a blank reporter placeholder, contact detail, private
+alias, or internal reporter reference.
+
+- Optional authorized public credit:
+- Public acknowledgements:
+
+Private reporter details are excluded from these notes and retained only through the protected
+contact-location boundary.
+
+Reporter consent binds the exact public-safe credit text. It does not authorize release,
+disclosure, catalog or lifecycle mutation, key action, or case closure.

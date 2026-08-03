@@ -1049,6 +1049,13 @@ jobs:
           && needs.build-packages.result == 'skipped'
           && needs.authenticate-windows-exe.result == 'skipped')
       )
+    concurrency:
+      group: >-
+        ${{ (inputs.operation == 'prepare-authorization'
+        || inputs.operation == 'validate-authorization')
+        && 'stable-1-0-vulnerability-ledger'
+        || format('stable-maintenance-nonpromotion-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: stable-1.0-maintenance-evidence
     timeout-minutes: 120
@@ -2517,6 +2524,86 @@ jobs:
             --source-digest "$INPUT_CANDIDATE_COMMIT" \
             --deny-self-hosted-runners >/dev/null
 
+      - name: Materialize authenticated vulnerability summary outside public roots
+        if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-1.0-maintenance.json
+          configured="$(jq -er '.inputs.stableVulnerabilitySummary' "$manifest")"
+          summary_name=stable-1.0-vulnerability-summary.json
+          if [[ "$configured" != "$summary_name" ]] \
+              || ! jq -e '
+                .policies.stableVulnerabilityGovernance == "required"
+              ' "$manifest" >/dev/null; then
+            echo "::error::Stable vulnerability governance is not the exact required protected input."
+            exit 1
+          fi
+          input_root=build/protected-inputs
+          external_root="$RUNNER_TEMP/stable-vulnerability-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          opened="$RUNNER_TEMP/stable-vulnerability-opened-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf "$external_root" "$opened"
+          python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+            --bundle "$input_root/sealed-successor" \
+            --out "$opened" \
+            --binding "$input_root/stable-1.0-vulnerability-successor-binding.json" \
+            --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+          source="$opened/$summary_name"
+          if [[ -L "$source" || ! -f "$source" \
+                || "$(stat -c '%h' "$source")" -ne 1 \
+                || "$(stat -c '%s' "$source")" -le 0 \
+                || "$(stat -c '%s' "$source")" -gt 4194304 ]]; then
+            echo "::error::Authenticated Stable vulnerability summary is missing, linked, or oversized."
+            exit 1
+          fi
+          install -d -m 700 "$external_root" "$external_root/sealed-successor"
+          install -m 600 "$source" "$external_root/$summary_name"
+          install -m 600 \
+            "$input_root/stable-1.0-vulnerability-successor-binding.json" \
+            "$external_root/stable-1.0-vulnerability-successor-binding.json"
+          install -m 600 \
+            "$input_root/stable-1.0-vulnerability-summary-provenance.json" \
+            "$external_root/stable-1.0-vulnerability-summary-provenance.json"
+          install -m 600 \
+            "$input_root/sealed-successor/stable-1.0-protected-handoff.enc" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+          install -m 600 \
+            "$input_root/sealed-successor/stable-1.0-protected-handoff.json" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+          mapfile -t actual < <(find "$external_root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          expected=(
+            sealed-successor
+            sealed-successor/stable-1.0-protected-handoff.enc
+            sealed-successor/stable-1.0-protected-handoff.json
+            stable-1.0-vulnerability-successor-binding.json
+            stable-1.0-vulnerability-summary-provenance.json
+            stable-1.0-vulnerability-summary.json
+          )
+          test "${actual[*]}" = "${expected[*]}"
+          while IFS= read -r candidate; do
+            test ! -L "$candidate"
+            test "$(stat -c %h "$candidate")" = 1
+          done < <(find "$external_root" -type f -print)
+          genesis_digest="$(jq -er .ledgerDigest \
+            tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+          python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+            verify-promotion \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$(jq -er .runId "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+            --expected-run-attempt "$(jq -er .runAttempt "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+            --expected-artifact-name "$(jq -er .artifactName "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+            --expected-artifact-digest "$(jq -er .producerArtifactDigest "$external_root/stable-1.0-vulnerability-summary-provenance.json")" \
+            --genesis-ledger-digest "$genesis_digest" \
+            --binding "$external_root/stable-1.0-vulnerability-successor-binding.json" \
+            --provenance "$external_root/stable-1.0-vulnerability-summary-provenance.json" \
+            --environment-file "$GITHUB_ENV"
+          rm -rf "$opened"
+          printf 'CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT=%s\n' \
+            "$external_root" >> "$GITHUB_ENV"
+
       - name: Validate manifest identity and side-effect-free mode
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
         env:
@@ -2539,6 +2626,7 @@ jobs:
               .release.id == $release
               and .release.version == $build
               and .release.profile == "stable-review"
+              and .policies.stableVulnerabilityGovernance == "required"
               and .policies.releaseClass == $release_class
               and .policies.candidateSourceBranch == $branch
               and .policies.candidateSourceCommit == $commit
@@ -2557,6 +2645,8 @@ jobs:
 
       - name: Validate exact frozen candidate without publication
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        env:
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
         run: >-
           python3 tools/release-certification/certify.py stable-maintenance
           --manifest build/stable-1.0-maintenance.json
@@ -3059,6 +3149,9 @@ jobs:
     needs:
       - validate-dispatch
       - freeze-and-validate
+    concurrency:
+      group: stable-1-0-vulnerability-ledger
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment:
@@ -3174,6 +3267,38 @@ jobs:
           name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
           path: build/stable-maintenance-publication
           digest-mismatch: error
+
+      - name: Reauthenticate current Stable vulnerability ledger before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          protected="build/stable-maintenance-publication/protected-inputs"
+          binding="$protected/stable-1.0-vulnerability-successor-binding.json"
+          provenance="$protected/stable-1.0-vulnerability-summary-provenance.json"
+          if [[ -L "$binding" || ! -f "$binding" \
+                || -L "$provenance" || ! -f "$provenance" ]]; then
+            echo "::error::Authorized maintenance candidate lacks its exact protected vulnerability promotion binding."
+            exit 1
+          fi
+          current_tip_environment="$RUNNER_TEMP/stable-maintenance-publication-vulnerability-tip.env"
+          umask 077
+          : > "$current_tip_environment"
+          genesis_digest="$(jq -er .ledgerDigest \
+            tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+          python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+            verify-promotion \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$(jq -er .runId "$binding")" \
+            --expected-run-attempt "$(jq -er .runAttempt "$binding")" \
+            --expected-artifact-name "$(jq -er .artifactName "$binding")" \
+            --expected-artifact-digest "$(jq -er .producerArtifactDigest "$provenance")" \
+            --genesis-ledger-digest "$genesis_digest" \
+            --binding "$binding" \
+            --provenance "$provenance" \
+            --environment-file "$current_tip_environment"
+          rm -f "$current_tip_environment"
 
       - name: Open encrypted train authority at the protected publication boundary
         env:
@@ -3497,6 +3622,95 @@ jobs:
         run: |
           echo "::error::Protected publication preflight failed; its side-effect-free audit was retained."
           exit 1
+
+      - name: Recheck vulnerability summary freshness at the mutation boundary
+        if: steps.preflight.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          protected="build/stable-maintenance-publication/protected-inputs"
+          binding="$protected/stable-1.0-vulnerability-successor-binding.json"
+          provenance="$protected/stable-1.0-vulnerability-summary-provenance.json"
+          external_root="$RUNNER_TEMP/stable-maintenance-publication-vulnerability-summary"
+          opened="$RUNNER_TEMP/stable-maintenance-publication-vulnerability-opened"
+          current_tip_environment="$RUNNER_TEMP/stable-maintenance-publication-vulnerability-current-tip.env"
+          cleanup() {
+            rm -rf "$external_root" "$opened"
+            rm -f "$current_tip_environment"
+          }
+          trap cleanup EXIT
+          cleanup
+          umask 077
+          : > "$current_tip_environment"
+          genesis_digest="$(jq -er .ledgerDigest \
+            tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+          python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+            verify-promotion \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$(jq -er .runId "$binding")" \
+            --expected-run-attempt "$(jq -er .runAttempt "$binding")" \
+            --expected-artifact-name "$(jq -er .artifactName "$binding")" \
+            --expected-artifact-digest "$(jq -er .producerArtifactDigest "$provenance")" \
+            --genesis-ledger-digest "$genesis_digest" \
+            --binding "$binding" \
+            --provenance "$provenance" \
+            --environment-file "$current_tip_environment"
+          set -a
+          source "$current_tip_environment"
+          set +a
+          python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+            --bundle "$protected/sealed-successor" \
+            --out "$opened" \
+            --binding "$binding" \
+            --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+          summary_name=stable-1.0-vulnerability-summary.json
+          source_summary="$opened/$summary_name"
+          if [[ -L "$source_summary" || ! -f "$source_summary" \
+                || "$(stat -c '%h' "$source_summary")" -ne 1 \
+                || "$(stat -c '%s' "$source_summary")" -le 0 \
+                || "$(stat -c '%s' "$source_summary")" -gt 4194304 ]]; then
+            echo "::error::Authorized vulnerability promotion summary is missing, linked, or oversized."
+            exit 1
+          fi
+          install -d -m 700 "$external_root" "$external_root/sealed-successor"
+          install -m 600 "$source_summary" "$external_root/$summary_name"
+          install -m 600 "$binding" \
+            "$external_root/stable-1.0-vulnerability-successor-binding.json"
+          install -m 600 "$provenance" \
+            "$external_root/stable-1.0-vulnerability-summary-provenance.json"
+          install -m 600 \
+            "$protected/sealed-successor/stable-1.0-protected-handoff.enc" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+          install -m 600 \
+            "$protected/sealed-successor/stable-1.0-protected-handoff.json" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+          export CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT="$external_root"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$external_root/$summary_name" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" <<'PY'
+          import datetime as dt
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.stable_vulnerability_handoff import authenticate_handoff
+
+          summary, errors = authenticate_handoff(
+              Path(sys.argv[1]),
+              Path.cwd(),
+              Path.cwd() / "build",
+              dt.datetime.now(dt.timezone.utc),
+              sys.argv[2],
+              sys.argv[3],
+          )
+          if errors or summary is None:
+              raise SystemExit(
+                  "current Stable vulnerability promotion evidence is stale or unauthenticated"
+              )
+          PY
 
       - name: Publish or idempotently verify exact bytes
         id: publication
@@ -4019,7 +4233,12 @@ jobs:
   activate-latest-baseline:
     name: Atomically activate verified successor baseline
     if: inputs.operation == 'publish'
-    needs: independent-verification
+    needs:
+      - freeze-and-validate
+      - independent-verification
+    concurrency:
+      group: stable-1-0-vulnerability-ledger
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -4064,6 +4283,106 @@ jobs:
           name: ${{ needs.independent-verification.outputs.artifact_name }}
           path: build/stable-maintenance-baseline-activation
           digest-mismatch: error
+
+      - name: Download exact revalidated vulnerability authority
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
+          path: build/stable-maintenance-baseline-activation-authority
+          digest-mismatch: error
+
+      - name: Recheck vulnerability summary at the baseline activation boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          protected="build/stable-maintenance-baseline-activation-authority/protected-inputs"
+          binding="$protected/stable-1.0-vulnerability-successor-binding.json"
+          provenance="$protected/stable-1.0-vulnerability-summary-provenance.json"
+          external_root="$RUNNER_TEMP/stable-maintenance-activation-vulnerability-summary"
+          opened="$RUNNER_TEMP/stable-maintenance-activation-vulnerability-opened"
+          current_tip_environment="$RUNNER_TEMP/stable-maintenance-activation-vulnerability-tip.env"
+          cleanup() {
+            rm -rf "$external_root" "$opened"
+            rm -f "$current_tip_environment"
+          }
+          trap cleanup EXIT
+          cleanup
+          if [[ -L "$binding" || ! -f "$binding" \
+                || -L "$provenance" || ! -f "$provenance" ]]; then
+            echo "::error::Baseline activation lacks its exact vulnerability promotion binding."
+            exit 1
+          fi
+          umask 077
+          : > "$current_tip_environment"
+          genesis_digest="$(jq -er .ledgerDigest \
+            tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+          python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+            verify-promotion \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$(jq -er .runId "$binding")" \
+            --expected-run-attempt "$(jq -er .runAttempt "$binding")" \
+            --expected-artifact-name "$(jq -er .artifactName "$binding")" \
+            --expected-artifact-digest "$(jq -er .producerArtifactDigest "$provenance")" \
+            --genesis-ledger-digest "$genesis_digest" \
+            --binding "$binding" \
+            --provenance "$provenance" \
+            --environment-file "$current_tip_environment"
+          set -a
+          source "$current_tip_environment"
+          set +a
+          python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+            --bundle "$protected/sealed-successor" \
+            --out "$opened" \
+            --binding "$binding" \
+            --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+          summary_name=stable-1.0-vulnerability-summary.json
+          source_summary="$opened/$summary_name"
+          if [[ -L "$source_summary" || ! -f "$source_summary" \
+                || "$(stat -c '%h' "$source_summary")" -ne 1 \
+                || "$(stat -c '%s' "$source_summary")" -le 0 \
+                || "$(stat -c '%s' "$source_summary")" -gt 4194304 ]]; then
+            echo "::error::Baseline activation vulnerability summary is missing, linked, or oversized."
+            exit 1
+          fi
+          install -d -m 700 "$external_root" "$external_root/sealed-successor"
+          install -m 600 "$source_summary" "$external_root/$summary_name"
+          install -m 600 "$binding" \
+            "$external_root/stable-1.0-vulnerability-successor-binding.json"
+          install -m 600 "$provenance" \
+            "$external_root/stable-1.0-vulnerability-summary-provenance.json"
+          install -m 600 \
+            "$protected/sealed-successor/stable-1.0-protected-handoff.enc" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+          install -m 600 \
+            "$protected/sealed-successor/stable-1.0-protected-handoff.json" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+          export CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT="$external_root"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$external_root/$summary_name" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" <<'PY'
+          import datetime as dt
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.stable_vulnerability_handoff import authenticate_handoff
+
+          summary, errors = authenticate_handoff(
+              Path(sys.argv[1]),
+              Path.cwd(),
+              Path.cwd() / "build",
+              dt.datetime.now(dt.timezone.utc),
+              sys.argv[2],
+              sys.argv[3],
+          )
+          if errors or summary is None:
+              raise SystemExit(
+                  "current Stable vulnerability promotion evidence is stale or unauthenticated"
+              )
+          PY
 
       - name: Compare-and-swap latest-published pointer
         id: activation

@@ -513,6 +513,13 @@ jobs:
                               "maintenancePolicy is unsafe in the authenticated checkout"
                           )
                       return resolved
+                  if key == "stableVulnerabilitySummary":
+                      fixed_name = "stable-1.0-vulnerability-summary.json"
+                      if value != fixed_name:
+                          raise SystemExit(
+                              "stableVulnerabilitySummary does not use its fixed handoff name"
+                          )
+                      return output / "protected-inputs" / fixed_name
                   prefix = "build/protected-inputs/"
                   if not value.startswith(prefix):
                       raise SystemExit(f"{key} does not use the canonical protected-input root")
@@ -558,6 +565,8 @@ jobs:
               allowed_directories = []
               for key in sorted(inputs):
                   candidate = staged_input(key)
+                  if key == "stableVulnerabilitySummary":
+                      continue
                   if candidate is None or not candidate.exists():
                       continue
                   if candidate.is_dir():
@@ -566,6 +575,39 @@ jobs:
                       allowed_files.add(candidate)
                   else:
                       raise SystemExit(f"{key} is not a safe regular input")
+              vulnerability_summary = staged_input("stableVulnerabilitySummary")
+              if vulnerability_summary is not None:
+                  if vulnerability_summary.name != "stable-1.0-vulnerability-summary.json":
+                      raise SystemExit(
+                          "Stable vulnerability summary does not use its fixed subject name"
+                      )
+                  if vulnerability_summary.is_symlink() or vulnerability_summary.exists():
+                      raise SystemExit(
+                          "plaintext Stable vulnerability summary is forbidden in the producer artifact"
+                      )
+                  handoff_root = vulnerability_summary.parent
+                  binding = handoff_root / "stable-1.0-vulnerability-successor-binding.json"
+                  provenance = handoff_root / "stable-1.0-vulnerability-summary-provenance.json"
+                  sealed = handoff_root / "sealed-successor"
+                  sealed_files = {
+                      sealed / "stable-1.0-protected-handoff.enc",
+                      sealed / "stable-1.0-protected-handoff.json",
+                  }
+                  if (
+                      binding.is_symlink()
+                      or provenance.is_symlink()
+                      or sealed.is_symlink()
+                      or not binding.is_file()
+                      or not provenance.is_file()
+                      or not sealed.is_dir()
+                      or {path for path in sealed.iterdir()} != sealed_files
+                      or any(path.is_symlink() or not path.is_file() for path in sealed_files)
+                  ):
+                      raise SystemExit(
+                          "Stable vulnerability summary lacks its exact authenticated producer handoff"
+                      )
+                  allowed_files.update({binding, provenance, *sealed_files})
+                  allowed_directories.append(sealed)
               for candidate in files:
                   if candidate in allowed_files:
                       continue

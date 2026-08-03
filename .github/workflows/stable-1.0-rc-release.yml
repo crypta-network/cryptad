@@ -79,6 +79,22 @@ on:
         required: false
         default: ''
         type: string
+      stable_vulnerability_run_id:
+        description: Exact successful protected evaluate-promotion workflow run containing the encrypted current vulnerability ledger.
+        required: true
+        type: string
+      stable_vulnerability_run_attempt:
+        description: Exact protected evaluate-promotion workflow run attempt.
+        required: true
+        type: string
+      stable_vulnerability_artifact_name:
+        description: Exact encrypted protected-successor Actions artifact name.
+        required: true
+        type: string
+      stable_vulnerability_artifact_digest:
+        description: Exact sha256 digest reported by Actions for the encrypted protected-successor artifact.
+        required: true
+        type: string
 
 concurrency:
   group: stable-1-0-release-${{ inputs.integer_build_version }}
@@ -86,6 +102,9 @@ concurrency:
 
 jobs:
   stable-rc:
+    concurrency:
+      group: stable-1-0-vulnerability-ledger
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: stable-1-0-rc
@@ -93,6 +112,11 @@ jobs:
       contents: read
       actions: read
       checks: write
+    env:
+      STABLE_VULNERABILITY_RUN_ID: ${{ inputs.stable_vulnerability_run_id }}
+      STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ inputs.stable_vulnerability_run_attempt }}
+      STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ inputs.stable_vulnerability_artifact_name }}
+      STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ inputs.stable_vulnerability_artifact_digest }}
 
     steps:
       - name: Check out the candidate commit
@@ -117,6 +141,179 @@ jobs:
 
       - name: Install Gradle properties
         uses: ./.github/actions/setup-gradle-properties
+
+      - name: Authenticate exact Stable vulnerability promotion producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$STABLE_VULNERABILITY_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_VULNERABILITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_VULNERABILITY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$ \
+                || ! "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Stable RC requires exact protected vulnerability promotion coordinates."
+            exit 2
+          fi
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_VULNERABILITY_RUN_ID/attempts/$STABLE_VULNERABILITY_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$STABLE_VULNERABILITY_RUN_ID" \
+            --arg attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+            --arg commit "$GITHUB_SHA" '
+              (.id | tostring) == $run_id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_VULNERABILITY_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.STABLE_VULNERABILITY_ARTIFACT_NAME)]')"
+          test "$(jq 'length' <<< "$artifacts")" = 1
+          jq -e \
+            --arg name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+            --arg digest "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" '
+              .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download exact encrypted Stable vulnerability promotion successor
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STABLE_VULNERABILITY_RUN_ID }}
+          name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/stable-vulnerability-promotion-input
+
+      - name: Materialize authenticated vulnerability summary outside public roots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+        run: |
+          set -euo pipefail
+          downloaded="$RUNNER_TEMP/stable-vulnerability-promotion-input"
+          mapfile -t downloaded_entries < <(find "$downloaded" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          expected_downloaded=(
+            next-binding.json
+            sealed-successor
+            sealed-successor/stable-1.0-protected-handoff.enc
+            sealed-successor/stable-1.0-protected-handoff.json
+          )
+          test "${downloaded_entries[*]}" = "${expected_downloaded[*]}"
+          while IFS= read -r candidate; do
+            test ! -L "$candidate"
+            test "$(stat -c %h "$candidate")" = 1
+          done < <(find "$downloaded" -type f -print)
+          binding="$downloaded/next-binding.json"
+          jq -e \
+            --arg run_id "$STABLE_VULNERABILITY_RUN_ID" \
+            --arg run_attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+            --arg artifact_name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build_version "$INPUT_BUILD_VERSION" \
+            --arg commit "$GITHUB_SHA" '
+              .schemaVersion == "1"
+              and .kind == "stable-1.0-vulnerability-successor-binding"
+              and .artifactKind == "stable-vulnerability-protected-successor"
+              and .repositoryIdentity == "github.com/crypta-network/cryptad"
+              and .producerWorkflow == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+              and .workflowCommit == $commit
+              and .runId == $run_id
+              and .runAttempt == $run_attempt
+              and .operation == "evaluate-promotion"
+              and .releaseId == $release_id
+              and .buildVersion == $build_version
+              and .caseOpaqueId == "ledger-wide"
+              and .artifactName == $artifact_name' \
+            "$binding" >/dev/null
+          external_root="$RUNNER_TEMP/stable-vulnerability-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          opened="$RUNNER_TEMP/stable-vulnerability-opened-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf "$external_root" "$opened"
+          python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+            --bundle "$downloaded/sealed-successor" \
+            --out "$opened" \
+            --binding "$binding" \
+            --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+          summary_name=stable-1.0-vulnerability-summary.json
+          source="$opened/$summary_name"
+          if [[ -L "$source" || ! -f "$source" \
+                || "$(stat -c %h "$source")" -ne 1 \
+                || "$(stat -c %s "$source")" -le 0 \
+                || "$(stat -c %s "$source")" -gt 4194304 ]]; then
+            echo "::error::Authenticated Stable vulnerability summary is missing, linked, or oversized."
+            exit 1
+          fi
+          install -d -m 700 "$external_root" "$external_root/sealed-successor"
+          install -m 600 "$source" "$external_root/$summary_name"
+          install -m 600 "$binding" \
+            "$external_root/stable-1.0-vulnerability-successor-binding.json"
+          install -m 600 "$downloaded/sealed-successor/stable-1.0-protected-handoff.enc" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+          install -m 600 "$downloaded/sealed-successor/stable-1.0-protected-handoff.json" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+          PRODUCER_ARTIFACT_DIGEST="$STABLE_VULNERABILITY_ARTIFACT_DIGEST" \
+            VULNERABILITY_HANDOFF_ROOT="$external_root" python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["VULNERABILITY_HANDOFF_ROOT"])
+          summary = json.loads(
+              (root / "stable-1.0-vulnerability-summary.json").read_text(encoding="utf-8")
+          )
+          binding_raw = (
+              root / "stable-1.0-vulnerability-successor-binding.json"
+          ).read_bytes()
+          summary_raw = (root / "stable-1.0-vulnerability-summary.json").read_bytes()
+          digest = lambda raw: "sha256:" + hashlib.sha256(raw).hexdigest()
+          provenance = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-vulnerability-summary-provenance",
+              "producerArtifactDigest": os.environ["PRODUCER_ARTIFACT_DIGEST"],
+              "successorBindingFileDigest": digest(binding_raw),
+              "summaryFileDigest": digest(summary_raw),
+              "summaryDigest": summary["summaryDigest"],
+          }
+          canonical = json.dumps(
+              provenance,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          provenance["provenanceDigest"] = digest(canonical)
+          (root / "stable-1.0-vulnerability-summary-provenance.json").write_text(
+              json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          current_tip_environment="$RUNNER_TEMP/stable-vulnerability-current-tip.env"
+          : > "$current_tip_environment"
+          genesis_digest="$(jq -er .ledgerDigest \
+            tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+          python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+            verify-promotion \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$STABLE_VULNERABILITY_RUN_ID" \
+            --expected-run-attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+            --expected-artifact-name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+            --expected-artifact-digest "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" \
+            --genesis-ledger-digest "$genesis_digest" \
+            --binding "$external_root/stable-1.0-vulnerability-successor-binding.json" \
+            --provenance "$external_root/stable-1.0-vulnerability-summary-provenance.json" \
+            --environment-file "$current_tip_environment"
+          cat "$current_tip_environment" >> "$GITHUB_ENV"
+          printf 'CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT=%s\n' \
+            "$external_root" >> "$GITHUB_ENV"
+          rm -rf "$opened"
 
       - name: Validate candidate identity and clean checkout
         env:
@@ -200,6 +397,7 @@ jobs:
           INPUT_GO_NO_GO_WAIVERS: ${{ inputs.go_no_go_waivers }}
           INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers }}
           INPUT_STABLE_RC_FREEZE_EXCEPTIONS: ${{ inputs.stable_rc_freeze_exceptions }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_APP_SIGNING_KEY_ID: ${{ secrets.CRYPTAD_APP_SIGNING_KEY_ID }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 }}
@@ -607,6 +805,8 @@ jobs:
           done
 
           manifest="$RUNNER_TEMP/stable-1.0-rc-manifest.json"
+          stable_vulnerability_summary="$CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT/stable-1.0-vulnerability-summary.json"
+          require_file "$stable_vulnerability_summary" "Authenticated Stable vulnerability summary"
           jq -n \
             --arg release_id "$INPUT_RELEASE_ID" \
             --arg release_version "$INPUT_BUILD_VERSION" \
@@ -625,6 +825,7 @@ jobs:
             --arg go_no_go_waivers "$INPUT_GO_NO_GO_WAIVERS" \
             --arg stable_waivers "$INPUT_STABLE_READINESS_WAIVERS" \
             --arg freeze_exceptions "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" \
+            --arg stable_vulnerability "$stable_vulnerability_summary" \
             '{
               schemaVersion: 1,
               release: {id: $release_id, version: $release_version, profile: "stable-review"},
@@ -635,6 +836,7 @@ jobs:
                 multiNodeSoak: true,
                 sandboxProviderTests: true,
                 stableReadiness: true,
+                stableVulnerability: true,
                 thirdPartyIntake: true
               },
               inputs: ({
@@ -650,6 +852,7 @@ jobs:
                 stableCatalogOperations: $catalog_operations,
                 stableKnownLimitations: "tools/release-certification/stable-1.0-known-limitations.json",
                 stableReadinessPolicy: "tools/release-certification/stable-1.0-readiness-policy.json",
+                stableVulnerabilitySummary: $stable_vulnerability,
                 thirdPartyIntake: $third_party
               }
                 + (if $previous_freeze == "" then {} else {previousStableRcFreeze: $previous_freeze} end)
@@ -659,7 +862,8 @@ jobs:
               policies: {
                 artifactBaseUri: $artifact_base_uri,
                 catalogChannel: "stable",
-                stableRcFreezeMode: $freeze_mode
+                stableRcFreezeMode: $freeze_mode,
+                stableVulnerabilityGovernance: "required"
               },
               execution: {
                 allowDirtyWorkspace: false,

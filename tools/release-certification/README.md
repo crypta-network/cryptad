@@ -24,6 +24,7 @@ python3 tools/release-certification/certify.py stable-ga --self-test
 python3 tools/release-certification/certify.py stable-backport --self-test
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
+python3 tools/release-certification/certify.py stable-vulnerability --self-test
 ```
 
 Run a CI-safe app-platform collection with the checked-in manifest:
@@ -58,10 +59,131 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-backport` | Classify Stable 1.0 fixes, authenticate source-to-candidate provenance, account for one release train, and verify completion without changing Git or public state. |
 | `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
+| `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
 
 Use `--help` on the entry point or a command for its exact syntax.
+
+## Stable 1.0 vulnerability lifecycle
+
+The unified vulnerability engine is side-effect-free. Run it only from an isolated protected
+execution workspace after an approved protected assembler has materialized the exact phase input:
+
+```bash
+vulnerability_run_root="$(mktemp -d)"
+install -d -m 700 "$vulnerability_run_root/workspace"
+install -d -m 700 "$vulnerability_run_root/protected-inputs"
+git archive --format=tar HEAD | tar -xf - -C "$vulnerability_run_root/workspace"
+# Materialize the authenticated flat phase set at
+# "$vulnerability_run_root/protected-inputs", outside the archived checkout.
+export CRYPTAD_STABLE_VULNERABILITY_PROTECTED_IN="$vulnerability_run_root/protected-inputs"
+export CRYPTAD_STABLE_VULNERABILITY_PROTECTED_OUT="$vulnerability_run_root/protected-output"
+(
+  cd "$vulnerability_run_root/workspace"
+  python3 tools/release-certification/certify.py stable-vulnerability \
+    --manifest "$vulnerability_run_root/protected-inputs/manifest.json"
+)
+```
+
+Its closed modes are `evaluate-intake`, read-only `evaluate-promotion`, `validate-triage`,
+`record-reporter-update`, `prepare-remediation`,
+`validate-disclosure-authorization`, `verify-disclosure-publication`, and `verify-closure`.
+The checked-in policy is `stable-1.0-vulnerability-disclosure-policy.json`; the immutable empty
+root is `stable-1.0-vulnerability-ledger-genesis.json`; and
+`manifests/stable-1.0-vulnerability.example.json` shows the intake manifest shape. Its
+`protected-inputs/<name>.json` values are names inside the isolated protected input root. A real
+protected assembler materializes those exact flat names and never stores private material in the
+repository build tree.
+
+`evaluate-promotion` authenticates a genesis or unchanged predecessor ledger and emits a fresh
+release/build-bound blocker summary without creating a case transition, successor ledger, or
+public artifact. The protected workflow reseals that summary. Aggregate release certification
+requires the exact summary, successor binding, materialization provenance, encrypted handoff,
+protected handoff key, matching candidate release/build identities, and a current Actions
+ledger-tip observation; self-digested, superseded, or wrong-candidate summaries fail closed. The
+retention-independent authority is the closed, digest-chained
+`STABLE_1_0_VULNERABILITY_LEDGER_TIP_ANCHOR` repository Actions variable. It must be explicitly
+provisioned before first use to the compact, sorted JSON emitted by
+`jq -cS . tools/release-certification/stable-1.0-vulnerability-ledger-tip-anchor-genesis.json`.
+Missing, deleted, noncanonical, wrong-policy, or digest-invalid anchor state never means genesis.
+Validators and promotion consumers receive only
+`CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN`, scoped to repository Variables read. Every
+appender compares its predecessor ledger digest and edition to
+the freshly retrieved anchor before evaluation. Retained successor artifacts remain exact
+producer and promotion evidence, but ordinary Actions retention cannot reset the ledger.
+Backport and maintenance consumers use the same authenticator, but accept only
+`evaluate-promotion` with null case-specific subject fields and the exact `ledger-wide` binding.
+Their protected input artifacts carry the binding, provenance, and encrypted
+`sealed-successor/` files, never a plaintext ledger-wide summary; only the protected consumer
+environment opens and materializes the exact summary in a confined external temporary root.
+Release-candidate aggregate certification runs only in the protected
+`stable-1-0-release-certification` job. Configure the vulnerability handoff key and anchor-read
+token on that environment; PR and nightly certification run in a separate non-promotion job and
+receive neither credential.
+
+`record-reporter-update` is a protected append-only case transition for contactable reports. It
+accepts exactly one new `remediation-status-update`, resolves the current reporter-status
+obligation with that record, and creates the next policy-cadence obligation until exact public
+observation ends the pre-disclosure cadence. It accepts no reporter address or raw message body.
+
+Case-transition artifacts are proposals until
+`.github/workflows/stable-1.0-vulnerability-ledger-activation.yml` authenticates the exact
+successful validator artifact and performs the final compare-and-swap. That separate protected
+environment alone receives `CRYPTAD_STABLE_VULNERABILITY_ANCHOR_WRITE_TOKEN`, scoped to repository
+Variables write. It compares the expected anchor digest and sequence, advances exactly one ledger
+edition, binds the producer workflow/commit/run/attempt/artifact and successor-binding digest,
+then freshly reads back the exact canonical anchor. The shared cross-workflow lock serializes the
+read/compare/update boundary. `evaluate-promotion` is read-only and cannot activate an anchor.
+Multiple validator proposals for the same successor edition may coexist before activation. The
+activation and promotion verifiers authenticate only the explicitly selected run, attempt,
+artifact name, digest, and binding; they never infer committed history or a fork from other
+unactivated proposals. After one proposal advances the anchor, every alternative built from the
+old predecessor is stale and fails the anchor comparison without blocking later operations.
+The support-lifetime protected archive remains responsible for the encrypted ledger bytes; the
+anchor contains only bounded governance digests and producer coordinates.
+
+The authoritative case, ledger, report envelope, acknowledgements, authorizations, and operational
+summary are never written into the repository’s ordinary `build/` tree. The case and successor
+ledger go only to the mandatory protected output directory, which must be initially empty and
+outside the repository and public run. Protected workflows seal it with
+`protected/stable_backport_protected_handoff.py` using the separately configured
+`CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64`. Policy and engine cap the exact canonical ledger
+at the handoff primitive's 16 MiB per-file limit; the independent 4,096-case ceiling does not
+authorize an oversized, untransportable ledger. Before disclosure, an Actions public upload
+contains only the case-scoped public-safe projection and passing redaction result. The bounded operational
+summary and its ledger-wide report remain encrypted even after disclosure. Independent exact-byte
+observation permits only the current case's projection, advisory, publication receipt,
+public-observation receipt, and passing redaction result to enter the public upload.
+
+The checked-in workflows are validation shells, not a report collector or network publisher.
+Configure the repository variable `STABLE_VULNERABILITY_PHASE_ASSEMBLER_WORKFLOW` to the exact
+approved protected assembler workflow path. It authenticates the prior protected successor, joins
+only the new phase-specific protected inputs, creates the canonical manifest, and emits the sealed
+phase artifact. No initial case can enter until that configured producer exists; validators fail
+closed rather than inventing a report source.
+
+Configure `STABLE_VULNERABILITY_OBSERVER_WORKFLOW` to the exact independent read-only observer
+workflow path. Remote publication belongs to a separately protected, attested advisory provider.
+The provider returns an append-only exact-byte receipt; the observer authenticates it and performs
+a fresh public read without mutation credentials. The checked-in
+`stable-1.0-vulnerability-disclosure-publication.yml` workflow authenticates the observer
+run/artifact and validates those records. It never publishes.
+
+All four validators require exact release id, integer build, source commit, producer run
+id/attempt, artifact name/digest, phase-manifest digest, and predecessor ledger edition/digest.
+Case-transition modes require an opaque case id, while `evaluate-promotion` requires the reserved
+`ledger-wide` subject. The publication-observation validator also requires the publication-receipt,
+public-observation, and advisory-byte digests. They authenticate one non-expired exact Actions
+artifact before download, reconstruct the expected HMAC binding, execute in a temporary
+Git-archive workspace, generate a successor-specific binding, and stage exact scanned protected or
+public file allowlists.
+
+The command validates PR-287, maintenance/hotfix, CoreUpdater, lifecycle, catalog, and key
+receipts; it does not execute those authorities. It performs no network or Git mutation and does
+not allocate CVE/GHSA identifiers. See
+`docs/stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md` for phase inputs,
+SLAs, workflow roles, advisory publication boundaries, and closure rules.
 
 ## Source layout
 
@@ -151,7 +273,15 @@ unified production-beta component inside the same marked run; that protected pip
 binds its go/no-go, release-certification, app-platform, ecosystem-matrix, and Stable-readiness
 native artifacts for the Stable RC engine. Do not attach unrelated precomputed copies to the
 canonical manifest. External prerequisites use the coordinated `stableCatalogOperations`,
-`previousStableRcFreeze`, and `stableRcFreezeExceptions` input names. Stable RC output lives under
+`previousStableRcFreeze`, `stableRcFreezeExceptions`, and authenticated
+`stableVulnerabilitySummary` input names. The manifest must set
+`requirements.stableVulnerability=true` and
+`policies.stableVulnerabilityGovernance=required`. The protected workflow accepts only the exact
+current ledger-wide `evaluate-promotion` run/attempt/artifact coordinates, opens the encrypted
+handoff outside public roots, and forwards the release/build-bound summary into nested aggregate
+certification. The RC engine then requires the exact passing non-waivable PR-288 evidence and
+child gate; a generic passing aggregate or omitted summary cannot authorize the RC. Stable RC
+output lives under
 `<out-root>/<release-id>/stable-rc/`; see the
 [Stable RC runbook](../../docs/stable-1.0-rc-execution-and-release-freeze.md) for its freeze schema,
 artifact inventory, drift and exception semantics, and protected workflow.
@@ -231,6 +361,12 @@ and freeze-exception bindings; and latest protected refreeze lineage. The post-f
 meet the checked-in policy, including at least 24 hours of real production soak measured from the
 long-soak scenario's own timestamps. Top-level validation and scenario start times must not precede
 the authenticated protected RC run completion in the selected lineage.
+Because the vulnerability ledger can advance during that interval, the RC-time decision is not a
+GA-time authorization. Every `publish=true` GA dispatch supplies a new exact ledger-wide
+`evaluate-promotion` run, attempt, artifact name, and artifact digest. The protected publication
+job holds `stable-1-0-vulnerability-ledger`, authenticates the selected producer and current anchor,
+opens and validates the sealed summary outside public roots, and rejects any promotion blocker
+before the first tag, Release, or asset mutation. None of that handoff enters the GA artifact.
 
 For the explicit authorization review pass, set `commands.stable-ga.mode` to
 `prepare-authorization` and omit `stableGaAuthorization`. The command validates the exact RC and
@@ -488,7 +624,8 @@ The evidence job requires `stable-1-0-ga-evidence` approval and attests the exac
 authorization, and canonical publication-target identity bytes. The publication job requires an
 explicit dispatch selection, passing validation, prior evidence attestations, and approval in the
 `stable-1-0-ga` environment. It reruns
-the gate at every publication mutation boundary, uses the required `leumor` GitHub identity,
+the gate at every publication mutation boundary, holds the global vulnerability-ledger lock after
+its current nonblocking handoff check, uses the required `leumor` GitHub identity,
 creates or verifies the annotated `v<build-number>` tag and exact GitHub Release assets, fetches the
 same assets from the declared artifact base, and verifies the unchanged stable catalog at the
 primary, mirrors, and authorized rollback URI. It never merges a release branch automatically.
@@ -594,6 +731,10 @@ not as unrelated ordinary rows. A superseding hotfix may carry one publication-c
 even when it was not present in the prior authorized train queue: the first queue projection must
 bind the authenticated predecessor baseline’s exact open/overdue obligation digest, build/train and
 generation time to the prior queue’s critical source fixes. Subsequent queues inherit it unchanged.
+An authenticated overdue high PR-288 blocker remains on `routine-maintenance` and may proceed only
+when every blocking case is present in the train's accepted fix scope with the exact severity and
+vulnerability public-projection digest. This scoped remediation rule does not let an unrelated
+high blocker pass and does not move a critical case out of `security-hotfix`.
 
 A new transition to `released` is valid only from an authenticated prior queue and with the exact
 `previousStableBackportCompletion` artifact. The fix transition and its

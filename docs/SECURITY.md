@@ -8,6 +8,23 @@ and handoff guidance starts at
 what to include, what never to paste publicly, how app/catalog advisories and denylists work, and
 how support-bundle redaction should behave.
 
+Stable 1.0 vulnerability cases follow the authenticated, append-only process in
+[stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md).
+The public-safe beta handoff is not private intake. Do not paste a report body, reporter contact,
+exploit detail, private issue or fork URL, raw patch, screenshot, support bundle, token, key, or
+local path into a public issue or workflow input.
+
+This repository does not currently configure or publish a Crypta-specific private contact
+endpoint. The public issue form is only a redacted request for a handoff; it is not private intake.
+Until a maintainer provides an approved protected Crypta channel out of band, do not send or paste
+sensitive technical details. The Freenet contact information retained below is inherited upstream
+guidance and is not a Crypta reporting endpoint, case database, or fallback address.
+
+A deployment operating the Stable workflow must separately configure the protected phase assembler,
+report source, and reporter contact-location store outside repository artifacts. Repository
+evidence contains only opaque references and digests. The repository does not invent or infer this
+configuration.
+
 Freenet requires different security considerations than other projects.
 
 Any security issue that can correlate your activity with easily observable behavior of your node is critical.
@@ -23,7 +40,7 @@ There are known unfixable attacks against opennet (Sybil attacks cannot be preve
 
 There are no known unfixable identification-attacks against friend-to-friend mode, except if your friends' nodes attack you.
 
-Attacks we know about are detailed on the opennet attacks and the major attacks page: 
+Attacks we know about are detailed on the opennet attacks and the major attacks page:
 
 - [Attack in General](https://github.com/freenet/wiki/wiki/Major-Attacks)
 - [Attacks against Opennet](https://github.com/freenet/wiki/wiki/Opennet-Attacks)
@@ -41,10 +58,13 @@ to our IRC channel (#freenet at irc.libera.chat) and talk to an op:
 https://web.libera.chat/?nick=FollowingTheRabbit|?#freenet
 
 
-Reporting Security Issues
--------------------------
+Inherited Freenet reporting guidance — not Crypta intake
+---------------------------------------------------------
 
-Please report security issues to security@freenetproject.org
+The following address and keyring belong to the upstream Freenet project. They are retained for
+upstream provenance and must not be used as an implied Crypta contact.
+
+Please report Freenet security issues to security@freenetproject.org
 encrypting to all PGP/gnupg keys from our [Keyring](https://freenetproject.org/assets/keyring.gpg).
 
 Please do not file public reports of security problems that could be
@@ -53,7 +73,7 @@ you find those, please send them to the email address above so they
 can be resolved and the fix released before the vulnerability gets
 someone in danger.
 
-We will acknowledge a report within one week. If you do not get a reply
+Freenet states that it will acknowledge a report within one week. If you do not get a reply
 within one week, it most likely got lost: Please send it again!
 
 

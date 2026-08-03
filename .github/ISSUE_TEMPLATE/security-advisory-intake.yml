@@ -9,9 +9,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this form only to request a safe handoff to the private security reporting workflow. Do not include exploit details, proof-of-concept payloads, keys, tokens, private insert URIs, raw logs, raw support bundles, raw app data, raw content, authorization headers, cookies, form passwords, or local absolute paths.
+        Use this form only to request a public-safe handoff for a suspected security issue. Do not include exploit details, proof-of-concept payloads, keys, tokens, private insert URIs, raw logs, raw support bundles, raw app data, raw content, authorization headers, cookies, form passwords, or local absolute paths.
 
-        Follow docs/public-beta/security-reporting.md and docs/SECURITY.md for the private report. Maintainers may close this public issue after confirming the private handoff path.
+        Follow docs/public-beta/security-reporting.md and docs/SECURITY.md for the reporting boundary. This repository does not currently publish a Crypta-specific private reporting endpoint. Do not post sensitive details unless a maintainer provides an approved protected channel out of band. Maintainers may close this public issue after confirming a safe handoff.
   - type: dropdown
     id: advisory_type
     attributes:
@@ -79,5 +79,5 @@ body:
       options:
         - label: I confirm this public handoff contains no exploit details, proof-of-concept payloads, secrets, private URIs, keys, tokens, raw logs, raw support bundles, raw app data, raw content, authorization headers, cookies, form passwords, or unredacted local absolute paths.
           required: true
-        - label: I will use the private security reporting path in docs/SECURITY.md for technical details.
+        - label: I will not send or paste sensitive technical details unless a maintainer provides an approved protected Crypta channel out of band. I understand this repository does not currently publish a Crypta-specific private reporting endpoint.
           required: true

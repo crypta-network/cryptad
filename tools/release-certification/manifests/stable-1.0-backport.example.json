@@ -19,6 +19,7 @@
   },
   "inputs": {
     "stableBackportPolicy": "tools/release-certification/stable-1.0-backport-release-train-policy.json",
+    "stableVulnerabilitySummary": "stable-1.0-vulnerability-summary.json",
     "stableFixIntake": "build/protected-inputs/release-train/stable-1.0-fix-intake.json",
     "stableGaPromotionSummary": "build/protected-inputs/stable-ga/stable-1.0-ga-promotion-summary.json",
     "stableGaValidation": "build/protected-inputs/stable-ga/stable-1.0-ga-validation.json",
@@ -48,7 +49,8 @@
     "expectedPredecessorBuild": "REPLACE_WITH_PREDECESSOR_INTEGER_BUILD",
     "expectedPredecessorProductDigest": "sha256:REPLACE_WITH_PREDECESSOR_PRODUCT_DIGEST",
     "expectedPredecessorReleaseId": "REPLACE_WITH_PREDECESSOR_RELEASE_ID",
-    "releaseClass": "maintenance"
+    "releaseClass": "maintenance",
+    "stableVulnerabilityGovernance": "required"
   },
   "execution": {
     "allowDirtyWorkspace": false,

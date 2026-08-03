@@ -11,7 +11,13 @@ from typing import Any
 
 
 def read_json(path: Path) -> Any:
-    """Read one UTF-8 JSON document and reject ambiguous duplicate object keys."""
+    """Read one strict UTF-8 JSON document.
+
+    Certification inputs reject duplicate object keys and the non-standard
+    ``NaN``/``Infinity`` numeric tokens accepted by Python's default decoder.
+    Both forms make digest-bound evidence ambiguous across JSON
+    implementations.
+    """
 
     def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         value: dict[str, Any] = {}
@@ -21,9 +27,13 @@ def read_json(path: Path) -> Any:
             value[key] = item
         return value
 
+    def reject_non_finite_number(value: str) -> None:
+        raise ValueError(f"JSON document contains non-finite number {value!r}: {path}")
+
     return json.loads(
         path.read_text(encoding="utf-8"),
         object_pairs_hook=reject_duplicate_keys,
+        parse_constant=reject_non_finite_number,
     )
 
 

@@ -56,6 +56,10 @@ from cryptad_certification.engines.stable_1_0_rc_core import (
     semantic_digest,
 )
 from cryptad_certification.engines.stable_1_0_rc_freeze import freeze_content_digest
+from cryptad_certification.engines.stable_1_0_vulnerability_core import (
+    canonical_file_bytes as vulnerability_canonical_file_bytes,
+    identity_digest as vulnerability_identity_digest,
+)
 from cryptad_certification.io import write_json
 from cryptad_certification.manifest import (
     COMMAND_NAMES,
@@ -72,6 +76,12 @@ from cryptad_certification.models import (
 )
 from cryptad_certification.redaction import scan_value
 from cryptad_certification.schema_validation import validate_schema
+from cryptad_certification.stable_vulnerability_handoff import (
+    PROMOTION_FRESHNESS_ASSERTION_FILE,
+    authenticate_promotion_freshness_assertion,
+    promotion_freshness_assertion,
+    source_digest as vulnerability_source_digest,
+)
 from cryptad_certification.tests.support import workspace_root
 from cryptad_certification.tests.test_stable_rc import _freeze as _complete_rc_freeze
 
@@ -106,6 +116,33 @@ def _timestamp(value: datetime) -> str:
 
 def _redaction() -> dict[str, object]:
     return {"status": "pass", "findingCount": 0, "findings": []}
+
+
+def _vulnerability_promotion_summary(expires_at: datetime) -> dict[str, object]:
+    return {
+        "mode": "evaluate-promotion",
+        "repositoryIdentity": "github.com/crypta-network/cryptad",
+        "releaseId": RELEASE_ID,
+        "buildVersion": BUILD_VERSION,
+        "policyDigest": _digest("1"),
+        "ledgerDigest": _digest("2"),
+        "ledgerEdition": 7,
+        "summaryDigest": _digest("3"),
+        "expiresAt": _timestamp(expires_at),
+        "blockingStablePromotion": False,
+        "blockingCaseOpaqueIds": [],
+        "blockers": [],
+    }
+
+
+def _write_vulnerability_freshness_assertion(
+    root: Path, value: dict[str, object]
+) -> tuple[Path, str]:
+    path = root / PROMOTION_FRESHNESS_ASSERTION_FILE
+    raw = vulnerability_canonical_file_bytes(value)
+    path.write_bytes(raw)
+    path.chmod(0o600)
+    return path, vulnerability_source_digest(raw)
 
 
 def _policy() -> dict[str, object]:
@@ -3057,7 +3094,327 @@ class StableGaPublicationReceiptTest(unittest.TestCase):
         self.assertNotIn(secret, " ".join(errors))
 
 
+class StableGaVulnerabilityFreshnessAssertionTest(unittest.TestCase):
+    def test_fresh_nonblocking_assertion_authenticates_until_exclusive_expiry(
+        self,
+    ) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(seconds=1))
+        )
+        for protected_field in (
+            "caseSummaries",
+            "blockingCaseOpaqueIds",
+            "blockers",
+            "caseOpaqueId",
+            "publicProjectionDigest",
+        ):
+            with self.subTest(protected_field=protected_field):
+                self.assertNotIn(protected_field, assertion)
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+
+            value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertEqual(assertion, value)
+        self.assertEqual([], errors)
+
+    def test_assertion_at_exclusive_expiry_fails_closed(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW)
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn("Stable vulnerability promotion authority is expired", errors)
+
+    def test_tampered_assertion_file_fails_digest_authentication(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(hours=1))
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+            tampered = copy.deepcopy(assertion)
+            tampered["expiresAt"] = _timestamp(NOW + timedelta(hours=2))
+            path.write_bytes(vulnerability_canonical_file_bytes(tampered))
+            path.chmod(0o600)
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn(
+            "Stable vulnerability freshness assertion file digest differs", errors
+        )
+        self.assertIn(
+            "Stable vulnerability freshness assertion digest is invalid", errors
+        )
+
+    def test_recomputed_blocking_assertion_fails_closed(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(hours=1))
+        )
+        assertion["blockingStablePromotion"] = True
+        assertion["blockingCaseCount"] = 1
+        assertion["assertionDigest"] = vulnerability_identity_digest(
+            assertion, "assertionDigest"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn(
+            "Stable vulnerability freshness assertion is blocking or inconsistent",
+            errors,
+        )
+
+    def test_timezone_naive_runner_clock_fails_closed(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(hours=1))
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW.replace(tzinfo=None),
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn(
+            "Stable vulnerability freshness evaluation clock is not timezone-aware",
+            errors,
+        )
+
+    def test_malformed_assertion_expiry_fails_closed(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(hours=1))
+        )
+        assertion["expiresAt"] = "not-a-timestamp"
+        assertion["assertionDigest"] = vulnerability_identity_digest(
+            assertion, "assertionDigest"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn(
+            "Stable vulnerability freshness assertion expiry is malformed", errors
+        )
+
+    def test_freshness_assertion_requires_private_file_permissions(self) -> None:
+        assertion = promotion_freshness_assertion(
+            _vulnerability_promotion_summary(NOW + timedelta(hours=1))
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path, digest = _write_vulnerability_freshness_assertion(
+                Path(temporary), assertion
+            )
+            path.chmod(0o644)
+
+            _value, errors = authenticate_promotion_freshness_assertion(
+                path,
+                workspace_root(),
+                workspace_root() / "build",
+                digest,
+                NOW,
+                RELEASE_ID,
+                BUILD_VERSION,
+            )
+
+        self.assertIn("Stable vulnerability freshness assertion file is unsafe", errors)
+
+
 class StableGaSecurityAndDeterminismTest(unittest.TestCase):
+    def test_ga_publication_rechecks_current_vulnerability_state_under_lock(
+        self,
+    ) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+
+        for field in (
+            "stable_vulnerability_run_id",
+            "stable_vulnerability_run_attempt",
+            "stable_vulnerability_artifact_name",
+            "stable_vulnerability_artifact_digest",
+        ):
+            with self.subTest(field=field):
+                input_start = workflow.index(f"      {field}:")
+                input_end = workflow.index(
+                    "\n", workflow.index("        type: string", input_start)
+                )
+                input_block = workflow[input_start:input_end]
+                self.assertIn("required: false", input_block)
+                self.assertIn("default: ''", input_block)
+                self.assertIn("required only for publish=true", input_block)
+
+        validate_start = workflow.index(
+            "      - name: Validate dispatch identity and clean checkout"
+        )
+        validate_end = workflow.index("\n      - name:", validate_start + 8)
+        validate_step = workflow[validate_start:validate_end]
+        self.assertIn("INPUT_PUBLISH: ${{ inputs.publish }}", validate_step)
+        self.assertIn('[[ "$INPUT_PUBLISH" == "true" ]]', validate_step)
+        self.assertIn(
+            "publish=true requires exact current vulnerability promotion coordinates",
+            validate_step,
+        )
+        self.assertIn("^sha256:[0-9a-f]{64}$", validate_step)
+
+        publish_start = workflow.index("\n  publish:")
+        publish = workflow[publish_start:]
+        self.assertIn(
+            "    concurrency:\n"
+            "      group: stable-1-0-vulnerability-ledger\n"
+            "      cancel-in-progress: false",
+            publish,
+        )
+        authenticate = publish.index(
+            "      - name: Authenticate exact current Stable vulnerability "
+            "promotion producer"
+        )
+        download = publish.index(
+            "      - name: Download exact current encrypted vulnerability "
+            "promotion successor"
+        )
+        recheck = publish.index(
+            "      - name: Reauthenticate nonblocking current vulnerability "
+            "state before GA mutation"
+        )
+        mutation = publish.index(
+            "      - name: Publish or verify exact authorized tag, Release, and assets"
+        )
+        self.assertLess(authenticate, download)
+        self.assertLess(download, recheck)
+        self.assertLess(recheck, mutation)
+
+        authenticate_end = publish.index("\n      - name:", authenticate + 8)
+        authenticate_step = publish[authenticate:authenticate_end]
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/actions/runs/'
+            '$STABLE_VULNERABILITY_RUN_ID/attempts/'
+            '$STABLE_VULNERABILITY_RUN_ATTEMPT"',
+            authenticate_step,
+        )
+        self.assertIn("(.id | tostring) == $run_id", authenticate_step)
+
+        step_end = publish.index("\n      - name:", recheck + 8)
+        step = publish[recheck:step_end]
+        self.assertIn("stable_vulnerability_actions_tip.py", step)
+        self.assertIn("verify-promotion", step)
+        self.assertIn('and .operation == "evaluate-promotion"', step)
+        self.assertIn('and .caseOpaqueId == "ledger-wide"', step)
+        self.assertIn("authenticate_handoff", step)
+        self.assertIn('summary.get("blockingStablePromotion") is not False', step)
+        self.assertIn("id: vulnerability_promotion", step)
+        self.assertIn("promotion_freshness_assertion(summary)", step)
+        self.assertIn("flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL", step)
+        self.assertIn('descriptor = os.open(assertion_path, flags, 0o600)', step)
+        self.assertIn(
+            'output.write(f"freshness_assertion_digest={source_digest(raw)}\\n")',
+            step,
+        )
+        self.assertNotIn("expiresAt=", step)
+        self.assertLess(
+            step.index('summary.get("blockingStablePromotion") is not False'),
+            step.index("promotion_freshness_assertion(summary)"),
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}",
+            step,
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}",
+            step,
+        )
+        self.assertIn("$RUNNER_TEMP/stable-ga-vulnerability-summary-", step)
+
+        publication_end = publish.index(
+            "\n      - name: Record publication conflict or partial state without side effects",
+            mutation,
+        )
+        publication = publish[mutation:publication_end]
+        self.assertIn(
+            "STABLE_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST: "
+            "${{ steps.vulnerability_promotion.outputs.freshness_assertion_digest }}",
+            publication,
+        )
+        self.assertIn("authenticate_promotion_freshness_assertion", publication)
+        self.assertIn("dt.datetime.now(dt.timezone.utc)", publication)
+        self.assertIn('rm -f "$vulnerability_freshness_assertion"', publication)
+        self.assertNotIn("CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64", publication)
+
+        validation_stage = workflow[
+            workflow.index(
+                "      - name: Stage exact public validation and publication inputs"
+            ) : workflow.index(
+                "      - name: Upload exact redaction-safe Stable GA validation artifact"
+            )
+        ]
+        self.assertNotIn("stable-ga-vulnerability-promotion-input", validation_stage)
+        self.assertNotIn("stable-1.0-vulnerability-summary.json", validation_stage)
+        self.assertNotIn("sealed-successor", validation_stage)
+
     def test_protected_workflow_stages_only_authenticated_publication_inputs(self) -> None:
         workflow = (
             workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
@@ -3253,7 +3610,10 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         self.assertIn("authorization_input_digest", workflow)
         self.assertIn(".ga.authorizationDigest == $authorization_digest", workflow)
         self.assertIn(".gaAuthorizationDigest == $authorization_digest", workflow)
-        self.assertIn("previousCandidate: \"build/stable-ga-inputs/previous-candidate-summary.json\"", workflow)
+        self.assertIn(
+            'previousCandidate: "build/stable-ga-inputs/previous-candidate-summary.json"',
+            workflow,
+        )
         self.assertIn(".candidate.previousCandidateDigest", workflow)
         self.assertIn(".inputs.previousCandidate", workflow)
         self.assertIn(
@@ -3298,6 +3658,9 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         validation_boundary = workflow[
             validation_boundary_definition:side_effect_boundary_definition
         ]
+        boundary_vulnerability_freshness = validation_boundary.index(
+            "\n            verify_vulnerability_promotion_freshness\n"
+        )
         boundary_refresh = validation_boundary.index(
             "\n            reauthenticate_latest_stable_rc\n"
         )
@@ -3308,6 +3671,10 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         boundary_branch_refresh = validation_boundary.index(
             "\n            verify_release_branch_head\n",
             boundary_revalidation,
+        )
+        boundary_final_vulnerability_freshness = validation_boundary.index(
+            "\n            verify_vulnerability_promotion_freshness\n",
+            boundary_branch_refresh,
         )
         initial_boundary_call = workflow.index(
             "\n          validate_publication_boundary\n",
@@ -3326,12 +3693,17 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             artifact_base_preflight,
         )
         self.assertLess(
+            boundary_vulnerability_freshness,
             boundary_refresh,
-            boundary_revalidation,
         )
+        self.assertLess(boundary_refresh, boundary_revalidation)
         self.assertLess(
             boundary_revalidation,
             boundary_branch_refresh,
+        )
+        self.assertLess(
+            boundary_branch_refresh,
+            boundary_final_vulnerability_freshness,
         )
         self.assertLess(initial_boundary_call, artifact_base_preflight)
         self.assertLess(

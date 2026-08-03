@@ -204,6 +204,26 @@ def phase_intake_composition_digest(value: Any) -> str:
             continue
         security = fix.get("security")
         security = security if isinstance(security, dict) else None
+        security_composition = None
+        if security is not None:
+            security_composition = {
+                "incidentOpaqueId": security.get("incidentOpaqueId"),
+                "advisoryOpaqueId": security.get("advisoryOpaqueId"),
+                "severity": security.get("severity"),
+                "disclosureState": security.get("disclosureState"),
+                "publicSafeSummary": security.get("publicSafeSummary"),
+                "privateRecordDigest": security.get("privateRecordDigest"),
+                "publicProjectionDigest": security.get(
+                    "publicProjectionDigest"
+                ),
+            }
+            vulnerability_projection_digest = security.get(
+                "vulnerabilityPublicProjectionDigest"
+            )
+            if vulnerability_projection_digest is not None:
+                security_composition[
+                    "vulnerabilityPublicProjectionDigest"
+                ] = vulnerability_projection_digest
         schedule = fix.get("schedule")
         schedule = schedule if isinstance(schedule, dict) else {}
         fix_composition.append(
@@ -218,21 +238,7 @@ def phase_intake_composition_digest(value: Any) -> str:
                 "risk": fix.get("risk"),
                 "affectedScope": fix.get("affectedScope"),
                 "source": fix.get("source"),
-                "security": (
-                    {
-                        "incidentOpaqueId": security.get("incidentOpaqueId"),
-                        "advisoryOpaqueId": security.get("advisoryOpaqueId"),
-                        "severity": security.get("severity"),
-                        "disclosureState": security.get("disclosureState"),
-                        "publicSafeSummary": security.get("publicSafeSummary"),
-                        "privateRecordDigest": security.get("privateRecordDigest"),
-                        "publicProjectionDigest": security.get(
-                            "publicProjectionDigest"
-                        ),
-                    }
-                    if security is not None
-                    else None
-                ),
+                "security": security_composition,
                 "targetTrainId": schedule.get("targetTrainId"),
                 "supersedingFixId": fix.get("supersedingFixId"),
                 "privateRecordDigest": fix.get("privateRecordDigest"),
@@ -1076,8 +1082,16 @@ def fix_record_errors(
                 "publicSafeSummary": security.get("publicSafeSummary"),
             }
         )
+        incident_id = security.get("incidentOpaqueId")
+        pr_288_bound = isinstance(incident_id, str) and incident_id.startswith("sv-")
         if security.get("publicProjectionDigest") != expected_security_projection_digest:
             errors.append(f"security fix {fix_id} public security projection is inconsistent")
+        if pr_288_bound and DIGEST_RE.fullmatch(
+            str(security.get("vulnerabilityPublicProjectionDigest", ""))
+        ) is None:
+            errors.append(
+                f"security fix {fix_id} lacks its PR-288 vulnerability projection binding"
+            )
         if record.get("privateRecordDigest") != security.get("privateRecordDigest"):
             errors.append(f"security fix {fix_id} protected-record digest was substituted")
         if security.get("severity") == "critical":
@@ -1741,6 +1755,7 @@ def build_queue(
                     "advisoryOpaqueId",
                     "severity",
                     "privateRecordDigest",
+                    "vulnerabilityPublicProjectionDigest",
                 ):
                     if current_security.get(immutable) != prior_security.get(immutable):
                         errors.append(

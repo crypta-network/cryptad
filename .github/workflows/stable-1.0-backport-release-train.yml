@@ -247,6 +247,12 @@ jobs:
   validate-release-train:
     name: Validate exact Stable 1.0 release train
     needs: protected-ref-preflight
+    concurrency:
+      group: >-
+        ${{ inputs.operation != 'verify-release-completion'
+        && 'stable-1-0-vulnerability-ledger'
+        || format('stable-backport-completion-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # The evidence environment must allow only protected main, develop, release/*,
@@ -560,6 +566,87 @@ jobs:
                 ;;
             esac
           done < <(find build/stable-backport-input -type f -print | LC_ALL=C sort)
+
+      - name: Materialize authenticated vulnerability summary outside public roots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          manifest=build/stable-backport-input/manifest/stable-backport-manifest.json
+          summary_name="$(jq -er '.inputs.stableVulnerabilitySummary' "$manifest")"
+          if [[ "$summary_name" != stable-1.0-vulnerability-summary.json ]] \
+              || ! jq -e '
+                .policies.stableVulnerabilityGovernance == "required"
+              ' "$manifest" >/dev/null; then
+            echo "::error::Stable vulnerability governance is not the exact required protected input."
+            exit 1
+          fi
+          input_root=build/stable-backport-input/protected-inputs
+          external_root="$RUNNER_TEMP/stable-vulnerability-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          opened="$RUNNER_TEMP/stable-vulnerability-opened-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf "$external_root" "$opened"
+          python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+            --bundle "$input_root/sealed-successor" \
+            --out "$opened" \
+            --binding "$input_root/stable-1.0-vulnerability-successor-binding.json" \
+            --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+          source="$opened/$summary_name"
+          if [[ -L "$source" || ! -f "$source" \
+                || "$(stat -c '%h' "$source")" -ne 1 \
+                || "$(stat -c '%s' "$source")" -le 0 \
+                || "$(stat -c '%s' "$source")" -gt 4194304 ]]; then
+            echo "::error::Authenticated Stable vulnerability summary is missing, linked, or oversized."
+            exit 1
+          fi
+          install -d -m 700 "$external_root" "$external_root/sealed-successor"
+          install -m 600 "$source" "$external_root/$summary_name"
+          install -m 600 \
+            "$input_root/stable-1.0-vulnerability-successor-binding.json" \
+            "$external_root/stable-1.0-vulnerability-successor-binding.json"
+          install -m 600 \
+            "$input_root/stable-1.0-vulnerability-summary-provenance.json" \
+            "$external_root/stable-1.0-vulnerability-summary-provenance.json"
+          install -m 600 \
+            "$input_root/sealed-successor/stable-1.0-protected-handoff.enc" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+          install -m 600 \
+            "$input_root/sealed-successor/stable-1.0-protected-handoff.json" \
+            "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+          mapfile -t actual < <(find "$external_root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          expected=(
+            sealed-successor
+            sealed-successor/stable-1.0-protected-handoff.enc
+            sealed-successor/stable-1.0-protected-handoff.json
+            stable-1.0-vulnerability-successor-binding.json
+            stable-1.0-vulnerability-summary-provenance.json
+            stable-1.0-vulnerability-summary.json
+          )
+          test "${actual[*]}" = "${expected[*]}"
+          while IFS= read -r candidate; do
+            test ! -L "$candidate"
+            test "$(stat -c %h "$candidate")" = 1
+          done < <(find "$external_root" -type f -print)
+          if [[ "$OPERATION" != verify-release-completion ]]; then
+            genesis_digest="$(jq -er .ledgerDigest \
+              tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+            python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+              verify-promotion \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-run-id "$(jq -er .runId "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+              --expected-run-attempt "$(jq -er .runAttempt "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+              --expected-artifact-name "$(jq -er .artifactName "$external_root/stable-1.0-vulnerability-successor-binding.json")" \
+              --expected-artifact-digest "$(jq -er .producerArtifactDigest "$external_root/stable-1.0-vulnerability-summary-provenance.json")" \
+              --genesis-ledger-digest "$genesis_digest" \
+              --binding "$external_root/stable-1.0-vulnerability-successor-binding.json" \
+              --provenance "$external_root/stable-1.0-vulnerability-summary-provenance.json" \
+              --environment-file "$GITHUB_ENV"
+          fi
+          rm -rf "$opened"
+          printf 'CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT=%s\n' \
+            "$external_root" >> "$GITHUB_ENV"
 
       - name: Authenticate independent provenance-review authorizations
         env:
@@ -1292,6 +1379,7 @@ jobs:
               and .release.version == $build
               and .release.profile == "stable-review"
               and .commands["stable-backport"].mode == $mode
+              and .policies.stableVulnerabilityGovernance == "required"
               and .policies.releaseClass == $releaseClass
               and .policies.backportReleaseLane == $lane
               and .policies.candidateSourceCommit == $candidate
@@ -1375,6 +1463,8 @@ jobs:
           done
 
       - name: Run side-effect-free release-train certification
+        env:
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
         run: |
           set -euo pipefail
           python3 tools/release-certification/certify.py stable-backport \

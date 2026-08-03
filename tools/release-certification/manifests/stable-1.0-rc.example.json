@@ -15,6 +15,7 @@
     "multiNodeSoak": true,
     "sandboxProviderTests": true,
     "stableReadiness": true,
+    "stableVulnerability": true,
     "thirdPartyIntake": true
   },
   "inputs": {
@@ -32,6 +33,7 @@
     "stableKnownLimitations": "tools/release-certification/stable-1.0-known-limitations.json",
     "stableReadinessPolicy": "tools/release-certification/stable-1.0-readiness-policy.json",
     "stableReadinessWaivers": "build/protected-inputs/stable-readiness-waivers.json",
+    "stableVulnerabilitySummary": "/REPLACE_WITH_EXTERNAL_PROTECTED_HANDOFF_ROOT/stable-1.0-vulnerability-summary.json",
     "stableRcFreezeExceptions": "build/protected-inputs/stable-1.0-rc-freeze-exceptions.json",
     "thirdPartyIntake": "build/protected-inputs/third-party-intake-summary.json"
   },
@@ -39,7 +41,8 @@
     "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0-rc/",
     "catalogChannel": "stable",
     "expectedPreviousReleaseId": "REPLACE_WITH_PREVIOUS_CANDIDATE_RELEASE_ID",
-    "stableRcFreezeMode": "refreeze"
+    "stableRcFreezeMode": "refreeze",
+    "stableVulnerabilityGovernance": "required"
   },
   "execution": {
     "allowDirtyWorkspace": false,

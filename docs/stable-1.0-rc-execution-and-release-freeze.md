@@ -27,6 +27,9 @@ The protected run requires all of the following:
   whose private material remains outside the manifest and artifacts;
 - passing production-beta, production go/no-go, release-certification, ecosystem-matrix, and
   Stable-readiness results;
+- the current authenticated ledger-wide Stable vulnerability `evaluate-promotion` handoff for the
+  exact release ID, integer build, and candidate commit; the nested release certification must
+  contain the exact passing non-waivable PR-288 evidence and child gate;
 - real live-network, sandbox-provider, multi-node, previous-candidate upgrade, network-scale,
   security-drill, third-party-intake, and catalog-operations evidence;
 - third-party intake evidence whose `releaseId` and `buildVersion` exactly match the candidate and
@@ -69,6 +72,12 @@ protected files. Never add them to the manifest.
 
 The RC-specific manifest inputs are:
 
+- `stableVulnerabilitySummary`: the fixed-name summary opened from the exact protected
+  `evaluate-promotion` successor outside the checkout and public artifact roots. Set
+  `requirements.stableVulnerability=true` and
+  `policies.stableVulnerabilityGovernance=required`; a self-digested JSON file, case-transition
+  summary, wrong-candidate summary, or summary superseded by a higher authenticated ledger edition
+  fails closed;
 - `stableCatalogOperations`: the candidate-bound catalog operations and mirrors summary for the
   exact stable catalog revision being frozen; its evidence kind is
   `stable-1.0-rc-catalog-operations` and its schema is
@@ -321,18 +330,30 @@ The manual `.github/workflows/stable-1.0-rc-release.yml` job uses the protected 
 environment and JDK 25. It requires the candidate release ID and integer build, checks the build
 against `./gradlew -q printVersion`, binds the clean checkout to the workflow commit, materializes
 sanitized protected evidence under an ignored repository-relative `build/` directory and signing
-files under the runner temporary directory, runs the Stable RC command, verifies the final
-envelope, and uploads only the public RC component after final go and redaction pass. No absolute
-runner path is serialized into the release manifest or public artifacts.
+files under the runner temporary directory, and authenticates the exact protected vulnerability
+promotion run, attempt, artifact name, and Actions digest. It verifies that artifact as the exact
+promotion for the durable vulnerability-ledger anchor edition and digest, opens its sealed
+handoff into a confined runner-temporary root, and gives
+only the fixed summary path to the in-run aggregate. The ephemeral manifest may contain that
+temporary path; the manifest, opened summary, binding, provenance, and encrypted handoff are never
+uploaded. The workflow verifies the final envelope and uploads only the public RC component after
+final go and redaction pass. No absolute runner path is serialized into public artifacts.
 
 Select `first-freeze` for the candidate's first successful workflow only. The workflow records the
-release ID and build in its run title, acquires the build-scoped RC/GA lock, and refuses another
-first freeze after a successful baseline. Select `refreeze` for verification, blocker repair, or
+release ID and build in its run title, acquires the build-scoped RC/GA lock, and holds the global
+vulnerability-ledger job lock from current-tip authentication through RC completion. It refuses
+another first freeze after a successful baseline. Select `refreeze` for verification, blocker repair, or
 any later run and provide the freeze from the latest successful protected run. The workflow rejects
 an older lineage parent even when its release ID and build match. It authenticates the exact
 artifact bytes while that artifact is available and otherwise authenticates the retained file
 against the latest run's commit-bound check-run digest. The final gate binds that baseline and the
 exact production distribution bytes in both the canonical freeze and provenance.
+
+The frozen vulnerability decision proves only the RC-time ledger state. The mandatory post-freeze
+interval may outlive its freshness window or contain a later ledger activation, so Stable GA
+independently selects and authenticates a new ledger-wide `evaluate-promotion` handoff. Its
+publication job holds the same global lock from that current-anchor check through every GA
+mutation; the RC artifact cannot substitute for this GA-time check.
 
 Catalog-operations evidence must conform exactly to the closed
 `stable-1.0-rc-catalog-operations-v1.schema.json` contract. Unknown or non-production fields block

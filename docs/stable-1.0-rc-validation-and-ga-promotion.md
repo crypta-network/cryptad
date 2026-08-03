@@ -250,6 +250,17 @@ minimum; a longer top-level validation window cannot substitute for the soak int
 simulated-only, skipped, stale, non-production, or wrong-candidate evidence does not satisfy the
 policy.
 
+That interval makes the RC-frozen vulnerability decision historical evidence rather than a
+current GA decision. Before a `publish=true` mutation, supply a fresh exact ledger-wide
+`evaluate-promotion` handoff. The protected GA publication job holds the shared
+`stable-1-0-vulnerability-ledger` lock while it authenticates the producer and current durable
+anchor, validates the sealed summary for the exact release/build, rejects every blocker, and then
+derives a mode-`0600`, digest-bound runner-only freshness assertion. The publication boundary
+rechecks that assertion against runner UTC before the tag object, tag reference, Release, each
+asset upload, Release finalization, and success receipt. A time-fresh summary for an older ledger
+edition is superseded and fails; an assertion at its exclusive expiry also fails. The protected
+summary, sealed handoff, and runner assertion never enter the public GA bundle.
+
 The validation record's `policyDigest` is the SHA-256 of the exact checked-in policy file bytes.
 The GA command separately compares the parsed policy with the repository copy, so neither a
 semantic policy mutation nor an unreviewed formatting/file substitution is accepted.
@@ -583,6 +594,9 @@ non-waivable.
 - [ ] The common RC envelope, freeze, sidecar, checksums, provenance, product, and archive all pass.
 - [ ] Product identity is exact across standalone and archived copies.
 - [ ] At least 24 hours of real, exact-product post-freeze soak passed.
+- [ ] The GA publication job authenticated a fresh nonblocking ledger-wide vulnerability handoff
+      against the current durable anchor, rechecked its exclusive freshness before every mutation,
+      and held the shared ledger lock through publication.
 - [ ] Install, upgrade, rollback, migration, backup/restore, live, interop, performance, security,
       sandbox, and support evidence passed.
 - [ ] Stable catalog, app, API, content-profile, limitation, waiver, and exception state is unchanged.

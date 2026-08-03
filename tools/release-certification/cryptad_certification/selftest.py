@@ -17,7 +17,10 @@ SUITE_MODULES = {
     "live-network-beta": ["cryptad_certification.tests.test_collectors"],
     "multi-node-beta": ["cryptad_certification.tests.test_multi_node"],
     "security-response": ["cryptad_certification.tests.test_security_response"],
-    "release-certification": ["cryptad_certification.tests.test_release_certification"],
+    "release-certification": [
+        "cryptad_certification.tests.test_release_certification",
+        "cryptad_certification.tests.test_release_certification_stable_vulnerability",
+    ],
     "production-beta": ["cryptad_certification.tests.test_production_beta"],
     "go-no-go": ["cryptad_certification.tests.test_dashboard"],
     "stable-readiness": ["cryptad_certification.tests.test_stable"],
@@ -40,6 +43,14 @@ SUITE_MODULES = {
     "stable-lifecycle": [
         "cryptad_certification.tests.test_stable_lifecycle",
         "cryptad_certification.tests.test_stable_lifecycle_publication",
+    ],
+    "stable-vulnerability": [
+        "cryptad_certification.tests.test_release_certification_stable_vulnerability",
+        "cryptad_certification.tests.test_stable_vulnerability",
+        "cryptad_certification.tests.test_stable_vulnerability_coordination",
+        "cryptad_certification.tests.test_stable_vulnerability_deadlines",
+        "cryptad_certification.tests.test_stable_vulnerability_mitigation",
+        "cryptad_certification.tests.test_stable_vulnerability_workflows",
     ],
     "migration": ["cryptad_certification.tests.test_core"],
 }

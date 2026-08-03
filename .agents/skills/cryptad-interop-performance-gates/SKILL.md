@@ -463,6 +463,40 @@ Routine trains use `release/<build>` and `routine-maintenance`; critical inciden
 incident-bound `security-fix` under one incident/advisory pair. Record incident-required package,
 app, or release-tooling effects inside that security fix’s scope and evidence, never as an unrelated
 ordinary row.
+An overdue high PR-288 case remains on the routine lane and may proceed only when the accepted train
+contains every authenticated blocking case with its exact severity and vulnerability projection
+digest. Never use this exact-remediation exception for an unrelated blocker or a critical case.
+One incident-scoped security hotfix may carry exactly one authenticated critical blocker even when
+other cases also block promotion. Those unrelated blockers remain active and continue to block
+routine promotion and unrelated hotfixes; they do not force incompatible incidents into one train.
+The protected severity must come from the producer's closed, digest-bound case-summary row; a
+consumer-side or PR-287-only severity assertion is insufficient. While evaluating promotion, hold
+the vulnerability-ledger serialization lock and require the supplied `evaluate-promotion` handoff
+to match the retention-independent, digest-chained repository Actions-variable anchor's exact
+ledger digest and edition. Authenticate the selected promotion run, attempt, and artifact digest
+separately. Missing or deleted anchor state never means genesis. Case-transition artifacts become
+authoritative only after the separately protected exact-predecessor anchor compare-and-swap;
+`evaluate-promotion` remains read-only. Time freshness never makes a superseded summary current,
+and a queued ledger append must compare its predecessor to the same durable anchor before running.
+Authenticate only the exact selected proposal coordinates. Multiple unactivated successors for
+one edition are alternatives, not committed forks; after one activation, stale alternatives must
+fail the anchor comparison without blocking later activation or promotion.
+Keep PR/nightly aggregate certification separate from protected release-candidate certification.
+Only the protected `stable-1-0-release-certification` job receives the vulnerability handoff key
+and anchor-read token; a shared step list must condition secret injection on release-candidate mode.
+RC-time vulnerability evidence cannot authorize GA after the mandatory post-freeze interval. The
+actual GA publication job must hold the global ledger lock, independently authenticate a newly
+selected current ledger-wide promotion handoff, validate its sealed nonblocking summary for the
+exact release/build, derive a digest-bound runner-only freshness assertion, re-age that assertion
+against runner UTC before every tag, tag-reference, Release, asset-upload, and finalization
+mutation, and retain the lock through every mutation. Maintenance publication likewise
+holds that lock, reauthenticates its attested promotion binding against the current anchor before
+preflight, and reopens and re-ages the exact sealed summary against runner UTC immediately before
+the mutation boundary. Any intervening ledger edition or expired summary requires new validation
+and authorization. After independent public verification, latest-baseline activation reacquires
+the same global lock and repeats both the current-anchor and runner-UTC summary checks immediately
+before its pointer compare-and-swap; publication-time authorization cannot cover an intervening
+ledger transition or deadline expiry at that final mutation boundary.
 The protected workflow independently freezes the exact protected `main` tip as
 `mainLineageCommit` for a hotfix. Require the hotfix base to equal that tip and the tagged
 publication predecessor to remain its ancestor; the older tagged candidate is not an adequate

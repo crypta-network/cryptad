@@ -571,3 +571,22 @@ Run the relevant Java module tests with the Gradle wrapper:
 
 These commands use deterministic fixtures. They do not insert a descriptor, update a USK edition,
 create a release, send telemetry, or mutate a running node.
+
+## Vulnerability case consistency
+
+A vulnerability case may require a separately authorized lifecycle transition for an exact
+affected integer build. The case records that requirement as a typed obligation and later
+authenticates the exact lifecycle descriptor, authorization, publication receipt, and public
+observation. It never mutates lifecycle state itself.
+
+The lifecycle case binding uses the opaque case/advisory identity, exact affected and replacement
+builds, severity, case/ledger digests, descriptor edition/digest, and publication receipt. A
+revoked build cannot remain the recommended current build, and an unpublished replacement cannot
+be called fixed. If the current tip is revoked without a replacement, recovery guidance must say
+so accurately.
+
+Build lifecycle revocation is not update-signing-key revocation. A reviewer, app, catalog, or
+update-key incident must close through its independent key authority even when a build is also
+revoked. See [Stable 1.0 vulnerability intake and coordinated-disclosure
+operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md) for the
+case-level obligation and closure rules.

@@ -5,12 +5,14 @@ support evidence without leaking private material.
 
 ## Report suspected vulnerabilities
 
-Start with [../SECURITY.md](../SECURITY.md). Source path: `docs/SECURITY.md`. Use
-[support-and-feedback.md](support-and-feedback.md) only for public-safe support reports. Do not open
-a public issue for a vulnerability that could identify users, reveal private content, bypass
-app/catalog trust, expose tokens, or weaken redaction.
+Start with the reporting boundary in [../SECURITY.md](../SECURITY.md). Source path:
+`docs/SECURITY.md`. This repository does not currently publish a Crypta-specific private reporting
+endpoint. Use [support-and-feedback.md](support-and-feedback.md) only for public-safe support
+reports. Do not open a public issue for a vulnerability that could identify users, reveal private
+content, bypass app/catalog trust, expose tokens, or weaken redaction. Do not send sensitive
+details to the inherited Freenet address as though it were a Crypta endpoint.
 
-When reporting privately, include:
+If a maintainer provides an approved protected Crypta channel out of band, include:
 
 - Cryptad build or release tag;
 - OS and package type;
@@ -28,12 +30,12 @@ Do not include exploit details in public issue titles, public comments, screensh
 | Situation | Safe path |
 | --- | --- |
 | Public bug report with no security impact | Public issue form from [support-and-feedback.md](support-and-feedback.md). |
-| Private security report | Private workflow in [../SECURITY.md](../SECURITY.md). |
-| Security advisory or denylist event | Private security workflow, then public-safe release notes when approved. |
-| Reviewer key compromise | Private security workflow and reviewer-key compromise runbook evidence. |
-| Catalog signing key compromise | Private security workflow and signed catalog replacement guidance. |
-| App signing key compromise | Private security workflow, denylist or advisory metadata, and replacement app guidance. |
-| Support bundle redaction failure | `security-advisory-intake.yml` for public-safe handoff, then private details in [../SECURITY.md](../SECURITY.md). |
+| Sensitive security report | Use the public form only to request a redacted handoff. Share details only after a maintainer supplies an approved protected Crypta channel out of band. |
+| Security advisory or denylist event | Protected Crypta channel when configured, then public-safe release notes after authorization. |
+| Reviewer key compromise | Protected Crypta channel when configured and reviewer-key compromise runbook evidence. |
+| Catalog signing key compromise | Protected Crypta channel when configured and signed catalog replacement guidance. |
+| App signing key compromise | Protected Crypta channel when configured, denylist or advisory metadata, and replacement app guidance. |
+| Support bundle redaction failure | `security-advisory-intake.yml` for a public-safe handoff request; do not attach private details. |
 
 ## What not to include
 
@@ -85,16 +87,47 @@ Before sharing a bundle:
 
 1. Preview the redaction summary.
 2. Confirm redaction status is passing.
-3. Share only through the requested private support channel when the report is security-sensitive.
+3. Share only after a maintainer identifies an approved protected Crypta channel. If none is
+   configured, retain the bundle locally and share only a redacted handoff request.
 4. Keep the original export available in case maintainers ask for additional redacted metadata.
 
 See [support-and-feedback.md](support-and-feedback.md) and
 [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).
+
+## Stable 1.0 authenticated case lifecycle
+
+The public handoff does not create a vulnerability case. An approved protected intake converts a
+private report into an opaque `sv-…` identity, protected acknowledgement, and append-only case
+ledger. Acknowledgement and triage deadlines come from the reviewed Stable vulnerability policy;
+critical acknowledgement and triage are due within four hours and cannot be extended.
+
+Triage records exact severity (`low`, `moderate`, `high`, or `critical`), confidence,
+exploitability, urgency, affected builds/packages/apps/contracts/profiles/keys, and every deadline.
+Extensions require a protected, digest-bound authorization issued before the old deadline.
+Anonymous reports remain actionable. Reporter silence does not permit maintainers to ignore
+confirmed impact.
+
+The public-beta issue taxonomy retains the established `severity/medium` label. It is a
+non-authoritative routing estimate. Protected PR-288 triage explicitly normalizes that estimate to
+the closed `moderate` case severity; a public label never sets or lowers the authenticated
+classification.
+
+Confirmed remediation enters the existing Stable backport and maintenance/security-hotfix paths.
+Disclosure remains separate: exact released bytes and any catalog, updater, lifecycle, reviewer,
+or key actions must be authenticated before exact public advisory bytes and targets can be
+authorized. A CVE, GHSA, OSV, or vendor id is optional and never grants authorization. Public
+reporter credit is opt-in and bound to the exact authorized text.
+
+See the complete [Stable 1.0 vulnerability intake and coordinated-disclosure
+runbook](../stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md). It also
+defines what operators see after disclosure, how exact publication is observed, and why closure
+waits for post-release checks and every applicable follow-up.
 
 ## Public support template
 
 Use public GitHub issue templates only for redacted support or documentation issues. The templates
 under `../../.github/ISSUE_TEMPLATE/` ask for summary evidence and confirmation that secrets and raw
 content are not included. `security-advisory-intake.yml` is a handoff-only public form and must not
-request exploit details. If a report may be security-sensitive, use the private security path in
-[../SECURITY.md](../SECURITY.md) instead.
+request exploit details. If a report may be security-sensitive, request a redacted handoff and wait
+for a maintainer to provide an approved protected Crypta channel. The repository currently
+publishes no Crypta-specific private endpoint.

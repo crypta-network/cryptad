@@ -630,6 +630,9 @@
             },
             "publicProjectionDigest": {
               "$ref": "#/$defs/digest"
+            },
+            "vulnerabilityPublicProjectionDigest": {
+              "$ref": "#/$defs/nullableDigest"
             }
           }
         },

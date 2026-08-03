@@ -159,5 +159,5 @@ body:
       options:
         - label: I confirm this report does not include secrets, private URIs, tokens, request bodies, raw user documents, raw app data, raw support bundles, raw FProxy HTML, cookies, authorization headers, or unredacted local absolute paths.
           required: true
-        - label: If this is security-sensitive, I have not included exploit details and will use the private security reporting path in docs/SECURITY.md.
+        - label: If this is security-sensitive, I have not included exploit details and will not send sensitive technical details unless a maintainer provides an approved protected Crypta channel out of band.
           required: true
