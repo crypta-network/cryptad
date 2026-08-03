@@ -72,6 +72,8 @@ execution workspace after an approved protected assembler has materialized the e
 
 ```bash
 vulnerability_run_root="$(mktemp -d)"
+# Resolve platform temporary-directory aliases before protected path validation.
+vulnerability_run_root="$(cd "$vulnerability_run_root" && pwd -P)"
 install -d -m 700 "$vulnerability_run_root/workspace"
 install -d -m 700 "$vulnerability_run_root/protected-inputs"
 git archive --format=tar HEAD | tar -xf - -C "$vulnerability_run_root/workspace"
