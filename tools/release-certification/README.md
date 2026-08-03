@@ -163,6 +163,15 @@ only the new phase-specific protected inputs, creates the canonical manifest, an
 phase artifact. No initial case can enter until that configured producer exists; validators fail
 closed rather than inventing a report source.
 
+Mitigation, catalog-security, and key-lifecycle receipts are not trusted from their embedded
+`producer` object. Before sealing a phase, the configured assembler must authenticate the native
+authority workflow against its protected allowlist, exact commit, successful run attempt, one
+non-expired exact artifact name/digest, and the exact bounded receipt member. It emits
+`stableVulnerabilityAuthorityReceiptProvenance`, bound to the canonical receipt file and semantic
+digests, in the encrypted bundle. Disclosure authorization and closure require that provenance
+whenever one of those receipts is present. A mitigation-only case is noncritical and remains on the
+policy's `routine-maintenance` lane; it cannot use `security-hotfix` as a lane exception.
+
 Configure `STABLE_VULNERABILITY_OBSERVER_WORKFLOW` to the exact independent read-only observer
 workflow path. Remote publication belongs to a separately protected, attested advisory provider.
 The provider returns an append-only exact-byte receipt; the observer authenticates it and performs

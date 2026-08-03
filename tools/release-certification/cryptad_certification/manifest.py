@@ -138,6 +138,7 @@ INPUT_FIELDS = {
     "stableVulnerabilityRemediationBinding",
     "stableVulnerabilityMitigationAuthorization",
     "stableVulnerabilityMitigationPublicationReceipt",
+    "stableVulnerabilityAuthorityReceiptProvenance",
     "stableVulnerabilitySummary",
     "stableVulnerabilityAdvisory",
     "stableVulnerabilityReporterCoordination",

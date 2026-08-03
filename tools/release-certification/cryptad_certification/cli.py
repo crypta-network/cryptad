@@ -752,6 +752,22 @@ def _validate_stable_vulnerability_manifest(manifest: RunManifest) -> None:
         raise ValueError(
             f"stable-vulnerability {mode} requires exact inputs: " + ", ".join(missing)
         )
+    authority_receipts = {
+        "stableVulnerabilityMitigationPublicationReceipt",
+        "catalogSecurityPublicationReceipt",
+        "keyRevocationOrRotationReceipt",
+    }.intersection(manifest.inputs)
+    has_provenance = (
+        "stableVulnerabilityAuthorityReceiptProvenance" in manifest.inputs
+    )
+    if authority_receipts and not has_provenance:
+        raise ValueError(
+            "independent authority receipts require exact producer provenance"
+        )
+    if has_provenance and not authority_receipts:
+        raise ValueError(
+            "authority receipt provenance requires an independent authority receipt"
+        )
 
 
 def _run_command(args: argparse.Namespace) -> int:

@@ -145,6 +145,7 @@
           "stableVulnerabilityTriageAuthorization",
           "stableVulnerabilityMitigationAuthorization",
           "stableVulnerabilityMitigationPublicationReceipt",
+          "stableVulnerabilityAuthorityReceiptProvenance",
           "stableVulnerabilityRemediationBinding",
           "stableVulnerabilitySummary",
           "stableVulnerabilityAdvisory",
