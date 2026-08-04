@@ -39,6 +39,7 @@ from cryptad_certification.engines.stable_1_0_rc_core import (
     placeholder_findings,
     release_certification_is_promotable,
     semantic_digest,
+    stable_vulnerability_governance_errors,
     validate_catalog_operations,
     validate_live_inputs,
     validate_production_beta,
@@ -338,6 +339,50 @@ def _readiness_summary(mutation: str) -> dict[str, object]:
 
 
 class StableRcFreezeTest(unittest.TestCase):
+    def test_stable_vulnerability_governance_requires_exact_passing_rows(self) -> None:
+        certification = {
+            "evidence": [
+                {
+                    "id": "stable-vulnerability.release-promotion",
+                    "status": "pass",
+                    "requiredForReleaseCandidate": True,
+                    "details": {
+                        "authenticated": True,
+                        "blockingStablePromotion": False,
+                        "nonWaivable": True,
+                        "validationErrors": [],
+                    },
+                }
+            ],
+            "ecosystemGates": [
+                {
+                    "id": "ecosystem.stable-vulnerability",
+                    "status": "pass",
+                    "releaseBlocker": False,
+                    "details": {
+                        "evidenceId": "stable-vulnerability.release-promotion",
+                        "nonWaivable": True,
+                    },
+                }
+            ],
+        }
+
+        self.assertEqual([], stable_vulnerability_governance_errors(certification))
+
+        omitted = copy.deepcopy(certification)
+        omitted["evidence"] = []
+        self.assertIn(
+            "release certification omits exact Stable vulnerability evidence",
+            stable_vulnerability_governance_errors(omitted),
+        )
+
+        blocking = copy.deepcopy(certification)
+        blocking["evidence"][0]["details"]["blockingStablePromotion"] = True
+        self.assertIn(
+            "Stable vulnerability release evidence is not passing",
+            stable_vulnerability_governance_errors(blocking),
+        )
+
     def test_candidate_built_launcher_is_selected_for_the_host_platform(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

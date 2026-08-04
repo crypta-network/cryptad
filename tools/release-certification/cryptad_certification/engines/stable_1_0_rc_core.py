@@ -485,6 +485,60 @@ def release_certification_is_promotable(value: dict[str, Any]) -> bool:
     )
 
 
+def stable_vulnerability_governance_errors(
+    value: dict[str, Any],
+) -> list[str]:
+    """Require the exact non-waivable PR-288 evidence and child gate in an RC result."""
+
+    evidence = value.get("evidence")
+    evidence = evidence if isinstance(evidence, list) else []
+    evidence_rows = [
+        row
+        for row in evidence
+        if isinstance(row, dict)
+        and row.get("id") == "stable-vulnerability.release-promotion"
+    ]
+    gates = value.get("ecosystemGates")
+    gates = gates if isinstance(gates, list) else []
+    gate_rows = [
+        row
+        for row in gates
+        if isinstance(row, dict)
+        and row.get("id") == "ecosystem.stable-vulnerability"
+    ]
+    errors: list[str] = []
+    if len(evidence_rows) != 1:
+        errors.append("release certification omits exact Stable vulnerability evidence")
+    else:
+        row = evidence_rows[0]
+        details = row.get("details")
+        details = details if isinstance(details, dict) else {}
+        if (
+            row.get("status") != "pass"
+            or row.get("requiredForReleaseCandidate") is not True
+            or details.get("authenticated") is not True
+            or details.get("blockingStablePromotion") is not False
+            or details.get("nonWaivable") is not True
+            or details.get("validationErrors") != []
+        ):
+            errors.append("Stable vulnerability release evidence is not passing")
+    if len(gate_rows) != 1:
+        errors.append("release certification omits the Stable vulnerability gate")
+    else:
+        gate = gate_rows[0]
+        details = gate.get("details")
+        details = details if isinstance(details, dict) else {}
+        if (
+            gate.get("status") != "pass"
+            or gate.get("releaseBlocker") is not False
+            or details.get("nonWaivable") is not True
+            or details.get("evidenceId")
+            != "stable-vulnerability.release-promotion"
+        ):
+            errors.append("Stable vulnerability child gate is not passing")
+    return errors
+
+
 def ecosystem_matrix_is_promotable(value: dict[str, Any]) -> bool:
     """Return whether the established matrix permits release promotion."""
 
@@ -586,6 +640,14 @@ def validate_prerequisites(
             "stable-1.0-rc.prerequisites",
             "Release certification is not passing.",
             "Regenerate the complete release-certification result.",
+        )
+    for error in stable_vulnerability_governance_errors(certification):
+        state.block(
+            "stable-1.0-rc.stable-vulnerability",
+            "stable-1.0-rc.prerequisites",
+            error + ".",
+            "Regenerate release certification with the current authenticated "
+            "ledger-wide Stable vulnerability promotion handoff.",
         )
     matrix = inputs["ecosystemMatrix"].value
     if not ecosystem_matrix_is_promotable(matrix):

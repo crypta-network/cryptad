@@ -90,6 +90,7 @@ bundle.
 
 ### Suspected security advisory
 
-Use `security-advisory-intake.yml` only to classify the handoff, then follow the private workflow in
+Use `security-advisory-intake.yml` only to classify the handoff. Retain sensitive details until a
+maintainer provides an approved protected Crypta channel out of band, as described in
 [security-reporting.md](security-reporting.md) and [../SECURITY.md](../SECURITY.md). Do not post
 exploit details, proof of concept payloads, keys, tokens, private URIs, or raw logs publicly.

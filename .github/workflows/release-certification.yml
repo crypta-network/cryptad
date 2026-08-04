@@ -57,6 +57,26 @@ on:
         required: true
         default: false
         type: boolean
+      stable-vulnerability-run-id:
+        description: Exact successful protected evaluate-promotion workflow run containing the encrypted vulnerability-ledger successor.
+        required: false
+        default: ''
+        type: string
+      stable-vulnerability-run-attempt:
+        description: Exact protected evaluate-promotion workflow run attempt.
+        required: false
+        default: ''
+        type: string
+      stable-vulnerability-artifact-name:
+        description: Exact encrypted protected-successor Actions artifact name.
+        required: false
+        default: ''
+        type: string
+      stable-vulnerability-artifact-digest:
+        description: Exact sha256 digest reported by Actions for the encrypted protected-successor artifact.
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '47 5 * * *'
   push:
@@ -64,12 +84,18 @@ on:
     tags: [ 'v*' ]
 
 jobs:
-  certify:
+  certify-nonpromotion:
+    if: >-
+      github.event_name != 'push'
+      && github.event.inputs.mode != 'release-candidate'
+    concurrency:
+      group: release-certification-nonpromotion-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 150
     permissions:
       contents: read
-      actions: write
+      actions: read
     env:
       CERT_MODE: ${{ github.event_name == 'push' && 'release-candidate' || github.event.inputs.mode || 'nightly' }}
       RUN_EXTENDED_GATES: ${{ github.event.inputs['extended-gates'] || 'false' }}
@@ -81,9 +107,15 @@ jobs:
       STABLE_READINESS_SUMMARY_PATH: ${{ github.event.inputs['stable-readiness-summary-path'] || '' }}
       CANDIDATE_RELEASE_ID: ${{ github.event.inputs['candidate-release-id'] || '' }}
       REQUIRE_STABLE_READINESS: ${{ github.event.inputs['require-stable-readiness'] || 'false' }}
+      STABLE_VULNERABILITY_RUN_ID: ${{ github.event.inputs['stable-vulnerability-run-id'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ID || '' }}
+      STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-vulnerability-run-attempt'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-vulnerability-artifact-name'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-vulnerability-artifact-digest'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
 
-    steps:
+    steps: &certification-steps
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -101,6 +133,54 @@ jobs:
 
       - name: Install Gradle properties
         uses: ./.github/actions/setup-gradle-properties
+
+      - name: Authenticate exact Stable vulnerability promotion producer
+        if: env.CERT_MODE == 'release-candidate'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$STABLE_VULNERABILITY_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_VULNERABILITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_VULNERABILITY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$ \
+                || ! "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Release-candidate certification requires exact protected Stable vulnerability producer coordinates."
+            exit 2
+          fi
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_VULNERABILITY_RUN_ID/attempts/$STABLE_VULNERABILITY_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$STABLE_VULNERABILITY_RUN_ID" \
+            --arg attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+            --arg commit "$GITHUB_SHA" '
+              (.id | tostring) == $run_id
+              and .event == "workflow_dispatch"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt
+              and .path == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_VULNERABILITY_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.STABLE_VULNERABILITY_ARTIFACT_NAME)]')"
+          test "$(jq 'length' <<< "$artifacts")" = 1
+          jq -e \
+            --arg name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+            --arg digest "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" '
+              .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download exact encrypted Stable vulnerability promotion successor
+        if: env.CERT_MODE == 'release-candidate'
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STABLE_VULNERABILITY_RUN_ID }}
+          name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/stable-vulnerability-promotion-input
 
       - name: Run release certification self-tests
         run: python3 tools/release-certification/certify.py self-test all
@@ -139,7 +219,10 @@ jobs:
 
       - name: Generate release certification report
         env:
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ env.CERT_MODE == 'release-candidate' && secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN || '' }}
           CRYPTAD_CERT_MODE: ${{ env.CERT_MODE }}
+          CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ env.CERT_MODE == 'release-candidate' && secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 || '' }}
           CRYPTAD_APP_SIGNING_KEY_ID: ${{ secrets.CRYPTAD_APP_SIGNING_KEY_ID }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 }}
           CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 }}
@@ -153,23 +236,178 @@ jobs:
           CRYPTAD_APP_REVIEW_POLICY_ID: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_ID }}
           CRYPTAD_APP_REVIEW_POLICY_VERSION: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_VERSION }}
         run: |
-          if [[ "$REQUIRE_STABLE_READINESS" == "true" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+          release_version="$(./gradlew -q printVersion)"
+          if [[ ! "$release_version" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Expected a positive integer project version from ./gradlew -q printVersion, got '$release_version'."
+            exit 2
+          fi
+          candidate_identity_bound=false
+          if [[ "$CERT_MODE" == "release-candidate" ]]; then
+            if [[ -n "$CANDIDATE_RELEASE_ID" ]]; then
+              release_id="$CANDIDATE_RELEASE_ID"
+              candidate_identity_bound=true
+            elif [[ "$GITHUB_EVENT_NAME" == push \
+                  && ( "$GITHUB_REF" == "refs/heads/release/$release_version" \
+                    || "$GITHUB_REF" == "refs/tags/v$release_version" ) ]]; then
+              release_id="cryptad-candidate-$release_version"
+              candidate_identity_bound=true
+            else
+              echo "candidate-release-id is required for manually dispatched release-candidate vulnerability governance; automatic runs require the exact release/<build> branch or v<build> tag." >&2
+              exit 2
+            fi
+          else
+            release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+            if [[ -n "$CANDIDATE_RELEASE_ID" ]]; then
+              candidate_identity_bound=true
+            fi
+          fi
+          if [[ "$REQUIRE_STABLE_READINESS" == "true" \
+                && "$candidate_identity_bound" != true ]]; then
             echo "candidate-release-id is required when require-stable-readiness is true." >&2
             exit 2
           fi
-          if [[ -n "$STABLE_READINESS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+          if [[ -n "$STABLE_READINESS_SUMMARY_PATH" \
+                && "$candidate_identity_bound" != true ]]; then
             echo "candidate-release-id is required when stable-readiness-summary-path is supplied." >&2
             exit 2
           fi
-          if [[ -n "$PREVIOUS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+          if [[ -n "$PREVIOUS_SUMMARY_PATH" \
+                && "$candidate_identity_bound" != true ]]; then
             echo "candidate-release-id is required when previous-summary-path is supplied." >&2
             exit 2
           fi
-          release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
-          release_version="$(./gradlew -q printVersion)"
-          if [[ ! "$release_version" =~ ^[0-9]+$ ]]; then
-            echo "::error::Expected a numeric project version from ./gradlew -q printVersion, got '$release_version'."
-            exit 2
+          require_vulnerability=false
+          stable_vulnerability=""
+          if [[ "$CERT_MODE" == "release-candidate" ]]; then
+            require_vulnerability=true
+            downloaded="$RUNNER_TEMP/stable-vulnerability-promotion-input"
+            mapfile -t downloaded_entries < <(find "$downloaded" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+            expected_downloaded=(
+              next-binding.json
+              sealed-successor
+              sealed-successor/stable-1.0-protected-handoff.enc
+              sealed-successor/stable-1.0-protected-handoff.json
+            )
+            test "${downloaded_entries[*]}" = "${expected_downloaded[*]}"
+            while IFS= read -r candidate; do
+              test ! -L "$candidate"
+              test "$(stat -c %h "$candidate")" = 1
+            done < <(find "$downloaded" -type f -print)
+            binding="$downloaded/next-binding.json"
+            jq -e \
+              --arg run_id "$STABLE_VULNERABILITY_RUN_ID" \
+              --arg run_attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+              --arg artifact_name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+              --arg release_id "$release_id" \
+              --arg build_version "$release_version" \
+              --arg commit "$GITHUB_SHA" '
+                .schemaVersion == "1"
+                and .kind == "stable-1.0-vulnerability-successor-binding"
+                and .artifactKind == "stable-vulnerability-protected-successor"
+                and .repositoryIdentity == "github.com/crypta-network/cryptad"
+                and .producerWorkflow == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+                and .workflowCommit == $commit
+                and .runId == $run_id
+                and .runAttempt == $run_attempt
+                and .operation == "evaluate-promotion"
+                and .releaseId == $release_id
+                and .buildVersion == $build_version
+                and .caseOpaqueId == "ledger-wide"
+                and .artifactName == $artifact_name' \
+              "$binding" >/dev/null
+            external_root="$RUNNER_TEMP/stable-vulnerability-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            opened="$RUNNER_TEMP/stable-vulnerability-opened-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            rm -rf "$external_root" "$opened"
+            python3 tools/release-certification/protected/stable_backport_protected_handoff.py open \
+              --bundle "$downloaded/sealed-successor" \
+              --out "$opened" \
+              --binding "$binding" \
+              --key-env CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64
+            summary_name=stable-1.0-vulnerability-summary.json
+            source="$opened/$summary_name"
+            if [[ -L "$source" || ! -f "$source" \
+                  || "$(stat -c %h "$source")" -ne 1 \
+                  || "$(stat -c %s "$source")" -le 0 \
+                  || "$(stat -c %s "$source")" -gt 4194304 ]]; then
+              echo "::error::Authenticated Stable vulnerability summary is missing, linked, or oversized."
+              exit 1
+            fi
+            install -d -m 700 "$external_root" "$external_root/sealed-successor"
+            install -m 600 "$source" "$external_root/$summary_name"
+            install -m 600 "$binding" \
+              "$external_root/stable-1.0-vulnerability-successor-binding.json"
+            install -m 600 "$downloaded/sealed-successor/stable-1.0-protected-handoff.enc" \
+              "$external_root/sealed-successor/stable-1.0-protected-handoff.enc"
+            install -m 600 "$downloaded/sealed-successor/stable-1.0-protected-handoff.json" \
+              "$external_root/sealed-successor/stable-1.0-protected-handoff.json"
+            PRODUCER_ARTIFACT_DIGEST="$STABLE_VULNERABILITY_ARTIFACT_DIGEST" \
+              VULNERABILITY_HANDOFF_ROOT="$external_root" python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["VULNERABILITY_HANDOFF_ROOT"])
+          summary = json.loads(
+              (root / "stable-1.0-vulnerability-summary.json").read_text(encoding="utf-8")
+          )
+          binding_raw = (
+              root / "stable-1.0-vulnerability-successor-binding.json"
+          ).read_bytes()
+          summary_raw = (root / "stable-1.0-vulnerability-summary.json").read_bytes()
+          digest = lambda raw: "sha256:" + hashlib.sha256(raw).hexdigest()
+          provenance = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-vulnerability-summary-provenance",
+              "producerArtifactDigest": os.environ["PRODUCER_ARTIFACT_DIGEST"],
+              "successorBindingFileDigest": digest(binding_raw),
+              "summaryFileDigest": digest(summary_raw),
+              "summaryDigest": summary["summaryDigest"],
+          }
+          canonical = json.dumps(
+              provenance,
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+              allow_nan=False,
+          ).encode("utf-8")
+          provenance["provenanceDigest"] = digest(canonical)
+          (root / "stable-1.0-vulnerability-summary-provenance.json").write_text(
+              json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            current_tip_environment="$RUNNER_TEMP/stable-vulnerability-current-tip.env"
+            : > "$current_tip_environment"
+            genesis_digest="$(jq -er .ledgerDigest \
+              tools/release-certification/stable-1.0-vulnerability-ledger-genesis.json)"
+            python3 tools/release-certification/protected/stable_vulnerability_actions_tip.py \
+              verify-promotion \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-run-id "$STABLE_VULNERABILITY_RUN_ID" \
+              --expected-run-attempt "$STABLE_VULNERABILITY_RUN_ATTEMPT" \
+              --expected-artifact-name "$STABLE_VULNERABILITY_ARTIFACT_NAME" \
+              --expected-artifact-digest "$STABLE_VULNERABILITY_ARTIFACT_DIGEST" \
+              --genesis-ledger-digest "$genesis_digest" \
+              --binding "$external_root/stable-1.0-vulnerability-successor-binding.json" \
+              --provenance "$external_root/stable-1.0-vulnerability-summary-provenance.json" \
+              --environment-file "$current_tip_environment"
+            set -a
+            source "$current_tip_environment"
+            set +a
+            mapfile -t external_entries < <(find "$external_root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+            expected_external=(
+              sealed-successor
+              sealed-successor/stable-1.0-protected-handoff.enc
+              sealed-successor/stable-1.0-protected-handoff.json
+              stable-1.0-vulnerability-successor-binding.json
+              stable-1.0-vulnerability-summary-provenance.json
+              stable-1.0-vulnerability-summary.json
+            )
+            test "${external_entries[*]}" = "${expected_external[*]}"
+            rm -rf "$opened"
+            export CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT="$external_root"
+            stable_vulnerability="$external_root/$summary_name"
           fi
           interop_smoke=""
           interop_extended=""
@@ -194,10 +432,12 @@ jobs:
             --arg release_history "$PREVIOUS_SUMMARY_PATH" \
             --arg waiver_file "$WAIVER_FILE_PATH" \
             --arg stable_readiness "$STABLE_READINESS_SUMMARY_PATH" \
+            --arg stable_vulnerability "$stable_vulnerability" \
             --arg history_label "$HISTORY_LABEL" \
             --argjson require_history "$REQUIRE_HISTORY" \
             --argjson write_history "$WRITE_HISTORY" \
             --argjson require_stable "$REQUIRE_STABLE_READINESS" \
+            --argjson require_vulnerability "$require_vulnerability" \
             '{
               schemaVersion: 1,
               release: {id: $release_id, version: $release_version, profile: $profile},
@@ -208,6 +448,7 @@ jobs:
                 multiNodeSoak: true,
                 sandboxProviderTests: true,
                 stableReadiness: $require_stable,
+                stableVulnerability: $require_vulnerability,
                 thirdPartyIntake: true
               },
               inputs: ({}
@@ -216,9 +457,11 @@ jobs:
                 + (if $performance_smoke == "" then {} else {performanceSmoke: $performance_smoke} end)
                 + (if $release_history == "" then {} else {releaseHistory: $release_history} end)
                 + (if $waiver_file == "" then {} else {waiverFile: $waiver_file} end)
-                + (if $stable_readiness == "" then {} else {stableReadiness: $stable_readiness} end)),
+                + (if $stable_readiness == "" then {} else {stableReadiness: $stable_readiness} end)
+                + (if $stable_vulnerability == "" then {} else {stableVulnerabilitySummary: $stable_vulnerability} end)),
               policies: ({metadata: {candidateReleaseId: $release_id}}
-                + (if $history_label == "" then {} else {historyLabel: $history_label} end)),
+                + (if $history_label == "" then {} else {historyLabel: $history_label} end)
+                + (if $require_vulnerability then {stableVulnerabilityGovernance: "required"} else {} end)),
               execution: {collectEvidence: true, writeHistory: $write_history},
               commands: {}
             }' > "$manifest"
@@ -235,3 +478,33 @@ jobs:
             !**/private-insert-uris.json
           if-no-files-found: warn
           retention-days: 30
+
+  certify-release-candidate:
+    if: >-
+      github.event_name == 'push'
+      || github.event.inputs.mode == 'release-candidate'
+    concurrency:
+      group: stable-1-0-vulnerability-ledger
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    environment: stable-1-0-release-certification
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CERT_MODE: release-candidate
+      RUN_EXTENDED_GATES: ${{ github.event.inputs['extended-gates'] || 'false' }}
+      PREVIOUS_SUMMARY_PATH: ${{ github.event.inputs['previous-summary-path'] || '' }}
+      REQUIRE_HISTORY: ${{ github.event.inputs['require-history'] || 'false' }}
+      WRITE_HISTORY: ${{ github.event.inputs['write-history'] || 'false' }}
+      HISTORY_LABEL: ${{ github.event.inputs['history-label'] || '' }}
+      WAIVER_FILE_PATH: ${{ github.event.inputs['waiver-file-path'] || '' }}
+      STABLE_READINESS_SUMMARY_PATH: ${{ github.event.inputs['stable-readiness-summary-path'] || '' }}
+      CANDIDATE_RELEASE_ID: ${{ github.event.inputs['candidate-release-id'] || '' }}
+      REQUIRE_STABLE_READINESS: ${{ github.event.inputs['require-stable-readiness'] || 'false' }}
+      STABLE_VULNERABILITY_RUN_ID: ${{ github.event.inputs['stable-vulnerability-run-id'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ID || '' }}
+      STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-vulnerability-run-attempt'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-vulnerability-artifact-name'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-vulnerability-artifact-digest'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
+    steps: *certification-steps

@@ -10,6 +10,7 @@ from cryptad_certification.io import read_json, write_text
 from cryptad_certification.models import RunContext
 from cryptad_certification.redaction import scan_value
 from cryptad_certification.schema_validation import validate_schema
+from cryptad_certification.stable_vulnerability_summary import load_summary
 from cryptad_certification.workspace import reset_confined_directory
 
 from .stable_1_0_lifecycle_core import (
@@ -617,6 +618,16 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     actual_now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     evaluation_time = parse_timestamp(generated_at)
     assert evaluation_time is not None
+    _vulnerability_summary, vulnerability_errors = load_summary(
+        context, evaluation_clock=evaluation_time
+    )
+    for error in vulnerability_errors:
+        _block(
+            state,
+            EVIDENCE_IDS[3],
+            error,
+            "Provide the exact canonical, redaction-safe vulnerability governance summary.",
+        )
     if (
         evaluation_time > actual_now
         or actual_now - evaluation_time

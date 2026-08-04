@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 from cryptad_certification.io import read_json, write_json
@@ -2428,19 +2429,6 @@ class StableBackportEngineTest(unittest.TestCase):
 
 
 class StableBackportPolicyAndQueueTest(unittest.TestCase):
-    def test_summary_fix_counts_account_for_every_closed_state(self) -> None:
-        fixes = [{"state": state} for state in FIX_STATES]
-
-        counts = engine._fix_counts(fixes)  # noqa: SLF001
-
-        self.assertEqual(counts["total"], len(FIX_STATES))
-        self.assertEqual(
-            counts["total"],
-            sum(value for key, value in counts.items() if key != "total"),
-        )
-        for state in FIX_STATES:
-            self.assertEqual(counts[state], 1)
-
     def test_closed_vocabulary_and_policy_are_exact(self) -> None:
         policy = read_json(
             Path(__file__).resolve().parents[2]

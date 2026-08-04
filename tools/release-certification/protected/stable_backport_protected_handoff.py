@@ -109,8 +109,9 @@ def _source_files(source: Path) -> list[Path]:
         raise HandoffError("protected-handoff-source-invalid") from exc
     for entry in entries:
         try:
-            mode = entry.lstat().st_mode
-            size = entry.stat(follow_symlinks=False).st_size
+            metadata = entry.stat(follow_symlinks=False)
+            mode = metadata.st_mode
+            size = metadata.st_size
         except OSError as exc:
             raise HandoffError("protected-handoff-source-invalid") from exc
         if (
@@ -118,6 +119,7 @@ def _source_files(source: Path) -> list[Path]:
             or entry.name.casefold() in portable_names
             or not stat.S_ISREG(mode)
             or entry.is_symlink()
+            or metadata.st_nlink != 1
             or size <= 0
             or size > _MAX_FILE_BYTES
         ):
@@ -297,7 +299,12 @@ def _read_sealed(
         raise HandoffError("protected-handoff-bundle-invalid") from exc
     if [entry.name for entry in entries] != [_CIPHERTEXT_NAME, _MANIFEST_NAME]:
         raise HandoffError("protected-handoff-bundle-file-set-invalid")
-    if any(entry.is_symlink() or not entry.is_file() for entry in entries):
+    if any(
+        entry.is_symlink()
+        or not entry.is_file()
+        or entry.stat(follow_symlinks=False).st_nlink != 1
+        for entry in entries
+    ):
         raise HandoffError("protected-handoff-bundle-entry-unsafe")
     manifest_path = source / _MANIFEST_NAME
     ciphertext_path = source / _CIPHERTEXT_NAME

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
+import subprocess
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -459,6 +462,24 @@ class CollectionIntegrationTest(unittest.TestCase):
 
 class StableRcOrchestrationIntegrationTest(unittest.TestCase):
     @staticmethod
+    def _stable_vulnerability_inputs(root: Path) -> dict[str, str]:
+        summary = root / "stable-1.0-vulnerability-summary.json"
+        write_json(summary, {"schemaVersion": 1})
+        return {"stableVulnerabilitySummary": str(summary)}
+
+    @staticmethod
+    def _stable_rc_policies(**values: object) -> dict[str, object]:
+        return {
+            "stableRcFreezeMode": "first-freeze",
+            "stableVulnerabilityGovernance": "required",
+            **values,
+        }
+
+    @staticmethod
+    def _stable_rc_requirements() -> dict[str, bool]:
+        return {"stableVulnerability": True}
+
+    @staticmethod
     def _write_production_envelope(
         path: Path,
         *,
@@ -513,7 +534,9 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                     "version": "283",
                     "profile": "stable-review",
                 },
-                policies={"stableRcFreezeMode": "first-freeze"},
+                requirements=self._stable_rc_requirements(),
+                inputs=self._stable_vulnerability_inputs(root),
+                policies=self._stable_rc_policies(),
             )
 
             with (
@@ -556,12 +579,15 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                         "version": "283",
                         "profile": "stable-review",
                     },
-                    inputs={"stableCatalogOperations": "catalog-operations.json"},
-                    policies={
-                        "artifactBaseUri": "https://downloads.crypta.invalid/stable/",
-                        "catalogChannel": "stable",
-                        "stableRcFreezeMode": "first-freeze",
+                    requirements=self._stable_rc_requirements(),
+                    inputs={
+                        "stableCatalogOperations": "catalog-operations.json",
+                        **self._stable_vulnerability_inputs(root),
                     },
+                    policies=self._stable_rc_policies(
+                        artifactBaseUri="https://downloads.crypta.invalid/stable/",
+                        catalogChannel="stable",
+                    ),
                 ),
                 root,
             )
@@ -579,6 +605,11 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
             self.assertEqual(
                 artifact_timestamp,
                 captured[captured.index("--stable-rc-artifact-timestamp") + 1],
+            )
+            self.assertIn("--require-stable-vulnerability", captured)
+            self.assertEqual(
+                str((root / "stable-1.0-vulnerability-summary.json").resolve()),
+                captured[captured.index("--stable-vulnerability-summary") + 1],
             )
 
     def test_direct_stable_review_production_does_not_require_stable_rc_inputs(self) -> None:
@@ -619,7 +650,9 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                     "version": "283",
                     "profile": "stable-review",
                 },
-                policies={"stableRcFreezeMode": "first-freeze"},
+                requirements=self._stable_rc_requirements(),
+                inputs=self._stable_vulnerability_inputs(root),
+                policies=self._stable_rc_policies(),
             )
             manifest = load_manifest(manifest_path, root)
             run_root = prepare_run_root(manifest)
@@ -666,8 +699,12 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                             "version": "283",
                             "profile": "stable-review",
                         },
-                        inputs={key: f"{key}.json"},
-                        policies={"stableRcFreezeMode": "first-freeze"},
+                        requirements=self._stable_rc_requirements(),
+                        inputs={
+                            key: f"{key}.json",
+                            **self._stable_vulnerability_inputs(root),
+                        },
+                        policies=self._stable_rc_policies(),
                     ),
                     root,
                 )
@@ -701,8 +738,14 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                             "version": "283",
                             "profile": "stable-review",
                         },
-                        inputs=inputs,
-                        policies={"stableRcFreezeMode": mode},
+                        requirements=self._stable_rc_requirements(),
+                        inputs={
+                            **inputs,
+                            **self._stable_vulnerability_inputs(root),
+                        },
+                        policies=self._stable_rc_policies(
+                            stableRcFreezeMode=mode
+                        ),
                     ),
                     root,
                 )
@@ -712,6 +755,28 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(ValueError, expected_error):
                         cli._validate_stable_rc_manifest(manifest)
+
+    def test_stable_rc_requires_current_vulnerability_governance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-candidate",
+                        "version": "283",
+                        "profile": "stable-review",
+                    },
+                    policies={"stableRcFreezeMode": "first-freeze"},
+                ),
+                root,
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "current authenticated Stable vulnerability promotion handoff",
+            ):
+                cli._validate_stable_rc_manifest(manifest)
 
     def test_stable_rc_rejects_missing_or_unknown_freeze_mode(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -752,7 +817,9 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
                     "version": "283",
                     "profile": "stable-review",
                 },
-                policies={"stableRcFreezeMode": "first-freeze"},
+                requirements=self._stable_rc_requirements(),
+                inputs=self._stable_vulnerability_inputs(root),
+                policies=self._stable_rc_policies(),
             )
             manifest = load_manifest(manifest_path, root)
             run_root = prepare_run_root(manifest)
@@ -832,6 +899,114 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
 
 
 class AdapterIntegrationTest(unittest.TestCase):
+    def test_runner_summary_outside_release_workspace_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "app-platform")
+            external_summary = root / "external-summary.json"
+            write_json(
+                external_summary,
+                {
+                    "schemaVersion": 1,
+                    "status": "pass",
+                    "redaction": {"status": "pass", "findings": []},
+                },
+            )
+
+            with mock.patch.dict(
+                legacy.RUNNERS,
+                {
+                    "app-platform": lambda _context: (
+                        0,
+                        external_summary,
+                        None,
+                    )
+                },
+            ):
+                with self.assertRaisesRegex(ValueError, "outside release workspace"):
+                    legacy.execute(context, "app-platform")
+
+            self.assertFalse((context.component_dir / "summary.json").exists())
+            self.assertFalse(
+                (context.component_dir / "artifacts/legacy-summary.json").exists()
+            )
+
+    def test_multiply_linked_runner_summary_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "app-platform")
+
+            def write_multiply_linked_summary(
+                configured: RunContext,
+            ) -> tuple[int, Path, None]:
+                output = legacy._legacy_dir(configured)
+                summary = output / "summary.json"
+                write_json(
+                    summary,
+                    {
+                        "schemaVersion": 1,
+                        "status": "pass",
+                        "redaction": {"status": "pass", "findings": []},
+                    },
+                )
+                (output / "summary-hardlink.json").hardlink_to(summary)
+                return 0, summary, None
+
+            with mock.patch.dict(
+                legacy.RUNNERS,
+                {"app-platform": write_multiply_linked_summary},
+            ):
+                with self.assertRaisesRegex(ValueError, "exactly one hard link"):
+                    legacy.execute(context, "app-platform")
+
+            self.assertFalse((context.component_dir / "summary.json").exists())
+            self.assertFalse(
+                (context.component_dir / "artifacts/legacy-summary.json").exists()
+            )
+
+    def test_symlinked_runner_summary_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "app-platform")
+
+            def write_symlinked_summary(
+                configured: RunContext,
+            ) -> tuple[int, Path, None]:
+                output = legacy._legacy_dir(configured)
+                target = output / "summary-target.json"
+                summary = output / "summary.json"
+                write_json(
+                    target,
+                    {
+                        "schemaVersion": 1,
+                        "status": "pass",
+                        "redaction": {"status": "pass", "findings": []},
+                    },
+                )
+                try:
+                    summary.symlink_to(target)
+                except OSError as exc:
+                    self.skipTest(f"file symlinks are unavailable: {exc}")
+                return 0, summary, None
+
+            with mock.patch.dict(
+                legacy.RUNNERS,
+                {"app-platform": write_symlinked_summary},
+            ):
+                with self.assertRaisesRegex(ValueError, "must not be a symlink"):
+                    legacy.execute(context, "app-platform")
+
+            self.assertFalse((context.component_dir / "summary.json").exists())
+            self.assertFalse(
+                (context.component_dir / "artifacts/legacy-summary.json").exists()
+            )
+
     def test_failed_fallback_scan_removes_raw_legacy_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -2410,6 +2585,43 @@ class WorkflowIntegrationTest(unittest.TestCase):
             'f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"',
             workflow,
         )
+        for field in (
+            "stable_vulnerability_run_id:",
+            "stable_vulnerability_run_attempt:",
+            "stable_vulnerability_artifact_name:",
+            "stable_vulnerability_artifact_digest:",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, workflow)
+        self.assertIn(
+            '.path == ".github/workflows/stable-1.0-vulnerability-intake.yml"',
+            workflow,
+        )
+        self.assertIn('and .operation == "evaluate-promotion"', workflow)
+        self.assertIn('and .caseOpaqueId == "ledger-wide"', workflow)
+        self.assertIn("stable_vulnerability_actions_tip.py", workflow)
+        self.assertIn("verify-promotion", workflow)
+        self.assertIn("stableVulnerability: true", workflow)
+        self.assertIn(
+            'stableVulnerabilityGovernance: "required"',
+            workflow,
+        )
+        self.assertIn(
+            "stableVulnerabilitySummary: $stable_vulnerability",
+            workflow,
+        )
+        self.assertIn(
+            "  stable-rc:\n"
+            "    concurrency:\n"
+            "      group: stable-1-0-vulnerability-ledger\n"
+            "      cancel-in-progress: false",
+            workflow,
+        )
+        upload = workflow.split(
+            "- name: Upload redacted Stable RC artifacts", maxsplit=1
+        )[1]
+        self.assertNotIn("stable-vulnerability-promotion-input", upload)
+        self.assertNotIn("stable-vulnerability-summary-", upload)
         self.assertNotIn('distribution_name = f"crypta-production-beta-', workflow)
         self.assertNotIn("expected_build", workflow)
 
@@ -2437,8 +2649,209 @@ class WorkflowIntegrationTest(unittest.TestCase):
         self.assertEqual(1, release.count("version: $release_version"))
         self.assertEqual(
             1,
-            release.count('if [[ ! "$release_version" =~ ^[0-9]+$ ]]'),
+            release.count('if [[ ! "$release_version" =~ ^[1-9][0-9]*$ ]]'),
         )
+        self.assertLess(
+            release.index('release_version="$(./gradlew -q printVersion)"'),
+            release.index('if [[ "$CERT_MODE" == "release-candidate" ]]'),
+        )
+        self.assertIn(
+            '"$GITHUB_REF" == "refs/heads/release/$release_version"', release
+        )
+        self.assertIn(
+            '"$GITHUB_REF" == "refs/tags/v$release_version"', release
+        )
+        self.assertIn('release_id="cryptad-candidate-$release_version"', release)
+        self.assertIn(
+            "automatic runs require the exact release/<build> branch or v<build> tag",
+            release,
+        )
+
+    def test_release_candidate_identity_is_derived_only_from_an_exact_build_ref(
+        self,
+    ) -> None:
+        release = (
+            workspace_root() / ".github/workflows/release-certification.yml"
+        ).read_text(encoding="utf-8")
+        start = release.index('          release_version="$(./gradlew -q printVersion)"')
+        end = release.index("          require_vulnerability=false", start)
+        resolver = textwrap.dedent(release[start:end])
+        resolver += '\nprintf "%s\\n" "$release_id"\n'
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            gradle = root / "gradlew"
+            gradle.write_text(
+                "#!/usr/bin/env bash\nprintf '%s\\n' \"$TEST_BUILD_VERSION\"\n",
+                encoding="utf-8",
+            )
+            gradle.chmod(0o700)
+            base_environment = {
+                **os.environ,
+                "CANDIDATE_RELEASE_ID": "",
+                "GITHUB_RUN_ID": "88",
+                "GITHUB_RUN_ATTEMPT": "2",
+                "PREVIOUS_SUMMARY_PATH": "",
+                "REQUIRE_STABLE_READINESS": "false",
+                "STABLE_READINESS_SUMMARY_PATH": "",
+                "TEST_BUILD_VERSION": "301",
+            }
+
+            def resolve(
+                *,
+                mode: str,
+                event: str,
+                ref: str,
+                candidate: str = "",
+            ) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ["bash", "-c", resolver],
+                    cwd=root,
+                    env={
+                        **base_environment,
+                        "CERT_MODE": mode,
+                        "GITHUB_EVENT_NAME": event,
+                        "GITHUB_REF": ref,
+                        "CANDIDATE_RELEASE_ID": candidate,
+                    },
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+            for ref in ("refs/heads/release/301", "refs/tags/v301"):
+                with self.subTest(ref=ref):
+                    completed = resolve(
+                        mode="release-candidate", event="push", ref=ref
+                    )
+                    self.assertEqual(0, completed.returncode, completed.stderr)
+                    self.assertEqual("cryptad-candidate-301\n", completed.stdout)
+            manual = resolve(
+                mode="release-candidate",
+                event="workflow_dispatch",
+                ref="refs/heads/main",
+                candidate="reviewed-candidate-301",
+            )
+            self.assertEqual(0, manual.returncode, manual.stderr)
+            self.assertEqual("reviewed-candidate-301\n", manual.stdout)
+            nightly = resolve(mode="nightly", event="schedule", ref="")
+            self.assertEqual(0, nightly.returncode, nightly.stderr)
+            self.assertEqual("ci-88-2\n", nightly.stdout)
+            for ref in (
+                "refs/heads/release/0301",
+                "refs/heads/release/301/extra",
+                "refs/heads/release/302",
+                "refs/tags/v1.0.0",
+                "refs/tags/v301-rc",
+            ):
+                with self.subTest(rejected_ref=ref):
+                    self.assertNotEqual(
+                        0,
+                        resolve(
+                            mode="release-candidate", event="push", ref=ref
+                        ).returncode,
+                    )
+            self.assertNotEqual(
+                0,
+                resolve(
+                    mode="release-candidate",
+                    event="workflow_dispatch",
+                    ref="refs/heads/release/301",
+                ).returncode,
+            )
+
+    def test_release_candidate_workflow_requires_authenticated_vulnerability_summary(
+        self,
+    ) -> None:
+        release = (
+            workspace_root() / ".github/workflows/release-certification.yml"
+        ).read_text(encoding="utf-8")
+
+        for field in (
+            "stable-vulnerability-run-id:",
+            "stable-vulnerability-run-attempt:",
+            "stable-vulnerability-artifact-name:",
+            "stable-vulnerability-artifact-digest:",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, release)
+        self.assertIn(
+            'if: env.CERT_MODE == \'release-candidate\'',
+            release,
+        )
+        self.assertIn(
+            '.path == ".github/workflows/stable-1.0-vulnerability-intake.yml"',
+            release,
+        )
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/actions/runs/'
+            '$STABLE_VULNERABILITY_RUN_ID/attempts/'
+            '$STABLE_VULNERABILITY_RUN_ATTEMPT"',
+            release,
+        )
+        self.assertIn("(.id | tostring) == $run_id", release)
+        self.assertIn('and .operation == "evaluate-promotion"', release)
+        self.assertIn('and .caseOpaqueId == "ledger-wide"', release)
+        self.assertIn("uses: actions/download-artifact@v8", release)
+        self.assertIn(
+            "name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}",
+            release,
+        )
+        self.assertNotIn("merge-multiple: true", release)
+        self.assertIn(
+            'external_root="$RUNNER_TEMP/stable-vulnerability-summary-',
+            release,
+        )
+        self.assertIn(
+            'export CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT="$external_root"',
+            release,
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: "
+            "${{ env.CERT_MODE == 'release-candidate' && "
+            "secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 || '' }}",
+            release,
+        )
+        self.assertIn("stable_vulnerability_actions_tip.py", release)
+        self.assertIn("verify-promotion", release)
+        self.assertIn(
+            "  certify-release-candidate:\n"
+            "    if: >-\n"
+            "      github.event_name == 'push'\n"
+            "      || github.event.inputs.mode == 'release-candidate'\n"
+            "    concurrency:\n"
+            "      group: stable-1-0-vulnerability-ledger\n"
+            "      cancel-in-progress: false",
+            release,
+        )
+        self.assertIn(
+            "    environment: stable-1-0-release-certification", release
+        )
+        self.assertIn("    steps: *certification-steps", release)
+        nonpromotion = release[
+            release.index("  certify-nonpromotion:") : release.index(
+                "  certify-release-candidate:"
+            )
+        ]
+        self.assertIn("steps: &certification-steps", nonpromotion)
+        self.assertNotIn(
+            "environment: stable-1-0-release-certification", nonpromotion
+        )
+        self.assertIn("stableVulnerability: $require_vulnerability", release)
+        self.assertIn(
+            'stableVulnerabilityGovernance: "required"',
+            release,
+        )
+        self.assertIn(
+            "stableVulnerabilitySummary: $stable_vulnerability",
+            release,
+        )
+        self.assertIn("persist-credentials: false", release)
+        upload = release.split(
+            "- name: Upload release certification artifacts", maxsplit=1
+        )[1]
+        self.assertNotIn("stable-vulnerability-promotion-input", upload)
+        self.assertNotIn("stable-vulnerability-summary-", upload)
 
     def test_protected_production_workflow_requires_third_party_intake(self) -> None:
         production = (
@@ -2497,7 +2910,8 @@ class WorkflowIntegrationTest(unittest.TestCase):
             release,
         )
         self.assertIn(
-            'if [[ -n "$PREVIOUS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]',
+            'if [[ -n "$PREVIOUS_SUMMARY_PATH" \\\n'
+            '                && "$candidate_identity_bound" != true ]]; then',
             release,
         )
         self.assertIn(
@@ -2505,7 +2919,8 @@ class WorkflowIntegrationTest(unittest.TestCase):
             release,
         )
         self.assertIn(
-            'if [[ -n "$STABLE_READINESS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]',
+            'if [[ -n "$STABLE_READINESS_SUMMARY_PATH" \\\n'
+            '                && "$candidate_identity_bound" != true ]]; then',
             release,
         )
         self.assertIn(
@@ -2513,14 +2928,14 @@ class WorkflowIntegrationTest(unittest.TestCase):
             release,
         )
         self.assertLess(
-            release.index("candidate-release-id is required when previous-summary-path is supplied."),
             release.index('release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}'),
+            release.index("candidate-release-id is required when previous-summary-path is supplied."),
         )
         self.assertLess(
+            release.index('release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}'),
             release.index(
                 "candidate-release-id is required when stable-readiness-summary-path is supplied."
             ),
-            release.index('release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}'),
         )
         dashboard_redaction = (
             "*/production-beta/artifacts/legacy/reports/go-no-go-redaction-report.json"

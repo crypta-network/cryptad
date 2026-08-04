@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -14,7 +15,7 @@ from .envelope import (
     validate_envelope,
     write_envelope,
 )
-from .io import read_json, write_json
+from .io import read_json, write_json, write_text
 from .models import RunContext
 from .redaction import scan_value
 from .workspace import _require_confined_directory, relative_to_run
@@ -35,6 +36,7 @@ KIND_BY_COMMAND = {
     "stable-backport": "stable-1.0-backport-release-train",
     "stable-maintenance": "stable-1.0-maintenance-promotion",
     "stable-lifecycle": "stable-1.0-support-lifecycle",
+    "stable-vulnerability": "stable-1.0-vulnerability-governance",
 }
 V2_KIND_BY_INPUT = {
     "appPlatform": "app-platform-smoke",
@@ -90,6 +92,9 @@ STRUCTURED_VALUE_OPTIONS = {
         "--security-drills-summary",
         "--stable-1-0-readiness-summary",
         "--stable-readiness-summary",
+        "--stable-vulnerability-candidate-build-version",
+        "--stable-vulnerability-candidate-release-id",
+        "--stable-vulnerability-summary",
         "--waiver-file",
     },
     "production-beta": {
@@ -152,6 +157,7 @@ STRUCTURED_FLAG_OPTIONS = {
         "--require-live-network-beta",
         "--require-multi-node-soak",
         "--require-stable-readiness",
+        "--require-stable-vulnerability",
         "--skip-git-metadata",
         "--write-history",
     },
@@ -278,6 +284,35 @@ def _legacy_dir(context: RunContext) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     _require_confined_directory(path, context.run_root, "legacy output")
     return path
+
+
+def _require_publishable_runner_file(
+    path: Path,
+    context: RunContext,
+    description: str,
+) -> Path:
+    """Return one confined, regular, single-link file produced by an adapter."""
+
+    _require_confined_directory(
+        path.parent,
+        context.run_root,
+        f"{description} parent",
+    )
+    if path.is_symlink():
+        raise ValueError(f"{description} must not be a symlink: {path}")
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(context.run_root.resolve(strict=True))
+    except (FileNotFoundError, ValueError) as exc:
+        raise ValueError(
+            f"{description} is missing or outside release workspace: {path}"
+        ) from exc
+    metadata = resolved.stat(follow_symlinks=False)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError(f"{description} must be a regular file: {path}")
+    if metadata.st_nlink != 1:
+        raise ValueError(f"{description} must have exactly one hard link: {path}")
+    return resolved
 
 
 def _remove_legacy_output(context: RunContext) -> None:
@@ -651,6 +686,35 @@ def _run_release_certification(context: RunContext) -> tuple[int, Path, Path | N
         path = supplied or candidates[key]
         if key != "stableReadiness" or supplied is not None or context.manifest.requirements.get("stableReadiness") is True:
             args.extend([option, str(path)])
+    stable_vulnerability_summary = _legacy_input_path(
+        context, "stableVulnerabilitySummary"
+    )
+    _option_path(
+        args,
+        "--stable-vulnerability-summary",
+        stable_vulnerability_summary,
+    )
+    stable_vulnerability_required = (
+        context.manifest.requirements.get("stableVulnerability") is True
+        or context.manifest.policies.get("stableVulnerabilityGovernance")
+        == "required"
+    )
+    if stable_vulnerability_required:
+        args.append("--require-stable-vulnerability")
+    if stable_vulnerability_summary is not None or stable_vulnerability_required:
+        build_version = context.manifest.release.version
+        if build_version is None:
+            raise ValueError(
+                "Stable vulnerability governance requires an exact candidate build identity"
+            )
+        args.extend(
+            [
+                "--stable-vulnerability-candidate-release-id",
+                context.manifest.release.release_id,
+                "--stable-vulnerability-candidate-build-version",
+                build_version,
+            ]
+        )
 
     history = _legacy_input_path(context, "releaseHistory", migrated_kind="release-history")
     if history is not None:
@@ -788,6 +852,31 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     _option_path(args, "--stable-readiness-policy", _resolve_input_path(context, "stableReadinessPolicy"))
     _option_path(args, "--stable-known-limitations", _resolve_input_path(context, "stableKnownLimitations"))
     _option_path(args, "--stable-readiness-waivers", _resolve_input_path(context, "stableReadinessWaivers"))
+    stable_vulnerability_summary = _legacy_input_path(
+        context, "stableVulnerabilitySummary"
+    )
+    stable_vulnerability_required = (
+        context.manifest.requirements.get("stableVulnerability") is True
+        or context.manifest.policies.get("stableVulnerabilityGovernance")
+        == "required"
+    )
+    _option_path(
+        args,
+        "--stable-vulnerability-summary",
+        stable_vulnerability_summary,
+    )
+    _flag(
+        args,
+        stable_vulnerability_required,
+        "--require-stable-vulnerability",
+    )
+    if stable_rc_orchestration and (
+        stable_vulnerability_summary is None or not stable_vulnerability_required
+    ):
+        raise ValueError(
+            "Stable RC production execution requires authenticated Stable "
+            "vulnerability governance"
+        )
 
     run_multi_node = context.manifest.execution.get("runMultiNodeSoak") is True or (
         context.manifest.requirements.get("multiNodeSoak") is True and multi_node_summary is None
@@ -954,6 +1043,67 @@ def _run_stable_lifecycle(context: RunContext) -> tuple[int, Path, Path | None]:
     return engine.run(context)
 
 
+def _run_stable_vulnerability(context: RunContext) -> tuple[int, Path, Path | None]:
+    """Run side-effect-free Stable 1.0 vulnerability lifecycle certification."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError("stable-vulnerability requires release.profile stable-review")
+    from .engines import stable_1_0_vulnerability as engine
+
+    code, _protected_summary, _protected_report = engine.run(context)
+    output = _legacy_dir(context)
+    mode = _config(context, "stable-vulnerability").get("mode", "evaluate-intake")
+    if not isinstance(mode, str):
+        raise ValueError("stable-vulnerability mode must be a string")
+    passed = code == 0
+    adapter_summary = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-vulnerability-public-adapter-summary",
+        "tool": "stable-1.0-vulnerability",
+        "mode": mode,
+        "status": "pass" if passed else "fail",
+        "blockers": (
+            []
+            if passed
+            else [
+                {
+                    "id": "stable-vulnerability.protected-validation-rejected",
+                    "severity": "blocker",
+                    "summary": (
+                        "Protected Stable vulnerability validation was rejected; "
+                        "inspect only the protected execution boundary."
+                    ),
+                }
+            ]
+        ),
+        "redaction": {
+            "status": "pass",
+            "findingCount": 0,
+            "findings": [],
+            "guarantees": {
+                "authoritativeCaseExcluded": True,
+                "appendOnlyLedgerExcluded": True,
+                "protectedSummaryExcluded": True,
+                "protectedReportExcluded": True,
+                "reporterAndExploitMaterialExcluded": True,
+            },
+        },
+    }
+    adapter_summary_path = output / "stable-1.0-vulnerability-adapter-summary.json"
+    adapter_report_path = output / "stable-1.0-vulnerability-adapter-report.md"
+    write_json(adapter_summary_path, adapter_summary)
+    result = "completed" if passed else "was rejected"
+    write_text(
+        adapter_report_path,
+        "# Stable 1.0 vulnerability public adapter report\n\n"
+        f"Protected `{mode}` validation {result}. The authoritative case, append-only "
+        "ledger, operational summary, and protected report remain outside the "
+        "publishable release workspace. This adapter report contains no case, "
+        "reporter, exploit, or protected-evidence details.",
+    )
+    return code, adapter_summary_path, adapter_report_path
+
+
 def _run_passthrough(context: RunContext, command: str, action: str | None) -> tuple[int, Path, Path | None]:
     engine: Any
     out = _legacy_dir(context)
@@ -1073,6 +1223,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "stable-backport": _run_stable_backport,
     "stable-maintenance": _run_stable_maintenance,
     "stable-lifecycle": _run_stable_lifecycle,
+    "stable-vulnerability": _run_stable_vulnerability,
 }
 
 
@@ -1195,8 +1346,20 @@ def execute(context: RunContext, command: str, action: str | None = None) -> int
             raise ValueError(f"unsupported certification command: {command}")
     except SystemExit as error:
         return _write_early_exit_evidence(context, command, error)
-    if not legacy_summary_path.is_file():
-        raise ValueError(f"{command} did not write its expected summary: {legacy_summary_path}")
+    legacy_summary_path = _require_publishable_runner_file(
+        legacy_summary_path,
+        context,
+        f"{command} runner summary",
+    )
+    if legacy_report_path is not None:
+        if legacy_report_path.is_symlink() or legacy_report_path.exists():
+            legacy_report_path = _require_publishable_runner_file(
+                legacy_report_path,
+                context,
+                f"{command} runner report",
+            )
+        else:
+            legacy_report_path = None
     legacy = read_json(legacy_summary_path)
     if not isinstance(legacy, dict):
         raise ValueError(f"{command} summary must be a JSON object")
@@ -1217,7 +1380,7 @@ def execute(context: RunContext, command: str, action: str | None = None) -> int
             "security-response drill verification",
         )
     report = f"# {command}\n\nThe command completed with legacy exit code `{code}`."
-    if legacy_report_path is not None and legacy_report_path.is_file():
+    if legacy_report_path is not None:
         report = legacy_report_path.read_text(encoding="utf-8")
     artifacts = {"legacySummary": relative_to_run(artifact_summary, context)}
     result_status = None

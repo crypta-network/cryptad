@@ -403,3 +403,30 @@ update-key-derived package, lifecycle, and IP-to-country fetches. The revocation
 load or fetch the authenticated certificate needed to relay revocation announcements to peers.
 A local-only updater failure does not create this durable compromise latch and must leave both
 lifecycle and revocation polling active.
+
+## Authoritative vulnerability cases
+
+Security drills prove that response mechanisms can operate; they are not vulnerability intake,
+triage, disclosure authorization, or closure records. A real suspected Stable vulnerability
+starts from the authenticated private envelope and append-only ledger defined in
+[Stable 1.0 vulnerability intake and coordinated-disclosure
+operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md).
+
+Incident response consumes the case’s typed obligations. It continues to use the existing
+authorities for PR-287 fix provenance and release trains, Stable maintenance/hotfix publication,
+CoreUpdater publication, signed catalog advisories and exact-version denylists, reviewer receipt
+revocation, reviewer/app/catalog/update-key action, and Stable lifecycle transition. A case record
+does not perform or substitute for any of those actions.
+
+Before disclosure, the response team keeps the case, reporter coordination, remediation binding,
+authorization, advisory draft, target plan, and receipt staging inside authenticated encrypted
+handoffs. Workflow dispatch receives only opaque ids, paths, commits, and digests—not report text,
+severity rationale, reporter identity, private URLs, credit text, or exploit details. Exact public
+bytes become eligible for publication only after the release and applicable independent actions
+are already published and authenticated.
+
+After publication, the case does not close until a fresh public read proves the exact advisory
+bytes and the appropriate install/update, rollback, migration, backup/restore, safe-uninstall,
+catalog-denylist, mitigation, or key-revocation checks pass. Reporter disclosure and closure
+notifications are recorded when a protected contact location exists. The private case and prior
+advisory editions remain retained.

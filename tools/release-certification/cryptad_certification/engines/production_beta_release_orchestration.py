@@ -1015,6 +1015,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Stable 1.0 waiver JSON forwarded only to the Stable readiness gate.",
     )
+    parser.add_argument(
+        "--stable-vulnerability-summary",
+        type=Path,
+        help=(
+            "Authenticated external Stable vulnerability promotion summary forwarded "
+            "to aggregate release certification."
+        ),
+    )
+    parser.add_argument(
+        "--require-stable-vulnerability",
+        action="store_true",
+        help="Require passing non-waivable Stable vulnerability promotion evidence.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -1087,6 +1100,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         workspace,
     )
     stable_readiness_waivers = resolve_workspace_path_arg(args.stable_readiness_waivers, workspace)
+    stable_vulnerability_summary = resolve_workspace_path_arg(
+        args.stable_vulnerability_summary,
+        workspace,
+    )
     public_beta_known_issues = resolve_workspace_path_arg(
         args.public_beta_known_issues
         or Path("tools/release-certification/public-beta-known-issues.json"),
@@ -1241,6 +1258,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         ),
         require_history=args.require_history or args.mode == "production-beta",
         stable_rc_artifact_timestamp=stable_rc_artifact_timestamp or None,
+        stable_vulnerability_summary=stable_vulnerability_summary,
+        require_stable_vulnerability=args.require_stable_vulnerability,
     )
 
 def normalized_artifact_hostname(hostname: str) -> str:

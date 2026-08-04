@@ -680,6 +680,8 @@ class Settings:
     network_scale_soak_summary: Path | None = None
     require_history: bool = False
     stable_rc_artifact_timestamp: str | None = None
+    stable_vulnerability_summary: Path | None = None
+    require_stable_vulnerability: bool = False
 
 @dataclasses.dataclass
 class CommandResult:

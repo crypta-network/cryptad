@@ -14,6 +14,10 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.models import RunContext
 from cryptad_certification.schema_validation import validate_schema
+from cryptad_certification.stable_vulnerability_summary import (
+    follow_up_closure_errors,
+    promotion_errors,
+)
 from cryptad_certification.workspace import reset_confined_directory
 
 from .stable_1_0_ga_core import (
@@ -2667,6 +2671,36 @@ def run(context: RunContext) -> tuple[int, Path, Path]:
     return code, summary_path, report_path
 
 
+def _vulnerability_promotion_scope(
+    backport_release_train: dict[str, Any] | None,
+    hotfix_follow_up_obligation: dict[str, Any] | None,
+) -> tuple[set[str], list[dict[str, Any]]]:
+    """Return exact PR-288 incident scope for release or follow-up evaluation."""
+
+    public_fixes = (
+        backport_release_train.get("publicFixes", [])
+        if isinstance(backport_release_train, dict)
+        else []
+    )
+    public_fixes = public_fixes if isinstance(public_fixes, list) else []
+    incident_ids = {
+        str(row["incidentOpaqueId"])
+        for row in public_fixes
+        if isinstance(row, dict)
+        and isinstance(row.get("incidentOpaqueId"), str)
+    }
+    security_bindings = [
+        row
+        for row in public_fixes
+        if isinstance(row, dict) and row.get("classification") == "security-fix"
+    ]
+    if isinstance(hotfix_follow_up_obligation, dict):
+        incident_id = hotfix_follow_up_obligation.get("incidentId")
+        if isinstance(incident_id, str):
+            incident_ids.add(incident_id)
+    return incident_ids, security_bindings
+
+
 def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     mode = context.manifest.commands.get("stable-maintenance", {}).get(
         "mode", "validate-only"
@@ -2811,6 +2845,35 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         backport_release_train.digest
         if backport_release_train is not None
         else None
+    )
+    (
+        vulnerability_incident_ids,
+        vulnerability_security_bindings,
+    ) = _vulnerability_promotion_scope(
+        backport_release_train.value
+        if backport_release_train is not None
+        else None,
+        obligation.value if closing_follow_up and obligation is not None else None,
+    )
+    if closing_follow_up:
+        vulnerability_errors = follow_up_closure_errors(
+            context,
+            incident_id=next(iter(vulnerability_incident_ids), None),
+            evaluation_clock=_now(),
+        )
+    else:
+        vulnerability_errors = promotion_errors(
+            context,
+            release_class=str(context.manifest.policies.get("releaseClass")),
+            incident_ids=vulnerability_incident_ids,
+            security_bindings=vulnerability_security_bindings,
+            evaluation_clock=_now(),
+        )
+    add_blockers(
+        state,
+        "stable-maintenance.stable-vulnerability",
+        vulnerability_errors,
+        "Provide the exact authenticated case summary and operation-bound incident scope.",
     )
     if lifecycle_presence_errors:
         add_blockers(

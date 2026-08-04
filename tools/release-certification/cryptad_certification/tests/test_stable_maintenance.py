@@ -2948,6 +2948,7 @@ class StableMaintenanceCompatibilityTest(unittest.TestCase):
         )
 
 
+@mock.patch.object(compatibility.dt, "datetime", mock.Mock(wraps=datetime, **{"now.return_value": NOW}))
 class StableMaintenanceEvidenceTest(unittest.TestCase):
     """Normal evidence and narrowly expedited hotfix follow-up tests."""
 
@@ -3697,7 +3698,7 @@ class StableMaintenanceAuthorizationAndPublicationTest(unittest.TestCase):
                 "role": "stable-maintenance-train-manager",
                 "scope": ["train:composition", "candidate:handoff"],
                 "issuedAt": _timestamp(NOW - timedelta(minutes=30)),
-                "expiresAt": "2026-07-18T13:00:00.250000+00:00",
+                "expiresAt": _timestamp(NOW + timedelta(hours=1)),
                 "decision": "go",
                 "redaction": _redaction(),
             }

@@ -210,6 +210,41 @@ class StableBackportProtectedHandoffTest(unittest.TestCase):
         )
         self.assertFalse((self.root / "sealed").exists())
 
+    def test_hard_link_cannot_enter_the_encrypted_handoff(self) -> None:
+        original = self.source / "stable-1.0-release-train-queue.json"
+        os.link(original, self.source / "hard-linked.json")
+
+        result = self.run_handoff(
+            "seal",
+            self.source,
+            self.root / "sealed",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "protected-handoff-source-entry-unsafe",
+            result.stdout,
+        )
+        self.assertFalse((self.root / "sealed").exists())
+
+    def test_single_file_above_transport_limit_cannot_be_sealed(self) -> None:
+        (self.source / "oversized-ledger.json").write_bytes(
+            b"x" * (16 * 1024 * 1024 + 1)
+        )
+
+        result = self.run_handoff(
+            "seal",
+            self.source,
+            self.root / "sealed",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "protected-handoff-source-entry-unsafe",
+            result.stdout,
+        )
+        self.assertFalse((self.root / "sealed").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

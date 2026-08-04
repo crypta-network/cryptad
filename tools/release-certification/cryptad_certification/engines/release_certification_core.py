@@ -8,6 +8,8 @@ import dataclasses
 
 import datetime as dt
 
+import hashlib
+
 import json
 
 import os
@@ -15,6 +17,8 @@ import os
 import re
 
 import shutil
+
+import stat
 
 import subprocess
 
@@ -35,6 +39,19 @@ from cryptad_certification.engines import multi_node_beta_soak
 from cryptad_certification.engines import production_beta_go_no_go_dashboard
 
 from cryptad_certification.engines import security_response_runbook
+
+from cryptad_certification.io import read_json as read_strict_json
+
+from cryptad_certification.schema_validation import validate_schema
+
+from cryptad_certification.stable_vulnerability_handoff import (
+    current_tip_errors as shared_stable_vulnerability_current_tip_errors,
+    handoff_paths as shared_stable_vulnerability_handoff_paths,
+    provenance_errors as shared_stable_vulnerability_provenance_errors,
+    sealed_handoff_errors as shared_stable_vulnerability_sealed_handoff_errors,
+    source_digest as shared_stable_vulnerability_source_digest,
+    summary_errors as shared_stable_vulnerability_summary_errors,
+)
 
 TOOL_NAME = "release-certification"
 
@@ -253,6 +270,54 @@ STABLE_1_0_READINESS_EVIDENCE_IDS = production_beta_go_no_go_dashboard.STABLE_1_
 STABLE_1_0_READINESS_DOMAIN_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_DOMAIN_IDS
 
 STABLE_1_0_READINESS_MATRIX_ROW_ID = "stable-1-0-readiness"
+
+STABLE_VULNERABILITY_EVIDENCE_ID = "stable-vulnerability.release-promotion"
+
+STABLE_VULNERABILITY_GATE_ID = "ecosystem.stable-vulnerability"
+
+NONWAIVABLE_EVIDENCE_IDS = frozenset({STABLE_VULNERABILITY_EVIDENCE_ID})
+
+STABLE_VULNERABILITY_SUMMARY_SCHEMA = (
+    "stable-1.0-vulnerability-summary-v1.schema.json"
+)
+
+STABLE_VULNERABILITY_SUCCESSOR_BINDING_SCHEMA = (
+    "stable-1.0-vulnerability-successor-binding-v1.schema.json"
+)
+
+STABLE_VULNERABILITY_SUMMARY_PROVENANCE_SCHEMA = (
+    "stable-1.0-vulnerability-summary-provenance-v1.schema.json"
+)
+
+STABLE_VULNERABILITY_POLICY_PATH = Path(
+    "tools/release-certification/stable-1.0-vulnerability-disclosure-policy.json"
+)
+
+STABLE_VULNERABILITY_SUMMARY_ROOT_ENV = (
+    "CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT"
+)
+STABLE_VULNERABILITY_HANDOFF_KEY_ENV = (
+    "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64"
+)
+
+STABLE_VULNERABILITY_SUMMARY_FILE = "stable-1.0-vulnerability-summary.json"
+
+STABLE_VULNERABILITY_SUCCESSOR_BINDING_FILE = (
+    "stable-1.0-vulnerability-successor-binding.json"
+)
+
+STABLE_VULNERABILITY_SUMMARY_PROVENANCE_FILE = (
+    "stable-1.0-vulnerability-summary-provenance.json"
+)
+STABLE_VULNERABILITY_SEALED_HANDOFF_DIRECTORY = "sealed-successor"
+STABLE_VULNERABILITY_SEALED_HANDOFF_FILES = {
+    "stable-1.0-protected-handoff.enc",
+    "stable-1.0-protected-handoff.json",
+}
+
+MAX_STABLE_VULNERABILITY_SUMMARY_BYTES = 4 * 1024 * 1024
+
+MAX_STABLE_VULNERABILITY_PROVENANCE_BYTES = 64 * 1024
 
 APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
     "app-services.dependency-graph",
@@ -692,6 +757,10 @@ class Settings:
     security_drills_summary: Path | None = None
     stable_readiness_summary: Path | None = None
     stable_readiness_required: bool = False
+    stable_vulnerability_summary: Path | None = None
+    stable_vulnerability_required: bool = False
+    stable_vulnerability_candidate_release_id: str = ""
+    stable_vulnerability_candidate_build_version: str = ""
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -1211,7 +1280,10 @@ def with_waiver_record(item: EvidenceItem, waiver: WaiverRecord | None) -> Evide
 def active_waiver_for_evidence_item(
     context: WaiverContext, item: EvidenceItem, mode: str
 ) -> WaiverRecord | None:
-    if evidence_item_has_unwaivable_redaction_findings(item):
+    if (
+        item.id in NONWAIVABLE_EVIDENCE_IDS
+        or evidence_item_has_unwaivable_redaction_findings(item)
+    ):
         return None
     return active_waiver_for(context, item.id, [f"evidence.{item.id}"], mode)
 
@@ -1254,6 +1326,204 @@ def apply_waiver_to_gate(gate: GateResult, context: WaiverContext, mode: str) ->
         summary=f"{gate.summary} Waiver recorded: {waiver.reason}",
         details=details,
     )
+
+
+def stable_vulnerability_source_digest(raw: bytes) -> str:
+    """Return the digest of exact attached protected-summary bytes."""
+
+    return shared_stable_vulnerability_source_digest(raw)
+
+
+def _stable_vulnerability_handoff_paths(
+    path: Path,
+    workspace_root: Path,
+    out_dir: Path,
+) -> tuple[Path | None, Path | None, Path | None, list[str]]:
+    """Resolve one authenticated external summary handoff without reading unsafe paths."""
+
+    return shared_stable_vulnerability_handoff_paths(
+        path, workspace_root, out_dir
+    )
+
+
+def _stable_vulnerability_provenance_errors(
+    summary: dict[str, Any],
+    summary_raw: bytes,
+    binding_path: Path,
+    provenance_path: Path,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
+    """Authenticate the exact producer binding and protected materialization receipt."""
+
+    return shared_stable_vulnerability_provenance_errors(
+        summary, summary_raw, binding_path, provenance_path
+    )
+
+
+def _stable_vulnerability_sealed_handoff_errors(
+    summary_raw: bytes,
+    binding_path: Path,
+    workspace_root: Path,
+) -> list[str]:
+    """Cryptographically re-open and compare the protected producer handoff."""
+
+    return shared_stable_vulnerability_sealed_handoff_errors(
+        summary_raw, binding_path, workspace_root
+    )
+
+
+def stable_vulnerability_summary_errors(
+    value: dict[str, Any],
+    raw: bytes,
+    workspace_root: Path,
+    evaluation_clock: dt.datetime,
+    expected_release_id: str,
+    expected_build_version: str,
+) -> list[str]:
+    """Authenticate one bounded protected Stable vulnerability summary."""
+
+    return shared_stable_vulnerability_summary_errors(
+        value,
+        raw,
+        workspace_root,
+        evaluation_clock,
+        expected_release_id,
+        expected_build_version,
+    )
+
+
+def stable_vulnerability_evidence(
+    path: Path | None,
+    workspace_root: Path,
+    out_dir: Path,
+    expected_release_id: str,
+    expected_build_version: str,
+    *,
+    required: bool = False,
+) -> EvidenceItem | None:
+    """Load a protected PR-288 summary as non-waivable aggregate evidence."""
+
+    if path is None:
+        if not required:
+            return None
+        return EvidenceItem(
+            STABLE_VULNERABILITY_EVIDENCE_ID,
+            "missing",
+            True,
+            (
+                "Authenticated Stable vulnerability governance evidence is "
+                "required but no summary was configured."
+            ),
+            "stable-vulnerability-summary",
+            {
+                "configured": False,
+                "authenticated": False,
+                "blockingStablePromotion": False,
+                "nonWaivable": True,
+                "validationErrors": [
+                    "required Stable vulnerability summary is missing"
+                ],
+            },
+        )
+    source = display_path(path, workspace_root, out_dir)
+    raw = b""
+    value: dict[str, Any] | None = None
+    binding: dict[str, Any] | None = None
+    provenance: dict[str, Any] | None = None
+    (
+        authenticated_path,
+        binding_path,
+        provenance_path,
+        errors,
+    ) = _stable_vulnerability_handoff_paths(path, workspace_root, out_dir)
+    if authenticated_path is not None:
+        try:
+            raw = authenticated_path.read_bytes()
+        except OSError:
+            errors.append("configured summary is missing or unreadable")
+    if raw and len(raw) > MAX_STABLE_VULNERABILITY_SUMMARY_BYTES:
+        errors.append("configured summary exceeds the bounded size limit")
+    elif raw:
+        try:
+            loaded = read_strict_json(authenticated_path)
+        except (OSError, UnicodeDecodeError, ValueError):
+            errors.append("configured summary is malformed")
+        else:
+            if isinstance(loaded, dict):
+                value = loaded
+                errors.extend(
+                    stable_vulnerability_summary_errors(
+                        loaded,
+                        raw,
+                        workspace_root,
+                        dt.datetime.now(dt.timezone.utc),
+                        expected_release_id,
+                        expected_build_version,
+                    )
+                )
+                assert binding_path is not None and provenance_path is not None
+                (
+                    binding,
+                    provenance,
+                    provenance_errors,
+                ) = _stable_vulnerability_provenance_errors(
+                    loaded,
+                    raw,
+                    binding_path,
+                    provenance_path,
+                )
+                errors.extend(provenance_errors)
+                errors.extend(
+                    _stable_vulnerability_sealed_handoff_errors(
+                        raw,
+                        binding_path,
+                        workspace_root,
+                    )
+                )
+                errors.extend(
+                    shared_stable_vulnerability_current_tip_errors(
+                        loaded, binding, provenance
+                    )
+                )
+            else:
+                errors.append("configured summary is not a JSON object")
+
+    details: dict[str, Any] = {
+        "configured": True,
+        "nonWaivable": True,
+        "releaseId": value.get("releaseId") if value is not None else None,
+        "buildVersion": value.get("buildVersion") if value is not None else None,
+        "authenticated": value is not None and not errors,
+        "blockingStablePromotion": (
+            value.get("blockingStablePromotion") is True
+            if value is not None
+            else False
+        ),
+        "validationErrors": errors,
+    }
+    blocked = details["blockingStablePromotion"] is True
+    status = "fail" if errors or blocked else "pass"
+    if errors:
+        summary = (
+            "The bounded Stable vulnerability summary failed authentication or "
+            "schema, consistency, or redaction validation."
+        )
+    elif blocked:
+        summary = (
+            "The authenticated Stable vulnerability summary blocks this promotion."
+        )
+    else:
+        summary = (
+            "The authenticated Stable vulnerability summary permits this promotion."
+        )
+    return EvidenceItem(
+        STABLE_VULNERABILITY_EVIDENCE_ID,
+        status,
+        True,
+        summary,
+        source,
+        details,
+    )
+
 
 def has_required_flow(summary: dict[str, Any], flow_name: str) -> bool:
     flows = summary.get("flows", {})
@@ -3246,6 +3516,8 @@ def collect_ci_metadata(env: dict[str, str]) -> dict[str, str]:
 def evidence_item_has_active_rc_waiver(
     item: EvidenceItem, waiver_context: WaiverContext, mode: str
 ) -> bool:
+    if item.id in NONWAIVABLE_EVIDENCE_IDS:
+        return False
     if item.details.get("waived"):
         return True
     if evidence_item_has_unwaivable_redaction_findings(item):

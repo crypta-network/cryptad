@@ -190,3 +190,28 @@ revoked-reviewer fail-closed behavior, Web Shell warnings, safe uninstall guidan
 Reports must not contain raw signatures, raw public keys, private keys, private insert URIs,
 tokens, request bodies, raw fetched content, app-data backup payloads, local filesystem paths,
 catalog scratch paths, or staged bundle paths.
+
+## Stable vulnerability case binding
+
+An ecosystem advisory associated with Stable 1.0 also binds to the authoritative vulnerability
+case described in [Stable 1.0 vulnerability intake and coordinated-disclosure
+operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md). The signed
+catalog remains the authority for advisory and exact-version denylist state. The case ledger
+records a typed obligation and later authenticates the signed catalog publication receipt and
+fresh public observation; it does not manufacture catalog state from an in-memory record.
+
+The case/advisory relationship uses the same opaque case id, immutable advisory id, case snapshot
+digest, remediation-time public projection digest, exact affected app-id/version or catalog
+id/edition, replacement guidance, and receipt digests. Advisory updates increment their edition,
+bind the previous digest, and preserve published history. Withdrawal cannot erase a confirmed
+vulnerability or remove an earlier public edition.
+
+PR-288 uses `moderate`. Existing catalog-domain artifacts that use `medium` remain under their
+existing compatibility contract and must be normalized explicitly at the evidence-binding
+boundary. A vulnerability artifact never accepts both spellings.
+
+Reviewer-key compromise requires reviewer-key lifecycle evidence and exact affected receipt
+revocation. App, catalog, and update-signing-key incidents require their respective rotation or
+revocation authority. A catalog advisory, build lifecycle revocation, or replacement app does not
+substitute for update-key revocation. A replacement remains guidance; Cryptad does not silently
+migrate or uninstall an app.

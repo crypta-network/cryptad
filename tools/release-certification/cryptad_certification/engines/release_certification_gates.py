@@ -2408,6 +2408,42 @@ def evaluate_waiver_validation_gate(context: WaiverContext, mode: str) -> GateRe
         {"errors": context.errors, "issueIds": ["ecosystem.waivers.validation"]},
     )
 
+
+def evaluate_stable_vulnerability_gate(
+    current: dict[str, dict[str, Any]],
+    settings: Settings,
+) -> GateResult | None:
+    """Return the explicit non-waivable PR-288 promotion gate when required or configured."""
+
+    if (
+        not settings.stable_vulnerability_required
+        and settings.stable_vulnerability_summary is None
+    ):
+        return None
+    entry = current.get(STABLE_VULNERABILITY_EVIDENCE_ID)
+    status = evidence_status(entry)
+    details = dict(evidence_details(entry))
+    details["evidenceId"] = STABLE_VULNERABILITY_EVIDENCE_ID
+    details["nonWaivable"] = True
+    release_blocker = status != "pass"
+    if release_blocker:
+        details["failureEvidenceIds"] = [STABLE_VULNERABILITY_EVIDENCE_ID]
+        details["unwaivableFailureEvidenceIds"] = [
+            STABLE_VULNERABILITY_EVIDENCE_ID
+        ]
+    return GateResult(
+        STABLE_VULNERABILITY_GATE_ID,
+        "fail" if release_blocker else "pass",
+        release_blocker,
+        (
+            "Stable vulnerability governance blocks promotion."
+            if release_blocker
+            else "Stable vulnerability governance permits promotion."
+        ),
+        details,
+    )
+
+
 def unique_ids(values: Any) -> list[str]:
     return sorted(dict.fromkeys(str(value) for value in values if str(value).strip()))
 
@@ -2447,6 +2483,8 @@ def ecosystem_matrix_row_ids_for_evidence(evidence_id: str) -> list[str]:
 def active_waiver_for_ecosystem_rc_evidence(
     context: WaiverContext, evidence_id: str, mode: str
 ) -> WaiverRecord | None:
+    if evidence_id in NONWAIVABLE_EVIDENCE_IDS:
+        return None
     issue_ids = [
         f"evidence.{evidence_id}",
         *ecosystem_matrix_row_ids_for_evidence(evidence_id),
@@ -2459,7 +2497,10 @@ def ecosystem_rc_evidence_waiver_id(
     evidence_id: str,
     mode: str,
 ) -> str:
-    if evidence_entry_has_unwaivable_redaction_findings(entry):
+    if (
+        evidence_id in NONWAIVABLE_EVIDENCE_IDS
+        or evidence_entry_has_unwaivable_redaction_findings(entry)
+    ):
         return ""
     waiver_id = evidence_detail_waiver_id(entry)
     if waiver_id:
@@ -2483,6 +2524,11 @@ def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[s
     evidence_ids = list(ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS)
     if settings.live_network_beta_required:
         evidence_ids.extend(LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS)
+    if (
+        settings.stable_vulnerability_required
+        or settings.stable_vulnerability_summary is not None
+    ):
+        evidence_ids.append(STABLE_VULNERABILITY_EVIDENCE_ID)
     return unique_ids(evidence_ids)
 
 def conditional_ecosystem_rc_required_gate_ids(
@@ -2491,6 +2537,11 @@ def conditional_ecosystem_rc_required_gate_ids(
     gate_ids = list(ECOSYSTEM_RC_REQUIRED_GATE_IDS)
     if settings.live_network_beta_required:
         gate_ids.append("ecosystem.live-network-beta")
+    if (
+        settings.stable_vulnerability_required
+        or settings.stable_vulnerability_summary is not None
+    ):
+        gate_ids.append(STABLE_VULNERABILITY_GATE_ID)
     if "ecosystem.waivers" in gate_entries:
         gate_ids.append("ecosystem.waivers")
     return unique_ids(gate_ids)
@@ -2515,10 +2566,20 @@ def evaluate_ecosystem_rc_certification_gate(
     waived_gate_ids: list[str] = []
     waiver_ids: list[str] = []
     redaction_failure_ids: list[str] = []
+    nonwaivable_failure_ids: list[str] = []
 
     for evidence_id in required_evidence_ids:
         entry = current.get(evidence_id)
         status = evidence_status(entry)
+        if evidence_id in NONWAIVABLE_EVIDENCE_IDS and status != "pass":
+            nonwaivable_failure_ids.append(evidence_id)
+            if status == "missing":
+                missing_evidence_ids.append(evidence_id)
+            elif status == "skip":
+                skipped_evidence_ids.append(evidence_id)
+            else:
+                failed_evidence_ids.append(evidence_id)
+            continue
         if evidence_entry_has_unwaivable_redaction_findings(entry):
             redaction_failure_ids.append(evidence_id)
             failed_evidence_ids.append(evidence_id)
@@ -2640,6 +2701,7 @@ def evaluate_ecosystem_rc_certification_gate(
     waived_gate_ids = unique_ids(waived_gate_ids)
     waiver_ids = unique_ids(waiver_ids)
     redaction_failure_ids = unique_ids(redaction_failure_ids)
+    nonwaivable_failure_ids = unique_ids(nonwaivable_failure_ids)
 
     has_blockers = bool(
         failed_evidence_ids
@@ -2689,8 +2751,10 @@ def evaluate_ecosystem_rc_certification_gate(
         details["failureEvidenceIds"] = unique_ids(
             failed_evidence_ids + missing_evidence_ids + skipped_evidence_ids
         )
-    if redaction_failure_ids:
-        details["unwaivableFailureEvidenceIds"] = redaction_failure_ids
+    if redaction_failure_ids or nonwaivable_failure_ids:
+        details["unwaivableFailureEvidenceIds"] = unique_ids(
+            redaction_failure_ids + nonwaivable_failure_ids
+        )
     if warning_evidence_ids:
         details["warningEvidenceIds"] = warning_evidence_ids
     summary = (
@@ -2736,6 +2800,9 @@ def evaluate_ecosystem_gates(
     waiver_gate = evaluate_waiver_validation_gate(waiver_context, settings.mode)
     if waiver_gate is not None:
         child_gates.append(waiver_gate)
+    stable_vulnerability_gate = evaluate_stable_vulnerability_gate(current, settings)
+    if stable_vulnerability_gate is not None:
+        child_gates.append(stable_vulnerability_gate)
     waived_child_gates = [
         apply_waiver_to_gate(gate, waiver_context, settings.mode) for gate in child_gates
     ]

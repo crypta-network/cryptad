@@ -15,6 +15,7 @@ from ..engines.stable_1_0_backport_core import (
     build_queue,
     canonical_identity_digest,
     intake_errors,
+    phase_intake_composition_digest,
     semantic_digest,
 )
 from .test_stable_backport import (
@@ -45,6 +46,74 @@ class StableBackportFixtureTest(unittest.TestCase):
 
 
 class StableBackportQueueIntegrityTest(unittest.TestCase):
+    def test_phase_composition_preserves_legacy_security_digest(self) -> None:
+        security = {
+            "incidentOpaqueId": "incident-opaque-287",
+            "advisoryOpaqueId": "advisory-opaque-287",
+            "severity": "critical",
+            "disclosureState": "protected-embargoed",
+            "publicSafeSummary": "A bounded security correction is available.",
+            "privateRecordDigest": _digest("e"),
+            "publicProjectionDigest": _digest("f"),
+        }
+        legacy_queue = {
+            "policyDigest": _digest("1"),
+            "repositoryIdentity": "github.com/crypta-network/cryptad",
+            "queueId": "stable-queue-build-301",
+            "previousQueueDigest": _digest("2"),
+            "latestMaintenancePointerDigest": _digest("3"),
+            "hotfixFollowUpClosureDigest": None,
+            "lifecycleLedgerDigest": _digest("4"),
+            "fixes": [
+                {
+                    "fixId": "stable-fix-abcdefghijklmnop",
+                    "publicTitle": "Bounded security correction",
+                    "publicSummary": (
+                        "A bounded security correction is available."
+                    ),
+                    "classification": "security-fix",
+                    "disposition": "security-hotfix",
+                    "releaseLane": "security-hotfix",
+                    "severity": "critical",
+                    "risk": "high",
+                    "affectedScope": {"components": ["core"]},
+                    "source": {"sourceCommit": "a" * 40},
+                    "security": security,
+                    "schedule": {"targetTrainId": "stable-train-301"},
+                    "supersedingFixId": None,
+                    "privateRecordDigest": _digest("e"),
+                    "publicProjectionDigest": _digest("d"),
+                }
+            ],
+            "obligations": [],
+        }
+
+        legacy_digest = phase_intake_composition_digest(legacy_queue)
+        explicit_null_queue = copy.deepcopy(legacy_queue)
+        explicit_null_queue["fixes"][0]["security"][
+            "vulnerabilityPublicProjectionDigest"
+        ] = None
+        pr_288_queue = copy.deepcopy(legacy_queue)
+        pr_288_queue["fixes"][0]["security"]["incidentOpaqueId"] = (
+            "sv-abcdefghijklmnopqrst"
+        )
+        pr_288_queue["fixes"][0]["security"][
+            "vulnerabilityPublicProjectionDigest"
+        ] = _digest("a")
+
+        self.assertEqual(
+            legacy_digest,
+            "sha256:c0f2912ce28fbf90fa18aec4763afa3226bbd16188b93cadcbdae64da96ebaad",
+        )
+        self.assertEqual(
+            phase_intake_composition_digest(explicit_null_queue),
+            legacy_digest,
+        )
+        self.assertNotEqual(
+            phase_intake_composition_digest(pr_288_queue),
+            legacy_digest,
+        )
+
     def test_rejected_fixes_reenter_triage_without_clearing_critical_scope(
         self,
     ) -> None:
@@ -454,6 +523,30 @@ class StableBackportQueueIntegrityTest(unittest.TestCase):
                 fixture.fix_commit,
                 fixture.candidate,
             )
+            security_fix["security"]["incidentOpaqueId"] = (
+                "sv-abcdefghijklmnopqrst"
+            )
+            security_fix["security"]["vulnerabilityPublicProjectionDigest"] = (
+                _digest("a")
+            )
+            security_fix["security"]["publicProjectionDigest"] = semantic_digest(
+                {
+                    "fixId": security_fix["fixId"],
+                    "incidentOpaqueId": security_fix["security"][
+                        "incidentOpaqueId"
+                    ],
+                    "advisoryOpaqueId": security_fix["security"][
+                        "advisoryOpaqueId"
+                    ],
+                    "severity": security_fix["security"]["severity"],
+                    "disclosureState": security_fix["security"][
+                        "disclosureState"
+                    ],
+                    "publicSafeSummary": security_fix["security"][
+                        "publicSafeSummary"
+                    ],
+                }
+            )
             previous_intake = _intake(fixture.policy_digest, security_fix)
             previous_queue, previous_errors = build_queue(
                 previous_intake,
@@ -468,6 +561,13 @@ class StableBackportQueueIntegrityTest(unittest.TestCase):
             rewritten_intake = copy.deepcopy(previous_intake)
             rewritten_intake["previousQueueDigest"] = previous_queue["queueDigest"]
             rewritten = rewritten_intake["fixes"][0]
+            rewritten["security"]["vulnerabilityPublicProjectionDigest"] = (
+                _digest("f")
+            )
+            self.assertNotEqual(
+                phase_intake_composition_digest(previous_intake),
+                phase_intake_composition_digest(rewritten_intake),
+            )
             rewritten["severity"] = "high"
             rewritten["security"]["severity"] = "high"
             rewritten["security"]["publicProjectionDigest"] = semantic_digest(
@@ -505,6 +605,14 @@ class StableBackportQueueIntegrityTest(unittest.TestCase):
             )
             self.assertTrue(
                 any("rewrites immutable security severity" in row for row in errors),
+                errors,
+            )
+            self.assertTrue(
+                any(
+                    "rewrites immutable security vulnerabilityPublicProjectionDigest"
+                    in row
+                    for row in errors
+                ),
                 errors,
             )
             self.assertTrue(

@@ -612,6 +612,32 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.extend(["--previous-summary", str(history_summary)])
     if state.settings.waiver_file:
         args.extend(["--waiver-file", str(state.settings.waiver_file)])
+    if state.settings.stable_vulnerability_summary is not None:
+        args.extend(
+            [
+                "--stable-vulnerability-summary",
+                str(state.settings.stable_vulnerability_summary),
+            ]
+        )
+    if state.settings.require_stable_vulnerability:
+        args.append("--require-stable-vulnerability")
+    if (
+        state.settings.stable_vulnerability_summary is not None
+        or state.settings.require_stable_vulnerability
+    ):
+        if not state.settings.release_id:
+            state.failures.append(
+                "Stable vulnerability governance requires a candidate release identity."
+            )
+        else:
+            args.extend(
+                [
+                    "--stable-vulnerability-candidate-release-id",
+                    state.settings.release_id,
+                    "--stable-vulnerability-candidate-build-version",
+                    state.version,
+                ]
+            )
     cert_env = dict(env)
     cert_env["CRYPTAD_CERT_NETWORK_SCALE_SOAK_RELEASE_ID"] = security_drills_release_id(state)
     if state.settings.run_multi_node_soak:

@@ -1147,6 +1147,24 @@ def unsafe_template_prompt_findings(path: str, text: str) -> list[dict[str, str]
             findings.append(
                 {"path": path, "issue": "public-exploit-detail-request", "line": str(line_number)}
             )
+        unconditional_private_path = re.search(
+            r"\b(?:will|must)\s+(?:use|follow)\s+the\s+private\s+"
+            r"(?:security\s+reporting\s+)?(?:path|workflow)\b",
+            lowered,
+        )
+        protected_channel_condition = (
+            "maintainer provides" in lowered
+            or "maintainer-provided" in lowered
+            or "configured protected" in lowered
+        )
+        if unconditional_private_path and not protected_channel_condition:
+            findings.append(
+                {
+                    "path": path,
+                    "issue": "unconfigured-private-reporting-path",
+                    "line": str(line_number),
+                }
+            )
     return findings
 
 
@@ -2393,6 +2411,20 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert not unsafe_template_prompt_findings(
             "safe.yml", "Do not upload a raw support bundle in this public issue."
+        )
+        assert unsafe_template_prompt_findings(
+            "unsafe.yml",
+            "I will use the private security reporting path for technical details.",
+        ) == [
+            {
+                "path": "unsafe.yml",
+                "issue": "unconfigured-private-reporting-path",
+                "line": "1",
+            }
+        ]
+        assert not unsafe_template_prompt_findings(
+            "safe.yml",
+            "I will wait until a maintainer provides an approved protected channel.",
         )
     assert redaction_findings_for_text("Authorization: Bearer concrete-token-value") == [
         "authorization-header"

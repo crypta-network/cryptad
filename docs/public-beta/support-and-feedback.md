@@ -37,7 +37,7 @@ content, keys, tokens, local file layout, app data, or support bundle internals.
 | App review appeal or resubmission | `app-review-appeal.yml` |
 | Platform API compatibility issue | `platform-api-compatibility.yml` |
 | Legacy plugin migration question | `plugin-migration-feedback.yml` |
-| Suspected security issue | `security-advisory-intake.yml` handoff, then the private path in [security-reporting.md](security-reporting.md) |
+| Suspected security issue | `security-advisory-intake.yml` handoff; retain sensitive details until a maintainer provides the approved protected channel described in [security-reporting.md](security-reporting.md) |
 
 ## Safe fields to include
 

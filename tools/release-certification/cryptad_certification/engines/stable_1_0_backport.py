@@ -14,6 +14,7 @@ from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.models import RunContext
 from cryptad_certification.redaction import scan_value
 from cryptad_certification.schema_validation import validate_schema
+from cryptad_certification.stable_vulnerability_summary import promotion_errors
 from cryptad_certification.stable_backport_git import (
     GitInspectionError,
     GitInspector,
@@ -1065,6 +1066,11 @@ def _public_fix(fix: dict[str, Any]) -> dict[str, Any]:
         "securityPublicProjectionDigest": (
             security.get("publicProjectionDigest") if security else None
         ),
+        "vulnerabilityPublicProjectionDigest": (
+            security.get("vulnerabilityPublicProjectionDigest")
+            if security
+            else None
+        ),
         "disclosureState": security.get("disclosureState") if security else None,
     }
 
@@ -1160,6 +1166,47 @@ def _fix_sets(
         if fix.get("state") == "superseded"
     )
     return accepted, deferred, rejected, superseded
+
+
+def _vulnerability_promotion_scope(
+    selected_fixes: list[dict[str, Any]],
+) -> tuple[set[str], list[dict[str, Any]]]:
+    """Return the exact PR-288 scope selected for this release train."""
+
+    bindings = [
+        security
+        for fix in selected_fixes
+        if fix.get("classification") == "security-fix"
+        and isinstance((security := fix.get("security")), dict)
+    ]
+    incident_ids = {
+        str(security["incidentOpaqueId"])
+        for security in bindings
+        if isinstance(security.get("incidentOpaqueId"), str)
+    }
+    return incident_ids, bindings
+
+
+def _current_vulnerability_promotion_errors(
+    context: RunContext,
+    *,
+    mode: str,
+    release_class: str,
+    incident_ids: Iterable[str],
+    security_bindings: Iterable[dict[str, Any]],
+    evaluation_clock: dt.datetime,
+) -> list[str]:
+    """Gate an unpublished train, but never deadlock published-train reconciliation."""
+
+    if mode == "verify-release-completion":
+        return []
+    return promotion_errors(
+        context,
+        release_class=release_class,
+        incident_ids=incident_ids,
+        security_bindings=security_bindings,
+        evaluation_clock=evaluation_clock,
+    )
 
 
 def _authenticate_released_transitions(
@@ -3079,6 +3126,19 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         raise ValueError(
             "accepted release-train fix targets a different release train"
         )
+    security_incident_ids, security_bindings = _vulnerability_promotion_scope(
+        accepted
+    )
+    vulnerability_errors = _current_vulnerability_promotion_errors(
+        context,
+        mode=mode,
+        release_class=str(context.manifest.policies.get("releaseClass")),
+        incident_ids=security_incident_ids,
+        security_bindings=security_bindings,
+        evaluation_clock=now,
+    )
+    if vulnerability_errors:
+        raise ValueError("Stable vulnerability summary blocks this release train")
     permitted_obligation_ids: list[str] = []
     if mode != "evaluate":
         permitted_obligation_ids, obligation_errors = (

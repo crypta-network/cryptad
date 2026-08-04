@@ -31,6 +31,7 @@ COMMANDS = (
     "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
+    "stable-vulnerability",
 )
 MULTI_NODE_ACTIONS = (
     "plan",
@@ -66,6 +67,7 @@ SELF_TEST_SUITES = (
     "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
+    "stable-vulnerability",
     "migration",
 )
 
@@ -186,6 +188,16 @@ def _validate_stable_rc_manifest(manifest: RunManifest) -> None:
     if freeze_mode == "refreeze" and not has_previous_freeze:
         raise ValueError(
             "stable-rc refreeze mode requires inputs.previousStableRcFreeze"
+        )
+    if (
+        manifest.requirements.get("stableVulnerability") is not True
+        or manifest.policies.get("stableVulnerabilityGovernance") != "required"
+        or "stableVulnerabilitySummary" not in manifest.inputs
+    ):
+        raise ValueError(
+            "stable-rc requires the current authenticated Stable vulnerability "
+            "promotion handoff, requirements.stableVulnerability=true, and "
+            "policies.stableVulnerabilityGovernance=required"
         )
     configured_same_run = [key for key in SAME_RUN_INPUT_KEYS if key in manifest.inputs]
     if configured_same_run:
@@ -658,6 +670,106 @@ def _validate_stable_lifecycle_manifest(manifest: RunManifest) -> None:
         raise ValueError("stable-lifecycle requires explicit protected publication intent")
 
 
+def _validate_stable_vulnerability_manifest(manifest: RunManifest) -> None:
+    """Reject vulnerability lifecycle runs with mixed trust-boundary inputs."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-vulnerability requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError(
+            "stable-vulnerability requires a canonical positive integer release.version"
+        )
+    mode = manifest.commands.get("stable-vulnerability", {}).get(
+        "mode", "evaluate-intake"
+    )
+    required_by_mode = {
+        "evaluate-intake": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityReportEnvelope",
+            "stableVulnerabilityAcknowledgement",
+        },
+        "evaluate-promotion": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityPromotionEvaluation",
+        },
+        "validate-triage": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityTriage",
+            "stableVulnerabilityTriageAuthorization",
+        },
+        "record-reporter-update": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityReporterCoordination",
+        },
+        "prepare-remediation": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityRemediationBinding",
+        },
+        "validate-disclosure-authorization": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityRemediationBinding",
+            "stableVulnerabilityAdvisory",
+            "stableVulnerabilityReporterCoordination",
+            "stableVulnerabilityDisclosureAuthorization",
+        },
+        "verify-disclosure-publication": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityAdvisory",
+            "stableVulnerabilityDisclosureAuthorization",
+            "stableVulnerabilityPublicationPlan",
+            "stableVulnerabilityPublicationReceipt",
+            "stableVulnerabilityPublicObservationReceipt",
+        },
+        "verify-closure": {
+            "stableVulnerabilityPolicy",
+            "previousStableVulnerabilityLedger",
+            "stableVulnerabilityAdvisory",
+            "stableVulnerabilityDisclosureAuthorization",
+            "stableVulnerabilityReporterCoordination",
+            "stableVulnerabilityPublicationReceipt",
+            "stableVulnerabilityPublicObservationReceipt",
+            "stableVulnerabilityClosureEvidence",
+        },
+    }
+    required = required_by_mode.get(mode)
+    if required is None:
+        raise ValueError(
+            "stable-vulnerability mode must be evaluate-intake, evaluate-promotion, "
+            "validate-triage, record-reporter-update, "
+            "prepare-remediation, validate-disclosure-authorization, "
+            "verify-disclosure-publication, or verify-closure"
+        )
+    missing = sorted(required.difference(manifest.inputs))
+    if missing:
+        raise ValueError(
+            f"stable-vulnerability {mode} requires exact inputs: " + ", ".join(missing)
+        )
+    authority_receipts = {
+        "stableVulnerabilityMitigationPublicationReceipt",
+        "catalogSecurityPublicationReceipt",
+        "keyRevocationOrRotationReceipt",
+    }.intersection(manifest.inputs)
+    has_provenance = (
+        "stableVulnerabilityAuthorityReceiptProvenance" in manifest.inputs
+    )
+    if authority_receipts and not has_provenance:
+        raise ValueError(
+            "independent authority receipts require exact producer provenance"
+        )
+    if has_provenance and not authority_receipts:
+        raise ValueError(
+            "authority receipt provenance requires an independent authority receipt"
+        )
+
+
 def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
@@ -677,6 +789,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_maintenance_manifest(manifest)
     if command == "stable-lifecycle":
         _validate_stable_lifecycle_manifest(manifest)
+    if command == "stable-vulnerability":
+        _validate_stable_vulnerability_manifest(manifest)
     prepare_run_root(manifest)
 
     previous = Path.cwd()

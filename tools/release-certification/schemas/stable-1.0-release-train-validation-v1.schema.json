@@ -225,6 +225,9 @@
         "securityPublicProjectionDigest": {
           "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
         },
+        "vulnerabilityPublicProjectionDigest": {
+          "$ref": "stable-1.0-backport-common-v1.schema.json#/$defs/nullableDigest"
+        },
         "disclosureState": {
           "oneOf": [
             {"enum": ["protected-embargoed", "public-safe-pre-disclosure", "disclosed"]},

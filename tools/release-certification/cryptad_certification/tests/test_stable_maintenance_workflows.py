@@ -15,9 +15,12 @@ import textwrap
 import types
 import unittest
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
+from cryptad_certification import stable_vulnerability_summary
+from cryptad_certification.engines import stable_1_0_maintenance
 
 ROOT = Path(__file__).resolve().parents[4]
 RC_RELEASE = ROOT / ".github/workflows/stable-1.0-rc-release.yml"
@@ -43,6 +46,97 @@ BACKEND_PRODUCER = (
 )
 BACKEND_ROOT = ROOT / "tools/release-certification/publication-backend"
 MAINTENANCE_DOC = ROOT / "docs/stable-1.0-maintenance-release-and-hotfix-path.md"
+
+
+class StableMaintenanceVulnerabilityIntegrationTests(unittest.TestCase):
+    def test_example_uses_the_fixed_external_vulnerability_summary_subject(self) -> None:
+        manifest = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "stable-1.0-vulnerability-summary.json",
+            manifest["inputs"]["stableVulnerabilitySummary"],
+        )
+        producer = INPUTS.read_text(encoding="utf-8")
+        self.assertIn('if key == "stableVulnerabilitySummary":', producer)
+        self.assertIn('if value != fixed_name:', producer)
+        self.assertIn(
+            'return output / "protected-inputs" / fixed_name', producer
+        )
+
+    def test_follow_up_closure_preserves_its_authenticated_incident_scope(
+        self,
+    ) -> None:
+        incident_id = "sv-abcdefghijklmnopqrst"
+        release_train = {
+            "publicFixes": [
+                {
+                    "classification": "security-fix",
+                    "incidentOpaqueId": incident_id,
+                    "vulnerabilityPublicProjectionDigest": "sha256:" + "a" * 64,
+                }
+            ]
+        }
+
+        release_ids, release_bindings = (
+            stable_1_0_maintenance._vulnerability_promotion_scope(  # noqa: SLF001
+                release_train, None
+            )
+        )
+        closure_ids, closure_bindings = (
+            stable_1_0_maintenance._vulnerability_promotion_scope(  # noqa: SLF001
+                None, {"incidentId": incident_id}
+            )
+        )
+
+        self.assertEqual(release_ids, {incident_id})
+        self.assertEqual(release_bindings, release_train["publicFixes"])
+        self.assertEqual(closure_ids, {incident_id})
+        self.assertEqual(closure_bindings, [])
+
+    def test_follow_up_closure_ignores_only_unrelated_promotion_blockers(
+        self,
+    ) -> None:
+        incident_id = "sv-abcdefghijklmnopqrst"
+        unrelated_id = "sv-zyxwvutsrqponmlkjihg"
+        summary = {
+            "caseSummaries": [
+                {"caseOpaqueId": incident_id},
+                {"caseOpaqueId": unrelated_id},
+            ],
+            "blockingStablePromotion": True,
+            "blockingCaseOpaqueIds": [incident_id, unrelated_id],
+        }
+        context = types.SimpleNamespace(
+            manifest=types.SimpleNamespace(inputs={}, policies={})
+        )
+        clock = datetime(2026, 7, 31, tzinfo=timezone.utc)
+        with mock.patch.object(
+            stable_vulnerability_summary,
+            "load_summary",
+            return_value=(summary, []),
+        ):
+            self.assertEqual(
+                stable_vulnerability_summary.follow_up_closure_errors(
+                    context,
+                    incident_id=incident_id,
+                    evaluation_clock=clock,
+                ),
+                [],
+            )
+            self.assertTrue(
+                stable_vulnerability_summary.follow_up_closure_errors(
+                    context,
+                    incident_id="sv-missingincidentabcd",
+                    evaluation_clock=clock,
+                )
+            )
+            self.assertTrue(
+                stable_vulnerability_summary.promotion_errors(
+                    context,
+                    release_class="security-hotfix",
+                    incident_ids={incident_id},
+                    evaluation_clock=clock,
+                )
+            )
 
 
 def _input_producer_validation_script() -> str:
@@ -92,6 +186,52 @@ def _release_lifecycle_authority_presence_script() -> str:
 
 
 class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
+    def test_release_materializes_the_required_vulnerability_summary_handoff(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Materialize authenticated vulnerability summary outside public roots",
+            workflow,
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT",
+            workflow,
+        )
+        self.assertIn(
+            '.policies.stableVulnerabilityGovernance == "required"',
+            workflow,
+        )
+        self.assertIn(
+            "stable-1.0-vulnerability-summary.json",
+            workflow,
+        )
+        for expected in (
+            "stable_backport_protected_handoff.py open",
+            "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64",
+            "stable-1.0-vulnerability-successor-binding.json",
+            "stable-1.0-vulnerability-summary-provenance.json",
+            "sealed-successor/stable-1.0-protected-handoff.enc",
+            "sealed-successor/stable-1.0-protected-handoff.json",
+            "stable_vulnerability_actions_tip.py",
+            "verify-promotion",
+            '--environment-file "$GITHUB_ENV"',
+        ):
+            self.assertIn(expected, workflow)
+        self.assertIn(
+            "concurrency:\n"
+            "      group: >-\n"
+            "        ${{ (inputs.operation == 'prepare-authorization'\n"
+            "        || inputs.operation == 'validate-authorization')\n"
+            "        && 'stable-1-0-vulnerability-ledger'",
+            workflow,
+        )
+        self.assertIn("      cancel-in-progress: false", workflow)
+        self.assertNotIn(
+            'source="build/protected-inputs/$summary_name"', workflow
+        )
+
     def test_stable_release_workflows_enforce_runtime_release_id_bound(self) -> None:
         bash_workflows = (
             RC_RELEASE,
@@ -1324,6 +1464,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 extra_asset_directory: bool = False,
                 extra_file: str | None = None,
                 predecessor_baseline: dict[str, object] | None = None,
+                plaintext_vulnerability_summary: bool = False,
             ) -> None:
                 manifest_member = zipfile.ZipInfo("stable-1.0-maintenance.json")
                 manifest_member.create_system = 3
@@ -1391,6 +1532,43 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                                 + "\n"
                             ).encode("utf-8"),
                         )
+                    if "stableVulnerabilitySummary" in manifest["inputs"]:
+                        for name, contents in (
+                            (
+                                "stable-1.0-vulnerability-successor-binding.json",
+                                b"{}\n",
+                            ),
+                            (
+                                "stable-1.0-vulnerability-summary-provenance.json",
+                                b"{}\n",
+                            ),
+                            (
+                                "sealed-successor/stable-1.0-protected-handoff.enc",
+                                b"encrypted-summary-envelope\n",
+                            ),
+                            (
+                                "sealed-successor/stable-1.0-protected-handoff.json",
+                                b"{}\n",
+                            ),
+                        ):
+                            handoff_member = zipfile.ZipInfo(
+                                f"protected-inputs/{name}"
+                            )
+                            handoff_member.create_system = 3
+                            handoff_member.external_attr = (
+                                stat.S_IFREG | 0o600
+                            ) << 16
+                            bundle.writestr(handoff_member, contents)
+                        if plaintext_vulnerability_summary:
+                            summary_member = zipfile.ZipInfo(
+                                "protected-inputs/"
+                                "stable-1.0-vulnerability-summary.json"
+                            )
+                            summary_member.create_system = 3
+                            summary_member.external_attr = (
+                                stat.S_IFREG | 0o600
+                            ) << 16
+                            bundle.writestr(summary_member, b"{}\n")
                     if phase == "freeze-candidate":
                         catalog_bytes = b"catalog.version=1\n"
                         signature_bytes = b"detached-signature\n"
@@ -1465,6 +1643,40 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                         check=False,
                     )
                     self.assertEqual(0, completed.returncode, completed.stderr)
+
+            encrypted_only = json.loads(json.dumps(example))
+            encrypted_only["inputs"]["stableVulnerabilitySummary"] = (
+                "stable-1.0-vulnerability-summary.json"
+            )
+            write_bundle(encrypted_only, "freeze-candidate")
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "freeze-candidate"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+
+            write_bundle(
+                encrypted_only,
+                "freeze-candidate",
+                plaintext_vulnerability_summary=True,
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=checkout,
+                env={**environment, "INPUT_PHASE": "freeze-candidate"},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn(
+                "plaintext Stable vulnerability summary is forbidden",
+                completed.stderr,
+            )
 
             successor = json.loads(json.dumps(example))
             successor["commands"]["stable-maintenance"]["mode"] = (
@@ -1925,6 +2137,93 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         )
         self.assertLess(identity_start, mutation_start)
 
+    def test_publication_reauthenticates_current_vulnerability_tip_under_lock(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        job_start = workflow.index("  protected-publication:")
+        job_end = workflow.index("\n  independent-verification:", job_start)
+        job = workflow[job_start:job_end]
+
+        self.assertIn(
+            "    concurrency:\n"
+            "      group: stable-1-0-vulnerability-ledger\n"
+            "      cancel-in-progress: false",
+            job,
+        )
+        download = job.index("      - name: Download exact revalidated candidate")
+        current_tip = job.index(
+            "      - name: Reauthenticate current Stable vulnerability ledger "
+            "before publication"
+        )
+        preflight = job.index(
+            "      - name: Preflight predecessor, authorization, freeze, and public conflicts"
+        )
+        mutation = job.index(
+            "      - name: Publish or idempotently verify exact bytes"
+        )
+        self.assertLess(download, current_tip)
+        self.assertLess(current_tip, preflight)
+        self.assertLess(current_tip, mutation)
+
+        step_end = job.index("\n      - name:", current_tip + 8)
+        step = job[current_tip:step_end]
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN }}",
+            step,
+        )
+        self.assertIn("stable_vulnerability_actions_tip.py", step)
+        self.assertIn("verify-promotion", step)
+        self.assertIn(
+            "build/stable-maintenance-publication/protected-inputs", step
+        )
+        self.assertIn(
+            "stable-1.0-vulnerability-successor-binding.json", step
+        )
+        self.assertIn("stable-1.0-vulnerability-summary-provenance.json", step)
+        self.assertNotIn("stable_backport_protected_handoff.py", step)
+        self.assertNotIn("CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64", step)
+        self.assertNotIn("stable-1.0-vulnerability-summary.json", step)
+        self.assertNotIn("$GITHUB_ENV", step)
+
+    def test_publication_rechecks_vulnerability_freshness_at_mutation_boundary(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        job_start = workflow.index("  protected-publication:")
+        job_end = workflow.index("\n  independent-verification:", job_start)
+        job = workflow[job_start:job_end]
+
+        failed_preflight = job.index(
+            "      - name: Fail after retaining failed preflight evidence"
+        )
+        freshness = job.index(
+            "      - name: Recheck vulnerability summary freshness at the "
+            "mutation boundary"
+        )
+        mutation = job.index(
+            "      - name: Publish or idempotently verify exact bytes"
+        )
+        self.assertLess(failed_preflight, freshness)
+        self.assertLess(freshness, mutation)
+
+        step = job[freshness:mutation]
+        self.assertIn("if: steps.preflight.outcome == 'success'", step)
+        self.assertIn(
+            "CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}",
+            step,
+        )
+        self.assertIn("stable_vulnerability_actions_tip.py", step)
+        self.assertIn("verify-promotion", step)
+        self.assertIn("stable_backport_protected_handoff.py open", step)
+        self.assertIn("stable-1.0-vulnerability-summary.json", step)
+        self.assertIn("authenticate_handoff", step)
+        self.assertIn("dt.datetime.now(dt.timezone.utc)", step)
+        self.assertIn("trap cleanup EXIT", step)
+        self.assertNotIn("$GITHUB_ENV", step)
+
     def test_freeze_binds_the_sole_notarization_receipt_only_to_the_dmg(self) -> None:
         workflow = RELEASE.read_text(encoding="utf-8")
         step_start = workflow.index(
@@ -2133,6 +2432,46 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         )
         self.assertIn('--activation-authorization "$activation_authorization"', job)
         self.assertNotIn("authorization expired before baseline activation", job)
+
+    def test_activation_rechecks_current_vulnerability_state_under_lock(self) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        job_start = workflow.index("  activate-latest-baseline:")
+        job = workflow[job_start:]
+
+        self.assertIn(
+            "    needs:\n"
+            "      - freeze-and-validate\n"
+            "      - independent-verification",
+            job,
+        )
+        self.assertIn(
+            "    concurrency:\n"
+            "      group: stable-1-0-vulnerability-ledger\n"
+            "      cancel-in-progress: false",
+            job,
+        )
+        download = job.index(
+            "      - name: Download exact revalidated vulnerability authority"
+        )
+        recheck = job.index(
+            "      - name: Recheck vulnerability summary at the baseline "
+            "activation boundary"
+        )
+        mutation = job.index(
+            "      - name: Compare-and-swap latest-published pointer"
+        )
+        self.assertLess(download, recheck)
+        self.assertLess(recheck, mutation)
+
+        step = job[recheck:mutation]
+        self.assertIn("stable_vulnerability_actions_tip.py", step)
+        self.assertIn("verify-promotion", step)
+        self.assertIn("stable_backport_protected_handoff.py open", step)
+        self.assertIn("stable-1.0-vulnerability-summary.json", step)
+        self.assertIn("authenticate_handoff", step)
+        self.assertIn("dt.datetime.now(dt.timezone.utc)", step)
+        self.assertIn("trap cleanup EXIT", step)
+        self.assertNotIn("$GITHUB_ENV", step)
 
     def test_activation_failure_audit_preserves_possible_pointer_mutation(self) -> None:
         workflow = RELEASE.read_text(encoding="utf-8")

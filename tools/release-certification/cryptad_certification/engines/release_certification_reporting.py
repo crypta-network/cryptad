@@ -138,6 +138,7 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(["", "## Release Operations", ""])
     append_detail(lines, summary, "release-certification.ecosystem-matrix")
     append_detail(lines, summary, ECOSYSTEM_RC_EVIDENCE_ID)
+    append_detail(lines, summary, STABLE_VULNERABILITY_EVIDENCE_ID)
     for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
         append_detail(lines, summary, evidence_id)
     lines.extend(["", "## Hyphanet Interop", ""])
@@ -650,6 +651,16 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             expected_stable_release_id,
         )
     )
+    stable_vulnerability_item = stable_vulnerability_evidence(
+        settings.stable_vulnerability_summary,
+        settings.workspace_root,
+        settings.out_dir,
+        settings.stable_vulnerability_candidate_release_id,
+        settings.stable_vulnerability_candidate_build_version,
+        required=settings.stable_vulnerability_required,
+    )
+    if stable_vulnerability_item is not None:
+        evidence.append(stable_vulnerability_item)
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -893,6 +904,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         or args.stable_1_0_readiness_summary
         or os.environ.get("CRYPTAD_CERT_STABLE_READINESS_SUMMARY")
     )
+    stable_vulnerability_summary_arg = (
+        args.stable_vulnerability_summary
+        or os.environ.get("CRYPTAD_CERT_STABLE_VULNERABILITY_SUMMARY")
+    )
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -929,6 +944,21 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         stable_readiness_required=(
             args.require_stable_readiness
             or env_flag("CRYPTAD_CERT_REQUIRE_STABLE_READINESS")
+        ),
+        stable_vulnerability_summary=(
+            resolve_path(workspace_root, Path(stable_vulnerability_summary_arg))
+            if stable_vulnerability_summary_arg
+            else None
+        ),
+        stable_vulnerability_required=(
+            args.require_stable_vulnerability
+            or env_flag("CRYPTAD_CERT_REQUIRE_STABLE_VULNERABILITY")
+        ),
+        stable_vulnerability_candidate_release_id=(
+            args.stable_vulnerability_candidate_release_id
+        ),
+        stable_vulnerability_candidate_build_version=(
+            args.stable_vulnerability_candidate_build_version
         ),
     )
 
@@ -988,6 +1018,39 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Alias for --stable-readiness-summary.",
+    )
+    parser.add_argument(
+        "--stable-vulnerability-summary",
+        type=Path,
+        default=None,
+        help=(
+            "Bounded public Stable vulnerability governance summary. When supplied, "
+            "its authenticated promotion decision is non-waivable."
+        ),
+    )
+    parser.add_argument(
+        "--require-stable-vulnerability",
+        action="store_true",
+        help=(
+            "Treat missing or failing Stable vulnerability governance evidence "
+            "as a non-waivable release blocker."
+        ),
+    )
+    parser.add_argument(
+        "--stable-vulnerability-candidate-release-id",
+        default="",
+        help=(
+            "Exact release identity that an authenticated Stable vulnerability "
+            "summary must govern."
+        ),
+    )
+    parser.add_argument(
+        "--stable-vulnerability-candidate-build-version",
+        default="",
+        help=(
+            "Exact positive integer build identity that an authenticated Stable "
+            "vulnerability summary must govern."
+        ),
     )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(

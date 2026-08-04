@@ -26,6 +26,12 @@ python3 tools/release-certification/certify.py stable-maintenance \
   --manifest build/stable-1.0-maintenance.json
 ```
 
+`inputs.stableVulnerabilitySummary` is the fixed logical subject name
+`stable-1.0-vulnerability-summary.json`, not a checkout-relative plaintext path. For local
+validation, set `CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT` to the external authenticated handoff
+directory and configure its existing protected-handoff key. Do not place the ledger-wide summary
+or its sealed producer material in the repository or ordinary `build/` outputs.
+
 The component is `stable-maintenance`, uses `release.profile=stable-review`, and writes below:
 
 ```text
@@ -863,3 +869,57 @@ deprecation clocks carry forward; publishing another maintenance baseline does n
 See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md)
 for the authenticated inventory, append-only ledger, mutable descriptor, protected publication,
 operator behavior, and Platform API/app/profile governance rules.
+
+## Vulnerability disclosure sequencing
+
+Maintenance and security-hotfix certification consume the bounded protected
+`stableVulnerabilitySummary`. Its ledger-wide contents remain encrypted and are not a public
+advisory or disclosure artifact. A blocking case fails routine promotion. A hotfix is eligible
+only when the authenticated release-train validation contains exactly one currently blocking
+critical incident identity. Other blocking cases remain active but do not prevent that exact
+incident hotfix from publishing; an unrelated hotfix still fails.
+The summary comes from the authenticated external producer root named by
+`CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT`; a checkout-local, symlinked, hard-linked, stale, or
+self-digest-only summary is rejected for a PR-288-bound train. The protected maintenance input
+artifact carries only the fixed successor binding, materialization provenance, and encrypted
+two-file `sealed-successor/` envelope. Inside the protected evidence environment, the workflow
+reopens that envelope with `CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64`, materializes only the
+exact summary outside the checkout and public output, and the consumer reopens and byte-compares
+the envelope again before trusting any blocker state.
+The summary must come from the read-only `evaluate-promotion` operation, carry no current case
+subject, and bind the producer handoff to `ledger-wide`. A sealed case-transition summary cannot
+authorize maintenance or security-hotfix promotion.
+Configure the same canonical base64 32-byte
+`CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64` secret on the vulnerability producer
+environments, `stable-1.0-maintenance-evidence`, `stable-1.0-maintenance-publication`, and
+`stable-1.0-security-hotfix-publication`; absence or mismatch is a hard stop. Publication exposes
+the key only to the protected freshness-check step and deletes the confined plaintext immediately.
+
+The authorization-time promotion binding must still be the current durable ledger tip when
+publication begins. The protected publication job holds the shared vulnerability-ledger lock,
+reauthenticates the carried `evaluate-promotion` binding and producer artifact against the current
+anchor, and retains that lock through preflight and every mutation. Immediately before the
+mutation boundary, it reopens the exact encrypted summary in a confined runner-temporary directory
+and authenticates its exclusive `expiresAt` against current runner UTC. It deletes that plaintext
+temporary view without uploading it. Any intervening ledger edition or expired summary requires
+new maintenance validation and authorization.
+
+Independent verification does not end that authority boundary. The final latest-published
+baseline activation reacquires the shared vulnerability-ledger lock, downloads the exact
+revalidated encrypted promotion handoff, verifies its producer against the current durable anchor,
+and rechecks `expiresAt` against runner UTC immediately before the pointer compare-and-swap. An
+intervening case transition or deadline expiry therefore stops activation even when the release
+bytes were already published and independently observed.
+
+Publication remains ahead of disclosure. The vulnerability engine accepts the exact
+maintenance/hotfix receipt only when publication is complete, final verification passes, the
+release class matches the case lane, and any claimed fixed core build is the published integer
+build. It separately authenticates the CoreUpdater receipt and applicable catalog, lifecycle, or
+key-action receipts. Only then can a protected disclosure authorization bind exact advisory bytes
+and immutable targets.
+
+A successful release is not case closure. Closure also waits for PR-287 completion and protected
+merge reconciliation, the full-window hotfix follow-up or an authorized successor, fresh public
+advisory observation, updater/replacement guidance, reporter coordination when contact exists, and
+surface-specific post-release checks. See [Stable 1.0 vulnerability intake and coordinated
+disclosure operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md).

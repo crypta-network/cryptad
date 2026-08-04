@@ -705,3 +705,54 @@ Continue with the [Stable maintenance and security-hotfix
 runbook](stable-1.0-maintenance-release-and-hotfix-path.md) only after the train authorization
 matches the exact candidate. Publish lifecycle state separately through the [support lifecycle and
 deprecation runbook](stable-1.0-support-lifecycle-and-deprecation-governance.md).
+
+## Vulnerability case and release-train ownership
+
+[Stable 1.0 vulnerability intake and coordinated-disclosure
+operations](stable-1.0-vulnerability-intake-and-coordinated-disclosure-operations.md) owns the
+private case, reporter coordination, embargo, disclosure authorization, public observation, and
+closure. This release-train process continues to own fix classification, disposition,
+source-to-candidate provenance, candidate coverage, train authorization, publication completion,
+and merge-back reconciliation.
+
+An accepted case authenticates an exact PR-287 `security-fix`: `incidentOpaqueId`, optional
+`advisoryOpaqueId`, severity, disclosure state, `privateRecordDigest`,
+the legacy PR-287 `publicProjectionDigest`, the separate
+`vulnerabilityPublicProjectionDigest`, `fixId`, lane, train, source and candidate commits,
+provenance, and candidate-test evidence must agree. A branch, issue, pull request, commit
+message, shortened SHA, or external advisory id is not evidence.
+
+`stableVulnerabilitySummary` is a bounded, authenticated protected release input. Its ledger-wide
+case, severity, exposure, deadline, obligation, and blocker rows are never public disclosure artifacts. A
+critical or unrelated overdue high/critical case blocks a routine train. An overdue high case may
+proceed only when the routine train's accepted PR-288 fix set contains every blocking case with the
+exact authenticated severity and public-projection digest. Critical cases remain on the existing
+security-hotfix lane. A one-incident hotfix may proceed when its PR-287 public fix scope contains
+exactly one authenticated critical blocking incident, even when other cases remain blocking. The
+other blockers stay active and still block routine promotion or an unrelated hotfix; they do not
+force unrelated incident scopes into one train. Hotfix follow-up remains a
+PR-287/maintenance obligation and must close, or use an explicitly allowed successor, before
+vulnerability closure.
+When vulnerability governance is required or a PR-288-bound fix is present, the summary must be
+materialized from an authenticated producer handoff in a single-link, flat external directory and
+that directory must be supplied through
+`CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT`. A self-digest or checkout-local summary is not
+producer authentication. The consumer requires the fixed-name summary, successor binding,
+materialization provenance, and original two-file `sealed-successor/` envelope, then reopens the
+envelope with `CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64` and byte-compares the summary.
+Promotion accepts only an `evaluate-promotion` summary with null case-specific subject fields and
+an exact `ledger-wide` successor binding. An authenticated case-transition result is not promotion
+evidence.
+The validation job holds the vulnerability-ledger concurrency lock while it freshly authenticates
+the durable `STABLE_1_0_VULNERABILITY_LEDGER_TIP_ANCHOR`. The anchor's exact ledger digest and
+edition must equal the supplied promotion handoff and its provenance; the selected retained
+artifact still authenticates the exact promotion bytes and producer attempt. Missing, deleted,
+malformed, or wrong-policy anchor state and any later activated successor are non-waivable
+failures. Actions retention cannot restore genesis, and timestamp freshness does not make a
+superseded summary current. Completion replay does not reapply this current promotion decision
+after publication.
+Protected input artifacts carry the encrypted envelope, binding, and provenance—not a plaintext
+ledger-wide summary; plaintext exists only in the confined temporary consumer root.
+Configure the same canonical base64 32-byte
+`CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64` secret on the vulnerability producer
+environments and `stable-1.0-backport-evidence`; absence or mismatch is a hard stop.
