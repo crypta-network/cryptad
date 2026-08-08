@@ -19,6 +19,7 @@ from .stable_1_0_supply_chain_core import (
     PUBLICATION_ROLE_FILES,
     PUBLIC_OBSERVATION_SCHEMA,
     REPRODUCIBILITY_SCHEMA,
+    SUMMARY_SCHEMA,
     canonical_json_bytes,
     confined_child,
     exact_release_errors,
@@ -852,6 +853,41 @@ def _payload_comparison_view(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def promotion_summary_errors(
+    summary: dict[str, Any], release: dict[str, Any]
+) -> list[str]:
+    """Authenticate one promotion summary and its fail-closed readiness assertions."""
+
+    errors = validate_schema(summary, SUMMARY_SCHEMA)
+    errors.extend(exact_release_errors(summary, release, "supply-chain summary"))
+    for field in ("tag", "sourceRef"):
+        if summary.get(field) != release.get(field):
+            errors.append(f"supply-chain summary {field} differs")
+    errors.extend(_self_digest_errors(summary, "summaryDigest", "supply-chain summary"))
+
+    blockers = summary.get("blockers")
+    has_blockers = isinstance(blockers, list) and bool(blockers)
+    expected_status = "fail" if has_blockers else "pass"
+    if summary.get("status") != expected_status:
+        errors.append("supply-chain summary status is inconsistent with its blockers")
+    expected_ready = not has_blockers and summary.get("mode") in {
+        "evaluate-promotion",
+        "verify-publication",
+    }
+    if summary.get("promotionReady") is not expected_ready:
+        errors.append("supply-chain summary readiness is inconsistent")
+
+    evidence = summary.get("evidence")
+    if isinstance(evidence, list) and any(
+        not isinstance(row, dict) or row.get("status") != "pass" for row in evidence
+    ):
+        errors.append("supply-chain summary contains failing evidence assertions")
+    redaction = summary.get("redaction")
+    if isinstance(redaction, dict) and redaction.get("status") != expected_status:
+        errors.append("supply-chain summary redaction status is inconsistent")
+    return errors
+
+
 def publication_errors(
     plan: dict[str, Any],
     receipt: dict[str, Any],
@@ -863,7 +899,8 @@ def publication_errors(
 ) -> list[str]:
     """Verify immutable publication operations and fresh exact-byte public observations."""
 
-    errors = validate_schema(plan, PUBLICATION_PLAN_SCHEMA)
+    errors = promotion_summary_errors(summary, release)
+    errors.extend(validate_schema(plan, PUBLICATION_PLAN_SCHEMA))
     errors.extend(validate_schema(receipt, PUBLICATION_RECEIPT_SCHEMA))
     errors.extend(validate_schema(observation, PUBLIC_OBSERVATION_SCHEMA))
     errors.extend(_self_digest_errors(plan, "planDigest", "publication plan"))

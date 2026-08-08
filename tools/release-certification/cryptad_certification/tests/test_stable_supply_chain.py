@@ -58,6 +58,7 @@ from ..engines.stable_1_0_supply_chain_reproducibility import (
     builder_independence_errors,
     compare_rebuilds,
     publication_errors,
+    promotion_summary_errors,
     reproducibility_result_errors,
 )
 from ..engines.stable_1_0_supply_chain_sbom import (
@@ -128,6 +129,34 @@ def _release(policy: dict) -> dict:
         "sourceRef": SOURCE_REF,
         "policyDigest": policy["policyDigest"],
     }
+
+
+def _promotion_summary(policy: dict) -> dict:
+    release = _release(policy)
+    manifest = RunManifest(
+        path=REPOSITORY / "manifest.json",
+        release=ReleaseSpec(release["releaseId"], str(release["buildVersion"]), "stable-review"),
+        output=OutputSpec(REPOSITORY / "build"),
+        requirements={"stableSupplyChain": True},
+        inputs={},
+        policies={
+            "candidateSourceCommit": SOURCE_COMMIT,
+            "candidateSourceRef": SOURCE_REF,
+        },
+        execution={"evaluationClock": "2026-08-04T01:00:00Z"},
+        commands={"stable-supply-chain": {"mode": "evaluate-promotion"}},
+    )
+    context = RunContext(
+        REPOSITORY, REPOSITORY / "build", "stable-supply-chain", manifest
+    )
+    return engine._summary(
+        context,
+        "evaluate-promotion",
+        release,
+        [],
+        [],
+        engine._evidence_for_mode("evaluate-promotion"),
+    )
 
 
 def _required_subject_rules(policy: dict) -> list[dict]:
@@ -2000,6 +2029,7 @@ class StableSupplyChainTest(unittest.TestCase):
             self.assertTrue(any("duplicated" in error for error in errors))
 
     def test_publication_requires_exact_receipt_and_fresh_observation(self) -> None:
+        summary = _promotion_summary(self.policy)
         assets = [
             {
                 "role": role,
@@ -2013,10 +2043,10 @@ class StableSupplyChainTest(unittest.TestCase):
             }
             for role in self.policy["publicationPolicy"]["requiredRoles"]
         ]
-        plan = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-plan", **self.release, "summaryDigest": _digest("summary"), "assets": assets, "overwriteAllowed": False, "allowedOperations": ["created", "verified-existing"], "sideEffectsPerformed": False, "planDigest": ""}, "planDigest")
+        plan = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-plan", **self.release, "summaryDigest": summary["summaryDigest"], "assets": assets, "overwriteAllowed": False, "allowedOperations": ["created", "verified-existing"], "sideEffectsPerformed": False, "planDigest": ""}, "planDigest")
         receipt = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-receipt", **self.release, "planDigest": plan["planDigest"], "generatedAt": "2026-08-04T00:30:00Z", "backendIdentity": "cryptad-publication-backend", "workflowIdentity": "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml@" + SOURCE_COMMIT, "attestationDigest": _digest("publication-attestation"), "backendAuthenticated": True, "operations": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"], "operation": "verified-existing"} for row in assets], "receiptDigest": ""}, "receiptDigest")
         observation = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-public-observation", **self.release, "receiptDigest": receipt["receiptDigest"], "observedAt": "2026-08-04T00:45:00Z", "observerIdentity": "cryptad-public-observer", "observerAttestationDigest": _digest("observer"), "observerAuthenticated": True, "assets": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"]} for row in assets], "observationDigest": ""}, "observationDigest")
-        self.assertEqual(publication_errors(plan, receipt, observation, {"summaryDigest": _digest("summary")}, self.release, self.policy, "2026-08-04T01:00:00Z"), [])
+        self.assertEqual(publication_errors(plan, receipt, observation, summary, self.release, self.policy, "2026-08-04T01:00:00Z"), [])
         misnamed_plan = copy.deepcopy(plan)
         misnamed_plan["assets"][0]["fileName"] = "stable-1.0-sbom.spdx.json"
         _seal(misnamed_plan, "planDigest")
@@ -2033,7 +2063,7 @@ class StableSupplyChainTest(unittest.TestCase):
                     misnamed_plan,
                     misnamed_receipt,
                     misnamed_observation,
-                    {"summaryDigest": _digest("summary")},
+                    summary,
                     self.release,
                     self.policy,
                     "2026-08-04T01:00:00Z",
@@ -2043,12 +2073,98 @@ class StableSupplyChainTest(unittest.TestCase):
         conflicting = copy.deepcopy(observation)
         conflicting["assets"][0]["digest"] = _digest("conflicting-existing-bytes")
         _seal(conflicting, "observationDigest")
-        self.assertTrue(publication_errors(plan, receipt, conflicting, {"summaryDigest": _digest("summary")}, self.release, self.policy, "2026-08-04T01:00:00Z"))
+        self.assertTrue(publication_errors(plan, receipt, conflicting, summary, self.release, self.policy, "2026-08-04T01:00:00Z"))
         observation["observedAt"] = "2026-08-03T00:00:00Z"
         _seal(observation, "observationDigest")
-        self.assertTrue(publication_errors(plan, receipt, observation, {"summaryDigest": _digest("summary")}, self.release, self.policy, "2026-08-04T01:00:00Z"))
+        self.assertTrue(publication_errors(plan, receipt, observation, summary, self.release, self.policy, "2026-08-04T01:00:00Z"))
+
+    def test_publication_rejects_tampered_or_inconsistent_promotion_summary(self) -> None:
+        summary = _promotion_summary(self.policy)
+        self.assertEqual(promotion_summary_errors(summary, self.release), [])
+
+        failed = copy.deepcopy(summary)
+        failed["status"] = "fail"
+        failed["promotionReady"] = False
+        failed["blockers"] = [
+            {
+                "evidenceId": "stable-supply-chain.release-promotion",
+                "message": "Deterministic adversarial publication fixture.",
+            }
+        ]
+        failed["redaction"]["status"] = "fail"
+        _seal(failed, "summaryDigest")
+        failed["promotionReady"] = True
+
+        tampered_errors = promotion_summary_errors(failed, self.release)
+        self.assertTrue(
+            any("summaryDigest is invalid" in error for error in tampered_errors),
+            tampered_errors,
+        )
+        self.assertTrue(
+            any("readiness is inconsistent" in error for error in tampered_errors),
+            tampered_errors,
+        )
+
+        wrong_release = copy.deepcopy(summary)
+        wrong_release["releaseId"] = "stable-maintenance-301"
+        _seal(wrong_release, "summaryDigest")
+        self.assertTrue(
+            any(
+                "releaseId differs" in error
+                for error in promotion_summary_errors(wrong_release, self.release)
+            )
+        )
+
+        inconsistent = copy.deepcopy(summary)
+        inconsistent["status"] = "fail"
+        _seal(inconsistent, "summaryDigest")
+        self.assertTrue(
+            any(
+                "status is inconsistent" in error
+                for error in promotion_summary_errors(inconsistent, self.release)
+            )
+        )
+
+    def test_verify_publication_rejects_tampered_summary_before_publication_inputs(self) -> None:
+        tampered = _promotion_summary(self.policy)
+        tampered["promotionReady"] = False
+        manifest = RunManifest(
+            path=REPOSITORY / "manifest.json",
+            release=ReleaseSpec(
+                self.release["releaseId"],
+                str(self.release["buildVersion"]),
+                "stable-review",
+            ),
+            output=OutputSpec(REPOSITORY / "build"),
+            requirements={"stableSupplyChain": True},
+            inputs={},
+            policies={
+                "artifactBaseUri": self.policy["publicationPolicy"]["immutableBaseUri"]
+            },
+            execution={"evaluationClock": "2026-08-04T01:00:00Z"},
+            commands={"stable-supply-chain": {"mode": "verify-publication"}},
+        )
+        context = RunContext(
+            REPOSITORY, REPOSITORY / "build", "stable-supply-chain", manifest
+        )
+
+        with (
+            patch.object(
+                engine,
+                "_load_policy_and_release",
+                return_value=(self.policy, self.release),
+            ),
+            patch.object(
+                engine,
+                "_required_value",
+                side_effect=(tampered, {}, {}, {}),
+            ),
+            self.assertRaisesRegex(ValueError, "summaryDigest is invalid"),
+        ):
+            engine._verify_publication(context, REPOSITORY / "build")
 
     def test_publication_rejects_self_consistent_arbitrary_https_targets(self) -> None:
+        summary = _promotion_summary(self.policy)
         assets = [
             {
                 "role": role,
@@ -2059,11 +2175,11 @@ class StableSupplyChainTest(unittest.TestCase):
             }
             for role in self.policy["publicationPolicy"]["requiredRoles"]
         ]
-        plan = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-plan", **self.release, "summaryDigest": _digest("summary"), "assets": assets, "overwriteAllowed": False, "allowedOperations": ["created", "verified-existing"], "sideEffectsPerformed": False, "planDigest": ""}, "planDigest")
+        plan = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-plan", **self.release, "summaryDigest": summary["summaryDigest"], "assets": assets, "overwriteAllowed": False, "allowedOperations": ["created", "verified-existing"], "sideEffectsPerformed": False, "planDigest": ""}, "planDigest")
         receipt = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-receipt", **self.release, "planDigest": plan["planDigest"], "generatedAt": "2026-08-04T00:30:00Z", "backendIdentity": "cryptad-publication-backend", "workflowIdentity": "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml@" + SOURCE_COMMIT, "attestationDigest": _digest("publication-attestation"), "backendAuthenticated": True, "operations": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"], "operation": "verified-existing"} for row in assets], "receiptDigest": ""}, "receiptDigest")
         observation = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-public-observation", **self.release, "receiptDigest": receipt["receiptDigest"], "observedAt": "2026-08-04T00:45:00Z", "observerIdentity": "cryptad-public-observer", "observerAttestationDigest": _digest("observer"), "observerAuthenticated": True, "assets": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"]} for row in assets], "observationDigest": ""}, "observationDigest")
 
-        errors = publication_errors(plan, receipt, observation, {"summaryDigest": _digest("summary")}, self.release, self.policy, "2026-08-04T01:00:00Z")
+        errors = publication_errors(plan, receipt, observation, summary, self.release, self.policy, "2026-08-04T01:00:00Z")
 
         self.assertTrue(any("policy-derived immutable target" in error for error in errors), errors)
 

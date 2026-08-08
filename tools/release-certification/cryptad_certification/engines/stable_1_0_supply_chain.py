@@ -73,6 +73,7 @@ from .stable_1_0_supply_chain_reproducibility import (
     compare_rebuilds,
     comparison_plan_errors,
     publication_errors,
+    promotion_summary_errors,
     reproducibility_result_errors,
 )
 from .stable_1_0_supply_chain_sbom import (
@@ -826,8 +827,21 @@ def _verify_publication(context: RunContext, out: Path) -> int:
     observation = _required_value(
         context, "supplyChainPublicObservation", PUBLIC_OBSERVATION_SCHEMA
     )
+    summary_errors = promotion_summary_errors(promotion, release)
+    expected_evidence = [
+        {"evidenceId": evidence_id, "status": "pass", "nonWaivable": True}
+        for evidence_id in _evidence_for_mode("evaluate-promotion")
+    ]
+    if promotion.get("evidence") != expected_evidence:
+        summary_errors.append(
+            "publication summary lacks the exact evaluated promotion evidence"
+        )
     if promotion.get("promotionReady") is not True or promotion.get("mode") != "evaluate-promotion":
-        raise ValueError("publication requires a promotion-ready supply-chain summary")
+        summary_errors.append(
+            "publication requires a promotion-ready supply-chain summary"
+        )
+    if summary_errors:
+        raise ValueError(summary_errors[0])
     if context.manifest.policies.get("artifactBaseUri") != policy.get(
         "publicationPolicy", {}
     ).get("immutableBaseUri"):
