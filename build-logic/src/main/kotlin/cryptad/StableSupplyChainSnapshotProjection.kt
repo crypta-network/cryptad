@@ -62,7 +62,7 @@ internal object StableSupplyChainSnapshotProjection {
           ),
         "components" to projectedComponents,
         "dependencyVerification" to dependencyVerification(authority),
-        "locking" to locking(buildMaterials, rawExportBytes, reviewedExportMatches),
+        "locking" to locking(rawExportBytes, reviewedExportMatches),
         "materialDigests" to materialDigests(buildMaterials, rawExport, rawExportBytes),
       )
     val snapshotDigest = digestValue(modelWithoutDigest)
@@ -386,27 +386,13 @@ internal object StableSupplyChainSnapshotProjection {
   }
 
   private fun locking(
-    buildMaterials: Map<String, Any?>,
     rawExportBytes: ByteArray,
     reviewedExportMatches: Boolean,
   ): Map<String, Any?> {
-    val lockMaterials =
-      objectList(buildMaterials, "materials").filter { material ->
-        val path = stringValue(material, "path")
-        path.endsWith("gradle.lockfile") || path.endsWith(".lockfile")
-      }
     return sortedMapOf(
-      "status" to
-        when {
-          lockMaterials.isNotEmpty() -> "locked"
-          reviewedExportMatches -> "authenticated-snapshot"
-          else -> "unlocked"
-        },
-      "snapshotMode" to
-        if (lockMaterials.isEmpty()) "authenticated-resolution-snapshot" else "gradle-locking",
-      "lockDigest" to
-        if (lockMaterials.isEmpty()) prefixedDigest(StableSupplyChainJson.sha256(rawExportBytes))
-        else digestValue(lockMaterials.sortedBy { stringValue(it, "path") }),
+      "status" to if (reviewedExportMatches) "authenticated-snapshot" else "unlocked",
+      "snapshotMode" to "authenticated-resolution-snapshot",
+      "lockDigest" to prefixedDigest(StableSupplyChainJson.sha256(rawExportBytes)),
     )
   }
 

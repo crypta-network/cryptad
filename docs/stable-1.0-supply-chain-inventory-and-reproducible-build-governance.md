@@ -123,6 +123,13 @@ paths outside the bundle fail. Only then do those jobs invoke the strict compari
   -PstableSupplyChainExpectedResolutionSnapshot=build/stable-supply-chain-phase/resolved-dependency-snapshot.json
 ```
 
+Tracked Gradle lockfiles remain digest-bound build materials, but their presence does not label the
+whole multi-project resolution as locked. The current snapshot has no configuration-by-configuration
+lock-coverage proof, so even a valid lockfile for one project or configuration cannot replace the
+authenticated reviewed export. A future Gradle-locking authority would require a versioned schema
+that proves complete coverage for every exported release, build-logic, plugin, and settings-plugin
+configuration before the gate could accept it.
+
 The no-property export is useful for producing bytes for review; it is not a protected strict
 verification result. The two project properties are public-safe file identities, not JVM options,
 and a protected run never substitutes newly generated output as its own reviewed expectation.

@@ -865,10 +865,7 @@ def resolution_snapshot_errors(
     locking = snapshot.get("locking", {})
     locking_status = locking.get("status")
     snapshot_mode = locking.get("snapshotMode")
-    if locking_status == "locked":
-        if snapshot_mode != "gradle-locking":
-            errors.append("Gradle locking status uses a non-lockfile snapshot mode")
-    elif locking_status == "authenticated-snapshot":
+    if locking_status == "authenticated-snapshot":
         if snapshot_mode != "authenticated-resolution-snapshot":
             errors.append("authenticated dependency snapshot uses an invalid mode")
         if locking.get("lockDigest") != snapshot.get("materialDigests", {}).get(
@@ -876,7 +873,7 @@ def resolution_snapshot_errors(
         ):
             errors.append("authenticated dependency snapshot does not bind the raw resolution export")
     else:
-        errors.append("release-relevant dependency resolution is not locked or authenticated")
+        errors.append("release-relevant dependency resolution lacks an authenticated reviewed export")
     records = snapshot.get("components", [])
     ids: set[str] = set()
     for row in records:

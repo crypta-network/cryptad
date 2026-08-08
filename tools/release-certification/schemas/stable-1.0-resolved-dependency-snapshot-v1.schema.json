@@ -60,8 +60,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["status", "snapshotMode", "lockDigest"],
       "properties": {
-        "status": {"enum": ["locked", "authenticated-snapshot", "unlocked", "drifted"]},
-        "snapshotMode": {"enum": ["gradle-locking", "authenticated-resolution-snapshot"]},
+        "status": {"enum": ["authenticated-snapshot", "unlocked", "drifted"]},
+        "snapshotMode": {"const": "authenticated-resolution-snapshot"},
         "lockDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}
       }
     },

@@ -2265,6 +2265,52 @@ class StableSupplyChainTest(unittest.TestCase):
                 )
             )
 
+    def test_partial_gradle_lockfile_cannot_replace_reviewed_resolution_export(self) -> None:
+        build_root = REPOSITORY / "build"
+        build_root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="supply-lock-", dir=build_root) as temporary:
+            fixture = SupplyChainFixture(Path(temporary))
+            claimed_locked = copy.deepcopy(fixture.snapshot)
+            claimed_locked["locking"] = {
+                "status": "locked",
+                "snapshotMode": "gradle-locking",
+                "lockDigest": _digest("one-partial-gradle.lockfile"),
+            }
+            _seal(claimed_locked, "snapshotDigest")
+
+            errors = resolution_snapshot_errors(
+                claimed_locked, fixture.release, fixture.policy
+            )
+
+            self.assertTrue(errors)
+            schema = read_json(
+                REPOSITORY
+                / "tools/release-certification/schemas/"
+                "stable-1.0-resolved-dependency-snapshot-v1.schema.json"
+            )
+            locking_schema = schema["properties"]["locking"]["properties"]
+            self.assertEqual(
+                locking_schema["status"]["enum"],
+                ["authenticated-snapshot", "unlocked", "drifted"],
+            )
+            self.assertEqual(
+                locking_schema["snapshotMode"]["const"],
+                "authenticated-resolution-snapshot",
+            )
+            projection = (
+                REPOSITORY
+                / "build-logic/src/main/kotlin/cryptad/"
+                "StableSupplyChainSnapshotProjection.kt"
+            ).read_text(encoding="utf-8")
+            self.assertNotIn("lockMaterials", projection)
+            self.assertIn(
+                'if (reviewedExportMatches) "authenticated-snapshot" else "unlocked"',
+                projection,
+            )
+            self.assertIn(
+                '"snapshotMode" to "authenticated-resolution-snapshot"', projection
+            )
+
     def test_resolution_requires_compiler_and_settings_plugin_materials(self) -> None:
         build_root = REPOSITORY / "build"
         build_root.mkdir(exist_ok=True)
