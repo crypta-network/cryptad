@@ -75,6 +75,8 @@ OVERRIDES_PATH = (
     / "tools/release-certification/stable-1.0-supply-chain-license-overrides.json"
 )
 WORKFLOW_PATH = REPOSITORY / ".github/workflows/stable-1.0-supply-chain.yml"
+CI_WORKFLOW_PATH = REPOSITORY / ".github/workflows/ci.yml"
+GIT_ATTRIBUTES_PATH = REPOSITORY / ".gitattributes"
 DISTRIBUTION_BUILD_LOGIC_PATH = (
     REPOSITORY / "build-logic/src/main/kotlin/cryptad.distribution.gradle.kts"
 )
@@ -3130,6 +3132,24 @@ class StableSupplyChainTest(unittest.TestCase):
         findings = scan_value({"artifactPath": "/home/runner/work/private.json", "credential": "super-secret-value", "uri": "USK@private,key,AQECAAE/path"})
         categories = {row["category"] for row in findings}
         self.assertTrue(categories)
+
+    def test_repository_checkout_preserves_digest_bound_text_bytes(self) -> None:
+        attributes = GIT_ATTRIBUTES_PATH.read_text(encoding="utf-8").splitlines()
+        self.assertIn("* text=auto eol=lf", attributes)
+        self.assertIn("*.bat text eol=crlf", attributes)
+        self.assertIn("*.cmd text eol=crlf", attributes)
+
+    def test_full_protected_certification_suite_uses_supported_hosts(self) -> None:
+        workflow = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+        job = workflow[
+            workflow.index("  release-certification-self-test:") : workflow.index(
+                "  dependency-submission:"
+            )
+        ]
+        self.assertIn("- os: ubuntu-latest", job)
+        self.assertIn("- os: macos-latest", job)
+        self.assertNotIn("windows-latest", job)
+        self.assertGreaterEqual(workflow.count("- os: windows-latest"), 2)
 
     def test_complete_assemble_inventory_mode_passes_offline(self) -> None:
         build_root = REPOSITORY / "build"

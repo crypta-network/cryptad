@@ -6,6 +6,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import posixpath
 import re
 import stat
 from pathlib import Path, PurePosixPath
@@ -1465,7 +1466,7 @@ def payload_manifest_errors(manifest: dict[str, Any], policy: dict[str, Any]) ->
             ):
                 errors.append("payload manifest contains an unsafe symlink")
             else:
-                normalized = os.path.normpath((parent / target).as_posix())
+                normalized = posixpath.normpath((parent / target).as_posix())
                 if normalized == ".." or normalized.startswith("../"):
                     errors.append("payload manifest contains an escaping symlink")
         total_size += row.get("size", 0) if isinstance(row.get("size"), int) else 0

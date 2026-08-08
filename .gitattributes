@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Keep the Gradle Windows launcher in its native command-shell form.
+*.bat text eol=crlf
+*.cmd text eol=crlf

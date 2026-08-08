@@ -236,9 +236,9 @@ jobs:
           - os: macos-latest
             python_cmd: python3
             timeout_minutes: 30
-          - os: windows-latest
-            python_cmd: py -3.12
-            timeout_minutes: 60
+          # Protected certification helpers authenticate Unix tool paths such as
+          # /usr/bin/openssl. Native Windows coverage remains in the interop,
+          # performance, build, installer, and Stable package-producer jobs.
 
     steps:
       - uses: actions/checkout@v6
