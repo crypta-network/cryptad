@@ -1541,8 +1541,60 @@ class StableSupplyChainTest(unittest.TestCase):
         components = _seal({"schemaVersion": 1, "kind": "stable-1.0-component-inventory", "releaseId": self.release["releaseId"], "buildVersion": 300, "sourceCommit": SOURCE_COMMIT, "policyDigest": self.policy["policyDigest"], "resolvedDependencySnapshotDigest": _digest("snapshot"), "components": [component], "inventoryDigest": ""}, "inventoryDigest")
         subjects = _seal({"schemaVersion": 1, "kind": "stable-1.0-release-subject-inventory", "releaseId": self.release["releaseId"], "buildVersion": 300, "sourceCommit": SOURCE_COMMIT, "policyDigest": self.policy["policyDigest"], "componentInventoryDigest": components["inventoryDigest"], "subjects": [{"subjectKey": "core-jar", "subjectClass": "core", "fileName": "core.jar", "digest": _digest("core"), "size": 4, "reproducibilityClass": "byte-identical", "payloadManifestDigest": None, "componentIds": [component["componentId"]], "app": None, "catalogEdition": None, "signatureReceiptDigest": None, "notarizationReceiptDigest": None, "packageMetadataDigest": None}], "subjectInventoryDigest": ""}, "subjectInventoryDigest")
         index = build_reverse_index(self.release, components, subjects)
-        self.assertEqual(component_reverse_index_errors(index, release_id=self.release["releaseId"], build_version=300, runtime_component_ids=["request-scheduler"]), [])
-        self.assertTrue(component_reverse_index_errors(index, runtime_component_ids=["absent-component"]))
+        self.assertEqual(
+            component_reverse_index_errors(
+                index,
+                release_id=self.release["releaseId"],
+                build_version=300,
+                source_commit=SOURCE_COMMIT,
+                source_ref=SOURCE_REF,
+                runtime_component_ids=["request-scheduler"],
+            ),
+            [],
+        )
+        self.assertTrue(
+            component_reverse_index_errors(
+                index,
+                source_commit=SOURCE_COMMIT,
+                source_ref=SOURCE_REF,
+                runtime_component_ids=["absent-component"],
+            )
+        )
+        stale_source = copy.deepcopy(index)
+        stale_source["sourceCommit"] = "b" * 40
+        stale_source["sourceRef"] = "commit:" + "b" * 40
+        _seal(stale_source, "reverseIndexDigest")
+        source_errors = component_reverse_index_errors(
+            stale_source,
+            release_id=self.release["releaseId"],
+            build_version=300,
+            source_commit=SOURCE_COMMIT,
+            source_ref=SOURCE_REF,
+            runtime_component_ids=["request-scheduler"],
+        )
+        self.assertTrue(
+            any("another source commit" in error for error in source_errors),
+            source_errors,
+        )
+        self.assertTrue(
+            any("another source ref" in error for error in source_errors),
+            source_errors,
+        )
+        missing_build = copy.deepcopy(index)
+        missing_build["entries"][0]["stableBuilds"] = [299]
+        _seal(missing_build, "reverseIndexDigest")
+        build_errors = component_reverse_index_errors(
+            missing_build,
+            release_id=self.release["releaseId"],
+            build_version=300,
+            source_commit=SOURCE_COMMIT,
+            source_ref=SOURCE_REF,
+            runtime_component_ids=["request-scheduler"],
+        )
+        self.assertTrue(
+            any("does not map to the requested Stable build" in error for error in build_errors),
+            build_errors,
+        )
         stale = copy.deepcopy(index)
         stale["buildVersion"] = 299
         _seal(stale, "reverseIndexDigest")

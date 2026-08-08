@@ -19,6 +19,9 @@ sys.path.insert(0, str(BACKEND_ROOT / "src"))
 sys.path.insert(0, str(RELEASE_CERTIFICATION_ROOT))
 
 from cryptad_certification.io import write_json as engine_write_json  # noqa: E402
+from cryptad_certification.engines.stable_1_0_supply_chain import (  # noqa: E402
+    _evidence_for_mode as engine_evidence_for_mode,
+)
 from cryptad_certification.engines.stable_1_0_supply_chain_core import (  # noqa: E402
     PUBLICATION_ROLE_FILES as ENGINE_PUBLICATION_ROLE_FILES,
     semantic_digest as engine_semantic_digest,
@@ -62,6 +65,70 @@ def semantic_bytes(value: object) -> bytes:
 def semantic_digest(value: dict[str, object], field: str) -> str:
     payload = {key: child for key, child in value.items() if key != field}
     return digest(semantic_bytes(payload))
+
+
+def promotion_summary(release: dict[str, object]) -> dict[str, object]:
+    value: dict[str, object] = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-supply-chain-promotion-summary",
+        **{
+            key: release[key]
+            for key in (
+                "releaseId",
+                "buildVersion",
+                "tag",
+                "sourceCommit",
+                "sourceRef",
+                "policyDigest",
+            )
+        },
+        "mode": "evaluate-promotion",
+        "status": "pass",
+        "promotionReady": True,
+        "candidateIdentityDigest": None,
+        "candidateFreezeDigest": None,
+        "productDigest": None,
+        "predecessorReleaseId": None,
+        "predecessorBuildVersion": None,
+        "predecessorProductDigest": None,
+        "packageMatrixDigest": None,
+        "packageAuthenticationDigest": None,
+        "selectedSubjectInventoryDigest": None,
+        "vulnerabilitySummaryDigest": None,
+        "vulnerabilityReverseIndexDigest": None,
+        "resolvedDependencySnapshotDigest": None,
+        "componentInventoryDigest": None,
+        "subjectInventoryDigest": None,
+        "sbomDigest": None,
+        "licenseInventoryDigest": None,
+        "buildMaterialsDigest": None,
+        "primaryBuilderReceiptDigest": None,
+        "verifierBuilderReceiptDigest": None,
+        "comparisonPlanDigest": None,
+        "reproducibilityResultDigest": None,
+        "evidence": [
+            {
+                "evidenceId": evidence_id,
+                "status": "pass",
+                "nonWaivable": True,
+            }
+            for evidence_id in engine_evidence_for_mode("evaluate-promotion")
+        ],
+        "blockers": [],
+        "waivers": [],
+        "artifacts": [],
+        "redaction": {
+            "status": "pass",
+            "privatePathsExcluded": True,
+            "credentialsExcluded": True,
+            "privateUrisExcluded": True,
+            "embargoedVulnerabilityDataExcluded": True,
+            "sideEffectsPerformed": False,
+        },
+        "summaryDigest": "sha256:" + "0" * 64,
+    }
+    value["summaryDigest"] = semantic_digest(value, "summaryDigest")
+    return value
 
 
 class FakeGitHubTransport:
@@ -198,6 +265,8 @@ class SupplyChainPublicationBackendTest(unittest.TestCase):
             "sideEffectsPerformed": False,
             "planDigest": "sha256:" + "0" * 64,
         }
+        self.summary = promotion_summary(self.plan)
+        self.plan["summaryDigest"] = self.summary["summaryDigest"]
         self.plan["planDigest"] = semantic_digest(self.plan, "planDigest")
         self.producer = AuthenticatedProducer(
             "cryptad_stable_maintenance_backend:supply_chain_factory@sha256:"
@@ -323,7 +392,7 @@ class SupplyChainPublicationBackendTest(unittest.TestCase):
                 self.plan,
                 receipt,
                 observation,
-                {"summaryDigest": self.plan["summaryDigest"]},
+                self.summary,
                 release,
                 policy,
                 "2026-08-04T00:02:00Z",

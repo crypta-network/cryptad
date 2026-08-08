@@ -993,7 +993,11 @@ candidate-bound summary, report, and redaction result remain at the component ro
 the sealed producer bytes, provenance, summary expiry, and current durable vulnerability-ledger
 tip; a raw JSON path is not promotion authority. Vulnerability ledgers that contain a
 `runtime-component` scope likewise require `componentReverseIndex` in every later protected
-phase. Historical ledgers with no such scope remain valid without that irrelevant input.
+phase. The current reverse index must match the manifest's authenticated full candidate commit and
+immutable `commit:<sha>` source ref, and every newly resolved alias must map to the candidate build.
+Historical scope rows retain their original inventory digest; this current-candidate routing check
+does not retroactively rebind them. Historical ledgers with no such scope remain valid without that
+irrelevant input.
 
 Its promotion summary is a prepublication gate. Every non-publication evidence row must pass, but
 `stable-supply-chain.publication` must not be reported as passing by `evaluate-promotion`; only

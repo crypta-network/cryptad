@@ -1508,6 +1508,8 @@ def component_reverse_index_errors(
     *,
     release_id: str | None = None,
     build_version: int | str | None = None,
+    source_commit: str | None,
+    source_ref: str | None,
     runtime_component_ids: Iterable[str] | None = None,
 ) -> list[str]:
     """Validate PR-288 runtime-component aliases against one authenticated reverse index.
@@ -1522,6 +1524,19 @@ def component_reverse_index_errors(
     errors.extend(self_digest_errors(index, "reverseIndexDigest", "component reverse index"))
     if release_id is not None and index.get("releaseId") != release_id:
         errors.append("component reverse index belongs to another release")
+    valid_source_commit = (
+        isinstance(source_commit, str) and COMMIT_RE.fullmatch(source_commit) is not None
+    )
+    if not valid_source_commit:
+        errors.append("requested component reverse-index source commit is malformed")
+    elif index.get("sourceCommit") != source_commit:
+        errors.append("component reverse index belongs to another source commit")
+    expected_source_ref = f"commit:{source_commit}" if valid_source_commit else None
+    if source_ref != expected_source_ref:
+        errors.append("requested component reverse-index source ref is not immutable")
+    elif index.get("sourceRef") != source_ref:
+        errors.append("component reverse index belongs to another source ref")
+    expected_build: int | None = None
     if build_version is not None:
         try:
             expected_build = int(build_version)
@@ -1544,9 +1559,17 @@ def component_reverse_index_errors(
         if len(rows) != 1:
             errors.append(f"runtime-component alias {alias} is ambiguous")
     for requested in sorted(set(runtime_component_ids or ())):
-        if len(aliases.get(requested, [])) != 1:
+        rows = aliases.get(requested, [])
+        if len(rows) != 1:
             errors.append(
                 f"runtime-component identity {requested} does not resolve to exactly one "
                 "authenticated component"
+            )
+        elif expected_build is not None and expected_build not in rows[0].get(
+            "stableBuilds", []
+        ):
+            errors.append(
+                f"runtime-component identity {requested} does not map to the requested "
+                "Stable build"
             )
     return errors
