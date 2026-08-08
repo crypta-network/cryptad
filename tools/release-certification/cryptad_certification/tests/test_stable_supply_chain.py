@@ -3573,11 +3573,20 @@ class StableSupplyChainTest(unittest.TestCase):
             REPOSITORY
             / "build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts"
         ).read_text(encoding="utf-8")
-        self.assertIn("toolchain { selectStableJava25() }", conventions)
+        self.assertIn(
+            "toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }",
+            conventions,
+        )
+        self.assertNotIn("selectStableJava25", conventions)
         included_build = (REPOSITORY / "build-logic/build.gradle.kts").read_text(
             encoding="utf-8"
         )
-        self.assertEqual(included_build.count("vendor.set(JvmVendorSpec.ADOPTIUM)"), 2)
+        self.assertIn(
+            "toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }",
+            included_build,
+        )
+        self.assertIn("kotlin { jvmToolchain(25) }", included_build)
+        self.assertNotIn("JvmVendorSpec.ADOPTIUM", included_build)
         for label in ("raw resolution or final", "producer jlink", "verifier jlink", "platform jlink"):
             self.assertIn(label, workflow)
 

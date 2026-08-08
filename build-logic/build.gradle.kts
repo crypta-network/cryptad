@@ -6,7 +6,6 @@ import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.artifacts.result.UnresolvedDependencyResult
-import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -15,20 +14,12 @@ plugins {
 }
 
 java {
-  toolchain {
-    languageVersion.set(JavaLanguageVersion.of(25))
-    vendor.set(JvmVendorSpec.ADOPTIUM)
-  }
+  toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
   sourceCompatibility = JavaVersion.VERSION_25
   targetCompatibility = JavaVersion.VERSION_25
 }
 
-kotlin {
-  jvmToolchain {
-    languageVersion.set(JavaLanguageVersion.of(25))
-    vendor.set(JvmVendorSpec.ADOPTIUM)
-  }
-}
+kotlin { jvmToolchain(25) }
 
 repositories {
   // Needed to resolve plugin marker artifacts like org.beryx:badass-runtime-plugin
