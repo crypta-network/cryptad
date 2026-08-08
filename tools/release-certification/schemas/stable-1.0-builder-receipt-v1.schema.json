@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-builder-receipt-v1",
+  "title": "Crypta Stable 1.0 independent builder receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "role", "builderIdentity", "builderExecutions", "source", "materialsDigest", "resolutionSnapshotDigest", "directInputs", "buildTasks", "buildStartedAt", "buildCompletedAt", "candidateProductAvailableBeforeBuild", "subjects", "receiptDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-builder-receipt"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 128},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "role": {"enum": ["candidate-producer", "independent-verifier"]},
+    "builderIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "workflowRef", "workflowSha", "runId", "runAttempt", "jobName", "artifactAttestationDigest", "attestationVerified"],
+      "properties": {
+        "repository": {"const": "github.com/crypta-network/cryptad"},
+        "workflowRef": {"type": "string", "pattern": "^github.com/crypta-network/cryptad/.github/workflows/[A-Za-z0-9._-]+@[0-9a-f]{40}$", "maxLength": 512},
+        "workflowSha": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+        "runId": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "jobName": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 128},
+        "artifactAttestationDigest": {"$ref": "#/$defs/digest"}, "attestationVerified": {"type": "boolean"}
+      }
+    },
+    "builderExecutions": {
+      "type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/builderExecution"}
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["commit", "ref", "treeDigest", "clean"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+        "ref": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+        "treeDigest": {"$ref": "#/$defs/digest"}, "clean": {"type": "boolean"}
+      }
+    },
+    "materialsDigest": {"$ref": "#/$defs/digest"}, "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+    "directInputs": {
+      "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "digest", "origin", "immutabilityClass", "verificationStatus", "verificationMechanism"],
+        "properties": {
+          "name": {"enum": ["gradle-wrapper-distribution", "seedrefs-source-archive", "tanuki-wrapper-delta-pack", "windows-wrapper-amd64", "windows-wrapper-arm64"]},
+          "digest": {"$ref": "#/$defs/digest"},
+          "origin": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~+/-]+$", "maxLength": 1024},
+          "immutabilityClass": {"enum": ["versioned-url", "immutable-git-archive", "immutable-release-asset"]},
+          "verificationStatus": {"const": "verified"},
+          "verificationMechanism": {"enum": ["gradle-wrapper-checksum", "sha256-before-use"]}
+        }
+      }
+    },
+    "buildTasks": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+    "buildStartedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+    "buildCompletedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+    "candidateProductAvailableBeforeBuild": {"type": "boolean"},
+    "subjects": {
+      "type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["subjectKey", "fileName", "digest", "size", "payloadManifestDigest", "signatureReceiptDigest", "notarizationReceiptDigest", "extractionEvidenceDigest", "publishedCandidate"],
+        "properties": {
+          "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+          "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+          "digest": {"$ref": "#/$defs/digest"}, "size": {"type": "integer", "minimum": 0, "maximum": 100000000000},
+          "payloadManifestDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "signatureReceiptDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "notarizationReceiptDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "extractionEvidenceDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "publishedCandidate": {"type": "boolean"}
+        }
+      }
+    },
+    "receiptDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "builderExecution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executionId", "workflowRef", "workflowSha", "runId", "runAttempt", "jobName", "runnerOs", "runnerArchitecture", "runnerImageIdentity", "runnerImageDigest", "toolchain", "materialIdentities", "taskSet", "taskSetDigest", "canonicalEnvironment", "environmentVariables", "directInputsDigest", "payloadManifestSetDigest", "extractionManifestSetDigest", "handoffDigest", "subjectSetDigest", "artifactAttestationDigest", "attestationVerified", "subjectKeys", "sourceCommit", "sourceTreeDigest", "materialsDigest", "resolutionSnapshotDigest", "buildStartedAt", "buildCompletedAt", "candidateProductAvailableBeforeBuild"],
+      "properties": {
+        "executionId": {"enum": ["linux-installers", "macos-installer", "portable-apps", "windows-installer"]},
+        "workflowRef": {"type": "string", "pattern": "^github.com/crypta-network/cryptad/.github/workflows/[A-Za-z0-9._-]+@[0-9a-f]{40}$", "maxLength": 512},
+        "workflowSha": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+        "runId": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "jobName": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 128},
+        "runnerOs": {"enum": ["linux", "macos", "windows"]},
+        "runnerArchitecture": {"const": "amd64"},
+        "runnerImageIdentity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$", "maxLength": 256},
+        "runnerImageDigest": {"$ref": "#/$defs/digest"},
+        "toolchain": {
+          "type": "object", "additionalProperties": false,
+          "required": ["javaVendor", "javaVersion", "javaBuild", "javaEncoding", "javaArchitecture", "javaInstallationManifestDigest", "javaReleaseFileDigest", "javaIdentityDigest", "gradleWrapperJarDigest", "gradleWrapperPropertiesDigest", "gradleDistributionDigest"],
+          "properties": {
+            "javaVendor": {"type": "string", "minLength": 1, "maxLength": 128},
+            "javaVersion": {"type": "string", "minLength": 1, "maxLength": 64},
+            "javaBuild": {"type": "string", "minLength": 1, "maxLength": 128},
+            "javaEncoding": {"const": "UTF-8"},
+            "javaArchitecture": {"enum": ["amd64", "arm64"]},
+            "javaInstallationManifestDigest": {"$ref": "#/$defs/digest"},
+            "javaReleaseFileDigest": {"$ref": "#/$defs/digest"},
+            "javaIdentityDigest": {"$ref": "#/$defs/digest"},
+            "gradleWrapperJarDigest": {"$ref": "#/$defs/digest"},
+            "gradleWrapperPropertiesDigest": {"$ref": "#/$defs/digest"},
+            "gradleDistributionDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "materialIdentities": {
+          "type": "object", "additionalProperties": false,
+          "required": ["dependencyVerificationDigest", "verificationKeyringDigest", "pluginResolutionDigest", "buildLogicDigest", "resolutionSnapshotDigest"],
+          "properties": {
+            "dependencyVerificationDigest": {"$ref": "#/$defs/digest"},
+            "verificationKeyringDigest": {"$ref": "#/$defs/digest"},
+            "pluginResolutionDigest": {"$ref": "#/$defs/digest"},
+            "buildLogicDigest": {"$ref": "#/$defs/digest"},
+            "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "taskSet": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+        "taskSetDigest": {"$ref": "#/$defs/digest"},
+        "canonicalEnvironment": {
+          "type": "object", "additionalProperties": false,
+          "required": ["locale", "timezone", "encoding", "sourceDateEpoch"],
+          "properties": {
+            "locale": {"enum": ["C", "C.UTF-8"]}, "timezone": {"const": "UTC"},
+            "encoding": {"const": "UTF-8"},
+            "sourceDateEpoch": {"type": "integer", "minimum": 0, "maximum": 253402300799}
+          }
+        },
+        "environmentVariables": {
+          "type": "object", "additionalProperties": false,
+          "required": ["LANG", "LC_ALL", "SOURCE_DATE_EPOCH", "TZ"],
+          "properties": {
+            "LANG": {"enum": ["C", "C.UTF-8"]},
+            "LC_ALL": {"enum": ["C", "C.UTF-8"]},
+            "SOURCE_DATE_EPOCH": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,11})$", "maxLength": 12},
+            "TZ": {"const": "UTC"}
+          }
+        },
+        "directInputsDigest": {"$ref": "#/$defs/digest"},
+        "payloadManifestSetDigest": {"$ref": "#/$defs/digest"},
+        "extractionManifestSetDigest": {"$ref": "#/$defs/digest"},
+        "handoffDigest": {"$ref": "#/$defs/digest"},
+        "subjectSetDigest": {"$ref": "#/$defs/digest"},
+        "artifactAttestationDigest": {"$ref": "#/$defs/digest"},
+        "attestationVerified": {"const": true},
+        "subjectKeys": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+        "sourceTreeDigest": {"$ref": "#/$defs/digest"},
+        "materialsDigest": {"$ref": "#/$defs/digest"},
+        "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+        "buildStartedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+        "buildCompletedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+        "candidateProductAvailableBeforeBuild": {"type": "boolean"}
+      }
+    },
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}
+  }
+}

@@ -36,6 +36,16 @@ communication and
 [`tools/release-certification/production-security-response-runbook.json`](../tools/release-certification/production-security-response-runbook.json)
 for deterministic drill coverage.
 
+For a Stable 1.0 maintenance or security-hotfix candidate, also use the authenticated
+component-to-release-subject reverse index from the supply-chain promotion record. It maps a
+component id and digest to daemon archives, platform packages, first-party app bundles, and signed
+catalog entries. Treat it as affected-surface discovery: the protected vulnerability case remains
+authoritative for severity, embargo, deadlines, and remediation state.
+
+If the index is missing, stale, ambiguous, or bound to another candidate, stop promotion and
+rebuild the inventory. Do not remove a component match from the SBOM to narrow incident scope.
+Record a reviewed not-affected conclusion in the protected case evidence instead.
+
 ## Advisory lifecycle
 
 Catalog v4 security policy supports lifecycle status, severity, action, exact denylist records,
@@ -430,3 +440,16 @@ bytes and the appropriate install/update, rollback, migration, backup/restore, s
 catalog-denylist, mitigation, or key-revocation checks pass. Reporter disclosure and closure
 notifications are recorded when a protected contact location exists. The private case and prior
 advisory editions remain retained.
+
+Supply-chain `evaluate-promotion` consumes only the redaction-safe vulnerability summary and the
+candidate-bound reverse index. It must not receive reporter identity, exploit material, raw
+incident artifacts, embargo-only package details, or the authoritative ledger. Conversely, a
+passing supply-chain comparison does not close a case or authorize disclosure. See [Stable 1.0
+supply-chain inventory and reproducible-build
+governance](stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md).
+
+The later protected supply-chain `publish` operation attaches only its eight closed, public-safe
+evidence roles to an already existing exact GitHub Release. It neither receives private incident
+material nor publishes an advisory. Treat its `created`/`verified-existing` receipt and fresh
+observation as supply-chain byte evidence only; incident closure still requires the security
+publication and public-read checks above.

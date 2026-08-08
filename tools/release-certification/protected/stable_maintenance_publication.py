@@ -93,6 +93,19 @@ BACKPORT_RELEASE_TRAIN_AUTHORIZATION_FILE = (
 BACKPORT_RELEASE_TRAIN_AUTHORIZATION_SCHEMA = (
     "stable-1.0-release-train-authorization-v1.schema.json"
 )
+SUPPLY_CHAIN_COMPANION_FILES = {
+    "build-materials": "stable-1.0-build-materials.json",
+    "component-inventory": "stable-1.0-component-inventory.json",
+    "component-reverse-index": "stable-1.0-component-reverse-index.json",
+    "license-inventory": "stable-1.0-license-inventory.json",
+    "reproducibility-report": "stable-1.0-reproducibility-report.json",
+    "release-subject-inventory": "stable-1.0-release-subject-inventory.json",
+    "sbom": "stable-1.0-sbom.spdx.json",
+    "supply-chain-summary": "stable-1.0-supply-chain-summary.json",
+}
+SUPPLY_CHAIN_PUBLICATION_BASE = (
+    "https://github.com/crypta-network/cryptad/releases/download"
+)
 UNRESOLVED_FOLLOW_UP_STATUSES = frozenset({"open", "overdue"})
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUILD_RE = re.compile(r"^[1-9][0-9]*$")
@@ -442,6 +455,82 @@ def _scan_public_value(value: Any, *, key: str | None = None, secret: str | None
 def _validate_schema(value: Mapping[str, Any], schema: str) -> None:
     if validate_schema(dict(value), schema):
         raise AdapterError("artifact-schema-validation-failed")
+
+
+def _validate_supply_chain_companion_assets(
+    root: Path, plan: Mapping[str, Any]
+) -> None:
+    """Authenticate the optional prospective PR-289 GitHub Release asset suffix."""
+
+    rows = plan.get("supplyChainCompanionAssets")
+    if rows is None:
+        return
+    if not isinstance(rows, list):
+        raise AdapterError("supply-chain-companion-assets-invalid")
+    release_id = plan.get("releaseId")
+    build = plan.get("buildVersion")
+    source_commit = plan.get("sourceCommit")
+    summary_path = (
+        root
+        / "protected-inputs"
+        / "supply-chain"
+        / SUPPLY_CHAIN_COMPANION_FILES["supply-chain-summary"]
+    )
+    summary = _read_json(summary_path)
+    _validate_schema(summary, "stable-1.0-supply-chain-promotion-summary-v1.schema.json")
+    summary_payload = {
+        key: value for key, value in summary.items() if key != "summaryDigest"
+    }
+    if (
+        summary.get("summaryDigest") != _semantic_digest(summary_payload)
+        or summary.get("releaseId") != release_id
+        or summary.get("buildVersion") != int(str(build))
+        or summary.get("sourceCommit") != source_commit
+        or summary.get("mode") != "evaluate-promotion"
+        or summary.get("status") != "pass"
+        or summary.get("promotionReady") is not True
+        or summary.get("blockers") != []
+        or summary.get("waivers") != []
+    ):
+        raise AdapterError("supply-chain-companion-summary-binding-mismatch")
+    artifacts = summary.get("artifacts")
+    artifacts = artifacts if isinstance(artifacts, list) else []
+    artifacts_by_name = {
+        row.get("name"): row for row in artifacts if isinstance(row, Mapping)
+    }
+    if len(artifacts_by_name) != len(artifacts):
+        raise AdapterError("supply-chain-companion-summary-artifacts-invalid")
+    expected_rows: list[dict[str, Any]] = []
+    for role, file_name in SUPPLY_CHAIN_COMPANION_FILES.items():
+        if role == "supply-chain-summary":
+            digest = _file_digest(summary_path)
+            size = summary_path.stat().st_size
+        else:
+            artifact = artifacts_by_name.get(role)
+            if not isinstance(artifact, Mapping):
+                raise AdapterError("supply-chain-companion-summary-artifacts-invalid")
+            digest = artifact.get("digest")
+            size = artifact.get("size")
+        expected_rows.append(
+            {
+                "role": role,
+                "fileName": file_name,
+                "digest": digest,
+                "sizeBytes": size,
+                "publicUri": (
+                    f"{SUPPLY_CHAIN_PUBLICATION_BASE}/v{build}/{file_name}"
+                ),
+            }
+        )
+    maintenance_names = {
+        row.get("fileName")
+        for row in plan.get("assets", [])
+        if isinstance(row, Mapping)
+    }
+    if rows != expected_rows or maintenance_names.intersection(
+        row["fileName"] for row in expected_rows
+    ):
+        raise AdapterError("supply-chain-companion-assets-binding-mismatch")
 
 
 def _safe_tree(root: Path) -> None:
@@ -977,6 +1066,7 @@ def _load_bundle(root: Path) -> PublicationBundle:
         backport_release_train_authorization_path
     )
     _validate_schema(plan, "stable-1.0-maintenance-publication-plan-v1.schema.json")
+    _validate_supply_chain_companion_assets(root, plan)
     _validate_schema(authorization, "stable-1.0-maintenance-authorization-v1.schema.json")
     _validate_schema(lineage, "stable-1.0-maintenance-lineage-v1.schema.json")
     _validate_schema(core_plan, "cryptad-core-update-publication-plan-v1.schema.json")

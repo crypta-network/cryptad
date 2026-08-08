@@ -40,6 +40,9 @@ __pycache__/
 gradle
 !*/gradle/
 */gradle/**
+!build-logic/gradle/verification-metadata.xml
+!build-logic/gradle/verification-keyring.gpg
+!build-logic/gradle/verification-keyring.keys
 !*/gradle/owned-output-patterns.txt
 /.gradle-user-home
 debian/seednodes.fref

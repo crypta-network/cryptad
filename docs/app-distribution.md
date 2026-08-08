@@ -289,32 +289,83 @@ Per app:
 - `:apps:queue-manager:stageApp`
 - `:apps:queue-manager:signApp`
 - `:apps:queue-manager:verifyApp`
+- `:apps:queue-manager:packageApp`
 - `:apps:publisher:stageApp`
 - `:apps:publisher:signApp`
 - `:apps:publisher:verifyApp`
+- `:apps:publisher:packageApp`
 - `:apps:site-publisher:stageApp`
 - `:apps:site-publisher:signApp`
 - `:apps:site-publisher:verifyApp`
+- `:apps:site-publisher:packageApp`
 - `:apps:profile-publisher:stageApp`
 - `:apps:profile-publisher:signApp`
 - `:apps:profile-publisher:verifyApp`
+- `:apps:profile-publisher:packageApp`
 - `:apps:social-inbox:stageApp`
 - `:apps:social-inbox:signApp`
 - `:apps:social-inbox:verifyApp`
+- `:apps:social-inbox:packageApp`
 - `:apps:feed-reader:stageApp`
 - `:apps:feed-reader:signApp`
 - `:apps:feed-reader:verifyApp`
+- `:apps:feed-reader:packageApp`
 - `:apps:trust-graph:stageApp`
 - `:apps:trust-graph:signApp`
 - `:apps:trust-graph:verifyApp`
+- `:apps:trust-graph:packageApp`
 
 Root convenience tasks:
 
 - `stageFirstPartyApps`
 - `signFirstPartyApps`
 - `verifyFirstPartyApps`
+- `packageFirstPartyApps`
 
 `stageApp` remains unsigned on purpose. Use `signApp` when you need a signed local bundle, and `verifyApp` to re-digest and verify a signed staged bundle with the configured public key.
+`packageApp` depends on both operations and writes a deterministic ZIP below
+`build/cryptad-app-bundle/`; it preserves the signed digest and signature sidecars in the exact
+bytes used by a catalog or Stable release-subject inventory.
+
+## Stable supply-chain inventory
+
+At a Stable 1.0 maintenance boundary, each signed first-party bundle is a release subject rather
+than an incidental Gradle output. The release-subject inventory binds app id/version, bundle,
+manifest, bundle-signature, and trusted-review-receipt digests, manifest permissions, app-data
+schema/migration identity, and the matching signed catalog entry. The catalog bytes and detached
+signature are separate subjects; the release freeze binds their exact catalog id, revision, signer
+identity, and entry-to-bundle links.
+
+Create local Gradle resolution evidence with the same Java 25 wrapper build used for the
+candidate:
+
+```bash
+./gradlew exportStableSupplyChainResolution
+```
+
+Protected producer and verifier jobs authenticate the reviewed raw export and snapshot from their
+phase bundle, then run `verifyStableSupplyChainResolution` with the exact
+`stableSupplyChainExpectedResolutionExport` and
+`stableSupplyChainExpectedResolutionSnapshot` paths. The unlocked local export alone does not
+satisfy the Stable gate.
+
+The export covers resolved project/module/file inputs; it does not make a signed bundle or catalog
+trusted. Bundle signatures, catalog signatures, review receipts, maintenance metadata, license
+evidence, and payload digests remain independent inputs to `stable-supply-chain`. Copied browser
+SDK and design-system assets must map to every bundle containing those bytes. Catalog `license`
+display metadata is useful to operators but does not replace the candidate-bound license
+inventory.
+
+The isolated verifier stages and digests its own app subjects before it can receive producer
+candidate bytes. Only a passing comparison and promotion summary for the exact maintenance freeze
+can satisfy the Stable supply-chain gate. Do not describe locally staged or signed development
+bundles as published SBOM subjects. See [Stable 1.0 supply-chain inventory and reproducible-build
+governance](stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md).
+
+The protected supply-chain publisher exposes the app/catalog binding through the public
+`release-subject-inventory`, component inventory, reverse index, SBOM, and related evidence roles.
+It never overwrites the signed bundle or catalog product assets: those must already match their
+frozen maintenance publication, and any conflicting supply-chain evidence asset fails closed.
 
 ## Signing Inputs
 
@@ -489,7 +540,7 @@ Verify Trust Graph Local RC with the matching public key:
   -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
-Stage, sign, and verify all first-party apps:
+Stage, sign, verify, and package all first-party apps:
 
 The root first-party tasks include Queue Manager, Publisher, Site Publisher, Profile Publisher,
 Social Inbox RC, Feed Reader, and Trust Graph Local RC.
@@ -499,6 +550,7 @@ Social Inbox RC, Feed Reader, and Trust Graph Local RC.
   stageFirstPartyApps \
   signFirstPartyApps \
   verifyFirstPartyApps \
+  packageFirstPartyApps \
   -PcryptadAppSigningKeyId=dev-local \
   -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem \
   -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem

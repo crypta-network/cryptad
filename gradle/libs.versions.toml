@@ -26,6 +26,7 @@ spotbugs = "6.4.8"
 jacoco = "0.8.14"
 errorpronePlugin = "5.0.0"
 errorproneCore = "2.38.0"
+foojayResolver = "1.0.0"
 jetbrainsAnnotations = "23.0.0"
 
 [libraries]

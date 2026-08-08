@@ -1261,6 +1261,45 @@ class AdapterIntegrationTest(unittest.TestCase):
             self.assertIn("--write-history", captured)
             self.assertNotIn("--history-dir", captured)
 
+    def test_release_adapter_forwards_exact_supply_chain_source_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_commit = "a" * 40
+            source_ref = f"commit:{source_commit}"
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-1-0-maintenance-301",
+                        "version": "301",
+                        "profile": "stable-review",
+                    },
+                    requirements={"stableSupplyChain": True},
+                    policies={
+                        "candidateSourceCommit": source_commit,
+                        "candidateSourceRef": source_ref,
+                    },
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                release_certification,
+                "main",
+                side_effect=lambda args: captured.extend(args) or 0,
+            ):
+                legacy._run_release_certification(context)
+
+            commit_index = captured.index(
+                "--stable-supply-chain-candidate-source-commit"
+            )
+            ref_index = captured.index("--stable-supply-chain-candidate-source-ref")
+            self.assertEqual(captured[commit_index + 1], source_commit)
+            self.assertEqual(captured[ref_index + 1], source_ref)
+
     def test_release_adapter_honors_an_explicit_history_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

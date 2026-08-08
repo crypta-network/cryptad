@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "stable-1.0-supply-chain-publication-receipt-v1", "title": "Crypta Stable 1.0 supply-chain publication receipt",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "planDigest", "generatedAt", "backendIdentity", "workflowIdentity", "attestationDigest", "backendAuthenticated", "operations", "receiptDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-supply-chain-publication-receipt"},
+    "releaseId": {"type": "string", "minLength": 1, "maxLength": 128}, "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647}, "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40}, "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "planDigest": {"$ref": "#/$defs/digest"}, "generatedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+    "backendIdentity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$", "maxLength": 512}, "workflowIdentity": {"type": "string", "pattern": "^github.com/crypta-network/cryptad/.github/workflows/[A-Za-z0-9._@/-]+$", "maxLength": 512}, "attestationDigest": {"$ref": "#/$defs/digest"}, "backendAuthenticated": {"type": "boolean"},
+    "operations": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["role", "digest", "size", "uri", "operation"], "properties": {"role": {"$ref": "#/$defs/role"}, "digest": {"$ref": "#/$defs/digest"}, "size": {"type": "integer", "minimum": 1, "maximum": 1000000000}, "uri": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+$", "maxLength": 1024}, "operation": {"enum": ["created", "verified-existing"]}}}}, "receiptDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}, "role": {"enum": ["component-inventory", "release-subject-inventory", "sbom", "license-inventory", "build-materials", "reproducibility-report", "component-reverse-index", "supply-chain-summary"]}}
+}

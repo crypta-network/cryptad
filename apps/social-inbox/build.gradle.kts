@@ -17,6 +17,7 @@ val mainSourceSet = sourceSets.named("main")
 val appDistCli by configurations.creating
 val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
+val packagedAppFile = layout.buildDirectory.file("cryptad-app-bundle/$appId-${project.version}.zip")
 val stageAssetsDir = layout.projectDirectory.dir("src/staged")
 val manifestTemplateFile = stageAssetsDir.file("cryptad-app.properties.template")
 val platformDesignSystemResourceDir =
@@ -199,6 +200,31 @@ val verifyApp by
         )
       addPublicKeyArguments(name, arguments)
       setArgs(arguments)
+    }
+  }
+
+val packageApp by
+  tasks.registering(JavaExec::class) {
+    group = "build"
+    description = "Packages the signed $appDisplayName AppHost bundle deterministically."
+    dependsOn(signApp, verifyApp)
+    classpath = appDistCli
+    mainClass.set(appDistMainClass)
+    inputs
+      .dir(stageAppDir)
+      .withPropertyName("signedBundleForPackaging")
+      .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file(packagedAppFile)
+    doFirst {
+      setArgs(
+        listOf(
+          "package",
+          "--bundle-dir",
+          stageAppDir.get().asFile.absolutePath,
+          "--output-zip",
+          packagedAppFile.get().asFile.absolutePath,
+        )
+      )
     }
   }
 

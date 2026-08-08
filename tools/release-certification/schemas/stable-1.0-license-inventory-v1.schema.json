@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-license-inventory-v1",
+  "title": "Crypta Stable 1.0 license inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "sourceCommit", "policyDigest", "componentInventoryDigest", "components", "noticesDigest", "licenseInventoryDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-license-inventory"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 128},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "componentInventoryDigest": {"$ref": "#/$defs/digest"},
+    "components": {
+      "type": "array", "minItems": 1, "maxItems": 100000, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["componentId", "expression", "status", "decisionSource", "evidenceDigest", "licenseTextPath", "licenseTextDigest", "noticeRequired", "rationale"],
+        "properties": {
+          "componentId": {"type": "string", "pattern": "^pkg:[a-z0-9.+-]+/[A-Za-z0-9._~%+@/?=&-]+$", "maxLength": 512},
+          "expression": {"type": "string", "minLength": 1, "maxLength": 256},
+          "status": {"enum": ["allowed", "allowed-with-notice", "review-required", "prohibited", "unknown-blocking", "not-applicable-internal"]},
+          "decisionSource": {"enum": ["reviewed-metadata", "override", "internal-policy"]},
+          "evidenceDigest": {"$ref": "#/$defs/digest"},
+          "licenseTextPath": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+          "licenseTextDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "noticeRequired": {"type": "boolean"},
+          "rationale": {"type": "string", "minLength": 8, "maxLength": 1024}
+        }
+      }
+    },
+    "noticesDigest": {"$ref": "#/$defs/digest"},
+    "licenseInventoryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}}
+}

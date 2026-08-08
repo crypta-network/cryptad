@@ -1,4 +1,5 @@
 import com.github.spotbugs.snom.SpotBugsTask
+import cryptad.selectStableJava25
 import java.time.Instant
 import javax.xml.stream.XMLOutputFactory
 import net.ltgt.gradle.errorprone.errorprone
@@ -104,7 +105,7 @@ tasks.withType<SpotBugsTask>().configureEach {
 }
 
 java {
-  toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
+  toolchain { selectStableJava25() }
   sourceCompatibility = JavaVersion.VERSION_25
   targetCompatibility = JavaVersion.VERSION_25
 }

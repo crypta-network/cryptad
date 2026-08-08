@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -21,6 +22,9 @@ from unittest import mock
 
 from cryptad_certification import stable_vulnerability_summary
 from cryptad_certification.engines import stable_1_0_maintenance
+from cryptad_certification.engines.stable_1_0_supply_chain_activation import (
+    supply_chain_governance_active,
+)
 
 ROOT = Path(__file__).resolve().parents[4]
 RC_RELEASE = ROOT / ".github/workflows/stable-1.0-rc-release.yml"
@@ -186,6 +190,99 @@ def _release_lifecycle_authority_presence_script() -> str:
 
 
 class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
+    def test_supply_chain_handoff_activation_is_prospective_and_fail_closed(
+        self,
+    ) -> None:
+        policy = {
+            "governanceActivation": {
+                "candidateFrozenAtNotBefore": "2026-08-05T00:00:00Z"
+            }
+        }
+
+        self.assertFalse(
+            supply_chain_governance_active("2026-08-04T23:59:59Z", policy)
+        )
+        self.assertTrue(
+            supply_chain_governance_active("2026-08-05T00:00:00Z", policy)
+        )
+        self.assertTrue(
+            supply_chain_governance_active("2026-08-05T00:00:01Z", policy)
+        )
+        self.assertTrue(supply_chain_governance_active("malformed", policy))
+        self.assertTrue(supply_chain_governance_active("2026-08-04T23:59:59Z", None))
+
+    def test_release_authenticates_exact_supply_chain_promotion_handoff(self) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+
+        for expected in (
+            "Authenticate and materialize exact PR-289 promotion handoff",
+            "Reauthenticate exact PR-289 promotion producer before publication",
+            'inputs.operation == \'prepare-authorization\'',
+            '.policies.metadata.stableSupplyChainRunId',
+            '.policies.metadata.stableSupplyChainRunAttempt',
+            '.policies.metadata.stableSupplyChainArtifactName',
+            '.policies.metadata.stableSupplyChainArtifactDigest',
+            '.path == ".github/workflows/stable-1.0-supply-chain.yml"',
+            '.run_attempt | tostring',
+            'gh attestation verify "$summary"',
+            "--deny-self-hosted-runners",
+            "stable-1.0-supply-chain-summary-provenance.json",
+            'operation: "compare-evaluate"',
+            'authenticationStatus: "pass"',
+            'authenticationAlgorithm: "hmac-sha256"',
+            "stable_supply_chain_handoff_authentication_tag",
+            "unset CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64",
+            "Generic maintenance input producer must not supply PR-289 promotion authority",
+            "Determine prospective PR-289 governance activation",
+            "Determine publication-boundary PR-289 governance activation",
+            "tools/release-certification/protected/stable_supply_chain_activation.py",
+            "build/prior-validated-candidate/freeze/"
+            "stable-1.0-maintenance-candidate-freeze.json",
+            "build/stable-maintenance-publication/authenticated-inputs/"
+            "maintenance-candidate-freeze.json",
+            "steps.supply_chain_activation.outputs.active == 'true'",
+            "steps.publication_supply_chain_activation.outputs.active == 'true'",
+        ):
+            self.assertIn(expected, workflow)
+        secret_binding = (
+            "CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}"
+        )
+        self.assertEqual(workflow.count(secret_binding), 2)
+        producer_start = workflow.index(
+            "      - name: Authenticate and materialize exact PR-289 promotion handoff"
+        )
+        producer_end = workflow.index("\n      - name:", producer_start + 8)
+        producer = workflow[producer_start:producer_end]
+        self.assertIn(secret_binding, producer)
+        self.assertIn("authenticationTag", producer)
+        consumer_start = workflow.index(
+            "      - name: Validate exact frozen candidate without publication"
+        )
+        consumer_end = workflow.index("\n      - name:", consumer_start + 8)
+        self.assertIn(secret_binding, workflow[consumer_start:consumer_end])
+        publication_start = workflow.index("\n  protected-publication:")
+        self.assertNotIn(secret_binding, workflow[publication_start:])
+        self.assertNotIn("supply_chain_run_id:", workflow)
+        self.assertNotIn(
+            'stable-1.0-supply-chain-${{ inputs.release_id }}-${{ github.run_id }}',
+            workflow,
+        )
+        manifest = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        self.assertEqual(
+            "build/protected-inputs/supply-chain/"
+            "stable-1.0-supply-chain-summary.json",
+            manifest["inputs"]["supplyChainPromotionSummary"],
+        )
+        metadata = manifest["policies"]["metadata"]
+        for field in (
+            "stableSupplyChainRunId",
+            "stableSupplyChainRunAttempt",
+            "stableSupplyChainArtifactName",
+            "stableSupplyChainArtifactDigest",
+        ):
+            self.assertIn(field, metadata)
+
     def test_release_materializes_the_required_vulnerability_summary_handoff(
         self,
     ) -> None:
@@ -552,7 +649,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             and line.strip().endswith(":")
         ]
 
-        self.assertLessEqual(len(input_names), 25)
+        self.assertEqual(len(input_names), 25)
         self.assertNotIn("lifecycle_publication_backend_run_id", input_names)
         self.assertNotIn("lifecycle_publication_backend_artifact_name", input_names)
         self.assertNotIn("lifecycle_publication_backend_artifact_digest", input_names)
@@ -1147,6 +1244,47 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             )
             self.assertEqual(2, len(transport.downloads))
 
+            companion_names = tuple(
+                f"stable-1.0-supply-chain-companion-{index}.json"
+                for index in range(8)
+            )
+            plan["supplyChainCompanionAssets"] = [
+                {
+                    "role": f"companion-{index}",
+                    "fileName": name,
+                    "sizeBytes": 1,
+                    "digest": module._digest(b"a"),
+                }
+                for index, name in enumerate(companion_names)
+            ]
+            complete_with_partial_companion = {
+                "id": 301,
+                "assets": [
+                    {"id": index + 20, "name": name, "size": 1}
+                    for index, name in enumerate(names)
+                ]
+                + [{"id": 30, "name": companion_names[0], "size": 1}],
+            }
+            self.assertEqual(
+                "matching",
+                backend._assets_status(request, complete_with_partial_companion),
+            )
+            transport.uploads.clear()
+            with mock.patch.object(
+                backend,
+                "_release",
+                return_value=("matching", complete_with_partial_companion),
+            ):
+                backend._upload_assets(request)
+            self.assertEqual([], transport.uploads)
+
+            plan["supplyChainCompanionAssets"][0]["fileName"] = names[0]
+            self.assertEqual(
+                "conflict",
+                backend._assets_status(request, complete_with_partial_companion),
+            )
+            plan["supplyChainCompanionAssets"][0]["fileName"] = companion_names[0]
+
             unexpected = {
                 "assets": [{"id": 8, "name": "unexpected.bin", "size": 1}]
             }
@@ -1208,6 +1346,8 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             "freeze-candidate",
             "prepare-authorization",
             "validate-authorization",
+            "supply-chain-inventory",
+            "supply-chain-prebuild",
             "environment: stable-1.0-maintenance-evidence",
             "CRYPTAD_STABLE_MAINTENANCE_INPUT_BUNDLE_URL",
             "INPUT_BUNDLE_SHA256",
@@ -1222,21 +1362,50 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             "duplicate JSON key",
             'raw.decode("utf-8")',
             "ensure_ascii=False, indent=2, sort_keys=True",
-            "if raw != canonical:",
+            "if not accepted:",
+            '"resolved-dependency-export.json"',
+            '"resolved-dependency-snapshot.json"',
             "noncanonical JSON bytes",
             "_maintenance_public_redaction_findings",
             "placeholder_findings",
             "phase bundle contains an unreferenced input",
             "stable-1.0-maintenance.json",
             "stable-1.0-maintenance-authorization.json",
-            "actions/attest@",
-            "actions/upload-artifact@v6",
+            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+            "Attest every exact supply-chain phase file",
+            "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373",
+            "supply-chain prebuild recipe is not the exact receipt-free input set",
+            "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
         )
         for value in required:
             self.assertIn(value, text)
         self.assertNotIn("pull_request:", text)
         self.assertNotIn("contents: write", text)
         self.assertNotIn("PROTECTED_BUNDLE_URL: ${{ inputs.", text)
+
+    def test_input_producer_pins_every_external_action_to_a_reviewed_commit(self) -> None:
+        text = INPUTS.read_text(encoding="utf-8")
+        external_actions = [
+            reference
+            for reference in re.findall(
+                r"^\s*uses:\s+([^\s#]+)", text, flags=re.MULTILINE
+            )
+            if not reference.startswith("./")
+        ]
+
+        self.assertEqual(
+            {
+                "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803",
+                "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1",
+                "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26",
+                "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373",
+                "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+            },
+            set(external_actions),
+        )
+        self.assertEqual(len(external_actions), 5)
+        for reference in external_actions:
+            self.assertRegex(reference, r"^[^@\s]+@[0-9a-f]{40}$")
 
     def test_protected_fetch_pins_validated_address_and_tls_hostname(self) -> None:
         namespace: dict[str, object] = {"__name__": "workflow_test"}
@@ -2024,9 +2193,9 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         ):]
         step = step[: step.index("\n      - name:", 8)]
 
-        self.assertIn(
-            "if: ${{ inputs.phase != 'validate-authorization' }}", step
-        )
+        self.assertIn("inputs.phase == 'freeze-candidate'", step)
+        self.assertIn("inputs.phase == 'prepare-authorization'", step)
+        self.assertNotIn("supply-chain-prebuild", step)
         self.assertIn(
             'signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle.yml"',
             step,

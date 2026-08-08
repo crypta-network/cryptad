@@ -661,6 +661,27 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     )
     if stable_vulnerability_item is not None:
         evidence.append(stable_vulnerability_item)
+    observed_supply_chain_source_commit = ""
+    if (
+        settings.stable_supply_chain_required
+        or settings.stable_supply_chain_summary is not None
+    ):
+        observed_supply_chain_source_commit = command_output(
+            ["git", "rev-parse", "HEAD"], settings.workspace_root
+        )
+    stable_supply_chain_item = stable_supply_chain_evidence(
+        settings.stable_supply_chain_summary,
+        settings.workspace_root,
+        settings.out_dir,
+        settings.stable_supply_chain_candidate_release_id,
+        settings.stable_supply_chain_candidate_build_version,
+        settings.stable_supply_chain_candidate_source_commit,
+        settings.stable_supply_chain_candidate_source_ref,
+        observed_supply_chain_source_commit,
+        required=settings.stable_supply_chain_required,
+    )
+    if stable_supply_chain_item is not None:
+        evidence.append(stable_supply_chain_item)
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -762,8 +783,8 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
     waiver_context = load_waiver_context(settings, dt.datetime.now(dt.timezone.utc))
     previous_summary, previous_source, previous_error = load_previous_summary(settings)
     copied = collect_source_artifacts(settings, settings.out_dir)
-    base_evidence = gather_evidence(settings, waiver_context)
     metadata = collect_metadata(settings)
+    base_evidence = gather_evidence(settings, waiver_context)
 
     def evaluate_history_and_gates(current_evidence: list[EvidenceItem]) -> tuple[dict[str, Any], list[GateResult]]:
         comparison = compare_history(
@@ -908,6 +929,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         args.stable_vulnerability_summary
         or os.environ.get("CRYPTAD_CERT_STABLE_VULNERABILITY_SUMMARY")
     )
+    stable_supply_chain_summary_arg = (
+        args.stable_supply_chain_summary
+        or os.environ.get("CRYPTAD_CERT_STABLE_SUPPLY_CHAIN_SUMMARY")
+    )
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -959,6 +984,27 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         ),
         stable_vulnerability_candidate_build_version=(
             args.stable_vulnerability_candidate_build_version
+        ),
+        stable_supply_chain_summary=(
+            resolve_path(workspace_root, Path(stable_supply_chain_summary_arg))
+            if stable_supply_chain_summary_arg
+            else None
+        ),
+        stable_supply_chain_required=(
+            args.require_stable_supply_chain
+            or env_flag("CRYPTAD_CERT_REQUIRE_STABLE_SUPPLY_CHAIN")
+        ),
+        stable_supply_chain_candidate_release_id=(
+            args.stable_supply_chain_candidate_release_id
+        ),
+        stable_supply_chain_candidate_build_version=(
+            args.stable_supply_chain_candidate_build_version
+        ),
+        stable_supply_chain_candidate_source_commit=(
+            args.stable_supply_chain_candidate_source_commit
+        ),
+        stable_supply_chain_candidate_source_ref=(
+            args.stable_supply_chain_candidate_source_ref
         ),
     )
 
@@ -1050,6 +1096,49 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Exact positive integer build identity that an authenticated Stable "
             "vulnerability summary must govern."
+        ),
+    )
+    parser.add_argument(
+        "--stable-supply-chain-summary",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical public-safe Stable supply-chain promotion summary. When supplied, "
+            "its authenticated promotion decision is non-waivable."
+        ),
+    )
+    parser.add_argument(
+        "--require-stable-supply-chain",
+        action="store_true",
+        help=(
+            "Treat missing or failing Stable supply-chain promotion evidence as a "
+            "non-waivable release blocker."
+        ),
+    )
+    parser.add_argument(
+        "--stable-supply-chain-candidate-release-id",
+        default="",
+        help="Exact Stable release identity governed by the supply-chain summary.",
+    )
+    parser.add_argument(
+        "--stable-supply-chain-candidate-build-version",
+        default="",
+        help="Exact positive integer build governed by the supply-chain summary.",
+    )
+    parser.add_argument(
+        "--stable-supply-chain-candidate-source-commit",
+        default="",
+        help=(
+            "Exact lowercase 40-character checkout commit governed by the "
+            "supply-chain summary."
+        ),
+    )
+    parser.add_argument(
+        "--stable-supply-chain-candidate-source-ref",
+        default="",
+        help=(
+            "Exact immutable commit:<sha> source identity governed by the "
+            "supply-chain summary."
         ),
     )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")

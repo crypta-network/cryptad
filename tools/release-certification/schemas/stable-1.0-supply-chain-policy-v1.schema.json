@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-supply-chain-policy-v1",
+  "title": "Crypta Stable 1.0 supply-chain policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "repositoryIdentity", "stableMilestone", "edition", "effectiveAt", "governanceActivation", "policyDigest", "modes", "releaseSubjects", "subjectMetadataRules", "componentIdentityRules", "acceptedOrigins", "dependencyResolutionRules", "buildMaterialRules", "vendoredRules", "jdkRules", "firstPartyAppRules", "publicSbom", "licensePolicy", "builderPolicy", "reproducibilityClasses", "normalizationRules", "publicationPolicy", "vulnerabilityReverseIndex", "publicArtifactBounds", "redactionRules", "nonWaivableBlockers"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-supply-chain-policy"},
+    "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "stableMilestone": {"const": "Stable 1.0"},
+    "edition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "effectiveAt": {"type": "string", "format": "date-time", "maxLength": 32},
+    "governanceActivation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["activationRule", "candidateFrozenAtNotBefore", "appliesProspectively", "historicalReceiptsImmutable", "historicalReleaseLineageUnchanged"],
+      "properties": {
+        "activationRule": {"const": "first-stable-successor-candidate-frozen-at-or-after-effective-time"},
+        "candidateFrozenAtNotBefore": {"type": "string", "format": "date-time", "maxLength": 32},
+        "appliesProspectively": {"const": true},
+        "historicalReceiptsImmutable": {"const": true},
+        "historicalReleaseLineageUnchanged": {"const": true}
+      }
+    },
+    "policyDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "modes": {"type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true, "items": {"enum": ["assemble-inventory", "verify-inventory", "prepare-rebuild-comparison", "compare-rebuilds", "evaluate-promotion", "verify-publication"]}},
+    "releaseSubjects": {
+      "type": "array", "minItems": 20, "maxItems": 64, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["subjectKey", "subjectClass", "required", "evidencePhase", "reproducibilityClass", "normalizationRuleId"],
+        "properties": {
+          "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+          "subjectClass": {"enum": ["core", "portable", "runtime-image", "installer", "updater", "catalog", "first-party-app", "app-metadata", "companion-artifact", "publication-material"]},
+          "required": {"type": "boolean"},
+          "evidencePhase": {"enum": ["independent-builder", "authenticated-post-build", "derived-governance"]},
+          "reproducibilityClass": {"enum": ["byte-identical", "normalized-payload-identical", "not-a-product-subject"]},
+          "normalizationRuleId": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}
+        }
+      }
+    },
+    "subjectMetadataRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["appMetadataClasses", "catalogMetadataClasses", "signatureReceiptClasses", "packageMetadataRequiresNormalizationRule", "unexpectedMetadataProhibited"],
+      "properties": {
+        "appMetadataClasses": {"type": "array", "minItems": 1, "maxItems": 1, "uniqueItems": true, "items": {"const": "first-party-app"}},
+        "catalogMetadataClasses": {"type": "array", "minItems": 1, "maxItems": 1, "uniqueItems": true, "items": {"const": "catalog"}},
+        "signatureReceiptClasses": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["installer", "catalog", "first-party-app"]}},
+        "packageMetadataRequiresNormalizationRule": {"const": true},
+        "unexpectedMetadataProhibited": {"const": true}
+      }
+    },
+    "componentIdentityRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["purlRequired", "fullGitCommitRequired", "mutableVersionsProhibited", "duplicateIdentityDifferentDigestProhibited", "subjectMappingRequired"],
+      "properties": {
+        "purlRequired": {"const": true}, "fullGitCommitRequired": {"const": true},
+        "mutableVersionsProhibited": {"const": true}, "duplicateIdentityDifferentDigestProhibited": {"const": true},
+        "subjectMappingRequired": {"const": true}
+      }
+    },
+    "acceptedOrigins": {"type": "array", "minItems": 6, "maxItems": 16, "uniqueItems": true, "items": {"enum": ["maven-central", "gradle-plugin-portal", "repository-source", "reviewed-vendor", "openjdk", "built-first-party"]}},
+    "dependencyResolutionRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["modelApiRequired", "releaseConfigurationsLocked", "dynamicVersionsProhibited", "changingModulesProhibited", "verificationRequired", "driftBlocks", "buildLogicComponentsRequired", "pluginResolutionDigestRequired", "requiredConfigurationMappings", "requiredBuildLogicConfigurations"],
+      "properties": {
+        "modelApiRequired": {"const": true}, "releaseConfigurationsLocked": {"const": true},
+        "dynamicVersionsProhibited": {"const": true}, "changingModulesProhibited": {"const": true},
+        "verificationRequired": {"const": true}, "driftBlocks": {"const": true},
+        "buildLogicComponentsRequired": {"const": true}, "pluginResolutionDigestRequired": {"const": true},
+        "requiredConfigurationMappings": {
+          "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["projectScope", "sourceName", "requiredName", "role"],
+            "properties": {
+              "projectScope": {"const": "release-projects"},
+              "sourceName": {"enum": ["compileClasspath", "testCompileClasspath"]},
+              "requiredName": {"enum": ["annotationProcessor", "testAnnotationProcessor"]},
+              "role": {"enum": ["build", "test"]}
+            }
+          }
+        },
+        "requiredBuildLogicConfigurations": {
+          "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
+          "items": {"enum": ["buildLogicSettingsPluginClasspath", "rootSettingsPluginClasspath"]}
+        }
+      }
+    },
+    "buildMaterialRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requiredDigests", "requiredDirectInputs", "directInputOriginRules", "canonicalTimeSource", "allowedLocales", "allowedEnvironmentVariableNames", "timezone", "encoding", "secretValuesProhibited"],
+      "properties": {
+        "requiredDigests": {"type": "array", "minItems": 8, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$", "maxLength": 80}},
+        "requiredDirectInputs": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"enum": ["gradle-wrapper-distribution", "seedrefs-source-archive", "tanuki-wrapper-delta-pack", "windows-wrapper-amd64", "windows-wrapper-arm64"]}},
+        "directInputOriginRules": {
+          "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "immutabilityClass", "originPattern"],
+            "properties": {
+              "name": {"enum": ["gradle-wrapper-distribution", "seedrefs-source-archive", "tanuki-wrapper-delta-pack", "windows-wrapper-amd64", "windows-wrapper-arm64"]},
+              "immutabilityClass": {"enum": ["versioned-url", "immutable-git-archive", "immutable-release-asset"]},
+              "originPattern": {"type": "string", "minLength": 16, "maxLength": 512}
+            }
+          }
+        },
+        "canonicalTimeSource": {"const": "authenticated-source-commit-time"},
+        "allowedLocales": {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["C", "C.UTF-8"]}},
+        "allowedEnvironmentVariableNames": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"enum": ["LANG", "LC_ALL", "SOURCE_DATE_EPOCH", "TZ"]}
+        },
+        "timezone": {"const": "UTC"}, "encoding": {"const": "UTF-8"},
+        "secretValuesProhibited": {"const": true}
+      }
+    },
+    "vendoredRules": {"$ref": "#/$defs/exactInputRules"},
+    "jdkRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["digestRequired", "originRequired", "licenseRequired", "subjectMappingRequired", "unknownBlocks", "distribution", "setupJavaVersion", "installationDigestAlgorithm", "requiredInstallations", "runtimeSubjectClasses"],
+      "properties": {
+        "digestRequired": {"const": true}, "originRequired": {"const": true},
+        "licenseRequired": {"const": true}, "subjectMappingRequired": {"const": true},
+        "unknownBlocks": {"const": true},
+        "distribution": {"const": "temurin"},
+        "setupJavaVersion": {"type": "string", "pattern": "^25\\.[0-9]+\\.[0-9]+\\+[0-9]+$", "maxLength": 64},
+        "installationDigestAlgorithm": {"const": "crypta-jdk-installed-tree-sha256-v1"},
+        "requiredInstallations": {
+          "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["runnerOs", "architecture"],
+            "properties": {
+              "runnerOs": {"enum": ["linux", "macos", "windows"]},
+              "architecture": {"const": "amd64"}
+            }
+          }
+        },
+        "runtimeSubjectClasses": {
+          "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
+          "items": {"enum": ["installer", "runtime-image"]}
+        }
+      }
+    },
+    "firstPartyAppRules": {"$ref": "#/$defs/exactInputRules"},
+    "publicSbom": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "profile", "deterministicBytes", "subjectPartitions", "sourceOfTruth"],
+      "properties": {
+        "format": {"const": "SPDX-2.3-json"}, "profile": {"const": "Crypta-Stable-1.0"},
+        "deterministicBytes": {"const": true}, "subjectPartitions": {"const": true},
+        "sourceOfTruth": {"const": "canonical-component-graph"}
+      }
+    },
+    "licensePolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["statuses", "blockingStatuses", "spdxExpressionsRequired", "licenseTextRequired", "exactOverridesRequired", "orphanedLicenseTextsBlock"],
+      "properties": {
+        "statuses": {"type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true, "items": {"enum": ["allowed", "allowed-with-notice", "review-required", "prohibited", "unknown-blocking", "not-applicable-internal"]}},
+        "blockingStatuses": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["review-required", "prohibited", "unknown-blocking"]}},
+        "spdxExpressionsRequired": {"const": true}, "licenseTextRequired": {"const": true},
+        "exactOverridesRequired": {"const": true}, "orphanedLicenseTextsBlock": {"const": true}
+      }
+    },
+    "builderPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requiredBuilderCount", "roles", "allowedWorkflowPaths", "buildTasks", "executionIds", "executionTasks", "separateRunRequired", "candidateBytesWithheldFromVerifier", "attestationRequired", "verifierMayPublish"],
+      "properties": {
+        "requiredBuilderCount": {"const": 2},
+        "roles": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["candidate-producer", "independent-verifier"]}},
+        "allowedWorkflowPaths": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^github.com/crypta-network/cryptad/.github/workflows/[A-Za-z0-9._-]+$", "maxLength": 512}},
+        "buildTasks": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+        "executionIds": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"enum": ["linux-installers", "macos-installer", "portable-apps", "windows-installer"]}},
+        "executionTasks": {
+          "type": "object", "additionalProperties": false,
+          "required": ["linux-installers", "macos-installer", "portable-apps", "windows-installer"],
+          "properties": {
+            "linux-installers": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+            "macos-installer": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+            "portable-apps": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}},
+            "windows-installer": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160}}
+          }
+        },
+        "separateRunRequired": {"const": true}, "candidateBytesWithheldFromVerifier": {"const": true},
+        "attestationRequired": {"const": true}, "verifierMayPublish": {"const": false}
+      }
+    },
+    "reproducibilityClasses": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["byte-identical", "normalized-payload-identical", "not-a-product-subject"]}},
+    "normalizationRules": {
+      "type": "array", "minItems": 4, "maxItems": 16, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "version", "packageTypes", "allowedExcludedFields", "ignoredPaths"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+          "version": {"type": "integer", "minimum": 1, "maximum": 32},
+          "packageTypes": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"enum": ["app-zip", "deb", "dmg", "exe", "flatpak", "jar", "rpm", "snap", "tar", "wheel", "zip"]}},
+          "allowedExcludedFields": {"type": "array", "minItems": 0, "maxItems": 8, "uniqueItems": true, "items": {"enum": ["container-signature", "signature-timestamp", "notarization-ticket", "filesystem-image-uuid"]}},
+          "ignoredPaths": {"type": "array", "maxItems": 0, "items": {"type": "string", "maxLength": 1024}},
+          "codeSignatureNormalization": {
+            "type": "object", "additionalProperties": false,
+            "required": ["bindingMethod", "tool", "copyOnlySignatureRemoval", "releaseBytesMutable", "strictMountedAppVerification", "signatureResourceStructures"],
+            "properties": {
+              "bindingMethod": {"const": "macos-code-signature-normalized"},
+              "tool": {"const": "apple-system-codesign"},
+              "copyOnlySignatureRemoval": {"const": true},
+              "releaseBytesMutable": {"const": false},
+              "strictMountedAppVerification": {"const": true},
+              "signatureResourceStructures": {
+                "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+                "items": {"enum": ["bundle-code-directory", "bundle-code-resources-file", "legacy-code-resources-symlink"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "publicationPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requiredRoles", "immutableBaseUri", "allowedOperations", "receiptRequired", "publicObservationRequired", "maximumObservationAgeSeconds", "conflictingBytesBlock"],
+      "properties": {
+        "requiredRoles": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"enum": ["component-inventory", "release-subject-inventory", "sbom", "license-inventory", "build-materials", "reproducibility-report", "component-reverse-index", "supply-chain-summary"]}},
+        "immutableBaseUri": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+$", "maxLength": 512},
+        "allowedOperations": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["created", "verified-existing"]}},
+        "receiptRequired": {"const": true}, "publicObservationRequired": {"const": true},
+        "maximumObservationAgeSeconds": {"type": "integer", "minimum": 60, "maximum": 86400},
+        "conflictingBytesBlock": {"const": true}
+      }
+    },
+    "vulnerabilityReverseIndex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scopeTypes", "exactVersionAndDigestRequired", "authenticatedInventoryRequired"],
+      "properties": {
+        "scopeTypes": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"enum": ["runtime-component", "package-key", "first-party-app-version", "core-build"]}},
+        "exactVersionAndDigestRequired": {"const": true}, "authenticatedInventoryRequired": {"const": true}
+      }
+    },
+    "publicArtifactBounds": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maximumComponents", "maximumSubjects", "maximumPayloadEntries", "maximumExpandedBytes", "maximumArtifactBytes"],
+      "properties": {
+        "maximumComponents": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "maximumSubjects": {"type": "integer", "minimum": 1, "maximum": 512},
+        "maximumPayloadEntries": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "maximumExpandedBytes": {"type": "integer", "minimum": 1, "maximum": 100000000000},
+        "maximumArtifactBytes": {"type": "integer", "minimum": 1, "maximum": 1000000000}
+      }
+    },
+    "redactionRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["absolutePathsProhibited", "credentialsProhibited", "privateUrisProhibited", "embargoedDataProhibited", "privateRepositoryRefsProhibited", "hostMetadataProhibited"],
+      "properties": {
+        "absolutePathsProhibited": {"const": true}, "credentialsProhibited": {"const": true},
+        "privateUrisProhibited": {"const": true}, "embargoedDataProhibited": {"const": true},
+        "privateRepositoryRefsProhibited": {"const": true}, "hostMetadataProhibited": {"const": true}
+      }
+    },
+    "nonWaivableBlockers": {"type": "array", "minItems": 12, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}}
+  },
+  "$defs": {
+    "exactInputRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["digestRequired", "originRequired", "licenseRequired", "subjectMappingRequired", "unknownBlocks"],
+      "properties": {
+        "digestRequired": {"const": true}, "originRequired": {"const": true},
+        "licenseRequired": {"const": true}, "subjectMappingRequired": {"const": true},
+        "unknownBlocks": {"const": true}
+      }
+    }
+  }
+}

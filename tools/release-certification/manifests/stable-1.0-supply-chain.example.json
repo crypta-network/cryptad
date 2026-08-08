@@ -1,0 +1,39 @@
+{
+  "commands": {
+    "stable-supply-chain": {
+      "args": [],
+      "mode": "assemble-inventory"
+    }
+  },
+  "execution": {},
+  "inputs": {
+    "buildMaterials": "build/stable-supply-chain/build-material-inputs.json",
+    "componentInventory": "build/stable-supply-chain/component-inventory-input.json",
+    "licenseInventory": "build/stable-supply-chain/license-inventory-input.json",
+    "licenseOverrides": "tools/release-certification/stable-1.0-supply-chain-license-overrides.json",
+    "licenseTextRoot": ".",
+    "primaryPayloadManifests": "build/stable-supply-chain/primary-payload-manifests",
+    "primarySubjectRoot": "build/stable-supply-chain/primary-subjects",
+    "releaseSubjectInventory": "build/stable-supply-chain/release-subject-input.json",
+    "resolvedDependencySnapshot": "build/stable-supply-chain/resolved-dependency-snapshot.json",
+    "supplyChainPolicy": "tools/release-certification/stable-1.0-supply-chain-policy.json"
+  },
+  "output": {
+    "reset": false,
+    "root": "build/release-certification"
+  },
+  "policies": {
+    "candidateSourceCommit": "0000000000000000000000000000000000000000",
+    "candidateSourceRef": "commit:0000000000000000000000000000000000000000",
+    "stableSupplyChainGovernance": "required"
+  },
+  "release": {
+    "id": "replace-stable-release-id",
+    "profile": "stable-review",
+    "version": "3"
+  },
+  "requirements": {
+    "stableSupplyChain": true
+  },
+  "schemaVersion": 1
+}

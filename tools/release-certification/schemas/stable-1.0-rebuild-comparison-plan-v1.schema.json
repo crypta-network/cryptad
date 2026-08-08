@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-rebuild-comparison-plan-v1",
+  "title": "Crypta Stable 1.0 rebuild comparison plan",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "componentInventoryDigest", "subjectInventoryDigest", "primaryBuilderReceiptDigest", "verifierBuilderReceiptDigest", "comparisons", "equalityInferred", "planDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-rebuild-comparison-plan"},
+    "releaseId": {"type": "string", "minLength": 1, "maxLength": 128}, "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "componentInventoryDigest": {"$ref": "#/$defs/digest"}, "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+    "primaryBuilderReceiptDigest": {"$ref": "#/$defs/digest"}, "verifierBuilderReceiptDigest": {"$ref": "#/$defs/digest"},
+    "comparisons": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["subjectKey", "fileName", "reproducibilityClass", "normalizationRuleId", "primaryDigest", "verifierDigest", "primarySize", "verifierSize", "primaryPayloadManifestDigest", "verifierPayloadManifestDigest"], "properties": {
+      "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}, "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+      "reproducibilityClass": {"enum": ["byte-identical", "normalized-payload-identical"]},
+      "normalizationRuleId": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+      "primaryDigest": {"$ref": "#/$defs/digest"}, "verifierDigest": {"$ref": "#/$defs/digest"},
+      "primarySize": {"type": "integer", "minimum": 0, "maximum": 100000000000}, "verifierSize": {"type": "integer", "minimum": 0, "maximum": 100000000000},
+      "primaryPayloadManifestDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}, "verifierPayloadManifestDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}
+    }}},
+    "equalityInferred": {"const": false}, "planDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}}
+}

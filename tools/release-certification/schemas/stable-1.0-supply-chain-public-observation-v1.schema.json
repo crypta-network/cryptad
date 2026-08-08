@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "stable-1.0-supply-chain-public-observation-v1", "title": "Crypta Stable 1.0 supply-chain public observation",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "receiptDigest", "observedAt", "observerIdentity", "observerAttestationDigest", "observerAuthenticated", "assets", "observationDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-supply-chain-public-observation"},
+    "releaseId": {"type": "string", "minLength": 1, "maxLength": 128}, "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647}, "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40}, "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "receiptDigest": {"$ref": "#/$defs/digest"}, "observedAt": {"type": "string", "format": "date-time", "maxLength": 32},
+    "observerIdentity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$", "maxLength": 512}, "observerAttestationDigest": {"$ref": "#/$defs/digest"}, "observerAuthenticated": {"type": "boolean"},
+    "assets": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["role", "digest", "size", "uri"], "properties": {"role": {"enum": ["component-inventory", "release-subject-inventory", "sbom", "license-inventory", "build-materials", "reproducibility-report", "component-reverse-index", "supply-chain-summary"]}, "digest": {"$ref": "#/$defs/digest"}, "size": {"type": "integer", "minimum": 1, "maximum": 1000000000}, "uri": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+$", "maxLength": 1024}}}}, "observationDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}}
+}

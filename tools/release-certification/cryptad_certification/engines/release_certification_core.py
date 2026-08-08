@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 
+import base64
+
+import binascii
+
 import dataclasses
 
 import datetime as dt
 
 import hashlib
+
+import hmac
 
 import json
 
@@ -275,7 +281,84 @@ STABLE_VULNERABILITY_EVIDENCE_ID = "stable-vulnerability.release-promotion"
 
 STABLE_VULNERABILITY_GATE_ID = "ecosystem.stable-vulnerability"
 
-NONWAIVABLE_EVIDENCE_IDS = frozenset({STABLE_VULNERABILITY_EVIDENCE_ID})
+STABLE_SUPPLY_CHAIN_EVIDENCE_ID = "stable-supply-chain.release-promotion"
+
+STABLE_SUPPLY_CHAIN_GATE_ID = "ecosystem.stable-supply-chain"
+
+STABLE_SUPPLY_CHAIN_SUMMARY_SCHEMA = (
+    "stable-1.0-supply-chain-promotion-summary-v1.schema.json"
+)
+
+STABLE_SUPPLY_CHAIN_REQUIRED_EVIDENCE_IDS = (
+    "stable-supply-chain.policy",
+    "stable-supply-chain.dependency-resolution",
+    "stable-supply-chain.component-coverage",
+    "stable-supply-chain.subject-binding",
+    "stable-supply-chain.post-build-subject-binding",
+    "stable-supply-chain.license-policy",
+    "stable-supply-chain.build-materials",
+    "stable-supply-chain.builder-independence",
+    "stable-supply-chain.byte-reproducibility",
+    "stable-supply-chain.normalized-payload-reproducibility",
+    "stable-supply-chain.sbom-binding",
+    "stable-supply-chain.vulnerability-index",
+    "stable-supply-chain.redaction",
+    "stable-supply-chain.release-promotion",
+)
+
+STABLE_SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID = "stable-supply-chain.publication"
+
+STABLE_SUPPLY_CHAIN_HANDOFF_FILE = (
+    "stable-1.0-supply-chain-summary-provenance.json"
+)
+
+STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV = (
+    "CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64"
+)
+
+STABLE_SUPPLY_CHAIN_HANDOFF_AUTHENTICATION_ALGORITHM = "hmac-sha256"
+
+STABLE_SUPPLY_CHAIN_HANDOFF_KEY_DOMAIN = (
+    b"cryptad-stable-supply-chain-promotion-handoff-key-v1"
+)
+
+STABLE_SUPPLY_CHAIN_HANDOFF_MAC_DOMAIN = (
+    b"cryptad-stable-supply-chain-promotion-handoff-v1\0"
+)
+
+STABLE_SUPPLY_CHAIN_WORKFLOW = (
+    "crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml"
+)
+
+STABLE_SUPPLY_CHAIN_HANDOFF_FIELDS = frozenset(
+    {
+        "schemaVersion",
+        "kind",
+        "repository",
+        "workflow",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "operation",
+        "releaseId",
+        "buildVersion",
+        "sourceCommit",
+        "artifactName",
+        "producerArtifactDigest",
+        "summaryFileName",
+        "summaryByteDigest",
+        "attestationSubjectDigest",
+        "attestationVerified",
+        "denySelfHostedRunners",
+        "authenticationStatus",
+        "authenticationAlgorithm",
+        "authenticationTag",
+    }
+)
+
+NONWAIVABLE_EVIDENCE_IDS = frozenset(
+    {STABLE_VULNERABILITY_EVIDENCE_ID, STABLE_SUPPLY_CHAIN_EVIDENCE_ID}
+)
 
 STABLE_VULNERABILITY_SUMMARY_SCHEMA = (
     "stable-1.0-vulnerability-summary-v1.schema.json"
@@ -761,6 +844,12 @@ class Settings:
     stable_vulnerability_required: bool = False
     stable_vulnerability_candidate_release_id: str = ""
     stable_vulnerability_candidate_build_version: str = ""
+    stable_supply_chain_summary: Path | None = None
+    stable_supply_chain_required: bool = False
+    stable_supply_chain_candidate_release_id: str = ""
+    stable_supply_chain_candidate_build_version: str = ""
+    stable_supply_chain_candidate_source_commit: str = ""
+    stable_supply_chain_candidate_source_ref: str = ""
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -1521,6 +1610,352 @@ def stable_vulnerability_evidence(
         True,
         summary,
         source,
+        details,
+    )
+
+
+def stable_supply_chain_handoff_authentication_tag(
+    value: dict[str, Any], key: bytes
+) -> str:
+    """Return the domain-separated MAC for one canonical producer handoff."""
+
+    document = {
+        field: child
+        for field, child in value.items()
+        if field != "authenticationTag"
+    }
+    canonical = json.dumps(
+        document,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    mac_key = hmac.new(
+        key,
+        STABLE_SUPPLY_CHAIN_HANDOFF_KEY_DOMAIN,
+        hashlib.sha256,
+    ).digest()
+    tag = hmac.new(
+        mac_key,
+        STABLE_SUPPLY_CHAIN_HANDOFF_MAC_DOMAIN + canonical,
+        hashlib.sha256,
+    ).hexdigest()
+    return f"sha256:{tag}"
+
+
+def _stable_supply_chain_handoff_key() -> tuple[bytes | None, str | None]:
+    encoded = os.environ.get(STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV, "")
+    try:
+        key = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        return None, "configured supply-chain handoff authentication key is invalid"
+    if (
+        len(key) != 32
+        or base64.b64encode(key).decode("ascii") != encoded
+    ):
+        return None, "configured supply-chain handoff authentication key is invalid"
+    return key, None
+
+
+def stable_supply_chain_handoff_authentication_errors(
+    value: dict[str, Any],
+    *,
+    label: str = "configured supply-chain producer handoff",
+) -> list[str]:
+    """Authenticate one closed producer handoff with the protected MAC key."""
+
+    errors: list[str] = []
+    authentication_tag = str(value.get("authenticationTag", ""))
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", authentication_tag) is None:
+        errors.append(f"{label} authentication tag is invalid")
+    key, key_error = _stable_supply_chain_handoff_key()
+    if key_error is not None:
+        errors.append(key_error)
+    elif key is not None and not hmac.compare_digest(
+        authentication_tag,
+        stable_supply_chain_handoff_authentication_tag(value, key),
+    ):
+        errors.append(f"{label} authentication failed")
+    return errors
+
+
+def stable_supply_chain_handoff_errors(
+    summary_path: Path,
+    summary: dict[str, Any],
+    summary_byte_digest: str,
+    expected_release_id: str,
+    expected_build_version: str,
+    expected_source_commit: str,
+) -> tuple[list[str], dict[str, Any] | None]:
+    """Authenticate the exact protected workflow handoff for a PR-289 summary."""
+
+    path = summary_path.with_name(STABLE_SUPPLY_CHAIN_HANDOFF_FILE)
+    errors: list[str] = []
+    value: dict[str, Any] | None = None
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+            errors.append("configured supply-chain producer handoff is not a regular file")
+        elif metadata.st_size > 64 * 1024:
+            errors.append("configured supply-chain producer handoff exceeds its size bound")
+        else:
+            raw = path.read_bytes()
+            loaded = read_strict_json(path)
+            if not isinstance(loaded, dict):
+                errors.append("configured supply-chain producer handoff is not a JSON object")
+            else:
+                value = loaded
+                canonical = (
+                    json.dumps(loaded, ensure_ascii=False, indent=2, sort_keys=True).encode(
+                        "utf-8"
+                    )
+                    + b"\n"
+                )
+                if raw != canonical:
+                    errors.append(
+                        "configured supply-chain producer handoff bytes are not canonical"
+                    )
+    except (OSError, UnicodeDecodeError, ValueError):
+        errors.append(
+            "configured supply-chain producer handoff is missing, unreadable, or malformed"
+        )
+
+    if value is None:
+        return errors, None
+    if set(value) != STABLE_SUPPLY_CHAIN_HANDOFF_FIELDS:
+        errors.append("configured supply-chain producer handoff fields are not closed")
+    expected = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-supply-chain-promotion-handoff",
+        "repository": "crypta-network/cryptad",
+        "workflow": f"{STABLE_SUPPLY_CHAIN_WORKFLOW}@{expected_source_commit}",
+        "workflowCommit": expected_source_commit,
+        "operation": "compare-evaluate",
+        "releaseId": expected_release_id,
+        "buildVersion": expected_build_version,
+        "sourceCommit": expected_source_commit,
+        "artifactName": (
+            f"stable-1.0-supply-chain-{expected_release_id}-comparison"
+        ),
+        "summaryFileName": "stable-1.0-supply-chain-summary.json",
+        "summaryByteDigest": summary_byte_digest,
+        "attestationSubjectDigest": summary_byte_digest,
+        "attestationVerified": True,
+        "denySelfHostedRunners": True,
+        "authenticationStatus": "pass",
+        "authenticationAlgorithm": (
+            STABLE_SUPPLY_CHAIN_HANDOFF_AUTHENTICATION_ALGORITHM
+        ),
+    }
+    for field, expected_value in expected.items():
+        if value.get(field) != expected_value:
+            errors.append(f"configured supply-chain producer handoff {field} differs")
+    if re.fullmatch(r"[1-9][0-9]*", str(value.get("runId", ""))) is None:
+        errors.append("configured supply-chain producer handoff runId is invalid")
+    if re.fullmatch(r"[1-9][0-9]*", str(value.get("runAttempt", ""))) is None:
+        errors.append("configured supply-chain producer handoff runAttempt is invalid")
+    if (
+        re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(value.get("producerArtifactDigest", ""))
+        )
+        is None
+    ):
+        errors.append(
+            "configured supply-chain producer handoff artifact digest is invalid"
+        )
+    errors.extend(stable_supply_chain_handoff_authentication_errors(value))
+    return errors, value
+
+
+def stable_supply_chain_evidence(
+    path: Path | None,
+    workspace_root: Path,
+    out_dir: Path,
+    expected_release_id: str,
+    expected_build_version: str,
+    expected_source_commit: str,
+    expected_source_ref: str,
+    observed_source_commit: str,
+    *,
+    required: bool = False,
+) -> EvidenceItem | None:
+    """Authenticate one public-safe PR-289 promotion summary as non-waivable evidence."""
+
+    if path is None:
+        if not required:
+            return None
+        return EvidenceItem(
+            STABLE_SUPPLY_CHAIN_EVIDENCE_ID,
+            "missing",
+            True,
+            "Authenticated Stable supply-chain evidence is required but no summary was configured.",
+            "stable-supply-chain-summary",
+            {
+                "configured": False,
+                "authenticated": False,
+                "promotionReady": False,
+                "nonWaivable": True,
+                "validationErrors": ["required Stable supply-chain summary is missing"],
+            },
+        )
+
+    errors: list[str] = []
+    value: dict[str, Any] | None = None
+    handoff: dict[str, Any] | None = None
+    handoff_errors: list[str] = []
+    raw = b""
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+            errors.append("configured supply-chain summary is not a regular file")
+        elif metadata.st_size > 4 * 1024 * 1024:
+            errors.append("configured supply-chain summary exceeds the bounded size limit")
+        else:
+            raw = path.read_bytes()
+            loaded = read_strict_json(path)
+            if not isinstance(loaded, dict):
+                errors.append("configured supply-chain summary is not a JSON object")
+            else:
+                value = loaded
+    except (OSError, UnicodeDecodeError, ValueError):
+        errors.append("configured supply-chain summary is missing, unreadable, or malformed")
+
+    if re.fullmatch(r"[0-9a-f]{40}", expected_source_commit) is None:
+        errors.append(
+            "expected Stable supply-chain candidate source commit is missing or malformed"
+        )
+    if expected_source_ref != f"commit:{expected_source_commit}":
+        errors.append(
+            "expected Stable supply-chain candidate source ref is not the immutable commit identity"
+        )
+    if observed_source_commit != expected_source_commit:
+        errors.append(
+            "current checkout source commit differs from the expected Stable supply-chain candidate"
+        )
+
+    if value is not None:
+        errors.extend(validate_schema(value, STABLE_SUPPLY_CHAIN_SUMMARY_SCHEMA))
+        canonical = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        if raw != canonical:
+            errors.append("configured supply-chain summary JSON bytes are not canonical")
+        digest_payload = {
+            key: child for key, child in value.items() if key != "summaryDigest"
+        }
+        expected_digest = "sha256:" + hashlib.sha256(
+            json.dumps(
+                digest_payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if value.get("summaryDigest") != expected_digest:
+            errors.append("configured supply-chain summary digest is invalid")
+        summary_byte_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+        handoff_errors, handoff = stable_supply_chain_handoff_errors(
+            path,
+            value,
+            summary_byte_digest,
+            expected_release_id,
+            expected_build_version,
+            expected_source_commit,
+        )
+        errors.extend(handoff_errors)
+        if value.get("releaseId") != expected_release_id:
+            errors.append("configured supply-chain summary release identity differs")
+        build_version = value.get("buildVersion")
+        if str(build_version) != expected_build_version:
+            errors.append("configured supply-chain summary build identity differs")
+        if value.get("sourceCommit") != expected_source_commit:
+            errors.append("configured supply-chain summary source commit differs")
+        if value.get("sourceRef") != expected_source_ref:
+            errors.append("configured supply-chain summary source ref differs")
+        if (
+            value.get("mode") != "evaluate-promotion"
+            or value.get("status") != "pass"
+            or value.get("promotionReady") is not True
+        ):
+            errors.append("configured supply-chain summary does not authorize promotion")
+        if value.get("blockers") != [] or value.get("waivers") != []:
+            errors.append("configured supply-chain summary contains blockers or waivers")
+        evidence = value.get("evidence")
+        evidence = evidence if isinstance(evidence, list) else []
+        evidence_by_id = {
+            row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
+        }
+        if len(evidence_by_id) != len(evidence):
+            errors.append("configured supply-chain summary contains duplicate evidence ids")
+        allowed_evidence_ids = set(STABLE_SUPPLY_CHAIN_REQUIRED_EVIDENCE_IDS) | {
+            STABLE_SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID
+        }
+        if set(evidence_by_id) - allowed_evidence_ids:
+            errors.append("configured supply-chain summary contains an unknown evidence id")
+        for evidence_id in STABLE_SUPPLY_CHAIN_REQUIRED_EVIDENCE_IDS:
+            row = evidence_by_id.get(evidence_id)
+            if (
+                not isinstance(row, dict)
+                or row.get("status") != "pass"
+                or row.get("nonWaivable") is not True
+            ):
+                errors.append(f"required supply-chain evidence is not passing: {evidence_id}")
+        publication_row = evidence_by_id.get(
+            STABLE_SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID
+        )
+        if (
+            isinstance(publication_row, dict)
+            and publication_row.get("status") == "pass"
+        ):
+            errors.append(
+                "promotion summary falsely claims Stable supply-chain publication passed"
+            )
+        redaction = value.get("redaction")
+        if (
+            not isinstance(redaction, dict)
+            or redaction.get("status") != "pass"
+            or redaction.get("privatePathsExcluded") is not True
+            or redaction.get("credentialsExcluded") is not True
+            or redaction.get("privateUrisExcluded") is not True
+            or redaction.get("embargoedVulnerabilityDataExcluded") is not True
+            or redaction.get("sideEffectsPerformed") is not False
+        ):
+            errors.append("configured supply-chain summary failed public redaction")
+
+    details: dict[str, Any] = {
+        "configured": True,
+        "authenticated": value is not None and not errors,
+        "promotionReady": value.get("promotionReady") is True if value else False,
+        "releaseId": value.get("releaseId") if value else None,
+        "buildVersion": value.get("buildVersion") if value else None,
+        "sourceCommit": value.get("sourceCommit") if value else None,
+        "sourceRef": value.get("sourceRef") if value else None,
+        "policyDigest": value.get("policyDigest") if value else None,
+        "summaryDigest": value.get("summaryDigest") if value else None,
+        "protectedProducerAuthenticated": (
+            handoff is not None and not handoff_errors if value is not None else False
+        ),
+        "producerWorkflow": handoff.get("workflow") if value and handoff else None,
+        "producerRunId": handoff.get("runId") if value and handoff else None,
+        "producerArtifactName": (
+            handoff.get("artifactName") if value and handoff else None
+        ),
+        "producerArtifactDigest": (
+            handoff.get("producerArtifactDigest") if value and handoff else None
+        ),
+        "nonWaivable": True,
+        "validationErrors": errors,
+    }
+    return EvidenceItem(
+        STABLE_SUPPLY_CHAIN_EVIDENCE_ID,
+        "fail" if errors else "pass",
+        True,
+        (
+            "The authenticated Stable supply-chain summary permits this promotion."
+            if not errors
+            else "The Stable supply-chain summary failed exact identity, schema, digest, evidence, or redaction authentication."
+        ),
+        display_path(path, workspace_root, out_dir),
         details,
     )
 

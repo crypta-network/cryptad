@@ -15,6 +15,7 @@
     "multiNodeSoak": true,
     "sandboxProviderTests": true,
     "stableReadiness": true,
+    "stableSupplyChain": true,
     "thirdPartyIntake": true
   },
   "inputs": {
@@ -41,6 +42,7 @@
     "maintenanceEvidence": "build/protected-inputs/evidence/stable-1.0-maintenance-evidence.json",
     "maintenancePolicy": "tools/release-certification/stable-1.0-maintenance-policy.json",
     "stableVulnerabilitySummary": "stable-1.0-vulnerability-summary.json",
+    "supplyChainPromotionSummary": "build/protected-inputs/supply-chain/stable-1.0-supply-chain-summary.json",
     "stableBackportReleaseTrainAuthorization": "build/protected-inputs/release-train/stable-1.0-release-train-authorization-summary.json",
     "stableBackportReleaseTrainValidation": "build/protected-inputs/release-train/stable-1.0-release-train-validation.json",
     "stableMaintenanceAuthorization": "build/protected-inputs/authorization/stable-1.0-maintenance-authorization.json"
@@ -66,12 +68,17 @@
     "stableBackportArtifactDigest": "sha256:REPLACE_WITH_AUTHORIZED_BACKPORT_ACTIONS_ARTIFACT_SHA256",
     "stableBackportArtifactName": "REPLACE_WITH_AUTHORIZED_BACKPORT_ARTIFACT_NAME",
     "stableBackportRunId": "REPLACE_WITH_AUTHORIZED_BACKPORT_RUN_ID",
+    "stableSupplyChainArtifactDigest": "sha256:REPLACE_WITH_SUPPLY_CHAIN_ACTIONS_ARTIFACT_SHA256",
+    "stableSupplyChainArtifactName": "stable-1.0-supply-chain-cryptad-stable-1-0-maintenance-REPLACE_ME-comparison",
+    "stableSupplyChainRunAttempt": "REPLACE_WITH_SUPPLY_CHAIN_RUN_ATTEMPT",
+    "stableSupplyChainRunId": "REPLACE_WITH_SUPPLY_CHAIN_RUN_ID",
     "hotfixAffectedPlatforms": "not-applicable",
       "hotfixIncidentId": "not-applicable",
       "hotfixSeverity": "not-applicable"
     },
     "publicationIntent": "prepare-explicit-protected-publication",
     "releaseClass": "maintenance",
+    "stableSupplyChainGovernance": "required",
     "stableVulnerabilityGovernance": "required"
   },
   "execution": {

@@ -2444,6 +2444,41 @@ def evaluate_stable_vulnerability_gate(
     )
 
 
+def evaluate_stable_supply_chain_gate(
+    current: dict[str, dict[str, Any]],
+    settings: Settings,
+) -> GateResult | None:
+    """Return the explicit non-waivable PR-289 promotion gate when required or configured."""
+
+    if (
+        not settings.stable_supply_chain_required
+        and settings.stable_supply_chain_summary is None
+    ):
+        return None
+    entry = current.get(STABLE_SUPPLY_CHAIN_EVIDENCE_ID)
+    status = evidence_status(entry)
+    details = dict(evidence_details(entry))
+    details["evidenceId"] = STABLE_SUPPLY_CHAIN_EVIDENCE_ID
+    details["nonWaivable"] = True
+    release_blocker = status != "pass"
+    if release_blocker:
+        details["failureEvidenceIds"] = [STABLE_SUPPLY_CHAIN_EVIDENCE_ID]
+        details["unwaivableFailureEvidenceIds"] = [
+            STABLE_SUPPLY_CHAIN_EVIDENCE_ID
+        ]
+    return GateResult(
+        STABLE_SUPPLY_CHAIN_GATE_ID,
+        "fail" if release_blocker else "pass",
+        release_blocker,
+        (
+            "Stable supply-chain governance blocks promotion."
+            if release_blocker
+            else "Stable supply-chain governance permits promotion."
+        ),
+        details,
+    )
+
+
 def unique_ids(values: Any) -> list[str]:
     return sorted(dict.fromkeys(str(value) for value in values if str(value).strip()))
 
@@ -2529,6 +2564,11 @@ def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[s
         or settings.stable_vulnerability_summary is not None
     ):
         evidence_ids.append(STABLE_VULNERABILITY_EVIDENCE_ID)
+    if (
+        settings.stable_supply_chain_required
+        or settings.stable_supply_chain_summary is not None
+    ):
+        evidence_ids.append(STABLE_SUPPLY_CHAIN_EVIDENCE_ID)
     return unique_ids(evidence_ids)
 
 def conditional_ecosystem_rc_required_gate_ids(
@@ -2542,6 +2582,11 @@ def conditional_ecosystem_rc_required_gate_ids(
         or settings.stable_vulnerability_summary is not None
     ):
         gate_ids.append(STABLE_VULNERABILITY_GATE_ID)
+    if (
+        settings.stable_supply_chain_required
+        or settings.stable_supply_chain_summary is not None
+    ):
+        gate_ids.append(STABLE_SUPPLY_CHAIN_GATE_ID)
     if "ecosystem.waivers" in gate_entries:
         gate_ids.append("ecosystem.waivers")
     return unique_ids(gate_ids)
@@ -2803,6 +2848,9 @@ def evaluate_ecosystem_gates(
     stable_vulnerability_gate = evaluate_stable_vulnerability_gate(current, settings)
     if stable_vulnerability_gate is not None:
         child_gates.append(stable_vulnerability_gate)
+    stable_supply_chain_gate = evaluate_stable_supply_chain_gate(current, settings)
+    if stable_supply_chain_gate is not None:
+        child_gates.append(stable_supply_chain_gate)
     waived_child_gates = [
         apply_waiver_to_gate(gate, waiver_context, settings.mode) for gate in child_gates
     ]

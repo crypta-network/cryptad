@@ -385,18 +385,28 @@ class StableMaintenanceBackend:
             row.get("name") for row in rows if isinstance(row, Mapping)
         ]
         planned_rows = request.bundle.plan.get("assets", [])
+        companion_rows = request.bundle.plan.get("supplyChainCompanionAssets", [])
+        if not isinstance(planned_rows, list) or not isinstance(companion_rows, list):
+            return "conflict", frozenset()
         planned_names = [
             row.get("fileName") for row in planned_rows if isinstance(row, Mapping)
         ]
+        companion_names = [
+            row.get("fileName") for row in companion_rows if isinstance(row, Mapping)
+        ]
+        expected_rows = planned_rows + companion_rows
+        expected_names = planned_names + companion_names
         if (
             len(observed_names) != len(rows)
             or len(set(observed_names)) != len(observed_names)
             or len(planned_names) != len(planned_rows)
             or len(set(planned_names)) != len(planned_names)
+            or len(companion_names) != len(companion_rows)
+            or len(set(expected_names)) != len(expected_names)
         ):
             return "conflict", frozenset()
         observed = {row.get("name"): row for row in rows}
-        planned = {row.get("fileName"): row for row in planned_rows}
+        planned = {row.get("fileName"): row for row in expected_rows}
         if not set(observed).issubset(planned):
             return "conflict", frozenset()
         for name, row in observed.items():
@@ -426,7 +436,7 @@ class StableMaintenanceBackend:
                 return "conflict", frozenset()
         observed_set = frozenset(str(name) for name in observed)
         return (
-            "matching" if set(observed) == set(planned) else "absent",
+            "matching" if set(planned_names).issubset(observed) else "absent",
             observed_set,
         )
 
