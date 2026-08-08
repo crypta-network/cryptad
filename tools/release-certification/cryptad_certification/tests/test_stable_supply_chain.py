@@ -2707,7 +2707,7 @@ class StableSupplyChainTest(unittest.TestCase):
                 {
                     "java.vendor": "Eclipse Adoptium",
                     "java.specification.version": "25",
-                    "java.runtime.version": "25.0.3+9",
+                    "java.runtime.version": "25.0.3+9-LTS",
                     "file.encoding": "UTF-8",
                     "os.arch": "x86_64",
                 },
@@ -2719,6 +2719,7 @@ class StableSupplyChainTest(unittest.TestCase):
                 "SOURCE_DATE_EPOCH": "1785801600",
                 "TZ": "UTC",
             }
+            self.assertEqual(java["javaBuild"], "25.0.3+9")
             self.assertEqual(
                 builder_observation_errors(
                     java, environment, fixture.materials, "linux"
@@ -2757,6 +2758,17 @@ class StableSupplyChainTest(unittest.TestCase):
                         "java.runtime.version": "25.0.3+9",
                         "file.encoding": "UTF-8",
                         "os.arch": "sparc",
+                    },
+                    installation,
+                )
+            with self.assertRaisesRegex(ValueError, "canonical Stable JDK build"):
+                observed_java_identity(
+                    {
+                        "java.vendor": "Eclipse Adoptium",
+                        "java.specification.version": "25",
+                        "java.runtime.version": "25.0.3+9-vendor-modified",
+                        "file.encoding": "UTF-8",
+                        "os.arch": "x86_64",
                     },
                     installation,
                 )
@@ -3352,8 +3364,17 @@ class StableSupplyChainTest(unittest.TestCase):
             REPOSITORY
             / "build-logic/src/main/kotlin/cryptad/StableJavaToolchain.kt"
         ).read_text(encoding="utf-8")
+        jdk_fingerprint = (
+            REPOSITORY
+            / "build-logic/src/main/kotlin/cryptad/StableJdkFingerprint.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("vendor.set(JvmVendorSpec.ADOPTIUM)", stable_toolchain)
         self.assertIn("selectStableJava25()", build_logic)
+        self.assertIn("fun canonicalRuntimeBuild(reportedVersion: String)", jdk_fingerprint)
+        self.assertIn('(?:-LTS)?$"', jdk_fingerprint)
+        self.assertEqual(
+            build_logic.count("StableJdkFingerprint.canonicalRuntimeBuild"), 1
+        )
         self.assertEqual(runtime_logic.count("selectStableJava25()"), 2)
         jpackage_logic = (
             REPOSITORY

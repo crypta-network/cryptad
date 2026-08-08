@@ -160,13 +160,17 @@ repeating a later aggregation claim. `LANG` and `LC_ALL` must equal the selected
 `TZ` must be `UTC`, and `SOURCE_DATE_EPOCH` must equal the authenticated commit epoch.
 
 Each execution also observes the installed Java runtime before building. `javaVendor` is
-`java.vendor`, `javaVersion` is the Java specification version, and `javaBuild` is the complete
-`java.runtime.version`; encoding and normalized architecture are recorded separately. The policy
-also pins the complete Temurin setup version rather than the mutable Java `25` selector. Each
-builder hashes its actual `java.home` with `crypta-jdk-installed-tree-sha256-v1`: sorted relative
-paths, regular-file digests and sizes, directory records, and confined symlink targets, with no
-timestamps or host paths. The `release` file has a separate byte digest. Special files, escaping
-links, case-fold collisions, oversized entries, and unsafe Java-home roots fail closed.
+`java.vendor`, `javaVersion` is the Java specification version, and `javaBuild` is the canonical
+Temurin build coordinate. Temurin may render the same coordinate in `java.runtime.version` with
+the presentation suffix `-LTS`; only that exact optional suffix is removed before comparison.
+Other suffixes and malformed versions fail closed. Encoding and normalized architecture are
+recorded separately. The policy also pins the complete Temurin setup version rather than the
+mutable Java `25` selector. Each builder hashes its actual `java.home` with
+`crypta-jdk-installed-tree-sha256-v1`: sorted relative paths, regular-file digests and sizes,
+directory records, and confined symlink targets, with no timestamps or host paths. The `release`
+file has a separate byte digest, so normalizing the presentation suffix does not weaken exact
+installation authentication. Special files, escaping links, case-fold collisions, oversized
+entries, and unsafe Java-home roots fail closed.
 
 Linux, macOS, and Windows installations are different byte trees, so the reviewed build-material
 record carries one closed installation row per platform. Its `distributionDigest` is the canonical

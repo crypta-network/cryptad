@@ -12,6 +12,11 @@ internal object StableJdkFingerprint {
   const val ALGORITHM = "crypta-jdk-installed-tree-sha256-v1"
   private const val MAXIMUM_ENTRIES = 100_000
   private const val MAXIMUM_FILE_BYTES = 2_000_000_000L
+  private val STABLE_RUNTIME_BUILD = Regex("^(25\\.[0-9]+\\.[0-9]+\\+[0-9]+)(?:-LTS)?$")
+
+  fun canonicalRuntimeBuild(reportedVersion: String): String =
+    STABLE_RUNTIME_BUILD.matchEntire(reportedVersion)?.groupValues?.get(1)
+      ?: throw GradleException("Observed Java runtime version is not a canonical Stable JDK build")
 
   fun identity(javaHome: Path): Map<String, String> {
     if (Files.isSymbolicLink(javaHome) || !Files.isDirectory(javaHome, LinkOption.NOFOLLOW_LINKS)) {

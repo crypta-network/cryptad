@@ -325,7 +325,10 @@ fun StableSupplyChainResolutionTask.configureStableInputs(
       }
     jdkIdentity.put("languageVersion", java25.map { it.metadata.languageVersion.toString() })
     jdkIdentity.put("vendor", java25.map { it.metadata.vendor })
-    jdkIdentity.put("javaRuntimeVersion", java25.map { it.metadata.javaRuntimeVersion })
+    jdkIdentity.put(
+      "javaRuntimeVersion",
+      java25.map { StableJdkFingerprint.canonicalRuntimeBuild(it.metadata.javaRuntimeVersion) },
+    )
     jdkIdentity.put("jvmVersion", java25.map { it.metadata.jvmVersion })
     jdkIdentity.put(
       "installationManifestDigest",

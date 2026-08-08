@@ -177,6 +177,15 @@ def parse_timestamp(value: Any, label: str) -> dt.datetime:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def canonical_java_runtime_build(reported_version: str) -> str:
+    """Return the policy coordinate for one observed Temurin runtime build."""
+
+    match = re.fullmatch(r"(25\.[0-9]+\.[0-9]+\+[0-9]+)(?:-LTS)?", reported_version)
+    if match is None:
+        raise ValueError("observed Java runtime version is not a canonical Stable JDK build")
+    return match.group(1)
+
+
 def observed_java_identity(
     properties: Mapping[str, str], installation_identity: Mapping[str, str]
 ) -> dict[str, str]:
@@ -195,6 +204,7 @@ def observed_java_identity(
         if not isinstance(value, str) or not value.strip() or len(value.encode("utf-8")) > 128:
             raise ValueError(f"observed Java property {property_name} is absent or invalid")
         values[field_name] = value.strip()
+    values["javaBuild"] = canonical_java_runtime_build(values["javaBuild"])
     architecture = values["javaArchitecture"].casefold()
     architecture_aliases = {
         "amd64": "amd64",
