@@ -2099,6 +2099,41 @@ class StableSupplyChainTest(unittest.TestCase):
         receipt = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-publication-receipt", **self.release, "planDigest": plan["planDigest"], "generatedAt": "2026-08-04T00:30:00Z", "backendIdentity": "cryptad-publication-backend", "workflowIdentity": "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml@" + SOURCE_COMMIT, "attestationDigest": _digest("publication-attestation"), "backendAuthenticated": True, "operations": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"], "operation": "verified-existing"} for row in assets], "receiptDigest": ""}, "receiptDigest")
         observation = _seal({"schemaVersion": 1, "kind": "stable-1.0-supply-chain-public-observation", **self.release, "receiptDigest": receipt["receiptDigest"], "observedAt": "2026-08-04T00:45:00Z", "observerIdentity": "cryptad-public-observer", "observerAttestationDigest": _digest("observer"), "observerAuthenticated": True, "assets": [{"role": row["role"], "digest": row["digest"], "size": row["size"], "uri": row["uri"]} for row in assets], "observationDigest": ""}, "observationDigest")
         self.assertEqual(publication_errors(plan, receipt, observation, summary, self.release, self.policy, "2026-08-04T01:00:00Z"), [])
+        for field, conflicting_value in (
+            ("tag", "v999"),
+            ("sourceRef", "refs/heads/attacker"),
+        ):
+            with self.subTest(field=field):
+                conflicting_plan = copy.deepcopy(plan)
+                conflicting_plan[field] = conflicting_value
+                _seal(conflicting_plan, "planDigest")
+                conflicting_receipt = copy.deepcopy(receipt)
+                conflicting_receipt[field] = conflicting_value
+                conflicting_receipt["planDigest"] = conflicting_plan["planDigest"]
+                _seal(conflicting_receipt, "receiptDigest")
+                conflicting_observation = copy.deepcopy(observation)
+                conflicting_observation[field] = conflicting_value
+                conflicting_observation["receiptDigest"] = conflicting_receipt[
+                    "receiptDigest"
+                ]
+                _seal(conflicting_observation, "observationDigest")
+
+                coordinate_errors = publication_errors(
+                    conflicting_plan,
+                    conflicting_receipt,
+                    conflicting_observation,
+                    summary,
+                    self.release,
+                    self.policy,
+                    "2026-08-04T01:00:00Z",
+                )
+
+                for label in (
+                    "publication plan",
+                    "publication receipt",
+                    "public observation",
+                ):
+                    self.assertIn(f"{label} {field} differs", coordinate_errors)
         misnamed_plan = copy.deepcopy(plan)
         misnamed_plan["assets"][0]["fileName"] = "stable-1.0-sbom.spdx.json"
         _seal(misnamed_plan, "planDigest")

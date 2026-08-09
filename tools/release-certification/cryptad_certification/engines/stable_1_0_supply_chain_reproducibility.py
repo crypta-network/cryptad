@@ -914,6 +914,9 @@ def publication_errors(
         (observation, "public observation"),
     ):
         errors.extend(exact_release_errors(value, release, label))
+        for field in ("tag", "sourceRef"):
+            if value.get(field) != release.get(field):
+                errors.append(f"{label} {field} differs")
     if plan.get("summaryDigest") != summary.get("summaryDigest"):
         errors.append("publication plan binds a different supply-chain summary")
     if plan.get("allowedOperations") != list(PUBLICATION_OPERATIONS):
