@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "stable-1.0-supply-chain-publication-plan-v1", "title": "Crypta Stable 1.0 supply-chain publication plan",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "summaryDigest", "assets", "overwriteAllowed", "allowedOperations", "sideEffectsPerformed", "planDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-supply-chain-publication-plan"},
+    "releaseId": {"type": "string", "minLength": 1, "maxLength": 128}, "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647}, "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40}, "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "summaryDigest": {"$ref": "#/$defs/digest"},
+    "assets": {"$ref": "#/$defs/assets"}, "overwriteAllowed": {"const": false},
+    "allowedOperations": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["created", "verified-existing"]}}, "sideEffectsPerformed": {"const": false}, "planDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "assets": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["role", "fileName", "digest", "size", "uri"], "properties": {"role": {"enum": ["component-inventory", "release-subject-inventory", "sbom", "license-inventory", "build-materials", "reproducibility-report", "component-reverse-index", "supply-chain-summary"]}, "fileName": {"type": "string", "pattern": "^stable-1\\.0-[A-Za-z0-9.-]+$", "maxLength": 256}, "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}, "size": {"type": "integer", "minimum": 1, "maximum": 1000000000}, "uri": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/-]+$", "maxLength": 1024}}}}
+  }
+}

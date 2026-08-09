@@ -31,6 +31,7 @@ COMMANDS = (
     "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
+    "stable-supply-chain",
     "stable-vulnerability",
 )
 MULTI_NODE_ACTIONS = (
@@ -67,6 +68,7 @@ SELF_TEST_SUITES = (
     "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
+    "stable-supply-chain",
     "stable-vulnerability",
     "migration",
 )
@@ -353,6 +355,14 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
     if mode != "close-hotfix-follow-up":
         required_inputs.add("stableBackportReleaseTrainAuthorization")
         required_inputs.add("stableBackportReleaseTrainValidation")
+        required_inputs.add("supplyChainPromotionSummary")
+        if (
+            manifest.requirements.get("stableSupplyChain") is not True
+            or manifest.policies.get("stableSupplyChainGovernance") != "required"
+        ):
+            raise ValueError(
+                "stable-maintenance requires non-waivable Stable supply-chain governance"
+            )
     missing = sorted(required_inputs.difference(manifest.inputs))
     if missing:
         raise ValueError(
@@ -670,6 +680,165 @@ def _validate_stable_lifecycle_manifest(manifest: RunManifest) -> None:
         raise ValueError("stable-lifecycle requires explicit protected publication intent")
 
 
+_STABLE_SUPPLY_CHAIN_MODE_INPUTS = {
+    "assemble-inventory": {
+        "supplyChainPolicy",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "licenseInventory",
+        "buildMaterials",
+        "primarySubjectRoot",
+        "licenseOverrides",
+        "licenseTextRoot",
+    },
+    "verify-inventory": {
+        "supplyChainPolicy",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "licenseInventory",
+        "stableSupplyChainSbom",
+        "sbomBinding",
+        "buildMaterials",
+        "componentReverseIndex",
+        "primarySubjectRoot",
+        "licenseOverrides",
+        "licenseTextRoot",
+    },
+    "prepare-rebuild-comparison": {
+        "supplyChainPolicy",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "buildMaterials",
+        "primaryBuilderReceipt",
+        "verifierBuilderReceipt",
+    },
+    "compare-rebuilds": {
+        "supplyChainPolicy",
+        "resolvedDependencySnapshot",
+        "releaseSubjectInventory",
+        "buildMaterials",
+        "primaryBuilderReceipt",
+        "verifierBuilderReceipt",
+        "primarySubjectRoot",
+        "verifierSubjectRoot",
+        "rebuildComparisonPlan",
+    },
+    "evaluate-promotion": {
+        "supplyChainPolicy",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "licenseInventory",
+        "stableSupplyChainSbom",
+        "sbomBinding",
+        "buildMaterials",
+        "primaryBuilderReceipt",
+        "verifierBuilderReceipt",
+        "rebuildComparisonPlan",
+        "reproducibilityResult",
+        "componentReverseIndex",
+        "licenseOverrides",
+        "licenseTextRoot",
+        "maintenanceCandidate",
+        "maintenanceCandidateFreeze",
+        "stableVulnerabilitySummary",
+    },
+    "verify-publication": {
+        "supplyChainPolicy",
+        "supplyChainPromotionSummary",
+        "supplyChainPublicationPlan",
+        "supplyChainPublicationReceipt",
+        "supplyChainPublicObservation",
+    },
+}
+
+_STABLE_SUPPLY_CHAIN_OPTIONAL_MODE_INPUTS = {
+    "assemble-inventory": {"primaryPayloadManifests"},
+    "verify-inventory": {"primaryPayloadManifests"},
+    "prepare-rebuild-comparison": {
+        "primaryPayloadManifests",
+        "verifierPayloadManifests",
+    },
+    "compare-rebuilds": {
+        "primaryPayloadManifests",
+        "verifierPayloadManifests",
+    },
+    "evaluate-promotion": set(),
+    "verify-publication": set(),
+}
+
+
+def _validate_stable_supply_chain_manifest(manifest: RunManifest) -> None:
+    """Keep inventory, rebuild, promotion, and publication trust boundaries separate."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-supply-chain requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError(
+            "stable-supply-chain requires a canonical positive integer release.version"
+        )
+    commit = manifest.policies.get("candidateSourceCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40,64}", commit) is None:
+        raise ValueError(
+            "stable-supply-chain requires a canonical policies.candidateSourceCommit"
+        )
+    if manifest.policies.get("candidateSourceRef") != f"commit:{commit}":
+        raise ValueError(
+            "stable-supply-chain requires policies.candidateSourceRef to bind the full commit"
+        )
+    if manifest.requirements.get("stableSupplyChain") is not True:
+        raise ValueError("stable-supply-chain requires requirements.stableSupplyChain=true")
+    if manifest.policies.get("stableSupplyChainGovernance") != "required":
+        raise ValueError(
+            "stable-supply-chain requires policies.stableSupplyChainGovernance=required"
+        )
+    mode = manifest.commands.get("stable-supply-chain", {}).get(
+        "mode", "verify-inventory"
+    )
+    required = _STABLE_SUPPLY_CHAIN_MODE_INPUTS.get(mode)
+    if required is None:
+        raise ValueError(
+            "stable-supply-chain mode must be assemble-inventory, verify-inventory, "
+            "prepare-rebuild-comparison, compare-rebuilds, evaluate-promotion, or "
+            "verify-publication"
+        )
+    configured = set(manifest.inputs)
+    missing = sorted(required - configured)
+    optional = _STABLE_SUPPLY_CHAIN_OPTIONAL_MODE_INPUTS[mode]
+    irrelevant = sorted(configured - required - optional)
+    if missing:
+        raise ValueError(
+            f"stable-supply-chain {mode} requires exact inputs: " + ", ".join(missing)
+        )
+    if irrelevant:
+        raise ValueError(
+            f"stable-supply-chain {mode} rejects irrelevant phase inputs: "
+            + ", ".join(irrelevant)
+        )
+    if mode == "verify-publication":
+        if manifest.policies.get("publicationIntent") != (
+            "prepare-explicit-protected-publication"
+        ):
+            raise ValueError(
+                "stable-supply-chain publication verification requires explicit protected "
+                "publication intent"
+            )
+        if not isinstance(manifest.policies.get("artifactBaseUri"), str):
+            raise ValueError(
+                "stable-supply-chain publication verification requires policies.artifactBaseUri"
+            )
+    if mode == "evaluate-promotion" and not isinstance(
+        manifest.execution.get("evaluationClock"), str
+    ):
+        raise ValueError(
+            "stable-supply-chain promotion evaluation requires execution.evaluationClock"
+        )
+
+
 def _validate_stable_vulnerability_manifest(manifest: RunManifest) -> None:
     """Reject vulnerability lifecycle runs with mixed trust-boundary inputs."""
 
@@ -789,6 +958,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_maintenance_manifest(manifest)
     if command == "stable-lifecycle":
         _validate_stable_lifecycle_manifest(manifest)
+    if command == "stable-supply-chain":
+        _validate_stable_supply_chain_manifest(manifest)
     if command == "stable-vulnerability":
         _validate_stable_vulnerability_manifest(manifest)
     prepare_run_root(manifest)

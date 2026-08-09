@@ -201,6 +201,31 @@ The [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md) defines the fail-closed delta and
 authorization process.
 
+## Supply-chain and license binding
+
+Every frozen first-party bundle is a supply-chain release subject. Its canonical row binds the app
+id and version to the exact bundle, manifest, bundle-signature, and trusted-review-receipt digests,
+permissions, maintenance-policy fields, data-schema/migration identity, license conclusion, and
+signed catalog entry. The signed catalog and detached signature are separate release subjects;
+the release freeze binds their revision, signer identity, and digests.
+
+The component reverse index maps copied Platform SDK and design-system assets, app-project
+outputs, and other identified bundle components to every bundle and catalog entry that contains
+them. Use that index during vulnerability intake; do not infer affected apps only from the daemon
+runtime classpath. Catalog `license` display metadata does not replace the reviewed license
+inventory, and a local policy scan does not replace the protected candidate-bound SBOM binding.
+
+A first-party bundle or catalog change in maintenance requires the passing supply-chain promotion
+summary for the same candidate freeze. An omitted bundle, incomplete license conclusion, stale
+review/signing identity, or producer/verifier mismatch is non-waivable. See [Stable 1.0
+supply-chain inventory and reproducible-build
+governance](stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md).
+
+Supply-chain publication attaches the public `release-subject-inventory`, component inventory,
+reverse index, license inventory, SBOM, build materials, reproducibility report, and summary to the
+already created maintenance Release. It does not republish or replace an app bundle or catalog;
+those product bytes remain governed by their own frozen release subjects and signatures.
+
 ## Lifecycle governance projection
 
 Stable lifecycle certification reuses this policy and the signed catalog's existing channel,

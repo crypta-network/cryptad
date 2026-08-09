@@ -19,6 +19,7 @@ SUITE_MODULES = {
     "security-response": ["cryptad_certification.tests.test_security_response"],
     "release-certification": [
         "cryptad_certification.tests.test_release_certification",
+        "cryptad_certification.tests.test_release_certification_stable_supply_chain",
         "cryptad_certification.tests.test_release_certification_stable_vulnerability",
     ],
     "production-beta": ["cryptad_certification.tests.test_production_beta"],
@@ -36,6 +37,7 @@ SUITE_MODULES = {
     ],
     "stable-maintenance": [
         "cryptad_certification.tests.test_stable_maintenance",
+        "cryptad_certification.tests.test_stable_maintenance_supply_chain",
         "cryptad_certification.tests.test_stable_maintenance_authorization_compatibility",
         "cryptad_certification.tests.test_stable_maintenance_publication",
         "cryptad_certification.tests.test_stable_maintenance_workflows",
@@ -44,9 +46,13 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_lifecycle",
         "cryptad_certification.tests.test_stable_lifecycle_publication",
     ],
+    "stable-supply-chain": [
+        "cryptad_certification.tests.test_stable_supply_chain",
+    ],
     "stable-vulnerability": [
         "cryptad_certification.tests.test_release_certification_stable_vulnerability",
         "cryptad_certification.tests.test_stable_vulnerability",
+        "cryptad_certification.tests.test_stable_vulnerability_component_scope",
         "cryptad_certification.tests.test_stable_vulnerability_coordination",
         "cryptad_certification.tests.test_stable_vulnerability_deadlines",
         "cryptad_certification.tests.test_stable_vulnerability_mitigation",

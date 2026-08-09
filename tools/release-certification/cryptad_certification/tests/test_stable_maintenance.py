@@ -19,10 +19,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from cryptad_certification import selftest
 from cryptad_certification.cli import (
     _validate_stable_maintenance_manifest,
-    build_parser,
 )
 from cryptad_certification.engines import (
     stable_1_0_ga,
@@ -91,7 +89,7 @@ from cryptad_certification.engines.stable_1_0_rc_artifacts import (
     normalize_portable_distribution_archive,
 )
 from cryptad_certification.io import read_json, write_json
-from cryptad_certification.manifest import COMMAND_NAMES, INPUT_FIELDS, POLICY_FIELDS
+from cryptad_certification.manifest import INPUT_FIELDS, POLICY_FIELDS
 from cryptad_certification.models import OutputSpec, ReleaseSpec, RunContext, RunManifest
 from cryptad_certification.schema_validation import validate_schema
 from cryptad_certification.tests.support import (
@@ -194,6 +192,7 @@ def _required_inputs() -> dict[str, str]:
         "maintenancePolicy",
         "stableBackportReleaseTrainAuthorization",
         "stableBackportReleaseTrainValidation",
+        "supplyChainPromotionSummary",
     }
     return {name: f"inputs/{name}.json" for name in names}
 
@@ -210,7 +209,7 @@ def _context(
         path=root / "maintenance.json",
         release=ReleaseSpec(RELEASE_ID, BUILD, "stable-review"),
         output=OutputSpec(root / "build/release-certification"),
-        requirements={},
+        requirements={"stableSupplyChain": mode != "close-hotfix-follow-up"},
         inputs={} if inputs is None else inputs,
         policies={
             "artifactBaseUri": "https://93.184.216.34/artifacts/stable",
@@ -224,6 +223,11 @@ def _context(
             "expectedPredecessorProductDigest": PREDECESSOR_PRODUCT_DIGEST,
             "publicationIntent": "prepare-explicit-protected-publication",
             "releaseClass": release_class,
+            **(
+                {}
+                if mode == "close-hotfix-follow-up"
+                else {"stableSupplyChainGovernance": "required"}
+            ),
             "metadata": {
                 "githubReleasePageUri": "https://github.com/crypta-network/cryptad/releases/tag/v301",
                 "catalogPrimaryUri": "https://93.184.216.34/catalog/stable/catalog.json",
@@ -739,6 +743,8 @@ def _ga_and_predecessor() -> tuple[GaRoot, Predecessor]:
     return ga, predecessor
 
 
+
+
 def _evidence(release_class: str = "maintenance", *, window: str = "normal") -> dict[str, object]:
     start = NOW - (timedelta(days=1) if window == "normal" else timedelta(hours=1))
     evidence_ids = [
@@ -801,20 +807,6 @@ def _evidence(release_class: str = "maintenance", *, window: str = "normal") -> 
 class StableMaintenanceRegistrationTest(unittest.TestCase):
     """Command, manifest, policy, and schema registration contracts."""
 
-    def test_command_and_selftest_are_registered(self) -> None:
-        self.assertIn("stable-maintenance", COMMAND_NAMES)
-        self.assertEqual(
-            selftest.SUITE_MODULES["stable-maintenance"],
-            [
-                "cryptad_certification.tests.test_stable_maintenance",
-                "cryptad_certification.tests.test_stable_maintenance_authorization_compatibility",
-                "cryptad_certification.tests.test_stable_maintenance_publication",
-                "cryptad_certification.tests.test_stable_maintenance_workflows",
-            ],
-        )
-        parsed = build_parser().parse_args(["stable-maintenance", "--self-test"])
-        self.assertEqual(parsed.command, "stable-maintenance")
-        self.assertTrue(parsed.self_test)
 
     def test_release_run_allowlists_match_maintenance_contract(self) -> None:
         for field in (

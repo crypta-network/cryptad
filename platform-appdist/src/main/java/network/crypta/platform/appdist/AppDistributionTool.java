@@ -6,7 +6,7 @@ import java.security.PrivateKey;
 import java.util.List;
 
 /**
- * Small JDK-only CLI for signing and verifying local staged app bundles.
+ * Small JDK-only CLI for signing, verifying, and packaging local staged app bundles.
  *
  * <p>This keeps first-party Gradle tasks and ad-hoc local workflows wired to the same
  * implementation used by the runtime verifier, without duplicating digest or crypto logic in the
@@ -18,13 +18,17 @@ import java.util.List;
  * keys and, when {@code --allow-unsigned} is present, accepts only completely unsigned development
  * bundles after validating their structure. Private signing material can be supplied through a file
  * or environment variable so Gradle tasks do not need to place secrets in child-process arguments.
+ * The {@code package} command emits the canonical deterministic ZIP implemented by {@link
+ * AppBundlePackager} and does not alter the staged bundle.
  */
 public final class AppDistributionTool {
+  private static final String COMMAND_PACKAGE = "package";
   private static final String COMMAND_SIGN = "sign";
   private static final String COMMAND_VERIFY = "verify";
   private static final String OPTION_ALLOW_UNSIGNED = "--allow-unsigned";
   private static final String OPTION_BUNDLE_DIR = "--bundle-dir";
   private static final String OPTION_KEY_ID = "--key-id";
+  private static final String OPTION_OUTPUT_ZIP = "--output-zip";
   private static final String OPTION_PRIVATE_KEY_BASE64 = "--private-key-base64";
   private static final String OPTION_PRIVATE_KEY_ENV = "--private-key-env";
   private static final String OPTION_PRIVATE_KEY_FILE = "--private-key-file";
@@ -35,6 +39,7 @@ public final class AppDistributionTool {
   private static final String USAGE =
       """
       Usage:
+        package --bundle-dir <dir> --output-zip <path>
         sign --bundle-dir <dir> --key-id <id> (--private-key-base64 <base64> | --private-key-file <path> | --private-key-env <name>)
         verify --bundle-dir <dir> [--allow-unsigned] [--trusted-keys-file <path>]
         verify --bundle-dir <dir> [--allow-unsigned] --trusted-key-id <id> (--trusted-public-key-base64 <base64> | --trusted-public-key-file <path>)
@@ -49,7 +54,8 @@ public final class AppDistributionTool {
    * callers receive a non-zero process exit with the underlying validation message. Unsupported
    * invocations receive the usage text emitted by this tool.
    *
-   * @param arguments command-line arguments starting with {@code sign} or {@code verify}
+   * @param arguments command-line arguments starting with {@code package}, {@code sign}, or {@code
+   *     verify}
    * @throws IOException when command parsing, key loading, signing, or verification fails
    */
   public static void main(String[] arguments) throws IOException {
@@ -59,10 +65,17 @@ public final class AppDistributionTool {
     String command = arguments[0];
     List<String> args = List.of(arguments).subList(1, arguments.length);
     switch (command) {
+      case COMMAND_PACKAGE -> packageBundle(args);
       case COMMAND_SIGN -> sign(args);
       case COMMAND_VERIFY -> verify(args);
       default -> throw new AppDistributionException(USAGE);
     }
+  }
+
+  private static void packageBundle(List<String> arguments) throws IOException {
+    Arguments args = Arguments.parse(arguments);
+    AppBundlePackager.packageBundle(
+        args.requirePath(OPTION_BUNDLE_DIR), args.requirePath(OPTION_OUTPUT_ZIP));
   }
 
   private static void sign(List<String> arguments) throws IOException {

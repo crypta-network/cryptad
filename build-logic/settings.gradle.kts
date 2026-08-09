@@ -19,10 +19,11 @@ pluginManagement {
     }
 
     id("com.diffplug.spotless") version ver("spotless")
+    id("org.gradle.toolchains.foojay-resolver-convention") version ver("foojayResolver")
   }
 }
 
 // Ensure toolchain download repositories are configured for this included build too
-plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") }
 
 rootProject.name = "build-logic"

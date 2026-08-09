@@ -1,3 +1,4 @@
+import cryptad.selectStableJava25
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.file.AtomicMoveNotSupportedException
@@ -251,7 +252,7 @@ fun iconPathForOs(): String =
 /** Resolves the `jpackage` executable from the Java 25 toolchain. */
 fun resolveJpackageExecutable(): File {
   val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
-  val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+  val launcher = toolchains.launcherFor { selectStableJava25() }
   val javaHome = launcher.get().metadata.installationPath.asFile
   val exe =
     javaHome.resolve(

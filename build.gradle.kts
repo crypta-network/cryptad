@@ -8,6 +8,7 @@ plugins {
   id("cryptad.runtime")
   id("cryptad.jpackage")
   id("cryptad.sonar")
+  id("cryptad.supply-chain")
   application
 }
 
@@ -551,6 +552,18 @@ tasks.register("verifyFirstPartyApps") {
   dependsOn(":apps:site-publisher:verifyApp")
   dependsOn(":apps:trust-graph:verifyApp")
   mustRunAfter("signFirstPartyApps")
+}
+
+tasks.register("packageFirstPartyApps") {
+  group = "build"
+  description = "Packages the signed repo-owned first-party AppHost bundles deterministically."
+  dependsOn(":apps:queue-manager:packageApp")
+  dependsOn(":apps:publisher:packageApp")
+  dependsOn(":apps:feed-reader:packageApp")
+  dependsOn(":apps:profile-publisher:packageApp")
+  dependsOn(":apps:social-inbox:packageApp")
+  dependsOn(":apps:site-publisher:packageApp")
+  dependsOn(":apps:trust-graph:packageApp")
 }
 
 // The default from build-logic (512m) is too small for the full test suite on Windows and can

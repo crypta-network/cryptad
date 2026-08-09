@@ -1,0 +1,697 @@
+{
+  "acceptedOrigins": [
+    "built-first-party",
+    "gradle-plugin-portal",
+    "maven-central",
+    "openjdk",
+    "repository-source",
+    "reviewed-vendor"
+  ],
+  "buildMaterialRules": {
+    "allowedEnvironmentVariableNames": [
+      "LANG",
+      "LC_ALL",
+      "SOURCE_DATE_EPOCH",
+      "TZ"
+    ],
+    "allowedLocales": [
+      "C",
+      "C.UTF-8"
+    ],
+    "canonicalTimeSource": "authenticated-source-commit-time",
+    "directInputOriginRules": [
+      {
+        "immutabilityClass": "versioned-url",
+        "name": "gradle-wrapper-distribution",
+        "originPattern": "^https://services\\.gradle\\.org/distributions/gradle-[0-9]+\\.[0-9]+(?:\\.[0-9]+)?-bin\\.zip$"
+      },
+      {
+        "immutabilityClass": "immutable-git-archive",
+        "name": "seedrefs-source-archive",
+        "originPattern": "^https://codeload\\.github\\.com/hyphanet/seedrefs/zip/[0-9a-f]{40}$"
+      },
+      {
+        "immutabilityClass": "versioned-url",
+        "name": "tanuki-wrapper-delta-pack",
+        "originPattern": "^https://sourceforge\\.net/projects/wrapper/files/wrapper/Wrapper_3\\.6\\.2_20250605/wrapper-delta-pack-3\\.6\\.2\\.tar\\.gz/download$"
+      },
+      {
+        "immutabilityClass": "immutable-release-asset",
+        "name": "windows-wrapper-amd64",
+        "originPattern": "^https://github\\.com/crypta-network/wrapper-windows-build/releases/download/[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._+-]*\\.(?:zip|tar\\.gz)$"
+      },
+      {
+        "immutabilityClass": "immutable-release-asset",
+        "name": "windows-wrapper-arm64",
+        "originPattern": "^https://github\\.com/crypta-network/wrapper-windows-build/releases/download/[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._+-]*\\.(?:zip|tar\\.gz)$"
+      }
+    ],
+    "encoding": "UTF-8",
+    "requiredDigests": [
+      "buildLogic",
+      "gradleDistribution",
+      "gradleWrapperJar",
+      "gradleWrapperProperties",
+      "pluginResolution",
+      "rawResolutionExport",
+      "repositoryConfiguration",
+      "testResolution",
+      "verificationKeyring",
+      "verificationMetadata",
+      "versionCatalog"
+    ],
+    "requiredDirectInputs": [
+      "gradle-wrapper-distribution",
+      "seedrefs-source-archive",
+      "tanuki-wrapper-delta-pack",
+      "windows-wrapper-amd64",
+      "windows-wrapper-arm64"
+    ],
+    "secretValuesProhibited": true,
+    "timezone": "UTC"
+  },
+  "builderPolicy": {
+    "allowedWorkflowPaths": [
+      "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml",
+      "github.com/crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml"
+    ],
+    "attestationRequired": true,
+    "buildTasks": [
+      ":assembleCryptadDist",
+      ":distJlinkCryptad",
+      ":distTarCryptad",
+      ":distZipCryptad",
+      ":jpackageInstallerCryptad",
+      ":stageFirstPartyApps",
+      ":signFirstPartyApps",
+      ":verifyFirstPartyApps",
+      ":packageFirstPartyApps"
+    ],
+    "candidateBytesWithheldFromVerifier": true,
+    "executionIds": [
+      "linux-installers",
+      "macos-installer",
+      "portable-apps",
+      "windows-installer"
+    ],
+    "executionTasks": {
+      "linux-installers": [
+        ":jpackageInstallerLinuxAll"
+      ],
+      "macos-installer": [
+        ":jpackageInstallerCryptad"
+      ],
+      "portable-apps": [
+        ":dist",
+        ":packageFirstPartyApps"
+      ],
+      "windows-installer": [
+        ":jpackageInstallerWindowsExeCryptad"
+      ]
+    },
+    "requiredBuilderCount": 2,
+    "roles": [
+      "candidate-producer",
+      "independent-verifier"
+    ],
+    "separateRunRequired": true,
+    "verifierMayPublish": false
+  },
+  "componentIdentityRules": {
+    "duplicateIdentityDifferentDigestProhibited": true,
+    "fullGitCommitRequired": true,
+    "mutableVersionsProhibited": true,
+    "purlRequired": true,
+    "subjectMappingRequired": true
+  },
+  "dependencyResolutionRules": {
+    "buildLogicComponentsRequired": true,
+    "changingModulesProhibited": true,
+    "driftBlocks": true,
+    "dynamicVersionsProhibited": true,
+    "modelApiRequired": true,
+    "pluginResolutionDigestRequired": true,
+    "requiredBuildLogicConfigurations": [
+      "buildLogicSettingsPluginClasspath",
+      "rootSettingsPluginClasspath"
+    ],
+    "requiredConfigurationMappings": [
+      {
+        "projectScope": "release-projects",
+        "requiredName": "annotationProcessor",
+        "role": "build",
+        "sourceName": "compileClasspath"
+      },
+      {
+        "projectScope": "release-projects",
+        "requiredName": "testAnnotationProcessor",
+        "role": "test",
+        "sourceName": "testCompileClasspath"
+      }
+    ],
+    "releaseConfigurationsLocked": true,
+    "verificationRequired": true
+  },
+  "edition": 1,
+  "effectiveAt": "2026-08-04T00:00:00Z",
+  "firstPartyAppRules": {
+    "digestRequired": true,
+    "licenseRequired": true,
+    "originRequired": true,
+    "subjectMappingRequired": true,
+    "unknownBlocks": true
+  },
+  "governanceActivation": {
+    "activationRule": "first-stable-successor-candidate-frozen-at-or-after-effective-time",
+    "appliesProspectively": true,
+    "candidateFrozenAtNotBefore": "2026-08-04T00:00:00Z",
+    "historicalReceiptsImmutable": true,
+    "historicalReleaseLineageUnchanged": true
+  },
+  "jdkRules": {
+    "digestRequired": true,
+    "distribution": "temurin",
+    "installationDigestAlgorithm": "crypta-jdk-installed-tree-sha256-v1",
+    "licenseRequired": true,
+    "originRequired": true,
+    "requiredInstallations": [
+      {
+        "architecture": "amd64",
+        "runnerOs": "linux"
+      },
+      {
+        "architecture": "amd64",
+        "runnerOs": "macos"
+      },
+      {
+        "architecture": "amd64",
+        "runnerOs": "windows"
+      }
+    ],
+    "runtimeSubjectClasses": [
+      "installer",
+      "runtime-image"
+    ],
+    "setupJavaVersion": "25.0.3+9",
+    "subjectMappingRequired": true,
+    "unknownBlocks": true
+  },
+  "kind": "stable-1.0-supply-chain-policy",
+  "licensePolicy": {
+    "blockingStatuses": [
+      "prohibited",
+      "review-required",
+      "unknown-blocking"
+    ],
+    "exactOverridesRequired": true,
+    "licenseTextRequired": true,
+    "orphanedLicenseTextsBlock": true,
+    "spdxExpressionsRequired": true,
+    "statuses": [
+      "allowed",
+      "allowed-with-notice",
+      "not-applicable-internal",
+      "prohibited",
+      "review-required",
+      "unknown-blocking"
+    ]
+  },
+  "modes": [
+    "assemble-inventory",
+    "verify-inventory",
+    "prepare-rebuild-comparison",
+    "compare-rebuilds",
+    "evaluate-promotion",
+    "verify-publication"
+  ],
+  "nonWaivableBlockers": [
+    "archive-unsafe",
+    "builder-identity-invalid",
+    "builder-not-independent",
+    "build-material-unverified",
+    "component-coverage-incomplete",
+    "component-identity-ambiguous",
+    "dependency-resolution-drift",
+    "dependency-unverified",
+    "license-blocking",
+    "normalization-candidate-selected",
+    "publication-bytes-conflict",
+    "publication-observation-missing",
+    "redaction-unsafe",
+    "reproducibility-difference",
+    "sbom-drift",
+    "subject-binding-invalid",
+    "vulnerability-index-stale"
+  ],
+  "normalizationRules": [
+    {
+      "allowedExcludedFields": [
+        "container-signature",
+        "signature-timestamp"
+      ],
+      "id": "crypta-deb-payload-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "deb"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [
+        "container-signature",
+        "signature-timestamp"
+      ],
+      "id": "crypta-rpm-payload-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "rpm"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [
+        "container-signature",
+        "filesystem-image-uuid",
+        "notarization-ticket",
+        "signature-timestamp"
+      ],
+      "codeSignatureNormalization": {
+        "bindingMethod": "macos-code-signature-normalized",
+        "copyOnlySignatureRemoval": true,
+        "releaseBytesMutable": false,
+        "signatureResourceStructures": [
+          "bundle-code-directory",
+          "bundle-code-resources-file",
+          "legacy-code-resources-symlink"
+        ],
+        "strictMountedAppVerification": true,
+        "tool": "apple-system-codesign"
+      },
+      "id": "crypta-dmg-payload-v2",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "dmg"
+      ],
+      "version": 2
+    },
+    {
+      "allowedExcludedFields": [
+        "container-signature",
+        "signature-timestamp"
+      ],
+      "id": "crypta-exe-payload-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "exe"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [],
+      "id": "crypta-app-zip-content-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "app-zip"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [],
+      "id": "crypta-jar-content-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "jar"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [],
+      "id": "crypta-tar-content-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "tar"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [],
+      "id": "crypta-wheel-content-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "wheel"
+      ],
+      "version": 1
+    },
+    {
+      "allowedExcludedFields": [],
+      "id": "crypta-zip-content-v1",
+      "ignoredPaths": [],
+      "packageTypes": [
+        "zip"
+      ],
+      "version": 1
+    }
+  ],
+  "policyDigest": "sha256:dbc847331327e5a74b3d826afda76de4f31e0cd4d814aa5a455a1c6228021680",
+  "publicArtifactBounds": {
+    "maximumArtifactBytes": 100000000,
+    "maximumComponents": 100000,
+    "maximumExpandedBytes": 100000000000,
+    "maximumPayloadEntries": 1000000,
+    "maximumSubjects": 512
+  },
+  "publicSbom": {
+    "deterministicBytes": true,
+    "format": "SPDX-2.3-json",
+    "profile": "Crypta-Stable-1.0",
+    "sourceOfTruth": "canonical-component-graph",
+    "subjectPartitions": true
+  },
+  "publicationPolicy": {
+    "allowedOperations": [
+      "created",
+      "verified-existing"
+    ],
+    "conflictingBytesBlock": true,
+    "immutableBaseUri": "https://github.com/crypta-network/cryptad/releases/download",
+    "maximumObservationAgeSeconds": 3600,
+    "publicObservationRequired": true,
+    "receiptRequired": true,
+    "requiredRoles": [
+      "build-materials",
+      "component-inventory",
+      "component-reverse-index",
+      "license-inventory",
+      "reproducibility-report",
+      "release-subject-inventory",
+      "sbom",
+      "supply-chain-summary"
+    ]
+  },
+  "redactionRules": {
+    "absolutePathsProhibited": true,
+    "credentialsProhibited": true,
+    "embargoedDataProhibited": true,
+    "hostMetadataProhibited": true,
+    "privateRepositoryRefsProhibited": true,
+    "privateUrisProhibited": true
+  },
+  "releaseSubjects": [
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-jar-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "core",
+      "subjectKey": "core-jar"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-tar-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "portable",
+      "subjectKey": "portable-tar"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "portable",
+      "subjectKey": "portable-zip"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-tar-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "runtime-image",
+      "subjectKey": "runtime-image-tar"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "runtime-image",
+      "subjectKey": "runtime-image-zip"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-deb-payload-v1",
+      "reproducibilityClass": "normalized-payload-identical",
+      "required": true,
+      "subjectClass": "installer",
+      "subjectKey": "amd64.deb"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-rpm-payload-v1",
+      "reproducibilityClass": "normalized-payload-identical",
+      "required": true,
+      "subjectClass": "installer",
+      "subjectKey": "amd64.rpm"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-dmg-payload-v2",
+      "reproducibilityClass": "normalized-payload-identical",
+      "required": true,
+      "subjectClass": "installer",
+      "subjectKey": "amd64.dmg"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-exe-payload-v1",
+      "reproducibilityClass": "normalized-payload-identical",
+      "required": true,
+      "subjectClass": "installer",
+      "subjectKey": "amd64.exe"
+    },
+    {
+      "evidencePhase": "authenticated-post-build",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "updater",
+      "subjectKey": "stable-core-update-descriptor"
+    },
+    {
+      "evidencePhase": "authenticated-post-build",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "catalog",
+      "subjectKey": "stable-catalog"
+    },
+    {
+      "evidencePhase": "authenticated-post-build",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "catalog",
+      "subjectKey": "stable-catalog-signature"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-feed-reader"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-profile-publisher"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-publisher"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-queue-manager"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-site-publisher"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-social-inbox"
+    },
+    {
+      "evidencePhase": "independent-builder",
+      "normalizationRuleId": "crypta-app-zip-content-v1",
+      "reproducibilityClass": "byte-identical",
+      "required": true,
+      "subjectClass": "first-party-app",
+      "subjectKey": "app-trust-graph"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": true,
+      "subjectClass": "app-metadata",
+      "subjectKey": "first-party-app-review-metadata"
+    },
+    {
+      "evidencePhase": "authenticated-post-build",
+      "normalizationRuleId": "crypta-wheel-content-v1",
+      "reproducibilityClass": "not-a-product-subject",
+      "required": true,
+      "subjectClass": "publication-material",
+      "subjectKey": "publication-backend-wheel"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": true,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "release-notes"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": true,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "checksums"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": true,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "release-provenance"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "component-inventory"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "release-subject-inventory"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "sbom"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "license-inventory"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "build-materials"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "reproducibility-report"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "component-reverse-index"
+    },
+    {
+      "evidencePhase": "derived-governance",
+      "normalizationRuleId": null,
+      "reproducibilityClass": "not-a-product-subject",
+      "required": false,
+      "subjectClass": "companion-artifact",
+      "subjectKey": "supply-chain-summary"
+    }
+  ],
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "reproducibilityClasses": [
+    "byte-identical",
+    "normalized-payload-identical",
+    "not-a-product-subject"
+  ],
+  "schemaVersion": 1,
+  "stableMilestone": "Stable 1.0",
+  "subjectMetadataRules": {
+    "appMetadataClasses": [
+      "first-party-app"
+    ],
+    "catalogMetadataClasses": [
+      "catalog"
+    ],
+    "packageMetadataRequiresNormalizationRule": true,
+    "signatureReceiptClasses": [
+      "catalog",
+      "first-party-app",
+      "installer"
+    ],
+    "unexpectedMetadataProhibited": true
+  },
+  "vendoredRules": {
+    "digestRequired": true,
+    "licenseRequired": true,
+    "originRequired": true,
+    "subjectMappingRequired": true,
+    "unknownBlocks": true
+  },
+  "vulnerabilityReverseIndex": {
+    "authenticatedInventoryRequired": true,
+    "exactVersionAndDigestRequired": true,
+    "scopeTypes": [
+      "core-build",
+      "first-party-app-version",
+      "package-key",
+      "runtime-component"
+    ]
+  }
+}

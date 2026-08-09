@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-supply-chain-promotion-summary-v1",
+  "title": "Crypta Stable 1.0 supply-chain promotion summary",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "mode", "status", "promotionReady", "candidateIdentityDigest", "candidateFreezeDigest", "productDigest", "predecessorReleaseId", "predecessorBuildVersion", "predecessorProductDigest", "packageMatrixDigest", "packageAuthenticationDigest", "selectedSubjectInventoryDigest", "vulnerabilitySummaryDigest", "vulnerabilityReverseIndexDigest", "resolvedDependencySnapshotDigest", "componentInventoryDigest", "subjectInventoryDigest", "sbomDigest", "licenseInventoryDigest", "buildMaterialsDigest", "primaryBuilderReceiptDigest", "verifierBuilderReceiptDigest", "comparisonPlanDigest", "reproducibilityResultDigest", "evidence", "blockers", "waivers", "artifacts", "redaction", "summaryDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-supply-chain-promotion-summary"},
+    "releaseId": {"type": "string", "minLength": 1, "maxLength": 128}, "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[0-9]+$", "maxLength": 32}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "mode": {"enum": ["assemble-inventory", "verify-inventory", "prepare-rebuild-comparison", "compare-rebuilds", "evaluate-promotion", "verify-publication"]},
+    "status": {"enum": ["pass", "fail"]}, "promotionReady": {"type": "boolean"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/nullableDigest"}, "candidateFreezeDigest": {"$ref": "#/$defs/nullableDigest"}, "productDigest": {"$ref": "#/$defs/nullableDigest"},
+    "predecessorReleaseId": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}, "predecessorBuildVersion": {"type": ["integer", "null"], "minimum": 1, "maximum": 2147483647}, "predecessorProductDigest": {"$ref": "#/$defs/nullableDigest"},
+    "packageMatrixDigest": {"$ref": "#/$defs/nullableDigest"}, "packageAuthenticationDigest": {"$ref": "#/$defs/nullableDigest"}, "selectedSubjectInventoryDigest": {"$ref": "#/$defs/nullableDigest"},
+    "vulnerabilitySummaryDigest": {"$ref": "#/$defs/nullableDigest"}, "vulnerabilityReverseIndexDigest": {"$ref": "#/$defs/nullableDigest"},
+    "resolvedDependencySnapshotDigest": {"$ref": "#/$defs/nullableDigest"}, "componentInventoryDigest": {"$ref": "#/$defs/nullableDigest"}, "subjectInventoryDigest": {"$ref": "#/$defs/nullableDigest"},
+    "sbomDigest": {"$ref": "#/$defs/nullableDigest"}, "licenseInventoryDigest": {"$ref": "#/$defs/nullableDigest"}, "buildMaterialsDigest": {"$ref": "#/$defs/nullableDigest"},
+    "primaryBuilderReceiptDigest": {"$ref": "#/$defs/nullableDigest"}, "verifierBuilderReceiptDigest": {"$ref": "#/$defs/nullableDigest"}, "comparisonPlanDigest": {"$ref": "#/$defs/nullableDigest"}, "reproducibilityResultDigest": {"$ref": "#/$defs/nullableDigest"},
+    "evidence": {"type": "array", "minItems": 0, "maxItems": 32, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["evidenceId", "status", "nonWaivable"], "properties": {"evidenceId": {"type": "string", "pattern": "^stable-supply-chain\\.[a-z0-9.-]+$", "maxLength": 128}, "status": {"enum": ["pass", "fail"]}, "nonWaivable": {"const": true}}}},
+    "blockers": {"type": "array", "minItems": 0, "maxItems": 256, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["evidenceId", "message"], "properties": {"evidenceId": {"type": "string", "pattern": "^stable-supply-chain\\.[a-z0-9.-]+$", "maxLength": 128}, "message": {"type": "string", "minLength": 1, "maxLength": 512}}}},
+    "waivers": {"type": "array", "maxItems": 0, "items": {"type": "object", "additionalProperties": false, "properties": {}}},
+    "artifacts": {"type": "array", "minItems": 0, "maxItems": 64, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["name", "digest", "size"], "properties": {"name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}, "digest": {"$ref": "#/$defs/digest"}, "size": {"type": "integer", "minimum": 0, "maximum": 1000000000}}}},
+    "redaction": {"type": "object", "additionalProperties": false, "required": ["status", "privatePathsExcluded", "credentialsExcluded", "privateUrisExcluded", "embargoedVulnerabilityDataExcluded", "sideEffectsPerformed"], "properties": {"status": {"enum": ["pass", "fail"]}, "privatePathsExcluded": {"const": true}, "credentialsExcluded": {"const": true}, "privateUrisExcluded": {"const": true}, "embargoedVulnerabilityDataExcluded": {"const": true}, "sideEffectsPerformed": {"const": false}}},
+    "summaryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}, "nullableDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}}
+}

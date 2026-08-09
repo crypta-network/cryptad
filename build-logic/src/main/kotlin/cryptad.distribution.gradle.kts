@@ -3,6 +3,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 plugins { java }
 
@@ -34,8 +35,19 @@ val wrapperWindowsAmd64Extract: Provider<Directory> =
 val wrapperWindowsArm64Extract: Provider<Directory> =
   wrapperWindowsWorkDir.map { it.dir("extracted-arm64") }
 
-// Seednodes generation settings
-val seedrefsZipUrl = "https://codeload.github.com/hyphanet/seedrefs/zip/refs/heads/master"
+// Seednodes generation settings. Stable release jobs override this with the reviewed full-commit
+// archive URL; the branch URL remains only a convenience for ordinary local distribution builds.
+val seedrefsZipUrl =
+  providers
+    .gradleProperty("seedrefsUrl")
+    .orElse("https://codeload.github.com/hyphanet/seedrefs/zip/refs/heads/master")
+val stableSeedrefsUrlPattern =
+  Regex("^https://codeload\\.github\\.com/hyphanet/seedrefs/zip/[0-9a-f]{40}$")
+val stableWindowsWrapperUrlPattern =
+  Regex(
+    "^https://github\\.com/crypta-network/wrapper-windows-build/releases/download/" +
+      "[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._+-]*\\.(?:zip|tar\\.gz)$"
+  )
 val seedrefsWorkDir: Provider<Directory> = layout.buildDirectory.dir("seedrefs")
 val seedrefsZip: Provider<RegularFile> = seedrefsWorkDir.map { it.file("seedrefs.zip") }
 val seedrefsExtracted: Provider<Directory> = seedrefsWorkDir.map { it.dir("extracted") }
@@ -52,14 +64,43 @@ fun downloadTo(url: String, targetFile: Provider<RegularFile>) {
   }
 }
 
+fun verifyExpectedSha256(file: File, expectedValue: String?, materialName: String) {
+  val expected = expectedValue?.trim()?.lowercase().orEmpty()
+  if (expected.isEmpty()) return
+  if (!expected.matches(Regex("[0-9a-f]{64}"))) {
+    throw GradleException(
+      "$materialName expected SHA-256 must be 64 lowercase hexadecimal characters"
+    )
+  }
+  val digest = MessageDigest.getInstance("SHA-256")
+  file.inputStream().buffered().use { input ->
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+      val read = input.read(buffer)
+      if (read < 0) break
+      digest.update(buffer, 0, read)
+    }
+  }
+  val actual = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+  if (actual != expected) {
+    throw GradleException("$materialName SHA-256 mismatch: expected $expected, got $actual")
+  }
+}
+
 // Download the Wrapper delta pack
 val downloadWrapper by
   tasks.registering {
     group = "distribution"
     description = "Downloads Tanuki Java Service Wrapper delta pack"
     val outFile = wrapperWorkDir.map { it.file(wrapperDeltaPack) }
+    val expectedSha256 = providers.gradleProperty("wrapperDeltaPackSha256")
+    inputs.property("sourceUrl", wrapperBaseUrl)
+    inputs.property("expectedSha256", expectedSha256.orElse(""))
     outputs.file(outFile)
-    doLast { downloadTo(wrapperBaseUrl, outFile) }
+    doLast {
+      downloadTo(wrapperBaseUrl, outFile)
+      verifyExpectedSha256(outFile.get().asFile, expectedSha256.orNull, "Tanuki Wrapper delta pack")
+    }
   }
 
 // Extract the delta pack
@@ -78,8 +119,21 @@ val downloadSeedrefs by
   tasks.registering {
     group = "distribution"
     description = "Downloads hyphanet/seedrefs repository as a zip"
+    val expectedSha256 = providers.gradleProperty("seedrefsSha256")
+    inputs.property("sourceUrl", seedrefsZipUrl)
+    inputs.property("expectedSha256", expectedSha256.orElse(""))
     outputs.file(seedrefsZip)
-    doLast { downloadTo(seedrefsZipUrl, seedrefsZip) }
+    doLast {
+      val reviewedDigest = expectedSha256.orNull?.trim().orEmpty()
+      val sourceUrl = seedrefsZipUrl.get()
+      if (reviewedDigest.isNotEmpty() && !stableSeedrefsUrlPattern.matches(sourceUrl)) {
+        throw GradleException(
+          "A reviewed seedrefs digest requires an immutable full-commit codeload URL"
+        )
+      }
+      downloadTo(sourceUrl, seedrefsZip)
+      verifyExpectedSha256(seedrefsZip.get().asFile, expectedSha256.orNull, "seedrefs archive")
+    }
   }
 
 // Extract seedrefs
@@ -138,83 +192,90 @@ val copyWrapperBinaries by
 
 // --- Windows wrapper: locate asset URLs (newest GitHub release) and download ---
 
-abstract class DownloadWindowsWrapper @Inject constructor() : DefaultTask() {
-  @get:Input abstract val apiUrl: Property<String>
-
-  @get:Input @get:Optional abstract val amd64UrlOverride: Property<String>
-
-  @get:Input @get:Optional abstract val arm64UrlOverride: Property<String>
-
-  @get:OutputFile abstract val amd64Archive: RegularFileProperty
-
-  @get:OutputFile abstract val arm64Archive: RegularFileProperty
-
-  @TaskAction
-  fun run() {
-    amd64Archive.get().asFile.parentFile.mkdirs()
-    arm64Archive.get().asFile.parentFile.mkdirs()
-
-    val amd64Url =
-      amd64UrlOverride.orNull?.takeIf { it.isNotBlank() }
-        ?: findAssetUrl(apiUrl.get(), setOf("amd64", "x86_64", "x64"))
-    val arm64Url =
-      arm64UrlOverride.orNull?.takeIf { it.isNotBlank() }
-        ?: findAssetUrl(apiUrl.get(), setOf("arm64", "aarch64"))
-
-    download(amd64Url, amd64Archive.get().asFile)
-    download(arm64Url, arm64Archive.get().asFile)
+fun windowsWrapperApiResponse(url: String): String {
+  val connection = URI(url).toURL().openConnection() as HttpURLConnection
+  // Optional: use GITHUB_TOKEN when present to raise rate limits.
+  val token = System.getenv("GITHUB_TOKEN")
+  if (!token.isNullOrBlank()) connection.setRequestProperty("Authorization", "Bearer $token")
+  connection.setRequestProperty("Accept", "application/vnd.github+json")
+  connection.connectTimeout = 30_000
+  connection.readTimeout = 30_000
+  connection.inputStream.bufferedReader().use { reader ->
+    return reader.readText()
   }
+}
 
-  private fun httpGet(url: String): String {
-    val conn = URI(url).toURL().openConnection() as HttpURLConnection
-    // Optional: use GITHUB_TOKEN when present to raise rate limits
-    val token = System.getenv("GITHUB_TOKEN")
-    if (!token.isNullOrBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
-    conn.setRequestProperty("Accept", "application/vnd.github+json")
-    conn.connectTimeout = 30_000
-    conn.readTimeout = 30_000
-    conn.inputStream.bufferedReader().use { br ->
-      return br.readText()
-    }
-  }
-
-  private fun findAssetUrl(apiUrl: String, archHints: Set<String>): String {
-    val json = httpGet(apiUrl)
-    // Very small JSON picker: find the first browser_download_url for Windows and the arch hints
-    // We avoid adding a JSON parser dependency here.
-    val re = Regex(""""browser_download_url"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
-    val all = re.findAll(json).map { it.groupValues[1] }.toList()
-    val candidate =
-      all.firstOrNull { u ->
-        val l = u.lowercase()
-        (l.endsWith(".zip") || l.endsWith(".tar.gz")) &&
-          l.contains("win") &&
-          archHints.any { hint -> l.contains(hint) }
+fun findWindowsWrapperAssetUrl(apiUrl: String, archHints: Set<String>): String {
+  val json = windowsWrapperApiResponse(apiUrl)
+  // Very small JSON picker: find the first browser_download_url for Windows and the arch hints.
+  // We avoid adding a JSON parser dependency here.
+  val expression = Regex(""""browser_download_url"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+  val candidate =
+    expression
+      .findAll(json)
+      .map { match -> match.groupValues[1] }
+      .firstOrNull { url ->
+        val lower = url.lowercase()
+        (lower.endsWith(".zip") || lower.endsWith(".tar.gz")) &&
+          lower.contains("win") &&
+          archHints.any { hint -> lower.contains(hint) }
       }
-    if (candidate == null) {
-      throw GradleException("Could not find Windows asset for $archHints in $apiUrl")
-    }
-    return candidate
-  }
+  return candidate
+    ?: throw GradleException("Could not find Windows asset for $archHints in $apiUrl")
+}
 
-  private fun download(url: String, out: File) {
-    val u = URI(url).toURL()
-    println("Downloading $url -> ${out.absolutePath}")
-    u.openStream().use { input ->
-      Files.copy(input, out.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    }
+fun downloadWindowsWrapperAsset(url: String, output: File) {
+  println("Downloading $url -> ${output.absolutePath}")
+  URI(url).toURL().openStream().use { input ->
+    Files.copy(input, output.toPath(), StandardCopyOption.REPLACE_EXISTING)
   }
 }
 
 val downloadWindowsWrapper by
-  tasks.registering(DownloadWindowsWrapper::class) {
+  tasks.registering {
     group = "distribution"
     description = "Downloads Windows wrapper (amd64 + arm64) from latest GitHub release"
-    apiUrl.set(wrapperWindowsApiLatest)
-    amd64UrlOverride.set(providers.gradleProperty("wrapperWinAmd64Url").orNull)
-    arm64UrlOverride.set(providers.gradleProperty("wrapperWinArm64Url").orNull)
-    amd64Archive.set(wrapperWindowsAmd64Archive)
-    arm64Archive.set(wrapperWindowsArm64Archive)
+    val amd64UrlOverride = providers.gradleProperty("wrapperWinAmd64Url")
+    val arm64UrlOverride = providers.gradleProperty("wrapperWinArm64Url")
+    val amd64ExpectedSha256 = providers.gradleProperty("wrapperWinAmd64Sha256")
+    val arm64ExpectedSha256 = providers.gradleProperty("wrapperWinArm64Sha256")
+    inputs.property("apiUrl", wrapperWindowsApiLatest)
+    inputs.property("amd64UrlOverride", amd64UrlOverride.orElse(""))
+    inputs.property("arm64UrlOverride", arm64UrlOverride.orElse(""))
+    inputs.property("amd64ExpectedSha256", amd64ExpectedSha256.orElse(""))
+    inputs.property("arm64ExpectedSha256", arm64ExpectedSha256.orElse(""))
+    outputs.files(wrapperWindowsAmd64Archive, wrapperWindowsArm64Archive)
+    doLast {
+      val reviewedAmd64 = amd64ExpectedSha256.orNull?.isNotBlank() == true
+      val reviewedArm64 = arm64ExpectedSha256.orNull?.isNotBlank() == true
+      val reviewedAmd64Url = amd64UrlOverride.orNull.orEmpty()
+      val reviewedArm64Url = arm64UrlOverride.orNull.orEmpty()
+      if (
+        (reviewedAmd64 && !stableWindowsWrapperUrlPattern.matches(reviewedAmd64Url)) ||
+          (reviewedArm64 && !stableWindowsWrapperUrlPattern.matches(reviewedArm64Url))
+      ) {
+        throw GradleException(
+          "Reviewed Windows Wrapper digests require immutable release-asset URLs"
+        )
+      }
+      val amd64File = wrapperWindowsAmd64Archive.get().asFile
+      val arm64File = wrapperWindowsArm64Archive.get().asFile
+      amd64File.parentFile.mkdirs()
+      arm64File.parentFile.mkdirs()
+      val amd64Url =
+        amd64UrlOverride.orNull?.takeIf(String::isNotBlank)
+          ?: findWindowsWrapperAssetUrl(
+            wrapperWindowsApiLatest.get(),
+            setOf("amd64", "x86_64", "x64"),
+          )
+      val arm64Url =
+        arm64UrlOverride.orNull?.takeIf(String::isNotBlank)
+          ?: findWindowsWrapperAssetUrl(wrapperWindowsApiLatest.get(), setOf("arm64", "aarch64"))
+      downloadWindowsWrapperAsset(amd64Url, amd64File)
+      downloadWindowsWrapperAsset(arm64Url, arm64File)
+      verifyExpectedSha256(amd64File, amd64ExpectedSha256.orNull, "Windows amd64 Wrapper archive")
+      verifyExpectedSha256(arm64File, arm64ExpectedSha256.orNull, "Windows arm64 Wrapper archive")
+    }
   }
 
 // --- Archive detection helpers (shared) ---

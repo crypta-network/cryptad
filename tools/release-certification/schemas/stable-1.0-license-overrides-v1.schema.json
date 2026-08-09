@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-license-overrides-v1",
+  "title": "Crypta Stable 1.0 reviewed license overrides",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "policyEdition", "overrides", "overridesDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-supply-chain-license-overrides"},
+    "policyEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "overrides": {
+      "type": "array", "minItems": 0, "maxItems": 256, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["componentId", "version", "componentDigest", "licenseExpression", "licenseTextPath", "licenseTextDigest", "rationale"],
+        "properties": {
+          "componentId": {"type": "string", "pattern": "^pkg:[a-z0-9.+-]+/[A-Za-z0-9._~%+@/?=&-]+$", "maxLength": 512},
+          "version": {"type": "string", "minLength": 1, "maxLength": 128},
+          "componentDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "licenseExpression": {"type": "string", "minLength": 1, "maxLength": 256},
+          "licenseTextPath": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+          "licenseTextDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+          "rationale": {"type": "string", "minLength": 8, "maxLength": 1024}
+        }
+      }
+    },
+    "overridesDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}
+  }
+}

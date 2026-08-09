@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,6 +18,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppDistributionToolTest {
   @TempDir Path tempDir;
+
+  @Test
+  void packageBundle_whenCliPackagesSameSignedInputTwice_expectByteIdenticalArchives()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    Path first = tempDir.resolve("first.zip");
+    Path second = tempDir.resolve("second.zip");
+
+    AppDistributionTool.main(
+        new String[] {
+          "package", "--bundle-dir", bundleRoot.toString(), "--output-zip", first.toString()
+        });
+    AppDistributionTool.main(
+        new String[] {
+          "package", "--bundle-dir", bundleRoot.toString(), "--output-zip", second.toString()
+        });
+
+    assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
+  }
 
   @Test
   void signAndVerify_whenCliRoundTripsSignedBundle_expectSuccess() throws Exception {

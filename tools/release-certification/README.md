@@ -24,6 +24,7 @@ python3 tools/release-certification/certify.py stable-ga --self-test
 python3 tools/release-certification/certify.py stable-backport --self-test
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
+python3 tools/release-certification/certify.py stable-supply-chain --self-test
 python3 tools/release-certification/certify.py stable-vulnerability --self-test
 ```
 
@@ -59,6 +60,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-backport` | Classify Stable 1.0 fixes, authenticate source-to-candidate provenance, account for one release train, and verify completion without changing Git or public state. |
 | `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
+| `stable-supply-chain` | Assemble and verify Stable component, SBOM, license, isolated-rebuild, promotion, and publication-observation evidence; the CLI is side-effect-free and the protected workflow has an explicit publication boundary. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
@@ -894,6 +896,195 @@ See the [backport and release-train
 runbook](../../docs/stable-1.0-backport-and-release-train-governance.md) for the full fix model,
 Git provenance contract, security projection, maintenance integration, release-note behavior, and
 manual operations.
+
+## Stable 1.0 supply-chain and reproducible-build certification
+
+Create a local Gradle resolution export for review:
+
+```bash
+./gradlew exportStableSupplyChainResolution
+```
+
+The exporter writes `build/stable-supply-chain/resolved-dependency-snapshot.json`,
+`build/stable-supply-chain/resolved-dependency-export.json`, and
+`build/stable-supply-chain/build-material-inputs.json`. The snapshot is the canonical selected
+component, variant, edge, and artifact view for the policy-selected configurations. The raw export
+retains the complete reviewed resolution projection. Build materials record source, wrapper,
+toolchain, repository policy, external input, and build-recipe identities.
+
+The export builds the jlink image and derives its module list from that generated runtime's
+`java --list-modules` output, not only the requested `jdeps` roots. It also fingerprints the exact
+Gradle-selected JDK installation with the policy's path-independent installed-tree algorithm. The
+final material record contains distinct Linux, macOS, and Windows installation rows, and each
+protected builder must independently observe the matching row before any product task. A local
+system JDK whose tree contains escaping or absolute external symlinks is deliberately unsuitable
+for this protected fingerprint and causes the exporter to fail closed.
+
+Protected inventory, producer, and verifier runs authenticate exact files named
+`resolved-dependency-export.json` and `resolved-dependency-snapshot.json` in the phase bundle before
+running the strict comparison:
+
+```bash
+./gradlew exportStableSupplyChainResolution verifyStableSupplyChainResolution \
+  -PstableSupplyChainExpectedResolutionExport=build/stable-supply-chain-phase/resolved-dependency-export.json \
+  -PstableSupplyChainExpectedResolutionSnapshot=build/stable-supply-chain-phase/resolved-dependency-snapshot.json
+```
+
+Both expected paths must remain confined to the attested phase artifact. Aliases, unreferenced
+files, links, and generated-output substitutions fail. The default no-property export is
+intentionally unlocked and is not strict verification by itself.
+
+The policy also closes direct build inputs to five named materials: the Gradle distribution,
+seedrefs source archive, Tanuki wrapper delta pack, and the AMD64 and ARM64 Windows wrappers. The
+wrapper checksum is pinned in `gradle-wrapper.properties`; protected jobs supply reviewed SHA-256
+values for the other four Gradle downloads, verify before extraction, and bind the same identities
+to final `packagingInputs` plus both authenticated builder receipts. Missing or drifting direct
+material remains promotion-blocking.
+
+The generated `build-material-inputs.json` has the raw
+`cryptad-stable-build-material-inputs-v1` contract. It is not the final
+`stable-1.0-build-materials-v1` manifest input and cannot replace it. The manifest's
+`inputs.buildMaterials` path remains confined to the attested phase bundle. Inventory execution
+cross-checks the raw export and Gradle/material digests across the generated document, reviewed
+snapshot, and final build-material record, then retains the raw document as separately named
+attested workflow evidence. Only the final record occupies the public `build-materials` role.
+
+Use `tools/release-certification/stable-1.0-supply-chain-policy.json` as the checked-in policy and
+`tools/release-certification/stable-1.0-supply-chain-license-overrides.json` as the checked-in
+override set. The exact release-subject inventory is release-specific and must come from the
+authenticated phase bundle path named in the manifest; it is not a checked-in template or a local
+discovery result.
+
+Each policy subject has an `evidencePhase`. Builder receipts and comparison records cover exactly
+the selected `independent-builder` subjects: core, portable/runtime archives, native installers,
+and seven app bundles. Frozen catalog/signature/updater bytes are `authenticated-post-build`: they
+retain exact byte and freeze-signature bindings but are not claimed as independently reproduced by
+the current Gradle recipe. Review/release/supply-chain records are `derived-governance` and
+`not-a-product-subject`; their exact bytes are bound by inventory, promotion, and immutable
+publication evidence instead of builder assertions.
+
+The current native-installer builder matrix is closed to AMD64 DEB, RPM, DMG, and EXE subjects.
+Flatpak and Snap remain valid maintenance package-format vocabulary, but are not authorized by the
+current supply-chain policy. Selecting either format requires a future reviewed policy edition
+that also introduces its isolated build, safe extraction, and normalized comparison evidence.
+
+Set `inputs.licenseTextRoot` to the repository root, `.`. License registries may reference only the
+root `LICENSE` or regular files below `docs/licenses/`; the broader root is a resolution anchor and
+does not make arbitrary repository files eligible notice evidence.
+
+Run one side-effect-free phase with a candidate-bound `stable-review` manifest:
+
+```bash
+python3 tools/release-certification/certify.py stable-supply-chain \
+  --manifest build/stable-supply-chain-phase.json
+```
+
+`commands.stable-supply-chain.mode` is closed to `assemble-inventory`, `verify-inventory`,
+`prepare-rebuild-comparison`, `compare-rebuilds`, `evaluate-promotion`, and
+`verify-publication`. Each mode accepts exactly its declared `inputs` set; a caller cannot attach
+an irrelevant earlier-phase file to cross a trust boundary. Native component, license, SBOM,
+binding, build-material, builder, comparison, reverse-index, promotion, and publication-verification
+records are written under
+`build/release-certification/<release-id>/stable-supply-chain/artifacts/legacy/`. The common
+candidate-bound summary, report, and redaction result remain at the component root.
+
+`evaluate-promotion` requires `execution.evaluationClock` and the fixed-name authenticated
+`stable-1.0-vulnerability-summary.json` handoff. The existing protected handoff verifier checks
+the sealed producer bytes, provenance, summary expiry, and current durable vulnerability-ledger
+tip; a raw JSON path is not promotion authority. Vulnerability ledgers that contain a
+`runtime-component` scope likewise require `componentReverseIndex` in every later protected
+phase. The current reverse index must match the manifest's authenticated full candidate commit and
+immutable `commit:<sha>` source ref, and every newly resolved alias must map to the candidate build.
+Historical scope rows retain their original inventory digest; this current-candidate routing check
+does not retroactively rebind them. Historical ledgers with no such scope remain valid without that
+irrelevant input.
+
+Its promotion summary is a prepublication gate. Every non-publication evidence row must pass, but
+`stable-supply-chain.publication` must not be reported as passing by `evaluate-promotion`; only
+`verify-publication` can establish that row from the exact receipt and fresh public observation.
+Downstream maintenance and generic release certification also require the sibling
+`stable-1.0-supply-chain-summary-provenance.json`. That bounded record binds the summary byte
+digest to the exact successful protected supply-chain workflow run/attempt, fixed comparison
+artifact name, Actions artifact digest, candidate source commit, and verified attestation. A local
+summary plus its own semantic digest is not release authority. After those GitHub and attestation
+checks, the protected producer adds a domain-separated HMAC-SHA256 tag using the dedicated
+`CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64` secret. Consumers require that tag and compare the
+summary's `sourceCommit` and immutable `commit:<sha>` source ref with a direct read of the current
+checkout; provenance booleans, caller-supplied metadata, and a stale genuine summary are
+insufficient.
+
+The protected `.github/workflows/stable-1.0-supply-chain.yml` workflow is manual-only. Its closed
+orchestration operations are `inventory`, `producer-build`, `verifier-build`,
+`compare-evaluate`, `publish`, and `verify-publication`. Producer and verifier jobs have isolated
+workspaces; the verifier authenticates only the closed recipe and reviewed resolution expectation
+files before its Java 25 wrapper build, then digests its own subjects while producer candidate
+bytes remain unavailable. Every handoff is authenticated against the exact repository,
+workflow path, protected source ref, source commit, run attempt, artifact name, artifact digest,
+and file attestations.
+
+Each producer or verifier run has four authenticated executions: `portable-apps`,
+`linux-installers`, `macos-installer`, and `windows-installer`. The aggregate preserves the exact
+runner-image, job, subject-partition, handoff, and attestation identities for all four; it does not
+flatten platform provenance. `compare-evaluate` additionally requires the original producer and
+verifier run/attempt/artifact/digest coordinates, downloads both originals directly, and derives
+the formal receipts from their verified file attestations. For `evaluate-promotion`, the fixed
+Stable vulnerability summary is opened and current-tip verified outside the checkout and public
+output roots before the CLI runs.
+
+Both roles receive the same product-byte-free five-input recipe plus the reviewed raw resolution
+export before building. The recipe contains no builder receipt; the comparison job derives both
+receipts only after authenticating the original completed builder artifacts. Per-execution
+receipts bind Java, Gradle, verification, plugin/build-logic, task-set, canonical environment,
+direct-input, payload-manifest-set, and extraction-manifest-set identities. Native package jobs
+extract the actual DEB/RPM/DMG/EXE container, canonicalize the complete installed tree without
+ignored files, and require one embedded app-image root to equal the pre-signing stage. The distinct
+attested extraction record binds package, extractor, full extracted, embedded staged, and
+candidate freeze signing/notarization identities. Unsupported layouts, unavailable tools, and
+policy-bound expansion overflows fail closed.
+
+For `producer-build`, candidate bytes are not downloaded until the local build has completed. The
+workflow then authenticates the existing maintenance `freeze-candidate` run and the exact
+run/attempt-bound `stable-1-0-maintenance-frozen-...` artifact. The closed freeze record and every
+attested `freeze/assets` entry must agree with the subject inventory by canonical filename,
+digest, size, signing receipt, and notarization receipt. Frozen bytes are used wherever that
+maintenance freeze selected a subject; non-selected deterministic companions must still match the
+authenticated inventory exactly.
+
+Developer-ID-signed/notarized DMGs use the closed `macos-code-signature-normalized` view. The
+producer authenticates the frozen DMG, signing and notarization receipts, signed mounted app, and
+signature-material inventory; the verifier authenticates its independently built unsigned app.
+Their role-specific `extractionManifestSetDigest` values intentionally differ. Equality is required
+for the role-neutral `payloadManifestSetDigest`, normalized pre-signing payload, non-code entries,
+package metadata, normalization rule/version, and empty ignored-path set. Any unaccounted code or
+non-code payload difference remains a release blocker; signatures are accounted for, not stripped
+from the publication identity.
+
+The command-line component never creates a tag or GitHub Release, uploads a public SBOM, changes a
+catalog, or publishes CoreUpdater state. The separate `publish` workflow job runs only in the
+protected supply-chain publication environment and is the only supply-chain job with job-scoped
+`contents: write`. It authenticates the exact promotion bundle, annotated tag, existing Release,
+input attestations, and reviewed publication-backend wheel before it verifies the
+`LEUMOR_GITHUB_TOKEN` identity as exactly `leumor`. Secrets are supplied through the step
+environment, never interpolated into command-line arguments.
+
+The fixed `cryptad_stable_maintenance_backend:supply_chain_factory` entry point accepts only the
+eight policy roles—`build-materials`, `component-inventory`, `component-reverse-index`,
+`license-inventory`, `release-subject-inventory`, `reproducibility-report`, `sbom`, and
+`supply-chain-summary`. It records absent assets as `created`, accepts exact existing assets as
+`verified-existing`, and never deletes or overwrites a conflict. It immediately re-observes the
+eight public byte streams and emits the receipt and fresh observation in an attested immutable
+handoff. `verify-publication` consumes that handoff without a publication credential and performs
+no mutation. Report publication or reproducibility only when those exact records pass; a local
+inventory or one successful build is informational.
+
+The side-effect-free verifier derives all eight filenames and their
+`https://github.com/crypta-network/cryptad/releases/download/v<build>/` targets from the reviewed
+policy. Self-consistent plan, receipt, and observation records at any other HTTPS location fail.
+
+See [Stable 1.0 supply-chain inventory and reproducible-build
+governance](../../docs/stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md) for
+the authority model, component roles, app/catalog coverage, license rules, vulnerability reverse
+index, redaction boundary, and external-verification procedure.
 
 ## Stable 1.0 maintenance and security hotfix certification
 

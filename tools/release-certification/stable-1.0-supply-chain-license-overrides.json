@@ -1,0 +1,26 @@
+{
+  "kind": "stable-1.0-supply-chain-license-overrides",
+  "overrides": [
+    {
+      "componentId": "pkg:generic/cryptad-vendored/db4o@7.4.58?checksum=fcc671064d39d553e8812a2bebac082b7e7f58edd795d5ff7f083eb9156389ad",
+      "componentDigest": "sha256:fcc671064d39d553e8812a2bebac082b7e7f58edd795d5ff7f083eb9156389ad",
+      "licenseExpression": "GPL-3.0-only",
+      "licenseTextDigest": "sha256:3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "licenseTextPath": "LICENSE",
+      "rationale": "Bind the vendored db4o 7.4.58 bytes to the repository's reviewed GPL-3.0 license text; any jar drift invalidates this override.",
+      "version": "7.4.58"
+    },
+    {
+      "componentId": "pkg:generic/cryptad-vendored/java-service-wrapper@3.6.2?checksum=9918de095c0375d49b60aeded11e4ddac8c5bcc691757899cdccd2cbaa02493e",
+      "componentDigest": "sha256:9918de095c0375d49b60aeded11e4ddac8c5bcc691757899cdccd2cbaa02493e",
+      "licenseExpression": "LicenseRef-Tanuki-Wrapper-Community-1.3",
+      "licenseTextDigest": "sha256:09421b6516ad5f827f8fc8139591003a9f013ee210379516c97d2a66fdd2d68d",
+      "licenseTextPath": "docs/licenses/wrapper-community-license-1.3.txt",
+      "rationale": "Bind Java Service Wrapper 3.6.2 to the checked-in Wrapper Community License 1.3 notice; any jar drift invalidates this override.",
+      "version": "3.6.2"
+    }
+  ],
+  "overridesDigest": "sha256:0c948778057052611f9098326cbf8b835a2ee334ba8aba4fbb59208d81b3e9b1",
+  "policyEdition": 1,
+  "schemaVersion": 1
+}

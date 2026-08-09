@@ -2209,6 +2209,67 @@ class StableMaintenancePublicationTest(unittest.TestCase):
         ):
             replaced_signature.load()
 
+    def test_supply_chain_companion_suffix_is_exact_and_disjoint(self) -> None:
+        summary_path = (
+            self.fixture.root
+            / "protected-inputs"
+            / "supply-chain"
+            / "stable-1.0-supply-chain-summary.json"
+        )
+        summary_path.parent.mkdir(parents=True)
+        summary = {
+            "releaseId": RELEASE_ID,
+            "buildVersion": int(BUILD),
+            "sourceCommit": COMMIT,
+            "mode": "evaluate-promotion",
+            "status": "pass",
+            "promotionReady": True,
+            "blockers": [],
+            "waivers": [],
+            "artifacts": [
+                {"name": role, "digest": digest(role), "size": index + 1}
+                for index, role in enumerate(publication.SUPPLY_CHAIN_COMPANION_FILES)
+                if role != "supply-chain-summary"
+            ],
+        }
+        summary["summaryDigest"] = publication._semantic_digest(summary)  # noqa: SLF001
+        write_json(summary_path, summary)
+        artifacts = {row["name"]: row for row in summary["artifacts"]}
+        rows = []
+        for role, file_name in publication.SUPPLY_CHAIN_COMPANION_FILES.items():
+            row = artifacts.get(role)
+            rows.append(
+                {
+                    "role": role,
+                    "fileName": file_name,
+                    "digest": (
+                        file_digest(summary_path) if row is None else row["digest"]
+                    ),
+                    "sizeBytes": (
+                        summary_path.stat().st_size if row is None else row["size"]
+                    ),
+                    "publicUri": (
+                        "https://github.com/crypta-network/cryptad/releases/download/"
+                        f"v{BUILD}/{file_name}"
+                    ),
+                }
+            )
+        plan = {**self.fixture.plan, "supplyChainCompanionAssets": rows}
+        with mock.patch.object(publication, "_validate_schema"):
+            publication._validate_supply_chain_companion_assets(  # noqa: SLF001
+                self.fixture.root, plan
+            )
+
+        rows[0]["digest"] = digest("substituted-companion")
+        with mock.patch.object(publication, "_validate_schema"):
+            with self.assertRaisesRegex(
+                publication.AdapterError,
+                "supply-chain-companion-assets-binding-mismatch",
+            ):
+                publication._validate_supply_chain_companion_assets(  # noqa: SLF001
+                    self.fixture.root, plan
+                )
+
     def test_substituted_candidate_freeze_record_fails_closed(self) -> None:
         replacement = BundleFixture(self.root / "substituted-freeze-bundle")
         replacement.candidate_freeze["producer"]["runAttempt"] = 2

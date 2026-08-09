@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-sbom-binding-v1",
+  "title": "Crypta Stable 1.0 SPDX binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "releaseId", "buildVersion", "tag", "sourceCommit", "sourceRef", "policyDigest", "format", "documentNamespace", "sbomDigest", "componentInventoryDigest", "subjectInventoryDigest", "subjects", "bindingDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-sbom-binding"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 128},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "policyDigest": {"$ref": "#/$defs/digest"}, "format": {"const": "SPDX-2.3-json"},
+    "documentNamespace": {"type": "string", "pattern": "^https://crypta\\.network/spdx/stable-1\\.0/[A-Za-z0-9._-]+/[0-9a-f]{64}$", "maxLength": 512},
+    "sbomDigest": {"$ref": "#/$defs/digest"}, "componentInventoryDigest": {"$ref": "#/$defs/digest"},
+    "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+    "subjects": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["subjectKey", "subjectDigest"], "properties": {"subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}, "subjectDigest": {"$ref": "#/$defs/digest"}}}},
+    "bindingDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71}}
+}

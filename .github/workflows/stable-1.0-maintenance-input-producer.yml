@@ -32,6 +32,8 @@ on:
           - freeze-candidate
           - prepare-authorization
           - validate-authorization
+          - supply-chain-inventory
+          - supply-chain-prebuild
       input_bundle_sha256:
         description: Exact sha256:<hex> of the reviewed ZIP at the protected environment URI.
         required: true
@@ -64,14 +66,14 @@ jobs:
 
     steps:
       - name: Check out exact candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ inputs.candidate_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
@@ -398,6 +400,12 @@ jobs:
                       shutil.copyfileobj(source, destination, length=1024 * 1024)
                   target.chmod(0o644)
 
+          phase = os.environ["INPUT_PHASE"]
+          compact_supply_chain_json = {
+              "resolved-dependency-export.json",
+              "resolved-dependency-snapshot.json",
+          }
+
           def load_json(path):
               raw = path.read_bytes()
 
@@ -412,7 +420,22 @@ jobs:
               canonical = (
                   json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
               ).encode("utf-8")
-              if raw != canonical:
+              compact = (
+                  json.dumps(
+                      value,
+                      ensure_ascii=False,
+                      separators=(",", ":"),
+                      sort_keys=True,
+                  )
+                  + "\n"
+              ).encode("utf-8")
+              accepted = raw == canonical
+              if (
+                  phase.startswith("supply-chain-")
+                  and path.name in compact_supply_chain_json
+              ):
+                  accepted = raw == compact
+              if not accepted:
                   raise SystemExit(f"noncanonical JSON bytes in {path.name}")
               return value
 
@@ -432,8 +455,130 @@ jobs:
                   if _maintenance_public_redaction_findings(value) or placeholder_findings(value):
                       raise SystemExit("protected JSON input failed the maintenance public scan")
 
-          phase = os.environ["INPUT_PHASE"]
-          if phase == "validate-authorization":
+          if phase in {"supply-chain-inventory", "supply-chain-prebuild"}:
+              manifest_path = output / "manifest.json"
+              if not manifest_path.is_file():
+                  raise SystemExit("supply-chain phase lacks canonical manifest.json")
+              manifest = load_json(manifest_path)
+              release = manifest.get("release", {})
+              policies = manifest.get("policies", {})
+              inputs = manifest.get("inputs", {})
+              mode = manifest.get("commands", {}).get("stable-supply-chain", {}).get("mode")
+              if (
+                  release.get("id") != os.environ["INPUT_RELEASE_ID"]
+                  or release.get("version") != os.environ["INPUT_BUILD_VERSION"]
+                  or release.get("profile") != "stable-review"
+                  or policies.get("candidateSourceCommit")
+                  != os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or policies.get("candidateSourceRef")
+                  != "commit:" + os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or manifest.get("requirements", {}).get("stableSupplyChain") is not True
+                  or manifest.get("execution", {}).get("allowDirtyWorkspace") is not False
+                  or manifest.get("execution", {}).get("fixtureEvidence") is not False
+                  or manifest.get("execution", {}).get("allowTestSigningInProduction") is not False
+                  or not isinstance(inputs, dict)
+              ):
+                  raise SystemExit("supply-chain manifest identity or execution policy is invalid")
+
+              common = {
+                  "supplyChainPolicy",
+                  "resolvedDependencySnapshot",
+                  "componentInventory",
+                  "releaseSubjectInventory",
+                  "buildMaterials",
+              }
+              inventory_inputs = {
+                  "assemble-inventory": common
+                  | {
+                      "licenseInventory",
+                      "primarySubjectRoot",
+                      "licenseOverrides",
+                      "licenseTextRoot",
+                  },
+                  "verify-inventory": common
+                  | {
+                      "licenseInventory",
+                      "stableSupplyChainSbom",
+                      "sbomBinding",
+                      "componentReverseIndex",
+                      "primarySubjectRoot",
+                      "licenseOverrides",
+                      "licenseTextRoot",
+                  },
+              }
+              if phase == "supply-chain-prebuild":
+                  if mode != "prepare-rebuild-comparison" or set(inputs) != common:
+                      raise SystemExit(
+                          "supply-chain prebuild recipe is not the exact receipt-free input set"
+                      )
+              elif mode not in inventory_inputs or not (
+                  set(inputs) == inventory_inputs[mode]
+                  or set(inputs) == inventory_inputs[mode] | {"primaryPayloadManifests"}
+              ):
+                  raise SystemExit("supply-chain inventory intake has the wrong phase inputs")
+
+              prefix = PurePosixPath("build/stable-supply-chain-phase")
+              external_paths = {
+                  "supplyChainPolicy": PurePosixPath(
+                      "tools/release-certification/stable-1.0-supply-chain-policy.json"
+                  ),
+                  "licenseOverrides": PurePosixPath(
+                      "tools/release-certification/stable-1.0-supply-chain-license-overrides.json"
+                  ),
+                  "licenseTextRoot": PurePosixPath("."),
+              }
+              allowed_files = {manifest_path}
+              allowed_directories = []
+              for key, configured in inputs.items():
+                  if not isinstance(configured, str):
+                      raise SystemExit("supply-chain phase input path is malformed")
+                  path = PurePosixPath(configured)
+                  if path.is_absolute() or any(part in {"", ".."} for part in path.parts):
+                      raise SystemExit("supply-chain phase input path is unsafe")
+                  if key in external_paths:
+                      if path != external_paths[key]:
+                          raise SystemExit(f"{key} is not the canonical checked-in path")
+                      continue
+                  try:
+                      relative = path.relative_to(prefix)
+                  except ValueError:
+                      raise SystemExit(
+                          f"{key} is outside the canonical supply-chain phase root"
+                      ) from None
+                  target = output.joinpath(*relative.parts)
+                  if target.is_symlink() or not target.exists():
+                      raise SystemExit(f"supply-chain phase input {key} is missing or unsafe")
+                  if target.is_dir():
+                      allowed_directories.append(target)
+                  elif target.is_file():
+                      allowed_files.add(target)
+                  else:
+                      raise SystemExit(f"supply-chain phase input {key} is not regular")
+
+              reviewed_export = output / "resolved-dependency-export.json"
+              reviewed_snapshot = output / "resolved-dependency-snapshot.json"
+              if any(
+                  path.is_symlink() or not path.is_file()
+                  for path in (reviewed_export, reviewed_snapshot)
+              ):
+                  raise SystemExit(
+                      "supply-chain phase lacks exact resolution export and snapshot"
+                  )
+              allowed_files.update({reviewed_export, reviewed_snapshot})
+              if files != sorted(
+                  path
+                  for path in files
+                  if path in allowed_files
+                  or any(directory in path.parents for directory in allowed_directories)
+              ):
+                  raise SystemExit("supply-chain phase contains an unreferenced file")
+              if phase == "supply-chain-prebuild":
+                  product_suffixes = (
+                      ".jar", ".zip", ".tar", ".tar.gz", ".deb", ".rpm", ".dmg", ".exe"
+                  )
+                  if any(path.name.endswith(product_suffixes) for path in files):
+                      raise SystemExit("supply-chain prebuild recipe contains product bytes")
+          elif phase == "validate-authorization":
               expected = output / "stable-1.0-maintenance-authorization.json"
               if files != [expected]:
                   raise SystemExit("authorization phase must contain exactly one canonical JSON")
@@ -661,7 +806,9 @@ jobs:
           PY
 
       - name: Independently authenticate the exact lifecycle authority chain
-        if: ${{ inputs.phase != 'validate-authorization' }}
+        if: >-
+          ${{ inputs.phase == 'freeze-candidate' ||
+          inputs.phase == 'prepare-authorization' }}
         env:
           INPUT_LIFECYCLE_SOURCE_COMMIT: ${{ inputs.lifecycle_source_commit }}
           GH_TOKEN: ${{ github.token }}
@@ -718,6 +865,7 @@ jobs:
           git diff-files --quiet --
 
       - name: Attest exact phase subject
+        if: ${{ !startsWith(inputs.phase, 'supply-chain-') }}
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-path: >-
@@ -727,9 +875,15 @@ jobs:
               || 'stable-1.0-maintenance.json'
             }}
 
+      - name: Attest every exact supply-chain phase file
+        if: ${{ startsWith(inputs.phase, 'supply-chain-') }}
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: build/stable-maintenance-protected-input-producer/**/*
+
       - name: Upload exact protected input artifact
         id: upload
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: stable-1-0-maintenance-input-${{ inputs.phase }}-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/stable-maintenance-protected-input-producer/

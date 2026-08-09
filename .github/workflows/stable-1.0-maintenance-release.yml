@@ -1310,6 +1310,223 @@ jobs:
             cp -R "$root/protected-inputs/." build/protected-inputs/
           fi
 
+      - name: Determine prospective PR-289 governance activation
+        if: inputs.operation == 'prepare-authorization'
+        id: supply_chain_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_supply_chain_activation.py \
+            tools/release-certification/stable-1.0-supply-chain-policy.json \
+            build/prior-validated-candidate/freeze/stable-1.0-maintenance-candidate-freeze.json)"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable supply-chain activation helper returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate and materialize exact PR-289 promotion handoff
+        if: >-
+          inputs.operation == 'prepare-authorization' &&
+          steps.supply_chain_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+          CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          INPUT_RUN_ID="$(jq -er '.policies.metadata.stableSupplyChainRunId' "$manifest")"
+          INPUT_RUN_ATTEMPT="$(jq -er \
+            '.policies.metadata.stableSupplyChainRunAttempt' "$manifest")"
+          INPUT_ARTIFACT_NAME="$(jq -er \
+            '.policies.metadata.stableSupplyChainArtifactName' "$manifest")"
+          INPUT_ARTIFACT_DIGEST="$(jq -er \
+            '.policies.metadata.stableSupplyChainArtifactDigest' "$manifest")"
+          expected_name="stable-1.0-supply-chain-$INPUT_RELEASE_ID-comparison"
+          expected_workflow="crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml"
+          configured="$(jq -er '.inputs.supplyChainPromotionSummary' "$manifest")"
+          configured_provenance="$(dirname "$configured")/stable-1.0-supply-chain-summary-provenance.json"
+          if [[ ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$configured" \
+                != "build/protected-inputs/supply-chain/stable-1.0-supply-chain-summary.json" \
+                || "$INPUT_ARTIFACT_NAME" != "$expected_name" ]]; then
+            echo "::error::Maintenance manifest does not use the fixed authenticated PR-289 summary location."
+            exit 1
+          fi
+          if [[ -e "$configured" || -L "$configured" \
+                || -e "$configured_provenance" || -L "$configured_provenance" ]]; then
+            echo "::error::Generic maintenance input producer must not supply PR-289 promotion authority."
+            exit 1
+          fi
+          jq -e \
+            --arg run "$INPUT_RUN_ID" \
+            --arg attempt "$INPUT_RUN_ATTEMPT" \
+            --arg name "$INPUT_ARTIFACT_NAME" \
+            --arg digest "$INPUT_ARTIFACT_DIGEST" '
+              .policies.stableSupplyChainGovernance == "required"
+              and .requirements.stableSupplyChain == true
+              and .policies.metadata.stableSupplyChainRunId == $run
+              and .policies.metadata.stableSupplyChainRunAttempt == $attempt
+              and .policies.metadata.stableSupplyChainArtifactName == $name
+              and .policies.metadata.stableSupplyChainArtifactDigest == $digest' \
+            "$manifest" >/dev/null
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg attempt "$INPUT_RUN_ATTEMPT" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(
+              .name == $name and .expired == false and .digest == $digest
+            )] | length == 1' <<< "$artifacts" >/dev/null
+          root="build/stable-supply-chain-promotion-handoff"
+          rm -rf "$root"
+          mkdir -p "$root"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$root"
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" \
+                || "$(find "$root" -type f | wc -l)" -gt 128 \
+                || "$(du -sb "$root" | cut -f1)" -gt 268435456 ]]; then
+            echo "::error::PR-289 promotion handoff is unsafe or exceeds its closed bounds."
+            exit 1
+          fi
+          summary="$root/stable-1.0-supply-chain-summary.json"
+          phase_manifest="$root/manifest.json"
+          if [[ -L "$summary" || ! -f "$summary" \
+                || -L "$phase_manifest" || ! -f "$phase_manifest" ]]; then
+            echo "::error::PR-289 promotion handoff lacks its canonical subjects."
+            exit 1
+          fi
+          gh attestation verify "$summary" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$expected_workflow" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          gh attestation verify "$phase_manifest" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$expected_workflow" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .release.id == $release
+              and .release.version == $build
+              and .policies.candidateSourceCommit == $commit
+              and .commands["stable-supply-chain"].mode == "evaluate-promotion"' \
+            "$phase_manifest" >/dev/null
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --argjson build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .kind == "stable-1.0-supply-chain-promotion-summary"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .mode == "evaluate-promotion"
+              and .status == "pass"
+              and .promotionReady == true
+              and .blockers == []
+              and .waivers == []
+              and .redaction.status == "pass"
+              and .redaction.sideEffectsPerformed == false' "$summary" >/dev/null
+          summary_digest="sha256:$(sha256sum "$summary" | awk '{print $1}')"
+          destination_root="build/protected-inputs/supply-chain"
+          provenance="$configured_provenance"
+          if [[ -L "$destination_root" || -L "$configured" || -L "$provenance" ]]; then
+            echo "::error::Authenticated PR-289 destination contains a symbolic link."
+            exit 1
+          fi
+          mkdir -p "$destination_root"
+          rm -f "$configured" "$provenance"
+          install -m 600 "$summary" "$configured"
+          jq -nS \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-supply-chain.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg workflowCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg runId "$INPUT_RUN_ID" \
+            --arg runAttempt "$INPUT_RUN_ATTEMPT" \
+            --arg releaseId "$INPUT_RELEASE_ID" \
+            --arg buildVersion "$INPUT_BUILD_VERSION" \
+            --arg sourceCommit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifactName "$INPUT_ARTIFACT_NAME" \
+            --arg producerArtifactDigest "$INPUT_ARTIFACT_DIGEST" \
+            --arg summaryByteDigest "$summary_digest" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-supply-chain-promotion-handoff",
+                repository: $repository,
+                workflow: $workflow,
+                workflowCommit: $workflowCommit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                operation: "compare-evaluate",
+                releaseId: $releaseId,
+                buildVersion: $buildVersion,
+                sourceCommit: $sourceCommit,
+                artifactName: $artifactName,
+                producerArtifactDigest: $producerArtifactDigest,
+                summaryFileName: "stable-1.0-supply-chain-summary.json",
+                summaryByteDigest: $summaryByteDigest,
+                attestationSubjectDigest: $summaryByteDigest,
+                attestationVerified: true,
+                denySelfHostedRunners: true,
+                authenticationStatus: "pass",
+                authenticationAlgorithm: "hmac-sha256",
+                authenticationTag: "pending"
+              }' > "$provenance"
+          python3 - "$provenance" <<'PY'
+          import base64
+          import binascii
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, "tools/release-certification")
+          from cryptad_certification.engines.release_certification_core import (
+              STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV,
+              stable_supply_chain_handoff_authentication_tag,
+          )
+
+          path = Path(sys.argv[1])
+          encoded = os.environ.pop(STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV, "")
+          try:
+              key = base64.b64decode(encoded, validate=True)
+          except (ValueError, binascii.Error) as error:
+              raise SystemExit("Stable supply-chain handoff key is invalid") from error
+          if len(key) != 32 or base64.b64encode(key).decode("ascii") != encoded:
+              raise SystemExit("Stable supply-chain handoff key is invalid")
+          handoff = json.loads(path.read_text(encoding="utf-8"))
+          handoff["authenticationTag"] = (
+              stable_supply_chain_handoff_authentication_tag(handoff, key)
+          )
+          path.write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          unset CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64
+          chmod 0600 "$provenance"
+
       - name: Build the trusted Stable catalog verifier
         if: inputs.operation == 'freeze-candidate'
         run: |
@@ -2647,6 +2864,7 @@ jobs:
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
         env:
           CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+          CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
         run: >-
           python3 tools/release-certification/certify.py stable-maintenance
           --manifest build/stable-1.0-maintenance.json
@@ -3267,6 +3485,93 @@ jobs:
           name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
           path: build/stable-maintenance-publication
           digest-mismatch: error
+
+      - name: Determine publication-boundary PR-289 governance activation
+        id: publication_supply_chain_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_supply_chain_activation.py \
+            tools/release-certification/stable-1.0-supply-chain-policy.json \
+            build/stable-maintenance-publication/authenticated-inputs/maintenance-candidate-freeze.json)"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable supply-chain activation helper returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
+      - name: Reauthenticate exact PR-289 promotion producer before publication
+        if: steps.publication_supply_chain_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          protected="build/stable-maintenance-publication/protected-inputs/supply-chain"
+          summary="$protected/stable-1.0-supply-chain-summary.json"
+          provenance="$protected/stable-1.0-supply-chain-summary-provenance.json"
+          if [[ -L "$summary" || ! -f "$summary" \
+                || -L "$provenance" || ! -f "$provenance" ]]; then
+            echo "::error::Authorized candidate lacks its authenticated PR-289 promotion handoff."
+            exit 1
+          fi
+          run_id="$(jq -er .runId "$provenance")"
+          run_attempt="$(jq -er .runAttempt "$provenance")"
+          artifact_name="$(jq -er .artifactName "$provenance")"
+          artifact_digest="$(jq -er .producerArtifactDigest "$provenance")"
+          summary_digest="sha256:$(sha256sum "$summary" | awk '{print $1}')"
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg name "stable-1.0-supply-chain-$INPUT_RELEASE_ID-comparison" \
+            --arg digest "$summary_digest" '
+              .repository == "crypta-network/cryptad"
+              and .workflow
+                == ("crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml@" + $commit)
+              and .workflowCommit == $commit
+              and .operation == "compare-evaluate"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .artifactName == $name
+              and .summaryFileName == "stable-1.0-supply-chain-summary.json"
+              and .summaryByteDigest == $digest
+              and .attestationSubjectDigest == $digest
+              and .attestationVerified == true
+              and .denySelfHostedRunners == true
+              and .authenticationStatus == "pass"
+              and .authenticationAlgorithm == "hmac-sha256"
+              and (.authenticationTag | test("^sha256:[0-9a-f]{64}$"))' \
+            "$provenance" >/dev/null
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg attempt "$run_attempt" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$artifact_name" --arg digest "$artifact_digest" '
+            [.artifacts[] | select(
+              .name == $name and .expired == false and .digest == $digest
+            )] | length == 1' <<< "$artifacts" >/dev/null
+          gh attestation verify "$summary" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow \
+              crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
 
       - name: Reauthenticate current Stable vulnerability ledger before publication
         env:

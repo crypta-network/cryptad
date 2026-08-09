@@ -6,6 +6,7 @@ import copy
 import datetime as dt
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Iterable
@@ -95,8 +96,60 @@ from .stable_1_0_maintenance_core import (
     successor_baseline_identity,
 )
 from .stable_1_0_rc_core import ValidationState
+from .release_certification_core import (
+    STABLE_SUPPLY_CHAIN_HANDOFF_AUTHENTICATION_ALGORITHM,
+    stable_supply_chain_handoff_authentication_errors,
+)
+from .stable_1_0_supply_chain import EVIDENCE_IDS as SUPPLY_CHAIN_EVIDENCE_IDS
+from .stable_1_0_supply_chain_activation import supply_chain_governance_active
+from .stable_1_0_supply_chain_core import (
+    POLICY_FILE as SUPPLY_CHAIN_POLICY_FILE,
+    PUBLICATION_ROLE_FILES,
+    SUMMARY_SCHEMA as SUPPLY_CHAIN_SUMMARY_SCHEMA,
+    canonical_json_bytes as supply_chain_canonical_json_bytes,
+    semantic_digest as supply_chain_semantic_digest,
+    sha256_digest as supply_chain_sha256_digest,
+)
 
 _PASS_REDACTION = {"status": "pass", "findingCount": 0, "findings": []}
+SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID = "stable-supply-chain.publication"
+SUPPLY_CHAIN_PROMOTION_EVIDENCE_IDS = tuple(
+    evidence_id
+    for evidence_id in SUPPLY_CHAIN_EVIDENCE_IDS
+    if evidence_id != SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID
+)
+SUPPLY_CHAIN_HANDOFF_FILE = "stable-1.0-supply-chain-summary-provenance.json"
+SUPPLY_CHAIN_SUMMARY_FILE = "stable-1.0-supply-chain-summary.json"
+SUPPLY_CHAIN_WORKFLOW = (
+    "crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml"
+)
+_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_RUN_ID_RE = re.compile(r"[1-9][0-9]*")
+_SUPPLY_CHAIN_HANDOFF_FIELDS = frozenset(
+    {
+        "schemaVersion",
+        "kind",
+        "repository",
+        "workflow",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "operation",
+        "releaseId",
+        "buildVersion",
+        "sourceCommit",
+        "artifactName",
+        "producerArtifactDigest",
+        "summaryFileName",
+        "summaryByteDigest",
+        "attestationSubjectDigest",
+        "attestationVerified",
+        "denySelfHostedRunners",
+        "authenticationStatus",
+        "authenticationAlgorithm",
+        "authenticationTag",
+    }
+)
 LIFECYCLE_PENDING_TRANSITION_FILE = (
     "stable-1.0-support-lifecycle-pending-maintenance-transition.json"
 )
@@ -198,6 +251,325 @@ def _schema_gate(
     remediation: str,
 ) -> None:
     add_blockers(state, issue_id, validate_schema(value, schema), remediation)
+
+
+def _supply_chain_governance_active(
+    candidate: Candidate, supply_policy: dict[str, Any] | None
+) -> bool:
+    """Return whether PR-289 handoff authentication applies to this frozen candidate."""
+
+    return supply_chain_governance_active(candidate.frozen_at, supply_policy)
+
+
+def _supply_chain_handoff_errors(
+    context: RunContext,
+    summary: LoadedJson,
+    candidate: Candidate,
+    *,
+    required: bool,
+) -> list[str]:
+    """Validate the exact protected producer identity that materialized the summary."""
+
+    path = summary.path.with_name(SUPPLY_CHAIN_HANDOFF_FILE)
+    if path.is_symlink() or not path.is_file():
+        return (
+            ["Stable supply-chain summary lacks its protected producer handoff"]
+            if required
+            else []
+        )
+    try:
+        if path.stat(follow_symlinks=False).st_size > 64 * 1024:
+            return ["Stable supply-chain producer handoff exceeds its size bound"]
+        raw = path.read_bytes()
+        value = read_json(path)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return ["Stable supply-chain producer handoff is unreadable or malformed"]
+    if not isinstance(value, dict):
+        return ["Stable supply-chain producer handoff is not a JSON object"]
+    errors: list[str] = []
+    canonical = (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+        + b"\n"
+    )
+    if raw != canonical:
+        errors.append("Stable supply-chain producer handoff bytes are not canonical")
+    if set(value) != _SUPPLY_CHAIN_HANDOFF_FIELDS:
+        errors.append("Stable supply-chain producer handoff fields are not closed")
+
+    release_id = context.manifest.release.release_id
+    build_version = context.manifest.release.version or ""
+    source_commit = str(candidate.source.get("commit", ""))
+    expected_workflow = f"{SUPPLY_CHAIN_WORKFLOW}@{source_commit}"
+    expected_artifact_name = f"stable-1.0-supply-chain-{release_id}-comparison"
+    expected: dict[str, Any] = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-supply-chain-promotion-handoff",
+        "repository": "crypta-network/cryptad",
+        "workflow": expected_workflow,
+        "workflowCommit": source_commit,
+        "operation": "compare-evaluate",
+        "releaseId": release_id,
+        "buildVersion": build_version,
+        "sourceCommit": source_commit,
+        "artifactName": expected_artifact_name,
+        "summaryFileName": SUPPLY_CHAIN_SUMMARY_FILE,
+        "summaryByteDigest": summary.digest,
+        "attestationSubjectDigest": summary.digest,
+        "attestationVerified": True,
+        "denySelfHostedRunners": True,
+        "authenticationStatus": "pass",
+        "authenticationAlgorithm": STABLE_SUPPLY_CHAIN_HANDOFF_AUTHENTICATION_ALGORITHM,
+    }
+    for field, expected_value in expected.items():
+        if value.get(field) != expected_value:
+            errors.append(f"Stable supply-chain producer handoff {field} differs")
+    if _RUN_ID_RE.fullmatch(str(value.get("runId", ""))) is None:
+        errors.append("Stable supply-chain producer handoff runId is invalid")
+    if _RUN_ID_RE.fullmatch(str(value.get("runAttempt", ""))) is None:
+        errors.append("Stable supply-chain producer handoff runAttempt is invalid")
+    if _DIGEST_RE.fullmatch(str(value.get("producerArtifactDigest", ""))) is None:
+        errors.append("Stable supply-chain producer handoff artifact digest is invalid")
+    errors.extend(
+        stable_supply_chain_handoff_authentication_errors(
+            value,
+            label="Stable supply-chain producer handoff",
+        )
+    )
+
+    metadata = context.manifest.policies.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    metadata_bindings = {
+        "stableSupplyChainRunId": "runId",
+        "stableSupplyChainRunAttempt": "runAttempt",
+        "stableSupplyChainArtifactName": "artifactName",
+        "stableSupplyChainArtifactDigest": "producerArtifactDigest",
+    }
+    for metadata_field, handoff_field in metadata_bindings.items():
+        if str(metadata.get(metadata_field, "")) != str(value.get(handoff_field, "")):
+            errors.append(
+                f"Stable supply-chain producer handoff differs from manifest {metadata_field}"
+            )
+    return errors
+
+
+def _supply_chain_promotion_errors(
+    context: RunContext,
+    summary: LoadedJson,
+    candidate: Candidate,
+    predecessor: Predecessor,
+) -> list[str]:
+    """Authenticate the non-waivable PR-289 summary for this exact successor."""
+
+    value = summary.value
+    errors = validate_schema(value, SUPPLY_CHAIN_SUMMARY_SCHEMA)
+    if not _canonical_json_input(summary.path, value):
+        errors.append("Stable supply-chain promotion summary bytes are not canonical")
+    if value.get("summaryDigest") != supply_chain_semantic_digest(
+        value, "summaryDigest"
+    ):
+        errors.append("Stable supply-chain promotion summary digest is invalid")
+
+    policy_path = (
+        context.workspace_root / "tools/release-certification" / SUPPLY_CHAIN_POLICY_FILE
+    )
+    try:
+        supply_policy = read_json(policy_path)
+    except (OSError, ValueError):
+        supply_policy = None
+    if not isinstance(supply_policy, dict):
+        errors.append("checked-in Stable supply-chain policy is missing or malformed")
+    elif value.get("policyDigest") != supply_policy.get("policyDigest"):
+        errors.append("Stable supply-chain summary binds a different policy")
+    errors.extend(
+        _supply_chain_handoff_errors(
+            context,
+            summary,
+            candidate,
+            required=_supply_chain_governance_active(candidate, supply_policy),
+        )
+    )
+
+    expected_candidate_digest = supply_chain_sha256_digest(
+        supply_chain_canonical_json_bytes(candidate.input_value)
+    )
+    package_projection = {
+        "packages": sorted(
+            [
+                {
+                    "packageKey": row.get("packageKey"),
+                    "digest": row.get("digest"),
+                }
+                for row in candidate.assets
+            ],
+            key=lambda row: str(row.get("packageKey")),
+        )
+    }
+    expected_package_digest = supply_chain_sha256_digest(
+        supply_chain_canonical_json_bytes(package_projection)
+    )
+    expected_bindings: dict[str, Any] = {
+        "releaseId": context.manifest.release.release_id,
+        "buildVersion": int(context.manifest.release.version or "0"),
+        "tag": f"v{context.manifest.release.version}",
+        "sourceCommit": candidate.source.get("commit"),
+        "sourceRef": candidate.source.get("ref"),
+        "candidateIdentityDigest": expected_candidate_digest,
+        "candidateFreezeDigest": candidate.freeze_digest,
+        "productDigest": candidate.product_digest,
+        "predecessorReleaseId": predecessor.release_id,
+        "predecessorBuildVersion": int(predecessor.build_version),
+        "predecessorProductDigest": predecessor.product_digest,
+        "packageMatrixDigest": expected_package_digest,
+    }
+    for field, expected in expected_bindings.items():
+        if value.get(field) != expected:
+            errors.append(f"Stable supply-chain summary {field} differs")
+
+    vulnerability_loaded = load_json_input(
+        context, "stableVulnerabilitySummary", required=False
+    )
+    if vulnerability_loaded is not None:
+        vulnerability_digest = supply_chain_semantic_digest(
+            vulnerability_loaded.value, "summaryDigest"
+        )
+        if (
+            vulnerability_loaded.value.get("summaryDigest") != vulnerability_digest
+            or value.get("vulnerabilitySummaryDigest") != vulnerability_digest
+        ):
+            errors.append(
+                "Stable supply-chain summary binds a different vulnerability summary"
+            )
+    elif value.get("vulnerabilitySummaryDigest") is not None:
+        errors.append(
+            "Stable supply-chain summary names vulnerability state without its authenticated input"
+        )
+
+    if (
+        value.get("mode") != "evaluate-promotion"
+        or value.get("status") != "pass"
+        or value.get("promotionReady") is not True
+        or value.get("blockers") != []
+        or value.get("waivers") != []
+    ):
+        errors.append("Stable supply-chain summary does not permit promotion")
+    evidence = value.get("evidence")
+    evidence = evidence if isinstance(evidence, list) else []
+    evidence_by_id = {
+        row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
+    }
+    if len(evidence_by_id) != len(evidence):
+        errors.append("Stable supply-chain summary contains duplicate evidence ids")
+    if not set(SUPPLY_CHAIN_PROMOTION_EVIDENCE_IDS).issubset(evidence_by_id):
+        errors.append("Stable supply-chain summary evidence coverage is incomplete")
+    if set(evidence_by_id) - set(SUPPLY_CHAIN_EVIDENCE_IDS):
+        errors.append("Stable supply-chain summary contains an unknown evidence id")
+    publication_row = evidence_by_id.get(SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID)
+    if isinstance(publication_row, dict) and publication_row.get("status") == "pass":
+        errors.append(
+            "Stable supply-chain promotion summary falsely claims publication passed"
+        )
+    for evidence_id in SUPPLY_CHAIN_PROMOTION_EVIDENCE_IDS:
+        row = evidence_by_id.get(evidence_id)
+        if (
+            not isinstance(row, dict)
+            or row.get("status") != "pass"
+            or row.get("nonWaivable") is not True
+        ):
+            errors.append(f"Stable supply-chain evidence is not passing: {evidence_id}")
+    for field in (
+        "selectedSubjectInventoryDigest",
+        "vulnerabilityReverseIndexDigest",
+        "resolvedDependencySnapshotDigest",
+        "componentInventoryDigest",
+        "subjectInventoryDigest",
+        "sbomDigest",
+        "licenseInventoryDigest",
+        "buildMaterialsDigest",
+        "primaryBuilderReceiptDigest",
+        "verifierBuilderReceiptDigest",
+        "comparisonPlanDigest",
+        "reproducibilityResultDigest",
+    ):
+        if not isinstance(value.get(field), str):
+            errors.append(f"Stable supply-chain summary lacks {field}")
+    redaction = value.get("redaction")
+    if (
+        not isinstance(redaction, dict)
+        or redaction.get("status") != "pass"
+        or redaction.get("sideEffectsPerformed") is not False
+    ):
+        errors.append("Stable supply-chain summary failed redaction or side-effect checks")
+    publication_policy = supply_policy.get("publicationPolicy", {})
+    required_roles = publication_policy.get("requiredRoles")
+    if required_roles != list(PUBLICATION_ROLE_FILES):
+        errors.append("Stable supply-chain publication role vocabulary differs")
+    artifacts = value.get("artifacts")
+    artifacts = artifacts if isinstance(artifacts, list) else []
+    artifacts_by_name = {
+        row.get("name"): row for row in artifacts if isinstance(row, dict)
+    }
+    if len(artifacts_by_name) != len(artifacts):
+        errors.append("Stable supply-chain summary contains duplicate artifact names")
+    expected_artifact_roles = set(PUBLICATION_ROLE_FILES) - {"supply-chain-summary"}
+    if not expected_artifact_roles.issubset(artifacts_by_name):
+        errors.append("Stable supply-chain summary omits a public companion artifact")
+    return errors
+
+
+def _supply_chain_companion_assets(
+    context: RunContext, summary: Any | None
+) -> list[dict[str, Any]]:
+    """Bind the only supply-chain assets allowed beside maintenance-owned Release assets."""
+
+    if summary is None:
+        return []
+    policy_path = (
+        context.workspace_root
+        / "tools/release-certification"
+        / SUPPLY_CHAIN_POLICY_FILE
+    )
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    publication = policy.get("publicationPolicy", {})
+    roles = publication.get("requiredRoles")
+    base = publication.get("immutableBaseUri")
+    artifacts = summary.value.get("artifacts")
+    artifacts = artifacts if isinstance(artifacts, list) else []
+    artifacts_by_name = {
+        row.get("name"): row for row in artifacts if isinstance(row, dict)
+    }
+    if (
+        roles != list(PUBLICATION_ROLE_FILES)
+        or not isinstance(base, str)
+        or len(artifacts_by_name) != len(artifacts)
+        or any(
+            role != "supply-chain-summary" and role not in artifacts_by_name
+            for role in PUBLICATION_ROLE_FILES
+        )
+    ):
+        return []
+    rows: list[dict[str, Any]] = []
+    tag = f"v{context.manifest.release.version}"
+    for role, file_name in PUBLICATION_ROLE_FILES.items():
+        if role == "supply-chain-summary":
+            digest = summary.digest
+            size = summary.path.stat().st_size
+        else:
+            artifact = artifacts_by_name[role]
+            digest = artifact.get("digest")
+            size = artifact.get("size")
+        rows.append(
+            {
+                "role": role,
+                "fileName": file_name,
+                "digest": digest,
+                "sizeBytes": size,
+                "publicUri": f"{base}/{tag}/{file_name}",
+            }
+        )
+    return rows
 
 
 def _targets(context: RunContext, state: ValidationState) -> tuple[dict[str, Any], str]:
@@ -1772,6 +2144,7 @@ def _publication_plan(
     backport_release_train_digest: str,
     authorized: bool,
     state: ValidationState,
+    supply_chain_summary: Any | None,
 ) -> dict[str, Any]:
     catalog = candidate.input_value.get("stableCatalog", {})
     value = {
@@ -1828,6 +2201,9 @@ def _publication_plan(
         "publicationState": "publication-authorized" if authorized and not state.blockers else "validated",
         "redaction": dict(_PASS_REDACTION),
     }
+    companion_assets = _supply_chain_companion_assets(context, supply_chain_summary)
+    if companion_assets:
+        value["supplyChainCompanionAssets"] = companion_assets
     _schema_gate(
         state,
         "stable-maintenance.publication-conflict",
@@ -2875,6 +3251,20 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         vulnerability_errors,
         "Provide the exact authenticated case summary and operation-bound incident scope.",
     )
+    supply_chain_summary = None
+    if not closing_follow_up:
+        supply_chain_summary = load_json_input(
+            context, "supplyChainPromotionSummary"
+        )
+        assert supply_chain_summary
+        add_blockers(
+            state,
+            "stable-maintenance.supply-chain",
+            _supply_chain_promotion_errors(
+                context, supply_chain_summary, candidate, predecessor
+            ),
+            "Provide the exact authenticated PR-289 promotion summary for this candidate, predecessor, package matrix, and vulnerability inventory.",
+        )
     if lifecycle_presence_errors:
         add_blockers(
             state,
@@ -3185,6 +3575,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         str(backport_release_train_digest),
         authorization_valid,
         state,
+        supply_chain_summary,
     )
     write_json(out / PUBLICATION_PLAN_FILE, plan)
     publication_state = "validated" if not authorization_valid else "publication-authorized"

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-package-extraction-evidence-v1",
+  "title": "Crypta Stable 1.0 normalized package extraction evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "builderRole", "subjectKey", "packageType", "bindingMethod", "publishedSubjectDigest", "payloadManifestDigest", "signatureReceiptDigest", "notarizationReceiptDigest", "extractionTool", "stagedPayloadDigest", "embeddedStagedPayloadDigest", "extractedPayloadDigest", "stagedPayloadContainedExactly", "normalizationEvidence", "evidenceDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-package-extraction-evidence"},
+    "builderRole": {"enum": ["candidate-producer", "independent-verifier"]},
+    "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+    "packageType": {"enum": ["deb", "rpm", "dmg", "exe", "flatpak", "snap"]},
+    "bindingMethod": {"enum": ["exact-staged-payload", "macos-code-signature-normalized"]},
+    "publishedSubjectDigest": {"$ref": "#/$defs/digest"},
+    "payloadManifestDigest": {"$ref": "#/$defs/digest"},
+    "signatureReceiptDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "notarizationReceiptDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "extractionTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "runnerImageDigest"],
+      "properties": {
+        "name": {"enum": ["dpkg-deb", "rpm2cpio-cpio", "hdiutil", "7zip-msiexec"]},
+        "version": {"type": "string", "minLength": 1, "maxLength": 256},
+        "runnerImageDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "stagedPayloadDigest": {"$ref": "#/$defs/digest"},
+    "embeddedStagedPayloadDigest": {"$ref": "#/$defs/digest"},
+    "extractedPayloadDigest": {"$ref": "#/$defs/digest"},
+    "stagedPayloadContainedExactly": {"type": "boolean"},
+    "normalizationEvidence": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/candidateMacosCodeSignatureNormalization"},
+        {"$ref": "#/$defs/verifierMacosCodeSignatureNormalization"}
+      ]
+    },
+    "evidenceDigest": {"$ref": "#/$defs/digest"}
+  },
+  "oneOf": [
+    {
+      "required": ["packageType", "bindingMethod", "stagedPayloadContainedExactly", "normalizationEvidence"],
+      "properties": {
+        "packageType": {"enum": ["deb", "rpm", "exe", "flatpak", "snap"]},
+        "bindingMethod": {"const": "exact-staged-payload"},
+        "stagedPayloadContainedExactly": {"const": true},
+        "normalizationEvidence": {"type": "null"}
+      }
+    },
+    {
+      "required": ["builderRole", "packageType", "bindingMethod", "signatureReceiptDigest", "notarizationReceiptDigest", "stagedPayloadContainedExactly", "normalizationEvidence"],
+      "properties": {
+        "builderRole": {"const": "candidate-producer"},
+        "packageType": {"const": "dmg"},
+        "bindingMethod": {"const": "macos-code-signature-normalized"},
+        "signatureReceiptDigest": {"$ref": "#/$defs/digest"},
+        "notarizationReceiptDigest": {"$ref": "#/$defs/digest"},
+        "stagedPayloadContainedExactly": {"const": false},
+        "normalizationEvidence": {"$ref": "#/$defs/candidateMacosCodeSignatureNormalization"}
+      }
+    },
+    {
+      "required": ["builderRole", "packageType", "bindingMethod", "signatureReceiptDigest", "notarizationReceiptDigest", "stagedPayloadContainedExactly", "normalizationEvidence"],
+      "properties": {
+        "builderRole": {"const": "independent-verifier"},
+        "packageType": {"const": "dmg"},
+        "bindingMethod": {"const": "macos-code-signature-normalized"},
+        "signatureReceiptDigest": {"type": "null"},
+        "notarizationReceiptDigest": {"type": "null"},
+        "stagedPayloadContainedExactly": {"const": true},
+        "normalizationEvidence": {"$ref": "#/$defs/verifierMacosCodeSignatureNormalization"}
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "nullableDigest": {
+      "oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+    },
+    "nullableModeClass": {
+      "oneOf": [
+        {"enum": ["directory", "executable", "read-only", "symlink"]},
+        {"type": "null"}
+      ]
+    },
+    "nullablePathValue": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 1024},
+        {"type": "null"}
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\x00\\r\\n]+$"
+    },
+    "macosCodeObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "stagedDigest", "embeddedDigest", "strippedDigest", "strippedSize", "stagedSigned", "embeddedSigned", "rawBytesIdentical", "normalizedBytesIdentical"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "stagedDigest": {"$ref": "#/$defs/digest"},
+        "embeddedDigest": {"$ref": "#/$defs/digest"},
+        "strippedDigest": {"$ref": "#/$defs/digest"},
+        "strippedSize": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+        "stagedSigned": {"type": "boolean"},
+        "embeddedSigned": {"type": "boolean"},
+        "rawBytesIdentical": {"type": "boolean"},
+        "normalizedBytesIdentical": {"const": true}
+      }
+    },
+    "macosSignatureMaterial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "structure", "change", "stagedDigest", "embeddedDigest", "stagedSize", "embeddedSize", "stagedModeClass", "embeddedModeClass", "stagedSymlinkTarget", "embeddedSymlinkTarget"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "structure": {"enum": ["bundle-code-directory", "bundle-code-resources-file", "legacy-code-resources-symlink"]},
+        "change": {"enum": ["added-to-embedded", "removed-from-embedded", "changed", "unchanged"]},
+        "stagedDigest": {"$ref": "#/$defs/nullableDigest"},
+        "embeddedDigest": {"$ref": "#/$defs/nullableDigest"},
+        "stagedSize": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
+        "embeddedSize": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
+        "stagedModeClass": {"$ref": "#/$defs/nullableModeClass"},
+        "embeddedModeClass": {"$ref": "#/$defs/nullableModeClass"},
+        "stagedSymlinkTarget": {"$ref": "#/$defs/nullablePathValue"},
+        "embeddedSymlinkTarget": {"$ref": "#/$defs/nullablePathValue"}
+      }
+    },
+    "candidateMacosCodeSignatureNormalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalizationRuleId", "normalizationRuleVersion", "codesignTool", "mountedAppSigningVerified", "releaseBytesUnmodified", "nonCodeEntriesIdentical", "signatureMaterialAccounted", "frozenSubjectDigest", "frozenSigningReceiptDigest", "frozenNotarizationReceiptDigest", "normalizedStagedPayloadDigest", "normalizedEmbeddedPayloadDigest", "codeObjects", "signatureMaterial"],
+      "properties": {
+        "normalizationRuleId": {"const": "crypta-dmg-payload-v2"},
+        "normalizationRuleVersion": {"const": 2},
+        "codesignTool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "executableDigest", "runnerImageDigest"],
+          "properties": {
+            "name": {"const": "apple-system-codesign"},
+            "executableDigest": {"$ref": "#/$defs/digest"},
+            "runnerImageDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "mountedAppSigningVerified": {"const": true},
+        "releaseBytesUnmodified": {"const": true},
+        "nonCodeEntriesIdentical": {"const": true},
+        "signatureMaterialAccounted": {"const": true},
+        "frozenSubjectDigest": {"$ref": "#/$defs/digest"},
+        "frozenSigningReceiptDigest": {"$ref": "#/$defs/digest"},
+        "frozenNotarizationReceiptDigest": {"$ref": "#/$defs/digest"},
+        "normalizedStagedPayloadDigest": {"$ref": "#/$defs/digest"},
+        "normalizedEmbeddedPayloadDigest": {"$ref": "#/$defs/digest"},
+        "codeObjects": {
+          "type": "array", "minItems": 1, "maxItems": 4096, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/macosCodeObject"}
+        },
+        "signatureMaterial": {
+          "type": "array", "minItems": 1, "maxItems": 4096, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/macosSignatureMaterial"}
+        }
+      }
+    },
+    "verifierMacosCodeSignatureNormalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalizationRuleId", "normalizationRuleVersion", "codesignTool", "mountedAppSigningVerified", "releaseBytesUnmodified", "nonCodeEntriesIdentical", "signatureMaterialAccounted", "frozenSubjectDigest", "frozenSigningReceiptDigest", "frozenNotarizationReceiptDigest", "normalizedStagedPayloadDigest", "normalizedEmbeddedPayloadDigest", "codeObjects", "signatureMaterial"],
+      "properties": {
+        "normalizationRuleId": {"const": "crypta-dmg-payload-v2"},
+        "normalizationRuleVersion": {"const": 2},
+        "codesignTool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "executableDigest", "runnerImageDigest"],
+          "properties": {
+            "name": {"const": "apple-system-codesign"},
+            "executableDigest": {"$ref": "#/$defs/digest"},
+            "runnerImageDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "mountedAppSigningVerified": {"const": false},
+        "releaseBytesUnmodified": {"const": true},
+        "nonCodeEntriesIdentical": {"const": true},
+        "signatureMaterialAccounted": {"const": true},
+        "frozenSubjectDigest": {"type": "null"},
+        "frozenSigningReceiptDigest": {"type": "null"},
+        "frozenNotarizationReceiptDigest": {"type": "null"},
+        "normalizedStagedPayloadDigest": {"$ref": "#/$defs/digest"},
+        "normalizedEmbeddedPayloadDigest": {"$ref": "#/$defs/digest"},
+        "codeObjects": {
+          "type": "array", "minItems": 0, "maxItems": 4096, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/macosCodeObject"}
+        },
+        "signatureMaterial": {
+          "type": "array", "minItems": 0, "maxItems": 4096, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/macosSignatureMaterial"}
+        }
+      }
+    }
+  }
+}

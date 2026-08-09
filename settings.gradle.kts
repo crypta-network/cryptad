@@ -1,12 +1,22 @@
 pluginManagement {
+  val toml = file("gradle/libs.versions.toml").readText()
+  fun version(key: String): String {
+    val pattern = Regex("""^\s*${Regex.escape(key)}\s*=\s*\"([^\"]+)\"""", RegexOption.MULTILINE)
+    return pattern.find(toml)?.groupValues?.get(1)
+      ?: error("Version '$key' not found in libs.versions.toml")
+  }
+
   repositories {
     gradlePluginPortal()
     mavenCentral()
   }
+  plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version version("foojayResolver")
+  }
 }
 
 // Configure repositories for Java toolchain auto-provisioning (fixes Gradle 10 deprecation)
-plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") }
 
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)

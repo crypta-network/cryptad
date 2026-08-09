@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ COMMAND_NAMES = {
     "stable-backport",
     "stable-maintenance",
     "stable-lifecycle",
+    "stable-supply-chain",
     "stable-vulnerability",
     "multi-node-beta",
     "security-response",
@@ -43,6 +45,7 @@ REQUIREMENT_FIELDS = {
     "sandboxProviderTests",
     "stableReadiness",
     "stableVulnerability",
+    "stableSupplyChain",
     "thirdPartyIntake",
 }
 INPUT_FIELDS = {
@@ -147,6 +150,29 @@ INPUT_FIELDS = {
     "stableVulnerabilityPublicationReceipt",
     "stableVulnerabilityPublicObservationReceipt",
     "stableVulnerabilityClosureEvidence",
+    "supplyChainPolicy",
+    "resolvedDependencySnapshot",
+    "componentInventory",
+    "releaseSubjectInventory",
+    "licenseInventory",
+    "stableSupplyChainSbom",
+    "sbomBinding",
+    "buildMaterials",
+    "primaryBuilderReceipt",
+    "verifierBuilderReceipt",
+    "primarySubjectRoot",
+    "verifierSubjectRoot",
+    "primaryPayloadManifests",
+    "verifierPayloadManifests",
+    "rebuildComparisonPlan",
+    "reproducibilityResult",
+    "supplyChainPromotionSummary",
+    "supplyChainPublicationPlan",
+    "supplyChainPublicationReceipt",
+    "supplyChainPublicObservation",
+    "componentReverseIndex",
+    "licenseOverrides",
+    "licenseTextRoot",
     "catalogSecurityPublicationReceipt",
     "keyRevocationOrRotationReceipt",
     "stableCatalogOperations",
@@ -180,6 +206,7 @@ POLICY_FIELDS = {
     "publicationIntent",
     "stableRcFreezeMode",
     "stableVulnerabilityGovernance",
+    "stableSupplyChainGovernance",
     "lifecycleDescriptorPublicUri",
     "latestMaintenancePointerPublicUri",
 }
@@ -318,6 +345,10 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         "refreeze",
     }:
         raise ManifestError("policies.stableRcFreezeMode is invalid")
+    if "stableSupplyChainGovernance" in policies and policies[
+        "stableSupplyChainGovernance"
+    ] != "required":
+        raise ManifestError("policies.stableSupplyChainGovernance is invalid")
     if "releaseClass" in policies and policies["releaseClass"] not in {
         "maintenance",
         "security-hotfix",
@@ -381,7 +412,7 @@ def _validate_policies(value: Any) -> dict[str, Any]:
 
 def _validate_execution(value: Any) -> dict[str, Any]:
     execution = _mapping(value, "execution")
-    allowed = EXECUTION_BOOLEAN_FIELDS | {"timeoutSeconds"}
+    allowed = EXECUTION_BOOLEAN_FIELDS | {"evaluationClock", "timeoutSeconds"}
     unknown = sorted(set(execution) - allowed)
     if unknown:
         raise ManifestError(f"unknown execution fields: {', '.join(unknown)}")
@@ -395,6 +426,24 @@ def _validate_execution(value: Any) -> dict[str, Any]:
     timeout = execution.get("timeoutSeconds")
     if timeout is not None and (not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1):
         raise ManifestError("execution.timeoutSeconds must be a positive integer")
+    evaluation_clock = execution.get("evaluationClock")
+    if evaluation_clock is not None:
+        if (
+            not isinstance(evaluation_clock, str)
+            or len(evaluation_clock) > 32
+            or not evaluation_clock.endswith("Z")
+        ):
+            raise ManifestError(
+                "execution.evaluationClock must be a bounded second-precision UTC timestamp"
+            )
+        try:
+            parsed_clock = dt.datetime.fromisoformat(evaluation_clock[:-1] + "+00:00")
+        except ValueError as exc:
+            raise ManifestError("execution.evaluationClock is malformed") from exc
+        if parsed_clock.tzinfo is None or parsed_clock.microsecond:
+            raise ManifestError(
+                "execution.evaluationClock must be a bounded second-precision UTC timestamp"
+            )
     return execution
 
 

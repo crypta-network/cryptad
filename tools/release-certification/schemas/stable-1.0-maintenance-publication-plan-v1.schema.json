@@ -39,6 +39,7 @@
     "knownLimitationsDeltaDigest": {"$ref": "#/$defs/digest"},
     "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
     "assets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/asset"}},
+    "supplyChainCompanionAssets": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/supplyChainCompanionAsset"}},
     "stableCatalogTarget": {"$ref": "#/$defs/catalogTarget"},
     "coreUpdateTarget": {"$ref": "#/$defs/coreUpdateTarget"},
     "sideEffectsPerformed": {"const": false},
@@ -60,6 +61,17 @@
         "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
         "digest": {"$ref": "#/$defs/digest"},
         "sizeBytes": {"type": "integer", "minimum": 1},
+        "publicUri": {"type": "string", "format": "uri"}
+      }
+    },
+    "supplyChainCompanionAsset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "fileName", "digest", "sizeBytes", "publicUri"],
+      "properties": {
+        "role": {"enum": ["build-materials", "component-inventory", "component-reverse-index", "license-inventory", "reproducibility-report", "release-subject-inventory", "sbom", "supply-chain-summary"]},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sizeBytes": {"type": "integer", "minimum": 1, "maximum": 1000000000},
         "publicUri": {"type": "string", "format": "uri"}
       }
     },

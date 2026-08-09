@@ -59,6 +59,7 @@ Each run writes:
   stable-readiness/
   stable-rc/
   stable-ga/
+  stable-supply-chain/
   stable-maintenance/
   stable-lifecycle/
 ```
@@ -221,6 +222,65 @@ archive redaction, and every required redaction result must pass before publicat
 
 See [the tooling README](../tools/release-certification/README.md) for the command tree, manifest
 schema, evidence envelope v2, and focused self-test commands.
+
+## Stable 1.0 supply-chain component
+
+`stable-supply-chain` is the side-effect-free certification engine for the component inventory,
+SBOM, license, isolated rebuild, promotion, and publication-verification gates for Stable 1.0
+maintenance and security-hotfix candidates. It consumes the strict
+Gradle resolution snapshot, exact release-subject inventory, license evidence, producer and
+verifier receipts, payload manifests, the maintenance freeze, and the redaction-safe protected
+vulnerability summary. Its common envelope is under `stable-supply-chain/`; canonical native
+records are under `stable-supply-chain/artifacts/legacy/`.
+
+The closed modes keep trust boundaries separate: `assemble-inventory`, `verify-inventory`,
+`prepare-rebuild-comparison`, `compare-rebuilds`, `evaluate-promotion`, and
+`verify-publication`. A passing inventory does not assert reproducibility. A passing rebuild
+comparison does not authorize maintenance publication. Publication verification consumes an
+existing plan, receipt, and independent public observation and performs no remote mutation.
+The `evaluate-promotion` summary therefore requires the complete prepublication evidence set but
+cannot report `stable-supply-chain.publication` as passing; that row becomes passing only in a
+successful `verify-publication` result.
+
+The protected manual workflow uses separate producer and verifier jobs. Both use Java 25, the
+Gradle wrapper, and `exportStableSupplyChainResolution` plus
+`verifyStableSupplyChainResolution`. Protected builds first authenticate the phase bundle's exact
+reviewed raw resolution export and canonical snapshot, then pass their confined paths through
+`stableSupplyChainExpectedResolutionExport` and
+`stableSupplyChainExpectedResolutionSnapshot`. The verifier recipe allowlist excludes producer
+candidate bytes, so the verifier still finishes its own build before such bytes can become
+available. `stable-maintenance` requires the resulting candidate-bound promotion summary for every
+current release and security-hotfix path except the historical follow-up-closure operation, which
+changes no release bytes.
+
+Release certification does not accept a self-digested local promotion summary. Beside the fixed
+summary filename it requires the canonical
+`stable-1.0-supply-chain-summary-provenance.json` produced after the protected consumer resolves
+the exact successful `compare-evaluate` run, run attempt, fixed artifact name and Actions artifact
+digest and verifies the summary's GitHub/Sigstore attestation against the supply-chain workflow at
+the candidate source commit. That protected step then authenticates the closed provenance record
+with a domain-separated HMAC-SHA256 tag under the dedicated, environment-scoped
+`CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64` key. The certification consumer requires the same
+32-byte key, verifies the tag rather than trusting the record's attestation booleans, and compares
+the summary commit and immutable `commit:<sha>` source ref with a direct `git rev-parse HEAD` of the
+workspace being certified. Caller metadata and `--skip-git-metadata` cannot substitute for that
+observation. New maintenance candidates bind those coordinates in protected manifest metadata.
+The PR-289 policy applies that handoff requirement prospectively from
+`governanceActivation.candidateFrozenAtNotBefore`; existing pre-activation maintenance records are
+not changed.
+
+Workflow orchestration adds one explicit `publish` operation outside the engine. Only its protected
+`stable-1.0-supply-chain-publication` job has `contents: write` and the environment-scoped
+`LEUMOR_GITHUB_TOKEN`; all other jobs remain mutation-free. Publish authenticates the exact
+promotion handoff, source, annotated tag, existing Release, every input attestation, and the
+reviewed `cryptad_stable_maintenance_backend:supply_chain_factory` wheel. It accepts exactly the
+eight policy roles, including `release-subject-inventory`, creates only absent assets, verifies
+identical existing assets as `verified-existing`, and never deletes or overwrites a conflict. Its
+attested handoff contains the exact plan and summary plus a publication receipt and fresh public
+observation for the independent `verify-publication` run.
+
+See [Stable 1.0 supply-chain inventory and reproducible-build
+governance](stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md).
 
 ## Stable 1.0 maintenance component
 

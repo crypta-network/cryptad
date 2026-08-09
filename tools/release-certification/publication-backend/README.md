@@ -65,6 +65,59 @@ The distinct `CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT` protected secret is re
 publication environment. It identifies the narrowly scoped compare-and-swap deployment capability;
 the read-only verification job receives no insert material.
 
+## Stable supply-chain evidence assets
+
+The wheel also exports
+`cryptad_stable_maintenance_backend:supply_chain_factory`. The protected Stable supply-chain
+workflow uses this entry point only after the existing maintenance publication has created the
+exact `v<build-number>` GitHub Release. The backend cannot create or change a tag, Release body,
+catalog, CoreUpdater descriptor, or latest-maintenance pointer.
+The adapter supplies only the explicitly authenticated `leumor` GitHub token already required by
+the maintenance publication boundary.
+
+One closed supply-chain publication plan carries exactly these roles and filenames:
+
+| Role | Filename |
+| --- | --- |
+| `build-materials` | `stable-1.0-build-materials.json` |
+| `component-inventory` | `stable-1.0-component-inventory.json` |
+| `component-reverse-index` | `stable-1.0-component-reverse-index.json` |
+| `license-inventory` | `stable-1.0-license-inventory.json` |
+| `reproducibility-report` | `stable-1.0-reproducibility-report.json` |
+| `release-subject-inventory` | `stable-1.0-release-subject-inventory.json` |
+| `sbom` | `stable-1.0-sbom.spdx.json` |
+| `supply-chain-summary` | `stable-1.0-supply-chain-summary.json` |
+
+Before the first upload, the backend requires canonical plan bytes, a valid self-digest, the exact
+integer build and `v<build-number>` tag, the exact source commit, the eight-role set, immutable
+GitHub Release download URIs, and confined regular local files with the planned size and SHA-256.
+The protected adapter must authenticate the backend wheel, workflow commit, and attestation before
+constructing the producer identity passed to the backend.
+
+For each role, an absent asset is uploaded once and recorded as `created`. An existing asset is
+recorded as `verified-existing` only after the backend downloads it through the GitHub API and
+matches its exact URI, size, and SHA-256. A duplicate name, mismatched URI, different byte stream,
+or incomplete role set fails before any missing asset is uploaded. The backend never deletes or
+overwrites conflicting bytes.
+
+The maintenance plan records these files in the separate
+`supplyChainCompanionAssets` suffix. A maintenance retry authenticates any present companion bytes
+and continues to upload only maintenance-owned `assets`; partial or complete companion publication
+does not invalidate that retry. Unknown Release assets still conflict, and companion presence does
+not replace the supply-chain receipt or public observation.
+
+The returned publication receipt and later public observation preserve the policy-declared role
+order and use canonical JSON self-digests. Observation performs no mutation: it re-fetches all
+eight published assets and binds the authenticated observer identity, observation time, and exact
+publication-receipt digest.
+The offline backend tests use an in-memory transport and never contact GitHub:
+
+```bash
+python3 -m unittest discover \
+  -s tools/release-certification/publication-backend/tests \
+  -p 'test_*.py' -v
+```
+
 For lifecycle state, the configured public request URI serves the canonical descriptor bytes.
 Immediately before a lifecycle insertion, the read-only
 `observe_latest_maintenance_tip` operation fetches the separately authorization-bound maintenance
