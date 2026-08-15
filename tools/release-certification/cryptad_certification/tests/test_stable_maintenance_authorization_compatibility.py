@@ -104,6 +104,35 @@ class StableMaintenanceAuthorizationCompatibilityTest(unittest.TestCase):
             self.assertFalse(authorized)
             self.assertTrue(state.blockers)
 
+    def test_new_authorization_requires_explicit_governance_state_semantically(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            context, _candidate, expected, authorization = _authorization_fixture(
+                root,
+                release_class="maintenance",
+            )
+            authorization.pop("dependencyVulnerabilityGovernanceActive")
+            write_json(root / "legacy-authorization.json", authorization)
+            state = ValidationState()
+
+            with mock.patch.object(
+                stable_1_0_maintenance,
+                "_now",
+                return_value=fixtures.NOW,
+            ):
+                _value, _digest_value, authorized = _authorization(
+                    context,
+                    expected,
+                    fixtures._policy(),  # noqa: SLF001
+                    state,
+                    prepare=False,
+                )
+
+            self.assertFalse(authorized)
+            self.assertTrue(state.blockers)
+
     def test_legacy_authorization_can_close_exact_published_follow_up(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -113,6 +142,7 @@ class StableMaintenanceAuthorizationCompatibilityTest(unittest.TestCase):
             )
             legacy = copy.deepcopy(authorization)
             legacy.pop("backportReleaseTrainDigest")
+            legacy.pop("dependencyVulnerabilityGovernanceActive")
             legacy_path = root / "legacy-authorization.json"
             write_json(legacy_path, legacy)
             loaded = LoadedJson(

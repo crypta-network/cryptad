@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-dependency-osv-inventory-anchor-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "repositoryIdentity", "stableMilestone", "initialized", "anchorSequence", "inventory", "origin", "currentArtifact", "artifactExpiresAt", "renewalRequiredAt", "activatedAt", "previousAnchorDigest", "anchorDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-dependency-osv-inventory-anchor"},
+    "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "stableMilestone": {"const": "Stable 1.0"},
+    "initialized": {"type": "boolean"},
+    "anchorSequence": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+    "inventory": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["releaseId", "buildVersion", "sourceCommit", "policyDigest", "inventoryDigest", "inventoryByteDigest"],
+          "properties": {
+            "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+            "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+            "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "policyDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "inventoryDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "inventoryByteDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        }
+      ]
+    },
+    "origin": {"$ref": "#/$defs/nullableArtifact"},
+    "currentArtifact": {"$ref": "#/$defs/nullableArtifact"},
+    "artifactExpiresAt": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableTimestamp"},
+    "renewalRequiredAt": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableTimestamp"},
+    "activatedAt": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableTimestamp"},
+    "previousAnchorDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "anchorDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "nullableArtifact": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["workflow", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest"],
+          "properties": {
+            "workflow": {"enum": [".github/workflows/stable-1.0-supply-chain.yml", ".github/workflows/stable-1.0-dependency-osv-inventory-retention.yml"]},
+            "workflowCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "runId": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "runAttempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+            "artifactName": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+            "artifactDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        }
+      ]
+    }
+  }
+}

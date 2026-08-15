@@ -1,0 +1,225 @@
+name: Stable 1.0 Dependency Authority Activation Queue
+
+on:
+  workflow_run:
+    workflows:
+      - Stable 1.0 Dependency Intelligence Producer
+      - Stable 1.0 Dependency OSV Inventory Retention
+      - Stable 1.0 Dependency Vulnerability Evaluation
+      - Stable 1.0 Dependency Vulnerability Disposition Authorization
+      - Stable 1.0 Dependency Vulnerability Ledger Retention
+    types: [completed]
+  schedule:
+    - cron: '17,47 * * * *'
+
+concurrency:
+  group: stable-1-0-vulnerability-ledger
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  discover-completed-success-producers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      source-candidates: ${{ steps.runs.outputs.source-candidates }}
+      inventory-candidates: ${{ steps.runs.outputs.inventory-candidates }}
+      tip-candidates: ${{ steps.runs.outputs.tip-candidates }}
+    steps:
+      - name: Discover all retained completed-success activation proposals
+        id: runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = crypta-network/cryptad
+          candidate_dir="$RUNNER_TEMP/dependency-authority-candidates"
+          mkdir -p "$candidate_dir"
+
+          retained_candidates() {
+            local workflow="$1" pattern="$2" output="$3"
+            local page pages count run run_id attempt created artifacts
+            : > "$output"
+            for page in 1 2 3 4 5; do
+              pages="$(gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?status=success&per_page=100&page=$page")"
+              count="$(jq -er '.workflow_runs | length' <<<"$pages")"
+              while IFS= read -r run; do
+                run_id="$(jq -er '.id | select(type == "number" and . > 0)' <<<"$run")"
+                attempt="$(jq -er '.run_attempt | select(type == "number" and . > 0)' <<<"$run")"
+                created="$(jq -er '.created_at | select(type == "string")' <<<"$run")"
+                artifacts="$(gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
+                if jq -e --arg pattern "$pattern" '
+                  [.artifacts[]
+                    | select(.expired == false and (.name | test($pattern)))]
+                  | length > 0
+                ' <<<"$artifacts" >/dev/null; then
+                  printf '%s\t%s\t%s\n' "$created" "$run_id" "$attempt" >> "$output"
+                fi
+              done < <(jq -c --arg repository "$GITHUB_REPOSITORY" '
+                [.workflow_runs[]
+                  | select(
+                      .status == "completed"
+                      and .conclusion == "success"
+                      and .head_repository.full_name == $repository
+                      and (.head_sha | type == "string" and test("^[0-9a-f]{40}$"))
+                      and (.head_branch | type == "string" and test("^(main|develop|release/[A-Za-z0-9][A-Za-z0-9._-]{0,127}|hotfix/[A-Za-z0-9][A-Za-z0-9._-]{0,127})$"))
+                    )]
+                | sort_by(.created_at, .id) | reverse[]
+              ' <<<"$pages")
+              [[ "$count" -eq 100 ]] || break
+              if [[ "$page" -eq 5 ]]; then
+                echo "::error::Completed-success proposal discovery exceeded its five-page retention bound for $workflow."
+                return 1
+              fi
+            done
+            LC_ALL=C sort -u -k1,1 -k2,2n -k3,3n "$output" -o "$output"
+          }
+
+          retained_candidates \
+            stable-1.0-dependency-intelligence-producer.yml \
+            '^stable-1-0-dependency-intelligence-(github-public-advisories|osv-public|reviewed-vendor-records)-activation-proposal-[1-9][0-9]*-[1-9][0-9]*$' \
+            "$candidate_dir/source"
+          retained_candidates \
+            stable-1.0-dependency-osv-inventory-retention.yml \
+            '^stable-1-0-dependency-osv-inventory-retention-[1-9][0-9]*-[1-9][0-9]*$' \
+            "$candidate_dir/inventory"
+          retained_candidates \
+            stable-1.0-dependency-vulnerability-evaluation.yml \
+            '^stable-1-0-dependency-evaluation-prepare-remediation-[A-Za-z0-9][A-Za-z0-9._-]{0,127}-[1-9][0-9]*-[1-9][0-9]*-[1-9][0-9]*$' \
+            "$candidate_dir/tip-evaluation"
+          retained_candidates \
+            stable-1.0-dependency-vulnerability-disposition-authorization.yml \
+            '^stable-1-0-dependency-vulnerability-disposition-[1-9][0-9]*-[1-9][0-9]*-[1-9][0-9]*$' \
+            "$candidate_dir/tip-disposition"
+          retained_candidates \
+            stable-1.0-dependency-vulnerability-ledger-retention.yml \
+            '^stable-1-0-dependency-vulnerability-ledger-retention-[1-9][0-9]*-[1-9][0-9]*$' \
+            "$candidate_dir/tip-retention"
+
+          emit_candidates() {
+            local prefix="$1" path="$2"
+            local candidates
+            candidates="$(jq -Rsc '
+              split("\n")
+              | map(
+                  select(length > 0)
+                  | split("\t")
+                  | {
+                      run_id: .[1],
+                      run_attempt: .[2]
+                    }
+                )
+            ' "$path")"
+            printf '%s-candidates=%s\n' "$prefix" "$candidates" >> "$GITHUB_OUTPUT"
+          }
+          emit_candidates source "$candidate_dir/source"
+          emit_candidates inventory "$candidate_dir/inventory"
+          LC_ALL=C sort -u -k1,1 -k2,2n -k3,3n "$candidate_dir"/tip-* \
+            > "$candidate_dir/tip"
+          emit_candidates tip "$candidate_dir/tip"
+
+  activate-retained-proposals:
+    needs: discover-completed-success-producers
+    if: >-
+      needs.discover-completed-success-producers.outputs.source-candidates != '[]'
+      || needs.discover-completed-success-producers.outputs.inventory-candidates != '[]'
+      || needs.discover-completed-success-producers.outputs.tip-candidates != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch and await every retained proposal in authority order
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_CANDIDATES: ${{ needs.discover-completed-success-producers.outputs.source-candidates }}
+          INVENTORY_CANDIDATES: ${{ needs.discover-completed-success-producers.outputs.inventory-candidates }}
+          TIP_CANDIDATES: ${{ needs.discover-completed-success-producers.outputs.tip-candidates }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = crypta-network/cryptad
+          test "$GITHUB_REF" = refs/heads/develop
+          test "${{ github.ref_protected }}" = true
+          test "${{ github.workflow_sha }}" = "$GITHUB_SHA"
+          test "${{ github.workflow_ref }}" = "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-dependency-authority-activation.yml@$GITHUB_REF"
+          controller_started="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          sequence=0
+
+          dispatch_and_wait() {
+            local workflow="$1" run_id="$2" run_attempt="$3"
+            local request title runs child_id run status conclusion
+            sequence=$((sequence + 1))
+            request="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$sequence-$run_id-$run_attempt"
+            title="Stable dependency authority finalizer $request"
+            gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/dispatches" \
+              --raw-field ref=develop \
+              --raw-field "inputs[producer_run_id]=$run_id" \
+              --raw-field "inputs[producer_run_attempt]=$run_attempt" \
+              --raw-field "inputs[activation_request]=$request" \
+              --raw-field "inputs[drainer_run_id]=$GITHUB_RUN_ID" \
+              --raw-field "inputs[drainer_run_attempt]=$GITHUB_RUN_ATTEMPT"
+
+            child_id=""
+            for _poll in $(seq 1 240); do
+              runs="$(gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?event=workflow_dispatch&branch=develop&per_page=100")"
+              child_id="$(jq -er \
+                --arg title "$title" \
+                --arg started "$controller_started" '
+                  [.workflow_runs[]
+                    | select(
+                        .display_title == $title
+                        and .created_at >= $started
+                        and .head_branch == "develop"
+                      )]
+                  | select(length == 1)
+                  | .[0].id
+                ' <<<"$runs" 2>/dev/null || true)"
+              [[ "$child_id" =~ ^[1-9][0-9]*$ ]] && break
+              sleep 5
+            done
+            [[ "$child_id" =~ ^[1-9][0-9]*$ ]]
+
+            for _poll in $(seq 1 240); do
+              run="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$child_id")"
+              status="$(jq -er '.status | select(type == "string")' <<<"$run")"
+              if [[ "$status" == completed ]]; then
+                conclusion="$(jq -er '.conclusion | select(type == "string")' <<<"$run")"
+                test "$conclusion" = success
+                return 0
+              fi
+              test "$status" = requested -o "$status" = queued -o "$status" = in_progress -o "$status" = waiting -o "$status" = pending
+              sleep 5
+            done
+            echo "::error::Timed out awaiting protected authority finalizer $title."
+            return 1
+          }
+
+          drain_candidates() {
+            local workflow="$1" candidates="$2" candidate run_id run_attempt
+            while IFS= read -r candidate; do
+              run_id="$(jq -er '.run_id | select(type == "string" and test("^[1-9][0-9]*$"))' <<<"$candidate")"
+              run_attempt="$(jq -er '.run_attempt | select(type == "string" and test("^[1-9][0-9]*$"))' <<<"$candidate")"
+              dispatch_and_wait "$workflow" "$run_id" "$run_attempt"
+            done < <(jq -ce '.[]' <<<"$candidates")
+          }
+
+          drain_candidates \
+            stable-1.0-dependency-intelligence-activation.yml \
+            "$SOURCE_CANDIDATES"
+          drain_candidates \
+            stable-1.0-dependency-osv-inventory-activation.yml \
+            "$INVENTORY_CANDIDATES"
+          drain_candidates \
+            stable-1.0-dependency-vulnerability-tip-activation.yml \
+            "$TIP_CANDIDATES"

@@ -16,7 +16,7 @@ import textwrap
 import types
 import unittest
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +25,7 @@ from cryptad_certification.engines import stable_1_0_maintenance
 from cryptad_certification.engines.stable_1_0_supply_chain_activation import (
     supply_chain_governance_active,
 )
+from cryptad_certification.engines.stable_1_0_supply_chain_core import semantic_digest
 
 ROOT = Path(__file__).resolve().parents[4]
 RC_RELEASE = ROOT / ".github/workflows/stable-1.0-rc-release.yml"
@@ -32,6 +33,15 @@ GA_PROMOTION = ROOT / ".github/workflows/stable-1.0-ga-promotion.yml"
 WINDOWS = ROOT / ".github/workflows/stable-1.0-maintenance-windows-package-producer.yml"
 INPUTS = ROOT / ".github/workflows/stable-1.0-maintenance-input-producer.yml"
 RELEASE = ROOT / ".github/workflows/stable-1.0-maintenance-release.yml"
+DEPENDENCY_VULNERABILITY_EVALUATION = (
+    ROOT
+    / ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml"
+)
+DEPENDENCY_VULNERABILITY_ACTIVATION = (
+    ROOT
+    / "tools/release-certification/protected/"
+    "stable_dependency_vulnerability_activation.py"
+)
 LIFECYCLE_INPUTS = (
     ROOT / ".github/workflows/stable-1.0-support-lifecycle-input-producer.yml"
 )
@@ -189,6 +199,111 @@ def _release_lifecycle_authority_presence_script() -> str:
     return textwrap.dedent(workflow[script_start:script_end])
 
 
+def _activation_candidate_freeze(frozen_at: str) -> dict[str, object]:
+    digest = "sha256:" + "a" * 64
+    commit = "b" * 40
+    assets = []
+    for role, file_name in (
+        ("product", "cryptad-301.tar.gz"),
+        ("stable-catalog", "stable-catalog.json"),
+        ("stable-catalog-signature", "stable-catalog.json.sig"),
+    ):
+        assets.append(
+            {
+                "role": role,
+                "fileName": file_name,
+                "digest": digest,
+                "sizeBytes": 1,
+                "packageKey": None,
+                "os": None,
+                "arch": None,
+                "producerArchitecture": None,
+                "packageType": None,
+                "publicAsset": True,
+                "signingStatus": "pass",
+                "signingReceiptDigest": digest,
+                "notarizationStatus": "not-applicable",
+                "notarizationReceiptDigest": None,
+            }
+        )
+    return {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-maintenance-candidate-freeze",
+        "generatedAt": frozen_at,
+        "frozenAt": frozen_at,
+        "stableMilestone": "1.0",
+        "releaseId": "stable-1.0-maintenance-301",
+        "buildVersion": "301",
+        "releaseClass": "maintenance",
+        "source": {
+            "branch": "release/301",
+            "ref": "commit:" + commit,
+            "commit": commit,
+            "baseBranch": "develop",
+            "baseCommit": commit,
+            "clean": True,
+            "treeState": "clean",
+            "branchHeadVerified": True,
+            "immutableRefVerified": True,
+            "currentPublishedMainBaseVerified": True,
+            "sourceTreeDigest": digest,
+        },
+        "toolchain": {
+            "javaVersion": "25",
+            "javaMajorVersion": 25,
+            "gradleVersion": "9.0",
+            "gradleWrapperDigest": digest,
+            "dependencyVerificationDigest": digest,
+            "dependencyVerificationStatus": "pass",
+            "buildLogicDigest": digest,
+            "buildTasks": ["assembleCryptadDist"],
+            "productionSigning": True,
+            "testSigning": False,
+        },
+        "producer": {
+            "system": "github-actions",
+            "repository": "crypta-network/cryptad",
+            "workflowPath": ".github/workflows/stable-1.0-maintenance-release.yml",
+            "workflowCommit": commit,
+            "runId": "1",
+            "runAttempt": 1,
+            "runnerEnvironment": "github-hosted",
+            "producerIdentityReceiptDigest": digest,
+            "sourceRefReceiptDigest": digest,
+            "buildReceiptDigest": digest,
+            "authenticationStatus": "pass",
+        },
+        "predecessorObservation": {
+            "releaseId": "stable-1.0-ga",
+            "buildVersion": "300",
+            "productDigest": digest,
+            "baselineDigest": digest,
+            "publicationReceiptDigest": digest,
+            "latestPublishedPointerDigest": None,
+            "observedAt": frozen_at,
+            "status": "latest-published",
+        },
+        "stableCatalogVerification": {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-maintenance-catalog-signature-verification",
+            "catalogDigest": digest,
+            "signatureDigest": digest,
+            "signingKeyId": "stable-catalog-key",
+            "trustedKeyRegistryDigest": digest,
+            "signatureAlgorithm": "Ed25519",
+            "verifier": "network.crypta.platform.appcatalog.AppCatalogVerifier",
+            "cryptographicVerificationStatus": "pass",
+            "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+        },
+        "buildCount": 1,
+        "rebuildPerformed": False,
+        "checksumsDigest": digest,
+        "assets": assets,
+        "assetSetDigest": digest,
+        "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+    }
+
+
 class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
     def test_supply_chain_handoff_activation_is_prospective_and_fail_closed(
         self,
@@ -210,6 +325,147 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         )
         self.assertTrue(supply_chain_governance_active("malformed", policy))
         self.assertTrue(supply_chain_governance_active("2026-08-04T23:59:59Z", None))
+
+    def test_dependency_vulnerability_activation_authenticates_policy_before_decision(
+        self,
+    ) -> None:
+        policy = json.loads(
+            (
+                ROOT
+                / "tools/release-certification/"
+                "stable-1.0-dependency-vulnerability-policy.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            policy_path = root / "policy.json"
+            freeze_path = root / "freeze.json"
+            effective_at = datetime.fromisoformat(
+                policy["effectiveAt"].replace("Z", "+00:00")
+            )
+            historical_at = (effective_at - timedelta(seconds=1)).isoformat().replace(
+                "+00:00", "Z"
+            )
+
+            def write_policy(value: dict[str, object]) -> None:
+                policy_path.write_text(
+                    json.dumps(value, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+
+            def decide(frozen_at: str) -> subprocess.CompletedProcess[str]:
+                freeze_path.write_text(
+                    json.dumps(
+                        _activation_candidate_freeze(frozen_at),
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return subprocess.run(
+                    [
+                        sys.executable,
+                        str(DEPENDENCY_VULNERABILITY_ACTIVATION),
+                        str(policy_path),
+                        str(freeze_path),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+
+            write_policy(policy)
+            historical = decide(historical_at)
+            self.assertEqual(0, historical.returncode, historical.stderr)
+            self.assertEqual("false\n", historical.stdout)
+            activated = decide(policy["effectiveAt"])
+            self.assertEqual(0, activated.returncode, activated.stderr)
+            self.assertEqual("true\n", activated.stdout)
+            authenticated_timestamp = subprocess.run(
+                [
+                    sys.executable,
+                    str(DEPENDENCY_VULNERABILITY_ACTIVATION),
+                    str(policy_path),
+                    "--authenticated-frozen-at",
+                    policy["effectiveAt"],
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                0, authenticated_timestamp.returncode, authenticated_timestamp.stderr
+            )
+            self.assertEqual("true\n", authenticated_timestamp.stdout)
+
+            normalized_policy = json.loads(json.dumps(policy))
+            normalized_policy["effectiveAt"] = effective_at.astimezone(
+                timezone(timedelta(hours=-5))
+            ).isoformat()
+            normalized_policy["policyDigest"] = semantic_digest(
+                normalized_policy,
+                "policyDigest",
+            )
+            write_policy(normalized_policy)
+            normalized = decide(policy["effectiveAt"])
+            self.assertEqual(0, normalized.returncode, normalized.stderr)
+            self.assertEqual("true\n", normalized.stdout)
+
+            self_digest_invalid = json.loads(json.dumps(policy))
+            self_digest_invalid["effectiveAt"] = "2099-01-01T00:00:00Z"
+            write_policy(self_digest_invalid)
+            unauthenticated = decide(
+                (effective_at + timedelta(seconds=1)).isoformat().replace(
+                    "+00:00", "Z"
+                )
+            )
+            self.assertEqual(2, unauthenticated.returncode)
+            self.assertEqual("", unauthenticated.stdout)
+            self.assertIn("policyDigest is invalid", unauthenticated.stderr)
+
+            digest_valid_divergence = json.loads(json.dumps(policy))
+            digest_valid_divergence["effectiveAt"] = "2099-01-01T00:00:00Z"
+            digest_valid_divergence["policyDigest"] = semantic_digest(
+                digest_valid_divergence,
+                "policyDigest",
+            )
+            write_policy(digest_valid_divergence)
+            divergent = decide(policy["effectiveAt"])
+            self.assertEqual(2, divergent.returncode)
+            self.assertEqual("", divergent.stdout)
+            self.assertIn("activation timestamps differ", divergent.stderr)
+
+            unknown_policy = json.loads(json.dumps(policy))
+            unknown_policy["unknownActivationOverride"] = True
+            unknown_policy["policyDigest"] = semantic_digest(
+                unknown_policy,
+                "policyDigest",
+            )
+            write_policy(unknown_policy)
+            unknown = decide(policy["effectiveAt"])
+            self.assertEqual(2, unknown.returncode)
+            self.assertEqual("", unknown.stdout)
+            self.assertIn("violates its closed schema", unknown.stderr)
+
+            malformed_policy = json.loads(json.dumps(policy))
+            malformed_policy["governanceActivation"] = []
+            malformed_policy["policyDigest"] = semantic_digest(
+                malformed_policy,
+                "policyDigest",
+            )
+            write_policy(malformed_policy)
+            malformed = decide(policy["effectiveAt"])
+            self.assertEqual(2, malformed.returncode)
+            self.assertEqual("", malformed.stdout)
+            self.assertIn("violates its closed schema", malformed.stderr)
+
+            policy_path.write_bytes(b" " * (1024 * 1024 + 1))
+            oversized = decide(policy["effectiveAt"])
+            self.assertEqual(2, oversized.returncode)
+            self.assertEqual("", oversized.stdout)
+            self.assertIn("empty or oversized", oversized.stderr)
 
     def test_release_authenticates_exact_supply_chain_promotion_handoff(self) -> None:
         workflow = RELEASE.read_text(encoding="utf-8")
@@ -282,6 +538,397 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             "stableSupplyChainArtifactDigest",
         ):
             self.assertIn(field, metadata)
+
+    def test_dependency_vulnerability_mutation_boundaries_are_prospective_and_current_tip_bound(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "Determine publication-boundary PR-290 governance activation", workflow
+        )
+        self.assertIn(
+            "Determine baseline-activation PR-290 governance activation", workflow
+        )
+        self.assertIn(
+            "steps.publication_dependency_vulnerability_activation.outputs.active == 'true'",
+            workflow,
+        )
+        self.assertIn(
+            "steps.baseline_dependency_vulnerability_activation.outputs.active == 'true'",
+            workflow,
+        )
+        self.assertEqual(
+            3,
+            workflow.count(
+                "tools/release-certification/protected/"
+                "stable_dependency_vulnerability_activation.py"
+            ),
+        )
+        self.assertNotIn(
+            "effective_at=\"$(jq -er .effectiveAt "
+            "tools/release-certification/"
+            "stable-1.0-dependency-vulnerability-policy.json)\"",
+            workflow,
+        )
+        self.assertEqual(
+            5,
+            workflow.count(
+                "stable_dependency_vulnerability_actions_tip.py verify-current"
+            ),
+        )
+        ledger_secret = (
+            "CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}"
+        )
+        self.assertEqual(5, workflow.count(ledger_secret))
+        self.assertEqual(
+            3,
+            workflow.count(
+                "stable_dependency_intelligence_actions_lineage.py verify-current-status"
+            ),
+        )
+        self.assertEqual(
+            2,
+            workflow.count(
+                "stable_dependency_intelligence_actions_lineage.py verify-current-summary"
+            ),
+        )
+        lineage_secret = (
+            "CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}"
+        )
+        self.assertEqual(5, workflow.count(lineage_secret))
+        self.assertEqual(5, workflow.count("now(dt.timezone.utc) >= valid_until"))
+        self.assertNotIn(
+            'if [[ ! -e "$summary" && ! -e "$provenance" ]]; then', workflow
+        )
+        preparation = workflow.index(
+            "Recheck dependency intelligence age and durable tip before authorization preparation"
+        )
+        validation = workflow.index(
+            "Validate exact frozen candidate without publication", preparation
+        )
+        segment = workflow[preparation:validation]
+        self.assertIn(
+            "steps.dependency_vulnerability_activation.outputs.active == 'true'",
+            segment,
+        )
+        self.assertIn(
+            "stable_dependency_vulnerability_evaluation_handoff_errors", segment
+        )
+        self.assertIn(
+            "stable_dependency_vulnerability_actions_tip.py verify-current", segment
+        )
+        self.assertIn(
+            "stable_dependency_intelligence_actions_lineage.py verify-current-status",
+            segment,
+        )
+
+        publication_start = workflow.index(
+            "      - name: Publish or idempotently verify exact bytes"
+        )
+        publication_end = workflow.index("\n      - name:", publication_start + 8)
+        publication = workflow[publication_start:publication_end]
+        publication_remote = publication.index("current_branch_commit=\"$(gh api")
+        publication_tip = publication.index(
+            "stable_dependency_vulnerability_actions_tip.py verify-current"
+        )
+        publication_lineage = publication.index(
+            "stable_dependency_intelligence_actions_lineage.py verify-current-status"
+        )
+        publication_expiry = publication.index(
+            "dependency-vulnerability promotion expired before publication mutation"
+        )
+        publication_boundary = publication.index(
+            'marker="build/stable-maintenance-publication-side-effect-started"'
+        )
+        self.assertLess(publication_remote, publication_tip)
+        self.assertLess(publication_tip, publication_lineage)
+        self.assertLess(publication_lineage, publication_expiry)
+        self.assertLess(publication_expiry, publication_boundary)
+        self.assertIn(
+            "DEPENDENCY_VULNERABILITY_ACTIVE: "
+            "${{ steps.publication_dependency_vulnerability_activation.outputs.active }}",
+            publication,
+        )
+
+        activation_start = workflow.index(
+            "      - name: Compare-and-swap latest-published pointer"
+        )
+        activation_end = workflow.index("\n      - name:", activation_start + 8)
+        activation = workflow[activation_start:activation_end]
+        activation_remote = activation.index("current_branch_commit=\"$(gh api")
+        activation_tip = activation.index(
+            "stable_dependency_vulnerability_actions_tip.py verify-current"
+        )
+        activation_lineage = activation.index(
+            "stable_dependency_intelligence_actions_lineage.py verify-current-summary"
+        )
+        activation_expiry = activation.rindex(
+            "dependency-vulnerability promotion expired before baseline activation"
+        )
+        activation_boundary = activation.index(
+            'activation_marker="build/stable-maintenance-baseline-activation-started"'
+        )
+        self.assertLess(activation_remote, activation_tip)
+        self.assertLess(activation_tip, activation_lineage)
+        self.assertLess(activation_lineage, activation_expiry)
+        self.assertLess(activation_expiry, activation_boundary)
+        self.assertIn(
+            "DEPENDENCY_VULNERABILITY_ACTIVE: "
+            "${{ steps.baseline_dependency_vulnerability_activation.outputs.active }}",
+            activation,
+        )
+        final_authentication = workflow.index(
+            "      - name: Authenticate final PR-290 publication verification"
+        )
+        final_download = workflow.index(
+            "      - name: Download final PR-290 publication-verified handoff"
+        )
+        final_recheck = workflow.index(
+            "      - name: Recheck dependency intelligence age and durable tip before baseline activation"
+        )
+        self.assertLess(final_authentication, final_download)
+        self.assertLess(final_download, final_recheck)
+        self.assertLess(final_recheck, activation_start)
+        final_download_end = workflow.index("\n      - name:", final_download + 8)
+        final_download_step = workflow[final_download:final_download_end]
+        self.assertIn(
+            "uses: actions/download-artifact@"
+            "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
+            final_download_step,
+        )
+        self.assertNotIn("uses: actions/download-artifact@v8", final_download_step)
+        final_segment = workflow[final_authentication:activation_start]
+        for expected in (
+            "inputs.protected_inputs_run_id",
+            "inputs.protected_inputs_artifact_name",
+            'path == ".github/workflows/stable-1.0-dependency-vulnerability-publication.yml"',
+            "stable_dependency_vulnerability_handoff_errors",
+            'value.get("mode") != "verify-publication"',
+            "stable_dependency_vulnerability_actions_tip.py verify-current",
+            "stable_dependency_intelligence_actions_lineage.py verify-current-summary",
+            "Baseline activation waits for exact final PR-290 publication verification",
+        ):
+            self.assertIn(expected, final_segment)
+        self.assertNotIn(
+            "stable-1.0-dependency-vulnerability-publication-plan.json",
+            final_segment,
+        )
+        self.assertIn(
+            'dependency_root="build/stable-maintenance-baseline-activation-final-pr290"',
+            activation,
+        )
+        self.assertIn("stable_dependency_vulnerability_handoff_errors", activation)
+        self.assertIn(
+            "stable_dependency_intelligence_actions_lineage.py verify-current-summary",
+            activation,
+        )
+        self.assertNotIn(
+            "stable_dependency_vulnerability_evaluation_handoff_errors", activation
+        )
+
+        dispatch = workflow[
+            workflow.index("  workflow_dispatch:") : workflow.index("\npermissions:")
+        ]
+        self.assertEqual(25, len(re.findall(r"^      [a-z][a-z0-9_]+:$", dispatch, re.M)))
+        self.assertIn(
+            "Post-publication protected inputs must be absent or identify the exact final PR-290 handoff",
+            workflow,
+        )
+
+    def test_dependency_vulnerability_authorization_expiry_heredoc_executes(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+        step_start = workflow.index(
+            "      - name: Recheck dependency intelligence age and durable tip before authorization preparation"
+        )
+        step_end = workflow.index("\n      - name:", step_start + 8)
+        step = workflow[step_start:step_end]
+        match = re.search(r"<<'PY'\n(?P<script>.*?)\n          PY", step, re.DOTALL)
+        self.assertIsNotNone(match)
+        assert match is not None
+        script = textwrap.dedent(match.group("script"))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "cryptad_certification"
+            package.mkdir()
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "stable_dependency_vulnerability_handoff.py").write_text(
+                "def stable_dependency_vulnerability_evaluation_handoff_errors(*args):\n"
+                "    return [], None\n",
+                encoding="utf-8",
+            )
+            summary = root / "summary.json"
+            summary.write_text(
+                json.dumps({"validUntil": "2099-01-01T00:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(root)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-",
+                    str(summary),
+                    "stable-1.0-maintenance-test",
+                    "1",
+                    "a" * 40,
+                ],
+                input=script,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_release_authenticates_exact_dependency_vulnerability_handoff(
+        self,
+    ) -> None:
+        workflow = RELEASE.read_text(encoding="utf-8")
+
+        for expected in (
+            "Determine prospective PR-290 governance activation",
+            "Authenticate and materialize exact PR-290 promotion handoff",
+            'steps.dependency_vulnerability_activation.outputs.active == \'true\'',
+            ".policies.metadata.stableDependencyVulnerabilityRunId",
+            ".policies.metadata.stableDependencyVulnerabilityRunAttempt",
+            ".policies.metadata.stableDependencyVulnerabilityArtifactName",
+            ".policies.metadata.stableDependencyVulnerabilityArtifactDigest",
+            ".policies.metadata.stableDependencyVulnerabilityActionsArtifactDigest",
+            '.path == ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml"',
+            'and (.run_attempt | tostring) == $attempt',
+            "stable-1.0-dependency-vulnerability-summary-provenance.json",
+            '.operation == "evaluate-promotion"',
+            'authenticationStatus: "pass"',
+            'authenticationAlgorithm: "hmac-sha256"',
+            "stable_dependency_vulnerability_evaluation_handoff_errors",
+            ".inputs.dependencyVulnerabilityPromotionSummary = $configured",
+            "PR-290 evaluation handoff differs from its exact four-file contract",
+            "stable-1.0-dependency-vulnerability-publication-plan.json",
+            "stable-1.0-dependency-vulnerability-source-status.json",
+            'install -m 600 "$producer_provenance" "$provenance"',
+            'install -m 600 "$publication_plan" "$configured_plan"',
+            'install -m 600 "$source_status" "$configured_source_status"',
+            '! cmp --silent "$producer_provenance" "$provenance"',
+        ):
+            self.assertIn(expected, workflow)
+        secret_binding = (
+            "CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: "
+            "${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}"
+        )
+        self.assertEqual(workflow.count(secret_binding), 6)
+        producer_start = workflow.index(
+            "      - name: Authenticate and materialize exact PR-290 promotion handoff"
+        )
+        producer_end = workflow.index("\n      - name:", producer_start + 8)
+        producer = workflow[producer_start:producer_end]
+        self.assertIn(secret_binding, producer)
+        self.assertIn('.producerArtifactDigest == $producer_digest', producer)
+        self.assertIn('.summaryByteDigest == $summary_digest', producer)
+        self.assertIn('.attestationSubjectDigest == $summary_digest', producer)
+        self.assertIn(
+            "Generic maintenance inputs must not provide PR-290 promotion authority",
+            producer,
+        )
+        self.assertNotIn("jq -nS", producer)
+        self.assertNotIn("gh attestation verify", producer)
+        self.assertNotIn("phase_manifest", producer)
+        validation_start = workflow.index(
+            "      - name: Validate exact frozen candidate without publication"
+        )
+        validation_end = workflow.index("\n      - name:", validation_start + 8)
+        self.assertIn(secret_binding, workflow[validation_start:validation_end])
+        metadata = json.loads(EXAMPLE.read_text(encoding="utf-8"))["policies"][
+            "metadata"
+        ]
+        for field in (
+            "stableDependencyVulnerabilityRunId",
+            "stableDependencyVulnerabilityRunAttempt",
+            "stableDependencyVulnerabilityArtifactName",
+            "stableDependencyVulnerabilityArtifactDigest",
+            "stableDependencyVulnerabilityActionsArtifactDigest",
+        ):
+            self.assertIn(field, metadata)
+
+    def test_dependency_vulnerability_handoff_is_the_real_four_file_bundle(
+        self,
+    ) -> None:
+        evaluation = DEPENDENCY_VULNERABILITY_EVALUATION.read_text(encoding="utf-8")
+        maintenance = RELEASE.read_text(encoding="utf-8")
+        names = (
+            "stable-1.0-dependency-vulnerability-promotion-summary.json",
+            "stable-1.0-dependency-vulnerability-publication-plan.json",
+            "stable-1.0-dependency-vulnerability-source-status.json",
+            "stable-1.0-dependency-vulnerability-summary-provenance.json",
+        )
+        handoff_start = evaluation.index(
+            '          handoff_root = Path(os.environ["RUNNER_TEMP"]) / "release-handoff"'
+        )
+        handoff_end = evaluation.index("\n          PY", handoff_start)
+        producer = evaluation[handoff_start:handoff_end]
+        consumer_start = maintenance.index(
+            "      - name: Authenticate and materialize exact PR-290 promotion handoff"
+        )
+        consumer_end = maintenance.index("\n      - name:", consumer_start + 8)
+        consumer = maintenance[consumer_start:consumer_end]
+        self.assertIn("promotion_path,", producer)
+        self.assertIn("source_status_path,", producer)
+        self.assertIn("plan_path,", producer)
+        self.assertIn(names[3], producer)
+        for name in names:
+            self.assertIn(name, evaluation)
+            self.assertIn(name, consumer)
+        self.assertIn("path: ${{ runner.temp }}/release-handoff", evaluation)
+        self.assertIn(
+            "name: stable-1.0-dependency-vulnerability-${{ inputs.release_id }}-evaluation",
+            evaluation,
+        )
+        self.assertNotIn("manifest.json", producer)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in names:
+                (root / name).write_text("{}\n", encoding="utf-8")
+            command = """
+              set -euo pipefail
+              root="$1"
+              actual_files="$(
+                find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\\n' \
+                  | LC_ALL=C sort
+              )"
+              expected_files="$(
+                printf '%s\\n' \
+                  stable-1.0-dependency-vulnerability-promotion-summary.json \
+                  stable-1.0-dependency-vulnerability-publication-plan.json \
+                  stable-1.0-dependency-vulnerability-source-status.json \
+                  stable-1.0-dependency-vulnerability-summary-provenance.json \
+                  | LC_ALL=C sort
+              )"
+              test "$actual_files" = "$expected_files"
+            """
+            accepted = subprocess.run(
+                ["bash", "-c", command, "bash", str(root)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            (root / "manifest.json").write_text("{}\n", encoding="utf-8")
+            rejected = subprocess.run(
+                ["bash", "-c", command, "bash", str(root)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertNotEqual(rejected.returncode, 0)
 
     def test_release_materializes_the_required_vulnerability_summary_handoff(
         self,
@@ -928,7 +1575,10 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 predecessor_baseline=predecessor_baseline,
                 evidence_path=evidence_path,
                 evidence=evidence,
-                authorization={"hotfixFollowUpObligationDigest": None},
+                authorization={
+                    "hotfixFollowUpObligationDigest": None,
+                    "dependencyVulnerabilityGovernanceActive": False,
+                },
                 follow_up_obligation_path=None,
                 follow_up_obligation=None,
                 follow_up_closure_path=None,
@@ -1096,6 +1746,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
 
         size = 512 * 1024 * 1024
         plan = {
+            "dependencyVulnerabilityGovernanceActive": False,
             "assets": [
                 {
                     "fileName": "cryptad-301.exe",
@@ -1105,7 +1756,14 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 }
             ]
         }
-        request = types.SimpleNamespace(bundle=types.SimpleNamespace(plan=plan))
+        request = types.SimpleNamespace(
+            bundle=types.SimpleNamespace(
+                plan=plan,
+                authorization={
+                    "dependencyVulnerabilityGovernanceActive": False
+                },
+            )
+        )
         transport = Transport()
         backend = module.StableMaintenanceBackend("offline-test-token", transport)
         release = {"assets": [{"id": 7, "name": "cryptad-301.exe", "size": size}]}
@@ -1129,6 +1787,60 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
         }
         self.assertEqual("conflict", backend._assets_status(request, duplicate))
 
+    def test_publication_backend_treats_omitted_v1_governance_as_historical_false(
+        self,
+    ) -> None:
+        source = str(BACKEND_ROOT / "src")
+        sys.path.insert(0, source)
+        self.addCleanup(lambda: sys.path.remove(source))
+        module = importlib.import_module(
+            "cryptad_stable_maintenance_backend.provider"
+        )
+
+        plan = {
+            "expectedTag": "v301",
+            "assets": [
+                {
+                    "fileName": "cryptad-301.exe",
+                    "sizeBytes": 1,
+                    "digest": module._digest(b"a"),
+                }
+            ],
+        }
+        request = types.SimpleNamespace(
+            bundle=types.SimpleNamespace(plan=plan, authorization={})
+        )
+        release = {
+            "assets": [{"id": 7, "name": "cryptad-301.exe", "size": 1}]
+        }
+
+        class Transport:
+            def digest(self, uri, expected_size, *, headers=None):
+                del uri, headers
+                return 200, expected_size, module._digest(b"a")
+
+        backend = module.StableMaintenanceBackend(
+            "offline-test-token", Transport()
+        )
+
+        self.assertEqual("matching", backend._assets_status(request, release))
+
+        dependency_name = next(
+            iter(module.DEPENDENCY_VULNERABILITY_COMPANION_ASSET_FILES.values())
+        )
+        release["assets"].append(
+            {
+                "id": 8,
+                "name": dependency_name,
+                "size": 1,
+                "browser_download_url": (
+                    "https://github.com/crypta-network/cryptad/releases/"
+                    f"download/v301/{dependency_name}"
+                ),
+            }
+        )
+        self.assertEqual("conflict", backend._assets_status(request, release))
+
     def test_publication_backend_requires_the_deterministic_release_title(self) -> None:
         source = str(BACKEND_ROOT / "src")
         sys.path.insert(0, source)
@@ -1151,7 +1863,13 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 ),
             }
             request = types.SimpleNamespace(
-                bundle=types.SimpleNamespace(plan=plan, legacy=root)
+                bundle=types.SimpleNamespace(
+                    plan=plan,
+                    legacy=root,
+                    authorization={
+                        "dependencyVulnerabilityGovernanceActive": False
+                    },
+                )
             )
             release = {
                 "tag_name": "v301",
@@ -1197,6 +1915,8 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             root = Path(directory)
             names = ("cryptad-301.tar.gz", "cryptad-301.dmg", "cryptad-301.exe")
             plan = {
+                "expectedTag": "v301",
+                "dependencyVulnerabilityGovernanceActive": False,
                 "assets": [
                     {
                         "fileName": name,
@@ -1209,7 +1929,13 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             for name in names:
                 (root / name).write_bytes(b"a")
             request = types.SimpleNamespace(
-                bundle=types.SimpleNamespace(plan=plan, legacy=root)
+                bundle=types.SimpleNamespace(
+                    plan=plan,
+                    legacy=root,
+                    authorization={
+                        "dependencyVulnerabilityGovernanceActive": False
+                    },
+                )
             )
             partial_release = {
                 "id": 301,
@@ -1284,6 +2010,74 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
                 backend._assets_status(request, complete_with_partial_companion),
             )
             plan["supplyChainCompanionAssets"][0]["fileName"] = companion_names[0]
+
+            dependency_names = tuple(
+                module.DEPENDENCY_VULNERABILITY_COMPANION_ASSET_FILES.values()
+            )
+            complete_with_partial_dependency_companion = {
+                "id": 301,
+                "assets": [
+                    {"id": index + 20, "name": name, "size": 1}
+                    for index, name in enumerate(names)
+                ]
+                + [
+                    {
+                        "id": 40,
+                        "name": dependency_names[0],
+                        "size": 123,
+                        "browser_download_url": (
+                            "https://github.com/crypta-network/cryptad/releases/"
+                            f"download/v301/{dependency_names[0]}"
+                        ),
+                    }
+                ],
+            }
+            self.assertEqual(
+                "conflict",
+                backend._assets_status(
+                    request, complete_with_partial_dependency_companion
+                ),
+            )
+            plan["dependencyVulnerabilityGovernanceActive"] = True
+            request.bundle.authorization[
+                "dependencyVulnerabilityGovernanceActive"
+            ] = True
+            self.assertEqual(
+                "conflict",
+                backend._assets_status(
+                    request, complete_with_partial_dependency_companion
+                ),
+            )
+            complete_with_dependency_companions = {
+                "id": 301,
+                "assets": [
+                    {"id": index + 20, "name": name, "size": 1}
+                    for index, name in enumerate(names)
+                ]
+                + [
+                    {
+                        "id": index + 40,
+                        "name": dependency_name,
+                        "size": 123,
+                        "browser_download_url": (
+                            "https://github.com/crypta-network/cryptad/releases/"
+                            f"download/v301/{dependency_name}"
+                        ),
+                    }
+                    for index, dependency_name in enumerate(dependency_names)
+                ],
+            }
+            self.assertEqual(
+                "matching",
+                backend._assets_status(request, complete_with_dependency_companions),
+            )
+            complete_with_dependency_companions["assets"][-1][
+                "browser_download_url"
+            ] = f"https://example.com/{dependency_names[-1]}"
+            self.assertEqual(
+                "conflict",
+                backend._assets_status(request, complete_with_dependency_companions),
+            )
 
             unexpected = {
                 "assets": [{"id": 8, "name": "unexpected.bin", "size": 1}]

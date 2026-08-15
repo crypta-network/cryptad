@@ -36,6 +36,11 @@ TARGETS = (
     "coreUpdate",
 )
 STATUSES = frozenset({"absent", "matching", "conflict", "unavailable"})
+DEPENDENCY_VULNERABILITY_COMPANION_ASSET_FILES = {
+    "dependency-public-findings": "stable-1.0-dependency-vulnerability-public-findings.json",
+    "dependency-source-status": "stable-1.0-dependency-vulnerability-source-status.json",
+    "dependency-vulnerability-summary": "stable-1.0-dependency-vulnerability-summary.json",
+}
 
 
 class ProviderError(RuntimeError):
@@ -216,6 +221,24 @@ class StdlibTransport:
     ) -> tuple[int, int, str | None]:
         """Stream one exact public object without materializing release-sized bytes."""
 
+        status, _content_type, size, digest = self.digest_metadata(
+            uri,
+            expected_size,
+            headers=headers,
+            redirect_budget=redirect_budget,
+        )
+        return status, size, digest
+
+    def digest_metadata(
+        self,
+        uri: str,
+        expected_size: int,
+        *,
+        headers: Mapping[str, str] | None = None,
+        redirect_budget: int = 1,
+    ) -> tuple[int, str | None, int, str | None]:
+        """Stream one public object and return its actual status, media type, size, and digest."""
+
         if not isinstance(expected_size, int) or expected_size < 1:
             raise ProviderError("download-expected-size-invalid")
         canonical = _canonical_https_uri(uri)
@@ -243,18 +266,27 @@ class StdlibTransport:
                         for key, value in dict(headers or {}).items()
                         if key.lower() != "authorization"
                     }
-                    return self.digest(
+                    return self.digest_metadata(
                         redirected,
                         expected_size,
                         headers=safe_headers,
                         redirect_budget=0,
                     )
+                raw_content_type = response.getheader("Content-Type")
+                content_type = (
+                    ";".join(
+                        part.strip()
+                        for part in raw_content_type.lower().split(";")
+                    )
+                    if isinstance(raw_content_type, str)
+                    else None
+                )
                 if response.status != 200:
                     response.read(min(MAX_RESPONSE_BYTES, 64 * 1024))
-                    return response.status, 0, None
+                    return response.status, content_type, 0, None
                 length = response.getheader("Content-Length")
                 if length is not None and int(length) != expected_size:
-                    return response.status, int(length), None
+                    return response.status, content_type, int(length), None
                 digest = hashlib.sha256()
                 size = 0
                 while True:
@@ -263,9 +295,14 @@ class StdlibTransport:
                         break
                     size += len(chunk)
                     if size > expected_size:
-                        return response.status, size, None
+                        return response.status, content_type, size, None
                     digest.update(chunk)
-                return response.status, size, "sha256:" + digest.hexdigest()
+                return (
+                    response.status,
+                    content_type,
+                    size,
+                    "sha256:" + digest.hexdigest(),
+                )
             except ProviderError:
                 raise
             except (OSError, http.client.HTTPException, ValueError) as exc:
@@ -396,6 +433,25 @@ class StableMaintenanceBackend:
         ]
         expected_rows = planned_rows + companion_rows
         expected_names = planned_names + companion_names
+        governance_active = request.bundle.plan.get(
+            "dependencyVulnerabilityGovernanceActive", False
+        )
+        authorization = getattr(request.bundle, "authorization", None)
+        authorized_governance_active = (
+            authorization.get("dependencyVulnerabilityGovernanceActive", False)
+            if isinstance(authorization, Mapping)
+            else None
+        )
+        if (
+            type(governance_active) is not bool
+            or authorized_governance_active is not governance_active
+        ):
+            return "conflict", frozenset()
+        independently_governed_names = (
+            frozenset(DEPENDENCY_VULNERABILITY_COMPANION_ASSET_FILES.values())
+            if governance_active
+            else frozenset()
+        )
         if (
             len(observed_names) != len(rows)
             or len(set(observed_names)) != len(observed_names)
@@ -403,13 +459,36 @@ class StableMaintenanceBackend:
             or len(set(planned_names)) != len(planned_names)
             or len(companion_names) != len(companion_rows)
             or len(set(expected_names)) != len(expected_names)
+            or not set(expected_names).isdisjoint(independently_governed_names)
         ):
             return "conflict", frozenset()
         observed = {row.get("name"): row for row in rows}
         planned = {row.get("fileName"): row for row in expected_rows}
-        if not set(observed).issubset(planned):
+        observed_independently_governed = set(observed).intersection(
+            independently_governed_names
+        )
+        if observed_independently_governed and observed_independently_governed != set(
+            independently_governed_names
+        ):
+            return "conflict", frozenset()
+        if not set(observed).issubset(set(planned) | independently_governed_names):
             return "conflict", frozenset()
         for name, row in observed.items():
+            if name in independently_governed_names:
+                asset_id = row.get("id")
+                expected_uri = (
+                    f"https://github.com/{REPOSITORY}/releases/download/"
+                    f"{request.bundle.plan.get('expectedTag')}/{name}"
+                )
+                if (
+                    type(asset_id) is not int
+                    or asset_id < 1
+                    or type(row.get("size")) is not int
+                    or row.get("size") < 1
+                    or row.get("browser_download_url") != expected_uri
+                ):
+                    return "conflict", frozenset()
+                continue
             expected = planned[name]
             asset_id = row.get("id")
             if (
@@ -434,7 +513,9 @@ class StableMaintenanceBackend:
                 or digest != expected.get("digest")
             ):
                 return "conflict", frozenset()
-        observed_set = frozenset(str(name) for name in observed)
+        observed_set = frozenset(
+            str(name) for name in observed if name in planned
+        )
         return (
             "matching" if set(planned_names).issubset(observed) else "absent",
             observed_set,

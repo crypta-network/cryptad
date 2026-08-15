@@ -470,7 +470,55 @@ One incident-scoped security hotfix may carry exactly one authenticated critical
 other cases also block promotion. Those unrelated blockers remain active and continue to block
 routine promotion and unrelated hotfixes; they do not force incompatible incidents into one train.
 The protected severity must come from the producer's closed, digest-bound case-summary row; a
-consumer-side or PR-287-only severity assertion is insufficient. While evaluating promotion, hold
+consumer-side or PR-287-only severity assertion is insufficient.
+Transport PR-290 authoritative phase manifests and inputs, full findings/dispositions,
+authorizations, remediations, and ledger history only through the domain-separated authenticated
+encrypted Actions envelope. Bind the exact repository, workflow and commit, run and attempt,
+operation, subject, artifact name, release/build where applicable, and source commit; open it only
+in the next protected environment with the canonical base64 32-byte
+`CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_PHASE_HANDOFF_KEY_BASE64` secret. Preserve the policy's
+256 MiB document and 512 MiB phase-root bounds in this transport. Public artifacts may contain
+only a redaction-passing public projection, ciphertext, the public-safe publication input, or the
+four-file public-safe maintenance promotion handoff; never copy authoritative manifest inputs into
+another plaintext artifact.
+Never compare-and-swap the PR-290 durable ledger anchor to a producer whose Actions run is still
+in progress. Disposition, remediation, and retention workflows upload encrypted proposals only.
+A separate protected `workflow_run` finalizer must require GitHub's completed-success conclusion,
+reauthenticate the exact run attempt and artifact digest, open the exact bound ciphertext, and make
+the anchor CAS its last action. Failed or cancelled producers remain uncommitted alternatives and
+must not make the prior durable tip unreadable.
+Do not put independent exact-event finalizers directly in the shared concurrency group: GitHub
+retains only one pending run and may replace an older pending notification. Route every producer
+completion through one shared activation drainer that holds the ledger group across all authority
+domains, rediscovers retained completed-success proposals, and dispatches then awaits each
+domain-separated protected finalizer sequentially from one job. Do not use a matrix as an ordering
+mechanism. Each dispatched finalizer must authenticate the exact still-running drainer run,
+attempt, workflow, protected branch, and commit before requesting its environment. Run the drainer
+on a bounded schedule as recovery for a replaced pending notification. Replaying the exact current
+coordinates, encountering an authenticated same-predecessor alternative, or revisiting a scheduled
+source pair after either member was superseded is a whole-proposal no-op; none may rewrite, roll
+back, or partially advance durable authority.
+When assembling the next protected phase, compare anchor producer coordinates only for artifacts
+that can represent the committed tip: disposition authorization, `prepare-remediation`, and
+retention. `validate-intelligence`, `match-inventory`, and `evaluate-promotion` are read-only
+candidate evidence; authenticate their exact candidate commit and encrypted operation binding,
+but do not require their run or artifact coordinates to equal the ledger anchor. This distinction
+must preserve intentionally blocked matching evidence so it can advance to disposition review.
+Apply the same post-success rule to the retained PR-289 inventory used for mandatory OSV queries.
+The OSV retention producer uploads exact bytes plus a closed predecessor/source proposal and has no
+anchor-write token. A separate protected `workflow_run` finalizer must require completed-success,
+reauthenticate the exact run attempt and Actions artifact digest, validate the proposal and
+inventory bytes, and perform the inventory-anchor compare-and-swap as its last action.
+Apply that post-success rule to the closed dependency-intelligence source-lineage set. The
+source producer must upload a digest-bound source artifact plus a separate closed activation
+proposal and must never receive the lineage-write token. Its protected `workflow_run` finalizer
+must require the overall matrix run to be completed-success, require both mandatory source pairs
+for scheduled runs, reauthenticate every exact source/proposal Actions digest, build every
+successor in memory, and only then perform one compare-and-swap of the combined lineage-set
+variable. Never loop over independently mutable source variables: a failed second write must not
+leave only one mandatory source advanced. A failed or cancelled matrix run must leave the whole
+predecessor set authoritative.
+While evaluating promotion, hold
 the vulnerability-ledger serialization lock and require the supplied `evaluate-promotion` handoff
 to match the retention-independent, digest-chained repository Actions-variable anchor's exact
 ledger digest and edition. Authenticate the selected promotion run, attempt, and artifact digest
@@ -484,6 +532,10 @@ fail the anchor comparison without blocking later activation or promotion.
 Keep PR/nightly aggregate certification separate from protected release-candidate certification.
 Only the protected `stable-1-0-release-certification` job receives the vulnerability handoff key
 and anchor-read token; a shared step list must condition secret injection on release-candidate mode.
+For post-publication certification, an early runner-time comparison is preflight only. Capture
+runner UTC again inside the final PR-290 evidence evaluation after other evidence collection has
+completed, and use that observation for the exclusive `validUntil` check; never carry a timestamp
+captured before the release-certification command through a long collection run.
 RC-time vulnerability evidence cannot authorize GA after the mandatory post-freeze interval. The
 actual GA publication job must hold the global ledger lock, independently authenticate a newly
 selected current ledger-wide promotion handoff, validate its sealed nonblocking summary for the
@@ -497,6 +549,12 @@ and authorization. After independent public verification, latest-baseline activa
 the same global lock and repeats both the current-anchor and runner-UTC summary checks immediately
 before its pointer compare-and-swap; publication-time authorization cannot cover an intervening
 ledger transition or deadline expiry at that final mutation boundary.
+Bind the PR-290 companion publication plan to the exact protected release title. Evaluations on
+protected `main` target the Stable GA title `Cryptad Stable 1.0 (v<build>)`; evaluations on exact
+protected `release/*` or `hotfix/*` refs target `Cryptad v<build>`. Preserve the engine-generated
+closed plan, derive that one title from the authenticated evaluation ref, recompute its semantic
+digest, and validate it again. The provider may recognize only those two build-derived forms and
+must require the observed Release title to equal the single title carried by the plan.
 The protected workflow independently freezes the exact protected `main` tip as
 `mainLineageCommit` for a hotfix. Require the hotfix base to equal that tip and the tagged
 publication predecessor to remain its ancestor; the older tagged candidate is not an adequate
@@ -670,6 +728,10 @@ Before authorization, require the GitHub Release page to be exactly
 `https://github.com/crypta-network/cryptad/releases/tag/v<build>`. The protected provider owns that
 fixed repository and must compare the deterministic `Cryptad v<build>` title as well as the tag,
 commit, page, notes, draft/prerelease state, and assets when verifying exact existing state.
+Allow the separately governed PR-290 companion asset names outside the maintenance-owned asset
+plan only when the authenticated maintenance authorization and closed publication plan both bind
+that the candidate freeze prospectively activates PR-290. Historical pre-activation releases
+retain the original exact asset allowlist; a partial or arbitrary PR-290-named asset is a conflict.
 Protected phase-ZIP intake must allowlist the complete extracted file tree, not only the
 `protected-inputs/` subtree: the canonical phase manifest and files beneath explicitly referenced
 directory inputs are the only survivors, and unrelated root-level or sibling files are blockers.

@@ -661,6 +661,24 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     )
     if stable_vulnerability_item is not None:
         evidence.append(stable_vulnerability_item)
+    validated_vulnerability_summary_digest: str | None = None
+    if (
+        stable_vulnerability_item is not None
+        and stable_vulnerability_item.status == "pass"
+        and settings.stable_vulnerability_summary is not None
+    ):
+        authenticated_path, _, _, _ = _stable_vulnerability_handoff_paths(
+            settings.stable_vulnerability_summary,
+            settings.workspace_root,
+            settings.out_dir,
+        )
+        authenticated_summary = (
+            read_json(authenticated_path) if authenticated_path is not None else None
+        )
+        if isinstance(authenticated_summary, dict):
+            candidate_digest = authenticated_summary.get("summaryDigest")
+            if isinstance(candidate_digest, str):
+                validated_vulnerability_summary_digest = candidate_digest
     observed_supply_chain_source_commit = ""
     if (
         settings.stable_supply_chain_required
@@ -682,6 +700,33 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     )
     if stable_supply_chain_item is not None:
         evidence.append(stable_supply_chain_item)
+    observed_dependency_vulnerability_source_commit = ""
+    if (
+        settings.stable_dependency_vulnerability_required
+        or settings.stable_dependency_vulnerability_summary is not None
+    ):
+        observed_dependency_vulnerability_source_commit = command_output(
+            ["git", "rev-parse", "HEAD"], settings.workspace_root
+        )
+    stable_dependency_vulnerability_item = stable_dependency_vulnerability_evidence(
+        settings.stable_dependency_vulnerability_summary,
+        settings.workspace_root,
+        settings.out_dir,
+        settings.stable_dependency_vulnerability_candidate_release_id,
+        settings.stable_dependency_vulnerability_candidate_build_version,
+        settings.stable_dependency_vulnerability_candidate_source_commit,
+        settings.stable_dependency_vulnerability_candidate_source_ref,
+        observed_dependency_vulnerability_source_commit,
+        stable_supply_chain_item,
+        stable_vulnerability_item,
+        validated_vulnerability_summary_digest,
+        required=settings.stable_dependency_vulnerability_required,
+        # Observe runner UTC here, after every preceding evidence collector has
+        # completed, instead of trusting a time frozen before this command.
+        certification_clock=utc_now(),
+    )
+    if stable_dependency_vulnerability_item is not None:
+        evidence.append(stable_dependency_vulnerability_item)
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -933,6 +978,12 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         args.stable_supply_chain_summary
         or os.environ.get("CRYPTAD_CERT_STABLE_SUPPLY_CHAIN_SUMMARY")
     )
+    stable_dependency_vulnerability_summary_arg = (
+        args.stable_dependency_vulnerability_summary
+        or os.environ.get(
+            "CRYPTAD_CERT_STABLE_DEPENDENCY_VULNERABILITY_SUMMARY"
+        )
+    )
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -1005,6 +1056,32 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         ),
         stable_supply_chain_candidate_source_ref=(
             args.stable_supply_chain_candidate_source_ref
+        ),
+        stable_dependency_vulnerability_summary=(
+            resolve_path(
+                workspace_root,
+                Path(stable_dependency_vulnerability_summary_arg),
+            )
+            if stable_dependency_vulnerability_summary_arg
+            else None
+        ),
+        stable_dependency_vulnerability_required=(
+            args.require_stable_dependency_vulnerability
+            or env_flag(
+                "CRYPTAD_CERT_REQUIRE_STABLE_DEPENDENCY_VULNERABILITY"
+            )
+        ),
+        stable_dependency_vulnerability_candidate_release_id=(
+            args.stable_dependency_vulnerability_candidate_release_id
+        ),
+        stable_dependency_vulnerability_candidate_build_version=(
+            args.stable_dependency_vulnerability_candidate_build_version
+        ),
+        stable_dependency_vulnerability_candidate_source_commit=(
+            args.stable_dependency_vulnerability_candidate_source_commit
+        ),
+        stable_dependency_vulnerability_candidate_source_ref=(
+            args.stable_dependency_vulnerability_candidate_source_ref
         ),
     )
 
@@ -1140,6 +1217,43 @@ def build_parser() -> argparse.ArgumentParser:
             "Exact immutable commit:<sha> source identity governed by the "
             "supply-chain summary."
         ),
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-summary",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical public-safe Stable dependency-vulnerability companion "
+            "promotion summary. Its authenticated decision is non-waivable."
+        ),
+    )
+    parser.add_argument(
+        "--require-stable-dependency-vulnerability",
+        action="store_true",
+        help=(
+            "Treat missing or failing dependency-vulnerability monitoring "
+            "evidence as a non-waivable release blocker."
+        ),
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-candidate-release-id",
+        default="",
+        help="Exact Stable release identity governed by the PR-290 summary.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-candidate-build-version",
+        default="",
+        help="Exact positive integer build governed by the PR-290 summary.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-candidate-source-commit",
+        default="",
+        help="Exact lowercase 40-character candidate commit governed by PR-290.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-candidate-source-ref",
+        default="",
+        help="Exact immutable commit:<sha> source identity governed by PR-290.",
     )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(

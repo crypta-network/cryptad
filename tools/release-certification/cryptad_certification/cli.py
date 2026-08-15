@@ -32,6 +32,7 @@ COMMANDS = (
     "stable-maintenance",
     "stable-lifecycle",
     "stable-supply-chain",
+    "stable-dependency-vulnerability",
     "stable-vulnerability",
 )
 MULTI_NODE_ACTIONS = (
@@ -69,6 +70,7 @@ SELF_TEST_SUITES = (
     "stable-maintenance",
     "stable-lifecycle",
     "stable-supply-chain",
+    "stable-dependency-vulnerability",
     "stable-vulnerability",
     "migration",
 )
@@ -839,6 +841,208 @@ def _validate_stable_supply_chain_manifest(manifest: RunManifest) -> None:
         )
 
 
+_STABLE_DEPENDENCY_VULNERABILITY_MODE_INPUTS = {
+    "validate-intelligence": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyIntelligenceProvenanceSet",
+        "dependencyIntelligenceSnapshot",
+    },
+    "match-inventory": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyIntelligenceProvenanceSet",
+        "dependencyIntelligenceSnapshot",
+        "supplyChainPolicy",
+        "supplyChainPromotionSummary",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "componentReverseIndex",
+    },
+    "authorize-dispositions": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyIntelligenceProvenanceSet",
+        "dependencyIntelligenceSnapshot",
+        "dependencyVulnerabilityFindingSet",
+        "dependencyVulnerabilityDispositionSet",
+        "dependencyVulnerabilityDispositionAuthorizations",
+        "dependencyVulnerabilityDispositionAuthorizationProvenance",
+    },
+    "prepare-remediation": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyIntelligenceProvenanceSet",
+        "dependencyIntelligenceSnapshot",
+        "dependencyVulnerabilityFindingSet",
+        "dependencyVulnerabilityLedger",
+        "dependencyVulnerabilityDispositionSet",
+        "dependencyVulnerabilityRemediationSet",
+        "stableVulnerabilitySummary",
+        "supplyChainPromotionSummary",
+        "componentReverseIndex",
+    },
+    "evaluate-promotion": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyIntelligenceProvenanceSet",
+        "dependencyIntelligenceSnapshot",
+        "dependencyVulnerabilityFindingSet",
+        "dependencyVulnerabilityLedger",
+        "dependencyVulnerabilityDispositionSet",
+        "dependencyVulnerabilityDispositionAuthorizations",
+        "dependencyVulnerabilityDispositionAuthorizationProvenance",
+        "dependencyVulnerabilityRemediationSet",
+        "supplyChainPolicy",
+        "supplyChainPromotionSummary",
+        "resolvedDependencySnapshot",
+        "componentInventory",
+        "releaseSubjectInventory",
+        "componentReverseIndex",
+        "stableVulnerabilitySummary",
+        "maintenanceCandidate",
+        "maintenanceCandidateFreeze",
+        "stableAssuranceCloseout",
+    },
+    "verify-publication": {
+        "dependencyVulnerabilityPolicy",
+        "dependencyVulnerabilityPromotionSummary",
+        "dependencyVulnerabilityPublicationPlan",
+        "dependencyVulnerabilityPublicationReceipt",
+        "dependencyVulnerabilityPublicObservation",
+        "dependencyVulnerabilityPublicationProvenance",
+    },
+}
+
+_STABLE_DEPENDENCY_VULNERABILITY_OPTIONAL_MODE_INPUTS = {
+    "validate-intelligence": {"previousDependencyIntelligenceSnapshot"},
+    "match-inventory": {
+        "previousDependencyIntelligenceSnapshot",
+        "previousDependencyVulnerabilityFindingSet",
+        "previousDependencyVulnerabilityLedger",
+        "previousDependencyVulnerabilityDispositionSet",
+    },
+    "authorize-dispositions": {
+        "previousDependencyIntelligenceSnapshot",
+        "previousDependencyVulnerabilityFindingSet",
+        "previousDependencyVulnerabilityLedger",
+        "previousDependencyVulnerabilityDispositionSet",
+    },
+    "prepare-remediation": {
+        "previousDependencyIntelligenceSnapshot",
+        "previousDependencyVulnerabilityLedger",
+    },
+    "evaluate-promotion": {
+        "previousDependencyIntelligenceSnapshot",
+        "previousDependencyVulnerabilityFindingSet",
+        "previousDependencyVulnerabilityLedger",
+        "previousDependencyVulnerabilityDispositionSet",
+        "stableBackportValidation",
+        "stableBackportCompletion",
+        "stableBackportCompletionHandoff",
+        "stableMaintenancePublicationReceipt",
+        "dependencyVulnerabilityRemediationEvidenceProvenance",
+    },
+    "verify-publication": set(),
+}
+
+
+def _validate_stable_dependency_vulnerability_manifest(manifest: RunManifest) -> None:
+    """Keep advisory acquisition, review, remediation, promotion, and publication separate."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError(
+            "stable-dependency-vulnerability requires release.profile stable-review"
+        )
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError(
+            "stable-dependency-vulnerability requires a canonical positive integer "
+            "release.version"
+        )
+    commit = manifest.policies.get("candidateSourceCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ValueError(
+            "stable-dependency-vulnerability requires a full candidateSourceCommit"
+        )
+    if manifest.policies.get("candidateSourceRef") != f"commit:{commit}":
+        raise ValueError(
+            "stable-dependency-vulnerability candidateSourceRef must bind the commit"
+        )
+    if manifest.requirements.get("stableDependencyVulnerability") is not True:
+        raise ValueError(
+            "stable-dependency-vulnerability requires "
+            "requirements.stableDependencyVulnerability=true"
+        )
+    if manifest.policies.get("stableDependencyVulnerabilityGovernance") != "required":
+        raise ValueError(
+            "stable-dependency-vulnerability requires "
+            "policies.stableDependencyVulnerabilityGovernance=required"
+        )
+    mode = manifest.commands.get("stable-dependency-vulnerability", {}).get(
+        "mode", "evaluate-promotion"
+    )
+    required = _STABLE_DEPENDENCY_VULNERABILITY_MODE_INPUTS.get(mode)
+    if required is None:
+        raise ValueError(
+            "stable-dependency-vulnerability mode must be validate-intelligence, "
+            "match-inventory, authorize-dispositions, prepare-remediation, "
+            "evaluate-promotion, or verify-publication"
+        )
+    family_inputs = set().union(
+        *_STABLE_DEPENDENCY_VULNERABILITY_MODE_INPUTS.values(),
+        *_STABLE_DEPENDENCY_VULNERABILITY_OPTIONAL_MODE_INPUTS.values(),
+    )
+    configured = family_inputs.intersection(manifest.inputs)
+    optional = _STABLE_DEPENDENCY_VULNERABILITY_OPTIONAL_MODE_INPUTS[mode]
+    missing = sorted(required.difference(configured))
+    irrelevant = sorted(configured.difference(required | optional))
+    if missing:
+        raise ValueError(
+            f"stable-dependency-vulnerability {mode} requires exact inputs: "
+            + ", ".join(missing)
+        )
+    if irrelevant:
+        raise ValueError(
+            f"stable-dependency-vulnerability {mode} rejects irrelevant phase inputs: "
+            + ", ".join(irrelevant)
+        )
+    if mode == "evaluate-promotion":
+        candidate_remediation = {
+            "stableBackportValidation",
+            "dependencyVulnerabilityRemediationEvidenceProvenance",
+        }
+        published_remediation = candidate_remediation | {
+            "stableBackportCompletion",
+            "stableBackportCompletionHandoff",
+            "stableMaintenancePublicationReceipt",
+        }
+        configured_remediation = frozenset(
+            published_remediation.intersection(configured)
+        )
+        if configured_remediation and configured_remediation not in {
+            frozenset(candidate_remediation),
+            frozenset(published_remediation),
+        }:
+            raise ValueError(
+                "stable-dependency-vulnerability evaluate-promotion requires an "
+                "exact candidate or published remediation evidence set"
+            )
+    if not isinstance(manifest.execution.get("evaluationClock"), str):
+        raise ValueError(
+            "stable-dependency-vulnerability requires execution.evaluationClock"
+        )
+    if mode == "verify-publication":
+        if manifest.policies.get("publicationIntent") != (
+            "prepare-explicit-protected-publication"
+        ):
+            raise ValueError(
+                "stable-dependency-vulnerability publication verification requires "
+                "explicit protected publication intent"
+            )
+        if not isinstance(manifest.policies.get("artifactBaseUri"), str):
+            raise ValueError(
+                "stable-dependency-vulnerability publication verification requires "
+                "policies.artifactBaseUri"
+            )
+
+
 def _validate_stable_vulnerability_manifest(manifest: RunManifest) -> None:
     """Reject vulnerability lifecycle runs with mixed trust-boundary inputs."""
 
@@ -960,6 +1164,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_lifecycle_manifest(manifest)
     if command == "stable-supply-chain":
         _validate_stable_supply_chain_manifest(manifest)
+    if command == "stable-dependency-vulnerability":
+        _validate_stable_dependency_vulnerability_manifest(manifest)
     if command == "stable-vulnerability":
         _validate_stable_vulnerability_manifest(manifest)
     prepare_run_root(manifest)

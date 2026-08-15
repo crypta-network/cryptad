@@ -927,6 +927,7 @@ class BundleFixture:
             "knownLimitationsDeltaDigest": digest("3"),
             "releaseNotesDigest": file_digest(self.notes_path),
             "publicationTargetsDigest": digest("2"),
+            "dependencyVulnerabilityGovernanceActive": False,
             "backportReleaseTrainDigest": self.backport_release_train_digest,
             "allowedPublicationScopes": list(publication.AUTHORIZATION_SCOPES),
             "acceptedWarningIds": [],
@@ -1018,6 +1019,7 @@ class BundleFixture:
             "stableCatalogDigest": file_digest(self.catalog),
             "knownLimitationsDeltaDigest": digest("3"),
             "publicationTargetsDigest": digest("2"),
+            "dependencyVulnerabilityGovernanceActive": False,
             "assets": asset_rows,
             "stableCatalogTarget": {
                 "catalogId": "crypta-first-party",
@@ -2279,6 +2281,51 @@ class StableMaintenancePublicationTest(unittest.TestCase):
             publication.AdapterError, "authenticated-candidate-input-binding-mismatch"
         ):
             replacement.load()
+
+    def test_dependency_vulnerability_asset_exception_requires_authorized_activation(
+        self,
+    ) -> None:
+        changed_plan = copy.deepcopy(self.fixture.plan)
+        changed_plan["dependencyVulnerabilityGovernanceActive"] = True
+        write_json(self.fixture.plan_path, changed_plan)
+
+        with self.assertRaisesRegex(
+            publication.AdapterError, "candidate-publication-identity-mismatch"
+        ):
+            self.fixture.load()
+
+    def test_pre_pr290_v1_bundle_without_governance_field_remains_readable(
+        self,
+    ) -> None:
+        self.fixture.authorization.pop("dependencyVulnerabilityGovernanceActive")
+        self.fixture.plan.pop("dependencyVulnerabilityGovernanceActive")
+        write_json(self.fixture.authorization_path, self.fixture.authorization)
+        self.fixture.plan["authorizationDigest"] = file_digest(
+            self.fixture.authorization_path
+        )
+        authorization_asset = next(
+            row
+            for row in self.fixture.plan["assets"]
+            if row["role"] == "authorization"
+        )
+        authorization_asset["digest"] = file_digest(
+            self.fixture.authorization_path
+        )
+        authorization_asset[
+            "sizeBytes"
+        ] = self.fixture.authorization_path.stat().st_size
+        write_json(self.fixture.plan_path, self.fixture.plan)
+        self.fixture.core_plan["authorizationDigest"] = file_digest(
+            self.fixture.authorization_path
+        )
+        write_json(self.fixture.core_plan_path, self.fixture.core_plan)
+
+        bundle = self.fixture.load()
+
+        self.assertNotIn(
+            "dependencyVulnerabilityGovernanceActive", bundle.authorization
+        )
+        self.assertNotIn("dependencyVulnerabilityGovernanceActive", bundle.plan)
 
     def test_publish_revalidates_before_every_target_and_writes_exact_receipts(self) -> None:
         operations = self.operations()

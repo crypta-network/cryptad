@@ -1088,6 +1088,12 @@ def _load_bundle(root: Path) -> PublicationBundle:
     candidate_digest = _semantic_digest(candidate)
     source = candidate.get("source") if isinstance(candidate.get("source"), Mapping) else {}
     product = candidate.get("product") if isinstance(candidate.get("product"), Mapping) else {}
+    plan_governance_active = plan.get(
+        "dependencyVulnerabilityGovernanceActive", False
+    )
+    authorization_governance_active = authorization.get(
+        "dependencyVulnerabilityGovernanceActive", False
+    )
     if (
         plan.get("publicationState") != "publication-authorized"
         or plan.get("sideEffectsPerformed") is not False
@@ -1109,6 +1115,9 @@ def _load_bundle(root: Path) -> PublicationBundle:
         or candidate.get("builtOnce") is not True
         or candidate.get("rebuildPerformedAfterFreeze") is not False
         or candidate.get("redaction", {}).get("status") != "pass"
+        or type(plan_governance_active) is not bool
+        or type(authorization_governance_active) is not bool
+        or authorization_governance_active != plan_governance_active
     ):
         raise AdapterError("candidate-publication-identity-mismatch")
 

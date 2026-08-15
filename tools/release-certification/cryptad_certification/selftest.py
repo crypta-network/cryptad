@@ -19,6 +19,7 @@ SUITE_MODULES = {
     "security-response": ["cryptad_certification.tests.test_security_response"],
     "release-certification": [
         "cryptad_certification.tests.test_release_certification",
+        "cryptad_certification.tests.test_release_certification_stable_dependency_vulnerability",
         "cryptad_certification.tests.test_release_certification_stable_supply_chain",
         "cryptad_certification.tests.test_release_certification_stable_vulnerability",
     ],
@@ -48,6 +49,15 @@ SUITE_MODULES = {
     ],
     "stable-supply-chain": [
         "cryptad_certification.tests.test_stable_supply_chain",
+    ],
+    "stable-dependency-vulnerability": [
+        "cryptad_certification.tests.test_release_certification_stable_dependency_vulnerability",
+        "cryptad_certification.tests.test_stable_dependency_intelligence_lineage",
+        "cryptad_certification.tests.test_stable_dependency_vulnerability",
+        "cryptad_certification.tests.test_stable_dependency_vulnerability_matching",
+        "cryptad_certification.tests.test_stable_dependency_vulnerability_phase_workflows",
+        "cryptad_certification.tests.test_stable_dependency_vulnerability_protected_handoff",
+        "cryptad_certification.tests.test_stable_dependency_vulnerability_workflows",
     ],
     "stable-vulnerability": [
         "cryptad_certification.tests.test_release_certification_stable_vulnerability",

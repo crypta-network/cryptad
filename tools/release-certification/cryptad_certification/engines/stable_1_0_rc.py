@@ -211,6 +211,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     freeze = assemble_freeze(
         context=context,
         source=source,
+        frozen_at=now.isoformat().replace("+00:00", "Z"),
         inputs=inputs,
         catalog_operations=catalog_operations,
         platform_api=platform,

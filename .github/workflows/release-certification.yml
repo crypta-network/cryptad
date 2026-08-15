@@ -77,11 +77,61 @@ on:
         required: false
         default: ''
         type: string
+      stable-dependency-vulnerability-run-id:
+        description: Exact successful protected PR-290 verify-publication workflow run.
+        required: false
+        default: ''
+        type: string
+      stable-dependency-vulnerability-run-attempt:
+        description: Exact protected PR-290 verify-publication run attempt.
+        required: false
+        default: ''
+        type: string
+      stable-dependency-vulnerability-artifact-name:
+        description: Exact final authenticated PR-290 promotion artifact name.
+        required: false
+        default: ''
+        type: string
+      stable-dependency-vulnerability-artifact-digest:
+        description: Exact Actions sha256 digest for the final PR-290 promotion artifact.
+        required: false
+        default: ''
+        type: string
+      stable-supply-chain-run-id:
+        description: Exact successful protected PR-289 evaluate-promotion workflow run.
+        required: false
+        default: ''
+        type: string
+      stable-supply-chain-run-attempt:
+        description: Exact protected PR-289 evaluate-promotion run attempt.
+        required: false
+        default: ''
+        type: string
+      stable-supply-chain-artifact-name:
+        description: Exact authenticated PR-289 comparison artifact name.
+        required: false
+        default: ''
+        type: string
+      stable-supply-chain-artifact-digest:
+        description: Exact Actions sha256 digest for the PR-289 comparison artifact.
+        required: false
+        default: ''
+        type: string
+      dependency-vulnerability-stage:
+        description: Pre-publication candidate validation or explicit final post-publication certification.
+        required: true
+        default: pre-publication
+        type: choice
+        options:
+          - pre-publication
+          - post-publication
   schedule:
     - cron: '47 5 * * *'
   push:
     branches: [ 'release/**' ]
     tags: [ 'v*' ]
+
+permissions: {}
 
 jobs:
   certify-nonpromotion:
@@ -111,6 +161,15 @@ jobs:
       STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-vulnerability-run-attempt'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
       STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-vulnerability-artifact-name'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
       STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-vulnerability-artifact-digest'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_RUN_ID: ${{ github.event.inputs['stable-dependency-vulnerability-run-id'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_RUN_ID || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-dependency-vulnerability-run-attempt'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-dependency-vulnerability-artifact-name'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-dependency-vulnerability-artifact-digest'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
+      STABLE_SUPPLY_CHAIN_RUN_ID: ${{ github.event.inputs['stable-supply-chain-run-id'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_RUN_ID || '' }}
+      STABLE_SUPPLY_CHAIN_RUN_ATTEMPT: ${{ github.event.inputs['stable-supply-chain-run-attempt'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_SUPPLY_CHAIN_ARTIFACT_NAME: ${{ github.event.inputs['stable-supply-chain-artifact-name'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-supply-chain-artifact-digest'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_ARTIFACT_DIGEST || '' }}
+      DEPENDENCY_VULNERABILITY_STAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['dependency-vulnerability-stage'] || 'pre-publication' }}
 
     steps: &certification-steps
       - uses: actions/checkout@v6
@@ -182,6 +241,102 @@ jobs:
           name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/stable-vulnerability-promotion-input
 
+      - name: Authenticate exact Stable dependency-vulnerability promotion producer
+        if: env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$ \
+                || ! "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Post-activation release certification requires exact protected PR-290 producer coordinates."
+            exit 2
+          fi
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID/attempts/$STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID" \
+            --arg attempt "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT" \
+            --arg commit "$GITHUB_SHA" '
+              (.id | tostring) == $run_id
+              and .event == "workflow_dispatch"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt
+              and .path == ".github/workflows/stable-1.0-dependency-vulnerability-publication.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME)]')"
+          test "$(jq 'length' <<< "$artifacts")" = 1
+          jq -e \
+            --arg name "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME" \
+            --arg digest "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST" '
+              .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download exact authenticated Stable dependency-vulnerability promotion
+        if: env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STABLE_DEPENDENCY_VULNERABILITY_RUN_ID }}
+          name: ${{ env.STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/stable-dependency-vulnerability-promotion-input
+
+      - name: Authenticate exact Stable supply-chain promotion producer
+        if: env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$STABLE_SUPPLY_CHAIN_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_SUPPLY_CHAIN_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || ! "$STABLE_SUPPLY_CHAIN_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$ \
+                || ! "$STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Final PR-290 certification requires exact protected PR-289 producer coordinates."
+            exit 2
+          fi
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_SUPPLY_CHAIN_RUN_ID/attempts/$STABLE_SUPPLY_CHAIN_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$STABLE_SUPPLY_CHAIN_RUN_ID" \
+            --arg attempt "$STABLE_SUPPLY_CHAIN_RUN_ATTEMPT" \
+            --arg commit "$GITHUB_SHA" '
+              (.id | tostring) == $run_id
+              and .event == "workflow_dispatch"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$STABLE_SUPPLY_CHAIN_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.STABLE_SUPPLY_CHAIN_ARTIFACT_NAME)]')"
+          test "$(jq 'length' <<< "$artifacts")" = 1
+          jq -e \
+            --arg name "$STABLE_SUPPLY_CHAIN_ARTIFACT_NAME" \
+            --arg digest "$STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST" '
+              .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download exact authenticated Stable supply-chain promotion
+        if: env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.STABLE_SUPPLY_CHAIN_RUN_ID }}
+          name: ${{ env.STABLE_SUPPLY_CHAIN_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/stable-supply-chain-promotion-input
+
       - name: Run release certification self-tests
         run: python3 tools/release-certification/certify.py self-test all
 
@@ -223,6 +378,10 @@ jobs:
           CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ env.CERT_MODE == 'release-candidate' && secrets.CRYPTAD_STABLE_VULNERABILITY_ANCHOR_READ_TOKEN || '' }}
           CRYPTAD_CERT_MODE: ${{ env.CERT_MODE }}
           CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ env.CERT_MODE == 'release-candidate' && secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 || '' }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication' && secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN || '' }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication' && secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN || '' }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication' && secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 || '' }}
+          CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ env.CERT_MODE == 'release-candidate' && env.DEPENDENCY_VULNERABILITY_STAGE == 'post-publication' && secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 || '' }}
           CRYPTAD_APP_SIGNING_KEY_ID: ${{ secrets.CRYPTAD_APP_SIGNING_KEY_ID }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 }}
           CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 }}
@@ -409,6 +568,169 @@ jobs:
             export CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT="$external_root"
             stable_vulnerability="$external_root/$summary_name"
           fi
+          require_supply_chain=false
+          stable_supply_chain=""
+          if [[ "$CERT_MODE" == "release-candidate" && "$DEPENDENCY_VULNERABILITY_STAGE" == "post-publication" ]]; then
+            require_supply_chain=true
+            downloaded_supply="$RUNNER_TEMP/stable-supply-chain-promotion-input"
+            expected_supply_name="stable-1.0-supply-chain-$release_id-comparison"
+            if [[ "$STABLE_SUPPLY_CHAIN_ARTIFACT_NAME" != "$expected_supply_name" \
+                  || -n "$(find "$downloaded_supply" -type l -print -quit)" \
+                  || -n "$(find "$downloaded_supply" -mindepth 1 ! -type f ! -type d -print -quit)" \
+                  || -n "$(find "$downloaded_supply" -type f -links +1 -print -quit)" \
+                  || "$(find "$downloaded_supply" -type f | wc -l)" -gt 128 \
+                  || "$(du -sb "$downloaded_supply" | cut -f1)" -gt 268435456 ]]; then
+              echo "::error::Authenticated PR-289 promotion artifact is unsafe or differs from the exact candidate."
+              exit 1
+            fi
+            supply_source="$downloaded_supply/stable-1.0-supply-chain-summary.json"
+            supply_manifest="$downloaded_supply/manifest.json"
+            for subject in "$supply_source" "$supply_manifest"; do
+              if [[ -L "$subject" || ! -f "$subject" \
+                    || "$(stat -c %h "$subject")" -ne 1 \
+                    || "$(stat -c %s "$subject")" -le 0 \
+                    || "$(stat -c %s "$subject")" -gt 4194304 ]]; then
+                echo "::error::Authenticated PR-289 promotion artifact lacks a bounded canonical subject."
+                exit 1
+              fi
+              gh attestation verify "$subject" \
+                --repo "$GITHUB_REPOSITORY" \
+                --signer-workflow "crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml" \
+                --source-digest "$GITHUB_SHA" \
+                --deny-self-hosted-runners >/dev/null
+            done
+            jq -e \
+              --arg release "$release_id" \
+              --arg build "$release_version" \
+              --arg commit "$GITHUB_SHA" '
+                .release.id == $release
+                and .release.version == $build
+                and .policies.candidateSourceCommit == $commit
+                and .policies.candidateSourceRef == ("commit:" + $commit)
+                and .requirements.stableSupplyChain == true
+                and .commands["stable-supply-chain"].mode == "evaluate-promotion"' \
+              "$supply_manifest" >/dev/null
+            jq -e \
+              --arg release "$release_id" \
+              --argjson build "$release_version" \
+              --arg commit "$GITHUB_SHA" '
+                .kind == "stable-1.0-supply-chain-promotion-summary"
+                and .releaseId == $release
+                and .buildVersion == $build
+                and .sourceCommit == $commit
+                and .sourceRef == ("commit:" + $commit)
+                and .mode == "evaluate-promotion"
+                and .status == "pass"
+                and .promotionReady == true
+                and .blockers == []
+                and .waivers == []
+                and .redaction.status == "pass"
+                and .redaction.sideEffectsPerformed == false' \
+              "$supply_source" >/dev/null
+            supply_root="$RUNNER_TEMP/stable-supply-chain-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            rm -rf "$supply_root"
+            install -d -m 700 "$supply_root"
+            stable_supply_chain="$supply_root/stable-1.0-supply-chain-summary.json"
+            supply_provenance="$supply_root/stable-1.0-supply-chain-summary-provenance.json"
+            install -m 600 "$supply_source" "$stable_supply_chain"
+            SUPPLY_CHAIN_SUMMARY="$stable_supply_chain" \
+              SUPPLY_CHAIN_PROVENANCE="$supply_provenance" \
+              SUPPLY_CHAIN_RELEASE_ID="$release_id" \
+              SUPPLY_CHAIN_BUILD_VERSION="$release_version" \
+              python3 - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, "tools/release-certification")
+          from cryptad_certification.engines.release_certification_core import (
+              STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV,
+              stable_supply_chain_handoff_authentication_tag,
+          )
+
+          summary = Path(os.environ["SUPPLY_CHAIN_SUMMARY"])
+          provenance = Path(os.environ["SUPPLY_CHAIN_PROVENANCE"])
+          summary_digest = "sha256:" + hashlib.sha256(summary.read_bytes()).hexdigest()
+          handoff = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-supply-chain-promotion-handoff",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow": (
+                  os.environ["GITHUB_REPOSITORY"]
+                  + "/.github/workflows/stable-1.0-supply-chain.yml@"
+                  + os.environ["GITHUB_SHA"]
+              ),
+              "workflowCommit": os.environ["GITHUB_SHA"],
+              "runId": os.environ["STABLE_SUPPLY_CHAIN_RUN_ID"],
+              "runAttempt": os.environ["STABLE_SUPPLY_CHAIN_RUN_ATTEMPT"],
+              "operation": "compare-evaluate",
+              "releaseId": os.environ["SUPPLY_CHAIN_RELEASE_ID"],
+              "buildVersion": os.environ["SUPPLY_CHAIN_BUILD_VERSION"],
+              "sourceCommit": os.environ["GITHUB_SHA"],
+              "artifactName": os.environ["STABLE_SUPPLY_CHAIN_ARTIFACT_NAME"],
+              "producerArtifactDigest": os.environ[
+                  "STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST"
+              ],
+              "summaryFileName": "stable-1.0-supply-chain-summary.json",
+              "summaryByteDigest": summary_digest,
+              "attestationSubjectDigest": summary_digest,
+              "attestationVerified": True,
+              "denySelfHostedRunners": True,
+              "authenticationStatus": "pass",
+              "authenticationAlgorithm": "hmac-sha256",
+              "authenticationTag": "pending",
+          }
+          encoded = os.environ.get(STABLE_SUPPLY_CHAIN_HANDOFF_KEY_ENV, "")
+          try:
+              key = base64.b64decode(encoded, validate=True)
+          except (ValueError, binascii.Error) as error:
+              raise SystemExit("Stable supply-chain handoff key is invalid") from error
+          if len(key) != 32 or base64.b64encode(key).decode("ascii") != encoded:
+              raise SystemExit("Stable supply-chain handoff key is invalid")
+          handoff["authenticationTag"] = (
+              stable_supply_chain_handoff_authentication_tag(handoff, key)
+          )
+          provenance.write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            chmod 0600 "$supply_provenance"
+          fi
+          require_dependency_vulnerability=false
+          stable_dependency_vulnerability=""
+          if [[ "$CERT_MODE" == "release-candidate" && "$DEPENDENCY_VULNERABILITY_STAGE" == "post-publication" ]]; then
+            require_dependency_vulnerability=true
+            dependency_root="$RUNNER_TEMP/stable-dependency-vulnerability-promotion-input"
+            mapfile -t dependency_entries < <(find "$dependency_root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+            expected_dependency_entries=(
+              stable-1.0-dependency-vulnerability-promotion-summary.json
+              stable-1.0-dependency-vulnerability-source-status.json
+              stable-1.0-dependency-vulnerability-summary-provenance.json
+            )
+            test "${dependency_entries[*]}" = "${expected_dependency_entries[*]}"
+            while IFS= read -r candidate; do
+              test ! -L "$candidate"
+              test "$(stat -c %h "$candidate")" = 1
+              test "$(stat -c %s "$candidate")" -gt 0
+              test "$(stat -c %s "$candidate")" -le 4194304
+            done < <(find "$dependency_root" -type f -print)
+            dependency_summary="$dependency_root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+            ledger_digest="$(jq -er '.ledgerDigest | select(test("^sha256:[0-9a-f]{64}$"))' "$dependency_summary")"
+            ledger_edition="$(jq -er '.ledgerEdition | select(type == "number" and . >= 1 and floor == .)' "$dependency_summary")"
+            valid_until="$(jq -er '.validUntil | select(type == "string")' "$dependency_summary")"
+            python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-ledger-digest "$ledger_digest" \
+              --expected-ledger-edition "$ledger_edition"
+            export CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_DIGEST="$ledger_digest"
+            export CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_EDITION="$ledger_edition"
+            stable_dependency_vulnerability="$dependency_summary"
+          fi
           interop_smoke=""
           interop_extended=""
           performance_smoke=""
@@ -433,11 +755,15 @@ jobs:
             --arg waiver_file "$WAIVER_FILE_PATH" \
             --arg stable_readiness "$STABLE_READINESS_SUMMARY_PATH" \
             --arg stable_vulnerability "$stable_vulnerability" \
+            --arg stable_supply_chain "$stable_supply_chain" \
+            --arg stable_dependency_vulnerability "$stable_dependency_vulnerability" \
             --arg history_label "$HISTORY_LABEL" \
             --argjson require_history "$REQUIRE_HISTORY" \
             --argjson write_history "$WRITE_HISTORY" \
             --argjson require_stable "$REQUIRE_STABLE_READINESS" \
             --argjson require_vulnerability "$require_vulnerability" \
+            --argjson require_supply_chain "$require_supply_chain" \
+            --argjson require_dependency_vulnerability "$require_dependency_vulnerability" \
             '{
               schemaVersion: 1,
               release: {id: $release_id, version: $release_version, profile: $profile},
@@ -449,6 +775,8 @@ jobs:
                 sandboxProviderTests: true,
                 stableReadiness: $require_stable,
                 stableVulnerability: $require_vulnerability,
+                stableSupplyChain: $require_supply_chain,
+                stableDependencyVulnerability: $require_dependency_vulnerability,
                 thirdPartyIntake: true
               },
               inputs: ({}
@@ -458,13 +786,40 @@ jobs:
                 + (if $release_history == "" then {} else {releaseHistory: $release_history} end)
                 + (if $waiver_file == "" then {} else {waiverFile: $waiver_file} end)
                 + (if $stable_readiness == "" then {} else {stableReadiness: $stable_readiness} end)
-                + (if $stable_vulnerability == "" then {} else {stableVulnerabilitySummary: $stable_vulnerability} end)),
+                + (if $stable_vulnerability == "" then {} else {stableVulnerabilitySummary: $stable_vulnerability} end)
+                + (if $stable_supply_chain == "" then {} else {supplyChainPromotionSummary: $stable_supply_chain} end)
+                + (if $stable_dependency_vulnerability == "" then {} else {dependencyVulnerabilityPromotionSummary: $stable_dependency_vulnerability} end)),
               policies: ({metadata: {candidateReleaseId: $release_id}}
                 + (if $history_label == "" then {} else {historyLabel: $history_label} end)
-                + (if $require_vulnerability then {stableVulnerabilityGovernance: "required"} else {} end)),
+                + (if $require_vulnerability then {stableVulnerabilityGovernance: "required"} else {} end)
+                + (if $require_supply_chain then {stableSupplyChainGovernance: "required"} else {} end)
+                + (if $require_dependency_vulnerability then {
+                    stableDependencyVulnerabilityGovernance: "required",
+                    candidateSourceCommit: env.GITHUB_SHA,
+                    candidateSourceRef: ("commit:" + env.GITHUB_SHA)
+                  } else {} end)),
               execution: {collectEvidence: true, writeHistory: $write_history},
               commands: {}
             }' > "$manifest"
+          if [[ "$CERT_MODE" == "release-candidate" && "$DEPENDENCY_VULNERABILITY_STAGE" == "post-publication" ]]; then
+            python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-summary \
+              --repository "$GITHUB_REPOSITORY" \
+              --source-status "$dependency_root/stable-1.0-dependency-vulnerability-source-status.json" \
+              --promotion-summary "$dependency_summary" \
+              --handoff "$dependency_root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+            certification_clock="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            python3 - "$certification_clock" "$valid_until" <<'PY'
+          import datetime as dt
+          import sys
+
+          clock = dt.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+          valid_until = dt.datetime.fromisoformat(sys.argv[2].replace("Z", "+00:00"))
+          if clock.tzinfo is None or valid_until.tzinfo is None or clock >= valid_until:
+              raise SystemExit(
+                  "dependency-vulnerability promotion evidence expired before final certification"
+              )
+          PY
+          fi
           python3 tools/release-certification/certify.py release-certification --manifest "$manifest"
 
       - name: Upload release certification artifacts
@@ -492,6 +847,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      attestations: read
     env:
       CERT_MODE: release-candidate
       RUN_EXTENDED_GATES: ${{ github.event.inputs['extended-gates'] || 'false' }}
@@ -507,4 +863,13 @@ jobs:
       STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-vulnerability-run-attempt'] || vars.STABLE_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
       STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-vulnerability-artifact-name'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
       STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-vulnerability-artifact-digest'] || vars.STABLE_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_RUN_ID: ${{ github.event.inputs['stable-dependency-vulnerability-run-id'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_RUN_ID || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT: ${{ github.event.inputs['stable-dependency-vulnerability-run-attempt'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME: ${{ github.event.inputs['stable-dependency-vulnerability-artifact-name'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-dependency-vulnerability-artifact-digest'] || vars.STABLE_DEPENDENCY_VULNERABILITY_PROMOTION_ARTIFACT_DIGEST || '' }}
+      STABLE_SUPPLY_CHAIN_RUN_ID: ${{ github.event.inputs['stable-supply-chain-run-id'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_RUN_ID || '' }}
+      STABLE_SUPPLY_CHAIN_RUN_ATTEMPT: ${{ github.event.inputs['stable-supply-chain-run-attempt'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_RUN_ATTEMPT || '' }}
+      STABLE_SUPPLY_CHAIN_ARTIFACT_NAME: ${{ github.event.inputs['stable-supply-chain-artifact-name'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_ARTIFACT_NAME || '' }}
+      STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-supply-chain-artifact-digest'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_ARTIFACT_DIGEST || '' }}
+      DEPENDENCY_VULNERABILITY_STAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['dependency-vulnerability-stage'] || 'pre-publication' }}
     steps: *certification-steps

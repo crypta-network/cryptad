@@ -38,6 +38,7 @@
     "stableCatalogDigest": {"$ref": "#/$defs/digest"},
     "knownLimitationsDeltaDigest": {"$ref": "#/$defs/digest"},
     "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "dependencyVulnerabilityGovernanceActive": {"type": "boolean"},
     "assets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/asset"}},
     "supplyChainCompanionAssets": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/supplyChainCompanionAsset"}},
     "stableCatalogTarget": {"$ref": "#/$defs/catalogTarget"},
