@@ -52,6 +52,7 @@ SUITE_MODULES = {
     ],
     "stable-dependency-vulnerability": [
         "cryptad_certification.tests.test_release_certification_stable_dependency_vulnerability",
+        "cryptad_certification.tests.test_stable_dependency_intelligence_producer",
         "cryptad_certification.tests.test_stable_dependency_intelligence_lineage",
         "cryptad_certification.tests.test_stable_dependency_vulnerability",
         "cryptad_certification.tests.test_stable_dependency_vulnerability_matching",

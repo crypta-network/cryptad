@@ -50,7 +50,7 @@ SAFE_OUTPUTS = (
 )
 ALLOWED_CONTENT_TYPES = frozenset(("application/json", "application/gzip"))
 REDIRECT_STATUSES = frozenset((301, 302, 303, 307, 308))
-PARSER_VERSION = "1.1"
+PARSER_VERSION = "1.2"
 PURL_RE = re.compile(r"pkg:[a-z0-9.+-]+/[A-Za-z0-9._~%+@/?=&-]{1,504}\Z")
 VERSION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+~-]{0,127}\Z")
 GHSA_RE = re.compile(
@@ -1277,6 +1277,19 @@ def _github_purl(ecosystem: Any, package_name: Any) -> str:
     return f"pkg:generic/{safe_ecosystem}/{encoded_name}"
 
 
+def _osv_package_purl(package: Mapping[str, Any]) -> str:
+    """Return the supplied OSV PURL or derive one from its required package identity."""
+
+    if "purl" in package:
+        return _selector_purl(package["purl"])
+    try:
+        return _selector_purl(
+            _github_purl(package.get("ecosystem"), package.get("name"))
+        )
+    except ProducerError as exc:
+        raise ProducerError("dependency-intelligence-advisory-package-invalid") from exc
+
+
 def _github_ranges(
     value: Any, scheme: str
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
@@ -1367,7 +1380,7 @@ def _osv_advisory(source_id: str, record: dict[str, Any], native_digest: str) ->
         if not isinstance(row, dict) or not isinstance(row.get("package"), dict):
             raise ProducerError("dependency-intelligence-advisory-package-invalid")
         package = row["package"]
-        purl = _selector_purl(package.get("purl"))
+        purl = _osv_package_purl(package)
         ecosystem, scheme = _ecosystem_semantics(package.get("ecosystem"), purl)
         ranges, fixed = _range_events(row.get("ranges", []), scheme)
         versions = row.get("versions", [])
