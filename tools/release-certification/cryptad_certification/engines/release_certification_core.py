@@ -681,7 +681,11 @@ URI_KEY_RE = re.compile(r"\b(?:CHK|SSK|USK)@[^\s\])},;\"']+")
 
 URL_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 
-ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])/(?:[A-Za-z0-9._ -]+/)+[A-Za-z0-9._ -]+")
+# A colon must not exempt a local path: hosted tools commonly report values such as
+# ``-javaagent:/home/runner/...`` or ``workspace:/home/runner/...``. URL authority separators
+# remain excluded because the first slash is followed by another slash and later URL-path slashes
+# are preceded by an authority character.
+ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/.\->])/(?:[A-Za-z0-9._ -]+/)+[A-Za-z0-9._ -]+")
 
 WINDOWS_DRIVE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])(?:[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\r\n]+[\\/])*[^\\/:*?\"<>|\r\n]+[\\/]?)"
