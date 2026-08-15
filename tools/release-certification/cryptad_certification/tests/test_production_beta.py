@@ -13,6 +13,7 @@ from cryptad_certification.engines import production_beta_release
 from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.legacy import execute as execute_engine
 from cryptad_certification.manifest import load_manifest
+from cryptad_certification.redaction import _local_absolute_path_fields
 from cryptad_certification.tests.support import workspace_root, write_manifest
 from cryptad_certification.workspace import prepare_context, prepare_run_root
 
@@ -75,6 +76,11 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
                 inputs={"productionBeta": str(context.component_dir / "summary.json")},
             )
             consumer_context = prepare_context(root, consumer_manifest, "go-no-go")
+            unix_fields, windows_fields = _local_absolute_path_fields(
+                summary["payload"]["legacy"]
+            )
+            self.assertEqual(set(), unix_fields)
+            self.assertEqual(set(), windows_fields)
             extracted = legacy._legacy_input_path(consumer_context, "productionBeta")
             self.assertIsNotNone(extracted)
             self.assertEqual(summary["payload"]["legacy"], read_json(extracted))

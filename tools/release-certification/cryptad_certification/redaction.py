@@ -414,28 +414,35 @@ def _is_normalized_public_route(
     )
 
 
-def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
-    """Return whether nested strings contain POSIX or Windows filesystem paths."""
+def _local_absolute_path_fields(
+    value: Any,
+) -> tuple[set[tuple[Any, ...]], set[tuple[Any, ...]]]:
+    """Return fields containing POSIX or Windows filesystem paths without their values."""
 
-    unix_found = False
-    windows_found = False
+    unix_fields: set[tuple[Any, ...]] = set()
+    windows_fields: set[tuple[Any, ...]] = set()
     for field_path, parent, text in _string_contexts(value):
         scan_text, malformed_placeholder = _strip_safe_path_placeholders(text)
         if malformed_placeholder or FILE_URI_RE.search(scan_text):
-            unix_found = True
+            unix_fields.add(field_path)
         if UNIX_REPEATED_SEPARATOR_RE.search(scan_text):
-            unix_found = True
+            unix_fields.add(field_path)
         for match in UNIX_PATH_RE.finditer(scan_text):
             colon_prefixed = match.start() > 0 and scan_text[match.start() - 1] == ":"
             if colon_prefixed or not _is_normalized_public_route(
                 field_path, parent, match.group(0)
             ):
-                unix_found = True
+                unix_fields.add(field_path)
         if WINDOWS_PATH_RE.search(scan_text) or WINDOWS_UNC_PATH_RE.search(scan_text):
-            windows_found = True
-        if unix_found and windows_found:
-            break
-    return unix_found, windows_found
+            windows_fields.add(field_path)
+    return unix_fields, windows_fields
+
+
+def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
+    """Return whether nested strings contain POSIX or Windows filesystem paths."""
+
+    unix_fields, windows_fields = _local_absolute_path_fields(value)
+    return bool(unix_fields), bool(windows_fields)
 
 
 def scan_value(value: Any) -> list[dict[str, str]]:
