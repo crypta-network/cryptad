@@ -3284,6 +3284,18 @@ class StableGaVulnerabilityFreshnessAssertionTest(unittest.TestCase):
 
 
 class StableGaSecurityAndDeterminismTest(unittest.TestCase):
+    def test_protected_workflow_checkouts_use_authenticated_dispatch_sha(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(2, workflow.count("          ref: ${{ github.sha }}"))
+        self.assertNotIn("          ref: ${{ inputs.candidate_commit }}", workflow)
+        self.assertIn(
+            '|| "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT"',
+            workflow,
+        )
+
     def test_ga_release_asset_allowlist_keeps_pr290_companions_independent(
         self,
     ) -> None:
