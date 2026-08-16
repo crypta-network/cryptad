@@ -106,6 +106,13 @@ and continues to upload only maintenance-owned `assets`; partial or complete com
 does not invalidate that retry. Unknown Release assets still conflict, and companion presence does
 not replace the supply-chain receipt or public observation.
 
+The three independently published dependency-vulnerability companion names are a prospective
+exception to the maintenance Release allowlist. The closed publication plan and its exact
+authorization both bind `dependencyVulnerabilityGovernanceActive`, derived from the authenticated
+PR-290 policy and candidate freeze. The maintenance backend accepts those independently governed
+names only when both records bind `true`; a historical pre-activation release treats every such
+name as an unexpected conflicting asset.
+
 The returned publication receipt and later public observation preserve the policy-declared role
 order and use canonical JSON self-digests. Observation performs no mutation: it re-fetches all
 eight published assets and binds the authenticated observer identity, observation time, and exact
@@ -117,6 +124,18 @@ python3 -m unittest discover \
   -s tools/release-certification/publication-backend/tests \
   -p 'test_*.py' -v
 ```
+
+## Dependency-vulnerability public evidence
+
+The same deterministic wheel exports the closed
+`cryptad_stable_maintenance_backend:dependency_vulnerability_factory`. It accepts exactly the
+three public-safe PR-290 roles (`dependency-vulnerability-summary`, `dependency-source-status`,
+and `dependency-public-findings`) at their derived `v<build>` GitHub Release asset URIs. The plan
+binds the annotated integer tag, target source commit, promotion summary, public summary, policy,
+and protected authorization. Existing bytes are re-downloaded and verified; conflicting bytes are
+never overwritten. Publication returns an authenticated run/attempt receipt, and observation
+re-fetches every role and emits an expiring exact-byte observation. It has no issue, catalog,
+CoreUpdater, lifecycle, tag, or Release-creation authority.
 
 For lifecycle state, the configured public request URI serves the canonical descriptor bytes.
 Immediately before a lifecycle insertion, the read-only
@@ -153,8 +172,11 @@ only when the complete planned set is exact. Any unexpected, duplicate, malforme
 or digest-mismatched row is a conflict; recovery never deletes or overwrites an asset.
 The authorization plan must use the canonical
 `https://github.com/crypta-network/cryptad/releases/tag/v<build>` page. Release observation binds
-that page, the integer-build tag, target commit, deterministic `Cryptad v<build>` title, exact note
-bytes, draft/prerelease flags, and assets before treating existing state as idempotent.
+that page, the integer-build tag, target commit, exact note bytes, draft/prerelease flags, assets,
+and the release-class title before treating existing state as idempotent. Stable GA uses
+`Cryptad Stable 1.0 (v<build>)`; maintenance and security-hotfix releases use
+`Cryptad v<build>`. The protected plan carries one exact title, and the provider requires the
+observed Release title to match it.
 Catalog, CoreUpdater, and latest-baseline state
 are handled by a deployment service whose public observation endpoint is the exact
 `deploymentServicePublicUri` in the publication plan. The plan also carries the exact catalog

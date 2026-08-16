@@ -37,6 +37,7 @@
     "knownLimitationsDeltaDigest": {"$ref": "#/$defs/digest"},
     "releaseNotesDigest": {"$ref": "#/$defs/digest"},
     "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "dependencyVulnerabilityGovernanceActive": {"type": "boolean"},
     "backportReleaseTrainDigest": {"$ref": "#/$defs/digest"},
     "allowedPublicationScopes": {
       "type": "array", "minItems": 1, "uniqueItems": true,

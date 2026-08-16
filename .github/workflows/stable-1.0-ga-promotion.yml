@@ -48,6 +48,26 @@ on:
         required: false
         default: ''
         type: string
+      stable_dependency_vulnerability_run_id:
+        description: Exact protected PR-290 evaluate-promotion run; required only for publish=true.
+        required: false
+        default: ''
+        type: string
+      stable_dependency_vulnerability_run_attempt:
+        description: Exact protected PR-290 evaluate-promotion run attempt; required only for publish=true.
+        required: false
+        default: ''
+        type: string
+      stable_dependency_vulnerability_artifact_name:
+        description: Exact authenticated PR-290 evaluation handoff artifact; required only for publish=true.
+        required: false
+        default: ''
+        type: string
+      stable_dependency_vulnerability_artifact_digest:
+        description: Exact Actions sha256 digest for the PR-290 evaluation handoff; required only for publish=true.
+        required: false
+        default: ''
+        type: string
       previous_candidate:
         description: Exact migrated previous-candidate envelope whose digest was frozen by the selected RC.
         required: true
@@ -104,12 +124,13 @@ jobs:
       publication_artifact_name: ${{ steps.stage_publication.outputs.artifact_name }}
       publication_artifact_digest: ${{ steps.upload_publication.outputs.artifact-digest }}
       component: ${{ steps.final_gate.outputs.component }}
+      dependency_vulnerability_active: ${{ steps.dependency_vulnerability_activation.outputs.active }}
 
     steps:
       - name: Check out the exact candidate commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.candidate_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -148,6 +169,10 @@ jobs:
           INPUT_STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ inputs.stable_vulnerability_run_attempt }}
           INPUT_STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ inputs.stable_vulnerability_artifact_name }}
           INPUT_STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ inputs.stable_vulnerability_artifact_digest }}
+          INPUT_STABLE_DEPENDENCY_VULNERABILITY_RUN_ID: ${{ inputs.stable_dependency_vulnerability_run_id }}
+          INPUT_STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT: ${{ inputs.stable_dependency_vulnerability_run_attempt }}
+          INPUT_STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME: ${{ inputs.stable_dependency_vulnerability_artifact_name }}
+          INPUT_STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST: ${{ inputs.stable_dependency_vulnerability_artifact_digest }}
         run: |
           set -euo pipefail
           if [[ ${#INPUT_RELEASE_ID} -gt 128 \
@@ -483,7 +508,6 @@ jobs:
             echo "::error::Selected Stable RC workflow artifact digest is malformed."
             exit 1
           fi
-
           rc_root="build/stable-ga-protected-inputs/selected-rc"
           rm -rf "$rc_root"
           mkdir -p "$rc_root"
@@ -519,6 +543,11 @@ jobs:
 
           selected_summary="$(find_one 'Stable RC v2 summary' -path "$rc_root/summary.json")"
           freeze="$(find_one 'Stable RC freeze' -name stable-1.0-rc-freeze.json)"
+          frozen_at="$(jq -er '
+            .frozenAt
+            | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' \
+            "$freeze")"
+          echo "frozen_at=$frozen_at" >> "$GITHUB_OUTPUT"
           freeze_dir="$(dirname "$freeze")"
           freeze_sidecar="$freeze_dir/stable-1.0-rc-freeze.sha256"
           rc_archive="$freeze_dir/cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz"
@@ -1271,6 +1300,20 @@ jobs:
           fi
           echo "component=$component" >> "$GITHUB_OUTPUT"
 
+      - name: Determine prospective PR-290 governance activation
+        id: dependency_vulnerability_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_dependency_vulnerability_activation.py \
+            tools/release-certification/stable-1.0-dependency-vulnerability-policy.json \
+            --authenticated-frozen-at '${{ steps.materialize.outputs.frozen_at }}')"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable dependency-vulnerability activation returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
       - name: Stage exact public validation and publication inputs
         id: stage_publication
         env:
@@ -1461,7 +1504,7 @@ jobs:
       - name: Check out the exact authorized candidate
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.candidate_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -1707,6 +1750,164 @@ jobs:
           rm -rf "$opened" "$external_root"
           rm -f "$current_tip_environment"
 
+      - name: Authenticate exact current PR-290 promotion producer
+        if: needs.validate.outputs.dependency_vulnerability_active == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR290_RUN_ID: ${{ inputs.stable_dependency_vulnerability_run_id }}
+          PR290_RUN_ATTEMPT: ${{ inputs.stable_dependency_vulnerability_run_attempt }}
+          PR290_ARTIFACT_NAME: ${{ inputs.stable_dependency_vulnerability_artifact_name }}
+          PR290_ARTIFACT_DIGEST: ${{ inputs.stable_dependency_vulnerability_artifact_digest }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR290_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$PR290_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || "$PR290_ARTIFACT_NAME" \
+                  != "stable-1.0-dependency-vulnerability-${{ inputs.release_id }}-evaluation" \
+                || ! "$PR290_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Post-activation GA requires exact current PR-290 promotion coordinates."
+            exit 2
+          fi
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$PR290_RUN_ID/attempts/$PR290_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$PR290_RUN_ID" \
+            --arg attempt "$PR290_RUN_ATTEMPT" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              (.id | tostring) == $run_id
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt
+              and .path == ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$PR290_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.PR290_ARTIFACT_NAME)]')"
+          jq -e \
+            --arg name "$PR290_ARTIFACT_NAME" \
+            --arg digest "$PR290_ARTIFACT_DIGEST" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download exact current PR-290 evaluation handoff
+        if: needs.validate.outputs.dependency_vulnerability_active == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.stable_dependency_vulnerability_run_id }}
+          name: ${{ inputs.stable_dependency_vulnerability_artifact_name }}
+          path: ${{ runner.temp }}/stable-ga-dependency-vulnerability-promotion-input
+
+      - name: Reauthenticate current PR-290 state before GA mutation
+        if: needs.validate.outputs.dependency_vulnerability_active == 'true'
+        id: dependency_vulnerability_promotion
+        env:
+          PR290_RUN_ID: ${{ inputs.stable_dependency_vulnerability_run_id }}
+          PR290_RUN_ATTEMPT: ${{ inputs.stable_dependency_vulnerability_run_attempt }}
+          PR290_ARTIFACT_NAME: ${{ inputs.stable_dependency_vulnerability_artifact_name }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/stable-ga-dependency-vulnerability-promotion-input"
+          actual="$(find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            stable-1.0-dependency-vulnerability-promotion-summary.json \
+            stable-1.0-dependency-vulnerability-publication-plan.json \
+            stable-1.0-dependency-vulnerability-source-status.json \
+            stable-1.0-dependency-vulnerability-summary-provenance.json \
+            | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test -z "$(find "$root" -mindepth 1 \( -type l -o ! -type f -o -type f -links +1 \) -print -quit)"
+          test "$(du -sb "$root" | cut -f1)" -le 268435456
+          summary="$root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          plan="$root/stable-1.0-dependency-vulnerability-publication-plan.json"
+          status="$root/stable-1.0-dependency-vulnerability-source-status.json"
+          handoff="$root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          summary_byte_digest="sha256:$(sha256sum "$summary" | awk '{print $1}')"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$summary" "$summary_byte_digest" "$INPUT_RELEASE_ID" \
+            "$INPUT_BUILD_VERSION" "$INPUT_CANDIDATE_COMMIT" \
+            "$PR290_RUN_ID" "$PR290_RUN_ATTEMPT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_evaluation_handoff_errors,
+          )
+
+          summary_path = Path(sys.argv[1])
+          summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          errors, handoff = stable_dependency_vulnerability_evaluation_handoff_errors(
+              summary_path, sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+          )
+          if errors or handoff is None:
+              raise SystemExit(errors[0] if errors else "PR-290 handoff is missing")
+          if handoff.get("runId") != sys.argv[6] or handoff.get("runAttempt") != sys.argv[7]:
+              raise SystemExit("PR-290 handoff run coordinates differ")
+          if (
+              summary.get("mode") != "evaluate-promotion"
+              or summary.get("activationStatus") != "active-post-activation"
+              or summary.get("status") != "pass"
+              or summary.get("promotionReady") is not True
+              or summary.get("blockers") != []
+              or summary.get("waivers") != []
+          ):
+              raise SystemExit("PR-290 handoff does not authorize GA promotion")
+          PY
+          python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py \
+            verify-current --repository "$GITHUB_REPOSITORY" \
+            --expected-ledger-digest "$(jq -er .ledgerDigest "$summary")" \
+            --expected-ledger-edition "$(jq -er .ledgerEdition "$summary")"
+          python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py \
+            verify-current-status --repository "$GITHUB_REPOSITORY" \
+            --source-status "$status" --publication-plan "$plan" \
+            --promotion-summary "$summary"
+          assertion="$RUNNER_TEMP/stable-1.0-dependency-vulnerability-promotion-freshness.json"
+          ASSERTION_PATH="$assertion" PYTHONPATH=tools/release-certification python3 - \
+            "$summary" "$status" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" \
+            "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          summary_path, status_path = Path(sys.argv[1]), Path(sys.argv[2])
+          summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          assertion = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-dependency-vulnerability-promotion-freshness",
+              "releaseId": sys.argv[3],
+              "buildVersion": sys.argv[4],
+              "sourceCommit": sys.argv[5],
+              "summaryByteDigest": "sha256:" + hashlib.sha256(summary_path.read_bytes()).hexdigest(),
+              "sourceStatusByteDigest": "sha256:" + hashlib.sha256(status_path.read_bytes()).hexdigest(),
+              "ledgerDigest": summary["ledgerDigest"],
+              "ledgerEdition": summary["ledgerEdition"],
+              "validUntil": summary["validUntil"],
+          }
+          raw = json.dumps(assertion, ensure_ascii=False, indent=2, sort_keys=True).encode() + b"\n"
+          path = Path(os.environ["ASSERTION_PATH"])
+          descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+          with os.fdopen(descriptor, "wb") as output:
+              output.write(raw)
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write("freshness_assertion_digest=sha256:" + hashlib.sha256(raw).hexdigest() + "\n")
+          PY
+
       - name: Build the signed-catalog verifier
         run: ./gradlew :platform-devtools:installDist
 
@@ -1897,6 +2098,8 @@ jobs:
           LEUMOR_GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
           STABLE_CATALOG_TRUSTED_KEYS_BASE64: ${{ secrets.STABLE_CATALOG_TRUSTED_KEYS_BASE64 }}
           STABLE_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST: ${{ steps.vulnerability_promotion.outputs.freshness_assertion_digest }}
+          STABLE_DEPENDENCY_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST: ${{ steps.dependency_vulnerability_promotion.outputs.freshness_assertion_digest }}
+          STABLE_DEPENDENCY_VULNERABILITY_ACTIVE: ${{ needs.validate.outputs.dependency_vulnerability_active }}
         run: |
           set -euo pipefail
           export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"
@@ -1913,6 +2116,7 @@ jobs:
           notes="$legacy/stable-1.0-ga-release-notes.md"
           catalog_verifier="platform-devtools/build/install/crypta-app/bin/crypta-app"
           vulnerability_freshness_assertion="$RUNNER_TEMP/stable-1.0-vulnerability-promotion-freshness.json"
+          dependency_vulnerability_freshness_assertion="$RUNNER_TEMP/stable-1.0-dependency-vulnerability-promotion-freshness.json"
           trusted_keys_dir="build/stable-ga-private-catalog-trust"
           trusted_keys="$trusted_keys_dir/trusted-catalog-keys.properties"
           if [[ -z "$STABLE_CATALOG_TRUSTED_KEYS_BASE64" || ! -x "$catalog_verifier" ]]; then
@@ -1926,7 +2130,7 @@ jobs:
             exit 1
           fi
           chmod 600 "$trusted_keys"
-          trap 'rm -rf "$trusted_keys_dir"; rm -f "$vulnerability_freshness_assertion"' EXIT
+          trap 'rm -rf "$trusted_keys_dir"; rm -f "$vulnerability_freshness_assertion" "$dependency_vulnerability_freshness_assertion"' EXIT
           promotion_digest="$(jq -r '.promotionIdentityDigest // empty' "$plan")"
           publication_targets_digest="$(jq -er '.publicationTargetsDigest' "$validation_identity")"
           notes_digest="sha256:$(sha256sum "$notes" | awk '{print $1}')"
@@ -2686,12 +2890,71 @@ jobs:
           PY
           }
 
+          verify_dependency_vulnerability_promotion_freshness() {
+            if [[ "$STABLE_DEPENDENCY_VULNERABILITY_ACTIVE" == false ]]; then
+              return 0
+            fi
+            if [[ "$STABLE_DEPENDENCY_VULNERABILITY_ACTIVE" != true ]]; then
+              echo "::error::Stable dependency-vulnerability activation decision is missing."
+              return 1
+            fi
+            PYTHONPATH=tools/release-certification python3 - \
+              "$dependency_vulnerability_freshness_assertion" \
+              "$STABLE_DEPENDENCY_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST" \
+              "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" \
+              "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          from pathlib import Path
+          import re
+          import sys
+
+          path = Path(sys.argv[1])
+          raw = path.read_bytes()
+          expected_digest = sys.argv[2]
+          if "sha256:" + hashlib.sha256(raw).hexdigest() != expected_digest:
+              raise SystemExit("PR-290 freshness assertion digest differs")
+          value = json.loads(raw)
+          if set(value) != {
+              "schemaVersion", "kind", "releaseId", "buildVersion", "sourceCommit",
+              "summaryByteDigest", "sourceStatusByteDigest", "ledgerDigest",
+              "ledgerEdition", "validUntil",
+          }:
+              raise SystemExit("PR-290 freshness assertion fields are not closed")
+          if (
+              value.get("schemaVersion") != 1
+              or value.get("kind") != "stable-1.0-dependency-vulnerability-promotion-freshness"
+              or value.get("releaseId") != sys.argv[3]
+              or value.get("buildVersion") != sys.argv[4]
+              or value.get("sourceCommit") != sys.argv[5]
+              or not isinstance(value.get("ledgerEdition"), int)
+              or value["ledgerEdition"] < 1
+              or any(
+                  re.fullmatch(r"sha256:[0-9a-f]{64}", str(value.get(field, ""))) is None
+                  for field in ("summaryByteDigest", "sourceStatusByteDigest", "ledgerDigest")
+              )
+          ):
+              raise SystemExit("PR-290 freshness assertion identity is invalid")
+          try:
+              valid_until = dt.datetime.fromisoformat(
+                  str(value.get("validUntil", "")).replace("Z", "+00:00")
+              )
+          except ValueError as error:
+              raise SystemExit("PR-290 freshness assertion deadline is invalid") from error
+          if valid_until.tzinfo is None or dt.datetime.now(dt.timezone.utc) >= valid_until:
+              raise SystemExit("PR-290 promotion expired before GA mutation")
+          PY
+          }
+
           validate_publication_boundary() {
             verify_vulnerability_promotion_freshness
+            verify_dependency_vulnerability_promotion_freshness
             reauthenticate_latest_stable_rc
             revalidate_publication_inputs
             verify_release_branch_head
             verify_vulnerability_promotion_freshness
+            verify_dependency_vulnerability_promotion_freshness
           }
 
           begin_publication_side_effect() {
@@ -2771,8 +3034,12 @@ jobs:
           existing_assets="$(gh api --paginate --method GET \
             "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
             -f per_page=100 | jq -s '[.[] | .[]]')"
-          if jq -e --argjson planned "$assets_json" '
-            ([.[].name] - [$planned[].name]) | length > 0' <<< "$existing_assets" >/dev/null; then
+          if ! jq -e \
+            --argjson planned "$assets_json" \
+            --arg dependency_vulnerability_active "$STABLE_DEPENDENCY_VULNERABILITY_ACTIVE" \
+            --argjson require_complete false \
+            -f tools/release-certification/protected/stable_ga_release_asset_names.jq \
+            <<< "$existing_assets" >/dev/null; then
             echo "::error::Existing GitHub Release contains an unexpected asset."
             exit 1
           fi
@@ -2805,7 +3072,12 @@ jobs:
           existing_assets="$(gh api --paginate --method GET \
             "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
             -f per_page=100 | jq -s '[.[] | .[]]')"
-          if [[ "$(jq -r 'length' <<< "$existing_assets")" != "$(jq -r 'length' <<< "$assets_json")" ]]; then
+          if ! jq -e \
+            --argjson planned "$assets_json" \
+            --arg dependency_vulnerability_active "$STABLE_DEPENDENCY_VULNERABILITY_ACTIVE" \
+            --argjson require_complete true \
+            -f tools/release-certification/protected/stable_ga_release_asset_names.jq \
+            <<< "$existing_assets" >/dev/null; then
             echo "::error::GitHub Release asset count differs from the authorized plan."
             exit 1
           fi
@@ -2860,10 +3132,11 @@ jobs:
           existing_assets="$(gh api --paginate --method GET \
             "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
             -f per_page=100 | jq -s '[.[] | .[]]')"
-          if ! jq -e --argjson planned "$assets_json" '
-              length == 7
-              and ([.[].name] | unique | length) == 7
-              and ([.[].name] | sort) == ([$planned[].name] | sort)' \
+          if ! jq -e \
+              --argjson planned "$assets_json" \
+              --arg dependency_vulnerability_active "$STABLE_DEPENDENCY_VULNERABILITY_ACTIVE" \
+              --argjson require_complete true \
+              -f tools/release-certification/protected/stable_ga_release_asset_names.jq \
               <<< "$existing_assets" >/dev/null; then
             echo "::error::Published GitHub Release asset names differ from the exact allowlist."
             exit 1

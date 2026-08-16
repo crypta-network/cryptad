@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "stable-1.0-dependency-intelligence-provenance-v1.schema.json", "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "repositoryIdentity", "sourceId", "workflowRef", "workflowSha", "runId", "runAttempt", "jobName", "artifactName", "artifactDigest", "sourceCommit", "sourceRef", "manifestDigest", "policyDigest", "componentInventoryDigest", "producerIdentity", "attestationDigest", "provenanceDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-dependency-intelligence-provenance"}, "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "sourceId": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/identifier"},
+    "workflowRef": {"type": "string", "pattern": "^crypta-network/cryptad/\\.github/workflows/stable-1\\.0-dependency-intelligence-producer\\.yml@refs/heads/[A-Za-z0-9._/-]+$", "maxLength": 512},
+    "workflowSha": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40}, "runId": {"type": "integer", "minimum": 1}, "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "jobName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", "maxLength": 128}, "artifactName": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$", "maxLength": 128},
+    "artifactDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}, "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40}, "sourceRef": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/sourceRef"},
+    "manifestDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}, "policyDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}, "componentInventoryDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "producerIdentity": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$", "maxLength": 256}, "attestationDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}, "provenanceDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}
+  }
+}

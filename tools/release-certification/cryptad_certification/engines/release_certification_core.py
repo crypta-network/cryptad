@@ -50,6 +50,24 @@ from cryptad_certification.io import read_json as read_strict_json
 
 from cryptad_certification.schema_validation import validate_schema
 
+from cryptad_certification.stable_dependency_vulnerability_handoff import (
+    STABLE_DEPENDENCY_VULNERABILITY_CERTIFICATION_CLOCK_ENV,
+    STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_DIGEST_ENV,
+    STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_EDITION_ENV,
+    STABLE_DEPENDENCY_VULNERABILITY_EVALUATION_WORKFLOW,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_AUTHENTICATION_ALGORITHM,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_FIELDS,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_FILE,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_DOMAIN,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_ENV,
+    STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_MAC_DOMAIN,
+    STABLE_DEPENDENCY_VULNERABILITY_WORKFLOW,
+    stable_dependency_vulnerability_evaluation_handoff_errors,
+    stable_dependency_vulnerability_current_tip_errors,
+    stable_dependency_vulnerability_handoff_authentication_tag,
+    stable_dependency_vulnerability_handoff_errors,
+)
+
 from cryptad_certification.stable_vulnerability_handoff import (
     current_tip_errors as shared_stable_vulnerability_current_tip_errors,
     handoff_paths as shared_stable_vulnerability_handoff_paths,
@@ -285,6 +303,34 @@ STABLE_SUPPLY_CHAIN_EVIDENCE_ID = "stable-supply-chain.release-promotion"
 
 STABLE_SUPPLY_CHAIN_GATE_ID = "ecosystem.stable-supply-chain"
 
+STABLE_DEPENDENCY_VULNERABILITY_EVIDENCE_ID = (
+    "stable-dependency-vulnerability.release-promotion"
+)
+
+STABLE_DEPENDENCY_VULNERABILITY_GATE_ID = (
+    "ecosystem.stable-dependency-vulnerability"
+)
+
+STABLE_DEPENDENCY_VULNERABILITY_SUMMARY_SCHEMA = (
+    "stable-1.0-dependency-vulnerability-promotion-summary-v1.schema.json"
+)
+
+STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS = (
+    "stable-dependency-vulnerability.policy",
+    "stable-dependency-vulnerability.intelligence-authenticity",
+    "stable-dependency-vulnerability.snapshot-freshness",
+    "stable-dependency-vulnerability.alias-integrity",
+    "stable-dependency-vulnerability.component-matching",
+    "stable-dependency-vulnerability.disposition-governance",
+    "stable-dependency-vulnerability.open-findings",
+    "stable-dependency-vulnerability.remediation-binding",
+    "stable-dependency-vulnerability.case-binding",
+    "stable-dependency-vulnerability.publication",
+    "stable-dependency-vulnerability.redaction",
+    "stable-dependency-vulnerability.release-promotion",
+    "stable-dependency-vulnerability.phase-11-closeout",
+)
+
 STABLE_SUPPLY_CHAIN_SUMMARY_SCHEMA = (
     "stable-1.0-supply-chain-promotion-summary-v1.schema.json"
 )
@@ -357,7 +403,11 @@ STABLE_SUPPLY_CHAIN_HANDOFF_FIELDS = frozenset(
 )
 
 NONWAIVABLE_EVIDENCE_IDS = frozenset(
-    {STABLE_VULNERABILITY_EVIDENCE_ID, STABLE_SUPPLY_CHAIN_EVIDENCE_ID}
+    {
+        STABLE_VULNERABILITY_EVIDENCE_ID,
+        STABLE_SUPPLY_CHAIN_EVIDENCE_ID,
+        STABLE_DEPENDENCY_VULNERABILITY_EVIDENCE_ID,
+    }
 )
 
 STABLE_VULNERABILITY_SUMMARY_SCHEMA = (
@@ -631,7 +681,11 @@ URI_KEY_RE = re.compile(r"\b(?:CHK|SSK|USK)@[^\s\])},;\"']+")
 
 URL_USERINFO_RE = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 
-ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])/(?:[A-Za-z0-9._ -]+/)+[A-Za-z0-9._ -]+")
+# A colon must not exempt a local path: hosted tools commonly report values such as
+# ``-javaagent:/home/runner/...`` or ``workspace:/home/runner/...``. URL authority separators
+# remain excluded because the first slash is followed by another slash and later URL-path slashes
+# are preceded by an authority character.
+ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/.\->])/(?:[A-Za-z0-9._ -]+/)+[A-Za-z0-9._ -]+")
 
 WINDOWS_DRIVE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])(?:[A-Za-z]:[\\/](?:[^\\/:*?\"<>|\r\n]+[\\/])*[^\\/:*?\"<>|\r\n]+[\\/]?)"
@@ -850,6 +904,12 @@ class Settings:
     stable_supply_chain_candidate_build_version: str = ""
     stable_supply_chain_candidate_source_commit: str = ""
     stable_supply_chain_candidate_source_ref: str = ""
+    stable_dependency_vulnerability_summary: Path | None = None
+    stable_dependency_vulnerability_required: bool = False
+    stable_dependency_vulnerability_candidate_release_id: str = ""
+    stable_dependency_vulnerability_candidate_build_version: str = ""
+    stable_dependency_vulnerability_candidate_source_commit: str = ""
+    stable_dependency_vulnerability_candidate_source_ref: str = ""
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -1932,6 +1992,9 @@ def stable_supply_chain_evidence(
         "sourceRef": value.get("sourceRef") if value else None,
         "policyDigest": value.get("policyDigest") if value else None,
         "summaryDigest": value.get("summaryDigest") if value else None,
+        "componentReverseIndexDigest": (
+            value.get("vulnerabilityReverseIndexDigest") if value else None
+        ),
         "protectedProducerAuthenticated": (
             handoff is not None and not handoff_errors if value is not None else False
         ),
@@ -1954,6 +2017,304 @@ def stable_supply_chain_evidence(
             "The authenticated Stable supply-chain summary permits this promotion."
             if not errors
             else "The Stable supply-chain summary failed exact identity, schema, digest, evidence, or redaction authentication."
+        ),
+        display_path(path, workspace_root, out_dir),
+        details,
+    )
+
+
+def stable_dependency_vulnerability_evidence(
+    path: Path | None,
+    workspace_root: Path,
+    out_dir: Path,
+    expected_release_id: str,
+    expected_build_version: str,
+    expected_source_commit: str,
+    expected_source_ref: str,
+    observed_source_commit: str,
+    supply_chain_item: EvidenceItem | None,
+    vulnerability_item: EvidenceItem | None,
+    expected_vulnerability_summary_digest: str | None,
+    *,
+    required: bool = False,
+    certification_clock: str | None = None,
+) -> EvidenceItem | None:
+    """Authenticate one public-safe PR-290 companion promotion summary."""
+
+    if path is None:
+        if not required:
+            return None
+        return EvidenceItem(
+            STABLE_DEPENDENCY_VULNERABILITY_EVIDENCE_ID,
+            "missing",
+            True,
+            (
+                "Authenticated Stable dependency-vulnerability evidence is required "
+                "but no summary was configured."
+            ),
+            "stable-dependency-vulnerability-summary",
+            {
+                "configured": False,
+                "authenticated": False,
+                "promotionReady": False,
+                "nonWaivable": True,
+                "validationErrors": [
+                    "required Stable dependency-vulnerability summary is missing"
+                ],
+            },
+        )
+
+    errors: list[str] = []
+    value: dict[str, Any] | None = None
+    handoff: dict[str, Any] | None = None
+    handoff_errors: list[str] = []
+    current_tip_errors: list[str] = []
+    raw = b""
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+            errors.append(
+                "configured dependency-vulnerability summary is not a regular file"
+            )
+        elif metadata.st_size > 4 * 1024 * 1024:
+            errors.append(
+                "configured dependency-vulnerability summary exceeds its size bound"
+            )
+        else:
+            raw = path.read_bytes()
+            loaded = read_strict_json(path)
+            if not isinstance(loaded, dict):
+                errors.append(
+                    "configured dependency-vulnerability summary is not a JSON object"
+                )
+            else:
+                value = loaded
+    except (OSError, UnicodeDecodeError, ValueError):
+        errors.append(
+            "configured dependency-vulnerability summary is missing, unreadable, or malformed"
+        )
+
+    if re.fullmatch(r"[0-9a-f]{40}", expected_source_commit) is None:
+        errors.append(
+            "expected dependency-vulnerability candidate source commit is missing or malformed"
+        )
+    if expected_source_ref != f"commit:{expected_source_commit}":
+        errors.append(
+            "expected dependency-vulnerability source ref is not the immutable commit identity"
+        )
+    if observed_source_commit != expected_source_commit:
+        errors.append(
+            "current checkout source commit differs from the expected dependency-vulnerability candidate"
+        )
+
+    if value is not None:
+        errors.extend(
+            validate_schema(
+                value, STABLE_DEPENDENCY_VULNERABILITY_SUMMARY_SCHEMA
+            )
+        )
+        canonical = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
+        if raw != canonical:
+            errors.append(
+                "configured dependency-vulnerability summary JSON bytes are not canonical"
+            )
+        digest_payload = {
+            key: child for key, child in value.items() if key != "summaryDigest"
+        }
+        expected_digest = "sha256:" + hashlib.sha256(
+            json.dumps(
+                digest_payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if value.get("summaryDigest") != expected_digest:
+            errors.append(
+                "configured dependency-vulnerability summary digest is invalid"
+            )
+        summary_byte_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+        handoff_errors, handoff = stable_dependency_vulnerability_handoff_errors(
+            path,
+            summary_byte_digest,
+            expected_release_id,
+            expected_build_version,
+            expected_source_commit,
+        )
+        errors.extend(handoff_errors)
+        current_tip_errors = stable_dependency_vulnerability_current_tip_errors(
+            value,
+            certification_clock=certification_clock,
+        )
+        errors.extend(current_tip_errors)
+        if value.get("releaseId") != expected_release_id:
+            errors.append(
+                "configured dependency-vulnerability summary release identity differs"
+            )
+        if str(value.get("buildVersion")) != expected_build_version:
+            errors.append(
+                "configured dependency-vulnerability summary build identity differs"
+            )
+        if value.get("candidateSourceCommit") != expected_source_commit:
+            errors.append(
+                "configured dependency-vulnerability summary source commit differs"
+            )
+        if (
+            value.get("mode") != "verify-publication"
+            or value.get("status") != "pass"
+            or value.get("promotionReady") is not True
+            or value.get("activationStatus") != "active-post-activation"
+        ):
+            errors.append(
+                "configured dependency-vulnerability summary is not final publication-verified promotion evidence"
+            )
+        if value.get("blockers") != [] or value.get("waivers") != []:
+            errors.append(
+                "configured dependency-vulnerability summary contains blockers or waivers"
+            )
+        evidence = value.get("evidence")
+        evidence = evidence if isinstance(evidence, list) else []
+        evidence_by_id = {
+            row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
+        }
+        if len(evidence_by_id) != len(evidence):
+            errors.append(
+                "configured dependency-vulnerability summary contains duplicate evidence ids"
+            )
+        if set(evidence_by_id) != set(
+            STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS
+        ):
+            errors.append(
+                "configured dependency-vulnerability summary evidence ids are not the closed required set"
+            )
+        for evidence_id in STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS:
+            row = evidence_by_id.get(evidence_id)
+            if (
+                not isinstance(row, dict)
+                or row.get("status") != "pass"
+                or row.get("nonWaivable") is not True
+            ):
+                errors.append(
+                    "required dependency-vulnerability evidence is not passing: "
+                    f"{evidence_id}"
+                )
+        for field in (
+            "publicationPlanDigest",
+            "publicationReceiptDigest",
+            "publicObservationDigest",
+        ):
+            if re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(value.get(field, ""))
+            ) is None:
+                errors.append(
+                    "configured dependency-vulnerability summary lacks final "
+                    f"{field}"
+                )
+        redaction = value.get("redaction")
+        if (
+            not isinstance(redaction, dict)
+            or redaction.get("status") != "pass"
+            or redaction.get("privateCaseMaterialExcluded") is not True
+            or redaction.get("reporterIdentityExcluded") is not True
+            or redaction.get("embargoedDetailsExcluded") is not True
+            or redaction.get("credentialsExcluded") is not True
+            or redaction.get("privateUrisExcluded") is not True
+            or redaction.get("absolutePathsExcluded") is not True
+            or redaction.get("rawFeedsExcluded") is not True
+            or redaction.get("sideEffectsPerformed") is not False
+        ):
+            errors.append(
+                "configured dependency-vulnerability summary failed public redaction"
+            )
+
+        supply_details = supply_chain_item.details if supply_chain_item else {}
+        if supply_chain_item is None or supply_chain_item.status != "pass":
+            errors.append(
+                "dependency-vulnerability promotion requires passing PR-289 supply-chain evidence"
+            )
+        else:
+            expected_supply_bindings = {
+                "supplyChainPolicyDigest": supply_details.get("policyDigest"),
+                "supplyChainPromotionSummaryDigest": supply_details.get(
+                    "summaryDigest"
+                ),
+                "componentReverseIndexDigest": supply_details.get(
+                    "componentReverseIndexDigest"
+                ),
+            }
+            for field, expected_value in expected_supply_bindings.items():
+                if not isinstance(expected_value, str) or value.get(field) != expected_value:
+                    errors.append(
+                        "configured dependency-vulnerability summary "
+                        f"{field} does not bind the authenticated PR-289 evidence"
+                    )
+        if vulnerability_item is None or vulnerability_item.status != "pass":
+            errors.append(
+                "dependency-vulnerability promotion requires passing PR-288 vulnerability evidence"
+            )
+        elif (
+            not isinstance(expected_vulnerability_summary_digest, str)
+            or value.get("vulnerabilityPromotionSummaryDigest")
+            != expected_vulnerability_summary_digest
+        ):
+            errors.append(
+                "configured dependency-vulnerability summary does not bind the authenticated PR-288 summary"
+            )
+
+    details: dict[str, Any] = {
+        "configured": True,
+        "authenticated": value is not None and not errors,
+        "promotionReady": value.get("promotionReady") is True if value else False,
+        "releaseId": value.get("releaseId") if value else None,
+        "buildVersion": value.get("buildVersion") if value else None,
+        "candidateSourceCommit": (
+            value.get("candidateSourceCommit") if value else None
+        ),
+        "policyDigest": value.get("policyDigest") if value else None,
+        "intelligenceSnapshotDigest": (
+            value.get("intelligenceSnapshotDigest") if value else None
+        ),
+        "componentReverseIndexDigest": (
+            value.get("componentReverseIndexDigest") if value else None
+        ),
+        "summaryDigest": value.get("summaryDigest") if value else None,
+        "ledgerEdition": value.get("ledgerEdition") if value else None,
+        "ledgerDigest": value.get("ledgerDigest") if value else None,
+        "validUntil": value.get("validUntil") if value else None,
+        "currentTipAuthenticated": value is not None and not current_tip_errors,
+        "protectedProducerAuthenticated": (
+            handoff is not None and not handoff_errors if value is not None else False
+        ),
+        "publicationVerified": (
+            value.get("mode") == "verify-publication" and not errors
+            if value
+            else False
+        ),
+        "producerWorkflow": handoff.get("workflow") if value and handoff else None,
+        "producerRunId": handoff.get("runId") if value and handoff else None,
+        "producerRunAttempt": (
+            handoff.get("runAttempt") if value and handoff else None
+        ),
+        "producerArtifactName": (
+            handoff.get("artifactName") if value and handoff else None
+        ),
+        "producerArtifactDigest": (
+            handoff.get("producerArtifactDigest") if value and handoff else None
+        ),
+        "nonWaivable": True,
+        "validationErrors": errors,
+    }
+    return EvidenceItem(
+        STABLE_DEPENDENCY_VULNERABILITY_EVIDENCE_ID,
+        "fail" if errors else "pass",
+        True,
+        (
+            "The authenticated Stable dependency-vulnerability companion summary permits this promotion."
+            if not errors
+            else "The Stable dependency-vulnerability summary failed exact identity, binding, authentication, evidence, or redaction validation."
         ),
         display_path(path, workspace_root, out_dir),
         details,

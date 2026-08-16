@@ -8,15 +8,23 @@ from .supply_chain import (
     SupplyChainPublicationBackend,
     supply_chain_factory,
 )
+from .dependency_vulnerability import (
+    AuthenticatedDependencyPublisher,
+    DependencyVulnerabilityPublicationBackend,
+    dependency_vulnerability_factory,
+)
 
 __all__ = [
     "AuthenticatedObserver",
     "AuthenticatedProducer",
+    "AuthenticatedDependencyPublisher",
+    "DependencyVulnerabilityPublicationBackend",
     "StableLifecycleBackend",
     "StableMaintenanceBackend",
     "SupplyChainPublicationBackend",
     "create_backend",
     "factory",
+    "dependency_vulnerability_factory",
     "lifecycle_factory",
     "supply_chain_factory",
 ]

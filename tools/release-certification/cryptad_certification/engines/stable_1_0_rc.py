@@ -153,6 +153,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     previous_freeze = previous_freeze_input.value if previous_freeze_input else None
     comparison_baseline = _comparison_baseline_binding(previous_freeze_input)
     accepted_exception_history = merge_accepted_exception_history(previous_freeze, exceptions)
+    candidate_frozen_at = _candidate_frozen_at(freeze_mode, previous_freeze, now)
     validate_prerequisites(context, inputs, catalog_operations, now, state)
     source = source_identity(context, inputs["releaseCertification"].value)
     if catalog_operations.value.get("sourceCommit") != source.commit:
@@ -211,6 +212,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     freeze = assemble_freeze(
         context=context,
         source=source,
+        frozen_at=candidate_frozen_at,
         inputs=inputs,
         catalog_operations=catalog_operations,
         platform_api=platform,
@@ -457,6 +459,28 @@ def _freeze_mode(
             "Supply the exact previous freeze before verifying or regenerating the candidate.",
         )
     return str(mode)
+
+
+def _candidate_frozen_at(
+    freeze_mode: str,
+    previous_freeze: dict[str, Any] | None,
+    now: dt.datetime,
+) -> str:
+    """Return the immutable candidate-freeze timestamp for this lineage."""
+
+    current = now.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    if freeze_mode != "refreeze" or previous_freeze is None:
+        return current
+    previous = previous_freeze.get("frozenAt")
+    if previous is None:
+        # Early v1 freezes predate frozenAt. Establish it once when that legacy baseline is
+        # refrozen; every subsequent current-format refreeze retains the established value.
+        return current
+    if parse_timestamp(previous) is None:
+        raise ValueError("previous Stable RC freeze has an invalid frozenAt timestamp")
+    return str(previous)
 
 
 def _finalize_drift(initial: dict[str, Any]) -> dict[str, Any]:

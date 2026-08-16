@@ -25,6 +25,7 @@ python3 tools/release-certification/certify.py stable-backport --self-test
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
 python3 tools/release-certification/certify.py stable-supply-chain --self-test
+python3 tools/release-certification/certify.py stable-dependency-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-vulnerability --self-test
 ```
 
@@ -61,6 +62,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
 | `stable-supply-chain` | Assemble and verify Stable component, SBOM, license, isolated-rebuild, promotion, and publication-observation evidence; the CLI is side-effect-free and the protected workflow has an explicit publication boundary. |
+| `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
@@ -1085,6 +1087,131 @@ See [Stable 1.0 supply-chain inventory and reproducible-build
 governance](../../docs/stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md) for
 the authority model, component roles, app/catalog coverage, license rules, vulnerability reverse
 index, redaction boundary, and external-verification procedure.
+
+## Stable 1.0 dependency-vulnerability governance
+
+Run the offline, phase-separated dependency security engine with:
+
+```bash
+python3 tools/release-certification/certify.py stable-dependency-vulnerability \
+  --manifest build/stable-1.0-dependency-vulnerability.json
+```
+
+The command accepts only `validate-intelligence`, `match-inventory`,
+`authorize-dispositions`, `prepare-remediation`, `evaluate-promotion`, or
+`verify-publication`. Retrieval is deliberately absent: the protected producer emits bounded raw
+digests, source provenance, and canonical records, while this command deterministically validates
+snapshots, matches the exact PR-289 inventory, and enforces the four closed dispositions. The
+companion promotion summary is prospectively required for Stable maintenance and security hotfixes
+and becomes the non-waivable `ecosystem.stable-dependency-vulnerability` release-certification
+gate. Publication uses the closed authenticated backend and verified-existing-or-create semantics;
+self-tests never publish.
+
+`stable-1.0-dependency-vulnerability-phase-bundle.yml` is the only protected producer accepted
+for evaluator phase manifests. It authenticates every operation-specific upstream run, attempt,
+artifact name, and Actions digest, downloads only those exact artifacts, and invokes the reviewed
+phase-bundle helper to construct `manifest.json` itself. A caller-supplied manifest is never used.
+Its chain is: producer records to `validate-intelligence`; the retained intelligence and exact
+PR-289 artifacts to `match-inventory`; match output plus a protected bounded disposition proposal
+to `authorize-dispositions`; the authorized output plus PR-288/remediation proposal to
+`prepare-remediation`; and the authorized/remediation chain plus exact PR-289, PR-288, candidate,
+freeze, closeout, and optional authenticated PR-287/PR-285 fixed evidence to
+`evaluate-promotion`. Proposal artifacts are protected, bounded digest-only inputs; they are not
+committed as repository history.
+When fixed findings are present, the evaluation workflow—not the caller or phase bundle—creates
+the remediation provenance sidecar. It binds the exact phase Actions digest, protected run and
+attempt, PR-287 validation/completion/handoff bytes, PR-285 receipt bytes, current PR-289
+summary/inventory/reverse-index bytes, and the exact fixed remediation set under the phase-scoped
+remediation HMAC key before the offline engine is invoked.
+
+The protected intelligence producer shares `stable-1-0-vulnerability-ledger` serialization with
+PR-290 evaluation. It emits an exact source artifact and a separate activation proposal without a
+lineage-write token. `stable-1.0-dependency-authority-activation.yml` is the serialized activation
+drainer. Its single lock-holding activation job dispatches and awaits
+`stable-1.0-dependency-intelligence-activation.yml` once for each retained candidate, oldest first;
+it does not rely on matrix execution order. The dispatched authority authenticates the exact live
+drainer run, protected branch, and commit before it requests the activation environment. The
+finalizer requires the overall producer run to be completed-success,
+requires both mandatory proposal/source pairs for a scheduled matrix run, reauthenticates their
+exact Actions digests, and then constructs both successors and performs one compare-and-swap of
+`STABLE_1_0_DEPENDENCY_INTELLIGENCE_SOURCE_LINEAGE_SET`. Failed or cancelled producer runs, and
+failures while preparing either member, cannot partially supersede a usable source set. Seed that
+variable with the exact compact bytes represented by
+`stable-1.0-dependency-intelligence-source-lineage-set-genesis.json`; missing state never implies
+genesis. Before the evaluation workflow creates its promotion HMAC, it rereads the durable
+GitHub-public and OSV members and requires the selected source record and
+provenance to match each current anchor's exact edition, snapshot/content/inventory digests,
+workflow commit, run, attempt, artifact name, and Actions artifact digest. Configure the
+least-privilege lineage-read token in the protected evaluation environment; it is not exposed to
+ordinary PR or offline validation. Superseded but still fresh producer artifacts cannot authorize
+promotion.
+The final publication-verified handoff carries and HMAC-binds the exact source-status file; final
+release certification compares both mandatory rows with this same lineage set immediately before
+running the PR-290 gate.
+
+OSV inventory selection has a separate retention-independent authority:
+`STABLE_1_0_DEPENDENCY_OSV_INVENTORY_ANCHOR`. Seed it with the exact compact bytes from
+`stable-1.0-dependency-osv-inventory-anchor-genesis.json`, then use the protected
+`stable-1.0-dependency-osv-inventory-retention.yml` workflow to activate an exact PR-289
+supply-chain comparison artifact. The anchor preserves that inventory's release, build, source
+commit, semantic digest, byte digest, and original PR-289 coordinates. Its current retained
+artifact may be renewed from protected `develop` without changing the inventory identity, so a
+moving scheduled-workflow commit or ordinary 30-day Actions expiry cannot silently replace or
+strand the Stable inventory. Renewal is required seven days before expiry; missing, expired, or
+uninitialized state fails closed. The retention producer uploads a closed proposal and has no
+write token. After source proposals have drained, the same serialized activation job dispatches
+and awaits `stable-1.0-dependency-osv-inventory-activation.yml` for every retained
+completed-success producer in oldest-first order. The finalizer independently authenticates the
+exact run, attempt, artifact digest, source coordinates, inventory bytes, and predecessor, and
+makes the anchor compare-and-swap its final
+operation. Configure the read token in the producer and the write token only in the protected
+activation environment.
+
+The append-only PR-290 ledger tip is independently retained in the repository Actions variable
+`STABLE_1_0_DEPENDENCY_VULNERABILITY_LEDGER_TIP_ANCHOR`. Provision it before the first protected
+authorization with the compact sorted bytes from
+`stable-1.0-dependency-vulnerability-ledger-tip-anchor-genesis.json`. Missing state is never
+treated as genesis. The first successor is accepted only against that exact uninitialized anchor;
+later authorizations use an exact predecessor digest-and-edition compare-and-swap. Evaluation is
+read-only while it is running. Disposition authorization, dependency-evidence publication, and maintenance publication
+or baseline activation share the Stable vulnerability ledger concurrency lock and recheck the
+current PR-290 tip and the promotion summary's exclusive `validUntil` immediately before mutation.
+Disposition, remediation, and retention producers upload only encrypted proposals and receive no
+anchor-write token. The protected
+shared drainer dispatches and awaits
+`stable-1.0-dependency-vulnerability-tip-activation.yml` for each retained producer, oldest first,
+only after source and inventory proposals have drained. GitHub must record every selected producer
+as completed-success. The finalizer reauthenticates the exact run, attempt, artifact digest,
+encrypted binding, and ledger predecessor before performing the final CAS.
+Failed, cancelled, and still-running producers can never become the durable current tip. The
+event-driven drainer also rediscovers retained proposals on a bounded schedule; this recovers an
+older pending notification that GitHub concurrency replaced without weakening the single shared
+ledger lock or combining the three environment-scoped write credentials.
+Phase assembly therefore compares producer coordinates with this anchor only for disposition
+authorization, `prepare-remediation`, and retention artifacts. Read-only evaluation artifacts,
+including intentionally blocked `match-inventory` evidence needed for disposition review, remain
+exact candidate-commit-bound inputs and are not misclassified as committed ledger producers.
+The same anchor binds the exact ledger byte digest and Actions artifact expiry. The scheduled
+`stable-1.0-dependency-vulnerability-ledger-retention.yml` workflow runs under the shared lock,
+authenticates and copies the complete current artifact; the post-success activation workflow
+compare-and-swaps its renewed artifact coordinate without advancing the ledger edition. Its
+API-derived renewal deadline is seven days
+before artifact expiry; ordinary current/predecessor verification blocks at that deadline. If the
+exact bytes expire before renewal, the workflow fails closed and cannot synthesize a new genesis.
+Configure the phase-handoff key plus anchor read/write tokens in the protected
+`stable-1.0-dependency-vulnerability-ledger-activation` environment. Producer and retention
+environments receive only the phase key and least-privilege anchor-read token they require.
+
+The aggregate release-certification workflow uses `pre-publication` for release-branch pushes and
+ordinary candidate checks. It does not request the final PR-290 handoff before a tag and non-draft
+GitHub Release exist. After publication, dispatch it with
+`dependency-vulnerability-stage=post-publication` and the exact PR-290 publication run, attempt,
+artifact name, and Actions digest. The protected job then authenticates the `verify-publication`
+handoff and rechecks its validity deadline and current ledger tip. Historical pre-activation
+candidates remain on their original certification contract.
+
+See the [governance and operations runbook](../../docs/stable-1.0-dependency-vulnerability-monitoring-and-remediation-governance.md)
+and the [Phase 11 closeout](../../docs/phase-11-stable-1.0-assurance-closeout.md).
 
 ## Stable 1.0 maintenance and security hotfix certification
 

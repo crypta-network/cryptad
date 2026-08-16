@@ -37,6 +37,12 @@ outputs:
   entrypoint:
     description: Authenticated provider entrypoint.
     value: ${{ steps.materialize.outputs.entrypoint }}
+  wheel-digest:
+    description: Exact authenticated wheel SHA-256 digest.
+    value: ${{ steps.materialize.outputs.wheel-digest }}
+  attestation-digest:
+    description: Digest of the canonical verified GitHub attestation result.
+    value: ${{ steps.materialize.outputs.attestation-digest }}
 
 runs:
   using: composite
@@ -57,14 +63,16 @@ runs:
         set -euo pipefail
         canonical_artifact="stable-1.0-maintenance-publication-backend"
         canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-publication-backend-producer.yml"
-        canonical_entrypoint="cryptad_stable_maintenance_backend:factory"
+        canonical_maintenance_entrypoint="cryptad_stable_maintenance_backend:factory"
+        canonical_dependency_entrypoint="cryptad_stable_maintenance_backend:dependency_vulnerability_factory"
         if [[ ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
               || "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
               || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
               || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
               || ! "$INPUT_WHEEL_SHA256" =~ ^sha256:[0-9a-f]{64}$ \
               || "$INPUT_SIGNER_WORKFLOW" != "$canonical_signer" \
-              || "$INPUT_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+              || ( "$INPUT_ENTRYPOINT" != "$canonical_maintenance_entrypoint" \
+                   && "$INPUT_ENTRYPOINT" != "$canonical_dependency_entrypoint" ) ]]; then
           echo "::error::Publication-provider identity is incomplete or unsafe."
           exit 1
         fi
@@ -75,6 +83,7 @@ runs:
           --arg commit "$INPUT_SOURCE_COMMIT" \
           --arg workflow_path "$expected_workflow_path" '
             .repository.full_name == $repository
+            and .head_repository.full_name == $repository
             and .head_sha == $commit
             and .path == $workflow_path
             and .event == "workflow_dispatch"
@@ -140,11 +149,20 @@ runs:
                 if stat.S_IFMT(mode) != stat.S_IFREG or stat.S_IMODE(mode) != 0o644:
                     raise SystemExit("publication-provider wheel contains a noncanonical member")
         PY
+        verification="${download%/download}/wheel-attestation.json"
         gh attestation verify "$wheel" \
           --repo "$GITHUB_REPOSITORY" \
           --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+          --signer-digest "$INPUT_SOURCE_COMMIT" \
           --source-digest "$INPUT_SOURCE_COMMIT" \
-          --deny-self-hosted-runners >/dev/null
+          --deny-self-hosted-runners \
+          --format=json > "$verification"
+        jq -ceS 'select(type == "array" and length > 0) | sort_by(
+          .verificationResult.statement.subject[0].name,
+          .verificationResult.statement.subject[0].digest.sha256
+        )' "$verification" > "$verification.canonical"
+        attestation_digest="sha256:$(sha256sum \
+          "$verification.canonical" | cut -d' ' -f1)"
         python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" \
           >/dev/null
         python3 -I -S - "$site" "$INPUT_ENTRYPOINT" <<'PY'
@@ -166,3 +184,5 @@ runs:
         echo "python-path=$site" >> "$GITHUB_OUTPUT"
         echo "site-directory=$site" >> "$GITHUB_OUTPUT"
         echo "entrypoint=$INPUT_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+        echo "wheel-digest=$actual_wheel_digest" >> "$GITHUB_OUTPUT"
+        echo "attestation-digest=$attestation_digest" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-assurance-closeout",
+  "trackId": "phase-11-stable-1.0-assurance",
+  "stableMilestone": "Stable 1.0",
+  "sequenceStatus": "closed",
+  "finalPr": "PR-290",
+  "automaticFollowUpPrRequired": false,
+  "completionClassification": {
+    "repositoryDelivery": "implementation-complete",
+    "offlineVerification": "fixture/self-test-complete",
+    "protectedOperations": "protected-operation-evidence-required"
+  },
+  "prMap": [
+    {
+      "pr": "PR-270",
+      "capability": "Production beta hardening",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-271",
+      "capability": "Catalog operations and mirrors",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-272",
+      "capability": "Previous-candidate beta upgrade evidence",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-273",
+      "capability": "App-platform public-beta intake and upgrade evidence",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-274",
+      "capability": "Platform API compatibility window",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-275",
+      "capability": "First-party app and app-platform beta readiness gates",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-276",
+      "capability": "Trust and social content-format profiles",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-277",
+      "capability": "Privacy-preserving beta diagnostics",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-278",
+      "capability": "Production security drill gates",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-279",
+      "capability": "Legacy plugin migration finalization",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-280",
+      "capability": "Public-beta onboarding documentation gate",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-281",
+      "capability": "Public-beta support feedback loop",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-282",
+      "capability": "Stable 1.0 readiness gate",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-283",
+      "capability": "Stable RC freeze and authenticated candidate artifacts",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-284",
+      "capability": "Stable GA exact-byte publication and immutable release root",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-285",
+      "capability": "Stable maintenance and security-hotfix publication",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-286",
+      "capability": "Stable support lifecycle and revocation governance",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-287",
+      "capability": "Security fix intake, backport provenance, and release trains",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-288",
+      "capability": "Private vulnerability lifecycle and coordinated disclosure",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-289",
+      "capability": "Supply-chain inventory and reproducible-build governance",
+      "deliveryStatus": "implementation-complete"
+    },
+    {
+      "pr": "PR-290",
+      "capability": "Dependency-vulnerability monitoring and remediation governance",
+      "deliveryStatus": "implementation-complete"
+    }
+  ],
+  "canonicalVerificationCommands": [
+    "python3 tools/release-certification/certify.py stable-dependency-vulnerability --self-test",
+    "python3 tools/release-certification/certify.py stable-supply-chain --self-test",
+    "python3 tools/release-certification/certify.py stable-vulnerability --self-test",
+    "python3 tools/release-certification/certify.py stable-backport --self-test",
+    "python3 tools/release-certification/certify.py stable-maintenance --self-test",
+    "python3 tools/release-certification/certify.py stable-lifecycle --self-test",
+    "python3 tools/release-certification/certify.py stable-ga --self-test",
+    "python3 tools/release-certification/certify.py stable-rc --self-test",
+    "python3 tools/release-certification/certify.py release-certification --self-test",
+    "python3 tools/release-certification/certify.py app-platform-docs --self-test",
+    "PYTHONPATH=tools/release-certification python3 -m unittest -v cryptad_certification.tests.test_release_certification_stable_supply_chain cryptad_certification.tests.test_stable_maintenance_supply_chain cryptad_certification.tests.test_stable_vulnerability_component_scope"
+  ],
+  "finalGateIds": [
+    "ecosystem.rc-certification",
+    "ecosystem.stable-vulnerability",
+    "ecosystem.stable-supply-chain",
+    "ecosystem.stable-dependency-vulnerability"
+  ],
+  "finalAuthorities": [
+    {
+      "pr": "PR-289",
+      "authority": "Exact component, dependency, release-subject, SBOM, and reproducible-build identity"
+    },
+    {
+      "pr": "PR-290",
+      "authority": "Authenticated dependency intelligence, deterministic matching, dispositions, and dependency promotion obligations"
+    },
+    {
+      "pr": "PR-288",
+      "authority": "Opaque private vulnerability cases, Crypta severity, deadlines, disclosure, and closure"
+    },
+    {
+      "pr": "PR-287",
+      "authority": "Security fix intake, backport provenance, release lane, and completion"
+    },
+    {
+      "pr": "PR-285",
+      "authority": "Exact maintenance or security-hotfix publication and public observation"
+    },
+    {
+      "pr": "PR-286",
+      "authority": "Support lifecycle status, deprecation, and revocation transitions"
+    },
+    {
+      "pr": "PR-284",
+      "authority": "Immutable Stable GA release root"
+    }
+  ],
+  "protectedOperationEvidenceRequired": [
+    "Configure and approve the protected advisory source endpoints and producer identities",
+    "Run protected live advisory retrieval and preserve its authenticated snapshot handoff",
+    "Run an independently authorized real disposition review when a finding requires one",
+    "Publish reviewed public-safe monitoring artifacts through the authenticated backend",
+    "Observe the exact immutable public bytes within the policy freshness window",
+    "Exercise protected PR-288, PR-287, PR-285, or PR-286 authorities when a real finding requires them"
+  ],
+  "remoteOperationClaims": {
+    "liveAdvisoryRetrievalPerformed": false,
+    "productionDispositionAuthorized": false,
+    "remotePublicationPerformed": false,
+    "publicObservationPerformed": false,
+    "releaseOrLifecycleMutationPerformed": false
+  }
+}

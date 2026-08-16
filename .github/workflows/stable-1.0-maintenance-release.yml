@@ -29,17 +29,17 @@ on:
         required: true
         type: string
       protected_inputs_run_id:
-        description: Protected producer run containing phase-appropriate public-safe inputs; forbidden for publish.
+        description: Protected phase input run, or final PR-290 verification run on a post-publication publish retry.
         required: false
         default: ''
         type: string
       protected_inputs_artifact_name:
-        description: Exact protected input artifact name.
+        description: Exact protected input or final PR-290 handoff artifact name.
         required: false
         default: ''
         type: string
       protected_inputs_artifact_digest:
-        description: Exact sha256:<hex> GitHub Actions artifact digest.
+        description: Exact protected input or final PR-290 Actions sha256:<hex> artifact digest.
         required: false
         default: ''
         type: string
@@ -269,8 +269,13 @@ jobs:
             exit 1
           fi
           if [[ "$INPUT_OPERATION" == publish ]]; then
-            if [[ -n "$INPUT_PROTECTED_RUN_ID$INPUT_PROTECTED_ARTIFACT_NAME$INPUT_PROTECTED_ARTIFACT_DIGEST" ]]; then
-              echo "::error::publish consumes only the authorized artifact and forbids replacement inputs."
+            if [[ -n "$INPUT_PROTECTED_RUN_ID$INPUT_PROTECTED_ARTIFACT_NAME$INPUT_PROTECTED_ARTIFACT_DIGEST" ]] && {
+                 [[ ! "$INPUT_PROTECTED_RUN_ID" =~ ^[1-9][0-9]*$ ]] \
+                   || [[ "$INPUT_PROTECTED_ARTIFACT_NAME" \
+                      != "stable-1.0-dependency-vulnerability-$INPUT_RELEASE_ID-publication-verified" ]] \
+                   || [[ ! "$INPUT_PROTECTED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]];
+               }; then
+              echo "::error::Post-publication protected inputs must be absent or identify the exact final PR-290 handoff."
               exit 1
             fi
           elif [[ ! "$INPUT_PROTECTED_RUN_ID" =~ ^[1-9][0-9]*$ \
@@ -1325,6 +1330,21 @@ jobs:
           fi
           echo "active=$active" >> "$GITHUB_OUTPUT"
 
+      - name: Determine prospective PR-290 governance activation
+        if: inputs.operation == 'prepare-authorization'
+        id: dependency_vulnerability_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_dependency_vulnerability_activation.py \
+            tools/release-certification/stable-1.0-dependency-vulnerability-policy.json \
+            build/prior-validated-candidate/freeze/stable-1.0-maintenance-candidate-freeze.json)"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable dependency-vulnerability activation returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
       - name: Authenticate and materialize exact PR-289 promotion handoff
         if: >-
           inputs.operation == 'prepare-authorization' &&
@@ -1526,6 +1546,216 @@ jobs:
           PY
           unset CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64
           chmod 0600 "$provenance"
+
+      - name: Authenticate and materialize exact PR-290 promotion handoff
+        if: >-
+          inputs.operation == 'prepare-authorization' &&
+          steps.dependency_vulnerability_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          INPUT_RUN_ID="$(jq -er \
+            '.policies.metadata.stableDependencyVulnerabilityRunId' "$manifest")"
+          INPUT_RUN_ATTEMPT="$(jq -er \
+            '.policies.metadata.stableDependencyVulnerabilityRunAttempt' "$manifest")"
+          INPUT_ARTIFACT_NAME="$(jq -er \
+            '.policies.metadata.stableDependencyVulnerabilityArtifactName' "$manifest")"
+          INPUT_ARTIFACT_DIGEST="$(jq -er \
+            '.policies.metadata.stableDependencyVulnerabilityArtifactDigest' "$manifest")"
+          INPUT_ACTIONS_ARTIFACT_DIGEST="$(jq -er \
+            '.policies.metadata.stableDependencyVulnerabilityActionsArtifactDigest' "$manifest")"
+          expected_name="stable-1.0-dependency-vulnerability-$INPUT_RELEASE_ID-evaluation"
+          configured="build/protected-inputs/dependency-vulnerability/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          configured_plan="$(dirname "$configured")/stable-1.0-dependency-vulnerability-publication-plan.json"
+          configured_source_status="$(dirname "$configured")/stable-1.0-dependency-vulnerability-source-status.json"
+          provenance="$(dirname "$configured")/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          if [[ ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                || "$INPUT_ARTIFACT_NAME" != "$expected_name" \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$INPUT_ACTIONS_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Post-activation maintenance requires exact PR-290 evaluation coordinates."
+            exit 1
+          fi
+          if jq -e '(.inputs | has("dependencyVulnerabilityPromotionSummary"))' \
+              "$manifest" >/dev/null; then
+            echo "::error::Generic maintenance inputs must not provide PR-290 promotion authority."
+            exit 1
+          fi
+          if [[ -e "$configured" || -L "$configured" \
+                || -e "$configured_plan" || -L "$configured_plan" \
+                || -e "$configured_source_status" || -L "$configured_source_status" \
+                || -e "$provenance" || -L "$provenance" ]]; then
+            echo "::error::Generic maintenance inputs contain substituted PR-290 authority files."
+            exit 1
+          fi
+          run_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg attempt "$INPUT_RUN_ATTEMPT" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml"
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and (.run_attempt | tostring) == $attempt' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ACTIONS_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(
+              .name == $name and .expired == false and .digest == $digest
+            )] | length == 1' <<< "$artifacts" >/dev/null
+          root="build/stable-dependency-vulnerability-promotion-handoff"
+          rm -rf "$root"
+          mkdir -p "$root"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$root"
+          actual_files="$(
+            find "$root" -mindepth 1 -maxdepth 1 -type f -exec basename {} \; \
+              | LC_ALL=C sort
+          )"
+          expected_files="$(
+            printf '%s\n' \
+              stable-1.0-dependency-vulnerability-promotion-summary.json \
+              stable-1.0-dependency-vulnerability-publication-plan.json \
+              stable-1.0-dependency-vulnerability-source-status.json \
+              stable-1.0-dependency-vulnerability-summary-provenance.json \
+              | LC_ALL=C sort
+          )"
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 -type d -print -quit)" \
+                || "$actual_files" != "$expected_files" \
+                || "$(du -sb "$root" | cut -f1)" -gt 268435456 ]]; then
+            echo "::error::PR-290 evaluation handoff differs from its exact four-file contract."
+            exit 1
+          fi
+          summary="$root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          publication_plan="$root/stable-1.0-dependency-vulnerability-publication-plan.json"
+          source_status="$root/stable-1.0-dependency-vulnerability-source-status.json"
+          producer_provenance="$root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          if [[ -L "$summary" || ! -f "$summary" \
+                || -L "$publication_plan" || ! -f "$publication_plan" \
+                || -L "$source_status" || ! -f "$source_status" \
+                || -L "$producer_provenance" || ! -f "$producer_provenance" ]]; then
+            echo "::error::PR-290 evaluation handoff lacks its canonical subjects."
+            exit 1
+          fi
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --argjson build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .kind == "stable-1.0-dependency-vulnerability-promotion-summary"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .candidateSourceCommit == $commit
+              and .mode == "evaluate-promotion"
+              and .activationStatus == "active-post-activation"
+              and .status == "pass"
+              and .promotionReady == true
+              and .blockers == []
+              and .waivers == []
+              and .redaction.status == "pass"
+              and .redaction.sideEffectsPerformed == false' "$summary" >/dev/null
+          summary_digest="sha256:$(sha256sum "$summary" | awk '{print $1}')"
+          jq -e \
+            --arg workflow "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml@$INPUT_CANDIDATE_COMMIT" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg run "$INPUT_RUN_ID" \
+            --arg attempt "$INPUT_RUN_ATTEMPT" \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg name "$INPUT_ARTIFACT_NAME" \
+            --arg producer_digest "$INPUT_ARTIFACT_DIGEST" \
+            --arg summary_digest "$summary_digest" '
+              .schemaVersion == 1
+              and .kind == "stable-1.0-dependency-vulnerability-promotion-handoff"
+              and .repository == "crypta-network/cryptad"
+              and .workflow == $workflow
+              and .workflowCommit == $commit
+              and .runId == $run
+              and .runAttempt == $attempt
+              and .operation == "evaluate-promotion"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .artifactName == $name
+              and .producerArtifactDigest == $producer_digest
+              and .summaryFileName
+                == "stable-1.0-dependency-vulnerability-promotion-summary.json"
+              and .summaryByteDigest == $summary_digest
+              and .attestationSubjectDigest == $summary_digest
+              and .attestationVerified == true
+              and .denySelfHostedRunners == true
+              and .authenticationStatus == "pass"
+              and .authenticationAlgorithm == "hmac-sha256"' \
+            "$producer_provenance" >/dev/null
+          destination_root="$(dirname "$configured")"
+          if [[ -L "$destination_root" || -L "$configured" \
+                || -L "$configured_plan" || -L "$configured_source_status" \
+                || -L "$provenance" ]]; then
+            echo "::error::Authenticated PR-290 destination contains a symbolic link."
+            exit 1
+          fi
+          mkdir -p "$destination_root"
+          install -m 600 "$summary" "$configured"
+          install -m 600 "$publication_plan" "$configured_plan"
+          install -m 600 "$source_status" "$configured_source_status"
+          install -m 600 "$producer_provenance" "$provenance"
+          if ! cmp --silent "$summary" "$configured" \
+              || ! cmp --silent "$publication_plan" "$configured_plan" \
+              || ! cmp --silent "$source_status" "$configured_source_status" \
+              || ! cmp --silent "$producer_provenance" "$provenance"; then
+            echo "::error::PR-290 handoff changed while entering the protected input root."
+            exit 1
+          fi
+          python3 - "$configured" \
+            "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" \
+            "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, "tools/release-certification")
+          from cryptad_certification.engines.release_certification_core import (
+              stable_dependency_vulnerability_evaluation_handoff_errors,
+          )
+
+          summary = Path(sys.argv[1])
+          summary_digest = "sha256:" + hashlib.sha256(
+              summary.read_bytes()
+          ).hexdigest()
+          errors, _handoff = stable_dependency_vulnerability_evaluation_handoff_errors(
+              summary,
+              summary_digest,
+              sys.argv[2],
+              sys.argv[3],
+              sys.argv[4],
+          )
+          if errors:
+              raise SystemExit(errors[0])
+          PY
+          chmod 0600 \
+            "$configured" \
+            "$configured_plan" \
+            "$configured_source_status" \
+            "$provenance"
+          jq -S \
+            --arg configured "$configured" '
+              .inputs.dependencyVulnerabilityPromotionSummary = $configured
+              | .policies.stableDependencyVulnerabilityGovernance = "required"' \
+            "$manifest" > "$manifest.next"
+          mv "$manifest.next" "$manifest"
 
       - name: Build the trusted Stable catalog verifier
         if: inputs.operation == 'freeze-candidate'
@@ -2821,6 +3051,66 @@ jobs:
           printf 'CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT=%s\n' \
             "$external_root" >> "$GITHUB_ENV"
 
+      - name: Recheck dependency intelligence age and durable tip before authorization preparation
+        if: >-
+          inputs.operation == 'prepare-authorization' &&
+          steps.dependency_vulnerability_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          root="build/protected-inputs/dependency-vulnerability"
+          summary="$root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          publication_plan="$root/stable-1.0-dependency-vulnerability-publication-plan.json"
+          source_status="$root/stable-1.0-dependency-vulnerability-source-status.json"
+          provenance="$root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          test -f "$summary" && test ! -L "$summary"
+          test -f "$publication_plan" && test ! -L "$publication_plan"
+          test -f "$source_status" && test ! -L "$source_status"
+          test -f "$provenance" && test ! -L "$provenance"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$summary" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_evaluation_handoff_errors,
+          )
+          path = Path(sys.argv[1])
+          value = json.loads(path.read_text(encoding="utf-8"))
+          digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+          errors, _ = stable_dependency_vulnerability_evaluation_handoff_errors(
+              path, digest, sys.argv[2], sys.argv[3], sys.argv[4]
+          )
+          valid_until = dt.datetime.fromisoformat(
+              str(value.get("validUntil", "")).replace("Z", "+00:00")
+          )
+          if (
+              errors
+              or valid_until.tzinfo is None
+              or dt.datetime.now(dt.timezone.utc) >= valid_until
+          ):
+              raise SystemExit(
+                  "dependency-vulnerability promotion is stale or unauthenticated"
+              )
+          PY
+          python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-ledger-digest "$(jq -er .ledgerDigest "$summary")" \
+            --expected-ledger-edition "$(jq -er .ledgerEdition "$summary")"
+          python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-status \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-status "$source_status" \
+            --publication-plan "$publication_plan" \
+            --promotion-summary "$summary"
+
       - name: Validate manifest identity and side-effect-free mode
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
         env:
@@ -2830,6 +3120,7 @@ jobs:
           INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           EXPECTED_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
           INPUT_OPERATION: ${{ inputs.operation }}
+          DEPENDENCY_VULNERABILITY_ACTIVE: ${{ steps.dependency_vulnerability_activation.outputs.active || 'false' }}
         run: |
           set -euo pipefail
           manifest="build/stable-1.0-maintenance.json"
@@ -2839,7 +3130,8 @@ jobs:
             --arg release_class "$INPUT_RELEASE_CLASS" \
             --arg commit "$INPUT_CANDIDATE_COMMIT" \
             --arg branch "$EXPECTED_BRANCH" \
-            --arg operation "$INPUT_OPERATION" '
+            --arg operation "$INPUT_OPERATION" \
+            --arg dependency_vulnerability_active "$DEPENDENCY_VULNERABILITY_ACTIVE" '
               .release.id == $release
               and .release.version == $build
               and .release.profile == "stable-review"
@@ -2848,6 +3140,11 @@ jobs:
               and .policies.candidateSourceBranch == $branch
               and .policies.candidateSourceCommit == $commit
               and .policies.candidateSourceRef == ("commit:" + $commit)
+              and (if $dependency_vulnerability_active == "true" then
+                .policies.stableDependencyVulnerabilityGovernance == "required"
+                and .inputs.dependencyVulnerabilityPromotionSummary
+                  == "build/protected-inputs/dependency-vulnerability/stable-1.0-dependency-vulnerability-promotion-summary.json"
+              else true end)
               and .execution.allowDirtyWorkspace == false
               and .execution.fixtureEvidence == false
               and .execution.allowTestSigningInProduction == false
@@ -2863,6 +3160,7 @@ jobs:
       - name: Validate exact frozen candidate without publication
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
         env:
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
         run: >-
@@ -3500,6 +3798,20 @@ jobs:
           fi
           echo "active=$active" >> "$GITHUB_OUTPUT"
 
+      - name: Determine publication-boundary PR-290 governance activation
+        id: publication_dependency_vulnerability_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_dependency_vulnerability_activation.py \
+            tools/release-certification/stable-1.0-dependency-vulnerability-policy.json \
+            build/stable-maintenance-publication/authenticated-inputs/maintenance-candidate-freeze.json)"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable dependency-vulnerability activation returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
       - name: Reauthenticate exact PR-289 promotion producer before publication
         if: steps.publication_supply_chain_activation.outputs.active == 'true'
         env:
@@ -4017,6 +4329,58 @@ jobs:
               )
           PY
 
+      - name: Recheck dependency intelligence age and durable tip at mutation boundary
+        if: >-
+          steps.preflight.outcome == 'success' &&
+          steps.publication_dependency_vulnerability_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-publication/protected-inputs/dependency-vulnerability"
+          summary="$root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          publication_plan="$root/stable-1.0-dependency-vulnerability-publication-plan.json"
+          source_status="$root/stable-1.0-dependency-vulnerability-source-status.json"
+          provenance="$root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          test -f "$summary" && test ! -L "$summary"
+          test -f "$publication_plan" && test ! -L "$publication_plan"
+          test -f "$source_status" && test ! -L "$source_status"
+          test -f "$provenance" && test ! -L "$provenance"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$summary" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_evaluation_handoff_errors,
+          )
+          path = Path(sys.argv[1])
+          value = json.loads(path.read_text(encoding="utf-8"))
+          digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+          errors, _ = stable_dependency_vulnerability_evaluation_handoff_errors(
+              path, digest, sys.argv[2], sys.argv[3], sys.argv[4]
+          )
+          valid_until = dt.datetime.fromisoformat(str(value.get("validUntil", "")).replace("Z", "+00:00"))
+          if errors or valid_until.tzinfo is None or dt.datetime.now(dt.timezone.utc) >= valid_until:
+              raise SystemExit("dependency-vulnerability promotion is stale or unauthenticated")
+          PY
+          python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-ledger-digest "$(jq -er .ledgerDigest "$summary")" \
+            --expected-ledger-edition "$(jq -er .ledgerEdition "$summary")"
+          python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-status \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-status "$source_status" \
+            --publication-plan "$publication_plan" \
+            --promotion-summary "$summary"
+
       - name: Publish or idempotently verify exact bytes
         id: publication
         if: steps.preflight.outcome == 'success'
@@ -4030,6 +4394,9 @@ jobs:
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT: ${{ inputs.candidate_commit }}
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_REPOSITORY: ${{ github.repository }}
+          DEPENDENCY_VULNERABILITY_ACTIVE: ${{ steps.publication_dependency_vulnerability_activation.outputs.active }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
           INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
           GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
         run: |
@@ -4054,6 +4421,34 @@ jobs:
             exit 1
           fi
           adapter="tools/release-certification/protected/stable_maintenance_publication.py"
+          if [[ "$DEPENDENCY_VULNERABILITY_ACTIVE" = true ]]; then
+            dependency_root="build/stable-maintenance-publication/protected-inputs/dependency-vulnerability"
+            dependency_summary="$dependency_root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+            python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-ledger-digest "$(jq -er .ledgerDigest "$dependency_summary")" \
+              --expected-ledger-edition "$(jq -er .ledgerEdition "$dependency_summary")"
+            python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-status \
+              --repository "$GITHUB_REPOSITORY" \
+              --source-status "$dependency_root/stable-1.0-dependency-vulnerability-source-status.json" \
+              --publication-plan "$dependency_root/stable-1.0-dependency-vulnerability-publication-plan.json" \
+              --promotion-summary "$dependency_summary"
+            python3 - "$dependency_summary" <<'PY'
+          import datetime as dt
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          valid_until = dt.datetime.fromisoformat(
+              str(value.get("validUntil", "")).replace("Z", "+00:00")
+          )
+          if valid_until.tzinfo is None or dt.datetime.now(dt.timezone.utc) >= valid_until:
+              raise SystemExit(
+                  "dependency-vulnerability promotion expired before publication mutation"
+              )
+          PY
+          fi
           marker="build/stable-maintenance-publication-side-effect-started"
           # The marker is written only after the complete no-side-effect preflight passed.
           : > "$marker"
@@ -4596,6 +4991,74 @@ jobs:
           path: build/stable-maintenance-baseline-activation-authority
           digest-mismatch: error
 
+      - name: Determine baseline-activation PR-290 governance activation
+        id: baseline_dependency_vulnerability_activation
+        run: |
+          set -euo pipefail
+          active="$(python3 \
+            tools/release-certification/protected/stable_dependency_vulnerability_activation.py \
+            tools/release-certification/stable-1.0-dependency-vulnerability-policy.json \
+            build/stable-maintenance-baseline-activation-authority/authenticated-inputs/maintenance-candidate-freeze.json)"
+          if [[ "$active" != true && "$active" != false ]]; then
+            echo "::error::Stable dependency-vulnerability activation returned an invalid decision."
+            exit 1
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate final PR-290 publication verification
+        id: final_pr290_producer
+        if: steps.baseline_dependency_vulnerability_activation.outputs.active == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          PR290_FINAL_RUN_ID: ${{ inputs.protected_inputs_run_id }}
+          PR290_FINAL_ARTIFACT_NAME: ${{ inputs.protected_inputs_artifact_name }}
+          PR290_FINAL_ARTIFACT_DIGEST: ${{ inputs.protected_inputs_artifact_digest }}
+        run: |
+          set -euo pipefail
+          expected_name="stable-1.0-dependency-vulnerability-$INPUT_RELEASE_ID-publication-verified"
+          if [[ ! "$PR290_FINAL_RUN_ID" =~ ^[1-9][0-9]*$ \
+                || "$PR290_FINAL_ARTIFACT_NAME" != "$expected_name" \
+                || ! "$PR290_FINAL_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Baseline activation waits for exact final PR-290 publication verification."
+            exit 2
+          fi
+          producer="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PR290_FINAL_RUN_ID")"
+          run_attempt="$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<< "$producer")"
+          jq -e \
+            --arg run_id "$PR290_FINAL_RUN_ID" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              (.id | tostring) == $run_id
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-dependency-vulnerability-publication.yml"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$PR290_FINAL_RUN_ID/artifacts?per_page=100" \
+            --jq '[.[].artifacts[] | select(.name == env.PR290_FINAL_ARTIFACT_NAME)]')"
+          jq -e \
+            --arg name "$PR290_FINAL_ARTIFACT_NAME" \
+            --arg digest "$PR290_FINAL_ARTIFACT_DIGEST" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download final PR-290 publication-verified handoff
+        if: steps.baseline_dependency_vulnerability_activation.outputs.active == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.protected_inputs_run_id }}
+          name: ${{ inputs.protected_inputs_artifact_name }}
+          path: build/stable-maintenance-baseline-activation-final-pr290
+
       - name: Recheck vulnerability summary at the baseline activation boundary
         env:
           GH_TOKEN: ${{ github.token }}
@@ -4689,6 +5152,71 @@ jobs:
               )
           PY
 
+      - name: Recheck dependency intelligence age and durable tip before baseline activation
+        if: steps.baseline_dependency_vulnerability_activation.outputs.active == 'true'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          PR290_FINAL_RUN_ID: ${{ inputs.protected_inputs_run_id }}
+          PR290_FINAL_RUN_ATTEMPT: ${{ steps.final_pr290_producer.outputs.run_attempt }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-baseline-activation-final-pr290"
+          summary="$root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          source_status="$root/stable-1.0-dependency-vulnerability-source-status.json"
+          provenance="$root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          actual="$(find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            stable-1.0-dependency-vulnerability-promotion-summary.json \
+            stable-1.0-dependency-vulnerability-source-status.json \
+            stable-1.0-dependency-vulnerability-summary-provenance.json \
+            | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test -z "$(find "$root" -mindepth 1 \( -type l -o ! -type f -o -type f -links +1 \) -print -quit)"
+          test -f "$summary" && test ! -L "$summary"
+          test -f "$source_status" && test ! -L "$source_status"
+          test -f "$provenance" && test ! -L "$provenance"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$summary" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" "$INPUT_CANDIDATE_COMMIT" \
+            "$PR290_FINAL_RUN_ID" "$PR290_FINAL_RUN_ATTEMPT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_handoff_errors,
+          )
+          path = Path(sys.argv[1])
+          value = json.loads(path.read_text(encoding="utf-8"))
+          digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+          errors, handoff = stable_dependency_vulnerability_handoff_errors(
+              path, digest, sys.argv[2], sys.argv[3], sys.argv[4]
+          )
+          if handoff is None or str(handoff.get("runId")) != sys.argv[5]:
+              errors.append("final dependency-vulnerability producer run differs from selection")
+          if handoff is None or str(handoff.get("runAttempt")) != sys.argv[6]:
+              errors.append("final dependency-vulnerability producer attempt differs from selection")
+          if value.get("mode") != "verify-publication" or value.get("promotionReady") is not True:
+              errors.append("dependency-vulnerability publication is not finally verified")
+          valid_until = dt.datetime.fromisoformat(str(value.get("validUntil", "")).replace("Z", "+00:00"))
+          if errors or valid_until.tzinfo is None or dt.datetime.now(dt.timezone.utc) >= valid_until:
+              raise SystemExit("dependency-vulnerability promotion is stale or unauthenticated")
+          PY
+          python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+            --repository "$GITHUB_REPOSITORY" \
+            --expected-ledger-digest "$(jq -er .ledgerDigest "$summary")" \
+            --expected-ledger-edition "$(jq -er .ledgerEdition "$summary")"
+          python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-summary \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-status "$source_status" \
+            --promotion-summary "$summary" \
+            --handoff "$provenance"
+
       - name: Compare-and-swap latest-published pointer
         id: activation
         continue-on-error: true
@@ -4700,7 +5228,13 @@ jobs:
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH: ${{ inputs.release_class == 'security-hotfix' && format('hotfix/{0}', inputs.build_version) || format('release/{0}', inputs.build_version) }}
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT: ${{ inputs.candidate_commit }}
           CRYPTAD_STABLE_MAINTENANCE_EXPECTED_REPOSITORY: ${{ github.repository }}
+          DEPENDENCY_VULNERABILITY_ACTIVE: ${{ steps.baseline_dependency_vulnerability_activation.outputs.active }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
           INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -4822,6 +5356,67 @@ jobs:
           if [[ "$current_branch_commit" != "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT" ]]; then
             echo "::error::The remote release/hotfix ref moved before baseline activation."
             exit 1
+          fi
+          if [[ "$DEPENDENCY_VULNERABILITY_ACTIVE" = true ]]; then
+            dependency_root="build/stable-maintenance-baseline-activation-final-pr290"
+            dependency_summary="$dependency_root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+            dependency_status="$dependency_root/stable-1.0-dependency-vulnerability-source-status.json"
+            dependency_handoff="$dependency_root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+            PYTHONPATH=tools/release-certification python3 - \
+              "$dependency_summary" "$INPUT_RELEASE_ID" "$INPUT_BUILD_VERSION" \
+              "$INPUT_CANDIDATE_COMMIT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_handoff_errors,
+          )
+
+          path = Path(sys.argv[1])
+          value = json.loads(path.read_text(encoding="utf-8"))
+          digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+          errors, _ = stable_dependency_vulnerability_handoff_errors(
+              path, digest, sys.argv[2], sys.argv[3], sys.argv[4]
+          )
+          if (
+              errors
+              or value.get("mode") != "verify-publication"
+              or value.get("promotionReady") is not True
+          ):
+              raise SystemExit(
+                  "dependency-vulnerability final authority is unauthenticated"
+              )
+          PY
+            python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py verify-current \
+              --repository "$GITHUB_REPOSITORY" \
+              --expected-ledger-digest "$(jq -er .ledgerDigest "$dependency_summary")" \
+              --expected-ledger-edition "$(jq -er .ledgerEdition "$dependency_summary")"
+            python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py verify-current-summary \
+              --repository "$GITHUB_REPOSITORY" \
+              --source-status "$dependency_status" \
+              --promotion-summary "$dependency_summary" \
+              --handoff "$dependency_handoff"
+            python3 - "$dependency_summary" <<'PY'
+          import datetime as dt
+          import json
+          import sys
+          from pathlib import Path
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          try:
+              valid_until = dt.datetime.fromisoformat(
+                  str(value.get("validUntil", "")).replace("Z", "+00:00")
+              )
+          except ValueError as error:
+              raise SystemExit("dependency-vulnerability final deadline is invalid") from error
+          if valid_until.tzinfo is None or dt.datetime.now(dt.timezone.utc) >= valid_until:
+              raise SystemExit(
+                  "dependency-vulnerability promotion expired before baseline activation"
+              )
+          PY
           fi
           activation_marker="build/stable-maintenance-baseline-activation-started"
           if [[ -e "$activation_marker" || -L "$activation_marker" ]]; then

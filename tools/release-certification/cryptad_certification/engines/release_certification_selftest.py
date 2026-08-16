@@ -1456,6 +1456,10 @@ def run_self_test(repo_root: Path) -> None:
         assert '/api/v1/diagnostics' in route_scrubbed, route_scrubbed
         assert '/mnt/secrets/signing/key.pem' not in route_scrubbed, route_scrubbed
         assert '<path>/key.pem' in route_scrubbed, route_scrubbed
+        colon_labeled_path = scrub_text('Picked up JAVA_TOOL_OPTIONS: -javaagent:/home/runner/work/_temp/agent.jar workspace:/home/runner/work/cryptad/cryptad/report.json', workspace, out_dir)
+        assert '/home/runner/' not in colon_labeled_path, colon_labeled_path
+        assert '-javaagent:<path>/agent.jar' in colon_labeled_path, colon_labeled_path
+        assert 'workspace:<path>/report.json' in colon_labeled_path, colon_labeled_path
         signing_metadata = sanitize_value({'privateKeyPresent': False, 'privateKeySource': 'missing', 'publicKeyPresent': True, 'publicKeySource': 'environment', 'secretMaterialRedacted': True, 'privateKey': 'actual-secret', 'privateKeyFile': '/mnt/secrets/signing/key.pem', 'token': 'runtime-token', 'path': '/apps/cert-smoke/runtime'}, workspace, out_dir)
         assert signing_metadata['privateKeyPresent'] is False, signing_metadata
         assert signing_metadata['privateKeySource'] == 'missing', signing_metadata

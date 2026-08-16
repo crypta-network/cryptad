@@ -1,0 +1,16 @@
+{
+  "activatedAt": null,
+  "anchorDigest": "sha256:80448164ad4b610500adda939ec42d7bc1d911f5257ccd6b7cb7d993728ed431",
+  "anchorSequence": 0,
+  "artifactExpiresAt": null,
+  "currentArtifact": null,
+  "initialized": false,
+  "inventory": null,
+  "kind": "stable-1.0-dependency-osv-inventory-anchor",
+  "origin": null,
+  "previousAnchorDigest": null,
+  "renewalRequiredAt": null,
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "schemaVersion": 1,
+  "stableMilestone": "Stable 1.0"
+}

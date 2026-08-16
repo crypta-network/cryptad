@@ -1,0 +1,189 @@
+name: Stable 1.0 Dependency OSV Inventory Retention
+
+on:
+  schedule:
+    - cron: '41 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Activate a reviewed PR-289 inventory or renew the current retained bytes.
+        required: true
+        type: choice
+        options:
+          - renew
+          - activate
+      supply_workflow_commit:
+        description: Exact PR-289 supply-chain workflow commit; required for activate.
+        required: false
+        default: ''
+        type: string
+      supply_run_id:
+        description: Exact PR-289 supply-chain run ID; required for activate.
+        required: false
+        default: ''
+        type: string
+      supply_run_attempt:
+        description: Exact PR-289 supply-chain run attempt; required for activate.
+        required: false
+        default: ''
+        type: string
+      supply_artifact_name:
+        description: Exact PR-289 comparison artifact name; required for activate.
+        required: false
+        default: ''
+        type: string
+      supply_artifact_digest:
+        description: Exact PR-289 Actions artifact digest; required for activate.
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: stable-1-0-vulnerability-ledger
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  retain-osv-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1.0-dependency-osv-inventory-retention
+    permissions:
+      actions: read
+      contents: read
+    env:
+      OPERATION: ${{ github.event_name == 'schedule' && 'renew' || inputs.operation }}
+    steps:
+      - name: Check out exact protected retention authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Read exact durable inventory anchor and source coordinates
+        id: anchor
+        env:
+          CRYPTAD_STABLE_DEPENDENCY_OSV_INVENTORY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_OSV_INVENTORY_ANCHOR_READ_TOKEN }}
+          SUPPLY_WORKFLOW_COMMIT: ${{ inputs.supply_workflow_commit }}
+          SUPPLY_RUN_ID: ${{ inputs.supply_run_id }}
+          SUPPLY_RUN_ATTEMPT: ${{ inputs.supply_run_attempt }}
+          SUPPLY_ARTIFACT_NAME: ${{ inputs.supply_artifact_name }}
+          SUPPLY_ARTIFACT_DIGEST: ${{ inputs.supply_artifact_digest }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = crypta-network/cryptad
+          test "$GITHUB_REF" = refs/heads/develop
+          test "$REF_PROTECTED" = true
+          test "$WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$WORKFLOW_REF" = "$GITHUB_REPOSITORY/.github/workflows/stable-1.0-dependency-osv-inventory-retention.yml@$GITHUB_REF"
+          test "$(git rev-parse 'HEAD^{commit}')" = "$GITHUB_SHA"
+          case "$OPERATION" in activate|renew) ;; *) exit 1 ;; esac
+          read_flags=(--allow-renewal)
+          if [[ "$OPERATION" = activate ]]; then
+            read_flags+=(--allow-uninitialized)
+          fi
+          python3 tools/release-certification/protected/stable_dependency_osv_inventory_anchor.py read \
+            --repository "$GITHUB_REPOSITORY" \
+            --out "$RUNNER_TEMP/osv-inventory-anchor.json" \
+            "${read_flags[@]}"
+          expected_anchor_digest="$(jq -er '.anchorDigest' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+          if [[ "$OPERATION" = activate ]]; then
+            [[ "$SUPPLY_WORKFLOW_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$SUPPLY_RUN_ID" =~ ^[1-9][0-9]*$ && "$SUPPLY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+            [[ "$SUPPLY_ARTIFACT_NAME" =~ ^stable-1\.0-supply-chain-[A-Za-z0-9][A-Za-z0-9._-]{0,127}-comparison$ ]]
+            [[ "$SUPPLY_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+            source_workflow=.github/workflows/stable-1.0-supply-chain.yml
+            source_commit="$SUPPLY_WORKFLOW_COMMIT"
+            source_run_id="$SUPPLY_RUN_ID"
+            source_run_attempt="$SUPPLY_RUN_ATTEMPT"
+            source_artifact_name="$SUPPLY_ARTIFACT_NAME"
+            source_artifact_digest="$SUPPLY_ARTIFACT_DIGEST"
+            require_current=()
+          else
+            test -z "${SUPPLY_WORKFLOW_COMMIT}${SUPPLY_RUN_ID}${SUPPLY_RUN_ATTEMPT}${SUPPLY_ARTIFACT_NAME}${SUPPLY_ARTIFACT_DIGEST}"
+            source_workflow="$(jq -er '.currentArtifact.workflow' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            source_commit="$(jq -er '.currentArtifact.workflowCommit' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            source_run_id="$(jq -er '.currentArtifact.runId' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            source_run_attempt="$(jq -er '.currentArtifact.runAttempt' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            source_artifact_name="$(jq -er '.currentArtifact.artifactName' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            source_artifact_digest="$(jq -er '.currentArtifact.artifactDigest' "$RUNNER_TEMP/osv-inventory-anchor.json")"
+            require_current=(--require-current)
+          fi
+          python3 tools/release-certification/protected/stable_dependency_osv_inventory_anchor.py authenticate-source \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-workflow "$source_workflow" \
+            --source-workflow-commit "$source_commit" \
+            --source-run-id "$source_run_id" \
+            --source-run-attempt "$source_run_attempt" \
+            --source-artifact-name "$source_artifact_name" \
+            --source-artifact-digest "$source_artifact_digest" \
+            "${require_current[@]}"
+          {
+            printf 'expected-anchor-digest=%s\n' "$expected_anchor_digest"
+            printf 'source-workflow=%s\n' "$source_workflow"
+            printf 'source-commit=%s\n' "$source_commit"
+            printf 'source-run-id=%s\n' "$source_run_id"
+            printf 'source-run-attempt=%s\n' "$source_run_attempt"
+            printf 'source-artifact-name=%s\n' "$source_artifact_name"
+            printf 'source-artifact-digest=%s\n' "$source_artifact_digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download exact authenticated inventory bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.anchor.outputs.source-run-id }}
+          name: ${{ steps.anchor.outputs.source-artifact-name }}
+          path: ${{ runner.temp }}/osv-inventory-bundle
+
+      - name: Validate exact bounded inventory bundle
+        run: |
+          set -euo pipefail
+          test -z "$(find "$RUNNER_TEMP/osv-inventory-bundle" \( -type l -o \( -type f -links +1 \) \) -print -quit)"
+          test -z "$(find "$RUNNER_TEMP/osv-inventory-bundle" -type f \( -iname '*.zip' -o -iname '*.tar' -o -iname '*.tgz' -o -iname '*.gz' \) -print -quit)"
+          test -z "$(find "$RUNNER_TEMP/osv-inventory-bundle" -type f -printf '%P\n' | awk '{key=tolower($0); if (seen[key]++) print $0}' | head -n 1)"
+          python3 tools/release-certification/protected/stable_dependency_osv_inventory_anchor.py validate \
+            --root "$RUNNER_TEMP/osv-inventory-bundle"
+
+      - name: Bind exact post-success activation proposal
+        env:
+          EXPECTED_ANCHOR_DIGEST: ${{ steps.anchor.outputs.expected-anchor-digest }}
+          SOURCE_WORKFLOW: ${{ steps.anchor.outputs.source-workflow }}
+          SOURCE_COMMIT: ${{ steps.anchor.outputs.source-commit }}
+          SOURCE_RUN_ID: ${{ steps.anchor.outputs.source-run-id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.anchor.outputs.source-run-attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.anchor.outputs.source-artifact-name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.anchor.outputs.source-artifact-digest }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_dependency_osv_inventory_anchor.py write-proposal \
+            --mode "$OPERATION" \
+            --expected-anchor-digest "$EXPECTED_ANCHOR_DIGEST" \
+            --source-workflow "$SOURCE_WORKFLOW" \
+            --source-workflow-commit "$SOURCE_COMMIT" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME" \
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST" \
+            --out "$RUNNER_TEMP/osv-inventory-bundle/stable-1.0-dependency-osv-inventory-activation-proposal.json"
+
+      - name: Upload exact retained inventory successor
+        id: upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-dependency-osv-inventory-retention-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/osv-inventory-bundle
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30

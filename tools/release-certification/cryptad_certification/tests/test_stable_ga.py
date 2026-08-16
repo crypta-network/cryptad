@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import json
@@ -3283,6 +3284,98 @@ class StableGaVulnerabilityFreshnessAssertionTest(unittest.TestCase):
 
 
 class StableGaSecurityAndDeterminismTest(unittest.TestCase):
+    def test_protected_workflow_checkouts_use_authenticated_dispatch_sha(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(2, workflow.count("          ref: ${{ github.sha }}"))
+        self.assertNotIn("          ref: ${{ inputs.candidate_commit }}", workflow)
+        self.assertIn(
+            '|| "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT"',
+            workflow,
+        )
+
+    def test_ga_release_asset_allowlist_keeps_pr290_companions_independent(
+        self,
+    ) -> None:
+        filter_path = (
+            workspace_root()
+            / "tools/release-certification/protected/stable_ga_release_asset_names.jq"
+        )
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+        planned = [{"name": f"stable-ga-{index}.bin"} for index in range(7)]
+        companions = [
+            {"name": "stable-1.0-dependency-vulnerability-public-findings.json"},
+            {"name": "stable-1.0-dependency-vulnerability-source-status.json"},
+            {"name": "stable-1.0-dependency-vulnerability-summary.json"},
+        ]
+        provider_source = (
+            workspace_root()
+            / "tools/release-certification/publication-backend/src/"
+            "cryptad_stable_maintenance_backend/provider.py"
+        ).read_text(encoding="utf-8")
+        provider_module = ast.parse(provider_source)
+        provider_assignment = next(
+            node
+            for node in provider_module.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "DEPENDENCY_VULNERABILITY_COMPANION_ASSET_FILES"
+                for target in node.targets
+            )
+        )
+        provider_companions = ast.literal_eval(provider_assignment.value)
+
+        def accepted(
+            observed: list[dict[str, str]], *, active: bool, complete: bool
+        ) -> bool:
+            result = subprocess.run(
+                [
+                    "jq",
+                    "-e",
+                    "--argjson",
+                    "planned",
+                    json.dumps(planned, separators=(",", ":")),
+                    "--arg",
+                    "dependency_vulnerability_active",
+                    str(active).lower(),
+                    "--argjson",
+                    "require_complete",
+                    str(complete).lower(),
+                    "-f",
+                    str(filter_path),
+                ],
+                input=json.dumps(observed, separators=(",", ":")),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            return result.returncode == 0
+
+        self.assertTrue(accepted(planned + companions, active=True, complete=True))
+        self.assertTrue(accepted(planned, active=True, complete=True))
+        self.assertFalse(accepted(planned + companions[:1], active=True, complete=True))
+        self.assertFalse(accepted(planned + companions[:2], active=True, complete=True))
+        self.assertTrue(accepted(companions, active=True, complete=False))
+        self.assertFalse(accepted(companions[:1], active=True, complete=False))
+        self.assertFalse(accepted(companions[:2], active=True, complete=False))
+        self.assertFalse(accepted(planned + companions, active=False, complete=True))
+        self.assertFalse(
+            accepted(planned + [{"name": "unexpected.json"}], active=True, complete=True)
+        )
+        self.assertFalse(accepted(planned[:-1] + companions, active=True, complete=True))
+        self.assertFalse(accepted(planned + companions[:1] * 2, active=True, complete=True))
+        self.assertEqual(
+            {row["name"] for row in companions}, set(provider_companions.values())
+        )
+        self.assertEqual(3, workflow.count("stable_ga_release_asset_names.jq"))
+        self.assertEqual(1, workflow.count("--argjson require_complete false"))
+        self.assertEqual(2, workflow.count("--argjson require_complete true"))
+
     def test_ga_publication_rechecks_current_vulnerability_state_under_lock(
         self,
     ) -> None:
@@ -3414,6 +3507,123 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         self.assertNotIn("stable-ga-vulnerability-promotion-input", validation_stage)
         self.assertNotIn("stable-1.0-vulnerability-summary.json", validation_stage)
         self.assertNotIn("sealed-successor", validation_stage)
+
+    def test_ga_publication_requires_current_pr290_authority_prospectively(
+        self,
+    ) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+
+        for field in (
+            "stable_dependency_vulnerability_run_id",
+            "stable_dependency_vulnerability_run_attempt",
+            "stable_dependency_vulnerability_artifact_name",
+            "stable_dependency_vulnerability_artifact_digest",
+        ):
+            with self.subTest(field=field):
+                input_start = workflow.index(f"      {field}:")
+                input_end = workflow.index(
+                    "\n", workflow.index("        type: string", input_start)
+                )
+                input_block = workflow[input_start:input_end]
+                self.assertIn("required: false", input_block)
+                self.assertIn("default: ''", input_block)
+
+        materialize_start = workflow.index(
+            "      - name: Authenticate and materialize the selected Stable RC and GA inputs"
+        )
+        materialize_end = workflow.index("\n      - name:", materialize_start + 8)
+        materialize = workflow[materialize_start:materialize_end]
+        self.assertNotIn("artifact_created_at=", materialize)
+        self.assertIn("frozen_at=\"$(jq -er '", materialize)
+        self.assertIn(".frozenAt", materialize)
+        self.assertIn('echo "frozen_at=$frozen_at"', materialize)
+        self.assertLess(
+            materialize.index("freeze=\"$(find_one 'Stable RC freeze'"),
+            materialize.index("frozen_at=\"$(jq -er '"),
+        )
+        activation_start = workflow.index(
+            "      - name: Determine prospective PR-290 governance activation"
+        )
+        activation_end = workflow.index("\n      - name:", activation_start + 8)
+        activation = workflow[activation_start:activation_end]
+        self.assertIn("--authenticated-frozen-at", activation)
+        self.assertIn("steps.materialize.outputs.frozen_at", activation)
+        self.assertNotIn("stable-1.0-rc-freeze.json", activation)
+
+        publish_start = workflow.index("\n  publish:")
+        publish = workflow[publish_start:]
+        authenticate = publish.index(
+            "      - name: Authenticate exact current PR-290 promotion producer"
+        )
+        download = publish.index(
+            "      - name: Download exact current PR-290 evaluation handoff"
+        )
+        current = publish.index(
+            "      - name: Reauthenticate current PR-290 state before GA mutation"
+        )
+        mutation = publish.index(
+            "      - name: Publish or verify exact authorized tag, Release, and assets"
+        )
+        self.assertLess(authenticate, download)
+        self.assertLess(download, current)
+        self.assertLess(current, mutation)
+        download_end = publish.index("\n      - name:", download + 8)
+        download_step = publish[download:download_end]
+        self.assertIn(
+            "uses: actions/download-artifact@"
+            "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
+            download_step,
+        )
+        self.assertNotIn("uses: actions/download-artifact@v8", download_step)
+
+        current_end = publish.index("\n      - name:", current + 8)
+        current_step = publish[current:current_end]
+        for expected in (
+            "stable_dependency_vulnerability_evaluation_handoff_errors",
+            "stable_dependency_vulnerability_actions_tip.py",
+            "verify-current-status",
+            "stable-1.0-dependency-vulnerability-publication-plan.json",
+            "stable-1.0-dependency-vulnerability-source-status.json",
+            'summary.get("activationStatus") != "active-post-activation"',
+            'summary.get("promotionReady") is not True',
+            "freshness_assertion_digest=sha256:",
+        ):
+            self.assertIn(expected, current_step)
+        self.assertIn(
+            "CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}",
+            current_step,
+        )
+        self.assertIn(
+            "CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: "
+            "${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}",
+            current_step,
+        )
+
+        publication_end = publish.index(
+            "\n      - name: Record publication conflict or partial state without side effects",
+            mutation,
+        )
+        publication = publish[mutation:publication_end]
+        self.assertIn("verify_dependency_vulnerability_promotion_freshness", publication)
+        self.assertIn("STABLE_DEPENDENCY_VULNERABILITY_ACTIVE", publication)
+        self.assertIn("dt.datetime.now(dt.timezone.utc) >= valid_until", publication)
+        self.assertEqual(
+            3,
+            publication.count("verify_dependency_vulnerability_promotion_freshness"),
+        )
+        boundary = publication.index("validate_publication_boundary()")
+        self.assertLess(
+            boundary,
+            publication.index("tag_object_json=", boundary),
+        )
+        self.assertEqual(4, publication.count("begin_publication_side_effect\n"))
+        self.assertIn(
+            'validate_publication_boundary\n            jq -n --arg ref "refs/tags/$tag"',
+            publication,
+        )
 
     def test_protected_workflow_stages_only_authenticated_publication_inputs(self) -> None:
         workflow = (

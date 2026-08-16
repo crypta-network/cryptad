@@ -253,6 +253,38 @@ available. `stable-maintenance` requires the resulting candidate-bound promotion
 current release and security-hotfix path except the historical follow-up-closure operation, which
 changes no release bytes.
 
+## Stable 1.0 dependency-vulnerability component
+
+`stable-dependency-vulnerability` is the offline companion to the supply-chain component. Its
+closed modes are `validate-intelligence`, `match-inventory`, `authorize-dispositions`,
+`prepare-remediation`, `evaluate-promotion`, and `verify-publication`. Live public-source
+retrieval is confined to the protected producer workflow; ordinary validation consumes exact,
+authenticated snapshots and never contacts an advisory service. After prospective activation,
+the non-waivable `ecosystem.stable-dependency-vulnerability` gate binds the snapshot and finding
+ledger to the PR-289 reverse index, PR-288 public-safe case projection, PR-287 security fix, and
+PR-285 publication evidence. Historical candidates frozen before activation retain their original
+contract.
+
+The protected release-certification workflow has two explicit dependency-vulnerability stages.
+Release-branch pushes and ordinary candidate checks use `pre-publication`; they do not require the
+final PR-290 publication handoff because the tag and non-draft GitHub Release do not exist yet.
+After publication, dispatch the workflow with `dependency-vulnerability-stage` set to
+`post-publication` and supply the exact successful PR-290 publication run, attempt, artifact name,
+and Actions digest. That stage authenticates the final `verify-publication` handoff, checks its
+exclusive validity deadline and durable ledger tip, and enables the non-waivable aggregate gate.
+The workflow's early deadline check is only preflight: after all other evidence collectors finish,
+the release-certification engine captures runner UTC again at the PR-290 evidence gate. It does not
+reuse a timestamp frozen before the potentially long collection run, and equality with
+`validUntil` is expired.
+Candidates frozen before prospective activation remain on their historical contract and do not
+run the post-publication PR-290 stage.
+
+The public projection publishes bounded source status, opaque finding status, and disposition
+counts only. Private case contents, reporters, embargoed analysis, raw feeds, credentials, and
+runner paths remain outside that projection. See the
+[dependency-vulnerability governance runbook](stable-1.0-dependency-vulnerability-monitoring-and-remediation-governance.md)
+and [Phase 11 closeout](phase-11-stable-1.0-assurance-closeout.md).
+
 Release certification does not accept a self-digested local promotion summary. Beside the fixed
 summary filename it requires the canonical
 `stable-1.0-supply-chain-summary-provenance.json` produced after the protected consumer resolves

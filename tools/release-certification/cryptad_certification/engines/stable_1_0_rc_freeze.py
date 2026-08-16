@@ -880,6 +880,7 @@ def assemble_freeze(
     *,
     context: RunContext,
     source: SourceIdentity,
+    frozen_at: str,
     inputs: dict[str, LoadedInput],
     catalog_operations: LoadedInput,
     platform_api: dict[str, Any],
@@ -897,6 +898,7 @@ def assemble_freeze(
         "schemaVersion": SCHEMA_VERSION,
         "kind": FREEZE_KIND,
         "stableMilestone": STABLE_MILESTONE,
+        "frozenAt": frozen_at,
         "candidate": {
             "releaseId": context.manifest.release.release_id,
             "buildVersion": context.manifest.release.version,

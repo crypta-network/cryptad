@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-assurance-closeout-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "trackId", "stableMilestone", "sequenceStatus", "finalPr", "automaticFollowUpPrRequired", "completionClassification", "prMap", "canonicalVerificationCommands", "finalGateIds", "finalAuthorities", "protectedOperationEvidenceRequired", "remoteOperationClaims"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-assurance-closeout"},
+    "trackId": {"const": "phase-11-stable-1.0-assurance"},
+    "stableMilestone": {"const": "Stable 1.0"},
+    "sequenceStatus": {"const": "closed"},
+    "finalPr": {"const": "PR-290"},
+    "automaticFollowUpPrRequired": {"const": false},
+    "completionClassification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repositoryDelivery", "offlineVerification", "protectedOperations"],
+      "properties": {
+        "repositoryDelivery": {"const": "implementation-complete"},
+        "offlineVerification": {"const": "fixture/self-test-complete"},
+        "protectedOperations": {"const": "protected-operation-evidence-required"}
+      }
+    },
+    "prMap": {
+      "type": "array", "minItems": 21, "maxItems": 21, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["pr", "capability", "deliveryStatus"],
+        "properties": {
+          "pr": {"type": "string", "pattern": "^PR-2(?:7[0-9]|8[0-9]|90)$", "maxLength": 6},
+          "capability": {"type": "string", "minLength": 1, "maxLength": 160},
+          "deliveryStatus": {"const": "implementation-complete"}
+        }
+      }
+    },
+    "canonicalVerificationCommands": {
+      "type": "array", "minItems": 11, "maxItems": 11, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "finalGateIds": {
+      "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9.-]+$", "maxLength": 160}
+    },
+    "finalAuthorities": {
+      "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["pr", "authority"],
+        "properties": {
+          "pr": {"type": "string", "pattern": "^PR-2[0-9]{2}$", "maxLength": 6},
+          "authority": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    },
+    "protectedOperationEvidenceRequired": {
+      "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "remoteOperationClaims": {
+      "type": "object", "additionalProperties": false,
+      "required": ["liveAdvisoryRetrievalPerformed", "productionDispositionAuthorized", "remotePublicationPerformed", "publicObservationPerformed", "releaseOrLifecycleMutationPerformed"],
+      "properties": {
+        "liveAdvisoryRetrievalPerformed": {"const": false},
+        "productionDispositionAuthorized": {"const": false},
+        "remotePublicationPerformed": {"const": false},
+        "publicObservationPerformed": {"const": false},
+        "releaseOrLifecycleMutationPerformed": {"const": false}
+      }
+    }
+  }
+}

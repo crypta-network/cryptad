@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-dependency-intelligence-source-lineage-set-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "repositoryIdentity", "policyDigest",
+    "setEdition", "lineages", "setDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-dependency-intelligence-source-lineage-set"},
+    "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "policyDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"},
+    "setEdition": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+    "lineages": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {"$ref": "stable-1.0-dependency-intelligence-source-lineage-anchor-v1.schema.json"}
+    },
+    "setDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}
+  }
+}

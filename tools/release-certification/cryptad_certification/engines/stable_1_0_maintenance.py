@@ -98,6 +98,7 @@ from .stable_1_0_maintenance_core import (
 from .stable_1_0_rc_core import ValidationState
 from .release_certification_core import (
     STABLE_SUPPLY_CHAIN_HANDOFF_AUTHENTICATION_ALGORITHM,
+    stable_dependency_vulnerability_evaluation_handoff_errors,
     stable_supply_chain_handoff_authentication_errors,
 )
 from .stable_1_0_supply_chain import EVIDENCE_IDS as SUPPLY_CHAIN_EVIDENCE_IDS
@@ -110,6 +111,13 @@ from .stable_1_0_supply_chain_core import (
     semantic_digest as supply_chain_semantic_digest,
     sha256_digest as supply_chain_sha256_digest,
 )
+from .stable_1_0_dependency_vulnerability_core import (
+    EVIDENCE_IDS as DEPENDENCY_VULNERABILITY_EVIDENCE_IDS,
+    POLICY_FILE as DEPENDENCY_VULNERABILITY_POLICY_FILE,
+    POLICY_SCHEMA as DEPENDENCY_VULNERABILITY_POLICY_SCHEMA,
+    SUMMARY_SCHEMA as DEPENDENCY_VULNERABILITY_SUMMARY_SCHEMA,
+    semantic_digest as dependency_vulnerability_semantic_digest,
+)
 
 _PASS_REDACTION = {"status": "pass", "findingCount": 0, "findings": []}
 SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID = "stable-supply-chain.publication"
@@ -118,6 +126,191 @@ SUPPLY_CHAIN_PROMOTION_EVIDENCE_IDS = tuple(
     for evidence_id in SUPPLY_CHAIN_EVIDENCE_IDS
     if evidence_id != SUPPLY_CHAIN_PUBLICATION_EVIDENCE_ID
 )
+
+
+def _dependency_vulnerability_activation(
+    context: RunContext, candidate: Candidate
+) -> tuple[bool | None, list[str]]:
+    """Authenticate the prospective PR-290 policy and derive candidate activation."""
+
+    policy_path = (
+        context.workspace_root
+        / "tools"
+        / "release-certification"
+        / DEPENDENCY_VULNERABILITY_POLICY_FILE
+    )
+    if policy_path.is_symlink() or not policy_path.is_file():
+        return None, [
+            "the checked-in dependency-vulnerability policy is missing or unsafe"
+        ]
+    policy = read_json(policy_path)
+    errors = validate_schema(policy, DEPENDENCY_VULNERABILITY_POLICY_SCHEMA)
+    if errors:
+        return None, ["the checked-in dependency-vulnerability policy is invalid"]
+    if policy.get("policyDigest") != dependency_vulnerability_semantic_digest(
+        policy, "policyDigest"
+    ):
+        return None, [
+            "the checked-in dependency-vulnerability policy digest is invalid"
+        ]
+    effective = parse_timestamp(policy.get("effectiveAt"))
+    activation = policy.get("governanceActivation")
+    governance_effective = parse_timestamp(
+        activation.get("candidateFrozenAtNotBefore")
+        if isinstance(activation, dict)
+        else None
+    )
+    if effective is None or governance_effective is None:
+        return None, [
+            "the checked-in dependency-vulnerability activation timestamp is invalid"
+        ]
+    if effective != governance_effective:
+        return None, [
+            "the checked-in dependency-vulnerability policy activation timestamps differ"
+        ]
+    frozen = parse_timestamp(candidate.frozen_at)
+    if frozen is None:
+        return None, ["the maintenance candidate frozenAt timestamp is invalid"]
+    return frozen >= governance_effective, []
+
+
+def _dependency_vulnerability_promotion_errors(
+    context: RunContext,
+    candidate: Candidate,
+    supply_chain_summary: LoadedJson,
+    activation_result: tuple[bool | None, list[str]] | None = None,
+) -> list[str]:
+    """Apply PR-290 only to candidates frozen after its prospective activation."""
+
+    active, activation_errors = (
+        activation_result
+        if activation_result is not None
+        else _dependency_vulnerability_activation(context, candidate)
+    )
+    if activation_errors:
+        return activation_errors
+    if active is not True:
+        return []
+    policy_path = (
+        context.workspace_root
+        / "tools"
+        / "release-certification"
+        / DEPENDENCY_VULNERABILITY_POLICY_FILE
+    )
+    policy = read_json(policy_path)
+    loaded = load_json_input(
+        context, "dependencyVulnerabilityPromotionSummary", required=False
+    )
+    if loaded is None:
+        return ["post-activation candidate lacks the PR-290 promotion companion"]
+    value = loaded.value
+    errors = validate_schema(value, DEPENDENCY_VULNERABILITY_SUMMARY_SCHEMA)
+    if errors:
+        return ["dependency-vulnerability promotion companion schema is invalid"]
+    if value.get("summaryDigest") != dependency_vulnerability_semantic_digest(
+        value, "summaryDigest"
+    ):
+        errors.append("dependency-vulnerability promotion companion digest is invalid")
+    try:
+        valid_until = parse_timestamp(value.get("validUntil"))
+        if valid_until is None:
+            raise ValueError("dependency-vulnerability promotion companion validUntil is invalid")
+        if _now() >= valid_until:
+            errors.append(
+                "dependency-vulnerability promotion companion is stale at authorization preparation"
+            )
+    except (TypeError, ValueError):
+        errors.append("dependency-vulnerability promotion companion validUntil is invalid")
+    if not _canonical_json_input(loaded.path, value):
+        errors.append("dependency-vulnerability promotion companion bytes are not canonical")
+    handoff_errors, handoff = (
+        stable_dependency_vulnerability_evaluation_handoff_errors(
+            loaded.path,
+            loaded.digest,
+            context.manifest.release.release_id,
+            context.manifest.release.version or "",
+            str(candidate.source.get("commit", "")),
+        )
+    )
+    errors.extend(handoff_errors)
+    if handoff is not None:
+        metadata = context.manifest.policies.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        metadata_bindings = {
+            "stableDependencyVulnerabilityRunId": "runId",
+            "stableDependencyVulnerabilityRunAttempt": "runAttempt",
+            "stableDependencyVulnerabilityArtifactName": "artifactName",
+            "stableDependencyVulnerabilityArtifactDigest": "producerArtifactDigest",
+        }
+        for metadata_field, handoff_field in metadata_bindings.items():
+            if str(metadata.get(metadata_field, "")) != str(
+                handoff.get(handoff_field, "")
+            ):
+                errors.append(
+                    "dependency-vulnerability producer handoff differs from manifest "
+                    f"{metadata_field}"
+                )
+    expected = {
+        "releaseId": context.manifest.release.release_id,
+        "buildVersion": int(context.manifest.release.version or "0"),
+        "candidateSourceCommit": candidate.source.get("commit"),
+        "policyDigest": policy.get("policyDigest"),
+        "supplyChainPromotionSummaryDigest": supply_chain_summary.value.get("summaryDigest"),
+    }
+    for field, expected_value in expected.items():
+        if value.get(field) != expected_value:
+            errors.append(f"dependency-vulnerability promotion companion {field} differs")
+    reverse_index_digest = supply_chain_summary.value.get(
+        "vulnerabilityReverseIndexDigest"
+    )
+    if value.get("componentReverseIndexDigest") != reverse_index_digest:
+        errors.append("dependency-vulnerability companion reverse-index digest differs")
+    vulnerability = load_json_input(context, "stableVulnerabilitySummary", required=False)
+    if vulnerability is None:
+        errors.append("dependency-vulnerability companion lacks authenticated PR-288 input")
+    elif value.get("vulnerabilityPromotionSummaryDigest") != vulnerability.value.get(
+        "summaryDigest"
+    ):
+        errors.append("dependency-vulnerability companion PR-288 digest differs")
+    evidence = value.get("evidence") if isinstance(value.get("evidence"), list) else []
+    evidence_by_id = {
+        row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
+    }
+    prepublication_evidence_ids = tuple(
+        evidence_id
+        for evidence_id in DEPENDENCY_VULNERABILITY_EVIDENCE_IDS
+        if evidence_id != "stable-dependency-vulnerability.publication"
+    )
+    if set(evidence_by_id) != set(prepublication_evidence_ids):
+        errors.append(
+            "dependency-vulnerability prepublication evidence ids are not the closed required set"
+        )
+    for evidence_id in prepublication_evidence_ids:
+        row = evidence_by_id.get(evidence_id)
+        if row is None or row.get("status") != "pass" or row.get("nonWaivable") is not True:
+            errors.append(f"dependency-vulnerability companion evidence {evidence_id} is not passing")
+    for field in (
+        "publicationPlanDigest",
+        "publicationReceiptDigest",
+        "publicObservationDigest",
+    ):
+        if value.get(field) is not None:
+            errors.append(
+                f"dependency-vulnerability prepublication companion prematurely claims {field}"
+            )
+    if (
+        value.get("mode") != "evaluate-promotion"
+        or value.get("activationStatus") != "active-post-activation"
+        or value.get("status") != "pass"
+        or value.get("promotionReady") is not True
+        or value.get("blockers") != []
+        or value.get("waivers") != []
+        or value.get("redaction", {}).get("status") != "pass"
+    ):
+        errors.append(
+            "dependency-vulnerability companion does not authorize prepublication maintenance preparation"
+        )
+    return errors
 SUPPLY_CHAIN_HANDOFF_FILE = "stable-1.0-supply-chain-summary-provenance.json"
 SUPPLY_CHAIN_SUMMARY_FILE = "stable-1.0-supply-chain-summary.json"
 SUPPLY_CHAIN_WORKFLOW = (
@@ -1888,6 +2081,7 @@ def _authorization_expected(
     targets_digest: str,
     follow_up_digest: str | None,
     backport_release_train_digest: str,
+    dependency_vulnerability_governance_active: bool = False,
 ) -> dict[str, Any]:
     scope = candidate.input_value.get("changeScope")
     scope = scope if isinstance(scope, dict) else {}
@@ -1919,6 +2113,9 @@ def _authorization_expected(
         "knownLimitationsDeltaDigest": candidate.input_value.get("limitations", {}).get("deltaDigest"),
         "releaseNotesDigest": release_notes_digest,
         "publicationTargetsDigest": targets_digest,
+        "dependencyVulnerabilityGovernanceActive": (
+            dependency_vulnerability_governance_active
+        ),
         "backportReleaseTrainDigest": backport_release_train_digest,
         "allowedPublicationScopes": list(AUTHORIZATION_SCOPE),
         "acceptedWarningIds": sorted(
@@ -2145,6 +2342,7 @@ def _publication_plan(
     authorized: bool,
     state: ValidationState,
     supply_chain_summary: Any | None,
+    dependency_vulnerability_governance_active: bool,
 ) -> dict[str, Any]:
     catalog = candidate.input_value.get("stableCatalog", {})
     value = {
@@ -2172,6 +2370,9 @@ def _publication_plan(
         "stableCatalogDigest": catalog.get("digest"),
         "knownLimitationsDeltaDigest": candidate.input_value.get("limitations", {}).get("deltaDigest"),
         "publicationTargetsDigest": targets_digest,
+        "dependencyVulnerabilityGovernanceActive": (
+            dependency_vulnerability_governance_active
+        ),
         "assets": _public_assets(
             candidate, out, targets["artifactBaseUri"], authorization_path
         ),
@@ -3252,6 +3453,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         "Provide the exact authenticated case summary and operation-bound incident scope.",
     )
     supply_chain_summary = None
+    dependency_vulnerability_governance_active = False
     if not closing_follow_up:
         supply_chain_summary = load_json_input(
             context, "supplyChainPromotionSummary"
@@ -3264,6 +3466,23 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
                 context, supply_chain_summary, candidate, predecessor
             ),
             "Provide the exact authenticated PR-289 promotion summary for this candidate, predecessor, package matrix, and vulnerability inventory.",
+        )
+        dependency_vulnerability_activation = _dependency_vulnerability_activation(
+            context, candidate
+        )
+        dependency_vulnerability_governance_active = (
+            dependency_vulnerability_activation[0] is True
+        )
+        add_blockers(
+            state,
+            "stable-maintenance.dependency-vulnerability",
+            _dependency_vulnerability_promotion_errors(
+                context,
+                candidate,
+                supply_chain_summary,
+                dependency_vulnerability_activation,
+            ),
+            "Provide the exact post-activation PR-290 companion bound to PR-289, PR-288, and this candidate.",
         )
     if lifecycle_presence_errors:
         add_blockers(
@@ -3536,6 +3755,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         targets_digest,
         follow_up_digest,
         str(backport_release_train_digest),
+        dependency_vulnerability_governance_active,
     )
     authorization, authorization_digest, authorization_valid = _authorization(
         context, expected, policy, state, prepare
@@ -3576,6 +3796,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         authorization_valid,
         state,
         supply_chain_summary,
+        dependency_vulnerability_governance_active,
     )
     write_json(out / PUBLICATION_PLAN_FILE, plan)
     publication_state = "validated" if not authorization_valid else "publication-authorized"

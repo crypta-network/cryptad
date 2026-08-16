@@ -133,6 +133,7 @@ def _freeze() -> dict[str, object]:
         "schemaVersion": 1,
         "kind": "stable-1.0-rc-freeze",
         "stableMilestone": "1.0",
+        "frozenAt": "2026-08-01T00:00:00Z",
         "candidate": {
             "releaseId": "stable-rc-283",
             "buildVersion": "283",
@@ -746,6 +747,7 @@ class StableRcFreezeTest(unittest.TestCase):
             return assemble_freeze(
                 context=context,
                 source=source,
+                frozen_at="2026-08-01T00:00:00Z",
                 inputs=collection,
                 catalog_operations=LoadedInput(
                     "stableCatalogOperations",
@@ -764,6 +766,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
         first_freeze = freeze(first)
         second_freeze = freeze(second)
+        self.assertEqual("2026-08-01T00:00:00Z", first_freeze["frozenAt"])
         self.assertEqual("no-drift", compare_freezes(first_freeze, second_freeze, [])["status"])
 
         second["releaseCertification"].value["metadata"]["gitCommit"] = "b" * 40
@@ -1405,6 +1408,9 @@ class StableRcFreezeTest(unittest.TestCase):
         reordered = {key: value[key] for key in reversed(value)}
 
         self.assertEqual(value["contentDigest"], freeze_content_digest(reordered))
+        changed_time = copy.deepcopy(value)
+        changed_time["frozenAt"] = "2026-08-01T00:00:01Z"
+        self.assertNotEqual(value["contentDigest"], freeze_content_digest(changed_time))
         reordered["stableMilestone"] = "changed"
         self.assertNotEqual(value["contentDigest"], freeze_content_digest(reordered))
 
@@ -1413,6 +1419,34 @@ class StableRcFreezeTest(unittest.TestCase):
 
         self.assertEqual([], validate_freeze_shape(value))
         self.assertEqual("no-drift", compare_freezes(value, copy.deepcopy(value), [])["status"])
+
+    def test_legacy_v1_freeze_without_timestamp_remains_readable(self) -> None:
+        value = _freeze()
+        value.pop("frozenAt")
+        value["contentDigest"] = freeze_content_digest(value)
+
+        self.assertEqual([], validate_freeze_shape(value))
+
+    def test_refreeze_preserves_the_candidate_freeze_timestamp(self) -> None:
+        previous = _freeze()
+        later = datetime(2026, 8, 8, 12, 34, 56, tzinfo=timezone.utc)
+
+        frozen_at = stable_1_0_rc._candidate_frozen_at(  # noqa: SLF001
+            "refreeze", previous, later
+        )
+
+        self.assertEqual(previous["frozenAt"], frozen_at)
+
+    def test_legacy_refreeze_establishes_the_candidate_freeze_timestamp_once(self) -> None:
+        previous = _freeze()
+        previous.pop("frozenAt")
+        later = datetime(2026, 8, 8, 12, 34, 56, 123456, tzinfo=timezone.utc)
+
+        frozen_at = stable_1_0_rc._candidate_frozen_at(  # noqa: SLF001
+            "refreeze", previous, later
+        )
+
+        self.assertEqual("2026-08-08T12:34:56Z", frozen_at)
 
     def test_invalid_nested_catalog_version_cannot_be_promotable(self) -> None:
         for catalog_version in (None, 0, -1, False, "5"):

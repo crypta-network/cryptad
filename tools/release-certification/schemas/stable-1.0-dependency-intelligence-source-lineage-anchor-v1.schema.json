@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-dependency-intelligence-source-lineage-anchor-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "repositoryIdentity", "sourceId", "policyDigest",
+    "initialized", "anchorSequence", "sourceSnapshotDigest", "rawContentDigest",
+    "canonicalRecordSetDigest", "componentInventoryDigest", "retrievedAt",
+    "previousAnchorDigest", "producerWorkflow", "workflowCommit", "runId",
+    "runAttempt", "artifactName", "artifactDigest", "contentStatus",
+    "retrievalValidation", "activatedAt", "anchorDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-dependency-intelligence-source-lineage-anchor"},
+    "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "sourceId": {"enum": ["github-public-advisories", "osv-public", "reviewed-vendor-records"]},
+    "policyDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"},
+    "initialized": {"type": "boolean"},
+    "anchorSequence": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+    "sourceSnapshotDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "rawContentDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "canonicalRecordSetDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "componentInventoryDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "retrievedAt": {"oneOf": [{"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+    "previousAnchorDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "producerWorkflow": {"type": ["string", "null"], "maxLength": 512},
+    "workflowCommit": {"oneOf": [{"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/commit"}, {"type": "null"}]},
+    "runId": {"type": ["integer", "null"], "minimum": 1},
+    "runAttempt": {"type": ["integer", "null"], "minimum": 1},
+    "artifactName": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+    "artifactDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/nullableDigest"},
+    "contentStatus": {"enum": ["genesis", "changed", "unchanged-full-retrieval"]},
+    "retrievalValidation": {"enum": ["none", "complete-200-response"]},
+    "activatedAt": {"oneOf": [{"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+    "anchorDigest": {"$ref": "stable-1.0-dependency-vulnerability-common-v1.schema.json#/$defs/digest"}
+  }
+}

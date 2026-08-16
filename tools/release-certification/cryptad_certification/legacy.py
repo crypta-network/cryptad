@@ -38,6 +38,7 @@ KIND_BY_COMMAND = {
     "stable-maintenance": "stable-1.0-maintenance-promotion",
     "stable-lifecycle": "stable-1.0-support-lifecycle",
     "stable-supply-chain": "stable-1.0-supply-chain",
+    "stable-dependency-vulnerability": "stable-1.0-dependency-vulnerability-governance",
     "stable-vulnerability": "stable-1.0-vulnerability-governance",
 }
 V2_KIND_BY_INPUT = {
@@ -102,6 +103,11 @@ STRUCTURED_VALUE_OPTIONS = {
         "--stable-supply-chain-candidate-source-commit",
         "--stable-supply-chain-candidate-source-ref",
         "--stable-supply-chain-summary",
+        "--stable-dependency-vulnerability-candidate-build-version",
+        "--stable-dependency-vulnerability-candidate-release-id",
+        "--stable-dependency-vulnerability-candidate-source-commit",
+        "--stable-dependency-vulnerability-candidate-source-ref",
+        "--stable-dependency-vulnerability-summary",
         "--waiver-file",
     },
     "production-beta": {
@@ -166,6 +172,7 @@ STRUCTURED_FLAG_OPTIONS = {
         "--require-stable-readiness",
         "--require-stable-vulnerability",
         "--require-stable-supply-chain",
+        "--require-stable-dependency-vulnerability",
         "--skip-git-metadata",
         "--write-history",
     },
@@ -767,6 +774,56 @@ def _run_release_certification(context: RunContext) -> tuple[int, Path, Path | N
                 source_ref,
             ]
         )
+    stable_dependency_vulnerability_summary = _legacy_input_path(
+        context, "dependencyVulnerabilityPromotionSummary"
+    )
+    _option_path(
+        args,
+        "--stable-dependency-vulnerability-summary",
+        stable_dependency_vulnerability_summary,
+    )
+    stable_dependency_vulnerability_required = (
+        context.manifest.requirements.get("stableDependencyVulnerability") is True
+        or context.manifest.policies.get(
+            "stableDependencyVulnerabilityGovernance"
+        )
+        == "required"
+    )
+    if stable_dependency_vulnerability_required:
+        args.append("--require-stable-dependency-vulnerability")
+    if (
+        stable_dependency_vulnerability_summary is not None
+        or stable_dependency_vulnerability_required
+    ):
+        build_version = context.manifest.release.version
+        if build_version is None:
+            raise ValueError(
+                "Stable dependency-vulnerability governance requires an exact "
+                "candidate build identity"
+            )
+        source_commit = context.manifest.policies.get("candidateSourceCommit")
+        source_ref = context.manifest.policies.get("candidateSourceRef")
+        if (
+            not isinstance(source_commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+            or source_ref != f"commit:{source_commit}"
+        ):
+            raise ValueError(
+                "Stable dependency-vulnerability governance requires the exact "
+                "immutable candidate source commit and ref"
+            )
+        args.extend(
+            [
+                "--stable-dependency-vulnerability-candidate-release-id",
+                context.manifest.release.release_id,
+                "--stable-dependency-vulnerability-candidate-build-version",
+                build_version,
+                "--stable-dependency-vulnerability-candidate-source-commit",
+                source_commit,
+                "--stable-dependency-vulnerability-candidate-source-ref",
+                source_ref,
+            ]
+        )
 
     history = _legacy_input_path(context, "releaseHistory", migrated_kind="release-history")
     if history is not None:
@@ -1105,6 +1162,20 @@ def _run_stable_supply_chain(context: RunContext) -> tuple[int, Path, Path | Non
     return engine.run(context)
 
 
+def _run_stable_dependency_vulnerability(
+    context: RunContext,
+) -> tuple[int, Path, Path | None]:
+    """Run the side-effect-free Stable dependency-intelligence and remediation gate."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError(
+            "stable-dependency-vulnerability requires release.profile stable-review"
+        )
+    from .engines import stable_1_0_dependency_vulnerability as engine
+
+    return engine.run(context)
+
+
 def _run_stable_vulnerability(context: RunContext) -> tuple[int, Path, Path | None]:
     """Run side-effect-free Stable 1.0 vulnerability lifecycle certification."""
 
@@ -1286,6 +1357,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "stable-maintenance": _run_stable_maintenance,
     "stable-lifecycle": _run_stable_lifecycle,
     "stable-supply-chain": _run_stable_supply_chain,
+    "stable-dependency-vulnerability": _run_stable_dependency_vulnerability,
     "stable-vulnerability": _run_stable_vulnerability,
 }
 

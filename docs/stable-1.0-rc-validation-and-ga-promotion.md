@@ -61,7 +61,9 @@ The state vocabulary is:
 
 Select the latest successful protected Stable RC freeze or refreeze for one release ID and integer
 build. The selected source commit, product distribution, and outer RC archive must be the exact
-bytes retained from that run.
+bytes retained from that run. Derive prospective governance activation from the canonical
+`frozenAt` inside the authenticated freeze; Actions run, job, and artifact timestamps are transport
+metadata and cannot replace the candidate freeze time.
 
 The protected Stable RC workflow records a candidate-scoped Actions artifact and a commit-bound
 freeze-lineage anchor. While the Actions artifact is retained, authenticate its producer workflow,
