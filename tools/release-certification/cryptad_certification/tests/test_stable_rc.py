@@ -1427,6 +1427,27 @@ class StableRcFreezeTest(unittest.TestCase):
 
         self.assertEqual([], validate_freeze_shape(value))
 
+    def test_refreeze_preserves_the_candidate_freeze_timestamp(self) -> None:
+        previous = _freeze()
+        later = datetime(2026, 8, 8, 12, 34, 56, tzinfo=timezone.utc)
+
+        frozen_at = stable_1_0_rc._candidate_frozen_at(  # noqa: SLF001
+            "refreeze", previous, later
+        )
+
+        self.assertEqual(previous["frozenAt"], frozen_at)
+
+    def test_legacy_refreeze_establishes_the_candidate_freeze_timestamp_once(self) -> None:
+        previous = _freeze()
+        previous.pop("frozenAt")
+        later = datetime(2026, 8, 8, 12, 34, 56, 123456, tzinfo=timezone.utc)
+
+        frozen_at = stable_1_0_rc._candidate_frozen_at(  # noqa: SLF001
+            "refreeze", previous, later
+        )
+
+        self.assertEqual("2026-08-08T12:34:56Z", frozen_at)
+
     def test_invalid_nested_catalog_version_cannot_be_promotable(self) -> None:
         for catalog_version in (None, 0, -1, False, "5"):
             with self.subTest(catalog_version=catalog_version):

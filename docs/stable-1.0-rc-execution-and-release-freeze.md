@@ -99,7 +99,9 @@ baseline for one release ID and integer build. Use `refreeze` for every later ex
 the exact `stable-1.0-rc-freeze.json` from the latest successful protected run. The workflow
 records the RC engine's canonical UTC `frozenAt` in that self-digested freeze. This candidate
 timestamp, rather than the later Actions artifact upload time, controls prospective governance
-activation during GA promotion. The workflow prefers to download that run's authenticated
+activation during GA promotion. Every current-format refreeze preserves the exact predecessor
+`frozenAt`; an early v1 baseline that predates the field establishes it once on its first refreeze.
+The workflow prefers to download that run's authenticated
 artifact and compare the freeze bytes before execution. Each successful run also records the exact
 freeze file digest in an authenticated
 GitHub Actions check-run lineage anchor tied to the run, attempt, candidate, build, and source
