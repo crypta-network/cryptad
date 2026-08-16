@@ -891,6 +891,8 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
             evaluation,
         )
         self.assertNotIn("manifest.json", producer)
+        self.assertIn("-exec basename {} \\;", consumer)
+        self.assertNotIn("-printf", consumer)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -900,7 +902,7 @@ class StableMaintenanceProducerWorkflowTests(unittest.TestCase):
               set -euo pipefail
               root="$1"
               actual_files="$(
-                find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\\n' \
+                find "$root" -mindepth 1 -maxdepth 1 -type f -exec basename {} \\; \
                   | LC_ALL=C sort
               )"
               expected_files="$(

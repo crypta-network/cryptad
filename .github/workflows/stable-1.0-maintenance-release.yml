@@ -1621,7 +1621,7 @@ jobs:
           gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name "$INPUT_ARTIFACT_NAME" --dir "$root"
           actual_files="$(
-            find "$root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' \
+            find "$root" -mindepth 1 -maxdepth 1 -type f -exec basename {} \; \
               | LC_ALL=C sort
           )"
           expected_files="$(
