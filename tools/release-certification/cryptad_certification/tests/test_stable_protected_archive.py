@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
+from cryptad_certification.engines import stable_1_0_protected_release as protected
 from cryptad_certification.engines import stable_1_0_supply_chain_archive as archive_safety
 from cryptad_certification.engines.stable_1_0_supply_chain_archive import (
     inspect_archive_safety,
@@ -203,6 +204,40 @@ class StableProtectedArchiveTests(unittest.TestCase):
 
         self.assertEqual(len(payload), totals["expandedBytes"])
         self.assertEqual(0, totals["nestedArchiveDepth"])
+
+    def test_retained_artifact_stops_before_reading_member_after_closed_bound(self) -> None:
+        archive_path = self.root / "oversized-actions-artifact.zip"
+        archive_path.write_bytes(b"authenticated archive placeholder")
+        digest = protected._digest(archive_path)  # noqa: SLF001
+        oversized_member = mock.Mock(
+            filename="stable-1.0-ga-publication-receipt.json",
+            file_size=5_000_000_001,
+        )
+        retained_archive = mock.MagicMock()
+        retained_archive.__enter__.return_value = retained_archive
+        retained_archive.infolist.return_value = [oversized_member]
+        retained_archive.read.side_effect = AssertionError(
+            "closed-bound archive member must never be materialized"
+        )
+
+        with mock.patch.object(protected.zipfile, "ZipFile", return_value=retained_archive):
+            errors = protected._retained_artifact_member_errors(  # noqa: SLF001
+                self.root,
+                {"path": archive_path.name, "sha256": digest, "schema": None},
+                {"artifactDigest": digest},
+                label="GA publication Actions artifact",
+                expected_members={
+                    "stable-1.0-ga-publication-receipt.json": {
+                        "path": "publication-receipt.json"
+                    }
+                },
+            )
+
+        self.assertEqual(
+            ["GA publication Actions artifact archive exceeds the closed inspection bounds"],
+            errors,
+        )
+        retained_archive.read.assert_not_called()
 
 
 if __name__ == "__main__":

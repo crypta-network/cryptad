@@ -1678,7 +1678,7 @@ def _retained_artifact_member_errors(
             names = [row.filename for row in members]
             folded: set[str] = set()
             if len(names) > 20_000 or sum(row.file_size for row in members) > 5_000_000_000:
-                errors.append(f"{label} archive exceeds the closed inspection bounds")
+                return [*errors, f"{label} archive exceeds the closed inspection bounds"]
             for row in members:
                 path = PurePosixPath(row.filename)
                 parts = path.parts
