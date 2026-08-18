@@ -516,7 +516,7 @@ class _StreamingArchiveDetector:
     def kind(self) -> str | None:
         if self._decompressor is None:
             self._initialize_decompressor()
-        if _tar_header_has_member(bytes(self._raw_prefix)) or _tar_header_has_member(
+        if _tar_header_is_candidate(bytes(self._raw_prefix)) or _tar_header_is_candidate(
             bytes(self._decompressed_prefix)
         ):
             return "tar"
@@ -566,13 +566,17 @@ class _StreamingArchiveDetector:
         self._decompressed_prefix.extend(output)
 
 
-def _tar_header_has_member(data: bytes) -> bool:
+def _tar_header_is_candidate(data: bytes) -> bool:
     if len(data) < 512:
         return False
     try:
-        with tarfile.open(fileobj=io.BytesIO(data[:512]), mode="r:") as archive:
-            return archive.next() is not None
-    except (EOFError, OSError, tarfile.TarError):
+        tarfile.TarInfo.frombuf(
+            data[:512],
+            encoding=tarfile.ENCODING,
+            errors="surrogateescape",
+        )
+        return True
+    except (EOFError, OSError, tarfile.TarError, ValueError):
         return False
 
 
@@ -740,7 +744,13 @@ def _digest_stream(
         raise ValueError("archive entry size differs from its declared size")
     if detect_archive:
         detected_kind = detector.kind() if detector is not None else None
-        if retain or detected_kind == "tar":
+        if retain:
+            raise ValueError("archive contains a nested archive")
+        if detected_kind == "tar" and reopen is not None and _is_structurally_valid_tar(
+            reopen,
+            expected_size,
+            maximum_expanded,
+        ):
             raise ValueError("archive contains a nested archive")
         if detected_kind == "zip" and reopen is not None and _is_structurally_valid_zip(
             reopen,
@@ -753,6 +763,47 @@ def _digest_stream(
         return "sha256:" + digest.hexdigest(), None
     data = bytes(retained)
     return "sha256:" + digest.hexdigest(), data
+
+
+def _is_structurally_valid_tar(
+    reopen: Callable[[], BinaryIO],
+    expected_size: int,
+    maximum_expanded: int,
+) -> bool:
+    """Re-read one TAR candidate and require a complete first logical member.
+
+    A PAX extended or global header occupies the first 512-byte record, but ``TarFile.next()``
+    consumes its variable-length payload and the following member header before returning a
+    logical member.  The streaming pass therefore treats any checksum-valid first TAR header as a
+    candidate, while this bounded second pass distinguishes complete PAX archives from arbitrary
+    bytes that merely begin with a TAR-shaped record.
+    """
+
+    if expected_size < 0 or expected_size > maximum_expanded:
+        raise ValueError("archive entry exceeds the expansion bound")
+    if expected_size > _MAX_NESTED_ARCHIVE_BYTES:
+        raise ValueError("archive entry exceeds the bounded content inspection size")
+    try:
+        with reopen() as source, tempfile.SpooledTemporaryFile(
+            max_size=_READ_CHUNK,
+            mode="w+b",
+        ) as staged:
+            total = 0
+            while True:
+                chunk = source.read(_READ_CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > expected_size or total > maximum_expanded:
+                    raise ValueError("archive entry expands beyond its declared size")
+                staged.write(chunk)
+            if total != expected_size:
+                raise ValueError("archive entry size differs from its declared size")
+            staged.seek(0)
+            with tarfile.open(fileobj=staged, mode="r:*") as nested:
+                return nested.next() is not None
+    except (EOFError, OSError, tarfile.TarError):
+        return False
 
 
 def _is_structurally_valid_zip(

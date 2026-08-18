@@ -52,6 +52,22 @@ class StableProtectedArchiveTests(unittest.TestCase):
             archive.addfile(info, BytesIO(b"safe"))
         return stream.getvalue()
 
+    @staticmethod
+    def _pax_tar_bytes(*, global_header: bool) -> bytes:
+        stream = BytesIO()
+        with tarfile.open(
+            fileobj=stream,
+            mode="w",
+            format=tarfile.PAX_FORMAT,
+            pax_headers={"comment": "global metadata"} if global_header else None,
+        ) as archive:
+            name = "safe.txt" if global_header else ("a" * 200)
+            info = tarfile.TarInfo(name)
+            info.mode = 0o644
+            info.size = 4
+            archive.addfile(info, BytesIO(b"safe"))
+        return stream.getvalue()
+
     def _outer_archive(self, name: str, outer_kind: str, payload: bytes) -> Path:
         path = self.root / f"{name}.{outer_kind}"
         if outer_kind == "zip":
@@ -160,6 +176,19 @@ class StableProtectedArchiveTests(unittest.TestCase):
                     "zip",
                     payload,
                 )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "archive contains a nested archive",
+                ):
+                    self._inspect(path)
+
+    def test_archive_rejects_renamed_pax_tar_after_parsing_metadata_header(self) -> None:
+        for header_kind, payload in (
+            ("extended", self._pax_tar_bytes(global_header=False)),
+            ("global", self._pax_tar_bytes(global_header=True)),
+        ):
+            with self.subTest(header_kind=header_kind):
+                path = self._outer_archive(f"pax-{header_kind}", "zip", payload)
                 with self.assertRaisesRegex(
                     ValueError,
                     "archive contains a nested archive",
