@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import bz2
 import hashlib
 import io
+import lzma
 import stat
 import tarfile
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
@@ -21,6 +24,11 @@ ARCHIVE_PACKAGE_TYPES = frozenset({"app-zip", "jar", "tar", "wheel", "zip"})
 _NESTED_SUFFIXES = (".jar", ".tar", ".tar.gz", ".tgz", ".whl", ".zip")
 _READ_CHUNK = 1024 * 1024
 _MAX_NESTED_ARCHIVE_BYTES = 100_000_000
+_ZIP_LOCAL_SIGNATURE = b"PK\x03\x04"
+_ZIP_EOCD_SIGNATURE = b"PK\x05\x06"
+_ZIP_EOCD_MINIMUM_BYTES = 22
+_ZIP_MAXIMUM_COMMENT_BYTES = 65_535
+_ZIP_TAIL_BYTES = _ZIP_EOCD_MINIMUM_BYTES + _ZIP_MAXIMUM_COMMENT_BYTES
 
 
 def inspect_archive_safety(
@@ -465,6 +473,109 @@ def _archive_stream_kind(stream: BinaryIO) -> str | None:
         stream.seek(original_position)
 
 
+class _StreamingArchiveDetector:
+    """Detect nested containers without retaining an ordinary entry's full bytes."""
+
+    def __init__(self) -> None:
+        self._raw_prefix = bytearray()
+        self._zip_overlap = b""
+        self._zip_local_header_seen = False
+        self._zip_tail = bytearray()
+        self._compression_pending = bytearray()
+        self._compression_kind: str | None = None
+        self._decompressor: Any | bool | None = None
+        self._decompressed_prefix = bytearray()
+        self._decompression_failed = False
+
+    def feed(self, chunk: bytes) -> None:
+        if len(self._raw_prefix) < 512:
+            self._raw_prefix.extend(chunk[: 512 - len(self._raw_prefix)])
+
+        scan = self._zip_overlap + chunk
+        if _ZIP_LOCAL_SIGNATURE in scan:
+            self._zip_local_header_seen = True
+        self._zip_overlap = scan[-3:]
+        self._zip_tail.extend(chunk)
+        if len(self._zip_tail) > _ZIP_TAIL_BYTES:
+            del self._zip_tail[:-_ZIP_TAIL_BYTES]
+
+        if self._decompressor is None:
+            self._compression_pending.extend(chunk)
+            if len(self._compression_pending) >= 6:
+                self._initialize_decompressor()
+        elif self._decompressor is not False:
+            self._feed_decompressor(chunk)
+
+    def kind(self) -> str | None:
+        if self._decompressor is None:
+            self._initialize_decompressor()
+        if _tar_header_has_member(bytes(self._raw_prefix)) or _tar_header_has_member(
+            bytes(self._decompressed_prefix)
+        ):
+            return "tar"
+        if _zip_tail_has_eocd(
+            bytes(self._zip_tail),
+            local_header_seen=self._zip_local_header_seen,
+        ):
+            return "zip"
+        return None
+
+    def _initialize_decompressor(self) -> None:
+        pending = bytes(self._compression_pending)
+        self._compression_pending.clear()
+        if pending.startswith(b"\x1f\x8b"):
+            self._compression_kind = "gzip"
+            self._decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        elif pending.startswith(b"BZh"):
+            self._compression_kind = "bzip2"
+            self._decompressor = bz2.BZ2Decompressor()
+        elif pending.startswith(b"\xfd7zXZ\x00"):
+            self._compression_kind = "xz"
+            self._decompressor = lzma.LZMADecompressor()
+        else:
+            self._decompressor = False
+            return
+        self._feed_decompressor(pending)
+
+    def _feed_decompressor(self, chunk: bytes) -> None:
+        if self._decompression_failed or len(self._decompressed_prefix) >= 512:
+            return
+        remaining = 512 - len(self._decompressed_prefix)
+        try:
+            decompressor = self._decompressor
+            if self._compression_kind == "gzip":
+                output = decompressor.decompress(chunk, remaining)
+            else:
+                output = decompressor.decompress(chunk, max_length=remaining)  # type: ignore[union-attr]
+        except (EOFError, OSError, ValueError, zlib.error):
+            self._decompression_failed = True
+            return
+        self._decompressed_prefix.extend(output)
+
+
+def _tar_header_has_member(data: bytes) -> bool:
+    if len(data) < 512:
+        return False
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data[:512]), mode="r:") as archive:
+            return archive.next() is not None
+    except (EOFError, OSError, tarfile.TarError):
+        return False
+
+
+def _zip_tail_has_eocd(tail: bytes, *, local_header_seen: bool) -> bool:
+    position = tail.rfind(_ZIP_EOCD_SIGNATURE)
+    while position >= 0:
+        if len(tail) - position >= _ZIP_EOCD_MINIMUM_BYTES:
+            comment_length = int.from_bytes(tail[position + 20 : position + 22], "little")
+            if position + _ZIP_EOCD_MINIMUM_BYTES + comment_length == len(tail):
+                entry_count = int.from_bytes(tail[position + 10 : position + 12], "little")
+                directory_size = int.from_bytes(tail[position + 12 : position + 16], "little")
+                return local_header_seen or (entry_count == 0 and directory_size == 0)
+        position = tail.rfind(_ZIP_EOCD_SIGNATURE, 0, position)
+    return False
+
+
 def _safe_archive_path(value: str) -> str:
     if not value or "\\" in value or "\x00" in value:
         raise ValueError("archive path is malformed")
@@ -581,11 +692,12 @@ def _digest_stream(
 ) -> tuple[str, bytes | None]:
     if expected_size < 0 or expected_size > maximum_expanded:
         raise ValueError("archive entry exceeds the expansion bound")
-    if (retain or detect_archive) and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
+    if retain and not detect_archive and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
         raise ValueError("archive entry exceeds the bounded content inspection size")
     digest = hashlib.sha256()
     total = 0
-    retained = bytearray() if retain or detect_archive else None
+    retained = bytearray() if retain and not detect_archive else None
+    detector = _StreamingArchiveDetector() if detect_archive else None
     while True:
         chunk = stream.read(_READ_CHUNK)
         if not chunk:
@@ -596,13 +708,15 @@ def _digest_stream(
         digest.update(chunk)
         if retained is not None:
             retained.extend(chunk)
+        if detector is not None:
+            detector.feed(chunk)
     if total != expected_size:
         raise ValueError("archive entry size differs from its declared size")
+    if detect_archive and (retain or detector is not None and detector.kind() is not None):
+        raise ValueError("archive contains a nested archive")
     if retained is None:
         return "sha256:" + digest.hexdigest(), None
     data = bytes(retained)
-    if not retain and _archive_stream_kind(io.BytesIO(data)) is None:
-        return "sha256:" + digest.hexdigest(), None
     return "sha256:" + digest.hexdigest(), data
 
 

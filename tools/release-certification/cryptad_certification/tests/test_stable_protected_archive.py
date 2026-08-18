@@ -145,7 +145,12 @@ class StableProtectedArchiveTests(unittest.TestCase):
 
     def test_archive_scans_complete_bounded_entry_for_prefixed_zip(self) -> None:
         nested_zip = self._zip_bytes("safe.txt")
-        for preamble_size in (65_533, 70 * 1024, (1024 * 1024) + 1):
+        for preamble_size in (
+            65_533,
+            70 * 1024,
+            archive_safety._READ_CHUNK - 2,  # noqa: SLF001
+            archive_safety._READ_CHUNK + 1,  # noqa: SLF001
+        ):
             with self.subTest(preamble_size=preamble_size):
                 payload = (b"M" * preamble_size) + nested_zip
                 self.assertTrue(zipfile.is_zipfile(BytesIO(payload)))
@@ -172,18 +177,18 @@ class StableProtectedArchiveTests(unittest.TestCase):
                 totals = self._inspect(path)
                 self.assertEqual(0, totals["nestedArchiveDepth"])
 
-    def test_strict_content_bound_fails_before_reading_oversized_entry(self) -> None:
-        stream = mock.Mock()
+    def test_strict_content_detection_honors_expansion_bound_for_ordinary_entry(self) -> None:
+        payload = b"ordinary non-archive bytes"
+        path = self._outer_archive("ordinary-large-member", "zip", payload)
 
-        with self.assertRaisesRegex(ValueError, "bounded content inspection size"):
-            archive_safety._digest_stream(  # noqa: SLF001
-                stream,
-                archive_safety._MAX_NESTED_ARCHIVE_BYTES + 1,  # noqa: SLF001
-                archive_safety._MAX_NESTED_ARCHIVE_BYTES + 1,  # noqa: SLF001
-                detect_archive=True,
+        with mock.patch.object(archive_safety, "_MAX_NESTED_ARCHIVE_BYTES", len(payload) - 1):
+            totals = self._inspect(
+                path,
+                maximum_expanded_bytes=len(payload),
             )
 
-        stream.read.assert_not_called()
+        self.assertEqual(len(payload), totals["expandedBytes"])
+        self.assertEqual(0, totals["nestedArchiveDepth"])
 
 
 if __name__ == "__main__":
