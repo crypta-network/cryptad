@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-protected-release-execution-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "executionId",
+    "evaluationTime",
+    "repository",
+    "release",
+    "publicTargets",
+    "authorities",
+    "upstreamEvidence",
+    "rcInputs",
+    "archives",
+    "workflowCoordinates",
+    "ga",
+    "operationEvidence",
+    "lifecycleState",
+    "evidenceClassification"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-protected-release-execution"},
+    "executionId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "evaluationTime": {"type": "string", "format": "date-time"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "candidateCommit", "sourceRef", "requireCleanWorkspace"],
+      "properties": {
+        "identity": {"const": "github.com/crypta-network/cryptad"},
+        "candidateCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "sourceRef": {"type": "string", "pattern": "^refs/heads/release/[1-9][0-9]*$"},
+        "requireCleanWorkspace": {"const": true}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "integerBuild", "milestone", "freezeMode", "previousRcFreeze"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "integerBuild": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10},
+        "milestone": {"const": "Stable 1.0"},
+        "freezeMode": {"enum": ["first-freeze", "refreeze"]},
+        "previousRcFreeze": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/fileBinding"}
+          ]
+        }
+      }
+    },
+    "publicTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactBaseUri", "catalogPrimaryUri", "catalogMirrorUris", "catalogRollbackUri"],
+      "properties": {
+        "artifactBaseUri": {"type": "string", "format": "uri", "maxLength": 2048},
+        "catalogPrimaryUri": {"type": "string", "format": "uri", "maxLength": 2048},
+        "catalogMirrorUris": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"type": "string", "format": "uri", "maxLength": 2048}
+        },
+        "catalogRollbackUri": {"type": "string", "format": "uri", "maxLength": 2048}
+      }
+    },
+    "authorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedEnvironments", "workflowPaths", "keyIdentities"],
+      "properties": {
+        "protectedEnvironments": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"enum": ["stable-1-0-rc", "stable-1-0-ga-evidence", "stable-1-0-ga", "stable-1-0-public-observation"]}
+        },
+        "workflowPaths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rc", "ga", "publicObservation"],
+          "properties": {
+            "rc": {"const": ".github/workflows/stable-1.0-rc-release.yml"},
+            "ga": {"const": ".github/workflows/stable-1.0-ga-promotion.yml"},
+            "publicObservation": {"const": ".github/workflows/stable-1.0-public-observation.yml"}
+          }
+        },
+        "keyIdentities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["appSigningKeyId", "reviewerKeyId", "reviewPolicyId", "reviewPolicyVersion", "catalogSigningKeyId"],
+          "properties": {
+            "appSigningKeyId": {"$ref": "#/$defs/publicLabel"},
+            "reviewerKeyId": {"$ref": "#/$defs/publicLabel"},
+            "reviewPolicyId": {"$ref": "#/$defs/publicLabel"},
+            "reviewPolicyVersion": {"$ref": "#/$defs/publicLabel"},
+            "catalogSigningKeyId": {"$ref": "#/$defs/publicLabel"}
+          }
+        }
+      }
+    },
+    "upstreamEvidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/evidenceBinding"}
+    },
+    "rcInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicBetaKnownIssues", "thirdPartyIntake", "goNoGoWaivers", "stableReadinessWaivers", "freezeExceptions"],
+      "properties": {
+        "publicBetaKnownIssues": {"$ref": "#/$defs/fileBinding"},
+        "thirdPartyIntake": {"$ref": "#/$defs/fileBinding"},
+        "goNoGoWaivers": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "stableReadinessWaivers": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "freezeExceptions": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+      }
+    },
+    "archives": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {"$ref": "#/$defs/archiveBinding"}
+    },
+    "workflowCoordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rc", "gaValidation", "gaEvidenceApproval", "gaPublication", "publicObservation"],
+      "properties": {
+        "rc": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
+        "gaValidation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
+        "gaEvidenceApproval": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
+        "gaPublication": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
+        "publicObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]}
+      }
+    },
+    "ga": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicationIntent", "publicObservationRequired", "selectedRc", "validationIdentityDigest", "authorization"],
+      "properties": {
+        "publicationIntent": {"enum": ["validate-only", "publish"]},
+        "publicObservationRequired": {"const": true},
+        "selectedRc": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/selectedRc"}]},
+        "validationIdentityDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "authorization": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/authorizationBinding"}]}
+      }
+    },
+    "operationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preflight", "rcPreflight", "rcFreeze", "rcFreezeRecord", "rcFreezeArtifact", "gaValidation", "gaValidationIdentity", "gaValidationArtifact", "gaPromotionPlan", "gaPublication", "gaPublicationArtifact", "publicObservation", "publicObservationArtifact", "independentReproducibility", "independentReproducibilityArtifact"],
+      "properties": {
+        "preflight": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/preflightFileBinding"}]},
+        "rcPreflight": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/preflightFileBinding"}]},
+        "rcFreeze": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "rcFreezeRecord": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "rcFreezeArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaValidation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaValidationIdentity": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaValidationArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaPromotionPlan": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaPublication": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "gaPublicationArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "publicObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "publicObservationArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "independentReproducibility": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "independentReproducibilityArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+      }
+    },
+    "lifecycleState": {
+      "enum": ["planned", "preflight-passed", "rc-frozen", "ga-validated", "ga-published", "publicly-observed", "blocked"]
+    },
+    "evidenceClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryImplementation", "offlineVerification", "protectedOperation", "publicObservation"],
+      "properties": {
+        "repositoryImplementation": {"enum": ["present", "missing"]},
+        "offlineVerification": {"enum": ["pending", "passed", "failed"]},
+        "protectedOperation": {"enum": ["not-performed", "partial", "completed"]},
+        "publicObservation": {"enum": ["not-performed", "completed"]}
+      }
+    },
+    "blockedReason": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 .:_/-]{0,255}$"}
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "publicLabel": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"},
+    "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,254}$", "maxLength": 255},
+    "relativePath": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._+@={}/-]+$", "maxLength": 512},
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.schema\\.json$"}]}
+      }
+    },
+    "preflightFileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-protected-release-execution-summary-v1.schema.json"}
+      }
+    },
+    "evidenceFileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.schema\\.json$"}
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest", "environment", "conclusion"],
+      "properties": {
+        "repository": {"const": "crypta-network/cryptad"},
+        "workflowPath": {"type": "string", "pattern": "^\\.github/workflows/[A-Za-z0-9._-]+\\.yml$"},
+        "workflowCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10},
+        "artifactName": {"$ref": "#/$defs/artifactName"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "environment": {"$ref": "#/$defs/publicLabel"},
+        "conclusion": {"const": "success"}
+      }
+    },
+    "evidenceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "authorityClass", "file", "producer", "releaseId", "buildVersion", "candidateCommit", "classification", "status", "promotionReady", "nonRelease", "fixture", "simulatedOnly", "testSigning", "validUntil"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,127}$"},
+        "kind": {"$ref": "#/$defs/publicLabel"},
+        "authorityClass": {"enum": ["protected-producer", "exact-dispatch-input", "rc-generated-prerequisite"]},
+        "file": {"$ref": "#/$defs/evidenceFileBinding"},
+        "producer": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/producer"}]},
+        "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10},
+        "candidateCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "classification": {"enum": ["protected-operation", "offline-prerequisite"]},
+        "status": {"const": "pass"},
+        "promotionReady": {"const": true},
+        "nonRelease": {"const": false},
+        "fixture": {"const": false},
+        "simulatedOnly": {"const": false},
+        "testSigning": {"const": false},
+        "validUntil": {"type": "string", "format": "date-time"}
+      }
+    },
+    "archiveBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "sha256", "maximumEntries", "maximumExpandedBytes"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,127}$"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "maximumEntries": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "maximumExpandedBytes": {"type": "integer", "minimum": 1, "maximum": 10737418240}
+      }
+    },
+    "workflowCoordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest", "environment", "conclusion"],
+      "properties": {
+        "repository": {"const": "crypta-network/cryptad"},
+        "workflowPath": {"type": "string", "pattern": "^\\.github/workflows/[A-Za-z0-9._-]+\\.yml$"},
+        "workflowCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10},
+        "artifactName": {"$ref": "#/$defs/artifactName"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "environment": {"$ref": "#/$defs/publicLabel"},
+        "conclusion": {"const": "success"}
+      }
+    },
+    "selectedRc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "runAttempt", "artifactName", "artifactDigest", "freezeDigest", "productDigest", "archiveDigest", "catalogDigest", "catalogRevision"],
+      "properties": {
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 10},
+        "artifactName": {"$ref": "#/$defs/artifactName"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogRevision": {"type": "integer", "minimum": 0}
+      }
+    },
+    "authorizationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "authorizationId", "authorizationFileDigest", "identityDigest", "authorizedTargetsDigest", "validUntil", "role", "approverId"],
+      "properties": {
+        "file": {"$ref": "#/$defs/fileBinding"},
+        "authorizationId": {"$ref": "#/$defs/publicLabel"},
+        "authorizationFileDigest": {"$ref": "#/$defs/digest"},
+        "identityDigest": {"$ref": "#/$defs/digest"},
+        "authorizedTargetsDigest": {"$ref": "#/$defs/digest"},
+        "validUntil": {"type": "string", "format": "date-time"},
+        "role": {"const": "stable-release-manager"},
+        "approverId": {"$ref": "#/$defs/publicLabel"}
+      }
+    }
+  }
+}

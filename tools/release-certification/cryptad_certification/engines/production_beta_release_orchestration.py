@@ -1028,6 +1028,42 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Require passing non-waivable Stable vulnerability promotion evidence.",
     )
+    parser.add_argument(
+        "--stable-supply-chain-summary",
+        type=Path,
+        help="Authenticated Stable supply-chain promotion summary.",
+    )
+    parser.add_argument(
+        "--require-stable-supply-chain",
+        action="store_true",
+        help="Require passing non-waivable Stable supply-chain evidence.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-summary",
+        type=Path,
+        help="Authenticated Stable dependency-vulnerability promotion summary.",
+    )
+    parser.add_argument(
+        "--require-stable-dependency-vulnerability",
+        action="store_true",
+        help="Require passing non-waivable Stable dependency-vulnerability evidence.",
+    )
+    parser.add_argument(
+        "--stable-governance-candidate-source-commit",
+        default="",
+        help="Exact lowercase 40-character candidate commit for Stable authorities.",
+    )
+    parser.add_argument(
+        "--stable-governance-candidate-source-ref",
+        default="",
+        help="Exact immutable commit:<sha> candidate identity for Stable authorities.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-evidence-phase",
+        choices=("prepublication-evaluation", "final-publication"),
+        default="final-publication",
+        help="Closed PR-290 evidence phase required by aggregate certification.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -1102,6 +1138,14 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     stable_readiness_waivers = resolve_workspace_path_arg(args.stable_readiness_waivers, workspace)
     stable_vulnerability_summary = resolve_workspace_path_arg(
         args.stable_vulnerability_summary,
+        workspace,
+    )
+    stable_supply_chain_summary = resolve_workspace_path_arg(
+        args.stable_supply_chain_summary,
+        workspace,
+    )
+    stable_dependency_vulnerability_summary = resolve_workspace_path_arg(
+        args.stable_dependency_vulnerability_summary,
         workspace,
     )
     public_beta_known_issues = resolve_workspace_path_arg(
@@ -1260,6 +1304,23 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         stable_rc_artifact_timestamp=stable_rc_artifact_timestamp or None,
         stable_vulnerability_summary=stable_vulnerability_summary,
         require_stable_vulnerability=args.require_stable_vulnerability,
+        stable_supply_chain_summary=stable_supply_chain_summary,
+        require_stable_supply_chain=args.require_stable_supply_chain,
+        stable_dependency_vulnerability_summary=(
+            stable_dependency_vulnerability_summary
+        ),
+        require_stable_dependency_vulnerability=(
+            args.require_stable_dependency_vulnerability
+        ),
+        stable_governance_candidate_source_commit=(
+            args.stable_governance_candidate_source_commit
+        ),
+        stable_governance_candidate_source_ref=(
+            args.stable_governance_candidate_source_ref
+        ),
+        stable_dependency_vulnerability_evidence_phase=(
+            args.stable_dependency_vulnerability_evidence_phase
+        ),
     )
 
 def normalized_artifact_hostname(hostname: str) -> str:

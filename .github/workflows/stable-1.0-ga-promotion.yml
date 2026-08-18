@@ -28,6 +28,11 @@ on:
         description: Exact retained Stable RC artifact name from the selected run and attempt.
         required: true
         type: string
+      ga_evidence_coordinates:
+        description: Closed JSON run, attempt, artifact name, and Actions digest from the exact earlier publish=false evidence approval; required only for publish=true.
+        required: false
+        default: '{}'
+        type: string
       stable_vulnerability_run_id:
         description: Exact protected evaluate-promotion run; required only for publish=true.
         required: false
@@ -128,21 +133,21 @@ jobs:
 
     steps:
       - name: Check out the exact candidate commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          java-version: '25'
+          java-version: '25.0.3+9'
           distribution: temurin
 
       - name: Set up Gradle
@@ -159,6 +164,7 @@ jobs:
           INPUT_RC_RUN_ID: ${{ inputs.selected_rc_run_id }}
           INPUT_RC_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
           INPUT_RC_ARTIFACT_NAME: ${{ inputs.selected_rc_artifact_name }}
+          INPUT_GA_EVIDENCE_COORDINATES: ${{ inputs.ga_evidence_coordinates }}
           INPUT_PREVIOUS_PRODUCT_DIGEST: ${{ inputs.previous_product_digest }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
           INPUT_CATALOG_PRIMARY_URI: ${{ inputs.catalog_primary_uri }}
@@ -173,6 +179,10 @@ jobs:
           INPUT_STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT: ${{ inputs.stable_dependency_vulnerability_run_attempt }}
           INPUT_STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME: ${{ inputs.stable_dependency_vulnerability_artifact_name }}
           INPUT_STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST: ${{ inputs.stable_dependency_vulnerability_artifact_digest }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           set -euo pipefail
           if [[ ${#INPUT_RELEASE_ID} -gt 128 \
@@ -189,7 +199,11 @@ jobs:
             exit 1
           fi
           if [[ "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
-                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || "$REF_PROTECTED" != "true" ]]; then
             echo "::error::Stable GA must be dispatched on the exact release/$INPUT_BUILD_VERSION candidate ref."
             exit 1
           fi
@@ -204,6 +218,19 @@ jobs:
                  || [[ ! "$INPUT_STABLE_VULNERABILITY_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]];
              }; then
             echo "::error::publish=true requires exact current vulnerability promotion coordinates."
+            exit 1
+          fi
+          if [[ "$INPUT_PUBLISH" == "true" ]] && {
+               ! jq -e \
+                 --arg expected_prefix "stable-1-0-ga-validated-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-" '
+                   keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]
+                   and (.runId | type == "string" and test("^[1-9][0-9]*$"))
+                   and (.runAttempt | type == "string" and test("^[1-9][0-9]*$"))
+                   and .artifactName == ($expected_prefix + .runId + "-" + .runAttempt)
+                   and (.artifactDigest | type == "string" and test("^sha256:[0-9a-f]{64}$"))' \
+                 <<< "$INPUT_GA_EVIDENCE_COORDINATES" >/dev/null;
+             }; then
+            echo "::error::publish=true requires the exact earlier protected GA evidence run and artifact."
             exit 1
           fi
           expected_artifact="stable-1-0-rc-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$INPUT_RC_RUN_ID-$INPUT_RC_RUN_ATTEMPT"
@@ -418,6 +445,8 @@ jobs:
               and .event == "workflow_dispatch"
               and .conclusion == "success"
               and .display_title == $display_title
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
               and .head_sha == $sha
               and .head_branch == $branch
               and .repository.full_name == $repository
@@ -1390,7 +1419,7 @@ jobs:
 
       - name: Upload exact redaction-safe Stable GA validation artifact
         id: upload_publication
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ steps.stage_publication.outputs.artifact_name }}
           path: build/stable-ga-publication-artifact/
@@ -1421,7 +1450,7 @@ jobs:
 
     steps:
       - name: Download exact validated Stable GA artifact from this run
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.validate.outputs.publication_artifact_name }}
           path: build/stable-ga-evidence-attestation
@@ -1497,26 +1526,26 @@ jobs:
     environment: stable-1-0-ga
     permissions:
       attestations: read
-      contents: write
+      contents: read
       actions: read
 
     steps:
       - name: Check out the exact authorized candidate
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          java-version: '25'
+          java-version: '25.0.3+9'
           distribution: temurin
 
       - name: Set up Gradle
@@ -1524,6 +1553,59 @@ jobs:
 
       - name: Install Gradle properties
         uses: ./.github/actions/setup-gradle-properties
+
+      - name: Authenticate exact prior protected GA evidence approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GA_EVIDENCE_COORDINATES: ${{ inputs.ga_evidence_coordinates }}
+        run: |
+          set -euo pipefail
+          EVIDENCE_RUN_ID="$(jq -r .runId <<< "$GA_EVIDENCE_COORDINATES")"
+          EVIDENCE_RUN_ATTEMPT="$(jq -r .runAttempt <<< "$GA_EVIDENCE_COORDINATES")"
+          EVIDENCE_ARTIFACT_NAME="$(jq -r .artifactName <<< "$GA_EVIDENCE_COORDINATES")"
+          EVIDENCE_ARTIFACT_DIGEST="$(jq -r .artifactDigest <<< "$GA_EVIDENCE_COORDINATES")"
+          producer="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/attempts/$EVIDENCE_RUN_ATTEMPT")"
+          jq -e \
+            --arg run_id "$EVIDENCE_RUN_ID" \
+            --arg attempt "$EVIDENCE_RUN_ATTEMPT" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              (.id | tostring) == $run_id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-ga-promotion.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$producer" >/dev/null
+          jobs="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/attempts/$EVIDENCE_RUN_ATTEMPT/jobs?per_page=100")"
+          jq -e '
+            [.[].jobs[]
+              | select(.name == "Attest protected Stable GA evidence bytes"
+                  and .status == "completed"
+                  and .conclusion == "success")]
+            | length == 1' <<< "$jobs" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/artifacts?per_page=100")"
+          jq -e \
+            --arg name "$EVIDENCE_ARTIFACT_NAME" \
+            --arg digest "$EVIDENCE_ARTIFACT_DIGEST" '
+              [.[].artifacts[]
+                | select(.name == $name and .expired == false and .digest == $digest)]
+              | length == 1' <<< "$artifacts" >/dev/null
+
+      - name: Download exact prior evidence-approved GA artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ fromJSON(inputs.ga_evidence_coordinates).runId }}
+          name: ${{ fromJSON(inputs.ga_evidence_coordinates).artifactName }}
+          path: build/stable-ga-prior-evidence
 
       - name: Authenticate exact current Stable vulnerability promotion producer
         env:
@@ -1554,6 +1636,8 @@ jobs:
               and .conclusion == "success"
               and (.run_attempt | tostring) == $attempt
               and .path == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
               and .head_sha == $commit
               and .head_repository.full_name == "crypta-network/cryptad"' \
             <<< "$producer" >/dev/null
@@ -1570,7 +1654,7 @@ jobs:
             <<< "$artifacts" >/dev/null
 
       - name: Download exact current encrypted vulnerability promotion successor
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.stable_vulnerability_run_id }}
@@ -1781,6 +1865,8 @@ jobs:
               and .conclusion == "success"
               and (.run_attempt | tostring) == $attempt
               and .path == ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
               and .head_sha == $commit
               and .head_repository.full_name == "crypta-network/cryptad"' \
             <<< "$producer" >/dev/null
@@ -1912,7 +1998,7 @@ jobs:
         run: ./gradlew :platform-devtools:installDist
 
       - name: Download exact validated Stable GA artifact from this run
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ needs.validate.outputs.publication_artifact_name }}
           path: build/stable-ga-publication
@@ -1965,6 +2051,7 @@ jobs:
           signer_workflow="$GITHUB_REPOSITORY/.github/workflows/stable-1.0-ga-promotion.yml"
           source_ref="refs/heads/release/$INPUT_BUILD_VERSION"
           attestation_dir="build/stable-ga-evidence-attestation-verification"
+          prior_evidence_root="build/stable-ga-prior-evidence"
           rm -rf "$attestation_dir"
           mkdir -p "$attestation_dir"
           for evidence_name in \
@@ -1974,6 +2061,12 @@ jobs:
             evidence="$root/publication-inputs/$evidence_name"
             if [[ -L "$evidence" || ! -f "$evidence" ]]; then
               echo "::error::Protected Stable GA evidence subject is missing or unsafe."
+              exit 1
+            fi
+            prior_evidence="$prior_evidence_root/publication-inputs/$evidence_name"
+            if [[ -L "$prior_evidence" || ! -f "$prior_evidence" ]] \
+                || ! cmp --silent "$evidence" "$prior_evidence"; then
+              echo "::error::Current GA evidence differs from the exact protected evidence-approved artifact."
               exit 1
             fi
             GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh attestation verify "$evidence" \
@@ -2100,6 +2193,8 @@ jobs:
           STABLE_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST: ${{ steps.vulnerability_promotion.outputs.freshness_assertion_digest }}
           STABLE_DEPENDENCY_VULNERABILITY_FRESHNESS_ASSERTION_DIGEST: ${{ steps.dependency_vulnerability_promotion.outputs.freshness_assertion_digest }}
           STABLE_DEPENDENCY_VULNERABILITY_ACTIVE: ${{ needs.validate.outputs.dependency_vulnerability_active }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         run: |
           set -euo pipefail
           export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"
@@ -2698,6 +2793,8 @@ jobs:
                   and .conclusion == "success"
                   and .event == "workflow_dispatch"
                   and .display_title == $display_title
+                  and .actor.login == "leumor"
+                  and .triggering_actor.login == "leumor"
                   and .head_sha == $sha
                   and .head_branch == $branch
                   and .repository.full_name == $repository
@@ -2948,6 +3045,10 @@ jobs:
           }
 
           validate_publication_boundary() {
+            if [[ "$DISPATCH_ACTOR" != "leumor" || "$TRIGGERING_ACTOR" != "leumor" ]]; then
+              echo "::error::Stable GA publication requires leumor as both dispatch and triggering actor."
+              return 1
+            fi
             verify_vulnerability_promotion_freshness
             verify_dependency_vulnerability_promotion_freshness
             reauthenticate_latest_stable_rc
@@ -3015,8 +3116,9 @@ jobs:
           expected_release_name="Cryptad Stable 1.0 ($tag)"
           if [[ ! "$release_id" =~ ^[1-9][0-9]*$ \
                 || "$(jq -r '.tag_name' <<< "$release_json")" != "$tag" \
-                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" ]]; then
-            echo "::error::GitHub Release identity is malformed or conflicts with the authorized tag."
+                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" \
+                || "$(jq -r '.target_commitish' <<< "$release_json")" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::GitHub Release identity is malformed or conflicts with the authorized tag or commit."
             exit 1
           fi
           if [[ "$(jq -r '.prerelease' <<< "$release_json")" != false ]]; then
@@ -3703,7 +3805,7 @@ jobs:
           always()
           && steps.audit_receipt_validation.outcome == 'success'
           && hashFiles('build/stable-1.0-ga-publication-receipt.json') != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: stable-1-0-ga-publication-receipt-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -3713,7 +3815,6 @@ jobs:
             build/release-certification/${{ inputs.release_id }}/stable-ga/redaction-report.json
             build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-promotion-summary.json
             build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-go-no-go.md
-            build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-publication-receipt.json
           if-no-files-found: error
           retention-days: 90
 

@@ -724,6 +724,9 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
         # Observe runner UTC here, after every preceding evidence collector has
         # completed, instead of trusting a time frozen before this command.
         certification_clock=utc_now(),
+        evidence_phase=(
+            settings.stable_dependency_vulnerability_evidence_phase
+        ),
     )
     if stable_dependency_vulnerability_item is not None:
         evidence.append(stable_dependency_vulnerability_item)
@@ -1083,6 +1086,9 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         stable_dependency_vulnerability_candidate_source_ref=(
             args.stable_dependency_vulnerability_candidate_source_ref
         ),
+        stable_dependency_vulnerability_evidence_phase=(
+            args.stable_dependency_vulnerability_evidence_phase
+        ),
     )
 
 def resolve_path(workspace_root: Path, path: Path) -> Path:
@@ -1254,6 +1260,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--stable-dependency-vulnerability-candidate-source-ref",
         default="",
         help="Exact immutable commit:<sha> source identity governed by PR-290.",
+    )
+    parser.add_argument(
+        "--stable-dependency-vulnerability-evidence-phase",
+        choices=("prepublication-evaluation", "final-publication"),
+        default="final-publication",
+        help=(
+            "Require either the authenticated prepublication evaluation used by "
+            "Stable RC or final publication-verified PR-290 evidence."
+        ),
     )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(

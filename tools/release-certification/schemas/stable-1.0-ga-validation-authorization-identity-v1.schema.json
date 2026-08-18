@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-ga-validation-authorization-identity-v1.schema.json",
+  "title": "Cryptad Stable 1.0 GA validation authorization identity v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "releaseId", "buildVersion", "profile", "component",
+    "sourceCommit", "sourceRef", "lineageDigest", "freezeDigest", "freezeFileDigest",
+    "archiveDigest", "productDistributionDigest", "checksumsDigest", "provenanceDigest",
+    "postFreezeValidationDigest", "postFreezeValidationGeneratedAt",
+    "requiredUpgradePredecessor", "catalogDigest", "catalogRevision", "platformApiDigest",
+    "firstPartyAppsDigest", "contentProfilesDigest", "limitationsDigest",
+    "publicationTargets", "publicationTargetsDigest", "acceptedRcWaivers", "payloadIdentity"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-ga-validation-authorization-identity"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "profile": {"const": "stable-review"},
+    "component": {"const": "stable-ga"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/nonEmpty"},
+    "lineageDigest": {"$ref": "#/$defs/digest"},
+    "freezeDigest": {"$ref": "#/$defs/digest"},
+    "freezeFileDigest": {"$ref": "#/$defs/digest"},
+    "archiveDigest": {"$ref": "#/$defs/digest"},
+    "productDistributionDigest": {"$ref": "#/$defs/digest"},
+    "checksumsDigest": {"$ref": "#/$defs/digest"},
+    "provenanceDigest": {"$ref": "#/$defs/digest"},
+    "postFreezeValidationDigest": {"$ref": "#/$defs/digest"},
+    "postFreezeValidationGeneratedAt": {"type": "string", "format": "date-time"},
+    "requiredUpgradePredecessor": {"$ref": "#/$defs/upgradePredecessor"},
+    "catalogDigest": {"$ref": "#/$defs/digest"},
+    "catalogRevision": {"type": "integer", "minimum": 0},
+    "platformApiDigest": {"$ref": "#/$defs/digest"},
+    "firstPartyAppsDigest": {"$ref": "#/$defs/digest"},
+    "contentProfilesDigest": {"$ref": "#/$defs/digest"},
+    "limitationsDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargets": {"$ref": "#/$defs/publicationTargets"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "acceptedRcWaivers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/waiver"}
+    },
+    "payloadIdentity": {"$ref": "#/$defs/payloadIdentity"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "upgradePredecessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "previousCandidateDigest", "productDistributionDigest"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "previousCandidateDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "publicationTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedTag", "expectedReleaseBranch", "artifactBaseUri", "catalog"],
+      "properties": {
+        "expectedTag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "expectedReleaseBranch": {"type": "string", "pattern": "^release/[1-9][0-9]*$"},
+        "artifactBaseUri": {"type": "string", "pattern": "^https://[^?#]+/$"},
+        "catalog": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["channel", "primaryUri", "mirrorUris", "rollbackUri"],
+          "properties": {
+            "channel": {"const": "stable"},
+            "primaryUri": {"type": "string", "pattern": "^https://[^?#]+$"},
+            "mirrorUris": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^https://[^?#]+$"}
+            },
+            "rollbackUri": {"type": "string", "pattern": "^https://[^?#]+$"}
+          }
+        }
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "status", "scope", "expiresAt", "stableGaAllowed"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"const": "stable-rc"},
+        "status": {"const": "accepted"},
+        "scope": {"$ref": "#/$defs/nonEmpty"},
+        "expiresAt": {"type": "string", "format": "date-time"},
+        "stableGaAllowed": {"const": true}
+      }
+    },
+    "payloadIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rcProductDigest", "gaProductDigest", "bitIdentical", "rebuildPerformed"],
+      "properties": {
+        "rcProductDigest": {"$ref": "#/$defs/digest"},
+        "gaProductDigest": {"$ref": "#/$defs/digest"},
+        "bitIdentical": {"const": true},
+        "rebuildPerformed": {"const": false}
+      }
+    }
+  }
+}

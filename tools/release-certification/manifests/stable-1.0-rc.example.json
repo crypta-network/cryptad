@@ -15,6 +15,8 @@
     "multiNodeSoak": true,
     "sandboxProviderTests": true,
     "stableReadiness": true,
+    "stableSupplyChain": true,
+    "stableDependencyVulnerability": true,
     "stableVulnerability": true,
     "thirdPartyIntake": true
   },
@@ -33,6 +35,8 @@
     "stableKnownLimitations": "tools/release-certification/stable-1.0-known-limitations.json",
     "stableReadinessPolicy": "tools/release-certification/stable-1.0-readiness-policy.json",
     "stableReadinessWaivers": "build/protected-inputs/stable-readiness-waivers.json",
+    "supplyChainPromotionSummary": "/REPLACE_WITH_EXTERNAL_PROTECTED_HANDOFF_ROOT/stable-1.0-supply-chain-summary.json",
+    "dependencyVulnerabilityPromotionSummary": "/REPLACE_WITH_EXTERNAL_PROTECTED_HANDOFF_ROOT/stable-1.0-dependency-vulnerability-promotion-summary.json",
     "stableVulnerabilitySummary": "/REPLACE_WITH_EXTERNAL_PROTECTED_HANDOFF_ROOT/stable-1.0-vulnerability-summary.json",
     "stableRcFreezeExceptions": "build/protected-inputs/stable-1.0-rc-freeze-exceptions.json",
     "thirdPartyIntake": "build/protected-inputs/third-party-intake-summary.json"
@@ -41,7 +45,11 @@
     "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0-rc/",
     "catalogChannel": "stable",
     "expectedPreviousReleaseId": "REPLACE_WITH_PREVIOUS_CANDIDATE_RELEASE_ID",
+    "candidateSourceCommit": "REPLACE_WITH_LOWERCASE_40_CHARACTER_COMMIT",
+    "candidateSourceRef": "commit:REPLACE_WITH_LOWERCASE_40_CHARACTER_COMMIT",
     "stableRcFreezeMode": "refreeze",
+    "stableSupplyChainGovernance": "required",
+    "stableDependencyVulnerabilityGovernance": "required",
     "stableVulnerabilityGovernance": "required"
   },
   "execution": {

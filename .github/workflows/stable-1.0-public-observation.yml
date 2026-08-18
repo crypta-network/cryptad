@@ -1,0 +1,406 @@
+name: Stable 1.0 Public Observation
+run-name: Stable 1.0 public observation ${{ inputs.release_id }} build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Exact Stable release ID from the authenticated GA publication receipt.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive integer build published by Stable GA.
+        required: true
+        type: string
+      candidate_commit:
+        description: Exact lowercase 40-character commit selected by Stable RC and GA.
+        required: true
+        type: string
+      ga_publication_run_id:
+        description: Successful protected Stable GA publication workflow run.
+        required: true
+        type: string
+      ga_publication_run_attempt:
+        description: Exact immutable attempt of the protected GA publication run.
+        required: true
+        type: string
+      ga_publication_artifact_name:
+        description: Exact retained Stable GA publication-receipt artifact name.
+        required: true
+        type: string
+      ga_publication_artifact_digest:
+        description: Exact Actions sha256 digest of the retained publication-receipt artifact.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-release-observation-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    name: Independently observe exact public Stable 1.0 bytes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-public-observation
+    permissions:
+      actions: read
+      contents: read
+    env:
+      DISPATCH_ACTOR: ${{ github.actor }}
+      TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+      INPUT_RELEASE_ID: ${{ inputs.release_id }}
+      INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+      INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+      INPUT_GA_RUN_ID: ${{ inputs.ga_publication_run_id }}
+      INPUT_GA_RUN_ATTEMPT: ${{ inputs.ga_publication_run_attempt }}
+      INPUT_GA_ARTIFACT_NAME: ${{ inputs.ga_publication_artifact_name }}
+      INPUT_GA_ARTIFACT_DIGEST: ${{ inputs.ga_publication_artifact_digest }}
+
+    steps:
+      - name: Reauthenticate the current protected observation operator
+        run: |
+          set -euo pipefail
+          if [[ "$DISPATCH_ACTOR" != "leumor" || "$TRIGGERING_ACTOR" != "leumor" ]]; then
+            echo "::error::Stable public observation requires leumor as both dispatch and triggering actor."
+            exit 1
+          fi
+
+      - name: Check out the exact published candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          persist-credentials: false
+
+      - name: Verify immutable source and GA publication coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] \
+              || [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]] \
+              || [[ ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+              || [[ ! "$INPUT_GA_RUN_ID" =~ ^[1-9][0-9]*$ ]] \
+              || [[ ! "$INPUT_GA_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] \
+              || (( ${#INPUT_BUILD_VERSION} > 10 )) \
+              || (( ${#INPUT_GA_RUN_ID} > 20 )) \
+              || (( ${#INPUT_GA_RUN_ATTEMPT} > 10 )) \
+              || [[ ! "$INPUT_GA_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Stable public-observation coordinates are malformed."
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$INPUT_CANDIDATE_COMMIT" ]] \
+              || [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Public observation did not check out the exact clean candidate."
+            exit 1
+          fi
+          if [[ "$GITHUB_WORKFLOW_SHA" != "$INPUT_CANDIDATE_COMMIT" ]] \
+              || [[ "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" ]] \
+              || [[ "$GITHUB_REF_PROTECTED" != "true" ]]; then
+            echo "::error::Public observation must run from the exact protected release ref and workflow bytes."
+            exit 1
+          fi
+          expected_artifact="stable-1-0-ga-publication-receipt-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$INPUT_GA_RUN_ID-$INPUT_GA_RUN_ATTEMPT"
+          if [[ "$INPUT_GA_ARTIFACT_NAME" != "$expected_artifact" ]]; then
+            echo "::error::GA publication artifact name is not canonical for the selected run."
+            exit 1
+          fi
+          observation_artifact="stable-1-0-public-observation-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if (( ${#observation_artifact} > 128 )); then
+            echo "::error::Derived public-observation artifact name exceeds the closed 128-character contract."
+            exit 1
+          fi
+          echo "OBSERVATION_ARTIFACT_NAME=$observation_artifact" >> "$GITHUB_ENV"
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_GA_RUN_ID/attempts/$INPUT_GA_RUN_ATTEMPT")"
+          if ! jq -e \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg path ".github/workflows/stable-1.0-ga-promotion.yml" \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg run_id "$INPUT_GA_RUN_ID" \
+              --arg run_attempt "$INPUT_GA_RUN_ATTEMPT" '
+                (.id | tostring) == $run_id
+                and (.run_attempt | tostring) == $run_attempt
+                and .event == "workflow_dispatch"
+                and .status == "completed"
+                and .conclusion == "success"
+                and .head_sha == $commit
+                and .path == $path
+                and .repository.full_name == $repository
+                and .head_repository.full_name == $repository
+                and .actor.login == "leumor"
+                and .triggering_actor.login == "leumor"' <<<"$run_json" >/dev/null; then
+            echo "::error::Selected GA run/attempt is not the exact successful protected producer."
+            exit 1
+          fi
+          artifacts="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_GA_RUN_ID/artifacts?per_page=100" --slurp)"
+          matches="$(jq \
+            --arg name "$INPUT_GA_ARTIFACT_NAME" \
+            '[.[].artifacts[] | select(.name == $name and .expired == false)]' \
+            <<<"$artifacts")"
+          if [[ "$(jq 'length' <<<"$matches")" != 1 ]] \
+              || [[ "$(jq -r '.[0].digest // empty' <<<"$matches")" != "$INPUT_GA_ARTIFACT_DIGEST" ]]; then
+            echo "::error::GA publication artifact is missing, expired, ambiguous, or has the wrong digest."
+            exit 1
+          fi
+
+      - name: Download the exact GA publication receipt artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.ga_publication_artifact_name }}
+          path: build/stable-ga-publication-receipt
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.ga_publication_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Fetch and verify every public Stable GA object
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          from cryptad_certification.engines.stable_1_0_ga_core import (
+              PUBLICATION_RECEIPT_SCHEMA,
+          )
+          from cryptad_certification.engines.stable_1_0_public_observation import (
+              PUBLIC_DOCUMENT_LIMIT,
+              PUBLIC_SIGNATURE_LIMIT,
+              PublicObservationTransport,
+              catalog_signature_uri,
+              github_annotated_tag_identity,
+              github_release_assets,
+              github_release_identity,
+          )
+          from cryptad_certification.engines.stable_1_0_rc_core import placeholder_findings
+          from cryptad_certification.io import write_json
+          from cryptad_certification.redaction import scan_value
+          from cryptad_certification.schema_validation import validate_schema
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          release_id = os.environ["INPUT_RELEASE_ID"]
+          build = os.environ["INPUT_BUILD_VERSION"]
+          commit = os.environ["INPUT_CANDIDATE_COMMIT"]
+          ga_run = int(os.environ["INPUT_GA_RUN_ID"])
+          ga_attempt = int(os.environ["INPUT_GA_RUN_ATTEMPT"])
+          token = os.environ["GH_TOKEN"]
+          root = Path("build/stable-ga-publication-receipt")
+          candidates = sorted(root.rglob("stable-1.0-ga-publication-receipt.json"))
+          if len(candidates) != 1 or candidates[0].is_symlink():
+              raise SystemExit("downloaded GA artifact does not contain one safe canonical receipt")
+          receipt_path = candidates[0]
+          receipt_bytes = receipt_path.read_bytes()
+          receipt = json.loads(receipt_bytes)
+          errors = validate_schema(receipt, PUBLICATION_RECEIPT_SCHEMA)
+          if errors or scan_value(receipt) or placeholder_findings(receipt):
+              raise SystemExit("downloaded GA publication receipt is not canonical and public-safe")
+          receipt_workflow = receipt.get("workflow", {})
+          if not (
+              receipt.get("publicationState") == "publication-complete"
+              and receipt.get("releaseId") == release_id
+              and str(receipt.get("buildVersion")) == build
+              and receipt.get("sourceCommit") == commit
+              and receipt_workflow.get("repository") == repository
+              and receipt_workflow.get("runId") == ga_run
+              and receipt_workflow.get("runAttempt") == ga_attempt
+              and receipt_workflow.get("environment") == "stable-1-0-ga"
+          ):
+              raise SystemExit("GA publication receipt differs from the authenticated producer")
+
+          transport = PublicObservationTransport()
+          public_headers = {
+              "Accept": "application/octet-stream",
+              "User-Agent": "cryptad-stable-1.0-public-observation",
+          }
+          api_headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "User-Agent": "cryptad-stable-1.0-public-observation",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def request_json(path: str):
+              return transport.json_document(
+                  f"https://api.github.com/repos/{repository}/{path}",
+                  headers=api_headers,
+              )
+
+          def digest(raw: bytes) -> str:
+              return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+          tag_name = f"v{build}"
+          tag_ref = request_json(f"git/ref/tags/{tag_name}")
+          tag_object = tag_ref.get("object", {})
+          if tag_object.get("type") != "tag" or not isinstance(tag_object.get("sha"), str):
+              raise SystemExit("public Stable tag is missing or is not annotated")
+          tag = request_json(f"git/tags/{tag_object['sha']}")
+          observed_tag = github_annotated_tag_identity(
+              tag_ref,
+              tag,
+              build=build,
+              commit=commit,
+          )
+
+          github_release = request_json(f"releases/tags/{tag_name}")
+          receipt_release = receipt["githubRelease"]
+          observed_release = github_release_identity(
+              github_release,
+              receipt_release,
+              build=build,
+              commit=commit,
+          )
+          release_assets = github_release_assets(
+              github_release.get("assets"),
+              receipt["assets"],
+          )
+
+          targets = []
+          for index, asset in enumerate(receipt["assets"], 1):
+              release_asset = release_assets[asset["name"]]
+              github_bytes = transport.exact_digest(
+                  release_asset["browser_download_url"],
+                  asset["sizeBytes"],
+                  headers=public_headers,
+              )
+              public_bytes = transport.exact_digest(
+                  asset["publicUri"],
+                  asset["sizeBytes"],
+                  headers=public_headers,
+              )
+              if not (
+                  github_bytes.size == asset["sizeBytes"]
+                  and github_bytes.digest == asset["digest"]
+                  and public_bytes.size == asset["sizeBytes"]
+                  and public_bytes.digest == asset["digest"]
+              ):
+                  raise SystemExit(f"public GA asset {asset['name']} differs from the exact plan")
+              targets.append(
+                  {
+                      "role": f"release-asset-{index}",
+                      "publicUri": asset["publicUri"],
+                      "sha256": asset["digest"],
+                      "size": asset["sizeBytes"],
+                      "status": "observed-exact",
+                  }
+              )
+
+          catalog = receipt["catalog"]
+          catalog_rows = [
+              (
+                  "catalog-primary",
+                  catalog["primary"]["publicUri"],
+                  catalog["catalogDigest"],
+                  catalog["signatureDigest"],
+              ),
+              *[
+                  (
+                      f"catalog-mirror-{index}",
+                      row["publicUri"],
+                      catalog["catalogDigest"],
+                      catalog["signatureDigest"],
+                  )
+                  for index, row in enumerate(catalog["mirrors"], 1)
+              ],
+              (
+                  "catalog-rollback",
+                  catalog["rollback"]["publicUri"],
+                  catalog["rollback"]["digest"],
+                  catalog["rollback"]["signatureDigest"],
+              ),
+          ]
+          for role, uri, expected_digest, expected_signature_digest in catalog_rows:
+              if not isinstance(expected_signature_digest, str):
+                  raise SystemExit(f"public {role} detached signature identity is absent")
+              observed = transport.bounded_digest(
+                  uri,
+                  maximum_bytes=PUBLIC_DOCUMENT_LIMIT,
+                  headers=public_headers,
+              )
+              if observed.digest != expected_digest:
+                  raise SystemExit(f"public {role} bytes differ from the publication receipt")
+              targets.append(
+                  {
+                      "role": role,
+                      "publicUri": uri,
+                      "sha256": expected_digest,
+                      "size": observed.size,
+                      "status": "observed-exact",
+                  }
+              )
+              signature_uri = catalog_signature_uri(uri)
+              observed_signature = transport.bounded_digest(
+                  signature_uri,
+                  maximum_bytes=PUBLIC_SIGNATURE_LIMIT,
+                  headers=public_headers,
+              )
+              if observed_signature.digest != expected_signature_digest:
+                  raise SystemExit(
+                      f"public {role} detached signature differs from the publication receipt"
+                  )
+              targets.append(
+                  {
+                      "role": f"{role}-signature",
+                      "publicUri": signature_uri,
+                      "sha256": expected_signature_digest,
+                      "size": observed_signature.size,
+                      "status": "observed-exact",
+                  }
+              )
+
+          artifact_name = os.environ["OBSERVATION_ARTIFACT_NAME"]
+          observation = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-protected-release-public-observation",
+              "repositoryIdentity": "github.com/crypta-network/cryptad",
+              "releaseId": release_id,
+              "buildVersion": build,
+              "candidateCommit": commit,
+              "publicationReceiptDigest": digest(receipt_bytes),
+              "productDigest": receipt["productDistributionDigest"],
+              "observedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "observer": {
+                  "repository": repository,
+                  "workflowPath": ".github/workflows/stable-1.0-public-observation.yml",
+                  "workflowCommit": commit,
+                  "runId": os.environ["GITHUB_RUN_ID"],
+                  "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "artifactName": artifact_name,
+                  "environment": "stable-1-0-public-observation",
+                  "conclusion": "success",
+                  "readOnly": True,
+              },
+              "tag": observed_tag,
+              "githubRelease": observed_release,
+              "targets": targets,
+              "status": "pass",
+              "fixture": False,
+              "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+          }
+          errors = validate_schema(
+              observation,
+              "stable-1.0-protected-release-public-observation-v1.schema.json",
+          )
+          if errors or scan_value(observation) or placeholder_findings(observation):
+              raise SystemExit("generated public observation receipt failed closed validation")
+          output = Path("build/stable-1.0-public-observation.json")
+          write_json(output, observation)
+          PY
+
+      - name: Upload the redaction-safe public observation receipt
+        id: upload_observation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ env.OBSERVATION_ARTIFACT_NAME }}
+          path: build/stable-1.0-public-observation.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize exact public observation
+        run: |
+          set -euo pipefail
+          echo "Exact public Stable GA tag, Release, assets, and catalog targets were observed read-only." >> "$GITHUB_STEP_SUMMARY"
+          echo "Observation artifact digest: sha256:${{ steps.upload_observation.outputs.artifact-digest }}" >> "$GITHUB_STEP_SUMMARY"

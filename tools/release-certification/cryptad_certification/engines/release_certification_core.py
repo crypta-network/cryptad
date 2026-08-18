@@ -910,6 +910,7 @@ class Settings:
     stable_dependency_vulnerability_candidate_build_version: str = ""
     stable_dependency_vulnerability_candidate_source_commit: str = ""
     stable_dependency_vulnerability_candidate_source_ref: str = ""
+    stable_dependency_vulnerability_evidence_phase: str = "final-publication"
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -2023,6 +2024,92 @@ def stable_supply_chain_evidence(
     )
 
 
+def stable_dependency_vulnerability_phase_errors(
+    value: dict[str, Any],
+    evidence_phase: str,
+) -> list[str]:
+    """Validate the closed PR-290 evidence set for one release phase."""
+
+    errors: list[str] = []
+    if evidence_phase not in {
+        "prepublication-evaluation",
+        "final-publication",
+    }:
+        return [
+            "configured dependency-vulnerability evidence phase is unsupported"
+        ]
+    expected_mode = (
+        "evaluate-promotion"
+        if evidence_phase == "prepublication-evaluation"
+        else "verify-publication"
+    )
+    if (
+        value.get("mode") != expected_mode
+        or value.get("status") != "pass"
+        or value.get("promotionReady") is not True
+        or value.get("activationStatus") != "active-post-activation"
+    ):
+        errors.append(
+            "configured dependency-vulnerability summary does not match the required authenticated evidence phase"
+        )
+    if value.get("blockers") != [] or value.get("waivers") != []:
+        errors.append(
+            "configured dependency-vulnerability summary contains blockers or waivers"
+        )
+    evidence = value.get("evidence")
+    evidence = evidence if isinstance(evidence, list) else []
+    evidence_by_id = {
+        row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
+    }
+    if len(evidence_by_id) != len(evidence):
+        errors.append(
+            "configured dependency-vulnerability summary contains duplicate evidence ids"
+        )
+    required_evidence_ids = set(
+        STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS
+    )
+    if evidence_phase == "prepublication-evaluation":
+        required_evidence_ids.remove(
+            "stable-dependency-vulnerability.publication"
+        )
+    if set(evidence_by_id) != required_evidence_ids:
+        errors.append(
+            "configured dependency-vulnerability summary evidence ids are not the closed required set"
+        )
+    for evidence_id in sorted(required_evidence_ids):
+        row = evidence_by_id.get(evidence_id)
+        if (
+            not isinstance(row, dict)
+            or row.get("status") != "pass"
+            or row.get("nonWaivable") is not True
+        ):
+            errors.append(
+                "required dependency-vulnerability evidence is not passing: "
+                f"{evidence_id}"
+            )
+    publication_fields = (
+        "publicationPlanDigest",
+        "publicationReceiptDigest",
+        "publicObservationDigest",
+    )
+    for field in publication_fields:
+        field_value = value.get(field)
+        if evidence_phase == "prepublication-evaluation":
+            if field_value is not None:
+                errors.append(
+                    "configured prepublication dependency-vulnerability summary "
+                    f"unexpectedly contains {field}"
+                )
+        elif re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(field_value or "")
+        ) is None:
+            errors.append(
+                "configured dependency-vulnerability summary lacks final "
+                f"{field}"
+            )
+    return errors
+
+
 def stable_dependency_vulnerability_evidence(
     path: Path | None,
     workspace_root: Path,
@@ -2038,6 +2125,7 @@ def stable_dependency_vulnerability_evidence(
     *,
     required: bool = False,
     certification_clock: str | None = None,
+    evidence_phase: str = "final-publication",
 ) -> EvidenceItem | None:
     """Authenticate one public-safe PR-290 companion promotion summary."""
 
@@ -2137,7 +2225,12 @@ def stable_dependency_vulnerability_evidence(
                 "configured dependency-vulnerability summary digest is invalid"
             )
         summary_byte_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
-        handoff_errors, handoff = stable_dependency_vulnerability_handoff_errors(
+        handoff_validator = (
+            stable_dependency_vulnerability_evaluation_handoff_errors
+            if evidence_phase == "prepublication-evaluation"
+            else stable_dependency_vulnerability_handoff_errors
+        )
+        handoff_errors, handoff = handoff_validator(
             path,
             summary_byte_digest,
             expected_release_id,
@@ -2162,57 +2255,12 @@ def stable_dependency_vulnerability_evidence(
             errors.append(
                 "configured dependency-vulnerability summary source commit differs"
             )
-        if (
-            value.get("mode") != "verify-publication"
-            or value.get("status") != "pass"
-            or value.get("promotionReady") is not True
-            or value.get("activationStatus") != "active-post-activation"
-        ):
-            errors.append(
-                "configured dependency-vulnerability summary is not final publication-verified promotion evidence"
+        errors.extend(
+            stable_dependency_vulnerability_phase_errors(
+                value,
+                evidence_phase,
             )
-        if value.get("blockers") != [] or value.get("waivers") != []:
-            errors.append(
-                "configured dependency-vulnerability summary contains blockers or waivers"
-            )
-        evidence = value.get("evidence")
-        evidence = evidence if isinstance(evidence, list) else []
-        evidence_by_id = {
-            row.get("evidenceId"): row for row in evidence if isinstance(row, dict)
-        }
-        if len(evidence_by_id) != len(evidence):
-            errors.append(
-                "configured dependency-vulnerability summary contains duplicate evidence ids"
-            )
-        if set(evidence_by_id) != set(
-            STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS
-        ):
-            errors.append(
-                "configured dependency-vulnerability summary evidence ids are not the closed required set"
-            )
-        for evidence_id in STABLE_DEPENDENCY_VULNERABILITY_REQUIRED_EVIDENCE_IDS:
-            row = evidence_by_id.get(evidence_id)
-            if (
-                not isinstance(row, dict)
-                or row.get("status") != "pass"
-                or row.get("nonWaivable") is not True
-            ):
-                errors.append(
-                    "required dependency-vulnerability evidence is not passing: "
-                    f"{evidence_id}"
-                )
-        for field in (
-            "publicationPlanDigest",
-            "publicationReceiptDigest",
-            "publicObservationDigest",
-        ):
-            if re.fullmatch(
-                r"sha256:[0-9a-f]{64}", str(value.get(field, ""))
-            ) is None:
-                errors.append(
-                    "configured dependency-vulnerability summary lacks final "
-                    f"{field}"
-                )
+        )
         redaction = value.get("redaction")
         if (
             not isinstance(redaction, dict)
@@ -2268,6 +2316,7 @@ def stable_dependency_vulnerability_evidence(
         "configured": True,
         "authenticated": value is not None and not errors,
         "promotionReady": value.get("promotionReady") is True if value else False,
+        "evidencePhase": evidence_phase,
         "releaseId": value.get("releaseId") if value else None,
         "buildVersion": value.get("buildVersion") if value else None,
         "candidateSourceCommit": (

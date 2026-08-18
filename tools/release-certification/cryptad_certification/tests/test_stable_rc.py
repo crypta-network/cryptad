@@ -39,6 +39,7 @@ from cryptad_certification.engines.stable_1_0_rc_core import (
     placeholder_findings,
     release_certification_is_promotable,
     semantic_digest,
+    stable_release_authority_governance_errors,
     stable_vulnerability_governance_errors,
     validate_catalog_operations,
     validate_live_inputs,
@@ -340,6 +341,57 @@ def _readiness_summary(mutation: str) -> dict[str, object]:
 
 
 class StableRcFreezeTest(unittest.TestCase):
+    def test_final_stable_authorities_require_exact_passing_rows(self) -> None:
+        certification = {
+            "evidence": [
+                {
+                    "id": "stable-supply-chain.release-promotion",
+                    "status": "pass",
+                    "requiredForReleaseCandidate": True,
+                    "details": {
+                        "authenticated": True,
+                        "promotionReady": True,
+                        "nonWaivable": True,
+                        "validationErrors": [],
+                    },
+                }
+            ],
+            "ecosystemGates": [
+                {
+                    "id": "ecosystem.stable-supply-chain",
+                    "status": "pass",
+                    "releaseBlocker": False,
+                    "details": {
+                        "evidenceId": "stable-supply-chain.release-promotion",
+                        "nonWaivable": True,
+                    },
+                }
+            ],
+        }
+
+        passing = stable_release_authority_governance_errors(
+            certification,
+            evidence_id="stable-supply-chain.release-promotion",
+            gate_id="ecosystem.stable-supply-chain",
+            label="Stable supply-chain",
+        )
+        missing = stable_release_authority_governance_errors(
+            {"evidence": [], "ecosystemGates": []},
+            evidence_id="stable-dependency-vulnerability.release-promotion",
+            gate_id="ecosystem.stable-dependency-vulnerability",
+            label="Stable dependency-vulnerability",
+        )
+
+        self.assertEqual([], passing)
+        self.assertIn(
+            "release certification omits exact Stable dependency-vulnerability evidence",
+            missing,
+        )
+        self.assertIn(
+            "release certification omits the Stable dependency-vulnerability gate",
+            missing,
+        )
+
     def test_stable_vulnerability_governance_requires_exact_passing_rows(self) -> None:
         certification = {
             "evidence": [

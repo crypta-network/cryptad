@@ -5,6 +5,11 @@ Use this workflow to turn an already promotable, Stable-ready candidate into a r
 gates, freezes the reviewed candidate, packages public artifacts, verifies the package against the
 freeze, and produces the final RC go/no-go record.
 
+The end-to-end dispatch, environment, secret-name, first-freeze/refreeze, receipt retention, and
+closeout procedure is
+[Stable 1.0 protected release execution](stable-1.0-protected-release-execution.md). Complete its
+side-effect-free `stable-protected-release --mode preflight` contract before dispatch.
+
 Stable 1.0 is a product and Platform API milestone. Cryptad release identity remains an integer
 build number, a `release/<build-number>` branch when release operations begin, and a
 `v<build-number>` tag if the candidate is later published. The RC workflow does not create a
@@ -30,6 +35,11 @@ The protected run requires all of the following:
 - the current authenticated ledger-wide Stable vulnerability `evaluate-promotion` handoff for the
   exact release ID, integer build, and candidate commit; the nested release certification must
   contain the exact passing non-waivable PR-288 evidence and child gate;
+- the exact successful, attested PR-289 Stable supply-chain comparison run, immutable attempt,
+  artifact name and Actions digest, plus its authenticated non-waivable child gate;
+- the exact current PR-290 dependency-vulnerability evaluation run, immutable attempt, artifact
+  name and Actions digest, reauthenticated against current ledger and intelligence lineage, plus
+  its non-waivable child gate;
 - real live-network, sandbox-provider, multi-node, previous-candidate upgrade, network-scale,
   security-drill, third-party-intake, and catalog-operations evidence;
 - third-party intake evidence whose `releaseId` and `buildVersion` exactly match the candidate and

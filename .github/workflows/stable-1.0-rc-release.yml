@@ -12,6 +12,10 @@ on:
         description: Integer Cryptad build; must match ./gradlew -q printVersion.
         required: true
         type: string
+      candidate_commit:
+        description: Exact lowercase 40-character candidate commit at release/<integer build>.
+        required: true
+        type: string
       stable_rc_freeze_mode:
         description: Select first-freeze only for the initial candidate baseline; all later runs are refreeze.
         required: true
@@ -79,20 +83,16 @@ on:
         required: false
         default: ''
         type: string
-      stable_vulnerability_run_id:
-        description: Exact successful protected evaluate-promotion workflow run containing the encrypted current vulnerability ledger.
+      stable_authority_coordinates:
+        description: Closed JSON object containing exact run, attempt, artifact name, and Actions digest for PR-288, PR-289, and PR-290.
         required: true
         type: string
-      stable_vulnerability_run_attempt:
-        description: Exact protected evaluate-promotion workflow run attempt.
+      protected_execution_contract:
+        description: Complete preflight-reviewed Stable protected execution contract; exact bytes and coordinates are reverified before freeze.
         required: true
         type: string
-      stable_vulnerability_artifact_name:
-        description: Exact encrypted protected-successor Actions artifact name.
-        required: true
-        type: string
-      stable_vulnerability_artifact_digest:
-        description: Exact sha256 digest reported by Actions for the encrypted protected-successor artifact.
+      protected_preflight_receipt:
+        description: Exact compact JSON from the passing stable-protected-release preflight summary.
         required: true
         type: string
 
@@ -101,7 +101,125 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Validate protected Stable RC dispatch identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact candidate without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate manual protected release dispatch
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          STABLE_AUTHORITY_COORDINATES: ${{ inputs.stable_authority_coordinates }}
+          PROTECTED_EXECUTION_CONTRACT: ${{ inputs.protected_execution_contract }}
+          PROTECTED_PREFLIGHT_RECEIPT_JSON: ${{ inputs.protected_preflight_receipt }}
+          PYTHONPATH: tools/release-certification
+          REF_PROTECTED: ${{ github.ref_protected }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || "$REF_PROTECTED" != "true" \
+                || "$(git rev-parse HEAD)" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Stable RC requires the exact protected release/<build> ref, candidate, and workflow commit."
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Stable RC preflight requires a clean checkout."
+            exit 1
+          fi
+          jq -e '
+            keys == ["stableDependencyVulnerability", "stableSupplyChain", "stableVulnerability"]
+            and all(.[];
+              keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]
+              and (.runId | type == "string" and test("^[1-9][0-9]*$"))
+              and (.runAttempt | type == "string" and test("^[1-9][0-9]*$"))
+              and (.artifactName | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$"))
+              and (.artifactDigest | type == "string" and test("^sha256:[0-9a-f]{64}$")))' \
+            <<< "$STABLE_AUTHORITY_COORDINATES" >/dev/null
+          jq -e \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg ref "$GITHUB_REF" \
+            '.kind == "stable-1.0-protected-release-execution"
+             and .repository.identity == "github.com/crypta-network/cryptad"
+             and .repository.candidateCommit == $commit
+             and .repository.sourceRef == $ref
+             and .release.id == $release_id
+             and .release.integerBuild == $build' \
+            <<< "$PROTECTED_EXECUTION_CONTRACT" >/dev/null
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+
+          from cryptad_certification.engines.stable_1_0_protected_release import (
+              credential_free_preflight_receipt_errors,
+          )
+
+          def strict_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON field")
+                  result[key] = value
+              return result
+
+          def reject_constant(_value):
+              raise ValueError("non-finite JSON number")
+
+          try:
+              contract = json.loads(
+                  os.environ["PROTECTED_EXECUTION_CONTRACT"],
+                  object_pairs_hook=strict_object,
+                  parse_constant=reject_constant,
+              )
+              receipt_text = os.environ["PROTECTED_PREFLIGHT_RECEIPT_JSON"]
+              receipt = json.loads(
+                  receipt_text,
+                  object_pairs_hook=strict_object,
+                  parse_constant=reject_constant,
+              )
+              if not isinstance(contract, dict) or not isinstance(receipt, dict):
+                  raise ValueError("protected dispatch inputs must be JSON objects")
+          except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+              print("::error::The protected execution contract or preflight receipt is malformed.")
+              raise SystemExit(1)
+          receipt_digest = "sha256:" + hashlib.sha256(receipt_text.encode("utf-8")).hexdigest()
+          errors = credential_free_preflight_receipt_errors(
+              contract,
+              receipt,
+              receipt_digest,
+          )
+          if errors:
+              print("::error::The dispatch does not carry the exact reviewed preflight receipt.")
+              raise SystemExit(1)
+          PY
+
   stable-rc:
+    needs: preflight
     concurrency:
       group: stable-1-0-vulnerability-ledger
       cancel-in-progress: false
@@ -111,29 +229,36 @@ jobs:
     permissions:
       contents: read
       actions: read
+      attestations: read
       checks: write
-    env:
-      STABLE_VULNERABILITY_RUN_ID: ${{ inputs.stable_vulnerability_run_id }}
-      STABLE_VULNERABILITY_RUN_ATTEMPT: ${{ inputs.stable_vulnerability_run_attempt }}
-      STABLE_VULNERABILITY_ARTIFACT_NAME: ${{ inputs.stable_vulnerability_artifact_name }}
-      STABLE_VULNERABILITY_ARTIFACT_DIGEST: ${{ inputs.stable_vulnerability_artifact_digest }}
-
     steps:
+      - name: Reauthenticate the current protected RC operator
+        env:
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$DISPATCH_ACTOR" != "leumor" || "$TRIGGERING_ACTOR" != "leumor" ]]; then
+            echo "::error::Stable RC execution requires leumor as both dispatch and triggering actor."
+            exit 1
+          fi
+
       - name: Check out the candidate commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ inputs.candidate_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          java-version: '25'
+          java-version: '25.0.3+9'
           distribution: temurin
 
       - name: Set up Gradle
@@ -141,6 +266,35 @@ jobs:
 
       - name: Install Gradle properties
         uses: ./.github/actions/setup-gradle-properties
+
+      - name: Materialize closed Stable authority coordinates
+        env:
+          STABLE_AUTHORITY_COORDINATES: ${{ inputs.stable_authority_coordinates }}
+        run: |
+          set -euo pipefail
+          jq -e '
+            keys == ["stableDependencyVulnerability", "stableSupplyChain", "stableVulnerability"]
+            and all(.[];
+              keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]
+              and (.runId | type == "string" and test("^[1-9][0-9]*$"))
+              and (.runAttempt | type == "string" and test("^[1-9][0-9]*$"))
+              and (.artifactName | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$"))
+              and (.artifactDigest | type == "string" and test("^sha256:[0-9a-f]{64}$")))' \
+            <<< "$STABLE_AUTHORITY_COORDINATES" >/dev/null
+          {
+            printf 'STABLE_VULNERABILITY_RUN_ID=%s\n' "$(jq -r .stableVulnerability.runId <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_VULNERABILITY_RUN_ATTEMPT=%s\n' "$(jq -r .stableVulnerability.runAttempt <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_VULNERABILITY_ARTIFACT_NAME=%s\n' "$(jq -r .stableVulnerability.artifactName <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_VULNERABILITY_ARTIFACT_DIGEST=%s\n' "$(jq -r .stableVulnerability.artifactDigest <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_SUPPLY_CHAIN_RUN_ID=%s\n' "$(jq -r .stableSupplyChain.runId <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_SUPPLY_CHAIN_RUN_ATTEMPT=%s\n' "$(jq -r .stableSupplyChain.runAttempt <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_SUPPLY_CHAIN_ARTIFACT_NAME=%s\n' "$(jq -r .stableSupplyChain.artifactName <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST=%s\n' "$(jq -r .stableSupplyChain.artifactDigest <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_DEPENDENCY_VULNERABILITY_RUN_ID=%s\n' "$(jq -r .stableDependencyVulnerability.runId <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT=%s\n' "$(jq -r .stableDependencyVulnerability.runAttempt <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME=%s\n' "$(jq -r .stableDependencyVulnerability.artifactName <<< "$STABLE_AUTHORITY_COORDINATES")"
+            printf 'STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST=%s\n' "$(jq -r .stableDependencyVulnerability.artifactDigest <<< "$STABLE_AUTHORITY_COORDINATES")"
+          } >> "$GITHUB_ENV"
 
       - name: Authenticate exact Stable vulnerability promotion producer
         env:
@@ -166,6 +320,8 @@ jobs:
               and .status == "completed"
               and .conclusion == "success"
               and .path == ".github/workflows/stable-1.0-vulnerability-intake.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
               and .head_sha == $commit
               and .head_repository.full_name == "crypta-network/cryptad"' \
             <<< "$producer" >/dev/null
@@ -182,11 +338,11 @@ jobs:
             <<< "$artifacts" >/dev/null
 
       - name: Download exact encrypted Stable vulnerability promotion successor
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           github-token: ${{ github.token }}
-          run-id: ${{ env.STABLE_VULNERABILITY_RUN_ID }}
-          name: ${{ env.STABLE_VULNERABILITY_ARTIFACT_NAME }}
+          run-id: ${{ fromJSON(inputs.stable_authority_coordinates).stableVulnerability.runId }}
+          name: ${{ fromJSON(inputs.stable_authority_coordinates).stableVulnerability.artifactName }}
           path: ${{ runner.temp }}/stable-vulnerability-promotion-input
 
       - name: Materialize authenticated vulnerability summary outside public roots
@@ -315,11 +471,265 @@ jobs:
             "$external_root" >> "$GITHUB_ENV"
           rm -rf "$opened"
 
+      - name: Authenticate exact Stable supply-chain and dependency-vulnerability producers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          authenticate_producer() {
+            local run_id="$1"
+            local run_attempt="$2"
+            local artifact_name="$3"
+            local artifact_digest="$4"
+            local expected_artifact_name="$5"
+            local expected_workflow="$6"
+            local label="$7"
+            if [[ ! "$run_id" =~ ^[1-9][0-9]*$ \
+                  || ! "$run_attempt" =~ ^[1-9][0-9]*$ \
+                  || "$artifact_name" != "$expected_artifact_name" \
+                  || ! "$artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::$label coordinates are missing or malformed."
+              exit 2
+            fi
+            producer="$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt")"
+            jq -e \
+              --arg run_id "$run_id" \
+              --arg attempt "$run_attempt" \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg workflow "$expected_workflow" '
+                (.id | tostring) == $run_id
+                and (.run_attempt | tostring) == $attempt
+                and .event == "workflow_dispatch"
+                and .status == "completed"
+                and .conclusion == "success"
+                and .path == $workflow
+                and .actor.login == "leumor"
+                and .triggering_actor.login == "leumor"
+                and .head_sha == $commit
+                and .head_repository.full_name == "crypta-network/cryptad"' \
+              <<< "$producer" >/dev/null
+            artifacts="$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+              | jq --arg name "$artifact_name" \
+                '[.[].artifacts[] | select(.name == $name)]')"
+            jq -e \
+              --arg name "$artifact_name" \
+              --arg digest "$artifact_digest" '
+                length == 1
+                and .[0].expired == false
+                and .[0].name == $name
+                and .[0].digest == $digest' \
+              <<< "$artifacts" >/dev/null
+          }
+          authenticate_producer \
+            "$STABLE_SUPPLY_CHAIN_RUN_ID" \
+            "$STABLE_SUPPLY_CHAIN_RUN_ATTEMPT" \
+            "$STABLE_SUPPLY_CHAIN_ARTIFACT_NAME" \
+            "$STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST" \
+            "stable-1.0-supply-chain-$INPUT_RELEASE_ID-comparison" \
+            ".github/workflows/stable-1.0-supply-chain.yml" \
+            "Stable supply-chain"
+          authenticate_producer \
+            "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID" \
+            "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT" \
+            "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_NAME" \
+            "$STABLE_DEPENDENCY_VULNERABILITY_ARTIFACT_DIGEST" \
+            "stable-1.0-dependency-vulnerability-$INPUT_RELEASE_ID-evaluation" \
+            ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml" \
+            "Stable dependency-vulnerability"
+
+      - name: Download exact Stable supply-chain comparison
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ fromJSON(inputs.stable_authority_coordinates).stableSupplyChain.runId }}
+          name: ${{ fromJSON(inputs.stable_authority_coordinates).stableSupplyChain.artifactName }}
+          path: ${{ runner.temp }}/stable-supply-chain-promotion-input
+
+      - name: Download exact Stable dependency-vulnerability evaluation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ fromJSON(inputs.stable_authority_coordinates).stableDependencyVulnerability.runId }}
+          name: ${{ fromJSON(inputs.stable_authority_coordinates).stableDependencyVulnerability.artifactName }}
+          path: ${{ runner.temp }}/stable-dependency-vulnerability-promotion-input
+
+      - name: Materialize current Stable supply-chain and dependency-vulnerability handoffs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_ANCHOR_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_INTELLIGENCE_LINEAGE_READ_TOKEN }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          supply_download="$RUNNER_TEMP/stable-supply-chain-promotion-input"
+          supply_source="$supply_download/stable-1.0-supply-chain-summary.json"
+          supply_manifest="$supply_download/manifest.json"
+          if [[ -n "$(find "$supply_download" -type l -print -quit)" \
+                || -n "$(find "$supply_download" -mindepth 1 ! -type f ! -type d -print -quit)" \
+                || -n "$(find "$supply_download" -type f -links +1 -print -quit)" \
+                || "$(find "$supply_download" -type f | wc -l)" -gt 128 \
+                || "$(du -sb "$supply_download" | cut -f1)" -gt 268435456 ]]; then
+            echo "::error::Authenticated Stable supply-chain artifact is unsafe."
+            exit 1
+          fi
+          for subject in "$supply_source" "$supply_manifest"; do
+            test -f "$subject" && test ! -L "$subject" && test "$(stat -c %h "$subject")" = 1
+            gh attestation verify "$subject" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+          done
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .release.id == $release
+              and .release.version == $build
+              and .policies.candidateSourceCommit == $commit
+              and .policies.candidateSourceRef == ("commit:" + $commit)
+              and .requirements.stableSupplyChain == true
+              and .commands["stable-supply-chain"].mode == "evaluate-promotion"' \
+            "$supply_manifest" >/dev/null
+          supply_root="$RUNNER_TEMP/stable-supply-chain-summary-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf "$supply_root"
+          install -d -m 700 "$supply_root"
+          install -m 600 "$supply_source" "$supply_root/stable-1.0-supply-chain-summary.json"
+          SUPPLY_CHAIN_ROOT="$supply_root" PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cryptad_certification.engines.release_certification_core import (
+              stable_supply_chain_handoff_authentication_tag,
+          )
+
+          root = Path(os.environ["SUPPLY_CHAIN_ROOT"])
+          summary = root / "stable-1.0-supply-chain-summary.json"
+          summary_digest = "sha256:" + hashlib.sha256(summary.read_bytes()).hexdigest()
+          handoff = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-supply-chain-promotion-handoff",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow": os.environ["GITHUB_REPOSITORY"] + "/.github/workflows/stable-1.0-supply-chain.yml@" + os.environ["GITHUB_SHA"],
+              "workflowCommit": os.environ["GITHUB_SHA"],
+              "runId": os.environ["STABLE_SUPPLY_CHAIN_RUN_ID"],
+              "runAttempt": os.environ["STABLE_SUPPLY_CHAIN_RUN_ATTEMPT"],
+              "operation": "compare-evaluate",
+              "releaseId": os.environ["INPUT_RELEASE_ID"],
+              "buildVersion": os.environ["INPUT_BUILD_VERSION"],
+              "sourceCommit": os.environ["GITHUB_SHA"],
+              "artifactName": os.environ["STABLE_SUPPLY_CHAIN_ARTIFACT_NAME"],
+              "producerArtifactDigest": os.environ["STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST"],
+              "summaryFileName": summary.name,
+              "summaryByteDigest": summary_digest,
+              "attestationSubjectDigest": summary_digest,
+              "attestationVerified": True,
+              "denySelfHostedRunners": True,
+              "authenticationStatus": "pass",
+              "authenticationAlgorithm": "hmac-sha256",
+              "authenticationTag": "pending",
+          }
+          encoded = os.environ["CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64"]
+          key = base64.b64decode(encoded, validate=True)
+          if len(key) != 32 or base64.b64encode(key).decode("ascii") != encoded:
+              raise SystemExit("Stable supply-chain handoff key is invalid")
+          handoff["authenticationTag"] = stable_supply_chain_handoff_authentication_tag(handoff, key)
+          (root / "stable-1.0-supply-chain-summary-provenance.json").write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          chmod 0600 "$supply_root/stable-1.0-supply-chain-summary-provenance.json"
+
+          dependency_root="$RUNNER_TEMP/stable-dependency-vulnerability-promotion-input"
+          actual="$(find "$dependency_root" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            stable-1.0-dependency-vulnerability-promotion-summary.json \
+            stable-1.0-dependency-vulnerability-publication-plan.json \
+            stable-1.0-dependency-vulnerability-source-status.json \
+            stable-1.0-dependency-vulnerability-summary-provenance.json \
+            | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test -z "$(find "$dependency_root" -mindepth 1 \( -type l -o ! -type f -o -type f -links +1 \) -print -quit)"
+          dependency_summary="$dependency_root/stable-1.0-dependency-vulnerability-promotion-summary.json"
+          dependency_status="$dependency_root/stable-1.0-dependency-vulnerability-source-status.json"
+          dependency_plan="$dependency_root/stable-1.0-dependency-vulnerability-publication-plan.json"
+          dependency_handoff="$dependency_root/stable-1.0-dependency-vulnerability-summary-provenance.json"
+          summary_byte_digest="sha256:$(sha256sum "$dependency_summary" | awk '{print $1}')"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$dependency_summary" "$summary_byte_digest" "$INPUT_RELEASE_ID" \
+            "$INPUT_BUILD_VERSION" "$INPUT_CANDIDATE_COMMIT" \
+            "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ID" \
+            "$STABLE_DEPENDENCY_VULNERABILITY_RUN_ATTEMPT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.stable_dependency_vulnerability_handoff import (
+              stable_dependency_vulnerability_evaluation_handoff_errors,
+          )
+
+          summary_path = Path(sys.argv[1])
+          errors, handoff = stable_dependency_vulnerability_evaluation_handoff_errors(
+              summary_path, sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+          )
+          summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          if errors or handoff is None:
+              raise SystemExit(errors[0] if errors else "PR-290 handoff is missing")
+          if handoff.get("runId") != sys.argv[6] or handoff.get("runAttempt") != sys.argv[7]:
+              raise SystemExit("PR-290 handoff run coordinates differ")
+          if summary.get("status") != "pass" or summary.get("promotionReady") is not True:
+              raise SystemExit("PR-290 handoff does not permit Stable RC certification")
+          PY
+          ledger_digest="$(jq -er .ledgerDigest "$dependency_summary")"
+          ledger_edition="$(jq -er .ledgerEdition "$dependency_summary")"
+          python3 tools/release-certification/protected/stable_dependency_vulnerability_actions_tip.py \
+            verify-current --repository "$GITHUB_REPOSITORY" \
+            --expected-ledger-digest "$ledger_digest" \
+            --expected-ledger-edition "$ledger_edition"
+          python3 tools/release-certification/protected/stable_dependency_intelligence_actions_lineage.py \
+            verify-current-status --repository "$GITHUB_REPOSITORY" \
+            --source-status "$dependency_status" \
+            --publication-plan "$dependency_plan" \
+            --promotion-summary "$dependency_summary"
+          certification_clock="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          valid_until="$(jq -er .validUntil "$dependency_summary")"
+          python3 - "$certification_clock" "$valid_until" <<'PY'
+          import datetime as dt
+          import sys
+
+          clock = dt.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+          valid_until = dt.datetime.fromisoformat(sys.argv[2].replace("Z", "+00:00"))
+          if clock.tzinfo is None or valid_until.tzinfo is None or clock >= valid_until:
+              raise SystemExit("dependency-vulnerability evidence expired before Stable RC certification")
+          PY
+          {
+            printf 'CRYPTAD_STABLE_SUPPLY_CHAIN_SUMMARY_ROOT=%s\n' "$supply_root"
+            printf 'CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_SUMMARY_ROOT=%s\n' "$dependency_root"
+            printf 'CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_CERTIFICATION_CLOCK=%s\n' "$certification_clock"
+            printf 'CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_DIGEST=%s\n' "$ledger_digest"
+            printf 'CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_CURRENT_TIP_LEDGER_EDITION=%s\n' "$ledger_edition"
+          } >> "$GITHUB_ENV"
+
       - name: Validate candidate identity and clean checkout
         env:
           INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
           INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           if [[ ${#INPUT_RELEASE_ID} -gt 128 \
                 || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -330,6 +740,14 @@ jobs:
             echo "::error::integer_build_version must be a positive decimal integer."
             exit 1
           fi
+          if [[ ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$REF_PROTECTED" != "true" ]]; then
+            echo "::error::Stable RC candidate, protected source ref, or workflow commit differs from dispatch."
+            exit 1
+          fi
           if [[ ! "$INPUT_ARTIFACT_BASE_URI" =~ ^https:// ]]; then
             echo "::error::artifact_base_uri must use HTTPS."
             exit 1
@@ -338,7 +756,7 @@ jobs:
             echo "::error::artifact_base_uri contains a placeholder."
             exit 1
           fi
-          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+          if [[ "$(git rev-parse HEAD)" != "$INPUT_CANDIDATE_COMMIT" ]]; then
             echo "::error::The checked-out commit does not match the workflow candidate commit."
             exit 1
           fi
@@ -397,7 +815,12 @@ jobs:
           INPUT_GO_NO_GO_WAIVERS: ${{ inputs.go_no_go_waivers }}
           INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers }}
           INPUT_STABLE_RC_FREEZE_EXCEPTIONS: ${{ inputs.stable_rc_freeze_exceptions }}
+          PROTECTED_PREFLIGHT_RECEIPT_JSON: ${{ inputs.protected_preflight_receipt }}
+          PROTECTED_EXECUTION_CONTRACT: ${{ inputs.protected_execution_contract }}
+          STABLE_AUTHORITY_COORDINATES: ${{ inputs.stable_authority_coordinates }}
           CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
+          CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
+          CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_APP_SIGNING_KEY_ID: ${{ secrets.CRYPTAD_APP_SIGNING_KEY_ID }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE }}
           CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 }}
@@ -518,8 +941,18 @@ jobs:
             case "$value" in
               https://*)
                 local path="build/stable-rc-protected-inputs/$file_name"
+                local partial="$path.partial"
                 mkdir -p "$(dirname "$path")"
-                curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --output "$path" "$value"
+                rm -f "$partial"
+                if ! curl --fail --silent --show-error --location \
+                    --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 \
+                    --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
+                    --output "$partial" "$value"; then
+                  rm -f "$partial"
+                  echo "::error::$description HTTPS source could not be fetched within the closed transfer bounds."
+                  exit 1
+                fi
+                mv "$partial" "$path"
                 chmod 600 "$path"
                 export "$env_name=$path"
                 ;;
@@ -767,6 +1200,9 @@ jobs:
           materialize_input_file "$INPUT_GO_NO_GO_WAIVERS" INPUT_GO_NO_GO_WAIVERS go-no-go-waivers.json "Go/no-go waivers"
           materialize_input_file "$INPUT_STABLE_READINESS_WAIVERS" INPUT_STABLE_READINESS_WAIVERS stable-readiness-waivers.json "Stable readiness waivers"
           materialize_input_file "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" INPUT_STABLE_RC_FREEZE_EXCEPTIONS stable-rc-freeze-exceptions.json "Stable RC freeze exceptions"
+          INPUT_PROTECTED_PREFLIGHT_RECEIPT="build/stable-rc-protected-inputs/protected-preflight-summary.json"
+          printf '%s' "$PROTECTED_PREFLIGHT_RECEIPT_JSON" > "$INPUT_PROTECTED_PREFLIGHT_RECEIPT"
+          chmod 600 "$INPUT_PROTECTED_PREFLIGHT_RECEIPT"
           unset GH_TOKEN
 
           materialize_secret_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE app-signing-private.der
@@ -791,7 +1227,8 @@ jobs:
             INPUT_SECURITY_DRILLS_SUMMARY \
             INPUT_THIRD_PARTY_INTAKE_SUMMARY \
             INPUT_PUBLIC_BETA_KNOWN_ISSUES \
-            INPUT_STABLE_CATALOG_OPERATIONS; do
+            INPUT_STABLE_CATALOG_OPERATIONS \
+            INPUT_PROTECTED_PREFLIGHT_RECEIPT; do
             require_file "${!required_input:-}" "$required_input"
           done
           for optional_input in \
@@ -806,7 +1243,98 @@ jobs:
 
           manifest="$RUNNER_TEMP/stable-1.0-rc-manifest.json"
           stable_vulnerability_summary="$CRYPTAD_STABLE_VULNERABILITY_SUMMARY_ROOT/stable-1.0-vulnerability-summary.json"
+          stable_supply_chain_summary="$CRYPTAD_STABLE_SUPPLY_CHAIN_SUMMARY_ROOT/stable-1.0-supply-chain-summary.json"
+          stable_dependency_vulnerability_summary="$CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_SUMMARY_ROOT/stable-1.0-dependency-vulnerability-promotion-summary.json"
           require_file "$stable_vulnerability_summary" "Authenticated Stable vulnerability summary"
+          require_file "$stable_supply_chain_summary" "Authenticated Stable supply-chain summary"
+          require_file "$stable_dependency_vulnerability_summary" "Authenticated Stable dependency-vulnerability summary"
+          catalog_signing_key_id="$(
+            jq -er '.signingKeyId | strings | select(test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"))' \
+              "$INPUT_STABLE_CATALOG_OPERATIONS"
+          )"
+          protected_contract="build/stable-rc-protected-inputs/stable-1.0-protected-release-execution.json"
+          printf '%s' "$PROTECTED_EXECUTION_CONTRACT" > "$protected_contract"
+          chmod 600 "$protected_contract"
+          rc_input_map="build/stable-rc-protected-inputs/stable-1.0-rc-materialized-input-map.json"
+          jq -n \
+            --arg candidate_commit "$GITHUB_SHA" \
+            --arg source_ref "$GITHUB_REF" \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg freeze_mode "$INPUT_STABLE_RC_FREEZE_MODE" \
+            --arg artifact_base_uri "$INPUT_ARTIFACT_BASE_URI" \
+            --arg app_signing_key_id "$CRYPTAD_APP_SIGNING_KEY_ID" \
+            --arg reviewer_key_id "$CRYPTAD_APP_REVIEWER_KEY_ID" \
+            --arg review_policy_id "$CRYPTAD_APP_REVIEW_POLICY_ID" \
+            --arg review_policy_version "$CRYPTAD_APP_REVIEW_POLICY_VERSION" \
+            --arg catalog_signing_key_id "$catalog_signing_key_id" \
+            --arg catalog "$INPUT_STABLE_CATALOG_OPERATIONS" \
+            --arg live "$INPUT_LIVE_NETWORK_SUMMARY" \
+            --arg multi "$INPUT_MULTI_NODE_SOAK_SUMMARY" \
+            --arg network "$INPUT_NETWORK_SCALE_SOAK_SUMMARY" \
+            --arg previous_candidate "$INPUT_PREVIOUS_CANDIDATE_SUMMARY" \
+            --arg history "$INPUT_RELEASE_HISTORY_SUMMARY" \
+            --arg drills "$INPUT_SECURITY_DRILLS_SUMMARY" \
+            --arg intake "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" \
+            --arg vulnerability "$stable_vulnerability_summary" \
+            --arg supply_chain "$stable_supply_chain_summary" \
+            --arg dependency_vulnerability "$stable_dependency_vulnerability_summary" \
+            --arg known_issues "$INPUT_PUBLIC_BETA_KNOWN_ISSUES" \
+            --arg waivers "$INPUT_GO_NO_GO_WAIVERS" \
+            --arg readiness_waivers "$INPUT_STABLE_READINESS_WAIVERS" \
+            --arg exceptions "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" \
+            --arg previous_freeze "$INPUT_PREVIOUS_STABLE_RC_FREEZE" \
+            --arg preflight_receipt "$INPUT_PROTECTED_PREFLIGHT_RECEIPT" \
+            --argjson stable_coordinates "$STABLE_AUTHORITY_COORDINATES" \
+            '{
+              schemaVersion: 1,
+              repository: {candidateCommit: $candidate_commit, sourceRef: $source_ref},
+              release: {id: $release_id, integerBuild: $build, freezeMode: $freeze_mode},
+              artifactBaseUri: $artifact_base_uri,
+              keyIdentities: {
+                appSigningKeyId: $app_signing_key_id,
+                reviewerKeyId: $reviewer_key_id,
+                reviewPolicyId: $review_policy_id,
+                reviewPolicyVersion: $review_policy_version,
+                catalogSigningKeyId: $catalog_signing_key_id
+              },
+              evidenceFiles: {
+                "catalog-operations": $catalog,
+                "live-network": $live,
+                "multi-node": $multi,
+                "network-scale": $network,
+                "previous-candidate": $previous_candidate,
+                "release-history": $history,
+                "security-drills": $drills,
+                "stable-dependency-vulnerability": $dependency_vulnerability,
+                "stable-supply-chain": $supply_chain,
+                "stable-vulnerability": $vulnerability
+              },
+              stableAuthorityCoordinates: $stable_coordinates,
+              rcGeneratedEvidenceIds: [
+                "app-platform",
+                "hyphanet-interop",
+                "performance",
+                "release-certification",
+                "sandbox-provider",
+                "stable-readiness",
+                "third-party-intake"
+              ],
+              rcInputs: {
+                publicBetaKnownIssues: $known_issues,
+                thirdPartyIntake: $intake,
+                goNoGoWaivers: (if $waivers == "" then null else $waivers end),
+                stableReadinessWaivers: (if $readiness_waivers == "" then null else $readiness_waivers end),
+                freezeExceptions: (if $exceptions == "" then null else $exceptions end),
+                previousRcFreeze: (if $previous_freeze == "" then null else $previous_freeze end)
+              },
+              preflightReceipt: $preflight_receipt
+            }' > "$rc_input_map"
+          python3 tools/release-certification/certify.py stable-protected-release \
+            --mode rc-dispatch \
+            --execution-contract "$protected_contract" \
+            --rc-input-map "$rc_input_map" \
+            --out-dir build/stable-rc-protected-inputs/dispatch-verification
           jq -n \
             --arg release_id "$INPUT_RELEASE_ID" \
             --arg release_version "$INPUT_BUILD_VERSION" \
@@ -826,6 +1354,8 @@ jobs:
             --arg stable_waivers "$INPUT_STABLE_READINESS_WAIVERS" \
             --arg freeze_exceptions "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" \
             --arg stable_vulnerability "$stable_vulnerability_summary" \
+            --arg stable_supply_chain "$stable_supply_chain_summary" \
+            --arg stable_dependency_vulnerability "$stable_dependency_vulnerability_summary" \
             '{
               schemaVersion: 1,
               release: {id: $release_id, version: $release_version, profile: "stable-review"},
@@ -837,6 +1367,8 @@ jobs:
                 sandboxProviderTests: true,
                 stableReadiness: true,
                 stableVulnerability: true,
+                stableSupplyChain: true,
+                stableDependencyVulnerability: true,
                 thirdPartyIntake: true
               },
               inputs: ({
@@ -853,6 +1385,8 @@ jobs:
                 stableKnownLimitations: "tools/release-certification/stable-1.0-known-limitations.json",
                 stableReadinessPolicy: "tools/release-certification/stable-1.0-readiness-policy.json",
                 stableVulnerabilitySummary: $stable_vulnerability,
+                supplyChainPromotionSummary: $stable_supply_chain,
+                dependencyVulnerabilityPromotionSummary: $stable_dependency_vulnerability,
                 thirdPartyIntake: $third_party
               }
                 + (if $previous_freeze == "" then {} else {previousStableRcFreeze: $previous_freeze} end)
@@ -862,8 +1396,12 @@ jobs:
               policies: {
                 artifactBaseUri: $artifact_base_uri,
                 catalogChannel: "stable",
+                candidateSourceCommit: env.GITHUB_SHA,
+                candidateSourceRef: ("commit:" + env.GITHUB_SHA),
                 stableRcFreezeMode: $freeze_mode,
-                stableVulnerabilityGovernance: "required"
+                stableVulnerabilityGovernance: "required",
+                stableSupplyChainGovernance: "required",
+                stableDependencyVulnerabilityGovernance: "required"
               },
               execution: {
                 allowDirtyWorkspace: false,
@@ -884,6 +1422,28 @@ jobs:
             }' > "$manifest"
 
           python3 tools/release-certification/certify.py stable-rc --manifest "$manifest"
+
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-rc"
+          protected_execution_dir="$component/artifacts/protected-execution"
+          retained_preflight="$protected_execution_dir/stable-1.0-protected-release-preflight-summary.json"
+          expected_preflight_digest="$(jq -er '.operationEvidence.preflight.sha256' "$protected_contract")"
+          actual_preflight_digest="sha256:$(sha256sum "$INPUT_PROTECTED_PREFLIGHT_RECEIPT" | awk '{print $1}')"
+          if [[ "$actual_preflight_digest" != "$expected_preflight_digest" ]]; then
+            echo "::error::The RC-consumed preflight receipt changed after dispatch verification."
+            exit 1
+          fi
+          if [[ -e "$protected_execution_dir" || -L "$protected_execution_dir" ]]; then
+            echo "::error::The protected execution artifact directory already exists."
+            exit 1
+          fi
+          mkdir "$protected_execution_dir"
+          cp -- "$INPUT_PROTECTED_PREFLIGHT_RECEIPT" "$retained_preflight"
+          chmod 0444 "$retained_preflight"
+          if [[ ! -f "$retained_preflight" || -L "$retained_preflight" ]] || \
+             ! cmp -s -- "$INPUT_PROTECTED_PREFLIGHT_RECEIPT" "$retained_preflight"; then
+            echo "::error::The retained RC preflight receipt is not the exact verified input."
+            exit 1
+          fi
 
       - name: Verify final Stable RC decision and candidate binding
         id: final_gate
@@ -1506,7 +2066,7 @@ jobs:
 
       - name: Upload redacted Stable RC artifacts
         if: steps.final_gate.outputs.promotable == 'true'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: stable-1-0-rc-${{ inputs.candidate_release_id }}-${{ inputs.integer_build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -1588,3 +2148,117 @@ jobs:
         if: steps.final_gate.outputs.promotable == 'true'
         run: |
           echo "Stable 1.0 RC artifacts are frozen for review. This workflow did not create a tag, GitHub Release, merge, update descriptor, or GA publication." >> "$GITHUB_STEP_SUMMARY"
+
+  retain-failure-closeout:
+    name: Retain bounded Stable RC failure closeout
+    needs:
+      - preflight
+      - stable-rc
+    if: ${{ always() && (needs.preflight.result != 'success' || needs.stable-rc.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Write and verify redaction-safe failure closeout
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          STABLE_RC_RESULT: ${{ needs.stable-rc.result }}
+        run: |
+          set -euo pipefail
+          case "$PREFLIGHT_RESULT" in
+            success|failure|cancelled|skipped) ;;
+            *) echo "::error::Unexpected preflight result."; exit 1 ;;
+          esac
+          case "$STABLE_RC_RESULT" in
+            success|failure|cancelled|skipped) ;;
+            *) echo "::error::Unexpected Stable RC result."; exit 1 ;;
+          esac
+          closeout_dir="$RUNNER_TEMP/stable-rc-failure-closeout-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [[ -e "$closeout_dir" || -L "$closeout_dir" ]]; then
+            echo "::error::Stable RC failure closeout directory already exists."
+            exit 1
+          fi
+          install -d -m 0700 "$closeout_dir"
+          summary="$closeout_dir/summary.json"
+          reason_code="stable-rc-not-successful"
+          if [[ "$PREFLIGHT_RESULT" != "success" ]]; then
+            reason_code="preflight-not-successful"
+          fi
+          jq -n \
+            --arg workflow_sha "$GITHUB_WORKFLOW_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg preflight_result "$PREFLIGHT_RESULT" \
+            --arg stable_rc_result "$STABLE_RC_RESULT" \
+            --arg reason_code "$reason_code" \
+            '{
+              schemaVersion: 1,
+              kind: "stable-1.0-rc-workflow-failure-closeout",
+              repositoryIdentity: "github.com/crypta-network/cryptad",
+              workflowPath: ".github/workflows/stable-1.0-rc-release.yml",
+              workflowCommit: $workflow_sha,
+              runId: $run_id,
+              runAttempt: $run_attempt,
+              preflightResult: $preflight_result,
+              stableRcResult: $stable_rc_result,
+              status: "blocked",
+              reasonCode: $reason_code,
+              protectedRcOperationCompleted: false,
+              freezeArtifactAuthentication: "unverified",
+              publicationPerformed: false,
+              publicObservationPerformed: false,
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$summary"
+          if [[ ! -f "$summary" || -L "$summary" || "$(stat -c '%h' "$summary")" != "1" ]]; then
+            echo "::error::Stable RC failure closeout is not one regular single-link file."
+            exit 1
+          fi
+          size="$(stat -c '%s' "$summary")"
+          if [[ ! "$size" =~ ^[1-9][0-9]*$ || "$size" -gt 16384 ]]; then
+            echo "::error::Stable RC failure closeout exceeds its 16 KiB bound."
+            exit 1
+          fi
+          jq -e '
+            keys == [
+              "freezeArtifactAuthentication",
+              "kind",
+              "preflightResult",
+              "protectedRcOperationCompleted",
+              "publicObservationPerformed",
+              "publicationPerformed",
+              "reasonCode",
+              "redaction",
+              "repositoryIdentity",
+              "runAttempt",
+              "runId",
+              "schemaVersion",
+              "stableRcResult",
+              "status",
+              "workflowCommit",
+              "workflowPath"
+            ]
+            and .schemaVersion == 1
+            and .kind == "stable-1.0-rc-workflow-failure-closeout"
+            and .repositoryIdentity == "github.com/crypta-network/cryptad"
+            and .workflowPath == ".github/workflows/stable-1.0-rc-release.yml"
+            and (.workflowCommit | test("^[0-9a-f]{40}$"))
+            and (.runId | test("^[1-9][0-9]{0,19}$"))
+            and (.runAttempt | test("^[1-9][0-9]{0,9}$"))
+            and (.preflightResult | IN("success", "failure", "cancelled", "skipped"))
+            and (.stableRcResult | IN("success", "failure", "cancelled", "skipped"))
+            and .status == "blocked"
+            and (.reasonCode | IN("preflight-not-successful", "stable-rc-not-successful"))
+            and .protectedRcOperationCompleted == false
+            and .freezeArtifactAuthentication == "unverified"
+            and .publicationPerformed == false
+            and .publicObservationPerformed == false
+            and .redaction == {status: "pass", findingCount: 0, findings: []}' \
+            "$summary" >/dev/null
+
+      - name: Upload bounded Stable RC failure closeout
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-rc-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stable-rc-failure-closeout-${{ github.run_id }}-${{ github.run_attempt }}/summary.json
+          if-no-files-found: error
+          retention-days: 30

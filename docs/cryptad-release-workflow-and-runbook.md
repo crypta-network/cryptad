@@ -1,5 +1,10 @@
 # Cryptad Release Workflow and Runbook
 
+> Stable 1.0 is governed by the focused
+> [protected release execution runbook](stable-1.0-protected-release-execution.md). The generic
+> updater, tag, GitHub Release, catalog, and rollback procedures below are not authorization for a
+> Stable RC freeze, Stable GA publication, or recovery from conflicting Stable public state.
+
 > Updated July 13, 2026, for the manifest-driven certification CLI, candidate-bound v2 evidence,
 > release-scoped workspaces, shared history archives, and the production beta pipeline. The release
 > report aggregates interop, performance, app-platform, third-party developer beta, multi-node beta

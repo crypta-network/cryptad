@@ -3,6 +3,12 @@
 Use release certification to collect a candidate’s compatibility, performance, app-platform,
 security, soak, recovery, and release-policy evidence into one redacted release workspace.
 
+For an actual Stable 1.0 freeze and exact-byte GA operation, follow
+[Stable 1.0 protected release execution](stable-1.0-protected-release-execution.md). Its versioned
+execution contract and `stable-protected-release` preflight/closeout command surround the existing
+`stable-rc` and `stable-ga` authorities; they do not create a new artifact format or publication
+path.
+
 Python 3.12 or newer is required. The public command is
 `tools/release-certification/certify.py`; the previous per-tool Python scripts and shell wrappers
 were removed when evidence envelope v2 became the release contract.

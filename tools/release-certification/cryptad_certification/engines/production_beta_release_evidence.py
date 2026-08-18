@@ -638,6 +638,60 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
                     state.version,
                 ]
             )
+    stable_commit = state.settings.stable_governance_candidate_source_commit
+    stable_ref = state.settings.stable_governance_candidate_source_ref
+    if state.settings.stable_supply_chain_summary is not None:
+        args.extend(
+            [
+                "--stable-supply-chain-summary",
+                str(state.settings.stable_supply_chain_summary),
+            ]
+        )
+    if state.settings.require_stable_supply_chain:
+        args.append("--require-stable-supply-chain")
+    if (
+        state.settings.stable_supply_chain_summary is not None
+        or state.settings.require_stable_supply_chain
+    ):
+        args.extend(
+            [
+                "--stable-supply-chain-candidate-release-id",
+                str(state.settings.release_id or ""),
+                "--stable-supply-chain-candidate-build-version",
+                state.version,
+                "--stable-supply-chain-candidate-source-commit",
+                stable_commit,
+                "--stable-supply-chain-candidate-source-ref",
+                stable_ref,
+            ]
+        )
+    if state.settings.stable_dependency_vulnerability_summary is not None:
+        args.extend(
+            [
+                "--stable-dependency-vulnerability-summary",
+                str(state.settings.stable_dependency_vulnerability_summary),
+            ]
+        )
+    if state.settings.require_stable_dependency_vulnerability:
+        args.append("--require-stable-dependency-vulnerability")
+    if (
+        state.settings.stable_dependency_vulnerability_summary is not None
+        or state.settings.require_stable_dependency_vulnerability
+    ):
+        args.extend(
+            [
+                "--stable-dependency-vulnerability-candidate-release-id",
+                str(state.settings.release_id or ""),
+                "--stable-dependency-vulnerability-candidate-build-version",
+                state.version,
+                "--stable-dependency-vulnerability-candidate-source-commit",
+                stable_commit,
+                "--stable-dependency-vulnerability-candidate-source-ref",
+                stable_ref,
+                "--stable-dependency-vulnerability-evidence-phase",
+                state.settings.stable_dependency_vulnerability_evidence_phase,
+            ]
+        )
     cert_env = dict(env)
     cert_env["CRYPTAD_CERT_NETWORK_SCALE_SOAK_RELEASE_ID"] = security_drills_release_id(state)
     if state.settings.run_multi_node_soak:

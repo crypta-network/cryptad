@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "maximumPreflightClockSkewSeconds": 300,
+  "kind": "stable-1.0-protected-release-policy",
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "requiredEvidenceIds": [
+    "app-platform",
+    "catalog-operations",
+    "hyphanet-interop",
+    "live-network",
+    "multi-node",
+    "network-scale",
+    "performance",
+    "previous-candidate",
+    "release-certification",
+    "release-history",
+    "sandbox-provider",
+    "security-drills",
+    "stable-dependency-vulnerability",
+    "stable-readiness",
+    "stable-supply-chain",
+    "stable-vulnerability",
+    "third-party-intake"
+  ],
+  "requiredRcGeneratedEvidenceIds": [
+    "app-platform",
+    "hyphanet-interop",
+    "performance",
+    "release-certification",
+    "sandbox-provider",
+    "stable-readiness",
+    "third-party-intake"
+  ],
+  "requiredEvidenceContracts": {
+    "app-platform": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "app-platform-smoke", "component": "app-platform"},
+    "catalog-operations": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/stable-catalog-operations-summary.json", "schema": "stable-1.0-rc-catalog-operations-v1.schema.json", "kind": "stable-1.0-rc-catalog-operations"},
+    "hyphanet-interop": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "release-certification", "component": "release-certification", "requiredEvidenceId": "interop.smoke"},
+    "live-network": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/live-network-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "live-network-beta-smoke", "component": "live-network-beta"},
+    "multi-node": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/multi-node-soak-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "multi-node-beta-soak", "component": "multi-node-beta/run"},
+    "network-scale": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/network-scale-soak-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "network-scale-soak", "component": "network-scale-soak"},
+    "performance": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "release-certification", "component": "release-certification", "requiredEvidenceId": "performance.smoke"},
+    "previous-candidate": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/previous-candidate-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "migrated-v1-previous-candidate", "component": "migration/previous-candidate"},
+    "release-certification": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "release-certification", "component": "release-certification"},
+    "release-history": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/release-history-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "migrated-v1-release-history", "component": "migration/release-history"},
+    "sandbox-provider": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "app-platform-smoke", "component": "app-platform", "requiredEvidenceId": "apphost.sandbox-provider"},
+    "security-drills": {"authorityClass": "exact-dispatch-input", "rcInputPath": "build/stable-rc-protected-inputs/security-drills-summary.json", "schema": "evidence-envelope-v2.schema.json", "kind": "production-security-response", "component": "security-response/drill-verify-all"},
+    "stable-dependency-vulnerability": {"authorityClass": "protected-producer", "schema": "stable-1.0-dependency-vulnerability-promotion-summary-v1.schema.json", "kind": "stable-1.0-dependency-vulnerability-promotion-summary", "workflowPath": ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml", "environment": "stable-1.0-dependency-vulnerability-evaluation"},
+    "stable-readiness": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "stable-1.0-readiness", "component": "stable-readiness"},
+    "stable-supply-chain": {"authorityClass": "protected-producer", "schema": "stable-1.0-supply-chain-promotion-summary-v1.schema.json", "kind": "stable-1.0-supply-chain-promotion-summary", "workflowPath": ".github/workflows/stable-1.0-supply-chain.yml", "environment": "stable-1.0-supply-chain-evidence", "policyDigest": "sha256:dbc847331327e5a74b3d826afda76de4f31e0cd4d814aa5a455a1c6228021680"},
+    "stable-vulnerability": {"authorityClass": "protected-producer", "schema": "stable-1.0-vulnerability-summary-v1.schema.json", "kind": "stable-1.0-vulnerability-summary", "workflowPath": ".github/workflows/stable-1.0-vulnerability-intake.yml", "environment": "stable-1.0-vulnerability-case"},
+    "third-party-intake": {"authorityClass": "rc-generated-prerequisite", "schema": "evidence-envelope-v2.schema.json", "kind": "production-beta-release", "component": "production-beta"}
+  },
+  "requiredProtectedEnvironments": [
+    "stable-1-0-rc",
+    "stable-1-0-ga-evidence",
+    "stable-1-0-ga",
+    "stable-1-0-public-observation"
+  ],
+  "requiredWorkflowPaths": {
+    "ga": ".github/workflows/stable-1.0-ga-promotion.yml",
+    "publicObservation": ".github/workflows/stable-1.0-public-observation.yml",
+    "rc": ".github/workflows/stable-1.0-rc-release.yml"
+  },
+  "toolchain": {
+    "gradleVersion": "9.4.1",
+    "gradleDistributionSha256": "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb",
+    "javaDistribution": "temurin",
+    "javaFeatureVersion": 25,
+    "setupJavaVersion": "25.0.3+9"
+  },
+  "workflowPolicy": {
+    "gaEvidenceEnvironment": "stable-1-0-ga-evidence",
+    "gaPublicationEnvironment": "stable-1-0-ga",
+    "publicObservationEnvironment": "stable-1-0-public-observation",
+    "rcEnvironment": "stable-1-0-rc",
+    "releaseConcurrencyPrefix": "stable-1-0-release-",
+    "remoteActionsRequireFullCommitPins": true
+  },
+  "archivePolicy": {
+    "rejectLinks": true,
+    "rejectNestedArchives": true
+  },
+  "publicationPolicy": {
+    "expectedTagPrefix": "v",
+    "gaNeverRebuildsRc": true,
+    "publicObservationIsSeparate": true,
+    "requireExplicitAuthorization": true
+  }
+}

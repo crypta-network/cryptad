@@ -682,6 +682,13 @@ class Settings:
     stable_rc_artifact_timestamp: str | None = None
     stable_vulnerability_summary: Path | None = None
     require_stable_vulnerability: bool = False
+    stable_supply_chain_summary: Path | None = None
+    require_stable_supply_chain: bool = False
+    stable_dependency_vulnerability_summary: Path | None = None
+    require_stable_dependency_vulnerability: bool = False
+    stable_governance_candidate_source_commit: str = ""
+    stable_governance_candidate_source_ref: str = ""
+    stable_dependency_vulnerability_evidence_phase: str = "final-publication"
 
 @dataclasses.dataclass
 class CommandResult:

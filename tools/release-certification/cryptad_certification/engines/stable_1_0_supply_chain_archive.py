@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import bz2
 import hashlib
 import io
+import lzma
 import stat
 import tarfile
+import tempfile
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Callable
 
 from .stable_1_0_supply_chain_core import (
     canonical_json_bytes,
@@ -21,6 +25,54 @@ ARCHIVE_PACKAGE_TYPES = frozenset({"app-zip", "jar", "tar", "wheel", "zip"})
 _NESTED_SUFFIXES = (".jar", ".tar", ".tar.gz", ".tgz", ".whl", ".zip")
 _READ_CHUNK = 1024 * 1024
 _MAX_NESTED_ARCHIVE_BYTES = 100_000_000
+_ZIP_LOCAL_SIGNATURE = b"PK\x03\x04"
+_ZIP_EOCD_SIGNATURE = b"PK\x05\x06"
+_ZIP_EOCD_MINIMUM_BYTES = 22
+_ZIP_MAXIMUM_COMMENT_BYTES = 65_535
+_ZIP_TAIL_BYTES = _ZIP_EOCD_MINIMUM_BYTES + _ZIP_MAXIMUM_COMMENT_BYTES
+
+
+def inspect_archive_safety(
+    subject_path: Path,
+    *,
+    maximum_entries: int,
+    maximum_expanded_bytes: int,
+    reject_links: bool = True,
+    reject_nested_archives: bool = True,
+) -> dict[str, int]:
+    """Inspect archive bytes with the canonical Stable supply-chain hygiene rules.
+
+    The protected-release preflight intentionally applies a stricter dispatch-package
+    boundary than the general supply-chain payload inspector: symbolic links and nested
+    archives are rejected instead of being represented in a payload manifest.  Keeping
+    this small public adapter here ensures both callers use the same canonical path,
+    duplicate, case-fold collision, metadata, and expansion-bound checks.
+    """
+
+    package_type = _package_type(subject_path, {})
+    try:
+        entries, _metadata, totals = _inspect_path(
+            subject_path,
+            package_type,
+            maximum_entries=maximum_entries,
+            maximum_expanded=maximum_expanded_bytes,
+            detect_nested_by_content=reject_nested_archives,
+        )
+    except ValueError:
+        raise
+    except (
+        EOFError,
+        NotImplementedError,
+        RuntimeError,
+        tarfile.TarError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise ValueError(f"archive reader rejected input: {type(exc).__name__}") from exc
+    if reject_links and any(row.get("kind") == "symlink" for row in entries):
+        raise ValueError("archive contains a symbolic link")
+    if reject_nested_archives and totals["nestedArchiveDepth"] != 0:
+        raise ValueError("archive contains a nested archive")
+    return totals
 
 
 def build_archive_payload_manifest(
@@ -190,6 +242,7 @@ def _inspect_path(
     *,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     totals = {"entryCount": 0, "expandedBytes": 0, "nestedArchiveDepth": 0}
     if package_type in {"app-zip", "jar", "wheel", "zip"}:
@@ -200,6 +253,7 @@ def _inspect_path(
                 depth=0,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     else:
         with tarfile.open(path, mode="r:*") as archive:
@@ -209,6 +263,7 @@ def _inspect_path(
                 depth=0,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     return entries, metadata, totals
 
@@ -220,6 +275,7 @@ def _inspect_zip(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if archive.comment:
         raise ValueError("ZIP archive comment is prohibited")
@@ -246,7 +302,12 @@ def _inspect_zip(
             _safe_symlink_target(path, target)
             row = _entry(path, "symlink", None, 0, "symlink", target)
         else:
-            digest, data = _digest_zip_entry(archive, info, maximum_expanded)
+            digest, data = _digest_zip_entry(
+                archive,
+                info,
+                maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
+            )
             mode_class = canonical_mode_class(mode)
             row = _entry(path, "file", digest, int(info.file_size), mode_class, None)
             _inspect_nested_if_needed(
@@ -256,6 +317,7 @@ def _inspect_zip(
                 depth,
                 maximum_entries,
                 maximum_expanded,
+                detect_nested_by_content,
             )
         entries.append(row)
         metadata.append(
@@ -279,6 +341,7 @@ def _inspect_tar(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     entries: list[dict[str, Any]] = []
     metadata: list[dict[str, Any]] = []
@@ -299,12 +362,19 @@ def _inspect_tar(
             extracted = archive.extractfile(member)
             if extracted is None:
                 raise ValueError("TAR regular file cannot be read")
-            digest, data = _digest_stream(
-                extracted,
-                int(member.size),
-                maximum_expanded,
-                retain=path.lower().endswith(_NESTED_SUFFIXES),
-            )
+            with extracted:
+                digest, data = _digest_stream(
+                    extracted,
+                    int(member.size),
+                    maximum_expanded,
+                    retain=path.lower().endswith(_NESTED_SUFFIXES),
+                    detect_archive=detect_nested_by_content,
+                    reopen=(
+                        lambda: _open_tar_member(archive, member)
+                        if detect_nested_by_content
+                        else None
+                    ),
+                )
             row = _entry(
                 path,
                 "file",
@@ -320,6 +390,7 @@ def _inspect_tar(
                 depth,
                 maximum_entries,
                 maximum_expanded,
+                detect_nested_by_content,
             )
         else:
             raise ValueError("TAR archive contains a hardlink or special file")
@@ -346,15 +417,19 @@ def _inspect_nested_if_needed(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool,
 ) -> None:
-    if data is None or not path.lower().endswith(_NESTED_SUFFIXES):
+    if data is None:
+        return
+    archive_kind = _nested_archive_kind(path, data)
+    if archive_kind is None:
         return
     nested_depth = depth + 1
     if nested_depth > 8:
         raise ValueError("nested archive depth exceeds the closed bound")
     totals["nestedArchiveDepth"] = max(totals["nestedArchiveDepth"], nested_depth)
     stream = io.BytesIO(data)
-    if path.lower().endswith((".jar", ".whl", ".zip")):
+    if archive_kind == "zip":
         with zipfile.ZipFile(stream) as nested:
             _inspect_zip(
                 nested,
@@ -362,6 +437,7 @@ def _inspect_nested_if_needed(
                 depth=nested_depth,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     else:
         with tarfile.open(fileobj=stream, mode="r:*") as nested:
@@ -371,7 +447,150 @@ def _inspect_nested_if_needed(
                 depth=nested_depth,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
+
+
+def _nested_archive_kind(path: str, data: bytes) -> str | None:
+    """Identify a supported nested container by declared name or exact bytes."""
+
+    lowered = path.lower()
+    if lowered.endswith((".jar", ".whl", ".zip")):
+        return "zip"
+    if lowered.endswith((".tar", ".tar.gz", ".tgz")):
+        return "tar"
+    return _archive_stream_kind(io.BytesIO(data))
+
+
+def _archive_stream_kind(stream: BinaryIO) -> str | None:
+    """Identify exact ZIP/JAR or TAR/TAR.GZ bytes without trusting a filename."""
+
+    original_position = stream.tell()
+    try:
+        stream.seek(0)
+        if zipfile.is_zipfile(stream):
+            return "zip"
+        stream.seek(0)
+        try:
+            with tarfile.open(fileobj=stream, mode="r:*") as archive:
+                return "tar" if archive.next() is not None else None
+        except (EOFError, OSError, tarfile.TarError):
+            return None
+    finally:
+        stream.seek(original_position)
+
+
+class _StreamingArchiveDetector:
+    """Detect nested containers without retaining an ordinary entry's full bytes."""
+
+    def __init__(self) -> None:
+        self._raw_prefix = bytearray()
+        self._zip_overlap = b""
+        self._zip_local_header_seen = False
+        self._zip_tail = bytearray()
+        self._compression_pending = bytearray()
+        self._compression_kind: str | None = None
+        self._decompressor: Any | bool | None = None
+        self._decompressed_prefix = bytearray()
+        self._decompression_failed = False
+
+    def feed(self, chunk: bytes) -> None:
+        if len(self._raw_prefix) < 512:
+            self._raw_prefix.extend(chunk[: 512 - len(self._raw_prefix)])
+
+        scan = self._zip_overlap + chunk
+        if _ZIP_LOCAL_SIGNATURE in scan:
+            self._zip_local_header_seen = True
+        self._zip_overlap = scan[-3:]
+        self._zip_tail.extend(chunk)
+        if len(self._zip_tail) > _ZIP_TAIL_BYTES:
+            del self._zip_tail[:-_ZIP_TAIL_BYTES]
+
+        if self._decompressor is None:
+            self._compression_pending.extend(chunk)
+            if len(self._compression_pending) >= 6:
+                self._initialize_decompressor()
+        elif self._decompressor is not False:
+            self._feed_decompressor(chunk)
+
+    def kind(self) -> str | None:
+        if self._decompressor is None:
+            self._initialize_decompressor()
+        if _tar_header_is_candidate(bytes(self._raw_prefix)) or _tar_header_is_candidate(
+            bytes(self._decompressed_prefix)
+        ):
+            return "tar"
+        if _zip_tail_has_eocd(
+            bytes(self._zip_tail),
+            local_header_seen=self._zip_local_header_seen,
+        ):
+            return "zip"
+        return None
+
+    @property
+    def local_header_seen(self) -> bool:
+        """Whether marker scanning saw a possible ZIP local header."""
+
+        return self._zip_local_header_seen
+
+    def _initialize_decompressor(self) -> None:
+        pending = bytes(self._compression_pending)
+        self._compression_pending.clear()
+        if pending.startswith(b"\x1f\x8b"):
+            self._compression_kind = "gzip"
+            self._decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        elif pending.startswith(b"BZh"):
+            self._compression_kind = "bzip2"
+            self._decompressor = bz2.BZ2Decompressor()
+        elif pending.startswith(b"\xfd7zXZ\x00"):
+            self._compression_kind = "xz"
+            self._decompressor = lzma.LZMADecompressor()
+        else:
+            self._decompressor = False
+            return
+        self._feed_decompressor(pending)
+
+    def _feed_decompressor(self, chunk: bytes) -> None:
+        if self._decompression_failed or len(self._decompressed_prefix) >= 512:
+            return
+        remaining = 512 - len(self._decompressed_prefix)
+        try:
+            decompressor = self._decompressor
+            if self._compression_kind == "gzip":
+                output = decompressor.decompress(chunk, remaining)
+            else:
+                output = decompressor.decompress(chunk, max_length=remaining)  # type: ignore[union-attr]
+        except (EOFError, OSError, ValueError, zlib.error):
+            self._decompression_failed = True
+            return
+        self._decompressed_prefix.extend(output)
+
+
+def _tar_header_is_candidate(data: bytes) -> bool:
+    if len(data) < 512:
+        return False
+    try:
+        tarfile.TarInfo.frombuf(
+            data[:512],
+            encoding=tarfile.ENCODING,
+            errors="surrogateescape",
+        )
+        return True
+    except (EOFError, OSError, tarfile.TarError, ValueError):
+        return False
+
+
+def _zip_tail_has_eocd(tail: bytes, *, local_header_seen: bool) -> bool:
+    position = tail.rfind(_ZIP_EOCD_SIGNATURE)
+    while position >= 0:
+        if len(tail) - position >= _ZIP_EOCD_MINIMUM_BYTES:
+            comment_length = int.from_bytes(tail[position + 20 : position + 22], "little")
+            if position + _ZIP_EOCD_MINIMUM_BYTES + comment_length == len(tail):
+                entry_count = int.from_bytes(tail[position + 10 : position + 12], "little")
+                directory_size = int.from_bytes(tail[position + 12 : position + 16], "little")
+                return local_header_seen or (entry_count == 0 and directory_size == 0)
+        position = tail.rfind(_ZIP_EOCD_SIGNATURE, 0, position)
+    return False
 
 
 def _safe_archive_path(value: str) -> str:
@@ -452,7 +671,11 @@ def canonical_mode_class(mode: int) -> str:
 
 
 def _digest_zip_entry(
-    archive: zipfile.ZipFile, info: zipfile.ZipInfo, maximum_expanded: int
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    maximum_expanded: int,
+    *,
+    detect_nested_by_content: bool = False,
 ) -> tuple[str, bytes | None]:
     with archive.open(info, "r") as stream:
         return _digest_stream(
@@ -460,7 +683,20 @@ def _digest_zip_entry(
             int(info.file_size),
             maximum_expanded,
             retain=info.filename.lower().endswith(_NESTED_SUFFIXES),
+            detect_archive=detect_nested_by_content,
+            reopen=(
+                lambda: archive.open(info, "r")
+                if detect_nested_by_content
+                else None
+            ),
         )
+
+
+def _open_tar_member(archive: tarfile.TarFile, member: tarfile.TarInfo) -> BinaryIO:
+    stream = archive.extractfile(member)
+    if stream is None:
+        raise ValueError("TAR regular file cannot be read")
+    return stream
 
 
 def _read_zip_entry(
@@ -481,14 +717,17 @@ def _digest_stream(
     maximum_expanded: int,
     *,
     retain: bool = False,
+    detect_archive: bool = False,
+    reopen: Callable[[], BinaryIO] | None = None,
 ) -> tuple[str, bytes | None]:
     if expected_size < 0 or expected_size > maximum_expanded:
         raise ValueError("archive entry exceeds the expansion bound")
-    if retain and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
-        raise ValueError("nested archive exceeds the bounded inspection size")
+    if retain and not detect_archive and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
+        raise ValueError("archive entry exceeds the bounded content inspection size")
     digest = hashlib.sha256()
     total = 0
-    retained = bytearray() if retain else None
+    retained = bytearray() if retain and not detect_archive else None
+    detector = _StreamingArchiveDetector() if detect_archive else None
     while True:
         chunk = stream.read(_READ_CHUNK)
         if not chunk:
@@ -499,9 +738,105 @@ def _digest_stream(
         digest.update(chunk)
         if retained is not None:
             retained.extend(chunk)
+        if detector is not None:
+            detector.feed(chunk)
     if total != expected_size:
         raise ValueError("archive entry size differs from its declared size")
-    return "sha256:" + digest.hexdigest(), bytes(retained) if retained is not None else None
+    if detect_archive:
+        detected_kind = detector.kind() if detector is not None else None
+        if retain:
+            raise ValueError("archive contains a nested archive")
+        if detected_kind == "tar" and reopen is not None and _is_structurally_valid_tar(
+            reopen,
+            expected_size,
+            maximum_expanded,
+        ):
+            raise ValueError("archive contains a nested archive")
+        if detected_kind == "zip" and reopen is not None and _is_structurally_valid_zip(
+            reopen,
+            expected_size,
+            maximum_expanded,
+            require_entry=bool(detector and detector.local_header_seen),
+        ):
+            raise ValueError("archive contains a nested archive")
+    if retained is None:
+        return "sha256:" + digest.hexdigest(), None
+    data = bytes(retained)
+    return "sha256:" + digest.hexdigest(), data
+
+
+def _is_structurally_valid_tar(
+    reopen: Callable[[], BinaryIO],
+    expected_size: int,
+    maximum_expanded: int,
+) -> bool:
+    """Stream one TAR candidate and require a complete first logical member.
+
+    A PAX extended or global header occupies the first 512-byte record, but ``TarFile.next()``
+    consumes its variable-length payload and the following member header before returning a
+    logical member.  The initial pass therefore treats any checksum-valid first TAR header as a
+    candidate, while this streaming second pass distinguishes complete PAX archives from arbitrary
+    bytes that merely begin with a TAR-shaped record.  Streaming avoids imposing a second staging
+    limit below the caller's reviewed expansion policy.
+    """
+
+    if expected_size < 0 or expected_size > maximum_expanded:
+        raise ValueError("archive entry exceeds the expansion bound")
+    try:
+        with reopen() as source:
+            with tarfile.open(fileobj=source, mode="r|*") as nested:
+                return nested.next() is not None
+    except (EOFError, OSError, tarfile.TarError):
+        return False
+
+
+def _is_structurally_valid_zip(
+    reopen: Callable[[], BinaryIO],
+    expected_size: int,
+    maximum_expanded: int,
+    *,
+    require_entry: bool,
+) -> bool:
+    """Re-read one ZIP candidate and require a coherent central directory.
+
+    Marker scanning remains deliberately cheap for ordinary archive members.  Only a member
+    containing both a local-header marker and an end-of-central-directory candidate reaches this
+    second pass.  The pass is bounded by the already reviewed expansion limit, spills large
+    candidates to a temporary file, and lets ``ZipFile`` validate the complete directory and its
+    local-header offsets before the bytes can be classified as a nested ZIP.
+    """
+
+    if expected_size < 0 or expected_size > maximum_expanded:
+        raise ValueError("archive entry exceeds the expansion bound")
+    try:
+        with reopen() as source, tempfile.SpooledTemporaryFile(
+            max_size=_READ_CHUNK,
+            mode="w+b",
+        ) as staged:
+            total = 0
+            while True:
+                chunk = source.read(_READ_CHUNK)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > expected_size or total > maximum_expanded:
+                    raise ValueError("archive entry expands beyond its declared size")
+                staged.write(chunk)
+            if total != expected_size:
+                raise ValueError("archive entry size differs from its declared size")
+            staged.seek(0)
+            if not zipfile.is_zipfile(staged):
+                return False
+            staged.seek(0)
+            with zipfile.ZipFile(staged) as nested:
+                entries = nested.infolist()
+                for info in entries:
+                    staged.seek(info.header_offset)
+                    if staged.read(len(_ZIP_LOCAL_SIGNATURE)) != _ZIP_LOCAL_SIGNATURE:
+                        return False
+                return bool(entries) or not require_entry
+    except (EOFError, OSError, RuntimeError, ValueError, zipfile.BadZipFile):
+        return False
 
 
 def _check_totals(
