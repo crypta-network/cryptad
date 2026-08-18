@@ -1164,41 +1164,53 @@ def _public_observation(
     catalog_digest = catalog["catalogDigest"]
     rollback = catalog["rollback"]
     assert isinstance(rollback, dict)
+
+    def observed_target(
+        role: str, uri: object, digest: object, size: int
+    ) -> dict[str, object]:
+        return {
+            "role": role,
+            "publicUri": uri,
+            "sha256": digest,
+            "size": size,
+            "status": "observed-exact",
+        }
+
     observed_targets = [
         *[
-            {
-                "role": f"release-asset-{index}",
-                "publicUri": asset["publicUri"],
-                "sha256": asset["digest"],
-                "size": asset["sizeBytes"],
-                "status": "observed-exact",
-            }
+            observed_target(
+                f"release-asset-{index}",
+                asset["publicUri"], asset["digest"], asset["sizeBytes"],
+            )
             for index, asset in enumerate(assets, 1)
         ],
-        {
-            "role": "catalog-primary",
-            "publicUri": targets["catalogPrimaryUri"],
-            "sha256": catalog_digest,
-            "size": 256,
-            "status": "observed-exact",
-        },
+        observed_target("catalog-primary", targets["catalogPrimaryUri"], catalog_digest, 256),
+        observed_target(
+            "catalog-primary-signature",
+            protected.catalog_signature_uri(targets["catalogPrimaryUri"]),
+            catalog["signatureDigest"],
+            128,
+        ),
         *[
-            {
-                "role": f"catalog-mirror-{index}",
-                "publicUri": uri,
-                "sha256": catalog_digest,
-                "size": 256,
-                "status": "observed-exact",
-            }
+            row
             for index, uri in enumerate(targets["catalogMirrorUris"], 1)
+            for row in (
+                observed_target(f"catalog-mirror-{index}", uri, catalog_digest, 256),
+                observed_target(
+                    f"catalog-mirror-{index}-signature",
+                    protected.catalog_signature_uri(uri),
+                    catalog["signatureDigest"],
+                    128,
+                ),
+            )
         ],
-        {
-            "role": "catalog-rollback",
-            "publicUri": targets["catalogRollbackUri"],
-            "sha256": rollback["digest"],
-            "size": 256,
-            "status": "observed-exact",
-        },
+        observed_target("catalog-rollback", targets["catalogRollbackUri"], rollback["digest"], 256),
+        observed_target(
+            "catalog-rollback-signature",
+            protected.catalog_signature_uri(targets["catalogRollbackUri"]),
+            rollback["signatureDigest"],
+            128,
+        ),
     ]
     return {
         "schemaVersion": 1,
@@ -4126,7 +4138,12 @@ class StableProtectedReleaseTests(unittest.TestCase):
                 self.assertNotEqual("completed", statuses["publicObservation"])
 
     def test_public_observation_rejects_wrong_catalog_bytes_or_coordinates(self) -> None:
-        for mutation in ("catalog-digest", "run-attempt", "artifact-digest"):
+        for mutation in (
+            "catalog-digest",
+            "catalog-signature-digest",
+            "run-attempt",
+            "artifact-digest",
+        ):
             with self.subTest(mutation=mutation):
                 contract = copy.deepcopy(self.contract)
                 receipt, receipt_path = _configure_publication_receipt(self.root, contract)
@@ -4136,13 +4153,14 @@ class StableProtectedReleaseTests(unittest.TestCase):
                     protected._digest(receipt_path),  # noqa: SLF001
                 )
                 _bind_observation_coordinate(contract, observation)
-                if mutation == "catalog-digest":
-                    primary = next(
+                if mutation in {"catalog-digest", "catalog-signature-digest"}:
+                    role = "catalog-primary" if mutation == "catalog-digest" else "catalog-primary-signature"
+                    target = next(
                         row
                         for row in observation["targets"]  # type: ignore[index]
-                        if row["role"] == "catalog-primary"
+                        if row["role"] == role
                     )
-                    primary["sha256"] = DIGEST_ZERO
+                    target["sha256"] = DIGEST_ZERO
                 elif mutation == "run-attempt":
                     observation["observer"]["runAttempt"] = "2"  # type: ignore[index]
                 else:
@@ -4850,6 +4868,9 @@ class StableProtectedReleaseTests(unittest.TestCase):
         self.assertIn("PublicObservationTransport", observation)
         self.assertIn("transport.exact_digest(", observation)
         self.assertIn("transport.bounded_digest(", observation)
+        self.assertIn("PUBLIC_SIGNATURE_LIMIT", observation)
+        self.assertIn("catalog_signature_uri(", observation)
+        self.assertIn('"role": f"{role}-signature"', observation)
         self.assertNotIn("urllib.request", observation)
         self.assertNotIn("response.read()", observation)
         self.assertIn('github_release_identity(', observation)

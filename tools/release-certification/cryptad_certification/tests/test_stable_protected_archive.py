@@ -166,8 +166,22 @@ class StableProtectedArchiveTests(unittest.TestCase):
                     self._inspect(path)
 
     def test_archive_content_detection_requires_a_valid_nested_container(self) -> None:
+        malformed_directory = (
+            b"PK\x03\x04ordinary bytes"
+            + b"PK\x05\x06"
+            + b"\0" * 6
+            + (1).to_bytes(2, "little")
+            + (1).to_bytes(2, "little")
+            + (46).to_bytes(4, "little")
+            + (0).to_bytes(4, "little")
+            + b"\0\0"
+        )
+        with self.assertRaises(zipfile.BadZipFile):
+            with zipfile.ZipFile(BytesIO(malformed_directory)) as archive:
+                archive.infolist()
         for name, payload in {
             "invalid-zip": b"PK\x03\x04not-a-valid-zip",
+            "invalid-zip-directory": malformed_directory,
             "invalid-gzip": b"\x1f\x8bnot-a-valid-gzip-tar",
             "zero-filled-block": b"\0" * 512,
             "empty-tar-shaped-padding": b"\0" * 10_240,

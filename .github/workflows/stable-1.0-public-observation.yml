@@ -169,7 +169,9 @@ jobs:
           )
           from cryptad_certification.engines.stable_1_0_public_observation import (
               PUBLIC_DOCUMENT_LIMIT,
+              PUBLIC_SIGNATURE_LIMIT,
               PublicObservationTransport,
+              catalog_signature_uri,
               github_annotated_tag_identity,
               github_release_assets,
               github_release_identity,
@@ -288,14 +290,31 @@ jobs:
 
           catalog = receipt["catalog"]
           catalog_rows = [
-              ("catalog-primary", catalog["primary"]["publicUri"], catalog["catalogDigest"]),
+              (
+                  "catalog-primary",
+                  catalog["primary"]["publicUri"],
+                  catalog["catalogDigest"],
+                  catalog["signatureDigest"],
+              ),
               *[
-                  (f"catalog-mirror-{index}", row["publicUri"], catalog["catalogDigest"])
+                  (
+                      f"catalog-mirror-{index}",
+                      row["publicUri"],
+                      catalog["catalogDigest"],
+                      catalog["signatureDigest"],
+                  )
                   for index, row in enumerate(catalog["mirrors"], 1)
               ],
-              ("catalog-rollback", catalog["rollback"]["publicUri"], catalog["rollback"]["digest"]),
+              (
+                  "catalog-rollback",
+                  catalog["rollback"]["publicUri"],
+                  catalog["rollback"]["digest"],
+                  catalog["rollback"]["signatureDigest"],
+              ),
           ]
-          for role, uri, expected_digest in catalog_rows:
+          for role, uri, expected_digest, expected_signature_digest in catalog_rows:
+              if not isinstance(expected_signature_digest, str):
+                  raise SystemExit(f"public {role} detached signature identity is absent")
               observed = transport.bounded_digest(
                   uri,
                   maximum_bytes=PUBLIC_DOCUMENT_LIMIT,
@@ -309,6 +328,25 @@ jobs:
                       "publicUri": uri,
                       "sha256": expected_digest,
                       "size": observed.size,
+                      "status": "observed-exact",
+                  }
+              )
+              signature_uri = catalog_signature_uri(uri)
+              observed_signature = transport.bounded_digest(
+                  signature_uri,
+                  maximum_bytes=PUBLIC_SIGNATURE_LIMIT,
+                  headers=public_headers,
+              )
+              if observed_signature.digest != expected_signature_digest:
+                  raise SystemExit(
+                      f"public {role} detached signature differs from the publication receipt"
+                  )
+              targets.append(
+                  {
+                      "role": f"{role}-signature",
+                      "publicUri": signature_uri,
+                      "sha256": expected_signature_digest,
+                      "size": observed_signature.size,
                       "status": "observed-exact",
                   }
               )

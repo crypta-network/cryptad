@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 API_DOCUMENT_LIMIT = 4 * 1024 * 1024
 PUBLIC_DOCUMENT_LIMIT = 32 * 1024 * 1024
+PUBLIC_SIGNATURE_LIMIT = 1024 * 1024
 _CHUNK_SIZE = 64 * 1024
 
 
@@ -341,6 +342,25 @@ def github_release_identity(
     ):
         raise PublicObservationTransportError("github-release-identity-differs")
     return actual
+
+
+def catalog_signature_uri(catalog_uri: str) -> str:
+    """Return the canonical detached-signature sibling for one Stable catalog URI."""
+
+    canonical = _canonical_https_uri(catalog_uri)
+    if canonical.endswith("/cryptad-app-catalog.properties"):
+        signature_uri = (
+            canonical[: -len("cryptad-app-catalog.properties")]
+            + "cryptad-app-catalog.signature"
+        )
+    elif canonical.endswith("/first-party-catalog.properties"):
+        signature_uri = (
+            canonical[: -len("first-party-catalog.properties")]
+            + "first-party-catalog.sig"
+        )
+    else:
+        raise PublicObservationTransportError("catalog-signature-uri-unsupported")
+    return _canonical_https_uri(signature_uri)
 
 
 def github_annotated_tag_identity(

@@ -292,6 +292,27 @@ class StablePublicObservationTransportTests(unittest.TestCase):
                         commit=COMMIT,
                     )
 
+    def test_catalog_signature_uri_uses_the_canonical_detached_sibling(self) -> None:
+        self.assertEqual(
+            "https://catalog.crypta.network/stable/cryptad-app-catalog.signature",
+            public_observation.catalog_signature_uri(
+                "https://catalog.crypta.network/stable/cryptad-app-catalog.properties"
+            ),
+        )
+        self.assertEqual(
+            "https://catalog.crypta.network/stable/first-party-catalog.sig",
+            public_observation.catalog_signature_uri(
+                "https://catalog.crypta.network/stable/first-party-catalog.properties"
+            ),
+        )
+        with self.assertRaisesRegex(
+            public_observation.PublicObservationTransportError,
+            "unsupported",
+        ):
+            public_observation.catalog_signature_uri(
+                "https://catalog.crypta.network/stable/catalog.json"
+            )
+
     def test_annotated_tag_identity_rejects_substituted_embedded_name(self) -> None:
         tag_sha = "b" * 40
         reference = {

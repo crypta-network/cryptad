@@ -341,7 +341,9 @@ unprotected ref or workflow SHA that differs from the candidate. The protected
 `stable-1-0-public-observation` job has read-only repository
 permissions. It authenticates the selected GA run and artifact, then independently fetches the
 annotated tag, public GitHub Release, all seven GitHub Release assets, the matching artifact-base
-objects, catalog primary, every mirror, and rollback object. It emits
+objects, catalog primary, every mirror, the rollback object, and each catalog object's canonical
+detached-signature sibling. It requires the fetched signature bytes to match the publication
+receipt's primary or rollback signature digest. It emits
 `stable-1.0-protected-release-public-observation-v1.schema.json` bytes containing the publication
 receipt digest, candidate commit, exact product digest, every observed URI/digest/size/status,
 observation time, and a passing redaction result. The receipt deliberately omits its own Actions

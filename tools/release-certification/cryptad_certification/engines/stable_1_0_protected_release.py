@@ -34,6 +34,10 @@ from .stable_1_0_ga_core import (
 )
 from .stable_1_0_rc_core import placeholder_findings
 from .stable_1_0_rc_freeze import freeze_content_digest
+from .stable_1_0_public_observation import (
+    PublicObservationTransportError,
+    catalog_signature_uri,
+)
 from .stable_1_0_supply_chain_archive import inspect_archive_safety
 from .stable_1_0_supply_chain_core import semantic_digest as supply_chain_semantic_digest
 
@@ -3447,9 +3451,20 @@ def _closeout(
                 *contract["publicTargets"]["catalogMirrorUris"],
                 contract["publicTargets"]["catalogRollbackUri"],
             }
+            try:
+                catalog_signature_uris = {
+                    uri: catalog_signature_uri(uri)
+                    for uri in required_catalog_uris
+                }
+            except PublicObservationTransportError:
+                catalog_signature_uris = {}
+                observation_errors.append(
+                    "public observation catalog target has no canonical detached signature URI"
+                )
+            required_catalog_uris.update(catalog_signature_uris.values())
             if not required_catalog_uris.issubset(set(observed_uris)):
                 observation_errors.append(
-                    "public observation omits a catalog primary, mirror, or rollback target"
+                    "public observation omits catalog bytes or a detached signature target"
                 )
             if publication_receipt is not None:
                 receipt_tag = publication_receipt.get("tag")
@@ -3495,13 +3510,25 @@ def _closeout(
                     contract["publicTargets"]["catalogPrimaryUri"]: receipt_catalog.get(
                         "catalogDigest"
                     ),
+                    catalog_signature_uris.get(
+                        contract["publicTargets"]["catalogPrimaryUri"]
+                    ): receipt_catalog.get("signatureDigest"),
                     **{
                         uri: receipt_catalog.get("catalogDigest")
+                        for uri in contract["publicTargets"]["catalogMirrorUris"]
+                    },
+                    **{
+                        catalog_signature_uris.get(uri): receipt_catalog.get(
+                            "signatureDigest"
+                        )
                         for uri in contract["publicTargets"]["catalogMirrorUris"]
                     },
                     contract["publicTargets"]["catalogRollbackUri"]: receipt_rollback.get(
                         "digest"
                     ),
+                    catalog_signature_uris.get(
+                        contract["publicTargets"]["catalogRollbackUri"]
+                    ): receipt_rollback.get("signatureDigest"),
                 }
                 for uri, digest in expected_catalog_digests.items():
                     matches = [
@@ -3514,7 +3541,7 @@ def _closeout(
                     ]
                     if len(matches) != 1:
                         observation_errors.append(
-                            "public observation does not bind exact catalog bytes to every target"
+                            "public observation does not bind exact catalog or signature bytes"
                         )
                         break
             receipt_assets = (
