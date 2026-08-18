@@ -3799,7 +3799,11 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             workflow[validate_start:validate_steps],
         )
         self.assertIn("contents: read", workflow)
-        self.assertIn("contents: write", workflow)
+        publish_start = workflow.index("\n  publish:")
+        publish_steps = workflow.index("\n    steps:", publish_start)
+        publish_permissions = workflow[publish_start:publish_steps]
+        self.assertIn("contents: read", publish_permissions)
+        self.assertNotIn("contents: write", publish_permissions)
         self.assertIn("attestations: read", workflow)
         self.assertIn("attestations: write", workflow)
         self.assertIn("LEUMOR_GITHUB_TOKEN", workflow)
@@ -4313,6 +4317,38 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             'jq -r \'.publicationState // "publication-verification-failed"\'',
             workflow[upload_end:],
         )
+
+    def test_public_observer_receives_one_canonical_publication_receipt_member(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+        observer = (
+            workspace_root() / ".github/workflows/stable-1.0-public-observation.yml"
+        ).read_text(encoding="utf-8")
+        upload_start = workflow.index(
+            "\n      - name: Upload publication receipt or partial-state audit record"
+        )
+        upload_end = workflow.index(
+            "\n      - name: Summarize protected publication",
+            upload_start,
+        )
+        upload = workflow[upload_start:upload_end]
+        receipt_paths = [
+            line.strip()
+            for line in upload.splitlines()
+            if line.strip().endswith("stable-1.0-ga-publication-receipt.json")
+        ]
+
+        self.assertEqual(
+            ["build/stable-1.0-ga-publication-receipt.json"], receipt_paths
+        )
+        self.assertNotIn(
+            "artifacts/legacy/stable-1.0-ga-publication-receipt.json", upload
+        )
+        self.assertIn(
+            'root.rglob("stable-1.0-ga-publication-receipt.json")', observer
+        )
+        self.assertIn("len(candidates) != 1", observer)
 
     def test_public_https_requires_every_resolved_address_to_be_global(self) -> None:
         public = [

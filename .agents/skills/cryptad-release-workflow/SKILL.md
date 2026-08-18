@@ -394,3 +394,23 @@ activate lifecycle state from an unverified/partial release publication. Follow
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.
 - [ ] Release notes updated (if applicable).
+
+## Stable 1.0 protected execution
+
+Before the first real Stable RC freeze or any refreeze, complete the side-effect-free
+`stable-protected-release --mode preflight` contract on the exact protected `release/<build>`
+commit. The RC workflow consumes exact protected PR-288, PR-289, and PR-290 producer coordinates
+plus the exact reviewed contract and passing preflight receipt. It runs
+`stable-protected-release --mode rc-dispatch` after materializing every external input,
+preserves the preflight evaluation time across protected approval instead of treating its
+five-minute clock-skew check as a dispatch TTL, rechecks evidence freshness at dispatch,
+compares the actual protected runtime signing/reviewer/review-policy/catalog labels with the
+reviewed contract, regenerates the policy-selected same-run gates, retains the exact consumed
+preflight receipt in the authenticated RC artifact, and invokes
+`stable-rc` only after those byte and coordinate bindings pass. `stable-rc` remains the only freeze
+authority. GA selects one immutable successful RC attempt,
+runs `stable-ga` without rebuilding, obtains separate evidence and publication approvals, and
+records publication and public observation separately. Public observation runs only through the
+read-only `stable-1.0-public-observation.yml` workflow after publication. A missing protected
+receipt is not replaceable by a repository claim. Follow
+`docs/stable-1.0-protected-release-execution.md` before continuing the merge/tag workflow.

@@ -813,3 +813,25 @@ and never overwrites a conflict. Follow
 ```bash
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
 ```
+
+## Stable 1.0 protected execution contract
+
+For the first protected Stable 1.0 execution, require the versioned non-secret contract in
+`stable-1.0-protected-release-execution-v1.schema.json` and run `stable-protected-release` preflight
+before workflow dispatch. The contract is an orchestrator around the existing `stable-rc` and
+`stable-ga` authorities, not a third release format. It binds exact source, build, producer
+run/attempt/artifact digests, exact dispatch-input bytes, RC-generated gate identities,
+environments, public targets, and authorization. The RC workflow must consume the exact reviewed
+contract, its exact passing preflight receipt, and pass `stable-protected-release --mode
+rc-dispatch` against the materialized input map before invoking `stable-rc`; transport locators are
+never evidence authentication. Bind the actual runtime app-signing, reviewer, review-policy
+ID/version, and catalog-signing labels in that map, and retain the exact RC-consumed preflight
+summary as a byte-checked member of the authenticated RC artifact. Keep native third-party intake
+as an exact `rcInputs` binding while
+the protected run regenerates its production-beta aggregate. Closeout keeps RC
+completion, GA validation, GA publication, public observation, and independent reproducibility as
+separate facts and must never promote a fixture, self-test, missing receipt, or upload inference to
+protected success. Closeout binds the exact freeze record through RC lineage, reconstructs the GA
+promotion identity from the canonical validation-authorization identity, and accepts public
+observation only from the read-only `stable-1.0-public-observation.yml` authority. Follow
+`docs/stable-1.0-protected-release-execution.md`.

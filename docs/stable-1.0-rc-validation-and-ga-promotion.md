@@ -4,6 +4,12 @@ Use this runbook to validate one exact frozen Stable 1.0 release candidate, auth
 promotion, publish those bytes without rebuilding them, and establish the Stable 1.0 maintenance
 baseline.
 
+Use the focused
+[Stable 1.0 protected release execution runbook](stable-1.0-protected-release-execution.md) for
+the complete dispatch contract, protected environments, secret-name inventory, validation-only and
+publication passes, conflict/retry decision table, separate public observation, and machine-readable
+closeout. Missing protected receipts cannot be replaced by this documentation or by a local test.
+
 Stable 1.0 is a product and Platform API milestone. Cryptad continues to use the integer build in
 `build.gradle.kts`, the release branch `release/<build-number>`, and the tag
 `v<build-number>`. Do not create a semantic `1.0.0` project version.

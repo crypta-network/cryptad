@@ -463,21 +463,36 @@ class CollectionIntegrationTest(unittest.TestCase):
 class StableRcOrchestrationIntegrationTest(unittest.TestCase):
     @staticmethod
     def _stable_vulnerability_inputs(root: Path) -> dict[str, str]:
-        summary = root / "stable-1.0-vulnerability-summary.json"
-        write_json(summary, {"schemaVersion": 1})
-        return {"stableVulnerabilitySummary": str(summary)}
+        vulnerability = root / "stable-1.0-vulnerability-summary.json"
+        supply_chain = root / "stable-1.0-supply-chain-summary.json"
+        dependency = root / "stable-1.0-dependency-vulnerability-summary.json"
+        for summary in (vulnerability, supply_chain, dependency):
+            write_json(summary, {"schemaVersion": 1})
+        return {
+            "stableVulnerabilitySummary": str(vulnerability),
+            "supplyChainPromotionSummary": str(supply_chain),
+            "dependencyVulnerabilityPromotionSummary": str(dependency),
+        }
 
     @staticmethod
     def _stable_rc_policies(**values: object) -> dict[str, object]:
         return {
+            "candidateSourceCommit": "a" * 40,
+            "candidateSourceRef": "commit:" + "a" * 40,
             "stableRcFreezeMode": "first-freeze",
             "stableVulnerabilityGovernance": "required",
+            "stableSupplyChainGovernance": "required",
+            "stableDependencyVulnerabilityGovernance": "required",
             **values,
         }
 
     @staticmethod
     def _stable_rc_requirements() -> dict[str, bool]:
-        return {"stableVulnerability": True}
+        return {
+            "stableVulnerability": True,
+            "stableSupplyChain": True,
+            "stableDependencyVulnerability": True,
+        }
 
     @staticmethod
     def _write_production_envelope(
@@ -610,6 +625,47 @@ class StableRcOrchestrationIntegrationTest(unittest.TestCase):
             self.assertEqual(
                 str((root / "stable-1.0-vulnerability-summary.json").resolve()),
                 captured[captured.index("--stable-vulnerability-summary") + 1],
+            )
+            self.assertIn("--require-stable-supply-chain", captured)
+            self.assertEqual(
+                str((root / "stable-1.0-supply-chain-summary.json").resolve()),
+                captured[captured.index("--stable-supply-chain-summary") + 1],
+            )
+            self.assertIn("--require-stable-dependency-vulnerability", captured)
+            self.assertEqual(
+                str(
+                    (
+                        root
+                        / "stable-1.0-dependency-vulnerability-summary.json"
+                    ).resolve()
+                ),
+                captured[
+                    captured.index("--stable-dependency-vulnerability-summary")
+                    + 1
+                ],
+            )
+            self.assertEqual(
+                "prepublication-evaluation",
+                captured[
+                    captured.index(
+                        "--stable-dependency-vulnerability-evidence-phase"
+                    )
+                    + 1
+                ],
+            )
+            self.assertEqual(
+                "a" * 40,
+                captured[
+                    captured.index("--stable-governance-candidate-source-commit")
+                    + 1
+                ],
+            )
+            self.assertEqual(
+                "commit:" + "a" * 40,
+                captured[
+                    captured.index("--stable-governance-candidate-source-ref")
+                    + 1
+                ],
             )
 
     def test_direct_stable_review_production_does_not_require_stable_rc_inputs(self) -> None:
@@ -2602,6 +2658,31 @@ class WorkflowIntegrationTest(unittest.TestCase):
             "Persist authenticated Stable RC freeze lineage",
             workflow,
         )
+        failure_closeout = workflow[workflow.index("\n  retain-failure-closeout:") :]
+        stable_rc_job = workflow[
+            workflow.index("\n  stable-rc:") : workflow.index(
+                "\n  retain-failure-closeout:"
+            )
+        ]
+        self.assertIn("always()", failure_closeout)
+        self.assertIn("- preflight", failure_closeout)
+        self.assertIn("- stable-rc", failure_closeout)
+        self.assertIn("needs.preflight.result", failure_closeout)
+        self.assertIn("needs.stable-rc.result", failure_closeout)
+        self.assertIn("permissions: {}", failure_closeout)
+        self.assertNotIn("environment:", failure_closeout)
+        self.assertNotIn("secrets.", failure_closeout)
+        self.assertNotIn("actions/checkout", failure_closeout)
+        self.assertNotIn("gh api", failure_closeout)
+        self.assertNotIn("${{ inputs.", failure_closeout)
+        self.assertIn(
+            "stable-1-0-rc-failure-${{ github.run_id }}-${{ github.run_attempt }}",
+            failure_closeout,
+        )
+        self.assertIn('"$size" -gt 16384', failure_closeout)
+        self.assertIn("protectedRcOperationCompleted: false", failure_closeout)
+        self.assertNotIn("Write bounded Stable RC failure closeout", stable_rc_job)
+        self.assertNotIn("Retain bounded Stable RC failure closeout", stable_rc_job)
         self.assertIn(
             '"repos/$GITHUB_REPOSITORY/check-runs"',
             workflow,
@@ -2624,14 +2705,14 @@ class WorkflowIntegrationTest(unittest.TestCase):
             'f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"',
             workflow,
         )
-        for field in (
-            "stable_vulnerability_run_id:",
-            "stable_vulnerability_run_attempt:",
-            "stable_vulnerability_artifact_name:",
-            "stable_vulnerability_artifact_digest:",
+        self.assertIn("stable_authority_coordinates:", workflow)
+        for authority in (
+            "stableVulnerability",
+            "stableSupplyChain",
+            "stableDependencyVulnerability",
         ):
-            with self.subTest(field=field):
-                self.assertIn(field, workflow)
+            with self.subTest(authority=authority):
+                self.assertIn(authority, workflow)
         self.assertIn(
             '.path == ".github/workflows/stable-1.0-vulnerability-intake.yml"',
             workflow,
@@ -2649,13 +2730,8 @@ class WorkflowIntegrationTest(unittest.TestCase):
             "stableVulnerabilitySummary: $stable_vulnerability",
             workflow,
         )
-        self.assertIn(
-            "  stable-rc:\n"
-            "    concurrency:\n"
-            "      group: stable-1-0-vulnerability-ledger\n"
-            "      cancel-in-progress: false",
-            workflow,
-        )
+        self.assertIn("group: stable-1-0-release-${{ inputs.integer_build_version }}", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
         upload = workflow.split(
             "- name: Upload redacted Stable RC artifacts", maxsplit=1
         )[1]

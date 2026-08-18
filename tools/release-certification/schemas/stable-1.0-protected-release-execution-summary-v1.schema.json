@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-protected-release-execution-summary-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "executionId",
+    "mode",
+    "status",
+    "promotionReady",
+    "lifecycleState",
+    "contractDigest",
+    "candidateCommit",
+    "releaseId",
+    "buildVersion",
+    "evidenceClassification",
+    "dispatchPackage",
+    "findings",
+    "redaction"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "status": {"const": "pass"},
+        "candidateCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]{0,9}$"}
+      }
+    },
+    {"properties": {"status": {"const": "fail"}}}
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-protected-release-execution-summary"},
+    "executionId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "mode": {"enum": ["preflight", "rc-dispatch", "closeout"]},
+    "status": {"enum": ["pass", "fail"]},
+    "promotionReady": {"type": "boolean"},
+    "lifecycleState": {"enum": ["planned", "preflight-passed", "rc-frozen", "ga-validated", "ga-published", "publicly-observed", "blocked"]},
+    "contractDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "candidateCommit": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{40}$"}]},
+    "releaseId": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}]},
+    "buildVersion": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[1-9][0-9]{0,9}$"}]},
+    "evidenceClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryImplementation",
+        "offlineVerification",
+        "protectedRcOperation",
+        "gaValidation",
+        "gaPublication",
+        "publicObservation",
+        "independentReproducibility"
+      ],
+      "properties": {
+        "repositoryImplementation": {"enum": ["present", "missing"]},
+        "offlineVerification": {"enum": ["pending", "passed", "failed"]},
+        "protectedRcOperation": {"enum": ["not-performed", "partial", "completed"]},
+        "gaValidation": {"enum": ["not-performed", "partial", "completed"]},
+        "gaPublication": {"enum": ["not-performed", "partial", "completed"]},
+        "publicObservation": {"enum": ["not-performed", "partial", "completed"]},
+        "independentReproducibility": {"enum": ["pending", "completed"]}
+      }
+    },
+    "dispatchPackage": {"type": ["object", "null"]},
+    "findings": {"type": "array", "items": {"type": "string", "maxLength": 512}},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "findingCount": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array", "items": {"type": "object"}}
+      }
+    }
+  }
+}

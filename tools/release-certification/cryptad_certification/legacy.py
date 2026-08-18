@@ -824,6 +824,18 @@ def _run_release_certification(context: RunContext) -> tuple[int, Path, Path | N
                 source_ref,
             ]
         )
+        dependency_vulnerability_phase = (
+            "prepublication-evaluation"
+            if context.manifest.policies.get("stableRcFreezeMode")
+            in {"first-freeze", "refreeze"}
+            else "final-publication"
+        )
+        args.extend(
+            [
+                "--stable-dependency-vulnerability-evidence-phase",
+                dependency_vulnerability_phase,
+            ]
+        )
 
     history = _legacy_input_path(context, "releaseHistory", migrated_kind="release-history")
     if history is not None:
@@ -985,6 +997,79 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
         raise ValueError(
             "Stable RC production execution requires authenticated Stable "
             "vulnerability governance"
+        )
+    stable_supply_chain_summary = _legacy_input_path(
+        context, "supplyChainPromotionSummary"
+    )
+    stable_supply_chain_required = (
+        context.manifest.requirements.get("stableSupplyChain") is True
+        or context.manifest.policies.get("stableSupplyChainGovernance")
+        == "required"
+    )
+    stable_dependency_vulnerability_summary = _legacy_input_path(
+        context, "dependencyVulnerabilityPromotionSummary"
+    )
+    stable_dependency_vulnerability_required = (
+        context.manifest.requirements.get("stableDependencyVulnerability") is True
+        or context.manifest.policies.get(
+            "stableDependencyVulnerabilityGovernance"
+        )
+        == "required"
+    )
+    _option_path(
+        args,
+        "--stable-supply-chain-summary",
+        stable_supply_chain_summary,
+    )
+    _flag(
+        args,
+        stable_supply_chain_required,
+        "--require-stable-supply-chain",
+    )
+    _option_path(
+        args,
+        "--stable-dependency-vulnerability-summary",
+        stable_dependency_vulnerability_summary,
+    )
+    _flag(
+        args,
+        stable_dependency_vulnerability_required,
+        "--require-stable-dependency-vulnerability",
+    )
+    if stable_rc_orchestration:
+        if stable_supply_chain_summary is None or not stable_supply_chain_required:
+            raise ValueError(
+                "Stable RC production execution requires authenticated Stable "
+                "supply-chain governance"
+            )
+        if (
+            stable_dependency_vulnerability_summary is None
+            or not stable_dependency_vulnerability_required
+        ):
+            raise ValueError(
+                "Stable RC production execution requires authenticated Stable "
+                "dependency-vulnerability governance"
+            )
+        source_commit = context.manifest.policies.get("candidateSourceCommit")
+        source_ref = context.manifest.policies.get("candidateSourceRef")
+        if (
+            not isinstance(source_commit, str)
+            or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+            or source_ref != f"commit:{source_commit}"
+        ):
+            raise ValueError(
+                "Stable RC production execution requires the exact immutable "
+                "candidate source commit and ref"
+            )
+        args.extend(
+            [
+                "--stable-governance-candidate-source-commit",
+                source_commit,
+                "--stable-governance-candidate-source-ref",
+                source_ref,
+                "--stable-dependency-vulnerability-evidence-phase",
+                "prepublication-evaluation",
+            ]
         )
 
     run_multi_node = context.manifest.execution.get("runMultiNodeSoak") is True or (

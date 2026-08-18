@@ -72,6 +72,7 @@ SELF_TEST_SUITES = (
     "stable-supply-chain",
     "stable-dependency-vulnerability",
     "stable-vulnerability",
+    "stable-protected-release",
     "migration",
 )
 
@@ -99,6 +100,24 @@ def build_parser() -> argparse.ArgumentParser:
     security = subparsers.add_parser("security-response")
     _add_run_arguments(security)
     security.add_argument("action", nargs="?", choices=SECURITY_ACTIONS)
+
+    protected = subparsers.add_parser("stable-protected-release")
+    protected.add_argument("--mode", choices=("preflight", "rc-dispatch", "closeout"))
+    protected.add_argument(
+        "--execution-contract",
+        "--contract",
+        dest="execution_contract",
+        type=Path,
+        help="Versioned, non-secret Stable protected execution contract.",
+    )
+    protected.add_argument(
+        "--rc-input-map",
+        type=Path,
+        help="Closed materialized-input map used only by protected RC dispatch verification.",
+    )
+    protected.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    protected.add_argument("--out-dir", type=Path)
+    protected.add_argument("--self-test", action="store_true")
 
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
@@ -210,6 +229,42 @@ def _validate_stable_rc_manifest(manifest: RunManifest) -> None:
             "stable-rc generates production-beta and its promotion inputs in the same "
             f"protected run; externally supplied same-run inputs are not accepted: {names}"
         )
+    stable_authorities = (
+        (
+            "stableSupplyChain",
+            "stableSupplyChainGovernance",
+            "supplyChainPromotionSummary",
+            "Stable supply-chain",
+        ),
+        (
+            "stableDependencyVulnerability",
+            "stableDependencyVulnerabilityGovernance",
+            "dependencyVulnerabilityPromotionSummary",
+            "Stable dependency-vulnerability",
+        ),
+    )
+    for requirement, policy, input_name, label in stable_authorities:
+        if (
+            manifest.requirements.get(requirement) is not True
+            or manifest.policies.get(policy) != "required"
+            or input_name not in manifest.inputs
+        ):
+            raise ValueError(
+                f"stable-rc requires the authenticated {label} promotion handoff, "
+                f"requirements.{requirement}=true, policies.{policy}=required, "
+                f"and inputs.{input_name}"
+            )
+    source_commit = manifest.policies.get("candidateSourceCommit")
+    source_ref = manifest.policies.get("candidateSourceRef")
+    if (
+        not isinstance(source_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+        or source_ref != f"commit:{source_commit}"
+    ):
+        raise ValueError(
+            "stable-rc requires policies.candidateSourceCommit as the exact lowercase "
+            "40-character commit and policies.candidateSourceRef=commit:<commit>"
+        )
 
 
 def _validate_stable_ga_manifest(manifest: RunManifest) -> None:
@@ -278,10 +333,14 @@ def _validate_stable_ga_manifest(manifest: RunManifest) -> None:
     ) is None:
         raise ValueError("stable-ga requires policies.expectedPreviousProductDigest")
     metadata = manifest.policies.get("metadata")
-    required_metadata = {"catalogPrimaryUri", "catalogMirrorUris"}
+    required_metadata = {
+        "catalogPrimaryUri",
+        "catalogMirrorUris",
+        "catalogRollbackUri",
+    }
     if not isinstance(metadata, dict) or not required_metadata.issubset(metadata):
         raise ValueError(
-            "stable-ga requires public catalog primary and mirror URIs in policies.metadata"
+            "stable-ga requires public catalog primary, mirror, and rollback URIs in policies.metadata"
         )
 
 
@@ -1147,6 +1206,21 @@ def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
         return selftest.run(command)
+    if command == "stable-protected-release":
+        from .engines import stable_1_0_protected_release
+
+        if args.mode is None or args.execution_contract is None:
+            raise ValueError(
+                "stable-protected-release requires --mode and --execution-contract"
+            )
+
+        return stable_1_0_protected_release.run(
+            args.workspace_root.resolve(),
+            args.execution_contract,
+            args.mode,
+            args.out_dir,
+            args.rc_input_map,
+        )
     manifest_path = getattr(args, "manifest", None)
     if manifest_path is None:
         raise ValueError(f"{command} requires --manifest")

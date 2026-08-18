@@ -828,18 +828,7 @@ def _verify_publication(context: RunContext, out: Path) -> int:
         context, "supplyChainPublicObservation", PUBLIC_OBSERVATION_SCHEMA
     )
     summary_errors = promotion_summary_errors(promotion, release)
-    expected_evidence = [
-        {"evidenceId": evidence_id, "status": "pass", "nonWaivable": True}
-        for evidence_id in _evidence_for_mode("evaluate-promotion")
-    ]
-    if promotion.get("evidence") != expected_evidence:
-        summary_errors.append(
-            "publication summary lacks the exact evaluated promotion evidence"
-        )
-    if promotion.get("promotionReady") is not True or promotion.get("mode") != "evaluate-promotion":
-        summary_errors.append(
-            "publication requires a promotion-ready supply-chain summary"
-        )
+    summary_errors.extend(evaluated_promotion_summary_errors(promotion))
     if summary_errors:
         raise ValueError(summary_errors[0])
     if context.manifest.policies.get("artifactBaseUri") != policy.get(
@@ -1078,6 +1067,50 @@ def _evidence_for_mode(mode: str) -> list[str]:
             "stable-supply-chain.release-promotion",
         ],
     }[mode]
+
+
+EVALUATED_PROMOTION_BINDING_FIELDS = (
+    "candidateIdentityDigest",
+    "candidateFreezeDigest",
+    "productDigest",
+    "predecessorReleaseId",
+    "predecessorBuildVersion",
+    "predecessorProductDigest",
+    "packageMatrixDigest",
+    "packageAuthenticationDigest",
+    "selectedSubjectInventoryDigest",
+    "vulnerabilitySummaryDigest",
+    "vulnerabilityReverseIndexDigest",
+    "resolvedDependencySnapshotDigest",
+    "componentInventoryDigest",
+    "subjectInventoryDigest",
+    "sbomDigest",
+    "licenseInventoryDigest",
+    "buildMaterialsDigest",
+    "primaryBuilderReceiptDigest",
+    "verifierBuilderReceiptDigest",
+    "comparisonPlanDigest",
+    "reproducibilityResultDigest",
+)
+
+
+def evaluated_promotion_summary_errors(summary: dict[str, Any]) -> list[str]:
+    """Require the complete evaluate-promotion surface consumed by release gates."""
+
+    errors: list[str] = []
+    if summary.get("mode") != "evaluate-promotion" or summary.get(
+        "promotionReady"
+    ) is not True:
+        errors.append("release requires a promotion-ready evaluated supply-chain summary")
+    expected_evidence = [
+        {"evidenceId": evidence_id, "status": "pass", "nonWaivable": True}
+        for evidence_id in _evidence_for_mode("evaluate-promotion")
+    ]
+    if summary.get("evidence") != expected_evidence:
+        errors.append("release summary lacks the exact evaluated promotion evidence")
+    if any(summary.get(field) is None for field in EVALUATED_PROMOTION_BINDING_FIELDS):
+        errors.append("release summary lacks complete evaluated promotion bindings")
+    return errors
 
 
 def _summary(

@@ -69,6 +69,11 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_vulnerability_mitigation",
         "cryptad_certification.tests.test_stable_vulnerability_workflows",
     ],
+    "stable-protected-release": [
+        "cryptad_certification.tests.test_stable_protected_archive",
+        "cryptad_certification.tests.test_stable_public_observation",
+        "cryptad_certification.tests.test_stable_protected_release",
+    ],
     "migration": ["cryptad_certification.tests.test_core"],
 }
 

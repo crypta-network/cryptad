@@ -27,7 +27,53 @@ python3 tools/release-certification/certify.py stable-lifecycle --self-test
 python3 tools/release-certification/certify.py stable-supply-chain --self-test
 python3 tools/release-certification/certify.py stable-dependency-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-vulnerability --self-test
+python3 tools/release-certification/certify.py stable-protected-release --self-test
 ```
+
+Before dispatching the protected Stable workflows, validate one versioned non-secret execution
+contract:
+
+```bash
+python3 tools/release-certification/certify.py stable-protected-release \
+  --mode preflight \
+  --execution-contract build/protected-release/stable-1.0-protected-release.json
+```
+
+The contract distinguishes authenticated Stable producer evidence, exact caller-supplied RC input
+bytes, and gates that the protected RC run regenerates. Native third-party intake remains an exact
+`rcInputs` file; the production-beta aggregate is regenerated rather than relabeling the native
+bytes. After preflight, bind its exact passing summary as `operationEvidence.preflight`. The RC
+workflow receives that contract and receipt and invokes the same command with
+`--mode rc-dispatch --rc-input-map <path>` after materialization. This second side-effect-free check
+rejects a missing or substituted preflight receipt and any changed evidence byte, Stable producer
+coordinate, known-issues/intake/waiver/exception file, refreeze predecessor, source, release, mode,
+authority class, target, or runtime app-signing/reviewer/review-policy/catalog identity before
+`stable-rc` can freeze the candidate.
+The default preflight summary remains directly beneath
+`build/release-certification/<execution-id>/stable-protected-release/`; default RC-dispatch and
+closeout reports use its `rc-dispatch/` and `closeout/` subdirectories. A bound preflight receipt is
+immutable input evidence. The command rejects any explicit output path that would overwrite the
+contract, RC input map, or a contract-bound evidence file.
+
+After real workflow receipts and an independently produced public-observation record exist, update
+that contract with their exact repository-relative files, immutable workflow/run/attempt/artifact
+coordinates, the canonical GA validation and publication-plan members retained in the protected
+validation artifact, its canonical validation-authorization identity member, and the separate
+read-only observation coordinate, then run the same command with `--mode closeout`. Closeout
+also consumes the unmodified RC and GA-publication Actions ZIP downloads, binds their container
+digests to the authenticated workflow coordinates, and requires the local RC freeze and GA
+publication receipt to be byte-identical to their canonical ZIP members. The RC ZIP also carries
+the exact canonical preflight summary consumed by `rc-dispatch`; bind those bytes as
+`operationEvidence.rcPreflight`. Closeout rejects a regenerated or re-serialized substitute even
+when its decision is semantically equivalent. It consumes the exact RC freeze record bound by the
+authenticated lineage, reconstructs the GA
+promotion identity from the authenticated validation-authorization identity, and requires the
+exact passing preflight receipt before protected completion. The publication plan cannot
+authenticate its own digest. Repository policy selects every upstream schema and canonical Stable
+public target form; contract rows cannot substitute a permissive schema or private/non-global
+target. The command delegates release semantics to `stable-rc` and `stable-ga`; it does not freeze,
+rebuild, publish, or infer remote success. See
+`docs/stable-1.0-protected-release-execution.md`.
 
 Run a CI-safe app-platform collection with the checked-in manifest:
 

@@ -23,6 +23,49 @@ _READ_CHUNK = 1024 * 1024
 _MAX_NESTED_ARCHIVE_BYTES = 100_000_000
 
 
+def inspect_archive_safety(
+    subject_path: Path,
+    *,
+    maximum_entries: int,
+    maximum_expanded_bytes: int,
+    reject_links: bool = True,
+    reject_nested_archives: bool = True,
+) -> dict[str, int]:
+    """Inspect archive bytes with the canonical Stable supply-chain hygiene rules.
+
+    The protected-release preflight intentionally applies a stricter dispatch-package
+    boundary than the general supply-chain payload inspector: symbolic links and nested
+    archives are rejected instead of being represented in a payload manifest.  Keeping
+    this small public adapter here ensures both callers use the same canonical path,
+    duplicate, case-fold collision, metadata, and expansion-bound checks.
+    """
+
+    package_type = _package_type(subject_path, {})
+    try:
+        entries, _metadata, totals = _inspect_path(
+            subject_path,
+            package_type,
+            maximum_entries=maximum_entries,
+            maximum_expanded=maximum_expanded_bytes,
+            detect_nested_by_content=reject_nested_archives,
+        )
+    except ValueError:
+        raise
+    except (
+        EOFError,
+        NotImplementedError,
+        RuntimeError,
+        tarfile.TarError,
+        zipfile.BadZipFile,
+    ) as exc:
+        raise ValueError(f"archive reader rejected input: {type(exc).__name__}") from exc
+    if reject_links and any(row.get("kind") == "symlink" for row in entries):
+        raise ValueError("archive contains a symbolic link")
+    if reject_nested_archives and totals["nestedArchiveDepth"] != 0:
+        raise ValueError("archive contains a nested archive")
+    return totals
+
+
 def build_archive_payload_manifest(
     subject_path: Path,
     subject_key: str,
@@ -190,6 +233,7 @@ def _inspect_path(
     *,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
     totals = {"entryCount": 0, "expandedBytes": 0, "nestedArchiveDepth": 0}
     if package_type in {"app-zip", "jar", "wheel", "zip"}:
@@ -200,6 +244,7 @@ def _inspect_path(
                 depth=0,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     else:
         with tarfile.open(path, mode="r:*") as archive:
@@ -209,6 +254,7 @@ def _inspect_path(
                 depth=0,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     return entries, metadata, totals
 
@@ -220,6 +266,7 @@ def _inspect_zip(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if archive.comment:
         raise ValueError("ZIP archive comment is prohibited")
@@ -246,7 +293,12 @@ def _inspect_zip(
             _safe_symlink_target(path, target)
             row = _entry(path, "symlink", None, 0, "symlink", target)
         else:
-            digest, data = _digest_zip_entry(archive, info, maximum_expanded)
+            digest, data = _digest_zip_entry(
+                archive,
+                info,
+                maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
+            )
             mode_class = canonical_mode_class(mode)
             row = _entry(path, "file", digest, int(info.file_size), mode_class, None)
             _inspect_nested_if_needed(
@@ -256,6 +308,7 @@ def _inspect_zip(
                 depth,
                 maximum_entries,
                 maximum_expanded,
+                detect_nested_by_content,
             )
         entries.append(row)
         metadata.append(
@@ -279,6 +332,7 @@ def _inspect_tar(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     entries: list[dict[str, Any]] = []
     metadata: list[dict[str, Any]] = []
@@ -304,6 +358,7 @@ def _inspect_tar(
                 int(member.size),
                 maximum_expanded,
                 retain=path.lower().endswith(_NESTED_SUFFIXES),
+                detect_archive=detect_nested_by_content,
             )
             row = _entry(
                 path,
@@ -320,6 +375,7 @@ def _inspect_tar(
                 depth,
                 maximum_entries,
                 maximum_expanded,
+                detect_nested_by_content,
             )
         else:
             raise ValueError("TAR archive contains a hardlink or special file")
@@ -346,15 +402,19 @@ def _inspect_nested_if_needed(
     depth: int,
     maximum_entries: int,
     maximum_expanded: int,
+    detect_nested_by_content: bool,
 ) -> None:
-    if data is None or not path.lower().endswith(_NESTED_SUFFIXES):
+    if data is None:
+        return
+    archive_kind = _nested_archive_kind(path, data)
+    if archive_kind is None:
         return
     nested_depth = depth + 1
     if nested_depth > 8:
         raise ValueError("nested archive depth exceeds the closed bound")
     totals["nestedArchiveDepth"] = max(totals["nestedArchiveDepth"], nested_depth)
     stream = io.BytesIO(data)
-    if path.lower().endswith((".jar", ".whl", ".zip")):
+    if archive_kind == "zip":
         with zipfile.ZipFile(stream) as nested:
             _inspect_zip(
                 nested,
@@ -362,6 +422,7 @@ def _inspect_nested_if_needed(
                 depth=nested_depth,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
     else:
         with tarfile.open(fileobj=stream, mode="r:*") as nested:
@@ -371,7 +432,37 @@ def _inspect_nested_if_needed(
                 depth=nested_depth,
                 maximum_entries=maximum_entries,
                 maximum_expanded=maximum_expanded,
+                detect_nested_by_content=detect_nested_by_content,
             )
+
+
+def _nested_archive_kind(path: str, data: bytes) -> str | None:
+    """Identify a supported nested container by declared name or exact bytes."""
+
+    lowered = path.lower()
+    if lowered.endswith((".jar", ".whl", ".zip")):
+        return "zip"
+    if lowered.endswith((".tar", ".tar.gz", ".tgz")):
+        return "tar"
+    return _archive_stream_kind(io.BytesIO(data))
+
+
+def _archive_stream_kind(stream: BinaryIO) -> str | None:
+    """Identify exact ZIP/JAR or TAR/TAR.GZ bytes without trusting a filename."""
+
+    original_position = stream.tell()
+    try:
+        stream.seek(0)
+        if zipfile.is_zipfile(stream):
+            return "zip"
+        stream.seek(0)
+        try:
+            with tarfile.open(fileobj=stream, mode="r:*"):
+                return "tar"
+        except (EOFError, OSError, tarfile.TarError):
+            return None
+    finally:
+        stream.seek(original_position)
 
 
 def _safe_archive_path(value: str) -> str:
@@ -452,7 +543,11 @@ def canonical_mode_class(mode: int) -> str:
 
 
 def _digest_zip_entry(
-    archive: zipfile.ZipFile, info: zipfile.ZipInfo, maximum_expanded: int
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    maximum_expanded: int,
+    *,
+    detect_nested_by_content: bool = False,
 ) -> tuple[str, bytes | None]:
     with archive.open(info, "r") as stream:
         return _digest_stream(
@@ -460,6 +555,7 @@ def _digest_zip_entry(
             int(info.file_size),
             maximum_expanded,
             retain=info.filename.lower().endswith(_NESTED_SUFFIXES),
+            detect_archive=detect_nested_by_content,
         )
 
 
@@ -481,14 +577,15 @@ def _digest_stream(
     maximum_expanded: int,
     *,
     retain: bool = False,
+    detect_archive: bool = False,
 ) -> tuple[str, bytes | None]:
     if expected_size < 0 or expected_size > maximum_expanded:
         raise ValueError("archive entry exceeds the expansion bound")
-    if retain and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
-        raise ValueError("nested archive exceeds the bounded inspection size")
+    if (retain or detect_archive) and expected_size > _MAX_NESTED_ARCHIVE_BYTES:
+        raise ValueError("archive entry exceeds the bounded content inspection size")
     digest = hashlib.sha256()
     total = 0
-    retained = bytearray() if retain else None
+    retained = bytearray() if retain or detect_archive else None
     while True:
         chunk = stream.read(_READ_CHUNK)
         if not chunk:
@@ -501,7 +598,12 @@ def _digest_stream(
             retained.extend(chunk)
     if total != expected_size:
         raise ValueError("archive entry size differs from its declared size")
-    return "sha256:" + digest.hexdigest(), bytes(retained) if retained is not None else None
+    if retained is None:
+        return "sha256:" + digest.hexdigest(), None
+    data = bytes(retained)
+    if not retain and _archive_stream_kind(io.BytesIO(data)) is None:
+        return "sha256:" + digest.hexdigest(), None
+    return "sha256:" + digest.hexdigest(), data
 
 
 def _check_totals(

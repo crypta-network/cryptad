@@ -1,0 +1,508 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-protected-release-execution",
+  "executionId": "stable-1-0-build-REPLACE_ME",
+  "evaluationTime": "1970-01-01T00:00:00Z",
+  "repository": {
+    "identity": "github.com/crypta-network/cryptad",
+    "candidateCommit": "0000000000000000000000000000000000000000",
+    "sourceRef": "refs/heads/release/3",
+    "requireCleanWorkspace": true
+  },
+  "release": {
+    "id": "cryptad-stable-1-0-rc-REPLACE_ME",
+    "integerBuild": "3",
+    "milestone": "Stable 1.0",
+    "freezeMode": "first-freeze",
+    "previousRcFreeze": null
+  },
+  "publicTargets": {
+    "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0/",
+    "catalogPrimaryUri": "https://REPLACE_ME.invalid/catalog/first-party-catalog.properties",
+    "catalogMirrorUris": [
+      "https://REPLACE_MIRROR.invalid/catalog/first-party-catalog.properties"
+    ],
+    "catalogRollbackUri": "https://REPLACE_ME.invalid/catalog/history/REPLACE_ME/first-party-catalog.properties"
+  },
+  "authorities": {
+    "protectedEnvironments": [
+      "stable-1-0-rc",
+      "stable-1-0-ga-evidence",
+      "stable-1-0-ga",
+      "stable-1-0-public-observation"
+    ],
+    "workflowPaths": {
+      "rc": ".github/workflows/stable-1.0-rc-release.yml",
+      "ga": ".github/workflows/stable-1.0-ga-promotion.yml",
+      "publicObservation": ".github/workflows/stable-1.0-public-observation.yml"
+    },
+    "keyIdentities": {
+      "appSigningKeyId": "REPLACE_APP_SIGNING_KEY_ID",
+      "reviewerKeyId": "REPLACE_REVIEWER_KEY_ID",
+      "reviewPolicyId": "REPLACE_REVIEW_POLICY_ID",
+      "reviewPolicyVersion": "REPLACE_REVIEW_POLICY_VERSION",
+      "catalogSigningKeyId": "REPLACE_CATALOG_SIGNING_KEY_ID"
+    }
+  },
+  "upstreamEvidence": [
+    {
+      "id": "app-platform",
+      "kind": "app-platform-smoke",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/app-platform.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "catalog-operations",
+      "kind": "stable-1.0-rc-catalog-operations",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/stable-catalog-operations-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "stable-1.0-rc-catalog-operations-v1.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "hyphanet-interop",
+      "kind": "release-certification",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/hyphanet-interop.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "live-network",
+      "kind": "live-network-beta-smoke",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/live-network-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "multi-node",
+      "kind": "multi-node-beta-soak",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/multi-node-soak-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "network-scale",
+      "kind": "network-scale-soak",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/network-scale-soak-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "performance",
+      "kind": "release-certification",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/performance.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "previous-candidate",
+      "kind": "migrated-v1-previous-candidate",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/previous-candidate-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "release-certification",
+      "kind": "release-certification",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/release-certification.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "release-history",
+      "kind": "migrated-v1-release-history",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/release-history-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "sandbox-provider",
+      "kind": "app-platform-smoke",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/sandbox-provider.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "security-drills",
+      "kind": "production-security-response",
+      "authorityClass": "exact-dispatch-input",
+      "file": {
+        "path": "build/stable-rc-protected-inputs/security-drills-summary.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "stable-dependency-vulnerability",
+      "kind": "stable-1.0-dependency-vulnerability-promotion-summary",
+      "authorityClass": "protected-producer",
+      "file": {
+        "path": "build/protected-inputs/stable-dependency-vulnerability.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "stable-1.0-dependency-vulnerability-promotion-summary-v1.schema.json"
+      },
+      "producer": {
+        "repository": "crypta-network/cryptad",
+        "workflowPath": ".github/workflows/stable-1.0-dependency-vulnerability-evaluation.yml",
+        "workflowCommit": "0000000000000000000000000000000000000000",
+        "runId": "1",
+        "runAttempt": "1",
+        "artifactName": "stable-1.0-dependency-vulnerability-cryptad-stable-1-0-rc-REPLACE_ME-evaluation",
+        "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "environment": "stable-1.0-dependency-vulnerability-evaluation",
+        "conclusion": "success"
+      },
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "protected-operation",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "stable-readiness",
+      "kind": "stable-1.0-readiness",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/stable-readiness.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "stable-supply-chain",
+      "kind": "stable-1.0-supply-chain-promotion-summary",
+      "authorityClass": "protected-producer",
+      "file": {
+        "path": "build/protected-inputs/stable-supply-chain.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "stable-1.0-supply-chain-promotion-summary-v1.schema.json"
+      },
+      "producer": {
+        "repository": "crypta-network/cryptad",
+        "workflowPath": ".github/workflows/stable-1.0-supply-chain.yml",
+        "workflowCommit": "0000000000000000000000000000000000000000",
+        "runId": "1",
+        "runAttempt": "1",
+        "artifactName": "stable-1.0-supply-chain-cryptad-stable-1-0-rc-REPLACE_ME-comparison",
+        "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "environment": "stable-1.0-supply-chain-evidence",
+        "conclusion": "success"
+      },
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "protected-operation",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "stable-vulnerability",
+      "kind": "stable-1.0-vulnerability-summary",
+      "authorityClass": "protected-producer",
+      "file": {
+        "path": "build/protected-inputs/stable-vulnerability.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "stable-1.0-vulnerability-summary-v1.schema.json"
+      },
+      "producer": {
+        "repository": "crypta-network/cryptad",
+        "workflowPath": ".github/workflows/stable-1.0-vulnerability-intake.yml",
+        "workflowCommit": "0000000000000000000000000000000000000000",
+        "runId": "1",
+        "runAttempt": "1",
+        "artifactName": "stable-1.0-vulnerability-protected-ledger-wide-1-1",
+        "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "environment": "stable-1.0-vulnerability-case",
+        "conclusion": "success"
+      },
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "protected-operation",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "third-party-intake",
+      "kind": "production-beta-release",
+      "authorityClass": "rc-generated-prerequisite",
+      "file": {
+        "path": "build/protected-inputs/production-beta-release.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "schema": "evidence-envelope-v2.schema.json"
+      },
+      "producer": null,
+      "releaseId": "cryptad-stable-1-0-rc-REPLACE_ME",
+      "buildVersion": "3",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "classification": "offline-prerequisite",
+      "status": "pass",
+      "promotionReady": true,
+      "nonRelease": false,
+      "fixture": false,
+      "simulatedOnly": false,
+      "testSigning": false,
+      "validUntil": "2026-08-17T00:00:00Z"
+    }
+  ],
+  "rcInputs": {
+    "publicBetaKnownIssues": {
+      "path": "build/stable-rc-protected-inputs/public-beta-known-issues.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": null
+    },
+    "goNoGoWaivers": null,
+    "stableReadinessWaivers": null,
+    "freezeExceptions": null,
+    "thirdPartyIntake": {
+      "path": "build/stable-rc-protected-inputs/third-party-intake-summary.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": null
+    }
+  },
+  "archives": [],
+  "workflowCoordinates": {
+    "rc": null,
+    "gaValidation": null,
+    "gaEvidenceApproval": null,
+    "gaPublication": null,
+    "publicObservation": null
+  },
+  "ga": {
+    "publicationIntent": "validate-only",
+    "publicObservationRequired": true,
+    "selectedRc": null,
+    "validationIdentityDigest": null,
+    "authorization": null
+  },
+  "operationEvidence": {
+    "preflight": null,
+    "rcPreflight": null,
+    "rcFreeze": null,
+    "rcFreezeRecord": null,
+    "rcFreezeArtifact": null,
+    "gaValidation": null,
+    "gaValidationIdentity": null,
+    "gaValidationArtifact": null,
+    "gaPromotionPlan": null,
+    "gaPublication": null,
+    "gaPublicationArtifact": null,
+    "publicObservation": null,
+    "publicObservationArtifact": null,
+    "independentReproducibility": null,
+    "independentReproducibilityArtifact": null
+  },
+  "lifecycleState": "planned",
+  "evidenceClassification": {
+    "repositoryImplementation": "present",
+    "offlineVerification": "pending",
+    "protectedOperation": "not-performed",
+    "publicObservation": "not-performed"
+  },
+  "blockedReason": null
+}
