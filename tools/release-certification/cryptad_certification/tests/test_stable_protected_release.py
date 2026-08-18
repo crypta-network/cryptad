@@ -1564,7 +1564,7 @@ class StableProtectedReleaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.contract = _contract(self.root)
         self.policy = json.loads(
             (workspace_root() / "tools/release-certification/stable-1.0-protected-release-policy.json").read_text(

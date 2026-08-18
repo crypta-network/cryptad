@@ -2713,6 +2713,26 @@ class WorkflowIntegrationTest(unittest.TestCase):
         ):
             with self.subTest(authority=authority):
                 self.assertIn(authority, workflow)
+        materializer = workflow[
+            workflow.index("          materialize_input_file() {") : workflow.index(
+                "          freeze_lineage_anchor_name() {"
+            )
+        ]
+        for bounded_download in (
+            "--connect-timeout 15",
+            "--max-time 180",
+            "--max-filesize 16777216",
+            'local partial="$path.partial"',
+            'rm -f "$partial"',
+            '--output "$partial"',
+            'mv "$partial" "$path"',
+        ):
+            with self.subTest(bounded_download=bounded_download):
+                self.assertIn(bounded_download, materializer)
+        self.assertLess(
+            materializer.index('--output "$partial"'),
+            materializer.index('mv "$partial" "$path"'),
+        )
         self.assertIn(
             '.path == ".github/workflows/stable-1.0-vulnerability-intake.yml"',
             workflow,

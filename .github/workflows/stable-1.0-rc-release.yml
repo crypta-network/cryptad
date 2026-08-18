@@ -892,8 +892,18 @@ jobs:
             case "$value" in
               https://*)
                 local path="build/stable-rc-protected-inputs/$file_name"
+                local partial="$path.partial"
                 mkdir -p "$(dirname "$path")"
-                curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --output "$path" "$value"
+                rm -f "$partial"
+                if ! curl --fail --silent --show-error --location \
+                    --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 \
+                    --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
+                    --output "$partial" "$value"; then
+                  rm -f "$partial"
+                  echo "::error::$description HTTPS source could not be fetched within the closed transfer bounds."
+                  exit 1
+                fi
+                mv "$partial" "$path"
                 chmod 600 "$path"
                 export "$env_name=$path"
                 ;;
