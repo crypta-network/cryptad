@@ -4243,6 +4243,10 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         )
         publication = workflow[publication_start:publication_end]
         self.assertIn("stable-1.0-ga-publication-receipt-candidate.json", publication)
+        release_target_check = publication.index(
+            '"$(jq -r \'.target_commitish\' <<< "$release_json")" '
+            '!= "$INPUT_CANDIDATE_COMMIT"'
+        )
         tag_post_in_publication = publication.index(
             'gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags"'
         )
@@ -4251,6 +4255,8 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         )
         asset_upload = publication.index('gh release upload "$tag"')
         release_patch = publication.index("gh api --method PATCH")
+        self.assertLess(release_target_check, asset_upload)
+        self.assertLess(release_target_check, release_patch)
         preceding_mutation = 0
         for mutation in (
             tag_post_in_publication,

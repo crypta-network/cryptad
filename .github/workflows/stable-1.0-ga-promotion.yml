@@ -3116,8 +3116,9 @@ jobs:
           expected_release_name="Cryptad Stable 1.0 ($tag)"
           if [[ ! "$release_id" =~ ^[1-9][0-9]*$ \
                 || "$(jq -r '.tag_name' <<< "$release_json")" != "$tag" \
-                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" ]]; then
-            echo "::error::GitHub Release identity is malformed or conflicts with the authorized tag."
+                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" \
+                || "$(jq -r '.target_commitish' <<< "$release_json")" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::GitHub Release identity is malformed or conflicts with the authorized tag or commit."
             exit 1
           fi
           if [[ "$(jq -r '.prerelease' <<< "$release_json")" != false ]]; then
