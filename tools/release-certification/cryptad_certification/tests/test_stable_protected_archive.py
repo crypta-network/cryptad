@@ -195,6 +195,21 @@ class StableProtectedArchiveTests(unittest.TestCase):
                 ):
                     self._inspect(path)
 
+    def test_malformed_tar_candidate_honors_the_configured_expansion_bound(self) -> None:
+        valid_pax = self._pax_tar_bytes(global_header=False)
+        payload = valid_pax[:512] + (b"M" * (len(valid_pax) - 512))
+        path = self._outer_archive("malformed-large-pax", "zip", payload)
+
+        with mock.patch.object(
+            archive_safety,
+            "_MAX_NESTED_ARCHIVE_BYTES",
+            len(payload) - 1,
+        ):
+            totals = self._inspect(path, maximum_expanded_bytes=len(payload))
+
+        self.assertEqual(len(payload), totals["expandedBytes"])
+        self.assertEqual(0, totals["nestedArchiveDepth"])
+
     def test_archive_content_detection_requires_a_valid_nested_container(self) -> None:
         malformed_directory = (
             b"PK\x03\x04ordinary bytes"

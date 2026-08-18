@@ -770,37 +770,21 @@ def _is_structurally_valid_tar(
     expected_size: int,
     maximum_expanded: int,
 ) -> bool:
-    """Re-read one TAR candidate and require a complete first logical member.
+    """Stream one TAR candidate and require a complete first logical member.
 
     A PAX extended or global header occupies the first 512-byte record, but ``TarFile.next()``
     consumes its variable-length payload and the following member header before returning a
-    logical member.  The streaming pass therefore treats any checksum-valid first TAR header as a
-    candidate, while this bounded second pass distinguishes complete PAX archives from arbitrary
-    bytes that merely begin with a TAR-shaped record.
+    logical member.  The initial pass therefore treats any checksum-valid first TAR header as a
+    candidate, while this streaming second pass distinguishes complete PAX archives from arbitrary
+    bytes that merely begin with a TAR-shaped record.  Streaming avoids imposing a second staging
+    limit below the caller's reviewed expansion policy.
     """
 
     if expected_size < 0 or expected_size > maximum_expanded:
         raise ValueError("archive entry exceeds the expansion bound")
-    if expected_size > _MAX_NESTED_ARCHIVE_BYTES:
-        raise ValueError("archive entry exceeds the bounded content inspection size")
     try:
-        with reopen() as source, tempfile.SpooledTemporaryFile(
-            max_size=_READ_CHUNK,
-            mode="w+b",
-        ) as staged:
-            total = 0
-            while True:
-                chunk = source.read(_READ_CHUNK)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > expected_size or total > maximum_expanded:
-                    raise ValueError("archive entry expands beyond its declared size")
-                staged.write(chunk)
-            if total != expected_size:
-                raise ValueError("archive entry size differs from its declared size")
-            staged.seek(0)
-            with tarfile.open(fileobj=staged, mode="r:*") as nested:
+        with reopen() as source:
+            with tarfile.open(fileobj=source, mode="r|*") as nested:
                 return nested.next() is not None
     except (EOFError, OSError, tarfile.TarError):
         return False
