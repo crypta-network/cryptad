@@ -164,6 +164,8 @@ class StableProtectedArchiveTests(unittest.TestCase):
         for name, payload in {
             "invalid-zip": b"PK\x03\x04not-a-valid-zip",
             "invalid-gzip": b"\x1f\x8bnot-a-valid-gzip-tar",
+            "zero-filled-block": b"\0" * 512,
+            "empty-tar-shaped-padding": b"\0" * 10_240,
         }.items():
             with self.subTest(name=name):
                 path = self._outer_archive(name, "zip", payload)

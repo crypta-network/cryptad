@@ -457,8 +457,8 @@ def _archive_stream_kind(stream: BinaryIO) -> str | None:
             return "zip"
         stream.seek(0)
         try:
-            with tarfile.open(fileobj=stream, mode="r:*"):
-                return "tar"
+            with tarfile.open(fileobj=stream, mode="r:*") as archive:
+                return "tar" if archive.next() is not None else None
         except (EOFError, OSError, tarfile.TarError):
             return None
     finally:
