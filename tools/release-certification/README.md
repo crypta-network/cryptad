@@ -43,7 +43,9 @@ The contract distinguishes authenticated Stable producer evidence, exact caller-
 bytes, and gates that the protected RC run regenerates. Native third-party intake remains an exact
 `rcInputs` file; the production-beta aggregate is regenerated rather than relabeling the native
 bytes. After preflight, bind its exact passing summary as `operationEvidence.preflight`. The RC
-workflow receives that contract and receipt and invokes the same command with
+workflow first checks the complete contract, exact receipt digest, and canonical passing receipt in
+its credential-free job, before requesting the protected RC environment. It then invokes the same
+command with
 `--mode rc-dispatch --rc-input-map <path>` after materialization. This second side-effect-free check
 rejects a missing or substituted preflight receipt and any changed evidence byte, Stable producer
 coordinate, known-issues/intake/waiver/exception file, refreeze predecessor, source, release, mode,

@@ -122,6 +122,8 @@ jobs:
           INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
           STABLE_AUTHORITY_COORDINATES: ${{ inputs.stable_authority_coordinates }}
           PROTECTED_EXECUTION_CONTRACT: ${{ inputs.protected_execution_contract }}
+          PROTECTED_PREFLIGHT_RECEIPT_JSON: ${{ inputs.protected_preflight_receipt }}
+          PYTHONPATH: tools/release-certification
           REF_PROTECTED: ${{ github.ref_protected }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           DISPATCH_ACTOR: ${{ github.actor }}
@@ -168,6 +170,53 @@ jobs:
              and .release.id == $release_id
              and .release.integerBuild == $build' \
             <<< "$PROTECTED_EXECUTION_CONTRACT" >/dev/null
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+
+          from cryptad_certification.engines.stable_1_0_protected_release import (
+              credential_free_preflight_receipt_errors,
+          )
+
+          def strict_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON field")
+                  result[key] = value
+              return result
+
+          def reject_constant(_value):
+              raise ValueError("non-finite JSON number")
+
+          try:
+              contract = json.loads(
+                  os.environ["PROTECTED_EXECUTION_CONTRACT"],
+                  object_pairs_hook=strict_object,
+                  parse_constant=reject_constant,
+              )
+              receipt_text = os.environ["PROTECTED_PREFLIGHT_RECEIPT_JSON"]
+              receipt = json.loads(
+                  receipt_text,
+                  object_pairs_hook=strict_object,
+                  parse_constant=reject_constant,
+              )
+              if not isinstance(contract, dict) or not isinstance(receipt, dict):
+                  raise ValueError("protected dispatch inputs must be JSON objects")
+          except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+              print("::error::The protected execution contract or preflight receipt is malformed.")
+              raise SystemExit(1)
+          receipt_digest = "sha256:" + hashlib.sha256(receipt_text.encode("utf-8")).hexdigest()
+          errors = credential_free_preflight_receipt_errors(
+              contract,
+              receipt,
+              receipt_digest,
+          )
+          if errors:
+              print("::error::The dispatch does not carry the exact reviewed preflight receipt.")
+              raise SystemExit(1)
+          PY
 
   stable-rc:
     needs: preflight

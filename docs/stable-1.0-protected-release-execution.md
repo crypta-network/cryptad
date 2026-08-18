@@ -189,8 +189,11 @@ changing any planned field, then supply both `protected_execution_contract` and
 `protected_preflight_receipt`. The contract must be the exact compact JSON document whose plan
 digest the receipt authenticated; pass the receipt input as its exact compact JSON, not as a local
 path that will be absent from the hosted runner. Do not reconstruct either document from the other
-dispatch fields.
-Immediately before the freeze, the protected job writes a closed materialized-input map and runs:
+dispatch fields. The credential-free `preflight` job validates the complete contract schema, exact
+receipt byte digest, canonical passing summary, plan digest, dispatch package, evidence
+classification, and redaction result before GitHub can request approval for `stable-1-0-rc`.
+Inside the protected job, immediately before the freeze, the workflow writes a closed
+materialized-input map and runs:
 
 ```bash
 python3 tools/release-certification/certify.py stable-protected-release \

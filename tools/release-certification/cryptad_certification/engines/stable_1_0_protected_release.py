@@ -2487,6 +2487,34 @@ def _preflight_receipt_errors(
     return errors
 
 
+def credential_free_preflight_receipt_errors(
+    contract: dict[str, Any],
+    receipt: dict[str, Any],
+    receipt_digest: str,
+) -> list[str]:
+    """Authenticate a reviewed preflight receipt before protected RC access.
+
+    This deliberately checks only repository-public data.  The protected RC job
+    performs the later materialized-evidence and runtime-identity checks, but it
+    must not be entered unless the dispatch already carries the exact canonical
+    receipt for the complete reviewed execution plan.
+    """
+
+    contract_errors = validate_schema(contract, CONTRACT_SCHEMA)
+    if contract_errors:
+        return [
+            f"protected execution contract: {error}" for error in contract_errors
+        ]
+    binding = contract["operationEvidence"]["preflight"]
+    if not isinstance(binding, dict):
+        return ["protected execution contract omits the reviewed preflight receipt binding"]
+    errors: list[str] = []
+    if receipt_digest != binding["sha256"]:
+        errors.append("preflight receipt digest differs from the protected execution contract")
+    errors.extend(_preflight_receipt_errors(contract, binding, receipt))
+    return sorted(set(errors))
+
+
 def _rc_preflight_receipt_errors(
     contract: dict[str, Any],
     binding: dict[str, Any],

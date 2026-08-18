@@ -71,6 +71,7 @@ SUITE_MODULES = {
     ],
     "stable-protected-release": [
         "cryptad_certification.tests.test_stable_protected_archive",
+        "cryptad_certification.tests.test_stable_protected_rc_preflight",
         "cryptad_certification.tests.test_stable_public_observation",
         "cryptad_certification.tests.test_stable_protected_release",
     ],
