@@ -693,7 +693,7 @@ class StableIndependentReproducibilityTests(unittest.TestCase):
         build_root = REPOSITORY / "build"
         build_root.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(
-            prefix="independent-prepare-", dir=build_root
+            prefix="independent-prepare-", suffix="-workspace", dir=build_root
         ) as temporary:
             root = Path(temporary)
             fixture = SupplyChainFixture(root / "fixture")
