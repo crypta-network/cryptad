@@ -273,12 +273,27 @@ and app-data schema/migration identity. The separately frozen signing identity r
 catalog/release trust evidence. Copied browser SDK and design-system assets are mapped to the
 bundle that contains their bytes.
 
-The protected producer and verifier both run `packageFirstPartyApps`. That task signs, verifies,
-and then invokes the repository's deterministic `AppBundlePackager` for all seven apps. Signing
-key material is available only as protected job environment input and is never placed in an
-argument, handoff, inventory, or public artifact. Ed25519 signing and the canonical stored-ZIP
-writer make the complete signed bundle a `byte-identical` subject; a differing signature sidecar
-or ZIP byte therefore fails comparison instead of being normalized away.
+The existing protected GitHub producer and same-provider verifier both run
+`packageFirstPartyApps`. That task signs, verifies, and then invokes the repository's deterministic
+`AppBundlePackager` for all seven apps. Signing key material is available only as protected job
+environment input and is never placed in an argument, handoff, inventory, or public artifact.
+
+A provider-distinct verifier must not receive that private key. Its sealed recipe instead runs
+`:packageUnsignedFirstPartyAppsForIndependentReproducibility`, which depends only on staging and
+the same deterministic packager, writes to an isolated output directory, and rejects signing or
+catalog sidecars. The verifier stages each output unchanged at the kit-selected release filename
+before sealing its receipt. The app subjects therefore use the explicit
+`crypta-app-signature-envelope-v1` normalized comparison rule: only the exact pair
+`cryptad-app.digests` and `cryptad-app.signature` is absent from the external payload view. A
+partial pair, any other omitted or added entry, or any payload/metadata difference fails. The
+selected candidate's complete signed ZIP, signature receipt, signing identity, inventory digest,
+and catalog linkage remain authenticated. This proves provider-distinct payload reconstruction
+without giving the external provider release-signing authority or treating its unsigned ZIP as a
+published release subject.
+
+The existing same-provider producer/verifier gate still requires every signed app ZIP digest and
+size to match exactly in addition to its normalized payload checks, so PR-292 does not relax that
+protected path.
 
 The signed catalog is a separate release subject. Its catalog digest, detached signature, signer
 id, revision, channel, and entry-to-bundle links must match the freeze. A catalog license display

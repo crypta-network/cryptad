@@ -28,6 +28,7 @@ python3 tools/release-certification/certify.py stable-supply-chain --self-test
 python3 tools/release-certification/certify.py stable-dependency-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-protected-release --self-test
+python3 tools/release-certification/certify.py stable-independent-reproducibility --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -110,6 +111,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-maintenance` | Authenticate, validate, freeze, and prepare one built-once Stable 1.0 maintenance or security-hotfix release. |
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
 | `stable-supply-chain` | Assemble and verify Stable component, SBOM, license, isolated-rebuild, promotion, and publication-observation evidence; the CLI is side-effect-free and the protected workflow has an explicit publication boundary. |
+| `stable-independent-reproducibility` | Prepare a candidate-byte-free verifier kit, authenticate a provider-distinct external build, reuse the Stable comparison authority, and produce protected closeout without publication. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -1135,6 +1137,18 @@ See [Stable 1.0 supply-chain inventory and reproducible-build
 governance](../../docs/stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md) for
 the authority model, component roles, app/catalog coverage, license rules, vulnerability reverse
 index, redaction boundary, and external-verification procedure.
+
+Provider-distinct verification is a separate layer around this same comparison authority. Run
+`stable-independent-reproducibility` in the closed `prepare-verifier-kit`,
+`verify-external-receipt`, `compare`, or `closeout` mode. The checked-in fixture and generic OIDC
+template are non-operational; repository implementation or self-tests cannot complete the gate.
+Operational success requires a concrete reviewed profile and real adapter verification of the raw
+DSSE/Sigstore bundle and bounded verification transcript. The protected coordinator accepts all
+six sealed external core files before it can download primary or selected-RC evidence. The
+checked-in operational external-adapter allowlist is empty; changing a policy flag or supplying a
+self-asserted transcript cannot complete the gate. See
+[Stable 1.0 independent reproducible-build
+verification](../../docs/stable-1.0-independent-reproducible-build-verification.md).
 
 ## Stable 1.0 dependency-vulnerability governance
 
