@@ -1,0 +1,328 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-independent-reproducibility-execution",
+  "executionId": "stable-1-0-independent-REPLACE_ME",
+  "operationMode": "prepare-verifier-kit",
+  "evaluationTime": "1970-01-01T00:00:00Z",
+  "repository": {
+    "identity": "github.com/crypta-network/cryptad",
+    "sourceCommit": "0000000000000000000000000000000000000000",
+    "sourceRef": "commit:0000000000000000000000000000000000000000",
+    "sourceTreeDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "authenticatedSourceArchive": {
+      "origin": "https://codeload.github.com/crypta-network/cryptad/zip/0000000000000000000000000000000000000000",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "format": "source-zip"
+    },
+    "canonicalCommitEpoch": 0
+  },
+  "release": {
+    "id": "cryptad-stable-1-0-rc-REPLACE_ME",
+    "integerBuild": 3,
+    "tag": "v3",
+    "milestone": "Stable 1.0",
+    "candidateClass": "rc"
+  },
+  "selectedRc": {
+    "workflowPath": ".github/workflows/stable-1.0-rc-release.yml",
+    "workflowCommit": "0000000000000000000000000000000000000000",
+    "runId": "1",
+    "runAttempt": 1,
+    "artifactName": "stable-1-0-rc-cryptad-stable-1-0-rc-REPLACE_ME-3-1-1",
+    "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "freezeDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "freezeFileDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "productDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "subjectInventoryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "supplyChain": {
+      "workflowPath": ".github/workflows/stable-1.0-supply-chain.yml",
+      "workflowCommit": "0000000000000000000000000000000000000000",
+      "runId": "2",
+      "runAttempt": 1,
+      "artifactName": "stable-1.0-supply-chain-cryptad-stable-1-0-rc-REPLACE_ME-comparison",
+      "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "policies": {
+    "stableSupplyChainPolicyDigest": "sha256:af0a2481826fd757b6cfd8495fad0556896798d25f9ded124d0af27e1a9a94bd",
+    "independentReproducibilityPolicyDigest": "sha256:f4a252db2378b0c355e1324eddc9891cc447bcaa803b3785b7a4ba359ae1e1ba",
+    "comparisonPlanSchemaDigest": "sha256:1341c3a1325f4993834e4efbba0e6a51d510f5e98c9e3da3f869f1f1cf1f7180",
+    "reproducibilityResultSchemaDigest": "sha256:20a2203da1d64b995644f2d80fbd6ae794fe9a3328d2a203a83aaf36b4355b37"
+  },
+  "authenticatedInputs": {
+    "componentInventoryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "subjectInventoryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "buildMaterialsDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "resolutionSnapshotDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "directInputsDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "sbomDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "authenticatedInputFiles": {
+    "buildMaterials": {
+      "path": "build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-build-materials.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "stable-1.0-build-materials-v1.schema.json",
+      "size": 0
+    },
+    "resolutionSnapshot": {
+      "path": "build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-resolved-dependency-snapshot.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "stable-1.0-resolved-dependency-snapshot-v1.schema.json",
+      "size": 0
+    },
+    "componentInventory": {
+      "path": "build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-component-inventory.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "stable-1.0-component-inventory-v1.schema.json",
+      "size": 0
+    },
+    "subjectInventory": {
+      "path": "build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-release-subject-inventory.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "stable-1.0-release-subject-inventory-v1.schema.json",
+      "size": 0
+    },
+    "sbomBinding": {
+      "path": "build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-sbom-binding.json",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "schema": "stable-1.0-sbom-binding-v1.schema.json",
+      "size": 0
+    }
+  },
+  "buildRecipe": {
+    "buildTasks": [
+      ":assembleCryptadDist",
+      ":distJlinkCryptad",
+      ":distTarCryptad",
+      ":distZipCryptad",
+      ":jpackageInstallerCryptad",
+      ":packageUnsignedFirstPartyAppsForIndependentReproducibility"
+    ],
+    "executionPartitions": [
+      {
+        "executionId": "linux-installers",
+        "runnerOs": "linux",
+        "runnerArchitecture": "amd64",
+        "taskSet": [":jpackageInstallerLinuxAll"],
+        "subjectKeys": ["amd64.deb", "amd64.rpm"]
+      },
+      {
+        "executionId": "macos-installer",
+        "runnerOs": "macos",
+        "runnerArchitecture": "amd64",
+        "taskSet": [":jpackageInstallerCryptad"],
+        "subjectKeys": ["amd64.dmg"]
+      },
+      {
+        "executionId": "portable-apps",
+        "runnerOs": "linux",
+        "runnerArchitecture": "amd64",
+        "taskSet": [
+          ":dist",
+          ":packageUnsignedFirstPartyAppsForIndependentReproducibility"
+        ],
+        "subjectKeys": [
+          "app-feed-reader",
+          "app-profile-publisher",
+          "app-publisher",
+          "app-queue-manager",
+          "app-site-publisher",
+          "app-social-inbox",
+          "app-trust-graph",
+          "core-jar",
+          "portable-tar",
+          "portable-zip",
+          "runtime-image-tar",
+          "runtime-image-zip"
+        ]
+      },
+      {
+        "executionId": "windows-installer",
+        "runnerOs": "windows",
+        "runnerArchitecture": "amd64",
+        "taskSet": [":jpackageInstallerWindowsExeCryptad"],
+        "subjectKeys": ["amd64.exe"]
+      }
+    ],
+    "canonicalEnvironment": {
+      "locale": "C.UTF-8",
+      "timezone": "UTC",
+      "encoding": "UTF-8",
+      "sourceDateEpoch": 0
+    },
+    "jdkIdentityDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "gradleIdentityDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "normalizationPolicyDigest": "sha256:cea04e7522dd0b66752b3a802b5de1875d2da6c9d6b3279f43d7aad380993edc",
+    "requiredSubjectKeys": [
+      "amd64.deb",
+      "amd64.dmg",
+      "amd64.exe",
+      "amd64.rpm",
+      "app-feed-reader",
+      "app-profile-publisher",
+      "app-publisher",
+      "app-queue-manager",
+      "app-site-publisher",
+      "app-social-inbox",
+      "app-trust-graph",
+      "core-jar",
+      "portable-tar",
+      "portable-zip",
+      "runtime-image-tar",
+      "runtime-image-zip"
+    ],
+    "expectedOutputs": [
+      {
+        "subjectKey": "amd64.deb",
+        "fileName": "cryptad-REPLACE_ME-amd64.deb",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-deb-payload-v1"
+      },
+      {
+        "subjectKey": "amd64.dmg",
+        "fileName": "cryptad-REPLACE_ME-amd64.dmg",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-dmg-payload-v2"
+      },
+      {
+        "subjectKey": "amd64.exe",
+        "fileName": "cryptad-REPLACE_ME-amd64.exe",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-exe-payload-v1"
+      },
+      {
+        "subjectKey": "amd64.rpm",
+        "fileName": "cryptad-REPLACE_ME-amd64.rpm",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-rpm-payload-v1"
+      },
+      {
+        "subjectKey": "app-feed-reader",
+        "fileName": "crypta-app-feed-reader-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-profile-publisher",
+        "fileName": "crypta-app-profile-publisher-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-publisher",
+        "fileName": "crypta-app-publisher-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-queue-manager",
+        "fileName": "crypta-app-queue-manager-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-site-publisher",
+        "fileName": "crypta-app-site-publisher-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-social-inbox",
+        "fileName": "crypta-app-social-inbox-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "app-trust-graph",
+        "fileName": "crypta-app-trust-graph-REPLACE_ME.zip",
+        "reproducibilityClass": "normalized-payload-identical",
+        "normalizationRuleId": "crypta-app-signature-envelope-v1"
+      },
+      {
+        "subjectKey": "core-jar",
+        "fileName": "cryptad-REPLACE_ME.jar",
+        "reproducibilityClass": "byte-identical",
+        "normalizationRuleId": "crypta-jar-content-v1"
+      },
+      {
+        "subjectKey": "portable-tar",
+        "fileName": "cryptad-REPLACE_ME.tar.gz",
+        "reproducibilityClass": "byte-identical",
+        "normalizationRuleId": "crypta-tar-content-v1"
+      },
+      {
+        "subjectKey": "portable-zip",
+        "fileName": "cryptad-REPLACE_ME.zip",
+        "reproducibilityClass": "byte-identical",
+        "normalizationRuleId": "crypta-zip-content-v1"
+      },
+      {
+        "subjectKey": "runtime-image-tar",
+        "fileName": "cryptad-runtime-image-REPLACE_ME.tar.gz",
+        "reproducibilityClass": "byte-identical",
+        "normalizationRuleId": "crypta-tar-content-v1"
+      },
+      {
+        "subjectKey": "runtime-image-zip",
+        "fileName": "cryptad-runtime-image-REPLACE_ME.zip",
+        "reproducibilityClass": "byte-identical",
+        "normalizationRuleId": "crypta-zip-content-v1"
+      }
+    ]
+  },
+  "producerAuthority": {
+    "profileId": "github-actions-cryptad-producer-v1",
+    "profileDigest": "sha256:752a561aacb3ede911d046cbc193ecfcf379461c0237807494d941a9b1a9ae0e",
+    "providerId": "github.com",
+    "controlPlaneId": "github.com/actions",
+    "trustDomainId": "github.com/actions",
+    "organizationId": "crypta-network",
+    "requireProviderDistinct": true,
+    "requireControlPlaneDistinct": true,
+    "requireTrustDomainDistinct": true,
+    "requireOrganizationDistinct": true
+  },
+  "expectedVerifierAuthority": {
+    "profileId": "generic-external-oidc-template-v1",
+    "profileDigest": "sha256:94cb9001580bfd934f778530ce6261e0c76cb90fa80ca6a1792c830a3f9e5ed9",
+    "providerId": "replace-me.invalid",
+    "controlPlaneId": "replace-me.invalid/control-plane",
+    "trustDomainId": "replace-me.invalid/trust-domain",
+    "organizationId": "replace-me-organization",
+    "requireProviderDistinct": true,
+    "requireControlPlaneDistinct": true,
+    "requireTrustDomainDistinct": true,
+    "requireOrganizationDistinct": true
+  },
+  "coordinator": null,
+  "verifierKit": null,
+  "externalBuild": {
+    "builderReceipt": null,
+    "authorityAttestation": null,
+    "rawArtifactAttestationBundle": null,
+    "verificationTranscript": null,
+    "outputManifest": null,
+    "outputBundle": null
+  },
+  "comparison": {
+    "primaryBuilderReceipt": null,
+    "primaryAuthorityAttestation": null,
+    "candidateSubjectBundle": null,
+    "comparisonPlan": null,
+    "reproducibilityResult": null
+  },
+  "closeout": {
+    "summary": null,
+    "coordinatorArtifact": null
+  },
+  "lifecycleState": "planned",
+  "evidenceClassification": {
+    "repositoryImplementation": "present",
+    "selfTest": "not-performed",
+    "protectedCoordinator": "not-performed",
+    "externalProviderExecution": "not-authenticated",
+    "publicVerification": "not-performed"
+  },
+  "blockedReason": null,
+  "executionContractDigest": "sha256:c5bb2b4b1bcca88c247c9921d6c6b56858e604aa71c1dfe97f0eec69b01bbacd"
+}

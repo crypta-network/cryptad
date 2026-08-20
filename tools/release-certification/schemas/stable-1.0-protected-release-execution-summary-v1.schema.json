@@ -62,7 +62,16 @@
         "gaValidation": {"enum": ["not-performed", "partial", "completed"]},
         "gaPublication": {"enum": ["not-performed", "partial", "completed"]},
         "publicObservation": {"enum": ["not-performed", "partial", "completed"]},
-        "independentReproducibility": {"enum": ["pending", "completed"]}
+        "independentReproducibility": {
+          "enum": [
+            "pending",
+            "authenticated-external-build",
+            "comparison-failed",
+            "independently-reproduced",
+            "blocked",
+            "partial"
+          ]
+        }
       }
     },
     "dispatchPackage": {"type": ["object", "null"]},

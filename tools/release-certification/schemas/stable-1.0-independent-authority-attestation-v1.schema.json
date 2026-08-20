@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-independent-authority-attestation-v1.schema.json",
+  "title": "Crypta Stable 1.0 independent builder authority attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "tag",
+    "sourceCommit",
+    "executionContractDigest",
+    "verifierKitDigest",
+    "independentReproducibilityPolicyDigest",
+    "providerProfileId",
+    "providerProfileDigest",
+    "builderRole",
+    "authorityIdentity",
+    "pipelineIdentity",
+    "workloadIdentity",
+    "executorIdentity",
+    "artifactAttestation",
+    "rawArtifactAttestationBundle",
+    "verificationTranscript",
+    "receiptProducer",
+    "builderReceipt",
+    "outputManifest",
+    "outputBundle",
+    "buildStartedAt",
+    "buildCompletedAt",
+    "outputsSealedAt",
+    "candidateProductAvailableBeforeBuild",
+    "evidenceClassification",
+    "operational",
+    "attestationDigest"
+  ],
+  "oneOf": [
+    {
+      "required": ["builderRole", "verifierKitDigest", "outputManifest", "outputBundle"],
+      "properties": {
+        "builderRole": {"const": "candidate-producer"},
+        "verifierKitDigest": {"type": "null"},
+        "outputManifest": {"type": "null"},
+        "outputBundle": {"type": "null"}
+      }
+    },
+    {
+      "required": ["builderRole", "verifierKitDigest", "outputManifest", "outputBundle"],
+      "properties": {
+        "builderRole": {"const": "independent-verifier"},
+        "verifierKitDigest": {"$ref": "#/$defs/digest"},
+        "outputManifest": {"$ref": "#/$defs/fileBinding"},
+        "outputBundle": {"$ref": "#/$defs/fileBinding"}
+      }
+    }
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-independent-authority-attestation"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "executionContractDigest": {"$ref": "#/$defs/digest"},
+    "verifierKitDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "independentReproducibilityPolicyDigest": {"$ref": "#/$defs/digest"},
+    "providerProfileId": {"$ref": "#/$defs/identifier"},
+    "providerProfileDigest": {"$ref": "#/$defs/digest"},
+    "builderRole": {"enum": ["candidate-producer", "independent-verifier"]},
+    "authorityIdentity": {"$ref": "#/$defs/authorityIdentity"},
+    "pipelineIdentity": {"$ref": "#/$defs/pipelineIdentity"},
+    "workloadIdentity": {"$ref": "#/$defs/workloadIdentity"},
+    "executorIdentity": {"$ref": "#/$defs/executorIdentity"},
+    "artifactAttestation": {"$ref": "#/$defs/artifactAttestation"},
+    "rawArtifactAttestationBundle": {"$ref": "#/$defs/fileBinding"},
+    "verificationTranscript": {"$ref": "#/$defs/fileBinding"},
+    "receiptProducer": {"$ref": "#/$defs/receiptProducer"},
+    "builderReceipt": {"$ref": "#/$defs/fileBinding"},
+    "outputManifest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+    "outputBundle": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+    "buildStartedAt": {"$ref": "#/$defs/timestamp"},
+    "buildCompletedAt": {"$ref": "#/$defs/timestamp"},
+    "outputsSealedAt": {"$ref": "#/$defs/timestamp"},
+    "candidateProductAvailableBeforeBuild": {"const": false},
+    "evidenceClassification": {"enum": ["fixture", "self-test", "protected-same-provider", "authenticated-external-provider"]},
+    "operational": {"type": "boolean"},
+    "attestationDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$", "maxLength": 512},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 32},
+    "uri": {"type": "string", "format": "uri", "maxLength": 2048},
+    "relativePath": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._+@={}/-]+$", "maxLength": 512},
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.schema\\.json$", "maxLength": 160}]},
+        "size": {"type": "integer", "minimum": 0, "maximum": 100000000000}
+      }
+    },
+    "authorityIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerType", "providerId", "controlPlaneId", "trustDomainId", "organizationId", "accountId", "projectId", "executorControllerId", "executorOwnership", "authorityIdentityDigest"],
+      "properties": {
+        "providerType": {"$ref": "#/$defs/identifier"},
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "controlPlaneId": {"$ref": "#/$defs/identifier"},
+        "trustDomainId": {"$ref": "#/$defs/identifier"},
+        "organizationId": {"$ref": "#/$defs/identifier"},
+        "accountId": {"$ref": "#/$defs/identifier"},
+        "projectId": {"$ref": "#/$defs/identifier"},
+        "executorControllerId": {"$ref": "#/$defs/identifier"},
+        "executorOwnership": {"enum": ["provider-hosted", "organization-controlled", "third-party-controlled"]},
+        "authorityIdentityDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "pipelineIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definitionId", "immutableRevision", "revisionType", "runId", "runAttempt", "jobId", "stageId", "eventType", "pipelineIdentityDigest"],
+      "properties": {
+        "definitionId": {"$ref": "#/$defs/identifier"},
+        "immutableRevision": {"$ref": "#/$defs/digest"},
+        "revisionType": {"enum": ["sha256", "git-commit-sha1-content-binding", "provider-immutable-revision"]},
+        "runId": {"$ref": "#/$defs/identifier"},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "jobId": {"$ref": "#/$defs/identifier"},
+        "stageId": {"$ref": "#/$defs/identifier"},
+        "eventType": {"$ref": "#/$defs/identifier"},
+        "pipelineIdentityDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "workloadIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "issuer", "subject", "audiences", "certificateIdentity", "issuedAt", "expiresAt", "trustRootSetDigest", "claimsDigest"],
+      "properties": {
+        "mechanism": {"enum": ["fixture-only", "oidc-dsse", "sigstore-keyless", "provider-native-workload-identity"]},
+        "issuer": {"$ref": "#/$defs/uri"},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "audiences": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "certificateIdentity": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "issuedAt": {"$ref": "#/$defs/timestamp"},
+        "expiresAt": {"$ref": "#/$defs/timestamp"},
+        "trustRootSetDigest": {"$ref": "#/$defs/digest"},
+        "claimsDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "executorIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runnerOs", "runnerArchitecture", "runnerImageIdentity", "runnerImageDigest", "runnerImageDigestType", "executorPoolId", "selfHosted", "executorIdentityDigest"],
+      "properties": {
+        "runnerOs": {"enum": ["linux", "macos", "windows", "mixed-platform-partitions"]},
+        "runnerArchitecture": {"enum": ["amd64", "arm64", "mixed"]},
+        "runnerImageIdentity": {"$ref": "#/$defs/identifier"},
+        "runnerImageDigest": {"$ref": "#/$defs/digest"},
+        "runnerImageDigestType": {"enum": ["filesystem-image-sha256", "oci-manifest-sha256", "provider-image-sha256", "hosted-runner-release-identity-sha256"]},
+        "executorPoolId": {"$ref": "#/$defs/identifier"},
+        "selfHosted": {"type": "boolean"},
+        "executorIdentityDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "artifactAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "predicateType", "bundleDigest", "statementDigest", "subjectSetDigest", "adapterId", "adapterDigest", "trustRootSetDigest", "transparencyLogEntryDigest", "verificationTranscriptDigest", "verificationStatus", "verifiedAt"],
+      "properties": {
+        "format": {"enum": ["fixture-json", "dsse-in-toto-json", "sigstore-bundle-in-toto-json"]},
+        "predicateType": {"oneOf": [{"const": "fixture-only"}, {"$ref": "#/$defs/uri"}]},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "statementDigest": {"$ref": "#/$defs/digest"},
+        "subjectSetDigest": {"$ref": "#/$defs/digest"},
+        "adapterId": {"$ref": "#/$defs/identifier"},
+        "adapterDigest": {"$ref": "#/$defs/digest"},
+        "trustRootSetDigest": {"$ref": "#/$defs/digest"},
+        "transparencyLogEntryDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "verificationTranscriptDigest": {"$ref": "#/$defs/digest"},
+        "verificationStatus": {"enum": ["fixture-only", "verified", "unverified", "failed"]},
+        "verifiedAt": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "receiptProducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workloadSubject", "softwareName", "softwareVersion", "softwareDigest", "receiptProducerIdentityDigest"],
+      "properties": {
+        "workloadSubject": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "softwareName": {"$ref": "#/$defs/identifier"},
+        "softwareVersion": {"$ref": "#/$defs/identifier"},
+        "softwareDigest": {"$ref": "#/$defs/digest"},
+        "receiptProducerIdentityDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

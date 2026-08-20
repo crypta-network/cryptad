@@ -495,7 +495,8 @@
     "publicObservation": null,
     "publicObservationArtifact": null,
     "independentReproducibility": null,
-    "independentReproducibilityArtifact": null
+    "independentReproducibilityArtifact": null,
+    "independentReproducibilityCoordinate": null
   },
   "lifecycleState": "planned",
   "evidenceClassification": {
