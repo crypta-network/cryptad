@@ -1437,6 +1437,14 @@ jobs:
             exit 1
           fi
           mkdir "$protected_execution_dir"
+          jq -e '.stableSupplyChain
+            | type == "object"
+            and keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]' \
+            <<< "$STABLE_AUTHORITY_COORDINATES" >/dev/null
+          jq -S '.stableSupplyChain | .runAttempt |= tonumber' \
+            <<< "$STABLE_AUTHORITY_COORDINATES" \
+            > "$protected_execution_dir/stable-1.0-selected-rc-supply-chain-coordinate.json"
+          chmod 0444 "$protected_execution_dir/stable-1.0-selected-rc-supply-chain-coordinate.json"
           cp -- "$INPUT_PROTECTED_PREFLIGHT_RECEIPT" "$retained_preflight"
           chmod 0444 "$retained_preflight"
           if [[ ! -f "$retained_preflight" || -L "$retained_preflight" ]] || \
