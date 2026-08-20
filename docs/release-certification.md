@@ -9,6 +9,12 @@ execution contract and `stable-protected-release` preflight/closeout command sur
 `stable-rc` and `stable-ga` authorities; they do not create a new artifact format or publication
 path.
 
+Provider-distinct rebuild verification is documented separately in [Stable 1.0 independent
+reproducible-build verification](stable-1.0-independent-reproducible-build-verification.md). It
+wraps, rather than replaces, the Stable supply-chain comparison authority and keeps repository,
+self-test, protected coordinator, authenticated external-build, and public-verification states
+distinct.
+
 Python 3.12 or newer is required. The public command is
 `tools/release-certification/certify.py`; the previous per-tool Python scripts and shell wrappers
 were removed when evidence envelope v2 became the release contract.
@@ -66,6 +72,7 @@ Each run writes:
   stable-rc/
   stable-ga/
   stable-supply-chain/
+  stable-independent-reproducibility/
   stable-maintenance/
   stable-lifecycle/
 ```
@@ -258,6 +265,15 @@ candidate bytes, so the verifier still finishes its own build before such bytes 
 available. `stable-maintenance` requires the resulting candidate-bound promotion summary for every
 current release and security-hotfix path except the historical follow-up-closure operation, which
 changes no release bytes.
+
+The existing producer and verifier remain same-provider evidence because both run under GitHub
+Actions. The `stable-independent-reproducibility` command adds a provider-neutral identity and
+attestation adapter, a candidate-byte-free verifier kit, protected receipt import, and exact
+selected-RC closeout while reusing this component's comparison plan and result. No external or
+public completion is inferred from fixtures, local files, an Actions upload, or coordinator
+execution alone. Operational success additionally requires a concrete reviewed provider profile
+and real adapter verification of the raw attestation bundle and transcript. Follow [the independent
+verification runbook](stable-1.0-independent-reproducible-build-verification.md).
 
 ## Stable 1.0 dependency-vulnerability component
 

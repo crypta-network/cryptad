@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from ..envelope import validate_envelope
-from ..io import read_json, write_json, write_text
+from ..io import read_json, read_json_bytes, write_json, write_text
 from ..redaction import scan_value
 from ..schema_validation import validate_schema
 from .release_certification_core import (
@@ -31,6 +31,9 @@ from .stable_1_0_ga_core import (
     is_supported_artifact_base_uri,
     is_supported_catalog_publication_uri,
     public_audit_redaction_findings,
+)
+from .stable_1_0_independent_closeout import (
+    independent_receipt_semantic_errors as _independent_receipt_semantic_errors,
 )
 from .stable_1_0_rc_core import placeholder_findings
 from .stable_1_0_rc_freeze import freeze_content_digest
@@ -58,6 +61,11 @@ RC_VALIDATION_SCHEMA = "stable-1.0-rc-validation-v1.schema.json"
 REPRODUCIBILITY_SCHEMA = "stable-1.0-reproducibility-result-v1.schema.json"
 REPRODUCIBILITY_PLAN_SCHEMA = "stable-1.0-rebuild-comparison-plan-v1.schema.json"
 SUPPLY_CHAIN_SUMMARY_SCHEMA = "stable-1.0-supply-chain-promotion-summary-v1.schema.json"
+INDEPENDENT_SUMMARY_SCHEMA = "stable-1.0-independent-reproducibility-summary-v1.schema.json"
+INDEPENDENT_BUILDER_SCHEMA = "stable-1.0-independent-builder-receipt-v2.schema.json"
+INDEPENDENT_AUTHORITY_SCHEMA = "stable-1.0-independent-authority-attestation-v1.schema.json"
+INDEPENDENT_OUTPUT_SCHEMA = "stable-1.0-independent-output-manifest-v1.schema.json"
+INDEPENDENT_POLICY_FILE = "stable-1.0-independent-reproducibility-policy.json"
 POLICY_FILE = "stable-1.0-protected-release-policy.json"
 SUPPLY_CHAIN_POLICY_FILE = "stable-1.0-supply-chain-policy.json"
 SUPPLY_CHAIN_POLICY_SCHEMA = "stable-1.0-supply-chain-policy-v1.schema.json"
@@ -237,7 +245,6 @@ def _github_actions_coordinate_errors(
 
 def _plan_digest(contract: dict[str, Any]) -> str:
     """Digest immutable dispatch inputs without circular closeout state."""
-
     planned = copy.deepcopy(contract)
     planned["workflowCoordinates"] = {
         "rc": None,
@@ -246,7 +253,7 @@ def _plan_digest(contract: dict[str, Any]) -> str:
         "gaPublication": None,
         "publicObservation": None,
     }
-    planned["operationEvidence"] = {
+    operation_evidence = {
         "preflight": None,
         "rcPreflight": None,
         "rcFreeze": None,
@@ -263,6 +270,12 @@ def _plan_digest(contract: dict[str, Any]) -> str:
         "independentReproducibility": None,
         "independentReproducibilityArtifact": None,
     }
+    supplied_evidence = contract.get("operationEvidence")
+    if isinstance(supplied_evidence, dict) and (
+        "independentReproducibilityCoordinate" in supplied_evidence
+    ):
+        operation_evidence["independentReproducibilityCoordinate"] = None
+    planned["operationEvidence"] = operation_evidence
     planned["lifecycleState"] = "planned"
     planned["evidenceClassification"] = {
         "repositoryImplementation": "present",
@@ -1763,6 +1776,454 @@ def _retained_artifact_member(
         return None, [f"{label} archive is unsafe or malformed"]
 
 
+def _independent_checked_in_policies(
+    _workspace: Path,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
+    """Load and authenticate the policy authorities needed to revalidate PR-292 members."""
+    errors: list[str] = []
+    loaded: list[dict[str, Any] | None] = []
+    for name, label in (
+        (SUPPLY_CHAIN_POLICY_FILE, "Stable supply-chain"),
+        (INDEPENDENT_POLICY_FILE, "independent reproducibility"),
+    ):
+        path = Path(__file__).resolve().parents[2] / name
+        try:
+            if path.is_symlink() or not path.is_file():
+                raise OSError("policy path is missing or unsafe")
+            value = read_json(path)
+        except (OSError, ValueError):
+            value = None
+        if not isinstance(value, dict):
+            errors.append(f"checked-in {label} policy is missing or malformed")
+            loaded.append(None)
+            continue
+        if value.get("policyDigest") != supply_chain_semantic_digest(
+            value, "policyDigest"
+        ):
+            errors.append(f"checked-in {label} policy self-digest differs")
+        loaded.append(value)
+    return loaded[0], loaded[1], errors
+
+
+def _independent_authority_semantic_errors(
+    summary: dict[str, Any],
+    primary: dict[str, Any],
+    external: dict[str, Any],
+    primary_authority: dict[str, Any],
+    external_authority: dict[str, Any],
+    external_manifest: dict[str, Any],
+    independent_policy: dict[str, Any],
+    raw_attestation: bytes | None,
+    transcript_bytes: bytes | None,
+    retained_member_digests: dict[str, str],
+) -> list[str]:
+    """Recompute receipt, provider-profile, workload, and retained-byte bindings."""
+
+    errors: list[str] = []
+    profiles = {
+        row.get("profileId"): row
+        for row in independent_policy.get("providerProfiles", [])
+        if isinstance(row, dict)
+    }
+    adapters = {
+        row.get("adapterId"): row
+        for row in independent_policy.get("attestationAdapters", [])
+        if isinstance(row, dict)
+    }
+    for label, authority, receipt, role in (
+        ("primary", primary_authority, primary, "candidate-producer"),
+        ("external", external_authority, external, "independent-verifier"),
+    ):
+        for field, expected in (
+            ("releaseId", summary.get("releaseId")),
+            ("buildVersion", summary.get("buildVersion")),
+            ("tag", summary.get("tag")),
+            ("sourceCommit", summary.get("sourceCommit")),
+            ("executionContractDigest", summary.get("executionContractDigest")),
+            (
+                "independentReproducibilityPolicyDigest",
+                summary.get("independentReproducibilityPolicyDigest"),
+            ),
+            ("builderRole", role),
+        ):
+            if authority.get(field) != expected:
+                errors.append(f"{label} authority attestation {field} differs")
+        binding = authority.get("builderReceipt", {})
+        expected_schema = (
+            "stable-1.0-builder-receipt-v1.schema.json"
+            if role == "candidate-producer"
+            else INDEPENDENT_BUILDER_SCHEMA
+        )
+        if (
+            binding.get("sha256")
+            != retained_member_digests.get(
+                "primaryReceipt" if role == "candidate-producer" else "externalReceipt"
+            )
+            or binding.get("schema") != expected_schema
+        ):
+            errors.append(f"{label} authority receipt binding differs")
+        profile = profiles.get(authority.get("providerProfileId"))
+        identity = authority.get("authorityIdentity", {})
+        pipeline = authority.get("pipelineIdentity", {})
+        workload = authority.get("workloadIdentity", {})
+        artifact = authority.get("artifactAttestation", {})
+        if role == "candidate-producer":
+            selected_supply = summary.get("selectedRc", {}).get("supplyChain", {})
+            expected_definition = (
+                "github.com/crypta-network/cryptad/"
+                f"{selected_supply.get('workflowPath')}@{selected_supply.get('workflowCommit')}"
+            )
+            if (
+                pipeline.get("definitionId") != expected_definition
+                or pipeline.get("runId") != selected_supply.get("runId")
+                or pipeline.get("runAttempt") != selected_supply.get("runAttempt")
+            ):
+                errors.append(
+                    "primary authority differs from the selected RC supply-chain authority"
+                )
+        if (
+            not isinstance(profile, dict)
+            or profile.get("profileDigest") != authority.get("providerProfileDigest")
+            or profile.get("profileDigest")
+            != supply_chain_semantic_digest(profile, "profileDigest")
+        ):
+            errors.append(f"{label} authority provider profile is not policy-authenticated")
+        else:
+            for field in (
+                "providerType",
+                "providerId",
+                "controlPlaneId",
+                "trustDomainId",
+                "organizationId",
+                "accountId",
+                "projectId",
+            ):
+                if identity.get(field) != profile.get(field):
+                    errors.append(f"{label} authority {field} differs from its profile")
+            if workload.get("issuer") != profile.get("issuer") or not set(
+                profile.get("audiences", [])
+            ).issubset(workload.get("audiences", [])):
+                errors.append(f"{label} workload issuer or audience differs from policy")
+            try:
+                if not re.fullmatch(
+                    str(profile.get("subjectPattern")), str(workload.get("subject"))
+                ) or not re.fullmatch(
+                    str(profile.get("pipelineDefinitionPattern")),
+                    str(pipeline.get("definitionId")),
+                ):
+                    errors.append(f"{label} workload or pipeline identity is not policy-authorized")
+            except re.error:
+                errors.append(f"{label} authority profile contains an invalid identity pattern")
+            if pipeline.get("revisionType") != profile.get("pipelineRevisionType"):
+                errors.append(f"{label} pipeline revision is not immutable under its profile")
+            if artifact.get("adapterId") != profile.get("adapterId"):
+                errors.append(f"{label} authority uses a different attestation adapter")
+        adapter = adapters.get(artifact.get("adapterId"))
+        if (
+            not isinstance(adapter, dict)
+            or adapter.get("adapterDigest") != artifact.get("adapterDigest")
+            or adapter.get("adapterDigest")
+            != supply_chain_semantic_digest(adapter, "adapterDigest")
+        ):
+            errors.append(f"{label} attestation adapter is not policy-authenticated")
+        elif (
+            artifact.get("format") != adapter.get("attestationFormat")
+            or artifact.get("predicateType") != adapter.get("predicateType")
+        ):
+            errors.append(f"{label} attestation format or predicate differs from policy")
+        for nested_name, digest_field in (
+            ("authorityIdentity", "authorityIdentityDigest"),
+            ("pipelineIdentity", "pipelineIdentityDigest"),
+            ("executorIdentity", "executorIdentityDigest"),
+            ("receiptProducer", "receiptProducerIdentityDigest"),
+        ):
+            nested = authority.get(nested_name, {})
+            if not isinstance(nested, dict) or nested.get(
+                digest_field
+            ) != supply_chain_semantic_digest(nested, digest_field):
+                errors.append(f"{label} authority {nested_name} self-digest differs")
+        if authority.get("receiptProducer", {}).get("workloadSubject") != workload.get(
+            "subject"
+        ):
+            errors.append(f"{label} receipt producer differs from its workload identity")
+
+    if primary_authority.get("evidenceClassification") != "protected-same-provider" or primary_authority.get(
+        "operational"
+    ) is not False:
+        errors.append("primary authority classification is not the protected producer role")
+    if external_authority.get("evidenceClassification") != "authenticated-external-provider" or external_authority.get(
+        "operational"
+    ) is not True:
+        errors.append("external authority is self-asserted, fixture, or non-operational")
+    external_profile = profiles.get(external_authority.get("providerProfileId"), {})
+    external_adapter = adapters.get(
+        external_authority.get("artifactAttestation", {}).get("adapterId"), {}
+    )
+    if not external_profile.get("operationalAllowed") or not external_adapter.get(
+        "operationalAllowed"
+    ):
+        errors.append("external authority profile or adapter is not approved for operations")
+    if external_authority.get("verifierKitDigest") != summary.get("verifierKitDigest"):
+        errors.append("external authority verifier-kit binding differs")
+    if primary_authority.get("verifierKitDigest") is not None:
+        errors.append("primary authority must not claim receipt of the verifier kit")
+    if (
+        external.get("providerProfileId")
+        != external_authority.get("providerProfileId")
+        or external.get("providerProfileDigest")
+        != external_authority.get("providerProfileDigest")
+    ):
+        errors.append("external receipt and authority provider profile differ")
+    receipt_identity = external.get("authorityIdentity", {})
+    attested_identity = external_authority.get("authorityIdentity", {})
+    for field in (
+        "providerType",
+        "providerId",
+        "controlPlaneId",
+        "trustDomainId",
+        "organizationId",
+        "accountId",
+        "projectId",
+        "executorControllerId",
+        "executorOwnership",
+    ):
+        if receipt_identity.get(field) != attested_identity.get(field):
+            errors.append(f"external receipt and authority {field} differ")
+    if receipt_identity.get("workloadIdentityDigest") != external_authority.get(
+        "workloadIdentity", {}
+    ).get("claimsDigest"):
+        errors.append("external receipt and authority workload identity differ")
+    pipeline = external_authority.get("pipelineIdentity", {})
+    for field in ("runId", "runAttempt", "jobId", "stageId"):
+        if receipt_identity.get(field) != pipeline.get(field):
+            errors.append(f"external receipt and authority pipeline {field} differ")
+    for execution in external.get("builderExecutions", []):
+        if not isinstance(execution, dict):
+            continue
+        for field, expected in (
+            ("pipelineDefinitionId", pipeline.get("definitionId")),
+            ("pipelineRevision", pipeline.get("immutableRevision")),
+            ("runId", pipeline.get("runId")),
+            ("runAttempt", pipeline.get("runAttempt")),
+        ):
+            if execution.get(field) != expected:
+                errors.append(
+                    f"external builder execution {execution.get('executionId')} {field} differs from authority"
+                )
+    manifest_binding = external_authority.get("outputManifest", {})
+    if (
+        manifest_binding.get("sha256")
+        != retained_member_digests.get("externalManifest")
+        or manifest_binding.get("schema") != INDEPENDENT_OUTPUT_SCHEMA
+    ):
+        errors.append("external authority output-manifest binding differs")
+    if external_authority.get("outputBundle", {}).get("sha256") != summary.get(
+        "externalOutputBundleDigest"
+    ):
+        errors.append("external authority output-bundle binding differs")
+    artifact = external_authority.get("artifactAttestation", {})
+    if artifact.get("subjectSetDigest") != external_manifest.get("subjectSetDigest"):
+        errors.append("external artifact attestation subject set differs from manifest")
+    if raw_attestation is None or artifact.get("bundleDigest") != _bytes_digest(
+        raw_attestation or b""
+    ):
+        errors.append("external raw artifact attestation bytes differ")
+    if transcript_bytes is None or artifact.get(
+        "verificationTranscriptDigest"
+    ) != _bytes_digest(transcript_bytes or b""):
+        errors.append("external verification transcript bytes differ")
+    transcript: Any = None
+    if transcript_bytes is not None:
+        try:
+            transcript = read_json_bytes(
+                transcript_bytes, "independent reproducibility verification transcript"
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            transcript = None
+    expected_transcript_fields = {
+        "schemaVersion",
+        "kind",
+        "adapterId",
+        "adapterDigest",
+        "rawBundleDigest",
+        "statementDigest",
+        "subjectSetDigest",
+        "verificationStatus",
+        "issuer",
+        "subject",
+        "audiences",
+        "pipelineDefinitionId",
+        "pipelineRevision",
+        "verifiedAt",
+        "transcriptDigest",
+    }
+    if not isinstance(transcript, dict) or set(transcript) != expected_transcript_fields:
+        errors.append("external verification transcript is not a closed adapter result")
+    else:
+        expected_transcript = {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-independent-attestation-verification-transcript",
+            "adapterId": artifact.get("adapterId"),
+            "adapterDigest": artifact.get("adapterDigest"),
+            "rawBundleDigest": artifact.get("bundleDigest"),
+            "statementDigest": artifact.get("statementDigest"),
+            "subjectSetDigest": artifact.get("subjectSetDigest"),
+            "verificationStatus": "pass",
+            "issuer": external_authority.get("workloadIdentity", {}).get("issuer"),
+            "subject": external_authority.get("workloadIdentity", {}).get("subject"),
+            "audiences": external_authority.get("workloadIdentity", {}).get("audiences"),
+            "pipelineDefinitionId": external_authority.get("pipelineIdentity", {}).get(
+                "definitionId"
+            ),
+            "pipelineRevision": external_authority.get("pipelineIdentity", {}).get(
+                "immutableRevision"
+            ),
+            "verifiedAt": artifact.get("verifiedAt"),
+        }
+        if any(transcript.get(key) != value for key, value in expected_transcript.items()):
+            errors.append("external verification transcript does not bind the retained claims")
+        if transcript.get("transcriptDigest") != supply_chain_semantic_digest(
+            transcript, "transcriptDigest"
+        ):
+            errors.append("external verification transcript self-digest differs")
+    return errors
+
+
+def _independent_manifest_and_plan_errors(
+    summary: dict[str, Any],
+    primary: dict[str, Any],
+    external: dict[str, Any],
+    manifest: dict[str, Any],
+    plan: dict[str, Any],
+    supply_chain_policy: dict[str, Any],
+) -> list[str]:
+    """Derive the retained output manifest and comparison plan from both receipts."""
+
+    errors: list[str] = []
+    for field, expected in (
+        ("releaseId", summary.get("releaseId")),
+        ("buildVersion", summary.get("buildVersion")),
+        ("tag", summary.get("tag")),
+        ("sourceCommit", summary.get("sourceCommit")),
+        ("executionContractDigest", summary.get("executionContractDigest")),
+        ("verifierKitDigest", summary.get("verifierKitDigest")),
+        ("builderReceiptDigest", external.get("receiptDigest")),
+        ("providerProfileDigest", external.get("providerProfileDigest")),
+        ("sourceTreeDigest", external.get("source", {}).get("treeDigest")),
+        ("materialsDigest", external.get("materialsDigest")),
+        ("resolutionSnapshotDigest", external.get("resolutionSnapshotDigest")),
+    ):
+        if manifest.get(field) != expected:
+            errors.append(f"external output manifest {field} differs")
+    if manifest.get("taskSetDigest") != _semantic_digest(external.get("buildTasks")):
+        errors.append("external output manifest task-set digest differs")
+    if manifest.get("canonicalEnvironmentDigest") != _semantic_digest(
+        external.get("canonicalEnvironment")
+    ):
+        errors.append("external output manifest environment digest differs")
+    rules = {
+        row.get("subjectKey"): row
+        for row in supply_chain_policy.get("releaseSubjects", [])
+        if isinstance(row, dict) and row.get("evidencePhase") == "independent-builder"
+    }
+    primary_subjects = {row.get("subjectKey"): row for row in primary.get("subjects", [])}
+    external_subjects = {row.get("subjectKey"): row for row in external.get("subjects", [])}
+    expected_manifest_rows: list[dict[str, Any]] = []
+    expected_plan_rows: list[dict[str, Any]] = []
+    for key in sorted(rules):
+        first = primary_subjects.get(key, {})
+        second = external_subjects.get(key, {})
+        rule = rules[key]
+        expected_manifest_rows.append(
+            {
+                "subjectKey": key,
+                "fileName": second.get("fileName"),
+                "bundlePath": f"subjects/{second.get('fileName')}",
+                "digest": second.get("digest"),
+                "size": second.get("size"),
+                "reproducibilityClass": rule.get("reproducibilityClass"),
+                "normalizationRuleId": rule.get("normalizationRuleId"),
+                "payloadManifestDigest": second.get("payloadManifestDigest"),
+                "extractionEvidenceDigest": second.get("extractionEvidenceDigest"),
+            }
+        )
+        expected_plan_rows.append(
+            {
+                "subjectKey": key,
+                "fileName": first.get("fileName"),
+                "reproducibilityClass": rule.get("reproducibilityClass"),
+                "normalizationRuleId": rule.get("normalizationRuleId"),
+                "primaryDigest": first.get("digest"),
+                "verifierDigest": second.get("digest"),
+                "primarySize": first.get("size"),
+                "verifierSize": second.get("size"),
+                "primaryPayloadManifestDigest": first.get("payloadManifestDigest"),
+                "verifierPayloadManifestDigest": second.get("payloadManifestDigest"),
+            }
+        )
+    if manifest.get("subjects") != expected_manifest_rows:
+        errors.append("external output manifest subjects differ from the retained receipt")
+    projection_fields = (
+        "subjectKey",
+        "fileName",
+        "bundlePath",
+        "digest",
+        "size",
+        "reproducibilityClass",
+        "normalizationRuleId",
+        "payloadManifestDigest",
+        "extractionEvidenceDigest",
+    )
+    projection = [
+        {field: row.get(field) for field in projection_fields}
+        for row in manifest.get("subjects", [])
+        if isinstance(row, dict)
+    ]
+    if manifest.get("subjectSetDigest") != _semantic_digest(projection):
+        errors.append("external output manifest subject-set digest differs")
+    normalized_keys = sorted(
+        key
+        for key, rule in rules.items()
+        if rule.get("reproducibilityClass") == "normalized-payload-identical"
+    )
+    payload_rows = manifest.get("payloadManifests", [])
+    if [row.get("subjectKey") for row in payload_rows if isinstance(row, dict)] != normalized_keys:
+        errors.append("external output manifest payload bindings are incomplete")
+    for row in payload_rows:
+        if not isinstance(row, dict):
+            continue
+        key = row.get("subjectKey")
+        if (
+            row.get("bundlePath") != f"payload-manifests/{key}.json"
+            or row.get("manifestDigest")
+            != external_subjects.get(key, {}).get("payloadManifestDigest")
+        ):
+            errors.append(f"external payload-manifest binding differs for {key}")
+    expected_plan = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-rebuild-comparison-plan",
+        "releaseId": summary.get("releaseId"),
+        "buildVersion": summary.get("buildVersion"),
+        "tag": summary.get("tag"),
+        "sourceCommit": summary.get("sourceCommit"),
+        "sourceRef": summary.get("sourceRef"),
+        "policyDigest": summary.get("stableSupplyChainPolicyDigest"),
+        "componentInventoryDigest": summary.get("componentInventoryDigest"),
+        "subjectInventoryDigest": summary.get("subjectInventoryDigest"),
+        "primaryBuilderReceiptDigest": primary.get("receiptDigest"),
+        "verifierBuilderReceiptDigest": external.get("receiptDigest"),
+        "comparisons": expected_plan_rows,
+        "equalityInferred": False,
+        "planDigest": plan.get("planDigest"),
+    }
+    expected_plan["planDigest"] = supply_chain_semantic_digest(
+        expected_plan, "planDigest"
+    )
+    if plan != expected_plan:
+        errors.append("comparison plan was not derived from the exact retained receipts")
+    return errors
+
+
 def _independent_reproducibility_errors(
     workspace: Path,
     contract: dict[str, Any],
@@ -1770,184 +2231,319 @@ def _independent_reproducibility_errors(
     result_binding: dict[str, Any],
     authenticated_selected_freeze: dict[str, Any] | None,
 ) -> list[str]:
-    """Authenticate independent rebuild evidence through its retained Actions artifact."""
+    """Authenticate provider-distinct PR-292 evidence and its retained artifact."""
 
     errors: list[str] = []
-    supply_rows = [
-        row
-        for row in contract["upstreamEvidence"]
-        if row.get("id") == "stable-supply-chain"
-    ]
-    if len(supply_rows) != 1:
-        return ["independent reproducibility lacks one Stable supply-chain authority"]
-    supply_row = supply_rows[0]
-    producer = supply_row.get("producer")
-    if not isinstance(producer, dict):
-        return ["independent reproducibility lacks authenticated producer coordinates"]
-    expected_contract = policy.get("requiredEvidenceContracts", {}).get(
-        "stable-supply-chain"
+    supply_chain_policy, independent_policy, policy_errors = (
+        _independent_checked_in_policies(workspace)
     )
-    if not isinstance(expected_contract, dict):
-        return ["independent reproducibility lacks repository producer policy"]
-    expected_workflow = expected_contract.get("workflowPath")
-    expected_environment = expected_contract.get("environment")
-    if not isinstance(expected_workflow, str) or not isinstance(
-        expected_environment, str
+    errors.extend(policy_errors)
+    summary_path, summary, binding_errors = _file_binding_errors(
+        workspace, result_binding, "independent reproducibility summary"
+    )
+    errors.extend(binding_errors)
+    if result_binding.get("schema") != INDEPENDENT_SUMMARY_SCHEMA:
+        errors.append("independent reproducibility summary schema differs")
+    if not isinstance(summary, dict):
+        return [*errors, "independent reproducibility summary is missing or malformed"]
+    from .stable_1_0_independent_reproducibility import independent_summary_errors
+
+    summary_schema_valid = not validate_schema(summary, INDEPENDENT_SUMMARY_SCHEMA)
+    errors.extend(independent_summary_errors(summary))
+    if summary.get("status") not in {
+        "authenticated-external-build",
+        "independently-reproduced",
+    } or type(summary.get("operational")) is not bool:
+        errors.append(
+            "independent reproducibility is not authenticated operational success or an authenticated external comparison"
+        )
+    if (
+        summary.get("fixture")
+        or summary.get("selfTest")
+        or summary.get("publicVerification") != "not-performed"
     ):
-        return ["independent reproducibility producer policy is incomplete"]
+        errors.append("fixture, self-test, or public claims cannot satisfy protected closeout")
+    coordinator_claim = summary.get("coordinator")
+    if not isinstance(coordinator_claim, dict):
+        return [*errors, "independent reproducibility lacks protected coordinator identity"]
+    coordinator = contract["operationEvidence"].get(
+        "independentReproducibilityCoordinate"
+    )
+    if not isinstance(coordinator, dict):
+        return [*errors, "independent reproducibility lacks one protected coordinator authority"]
+    for field in (
+        "repository",
+        "workflowPath",
+        "workflowCommit",
+        "runId",
+        "runAttempt",
+        "artifactName",
+        "environment",
+    ):
+        claimed = coordinator_claim.get(field)
+        authenticated = coordinator.get(field)
+        if field == "runAttempt":
+            authenticated = int(authenticated) if str(authenticated).isdigit() else authenticated
+        if claimed != authenticated:
+            errors.append(f"independent reproducibility coordinator {field} differs")
     errors.extend(
         _coordinate_errors(
-            producer,
-            workflow=expected_workflow,
-            environment=expected_environment,
+            coordinator,
+            workflow=".github/workflows/stable-1.0-independent-reproducibility.yml",
+            environment="stable-1.0-independent-reproducibility-external-receipt",
             commit=contract["repository"]["candidateCommit"],
-            label="independent reproducibility",
+            label="independent reproducibility coordinator",
         )
     )
-    expected_artifact_name = (
-        f"stable-1.0-supply-chain-{contract['release']['id']}-comparison"
-    )
-    if producer.get("artifactName") != expected_artifact_name:
-        errors.append("independent reproducibility artifact name is not canonical")
     errors.extend(
         _github_actions_coordinate_errors(
-            producer,
-            label="independent reproducibility",
+            coordinator,
+            label="independent reproducibility coordinator",
+            required_job_name="Authenticate and compare independent rebuild",
         )
     )
-
-    result_path, result, result_errors = _file_binding_errors(
-        workspace,
-        result_binding,
-        "independent reproducibility result",
-    )
-    errors.extend(result_errors)
-    if result_binding.get("schema") != REPRODUCIBILITY_SCHEMA:
-        errors.append(
-            "independent reproducibility result does not declare the canonical schema"
-        )
-    summary_binding = supply_row.get("file")
-    if not isinstance(summary_binding, dict):
-        return [*errors, "independent reproducibility lacks its supply-chain summary"]
-    summary_path, summary, summary_errors = _file_binding_errors(
-        workspace,
-        summary_binding,
-        "independent reproducibility supply-chain summary",
-    )
-    errors.extend(summary_errors)
-    if summary_binding.get("schema") != SUPPLY_CHAIN_SUMMARY_SCHEMA:
-        errors.append(
-            "independent reproducibility supply-chain summary schema differs"
-        )
-
-    archive_binding = contract["operationEvidence"].get(
-        "independentReproducibilityArtifact"
-    )
+    archive_binding = contract["operationEvidence"].get("independentReproducibilityArtifact")
     errors.extend(
         _retained_artifact_member_errors(
             workspace,
             archive_binding,
-            producer,
+            coordinator,
             label="independent reproducibility",
             expected_members={
-                "stable-1.0-reproducibility-report.json": result_binding,
-                "stable-1.0-supply-chain-summary.json": summary_binding,
+                "stable-1.0-independent-reproducibility-summary.json": result_binding,
             },
         )
     )
-    plan_bytes, plan_member_errors = _retained_artifact_member(
+    if isinstance(archive_binding, dict) and coordinator.get("artifactDigest") != archive_binding.get("sha256"):
+        errors.append("independent reproducibility coordinator artifact digest differs")
+
+    member_contract = {
+        "plan": ("stable-1.0-rebuild-comparison-plan.json", REPRODUCIBILITY_PLAN_SCHEMA, "planDigest"),
+        "result": ("stable-1.0-reproducibility-report.json", REPRODUCIBILITY_SCHEMA, "resultDigest"),
+        "primaryReceipt": ("stable-1.0-primary-builder-receipt.json", "stable-1.0-builder-receipt-v1.schema.json", "receiptDigest"),
+        "primaryAuthority": ("stable-1.0-primary-authority-attestation.json", INDEPENDENT_AUTHORITY_SCHEMA, "attestationDigest"),
+        "externalReceipt": ("stable-1.0-independent-builder-receipt.json", INDEPENDENT_BUILDER_SCHEMA, "receiptDigest"),
+        "externalAuthority": ("stable-1.0-independent-builder-attestation.json", INDEPENDENT_AUTHORITY_SCHEMA, "attestationDigest"),
+        "externalManifest": ("stable-1.0-independent-output-manifest.json", INDEPENDENT_OUTPUT_SCHEMA, "manifestDigest"),
+    }
+    members: dict[str, dict[str, Any]] = {}
+    schema_valid_members: set[str] = set()
+    retained_member_digests: dict[str, str] = {}
+    for key, (name, schema_name, digest_field) in member_contract.items():
+        raw, member_errors = _retained_artifact_member(
+            workspace, archive_binding, name, label="independent reproducibility"
+        )
+        errors.extend(member_errors)
+        if raw is None:
+            continue
+        retained_member_digests[key] = _bytes_digest(raw)
+        try:
+            value = read_json_bytes(raw, f"independent reproducibility {name}")
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            errors.append(f"independent reproducibility member {name} is not strict JSON")
+            continue
+        if not isinstance(value, dict):
+            errors.append(f"independent reproducibility member {name} is not an object")
+            continue
+        members[key] = value
+        member_schema_errors = validate_schema(value, schema_name)
+        errors.extend(member_schema_errors)
+        if not member_schema_errors:
+            schema_valid_members.add(key)
+        if value.get(digest_field) != supply_chain_semantic_digest(value, digest_field):
+            errors.append(f"independent reproducibility member {name} self-digest differs")
+    raw_attestation, raw_errors = _retained_artifact_member(
         workspace,
         archive_binding,
-        "stable-1.0-rebuild-comparison-plan.json",
+        "stable-1.0-independent-raw-artifact-attestation.bundle",
         label="independent reproducibility",
     )
-    errors.extend(plan_member_errors)
-    plan: dict[str, Any] | None = None
-    if plan_bytes is not None:
+    errors.extend(raw_errors)
+    transcript_bytes, transcript_errors = _retained_artifact_member(
+        workspace,
+        archive_binding,
+        "stable-1.0-independent-attestation-verification-transcript.json",
+        label="independent reproducibility",
+    )
+    errors.extend(transcript_errors)
+    selected_supply_bytes, selected_supply_errors = _retained_artifact_member(
+        workspace, archive_binding, "stable-1.0-selected-rc-supply-chain-coordinate.json",
+        label="independent reproducibility")
+    errors.extend(selected_supply_errors)
+    selected_supply: dict[str, Any] | None = None
+    if selected_supply_bytes is not None:
         try:
-            loaded_plan = json.loads(plan_bytes)
-            if isinstance(loaded_plan, dict):
-                plan = loaded_plan
-            else:
-                errors.append("independent reproducibility plan is not an object")
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            errors.append("independent reproducibility plan is malformed JSON")
+            loaded_supply = read_json_bytes(selected_supply_bytes,
+                "independent reproducibility selected RC supply-chain coordinate")
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            loaded_supply = None
+        if isinstance(loaded_supply, dict) and set(loaded_supply) == {
+            "runId", "runAttempt", "artifactName", "artifactDigest"}:
+            selected_supply = loaded_supply
+        else:
+            errors.append("selected RC supply-chain coordinate is malformed")
 
+    plan = members.get("plan")
+    result = members.get("result")
     release_identity = {
         "releaseId": contract["release"]["id"],
         "buildVersion": int(contract["release"]["integerBuild"]),
         "tag": f"v{contract['release']['integerBuild']}",
         "sourceCommit": contract["repository"]["candidateCommit"],
         "sourceRef": f"commit:{contract['repository']['candidateCommit']}",
-        "policyDigest": expected_contract.get("policyDigest"),
+        "policyDigest": summary.get("stableSupplyChainPolicyDigest"),
     }
-    if plan is not None:
-        errors.extend(validate_schema(plan, REPRODUCIBILITY_PLAN_SCHEMA))
-        if plan.get("planDigest") != supply_chain_semantic_digest(
-            plan, "planDigest"
-        ):
-            errors.append("independent reproducibility plan self-digest differs")
-        for field, expected in release_identity.items():
-            if plan.get(field) != expected:
-                errors.append(f"independent reproducibility plan {field} differs")
-
-    if isinstance(result, dict) and plan is not None:
-        from .stable_1_0_supply_chain_reproducibility import (
-            reproducibility_result_errors,
-        )
+    if plan is not None and result is not None:
+        from .stable_1_0_supply_chain_reproducibility import reproducibility_result_errors
 
         errors.extend(reproducibility_result_errors(result, release_identity, plan))
         if result.get("status") != "pass" or result.get("unexplainedDifferences") != 0:
-            errors.append("independent reproducibility result is not an exact passing comparison")
-    elif not isinstance(result, dict):
-        errors.append("independent reproducibility result is missing or malformed")
-
-    if isinstance(summary, dict):
-        from .stable_1_0_supply_chain import evaluated_promotion_summary_errors
-        from .stable_1_0_supply_chain_reproducibility import promotion_summary_errors
-
-        errors.extend(validate_schema(summary, SUPPLY_CHAIN_SUMMARY_SCHEMA))
-        errors.extend(promotion_summary_errors(summary, release_identity))
-        errors.extend(evaluated_promotion_summary_errors(summary))
-        if authenticated_selected_freeze is None:
-            errors.append(
-                "independent reproducibility lacks an authenticated selected RC freeze"
-            )
-        else:
-            if summary.get("candidateFreezeDigest") != authenticated_selected_freeze.get(
-                "freezeFileDigest"
-            ):
-                errors.append(
-                    "independent reproducibility summary binds a different selected RC freeze"
-                )
-            if summary.get("productDigest") != authenticated_selected_freeze.get(
-                "productDistributionDigest"
-            ):
-                errors.append(
-                    "independent reproducibility summary binds different selected RC product bytes"
-                )
-        if plan is not None and isinstance(result, dict):
-            for summary_field, expected in (
-                ("comparisonPlanDigest", plan.get("planDigest")),
-                (
-                    "primaryBuilderReceiptDigest",
-                    result.get("primaryBuilderReceiptDigest"),
-                ),
-                (
-                    "verifierBuilderReceiptDigest",
-                    result.get("verifierBuilderReceiptDigest"),
-                ),
-                ("reproducibilityResultDigest", result.get("resultDigest")),
-            ):
-                if summary.get(summary_field) != expected:
-                    errors.append(
-                        f"independent reproducibility summary {summary_field} differs"
-                    )
+            errors.append("independent reproducibility comparison did not pass exactly")
     else:
-        errors.append("independent reproducibility supply-chain summary is malformed")
-    if result_path is None or summary_path is None:
+        errors.append("independent reproducibility lacks its plan or result")
+    digest_bindings = {
+        "comparisonPlanDigest": ("plan", "planDigest"),
+        "reproducibilityResultDigest": ("result", "resultDigest"),
+        "primaryBuilderReceiptDigest": ("primaryReceipt", "receiptDigest"),
+        "primaryAuthorityAttestationDigest": ("primaryAuthority", "attestationDigest"),
+        "externalBuilderReceiptDigest": ("externalReceipt", "receiptDigest"),
+        "externalAuthorityAttestationDigest": ("externalAuthority", "attestationDigest"),
+        "externalOutputManifestDigest": ("externalManifest", "manifestDigest"),
+    }
+    for summary_field, (member_key, member_field) in digest_bindings.items():
+        if summary.get(summary_field) != members.get(member_key, {}).get(member_field):
+            errors.append(f"independent reproducibility summary {summary_field} differs")
+    external_authority = members.get("externalAuthority", {})
+    if (
+        external_authority.get("builderRole") != "independent-verifier"
+        or external_authority.get("evidenceClassification") != "authenticated-external-provider"
+        or external_authority.get("operational") is not True
+    ):
+        errors.append("external authority member is self-asserted, fixture, or non-operational")
+    artifact_attestation = external_authority.get("artifactAttestation", {})
+    if raw_attestation is None or artifact_attestation.get("bundleDigest") != _bytes_digest(raw_attestation):
+        errors.append("external raw artifact attestation bytes differ")
+    if transcript_bytes is None or artifact_attestation.get("verificationTranscriptDigest") != _bytes_digest(transcript_bytes or b""):
+        errors.append("external verification transcript bytes differ")
+    elif transcript_bytes is not None:
+        try:
+            transcript = read_json_bytes(
+                transcript_bytes,
+                "independent reproducibility verification transcript",
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            transcript = None
+        if not isinstance(transcript, dict) or transcript.get("verificationStatus") != "pass":
+            errors.append("external verification transcript is malformed or did not pass")
+    if members.get("primaryAuthority", {}).get("builderRole") != "candidate-producer":
+        errors.append("primary authority member has the wrong role")
+    summary_supply = summary.get("selectedRc", {}).get("supplyChain")
+    summary_supply_projection = (
+        {field: summary_supply.get(field) for field in selected_supply}
+        if isinstance(summary_supply, dict) and isinstance(selected_supply, dict) else None)
+    if selected_supply != summary_supply_projection:
+        errors.append("selected RC retained a different supply-chain authority")
+    if (
+        summary_schema_valid
+        and isinstance(supply_chain_policy, dict)
+        and isinstance(independent_policy, dict)
+        and all(
+            key in schema_valid_members
+            for key in (
+                "plan",
+                "primaryReceipt",
+                "primaryAuthority",
+                "externalReceipt",
+                "externalAuthority",
+                "externalManifest",
+            )
+        )
+    ):
+        primary_receipt = members["primaryReceipt"]
+        external_receipt = members["externalReceipt"]
+        primary_authority = members["primaryAuthority"]
+        external_authority = members["externalAuthority"]
+        external_manifest = members["externalManifest"]
+        errors.extend(
+            _independent_receipt_semantic_errors(
+                summary,
+                primary_receipt,
+                external_receipt,
+                supply_chain_policy,
+                independent_policy,
+            )
+        )
+        errors.extend(
+            _independent_authority_semantic_errors(
+                summary,
+                primary_receipt,
+                external_receipt,
+                primary_authority,
+                external_authority,
+                external_manifest,
+                independent_policy,
+                raw_attestation,
+                transcript_bytes,
+                retained_member_digests,
+            )
+        )
+        errors.extend(
+            _independent_manifest_and_plan_errors(
+                summary,
+                primary_receipt,
+                external_receipt,
+                external_manifest,
+                members["plan"],
+                supply_chain_policy,
+            )
+        )
+        try:
+            from .stable_1_0_independent_reproducibility import (
+                _independence_evaluation,
+            )
+
+            expected_independence, independence_errors = _independence_evaluation(
+                primary_authority,
+                external_authority,
+                {
+                    "expectedVerifierAuthority": {
+                        "requireProviderDistinct": True,
+                        "requireControlPlaneDistinct": True,
+                        "requireTrustDomainDistinct": True,
+                        "requireOrganizationDistinct": bool(
+                            summary.get("providerIndependence", {}).get(
+                                "organizationIndependenceRequired"
+                            )
+                        ),
+                    }
+                },
+            )
+            errors.extend(independence_errors)
+            if summary.get("providerIndependence") != expected_independence:
+                errors.append(
+                    "provider-independence evaluation was not derived from retained authorities"
+                )
+        except (KeyError, TypeError, ValueError):
+            errors.append("retained provider authorities cannot be independently evaluated")
+    if authenticated_selected_freeze is None:
+        errors.append("independent reproducibility lacks an authenticated selected RC freeze")
+    else:
+        selected = summary.get("selectedRc", {})
+        if selected.get("freezeFileDigest") != authenticated_selected_freeze.get("freezeFileDigest"):
+            errors.append("independent reproducibility binds a different selected RC freeze")
+        if selected.get("productDigest") != authenticated_selected_freeze.get("productDistributionDigest"):
+            errors.append("independent reproducibility binds different selected RC product bytes")
+    timing = summary.get("timing", {})
+    try:
+        if _timestamp(str(timing.get("externalOutputsSealedAt"))) >= _timestamp(
+            str(timing.get("candidateInputsAvailableAt"))
+        ):
+            errors.append("candidate inputs were available before external outputs were sealed")
+    except ValueError:
+        errors.append("independent reproducibility withholding timing is malformed")
+    if summary_path is None:
         errors.append("independent reproducibility extracted evidence is incomplete")
-    return errors
+    return sorted(set(errors))
 
 
 def _ga_publication_receipt_errors(
@@ -3614,6 +4210,11 @@ def _closeout(
             statuses["publicObservation"] = "completed"
 
     reproducibility = contract["operationEvidence"]["independentReproducibility"]
+    if reproducibility is None and (
+        contract["operationEvidence"]["independentReproducibilityArtifact"] is not None
+        or contract["operationEvidence"].get("independentReproducibilityCoordinate") is not None
+    ):
+        errors.append("independent reproducibility artifact or coordinate lacks its summary")
     if reproducibility is not None:
         reproducibility_errors = _independent_reproducibility_errors(
             workspace,
@@ -3624,7 +4225,26 @@ def _closeout(
         )
         errors.extend(reproducibility_errors)
         if not reproducibility_errors:
-            statuses["independentReproducibility"] = "completed"
+            statuses["independentReproducibility"] = "independently-reproduced"
+        else:
+            _summary_path, independent_summary, _summary_errors = _file_binding_errors(
+                workspace,
+                reproducibility,
+                "independent reproducibility summary status",
+            )
+            if (
+                isinstance(independent_summary, dict)
+                and not validate_schema(independent_summary, INDEPENDENT_SUMMARY_SCHEMA)
+                and independent_summary.get("status")
+                in {
+                    "pending",
+                    "authenticated-external-build",
+                    "comparison-failed",
+                    "blocked",
+                    "partial",
+                }
+            ):
+                statuses["independentReproducibility"] = independent_summary["status"]
     claimed_state = contract["lifecycleState"]
     state_status = {
         "rc-frozen": statuses["protectedRcOperation"],

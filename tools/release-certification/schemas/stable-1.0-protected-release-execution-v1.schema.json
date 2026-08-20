@@ -173,7 +173,8 @@
         "publicObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
         "publicObservationArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
         "independentReproducibility": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
-        "independentReproducibilityArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+        "independentReproducibilityArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "independentReproducibilityCoordinate": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/producer"}]}
       }
     },
     "lifecycleState": {

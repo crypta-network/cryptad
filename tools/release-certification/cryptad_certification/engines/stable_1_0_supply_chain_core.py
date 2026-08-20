@@ -1481,6 +1481,12 @@ def payload_manifest_errors(manifest: dict[str, Any], policy: dict[str, Any]) ->
         errors.append("payload manifest entries are not sorted")
     if manifest.get("ignoredPaths") != []:
         errors.append("payload manifest contains prohibited ignored paths")
+    if rule_id == "crypta-app-signature-envelope-v1" and any(
+        row.get("path") in {"cryptad-app.digests", "cryptad-app.signature"}
+        for row in entries
+        if isinstance(row, dict)
+    ):
+        errors.append("app payload manifest includes the producer signing envelope")
     return errors
 
 

@@ -1,3 +1,4 @@
+import cryptad.DeterministicBootstrapJar
 import cryptad.selectStableJava25
 import java.io.OutputStream
 import java.nio.ByteBuffer
@@ -7,8 +8,6 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Locale
-import java.util.jar.JarOutputStream as JJarOutputStream
-import java.util.jar.Manifest as JManifest
 
 plugins { java }
 
@@ -67,9 +66,8 @@ val windowsUpgradeUuid = "779872cd-ca9b-5a0e-8260-7d372a550fb7"
 
 /** Returns the portable numeric app version accepted by Linux and macOS jpackage. */
 fun numericAppVersion(rawVersion: String = project.version.toString()): String {
-  val raw = rawVersion
-  val m = Regex("\\d+(?:\\.\\d+){0,3}").find(raw)
-  return (m?.value ?: raw.filter { it.isDigit() }.ifBlank { "1" })
+  val m = Regex("\\d+(?:\\.\\d+){0,3}").find(rawVersion)
+  return (m?.value ?: rawVersion.filter { it.isDigit() }.ifBlank { "1" })
 }
 
 /** Maps the canonical integer release build to MSI's 16-bit build-version component. */
@@ -318,9 +316,7 @@ fun createBootstrapJar(inputDir: File): File {
   if (inputDir.exists()) inputDir.deleteRecursively()
   inputDir.mkdirs()
   val stagedMain = File(inputDir, "bootstrap.jar")
-  val mf = JManifest()
-  mf.mainAttributes.putValue("Manifest-Version", "1.0")
-  JJarOutputStream(stagedMain.outputStream(), mf).use { /* empty */ }
+  DeterministicBootstrapJar.write(stagedMain.toPath())
   return stagedMain
 }
 
@@ -732,18 +728,18 @@ fun isMachOCodeFile(path: Path): Boolean {
       }
       offset
     }
-  if (bytesRead != header.size) return false
-  return ByteBuffer.wrap(header).int in
-    setOf(
-      0xFEEDFACE.toInt(), // 32-bit Mach-O
-      0xCEFAEDFE.toInt(), // byte-swapped 32-bit Mach-O
-      0xFEEDFACF.toInt(), // 64-bit Mach-O
-      0xCFFAEDFE.toInt(), // byte-swapped 64-bit Mach-O
-      0xCAFEBABE.toInt(), // universal Mach-O
-      0xBEBAFECA.toInt(), // byte-swapped universal Mach-O
-      0xCAFEBABF.toInt(), // 64-bit universal Mach-O
-      0xBFBAFECA.toInt(), // byte-swapped 64-bit universal Mach-O
-    )
+  return bytesRead == header.size &&
+    ByteBuffer.wrap(header).int in
+      setOf(
+        0xFEEDFACE.toInt(), // 32-bit Mach-O
+        0xCEFAEDFE.toInt(), // byte-swapped 32-bit Mach-O
+        0xFEEDFACF.toInt(), // 64-bit Mach-O
+        0xCFFAEDFE.toInt(), // byte-swapped 64-bit Mach-O
+        0xCAFEBABE.toInt(), // universal Mach-O
+        0xBEBAFECA.toInt(), // byte-swapped universal Mach-O
+        0xCAFEBABF.toInt(), // 64-bit universal Mach-O
+        0xBFBAFECA.toInt(), // byte-swapped 64-bit universal Mach-O
+      )
 }
 
 /** Returns whether the directory is a nested native bundle that codesign must seal explicitly. */

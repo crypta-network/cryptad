@@ -70,6 +70,7 @@ SELF_TEST_SUITES = (
     "stable-maintenance",
     "stable-lifecycle",
     "stable-supply-chain",
+    "stable-independent-reproducibility",
     "stable-dependency-vulnerability",
     "stable-vulnerability",
     "stable-protected-release",
@@ -118,6 +119,27 @@ def build_parser() -> argparse.ArgumentParser:
     protected.add_argument("--workspace-root", type=Path, default=Path.cwd())
     protected.add_argument("--out-dir", type=Path)
     protected.add_argument("--self-test", action="store_true")
+
+    independent = subparsers.add_parser("stable-independent-reproducibility")
+    independent.add_argument(
+        "--mode",
+        choices=(
+            "prepare-verifier-kit",
+            "verify-external-receipt",
+            "compare",
+            "closeout",
+        ),
+    )
+    independent.add_argument(
+        "--execution-contract",
+        "--contract",
+        dest="execution_contract",
+        type=Path,
+        help="Versioned, non-secret independent reproducibility execution contract.",
+    )
+    independent.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    independent.add_argument("--out-dir", type=Path)
+    independent.add_argument("--self-test", action="store_true")
 
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
@@ -1220,6 +1242,19 @@ def _run_command(args: argparse.Namespace) -> int:
             args.mode,
             args.out_dir,
             args.rc_input_map,
+        )
+    if command == "stable-independent-reproducibility":
+        from .engines import stable_1_0_independent_reproducibility
+
+        if args.mode is None or args.execution_contract is None:
+            raise ValueError(
+                "stable-independent-reproducibility requires --mode and --execution-contract"
+            )
+        return stable_1_0_independent_reproducibility.run(
+            args.workspace_root.resolve(),
+            args.execution_contract,
+            args.mode,
+            args.out_dir,
         )
     manifest_path = getattr(args, "manifest", None)
     if manifest_path is None:

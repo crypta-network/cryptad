@@ -26,7 +26,9 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
         root = workspace_root()
         build_dir = root / "build"
         build_dir.mkdir(exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="certify-production-", dir=build_dir) as directory:
+        with tempfile.TemporaryDirectory(
+            prefix="certify-production-", suffix="-workspace", dir=build_dir
+        ) as directory:
             output_root = Path(directory)
             manifest_path = write_manifest(
                 output_root,

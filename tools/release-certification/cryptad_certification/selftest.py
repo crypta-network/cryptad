@@ -74,6 +74,11 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_protected_rc_preflight",
         "cryptad_certification.tests.test_stable_public_observation",
         "cryptad_certification.tests.test_stable_protected_release",
+        "cryptad_certification.tests.test_stable_independent_protected_closeout",
+    ],
+    "stable-independent-reproducibility": [
+        "cryptad_certification.tests.test_stable_independent_handoff",
+        "cryptad_certification.tests.test_stable_independent_reproducibility",
     ],
     "migration": ["cryptad_certification.tests.test_core"],
 }

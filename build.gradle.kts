@@ -566,9 +566,25 @@ tasks.register("packageFirstPartyApps") {
   dependsOn(":apps:trust-graph:packageApp")
 }
 
+tasks.register("packageUnsignedFirstPartyAppsForIndependentReproducibility") {
+  group = "build"
+  description = "Packages unsigned first-party app payloads for provider-distinct reproducibility."
+  dependsOn(":apps:queue-manager:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:publisher:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:feed-reader:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:profile-publisher:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:social-inbox:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:site-publisher:packageUnsignedAppForIndependentReproducibility")
+  dependsOn(":apps:trust-graph:packageUnsignedAppForIndependentReproducibility")
+}
+
 // The default from build-logic (512m) is too small for the full test suite on Windows and can
 // trigger OOM in long-running integration tests.
 tasks.withType<Test>().configureEach { maxHeapSize = "2g" }
+
+// The convention-plugin build is included rather than a root subproject, so explicitly make its
+// deterministic packaging tests part of the repository's canonical test entry point.
+tasks.named<Test>("test") { dependsOn(gradle.includedBuild("build-logic").task(":test")) }
 
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the launcher main class directly.

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-independent-output-manifest-v1.schema.json",
+  "title": "Crypta Stable 1.0 independent rebuild output manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "tag",
+    "sourceCommit",
+    "executionContractDigest",
+    "verifierKitDigest",
+    "builderReceiptDigest",
+    "providerProfileDigest",
+    "sourceTreeDigest",
+    "materialsDigest",
+    "resolutionSnapshotDigest",
+    "taskSetDigest",
+    "canonicalEnvironmentDigest",
+    "subjects",
+    "payloadManifests",
+    "subjectSetDigest",
+    "buildCompletedAt",
+    "outputsSealedAt",
+    "candidateProductAvailableBeforeBuild",
+    "manifestDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-independent-output-manifest"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "executionContractDigest": {"$ref": "#/$defs/digest"},
+    "verifierKitDigest": {"$ref": "#/$defs/digest"},
+    "builderReceiptDigest": {"$ref": "#/$defs/digest"},
+    "providerProfileDigest": {"$ref": "#/$defs/digest"},
+    "sourceTreeDigest": {"$ref": "#/$defs/digest"},
+    "materialsDigest": {"$ref": "#/$defs/digest"},
+    "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+    "taskSetDigest": {"$ref": "#/$defs/digest"},
+    "canonicalEnvironmentDigest": {"$ref": "#/$defs/digest"},
+    "subjects": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subject"}},
+    "payloadManifests": {"type": "array", "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/payloadManifestBinding"}},
+    "subjectSetDigest": {"$ref": "#/$defs/digest"},
+    "buildCompletedAt": {"$ref": "#/$defs/timestamp"},
+    "outputsSealedAt": {"$ref": "#/$defs/timestamp"},
+    "candidateProductAvailableBeforeBuild": {"const": false},
+    "manifestDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 128},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 32},
+    "payloadManifestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectKey", "bundlePath", "sha256", "size", "schema", "manifestDigest"],
+      "properties": {
+        "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+        "bundlePath": {"type": "string", "pattern": "^payload-manifests/[a-z0-9][a-z0-9.-]*\\.json$", "maxLength": 160},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 1, "maximum": 100000000},
+        "schema": {"const": "stable-1.0-payload-manifest-v1.schema.json"},
+        "manifestDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectKey", "fileName", "bundlePath", "digest", "size", "reproducibilityClass", "normalizationRuleId", "payloadManifestDigest", "extractionEvidenceDigest"],
+      "properties": {
+        "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+        "bundlePath": {"type": "string", "pattern": "^subjects/[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 521},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 100000000000},
+        "reproducibilityClass": {"enum": ["byte-identical", "normalized-payload-identical"]},
+        "normalizationRuleId": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}]},
+        "payloadManifestDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "extractionEvidenceDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    }
+  }
+}

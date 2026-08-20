@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-independent-reproducibility-execution-v1.schema.json",
+  "title": "Crypta Stable 1.0 independent reproducibility execution contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "executionId",
+    "operationMode",
+    "evaluationTime",
+    "repository",
+    "release",
+    "selectedRc",
+    "policies",
+    "authenticatedInputs",
+    "authenticatedInputFiles",
+    "buildRecipe",
+    "producerAuthority",
+    "expectedVerifierAuthority",
+    "coordinator",
+    "verifierKit",
+    "externalBuild",
+    "comparison",
+    "closeout",
+    "lifecycleState",
+    "evidenceClassification",
+    "blockedReason",
+    "executionContractDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-independent-reproducibility-execution"},
+    "executionId": {"$ref": "#/$defs/identifier"},
+    "operationMode": {"enum": ["prepare-verifier-kit", "verify-external-receipt", "compare", "closeout", "self-test"]},
+    "evaluationTime": {"$ref": "#/$defs/timestamp"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "sourceCommit", "sourceRef", "sourceTreeDigest", "authenticatedSourceArchive", "canonicalCommitEpoch"],
+      "properties": {
+        "identity": {"const": "github.com/crypta-network/cryptad"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "sourceRef": {"$ref": "#/$defs/sourceRef"},
+        "sourceTreeDigest": {"$ref": "#/$defs/digest"},
+        "authenticatedSourceArchive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["origin", "digest", "format"],
+          "properties": {
+            "origin": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~+/-]+$", "maxLength": 1024},
+            "digest": {"$ref": "#/$defs/digest"},
+            "format": {"enum": ["git-archive-tar", "git-archive-zip", "source-tar", "source-zip"]}
+          }
+        },
+        "canonicalCommitEpoch": {"type": "integer", "minimum": 0, "maximum": 253402300799}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "integerBuild", "tag", "milestone", "candidateClass"],
+      "properties": {
+        "id": {"$ref": "#/$defs/releaseId"},
+        "integerBuild": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+        "milestone": {"const": "Stable 1.0"},
+        "candidateClass": {"enum": ["rc", "ga-selected-rc"]}
+      }
+    },
+    "selectedRc": {"$ref": "#/$defs/selectedRc"},
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableSupplyChainPolicyDigest", "independentReproducibilityPolicyDigest", "comparisonPlanSchemaDigest", "reproducibilityResultSchemaDigest"],
+      "properties": {
+        "stableSupplyChainPolicyDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityPolicyDigest": {"$ref": "#/$defs/digest"},
+        "comparisonPlanSchemaDigest": {"$ref": "#/$defs/digest"},
+        "reproducibilityResultSchemaDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authenticatedInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["componentInventoryDigest", "subjectInventoryDigest", "buildMaterialsDigest", "resolutionSnapshotDigest", "directInputsDigest", "sbomDigest"],
+      "properties": {
+        "componentInventoryDigest": {"$ref": "#/$defs/digest"},
+        "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+        "buildMaterialsDigest": {"$ref": "#/$defs/digest"},
+        "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+        "directInputsDigest": {"$ref": "#/$defs/digest"},
+        "sbomDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authenticatedInputFiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildMaterials", "resolutionSnapshot", "componentInventory", "subjectInventory", "sbomBinding"],
+      "properties": {
+        "buildMaterials": {"$ref": "#/$defs/buildMaterialsBinding"},
+        "resolutionSnapshot": {"$ref": "#/$defs/resolutionSnapshotBinding"},
+        "componentInventory": {"$ref": "#/$defs/componentInventoryBinding"},
+        "subjectInventory": {"$ref": "#/$defs/subjectInventoryBinding"},
+        "sbomBinding": {"$ref": "#/$defs/sbomBinding"}
+      }
+    },
+    "buildRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildTasks", "executionPartitions", "canonicalEnvironment", "jdkIdentityDigest", "gradleIdentityDigest", "normalizationPolicyDigest", "requiredSubjectKeys", "expectedOutputs"],
+      "properties": {
+        "buildTasks": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/task"}},
+        "executionPartitions": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/executionPartition"}},
+        "canonicalEnvironment": {"$ref": "#/$defs/canonicalEnvironment"},
+        "jdkIdentityDigest": {"$ref": "#/$defs/digest"},
+        "gradleIdentityDigest": {"$ref": "#/$defs/digest"},
+        "normalizationPolicyDigest": {"$ref": "#/$defs/digest"},
+        "requiredSubjectKeys": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subjectKey"}},
+        "expectedOutputs": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/expectedOutput"}}
+      }
+    },
+    "producerAuthority": {"$ref": "#/$defs/authorityExpectation"},
+    "expectedVerifierAuthority": {"$ref": "#/$defs/authorityExpectation"},
+    "coordinator": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/coordinator"}]},
+    "verifierKit": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+    "externalBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["builderReceipt", "authorityAttestation", "rawArtifactAttestationBundle", "verificationTranscript", "outputManifest", "outputBundle"],
+      "properties": {
+        "builderReceipt": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "authorityAttestation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "rawArtifactAttestationBundle": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "verificationTranscript": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "outputManifest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "outputBundle": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primaryBuilderReceipt", "primaryAuthorityAttestation", "candidateSubjectBundle", "comparisonPlan", "reproducibilityResult"],
+      "properties": {
+        "primaryBuilderReceipt": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "primaryAuthorityAttestation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "candidateSubjectBundle": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "comparisonPlan": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "reproducibilityResult": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+      }
+    },
+    "closeout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "coordinatorArtifact"],
+      "properties": {
+        "summary": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
+        "coordinatorArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
+      }
+    },
+    "lifecycleState": {"enum": ["planned", "kit-prepared", "external-build-sealed", "external-receipt-authenticated", "comparison-complete", "independently-reproduced", "blocked", "partial"]},
+    "evidenceClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryImplementation", "selfTest", "protectedCoordinator", "externalProviderExecution", "publicVerification"],
+      "properties": {
+        "repositoryImplementation": {"enum": ["present", "missing"]},
+        "selfTest": {"enum": ["not-performed", "passed", "failed"]},
+        "protectedCoordinator": {"enum": ["not-performed", "partial", "completed"]},
+        "externalProviderExecution": {"enum": ["not-authenticated", "authenticated"]},
+        "publicVerification": {"enum": ["not-performed", "completed"]}
+      }
+    },
+    "blockedReason": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 .:_/-]{0,255}$", "maxLength": 256}]},
+    "executionContractDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$", "maxLength": 160},
+    "providerValue": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$", "maxLength": 512},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$", "maxLength": 128},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 32},
+    "task": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160},
+    "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+    "relativePath": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._+@={}/-]+$", "maxLength": 512},
+    "fileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.schema\\.json$", "maxLength": 160}]},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "buildMaterialsBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-build-materials-v1.schema.json"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "resolutionSnapshotBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-resolved-dependency-snapshot-v1.schema.json"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "componentInventoryBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-component-inventory-v1.schema.json"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "subjectInventoryBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-release-subject-inventory-v1.schema.json"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "sbomBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "size"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/digest"},
+        "schema": {"const": "stable-1.0-sbom-binding-v1.schema.json"},
+        "size": {"type": "integer", "minimum": 0, "maximum": 5368709120}
+      }
+    },
+    "selectedRc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest", "freezeDigest", "freezeFileDigest", "productDigest", "subjectInventoryDigest", "supplyChain"],
+      "properties": {
+        "workflowPath": {"const": ".github/workflows/stable-1.0-rc-release.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]*$", "maxLength": 255},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "freezeFileDigest": {"$ref": "#/$defs/digest"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+        "supplyChain": {"$ref": "#/$defs/supplyChainCoordinate"}
+      }
+    },
+    "supplyChainCoordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest"],
+      "properties": {
+        "workflowPath": {"const": ".github/workflows/stable-1.0-supply-chain.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]*$", "maxLength": 255},
+        "artifactDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authorityExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "profileDigest", "providerId", "controlPlaneId", "trustDomainId", "organizationId", "requireProviderDistinct", "requireControlPlaneDistinct", "requireTrustDomainDistinct", "requireOrganizationDistinct"],
+      "properties": {
+        "profileId": {"$ref": "#/$defs/identifier"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "providerId": {"$ref": "#/$defs/providerValue"},
+        "controlPlaneId": {"$ref": "#/$defs/providerValue"},
+        "trustDomainId": {"$ref": "#/$defs/providerValue"},
+        "organizationId": {"$ref": "#/$defs/providerValue"},
+        "requireProviderDistinct": {"const": true},
+        "requireControlPlaneDistinct": {"const": true},
+        "requireTrustDomainDistinct": {"const": true},
+        "requireOrganizationDistinct": {"type": "boolean"}
+      }
+    },
+    "coordinator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflowPath", "workflowCommit", "runId", "runAttempt", "jobName", "environment", "artifactName", "artifactDigest"],
+      "properties": {
+        "repository": {"const": "crypta-network/cryptad"},
+        "workflowPath": {"const": ".github/workflows/stable-1.0-independent-reproducibility.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "jobName": {"const": "Authenticate and compare independent rebuild"},
+        "environment": {"const": "stable-1.0-independent-reproducibility-external-receipt"},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]*$", "maxLength": 255},
+        "artifactDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    },
+    "executionPartition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionId", "runnerOs", "runnerArchitecture", "taskSet", "subjectKeys"],
+      "properties": {
+        "executionId": {"enum": ["linux-installers", "macos-installer", "portable-apps", "windows-installer"]},
+        "runnerOs": {"enum": ["linux", "macos", "windows"]},
+        "runnerArchitecture": {"const": "amd64"},
+        "taskSet": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/task"}},
+        "subjectKeys": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subjectKey"}}
+      }
+    },
+    "expectedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectKey", "fileName", "reproducibilityClass", "normalizationRuleId"],
+      "properties": {
+        "subjectKey": {"$ref": "#/$defs/subjectKey"},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+        "reproducibilityClass": {"enum": ["byte-identical", "normalized-payload-identical"]},
+        "normalizationRuleId": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}]}
+      }
+    },
+    "canonicalEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locale", "timezone", "encoding", "sourceDateEpoch"],
+      "properties": {
+        "locale": {"enum": ["C", "C.UTF-8"]},
+        "timezone": {"const": "UTC"},
+        "encoding": {"const": "UTF-8"},
+        "sourceDateEpoch": {"type": "integer", "minimum": 0, "maximum": 253402300799}
+      }
+    }
+  }
+}

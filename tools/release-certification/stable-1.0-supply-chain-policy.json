@@ -307,8 +307,10 @@
       "version": 1
     },
     {
-      "allowedExcludedFields": [],
-      "id": "crypta-app-zip-content-v1",
+      "allowedExcludedFields": [
+        "container-signature"
+      ],
+      "id": "crypta-app-signature-envelope-v1",
       "ignoredPaths": [],
       "packageTypes": [
         "app-zip"
@@ -352,7 +354,7 @@
       "version": 1
     }
   ],
-  "policyDigest": "sha256:dbc847331327e5a74b3d826afda76de4f31e0cd4d814aa5a455a1c6228021680",
+  "policyDigest": "sha256:af0a2481826fd757b6cfd8495fad0556896798d25f9ded124d0af27e1a9a94bd",
   "publicArtifactBounds": {
     "maximumArtifactBytes": 100000000,
     "maximumComponents": 100000,
@@ -495,56 +497,56 @@
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-feed-reader"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-profile-publisher"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-publisher"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-queue-manager"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-site-publisher"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-social-inbox"
     },
     {
       "evidencePhase": "independent-builder",
-      "normalizationRuleId": "crypta-app-zip-content-v1",
-      "reproducibilityClass": "byte-identical",
+      "normalizationRuleId": "crypta-app-signature-envelope-v1",
+      "reproducibilityClass": "normalized-payload-identical",
       "required": true,
       "subjectClass": "first-party-app",
       "subjectKey": "app-trust-graph"

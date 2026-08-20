@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from cryptad_certification.schema_validation import validate_schema
+from cryptad_certification.io import read_json
 
 from .stable_1_0_supply_chain_core import (
     BUILDER_RECEIPT_SCHEMA,
@@ -459,16 +459,27 @@ def _execution_for_subject(subject_key: str) -> str:
 
 
 def builder_independence_errors(
-    primary: dict[str, Any], verifier: dict[str, Any], policy: dict[str, Any]
+    primary: dict[str, Any],
+    verifier: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    provider_distinct: bool = False,
+    provider_distinct_recipe: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Reject reuse of a producer execution as the independent verifier."""
+    """Reject reuse of a producer execution as the independent verifier.
+
+    The established GitHub-only path requires identical hosted-runner image
+    identities. A provider-distinct verifier instead authenticates its image
+    through the PR-292 provider profile, so only role-neutral build facts are
+    compared here when ``provider_distinct`` is true.
+    """
 
     errors: list[str] = []
     first = primary.get("builderIdentity", {})
     second = verifier.get("builderIdentity", {})
-    if first.get("runId") == second.get("runId"):
+    if not provider_distinct and first.get("runId") == second.get("runId"):
         errors.append("candidate producer and verifier use the same workflow run")
-    if (
+    if not provider_distinct and (
         first.get("workflowRef"),
         first.get("workflowSha"),
         first.get("jobName"),
@@ -489,10 +500,44 @@ def builder_independence_errors(
         errors.append("builder materials differ")
     if primary.get("resolutionSnapshotDigest") != verifier.get("resolutionSnapshotDigest"):
         errors.append("builder dependency resolution differs")
-    if primary.get("buildTasks") != verifier.get("buildTasks"):
+    if provider_distinct:
+        recipe = provider_distinct_recipe or {}
+        if primary.get("buildTasks") != policy.get("builderPolicy", {}).get("buildTasks"):
+            errors.append("candidate producer task set differs from Stable policy")
+        if verifier.get("buildTasks") != recipe.get("buildTasks"):
+            errors.append("provider-distinct verifier task set differs from its sealed recipe")
+    elif primary.get("buildTasks") != verifier.get("buildTasks"):
         errors.append("builder task sets differ")
     if primary.get("directInputs") != verifier.get("directInputs"):
         errors.append("builder direct input identities differ")
+    if not provider_distinct:
+        app_keys = {
+            row.get("subjectKey")
+            for row in policy.get("releaseSubjects", [])
+            if isinstance(row, dict)
+            and row.get("evidencePhase") == "independent-builder"
+            and row.get("subjectClass") == "first-party-app"
+        }
+        primary_apps = {
+            row.get("subjectKey"): row
+            for row in primary.get("subjects", [])
+            if isinstance(row, dict) and row.get("subjectKey") in app_keys
+        }
+        verifier_apps = {
+            row.get("subjectKey"): row
+            for row in verifier.get("subjects", [])
+            if isinstance(row, dict) and row.get("subjectKey") in app_keys
+        }
+        for subject_key in sorted(app_keys):
+            first_app = primary_apps.get(subject_key, {})
+            second_app = verifier_apps.get(subject_key, {})
+            if (
+                first_app.get("digest") != second_app.get("digest")
+                or first_app.get("size") != second_app.get("size")
+            ):
+                errors.append(
+                    f"builder {subject_key} signed app bundle bytes differ"
+                )
     primary_executions = {
         row.get("executionId"): row
         for row in primary.get("builderExecutions", [])
@@ -511,7 +556,9 @@ def builder_independence_errors(
     ):
         producer_execution = primary_executions[execution_id]
         verifier_execution = verifier_executions[execution_id]
-        if producer_execution.get("runId") == verifier_execution.get("runId"):
+        if not provider_distinct and producer_execution.get(
+            "runId"
+        ) == verifier_execution.get("runId"):
             errors.append(
                 f"candidate producer and verifier reuse the {execution_id} execution run"
             )
@@ -527,25 +574,50 @@ def builder_independence_errors(
             ("resolutionSnapshotDigest", "dependency resolution"),
             ("runnerOs", "runner OS"),
             ("runnerArchitecture", "runner architecture"),
-            ("runnerImageIdentity", "runner image identity"),
-            ("runnerImageDigest", "runner image digest"),
             ("toolchain", "toolchain identity"),
             ("materialIdentities", "material identities"),
-            ("taskSet", "task set"),
-            ("taskSetDigest", "task set digest"),
             ("canonicalEnvironment", "canonical environment"),
             ("directInputsDigest", "direct inputs digest"),
             ("payloadManifestSetDigest", "payload manifest set digest"),
         ):
             if producer_execution.get(field) != verifier_execution.get(field):
                 errors.append(f"builder {execution_id} {label} differs")
+        if provider_distinct:
+            producer_tasks = policy.get("builderPolicy", {}).get("executionTasks", {}).get(
+                execution_id
+            )
+            verifier_tasks = (provider_distinct_recipe or {}).get(
+                "executionTasks", {}
+            ).get(execution_id)
+            for label, execution, expected_tasks in (
+                ("candidate producer", producer_execution, producer_tasks),
+                ("provider-distinct verifier", verifier_execution, verifier_tasks),
+            ):
+                if execution.get("taskSet") != expected_tasks or execution.get(
+                    "taskSetDigest"
+                ) != sha256_digest(canonical_json_bytes(expected_tasks)):
+                    errors.append(f"{label} {execution_id} task set differs from policy")
+        else:
+            for field, label in (
+                ("taskSet", "task set"),
+                ("taskSetDigest", "task set digest"),
+            ):
+                if producer_execution.get(field) != verifier_execution.get(field):
+                    errors.append(f"builder {execution_id} {label} differs")
+        if not provider_distinct:
+            for field, label in (
+                ("runnerImageIdentity", "runner image identity"),
+                ("runnerImageDigest", "runner image digest"),
+            ):
+                if producer_execution.get(field) != verifier_execution.get(field):
+                    errors.append(f"builder {execution_id} {label} differs")
         if producer_execution.get("handoffDigest") == verifier_execution.get(
             "handoffDigest"
         ):
             errors.append(f"builder {execution_id} handoffs are not independent")
-        if producer_execution.get("artifactAttestationDigest") == verifier_execution.get(
+        if not provider_distinct and producer_execution.get(
             "artifactAttestationDigest"
-        ):
+        ) == verifier_execution.get("artifactAttestationDigest"):
             errors.append(f"builder {execution_id} attestations are not independent")
     return errors
 
@@ -564,10 +636,19 @@ def build_comparison_plan(
     subjects_document: dict[str, Any],
     primary: dict[str, Any],
     verifier: dict[str, Any],
+    *,
+    provider_distinct: bool = False,
+    provider_distinct_recipe: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Emit a closed comparison plan without inferring equality."""
 
-    errors = builder_independence_errors(primary, verifier, policy)
+    errors = builder_independence_errors(
+        primary,
+        verifier,
+        policy,
+        provider_distinct=provider_distinct,
+        provider_distinct_recipe=provider_distinct_recipe,
+    )
     errors.extend(
         builder_subject_coverage_errors(
             primary, subjects_document, policy, "candidate-producer"
@@ -635,6 +716,9 @@ def comparison_plan_errors(
     subjects_document: dict[str, Any],
     primary: dict[str, Any],
     verifier: dict[str, Any],
+    *,
+    provider_distinct: bool = False,
+    provider_distinct_recipe: dict[str, Any] | None = None,
 ) -> list[str]:
     """Require an exact authenticated plan freshly derived from both receipts."""
 
@@ -642,7 +726,13 @@ def comparison_plan_errors(
     errors.extend(_self_digest_errors(supplied, "planDigest", "comparison plan"))
     try:
         expected = build_comparison_plan(
-            release, policy, subjects_document, primary, verifier
+            release,
+            policy,
+            subjects_document,
+            primary,
+            verifier,
+            provider_distinct=provider_distinct,
+            provider_distinct_recipe=provider_distinct_recipe,
         )
     except ValueError as exc:
         errors.append(str(exc))
@@ -664,8 +754,8 @@ def _load_payload_manifests(
             errors.append("payload-manifest directory contains an unexpected entry")
             continue
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            value = read_json(path)
+        except (OSError, UnicodeDecodeError, ValueError):
             errors.append("payload manifest is not strict UTF-8 JSON")
             continue
         if not isinstance(value, dict):

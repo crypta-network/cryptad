@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-independent-verifier-kit-v1.schema.json",
+  "title": "Crypta Stable 1.0 candidate-byte-free independent verifier kit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "tag",
+    "repositoryIdentity",
+    "sourceCommit",
+    "sourceRef",
+    "sourceTreeDigest",
+    "sourceArchive",
+    "selectedRcIdentityDigest",
+    "executionContractDigest",
+    "canonicalCommitEpoch",
+    "policies",
+    "schemas",
+    "toolchain",
+    "buildMaterialsDigest",
+    "resolutionSnapshotDigest",
+    "directInputs",
+    "repositoryConstraints",
+    "canonicalEnvironment",
+    "buildTasks",
+    "executionPartitions",
+    "expectedOutputs",
+    "normalizationRules",
+    "outputInstructions",
+    "preparedAt",
+    "expiresAt",
+    "candidateExclusions",
+    "kitDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-independent-verifier-kit"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "repositoryIdentity": {"const": "github.com/crypta-network/cryptad"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/sourceRef"},
+    "sourceTreeDigest": {"$ref": "#/$defs/digest"},
+    "sourceArchive": {"$ref": "#/$defs/sourceArchive"},
+    "selectedRcIdentityDigest": {"$ref": "#/$defs/digest"},
+    "executionContractDigest": {"$ref": "#/$defs/digest"},
+    "canonicalCommitEpoch": {"type": "integer", "minimum": 0, "maximum": 253402300799},
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableSupplyChainPolicyDigest", "independentReproducibilityPolicyDigest", "normalizationPolicyDigest", "providerProfileDigest"],
+      "properties": {
+        "stableSupplyChainPolicyDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityPolicyDigest": {"$ref": "#/$defs/digest"},
+        "normalizationPolicyDigest": {"$ref": "#/$defs/digest"},
+        "providerProfileDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "schemas": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/schemaBinding"}
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jdkVendor", "jdkVersion", "jdkBuild", "jdkIdentityDigest", "gradleVersion", "gradleDistributionDigest", "gradleWrapperJarDigest", "gradleWrapperPropertiesDigest", "dependencyVerificationMetadataDigest", "verificationKeyringDigest"],
+      "properties": {
+        "jdkVendor": {"type": "string", "minLength": 1, "maxLength": 128},
+        "jdkVersion": {"type": "string", "minLength": 1, "maxLength": 64},
+        "jdkBuild": {"type": "string", "minLength": 1, "maxLength": 128},
+        "jdkIdentityDigest": {"$ref": "#/$defs/digest"},
+        "gradleVersion": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$", "maxLength": 32},
+        "gradleDistributionDigest": {"$ref": "#/$defs/digest"},
+        "gradleWrapperJarDigest": {"$ref": "#/$defs/digest"},
+        "gradleWrapperPropertiesDigest": {"$ref": "#/$defs/digest"},
+        "dependencyVerificationMetadataDigest": {"$ref": "#/$defs/digest"},
+        "verificationKeyringDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "buildMaterialsDigest": {"$ref": "#/$defs/digest"},
+    "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+    "directInputs": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"$ref": "#/$defs/directInput"}},
+    "repositoryConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryConfigurationDigest", "pluginResolutionDigest", "buildLogicDigest", "dynamicVersionsProhibited", "changingModulesProhibited", "dependencyVerificationRequired"],
+      "properties": {
+        "repositoryConfigurationDigest": {"$ref": "#/$defs/digest"},
+        "pluginResolutionDigest": {"$ref": "#/$defs/digest"},
+        "buildLogicDigest": {"$ref": "#/$defs/digest"},
+        "dynamicVersionsProhibited": {"const": true},
+        "changingModulesProhibited": {"const": true},
+        "dependencyVerificationRequired": {"const": true}
+      }
+    },
+    "canonicalEnvironment": {"$ref": "#/$defs/canonicalEnvironment"},
+    "buildTasks": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/task"}},
+    "executionPartitions": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/executionPartition"}},
+    "expectedOutputs": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/expectedOutput"}},
+    "normalizationRules": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/normalizationRule"}},
+    "outputInstructions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["builderReceiptSchema", "authorityAttestationSchema", "outputManifestSchema", "bundleFormat", "sealBeforeCandidateAccess", "absolutePathsProhibited", "linksProhibited"],
+      "properties": {
+        "builderReceiptSchema": {"const": "stable-1.0-independent-builder-receipt-v2.schema.json"},
+        "authorityAttestationSchema": {"const": "stable-1.0-independent-authority-attestation-v1.schema.json"},
+        "outputManifestSchema": {"const": "stable-1.0-independent-output-manifest-v1.schema.json"},
+        "bundleFormat": {"const": "zip-store-v1"},
+        "sealBeforeCandidateAccess": {"const": true},
+        "absolutePathsProhibited": {"const": true},
+        "linksProhibited": {"const": true}
+      }
+    },
+    "preparedAt": {"$ref": "#/$defs/timestamp"},
+    "expiresAt": {"$ref": "#/$defs/timestamp"},
+    "candidateExclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateBytesExcluded", "candidateProductDigestsExcluded", "producerReceiptExcluded", "signingSecretsExcluded", "publicationCredentialsExcluded", "privateUrisExcluded", "rawContentExcluded", "absolutePathsExcluded"],
+      "properties": {
+        "candidateBytesExcluded": {"const": true},
+        "candidateProductDigestsExcluded": {"const": true},
+        "producerReceiptExcluded": {"const": true},
+        "signingSecretsExcluded": {"const": true},
+        "publicationCredentialsExcluded": {"const": true},
+        "privateUrisExcluded": {"const": true},
+        "rawContentExcluded": {"const": true},
+        "absolutePathsExcluded": {"const": true}
+      }
+    },
+    "kitDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$", "maxLength": 512},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 32},
+    "task": {"type": "string", "pattern": "^:[A-Za-z0-9:_-]+$", "maxLength": 160},
+    "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+    "sourceArchive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "commit", "digest", "format"],
+      "properties": {
+        "origin": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~+/-]+$", "maxLength": 1024},
+        "commit": {"$ref": "#/$defs/commit"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "format": {"enum": ["git-archive-tar", "git-archive-zip", "source-tar", "source-zip"]}
+      }
+    },
+    "schemaBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "digest"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.schema\\.json$", "maxLength": 160},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "directInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "digest", "origin", "immutabilityClass", "verificationMechanism"],
+      "properties": {
+        "name": {"enum": ["gradle-wrapper-distribution", "seedrefs-source-archive", "tanuki-wrapper-delta-pack", "windows-wrapper-amd64", "windows-wrapper-arm64"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "origin": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~+/-]+$", "maxLength": 1024},
+        "immutabilityClass": {"enum": ["versioned-url", "immutable-git-archive", "immutable-release-asset"]},
+        "verificationMechanism": {"enum": ["gradle-wrapper-checksum", "sha256-before-use"]}
+      }
+    },
+    "canonicalEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locale", "timezone", "encoding", "sourceDateEpoch"],
+      "properties": {
+        "locale": {"enum": ["C", "C.UTF-8"]},
+        "timezone": {"const": "UTC"},
+        "encoding": {"const": "UTF-8"},
+        "sourceDateEpoch": {"type": "integer", "minimum": 0, "maximum": 253402300799}
+      }
+    },
+    "executionPartition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionId", "runnerOs", "runnerArchitecture", "taskSet", "subjectKeys"],
+      "properties": {
+        "executionId": {"enum": ["linux-installers", "macos-installer", "portable-apps", "windows-installer"]},
+        "runnerOs": {"enum": ["linux", "macos", "windows"]},
+        "runnerArchitecture": {"const": "amd64"},
+        "taskSet": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/task"}},
+        "subjectKeys": {"type": "array", "minItems": 1, "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subjectKey"}}
+      }
+    },
+    "expectedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectKey", "fileName", "reproducibilityClass", "normalizationRuleId"],
+      "properties": {
+        "subjectKey": {"$ref": "#/$defs/subjectKey"},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+@/-]*$", "maxLength": 512},
+        "reproducibilityClass": {"enum": ["byte-identical", "normalized-payload-identical"]},
+        "normalizationRuleId": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128}]}
+      }
+    },
+    "normalizationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "ruleDigest"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+        "version": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "ruleDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

@@ -428,26 +428,59 @@ artifact, incomplete job result, or locally coordinated ZIP/digest substitution 
 or not performed; local agreement between a contract and downloaded files is never sufficient
 protected-operation evidence.
 
-To close independent reproducibility, retain the exact ZIP downloaded through the Actions
-artifact API for the canonical `stable-1.0-supply-chain-<release-id>-comparison` artifact. Bind
-that ZIP as `operationEvidence.independentReproducibilityArtifact`, with `schema: null`, and bind
-its extracted `stable-1.0-reproducibility-report.json` as
-`operationEvidence.independentReproducibility`. Keep the Stable supply-chain upstream-evidence row
-bound to `.github/workflows/stable-1.0-supply-chain.yml`, the
-`stable-1.0-supply-chain-evidence` environment, and the same run, immutable attempt, artifact name,
-and digest. Closeout authenticates those coordinates through GitHub, requires the extracted result
-and supply-chain summary to be byte-identical to their ZIP members, reads the comparison plan
-directly from that ZIP, and validates the plan/result/builder-receipt digests through the canonical
-Stable supply-chain engine. A local self-digested result or an upload claim without that retained
-artifact remains `pending`.
+To close provider-distinct independent reproducibility, retain the exact ZIP downloaded through
+the Actions artifact API for the canonical
+`stable-1-0-independent-closeout-<release-id>-<build>-<run>-<attempt>` artifact. Bind that ZIP as
+`operationEvidence.independentReproducibilityArtifact`, with `schema: null`; bind its extracted
+`stable-1.0-independent-reproducibility-summary.json` as
+`operationEvidence.independentReproducibility`, declaring
+`stable-1.0-independent-reproducibility-summary-v1.schema.json`; and bind the exact protected
+coordinator run as `operationEvidence.independentReproducibilityCoordinate`. That coordinate must
+identify `.github/workflows/stable-1.0-independent-reproducibility.yml`, the
+`stable-1.0-independent-reproducibility-external-receipt` environment, the candidate commit, the
+immutable run and attempt, the canonical artifact name, and the retained ZIP's Actions digest.
+
+The retained closeout artifact must contain these exact machine-readable members:
+
+- `stable-1.0-independent-reproducibility-summary.json`;
+- `stable-1.0-selected-rc-supply-chain-coordinate.json`;
+- `stable-1.0-primary-builder-receipt.json`;
+- `stable-1.0-primary-authority-attestation.json`;
+- `stable-1.0-independent-builder-receipt.json`;
+- `stable-1.0-independent-builder-attestation.json`;
+- `stable-1.0-independent-output-manifest.json`;
+- `stable-1.0-independent-raw-artifact-attestation.bundle`;
+- `stable-1.0-independent-attestation-verification-transcript.json`;
+- `stable-1.0-rebuild-comparison-plan.json`;
+- `stable-1.0-reproducibility-report.json`.
+
+Closeout authenticates the coordinator through GitHub and requires the separately bound summary to
+be byte-identical to its ZIP member. It validates every retained member's closed schema and
+self-digest, the summary-to-member receipt, authority, manifest, plan, and result digests, and the
+exact selected RC freeze-file and product digests. It then independently derives the complete
+Stable subject set, output-manifest rows, comparison-plan rows, and provider-independence result
+from the retained receipts, checked-in policies, and authority wrappers. The raw attestation and
+closed verification-transcript bytes must match the external authority bindings; consistently
+resealing a substituted receipt, profile, authority projection, plan row, or result row therefore
+does not create valid closeout evidence. Candidate-byte withholding must also remain proven. The
+primary authority must be the candidate producer; the external authority must be an operational,
+authenticated external verifier; and every policy-required provider, control-plane, trust-domain,
+organization, pipeline, executor, workload-identity, and attestation-independence check must pass.
+Legacy same-GitHub
+supply-chain producer/verifier evidence remains same-provider evidence and cannot satisfy this
+field. A fixture, self-test, local self-digested summary, substituted/resealed member, upload claim,
+or absent coordinator artifact remains `pending`, `blocked`, `partial`, or
+`comparison-failed` according to the authenticated PR-292 summary; none becomes
+`independently-reproduced`.
 
 Closeout emits `stable-1.0-protected-release-execution-summary.json`,
 `stable-1.0-protected-release-execution-report.md`, and `redaction-report.json`. It reports
 repository implementation, offline verification, protected RC completion, GA validation, GA
 publication, public observation, and independent reproducibility separately. Fixture, simulated,
 stale, wrong-repository, wrong-commit, wrong-run, wrong-attempt, or wrong-digest evidence is
-rejected. Independent reproducibility remains `pending` until a separate authentic production
-receipt exists.
+rejected. Independent reproducibility remains `pending` until a concrete reviewed external
+provider profile, real adapter verification, protected coordinator coordinate, and exact retained
+PR-292 artifact exist and authenticate successfully.
 
 ## Stop conditions and non-goals
 

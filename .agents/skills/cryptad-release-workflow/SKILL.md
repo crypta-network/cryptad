@@ -414,3 +414,22 @@ records publication and public observation separately. Public observation runs o
 read-only `stable-1.0-public-observation.yml` workflow after publication. A missing protected
 receipt is not replaceable by a repository claim. Follow
 `docs/stable-1.0-protected-release-execution.md` before continuing the merge/tag workflow.
+
+Provider-distinct reproducibility is a separate protected closeout input. Do not describe the
+existing GitHub Actions producer/verifier runs as independent providers. Prepare the
+product-byte-free kit and authenticate an already sealed external receipt with
+`stable-independent-reproducibility`, including its raw provider attestation and real adapter
+verification transcript; only then may the protected coordinator download the bounded primary
+supply-chain comparison handoff, its separately attested attempt-scoped subject bundle, and the
+selected RC and reuse the Stable comparison
+authority. Fixture/self-test, coordinator execution, authenticated external build, successful
+comparison, and public verification are separate states. An approved external provider profile
+and real protected receipts are required before closeout can report `independently-reproduced`.
+The external app partition must run
+`:packageUnsignedFirstPartyAppsForIndependentReproducibility`; never transfer the producer's app
+signing key or substitute the signed `packageFirstPartyApps` task. Provider-distinct app comparison
+uses the closed `crypta-app-signature-envelope-v1` view, which excludes only
+`cryptad-app.digests` and `cryptad-app.signature`. The signed selected-RC bundle and its signature
+authority remain authenticated separately.
+Follow
+`docs/stable-1.0-independent-reproducible-build-verification.md`.

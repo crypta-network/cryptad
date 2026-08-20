@@ -1,0 +1,1336 @@
+name: Stable 1.0 Independent Reproducibility
+run-name: >-
+  Stable 1.0 independent reproducibility ${{ inputs.release_id }} build
+  ${{ inputs.build_version }} (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Closed, non-publication independent-reproducibility operation.
+        required: true
+        type: choice
+        options:
+          - prepare-verifier-kit
+          - verify-external-receipt
+          - compare
+          - closeout
+      release_id:
+        description: Exact path-safe Stable release identity.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive-integer Stable build.
+        required: true
+        type: string
+      source_ref:
+        description: Exact authenticated refs/heads/release/<build> source ref.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase 40-character protected source commit.
+        required: true
+        type: string
+      execution_contract_json:
+        description: Complete reviewed, non-secret execution contract JSON.
+        required: true
+        type: string
+      authenticated_inputs_coordinates:
+        description: Closed JSON with exact run, attempt, artifact name, and digest for the Stable supply-chain inventory handoff.
+        required: true
+        type: string
+      verifier_kit_coordinates:
+        description: Closed JSON with exact run, attempt, artifact name, and digest for the candidate-byte-free verifier kit; use null for prepare.
+        required: true
+        type: string
+      external_bundle_workflow:
+        description: Exact in-repository workflow path used only to transport the sealed external bundle.
+        required: false
+        default: ''
+        type: string
+      external_bundle_run_id:
+        description: Exact completed transport run containing the sealed external bundle.
+        required: false
+        default: ''
+        type: string
+      external_bundle_run_attempt:
+        description: Exact completed transport run attempt.
+        required: false
+        default: ''
+        type: string
+      external_bundle_artifact_name:
+        description: Exact path-safe sealed external-bundle artifact name.
+        required: false
+        default: ''
+        type: string
+      external_bundle_artifact_digest:
+        description: Exact sha256 Actions digest of the sealed external-bundle transport artifact.
+        required: false
+        default: ''
+        type: string
+      selected_rc_run_id:
+        description: Exact selected Stable RC workflow run; compare and closeout only.
+        required: false
+        default: ''
+        type: string
+      selected_rc_run_attempt:
+        description: Exact selected Stable RC workflow run attempt; compare and closeout only.
+        required: false
+        default: ''
+        type: string
+      selected_rc_artifact_name:
+        description: Exact selected Stable RC artifact name; compare and closeout only.
+        required: false
+        default: ''
+        type: string
+      selected_rc_artifact_digest:
+        description: Exact sha256 Actions digest of the selected Stable RC artifact.
+        required: false
+        default: ''
+        type: string
+      primary_supply_chain_run_id:
+        description: Exact successful Stable supply-chain comparison run; compare and closeout only.
+        required: false
+        default: ''
+        type: string
+      primary_supply_chain_run_attempt:
+        description: Exact Stable supply-chain comparison run attempt; compare and closeout only.
+        required: false
+        default: ''
+        type: string
+      primary_supply_chain_artifact_name:
+        description: Exact immutable Stable supply-chain comparison artifact name.
+        required: false
+        default: ''
+        type: string
+      primary_supply_chain_artifact_digest:
+        description: Exact sha256 Actions digest of the Stable supply-chain comparison artifact.
+        required: false
+        default: ''
+        type: string
+      primary_subject_bundle_coordinates:
+        description: Closed JSON with exact coordinates for the attempt-scoped primary subject bundle; use null before compare.
+        required: true
+        type: string
+
+# One candidate cannot race receipt acceptance, comparison, or closeout.
+concurrency:
+  group: stable-1-0-independent-reproducibility-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-dispatch:
+    name: Validate exact source and closed dispatch
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate protected source and operation inputs
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+          AUTHENTICATED_INPUTS_COORDINATES: ${{ inputs.authenticated_inputs_coordinates }}
+          VERIFIER_KIT_COORDINATES: ${{ inputs.verifier_kit_coordinates }}
+          EXTERNAL_WORKFLOW: ${{ inputs.external_bundle_workflow }}
+          EXTERNAL_RUN_ID: ${{ inputs.external_bundle_run_id }}
+          EXTERNAL_RUN_ATTEMPT: ${{ inputs.external_bundle_run_attempt }}
+          EXTERNAL_ARTIFACT_NAME: ${{ inputs.external_bundle_artifact_name }}
+          EXTERNAL_ARTIFACT_DIGEST: ${{ inputs.external_bundle_artifact_digest }}
+          SELECTED_RC_RUN_ID: ${{ inputs.selected_rc_run_id }}
+          SELECTED_RC_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
+          SELECTED_RC_ARTIFACT_NAME: ${{ inputs.selected_rc_artifact_name }}
+          SELECTED_RC_ARTIFACT_DIGEST: ${{ inputs.selected_rc_artifact_digest }}
+          PRIMARY_RUN_ID: ${{ inputs.primary_supply_chain_run_id }}
+          PRIMARY_RUN_ATTEMPT: ${{ inputs.primary_supply_chain_run_attempt }}
+          PRIMARY_ARTIFACT_NAME: ${{ inputs.primary_supply_chain_artifact_name }}
+          PRIMARY_ARTIFACT_DIGEST: ${{ inputs.primary_supply_chain_artifact_digest }}
+          PRIMARY_SUBJECT_BUNDLE_COORDINATES: ${{ inputs.primary_subject_bundle_coordinates }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || "$INPUT_SOURCE_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_REF" != "$INPUT_SOURCE_REF" \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::The dispatch is not bound to the exact protected Stable source."
+            exit 2
+          fi
+
+          require_coordinates() {
+            local workflow="$1" run_id="$2" attempt="$3" name="$4" digest="$5" label="$6"
+            if [[ ! "$workflow" =~ ^\.github/workflows/[a-z0-9][a-z0-9._-]*\.yml$ \
+                  || ! "$run_id" =~ ^[1-9][0-9]{0,19}$ \
+                  || ! "$attempt" =~ ^[1-9][0-9]{0,9}$ \
+                  || ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                  || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::$label coordinates are missing or malformed."
+              exit 2
+            fi
+          }
+
+          jq -e 'type == "object" and keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]' \
+            <<< "$AUTHENTICATED_INPUTS_COORDINATES" >/dev/null
+          AUTHENTICATED_INPUTS_RUN_ID="$(jq -er '.runId | tostring' <<< "$AUTHENTICATED_INPUTS_COORDINATES")"
+          AUTHENTICATED_INPUTS_RUN_ATTEMPT="$(jq -er '.runAttempt | tostring' <<< "$AUTHENTICATED_INPUTS_COORDINATES")"
+          AUTHENTICATED_INPUTS_ARTIFACT_NAME="$(jq -er .artifactName <<< "$AUTHENTICATED_INPUTS_COORDINATES")"
+          AUTHENTICATED_INPUTS_ARTIFACT_DIGEST="$(jq -er .artifactDigest <<< "$AUTHENTICATED_INPUTS_COORDINATES")"
+          if [[ "$INPUT_OPERATION" == "prepare-verifier-kit" ]]; then
+            if [[ "$VERIFIER_KIT_COORDINATES" != "null" ]]; then
+              echo "::error::prepare-verifier-kit requires null verifier-kit coordinates."
+              exit 2
+            fi
+            VERIFIER_KIT_RUN_ID=""
+            VERIFIER_KIT_RUN_ATTEMPT=""
+            VERIFIER_KIT_ARTIFACT_NAME=""
+            VERIFIER_KIT_ARTIFACT_DIGEST=""
+          else
+            jq -e 'type == "object" and keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]' \
+              <<< "$VERIFIER_KIT_COORDINATES" >/dev/null
+            VERIFIER_KIT_RUN_ID="$(jq -er '.runId | tostring' <<< "$VERIFIER_KIT_COORDINATES")"
+            VERIFIER_KIT_RUN_ATTEMPT="$(jq -er '.runAttempt | tostring' <<< "$VERIFIER_KIT_COORDINATES")"
+            VERIFIER_KIT_ARTIFACT_NAME="$(jq -er .artifactName <<< "$VERIFIER_KIT_COORDINATES")"
+            VERIFIER_KIT_ARTIFACT_DIGEST="$(jq -er .artifactDigest <<< "$VERIFIER_KIT_COORDINATES")"
+          fi
+
+          require_coordinates \
+            ".github/workflows/stable-1.0-supply-chain.yml" \
+            "$AUTHENTICATED_INPUTS_RUN_ID" "$AUTHENTICATED_INPUTS_RUN_ATTEMPT" \
+            "$AUTHENTICATED_INPUTS_ARTIFACT_NAME" "$AUTHENTICATED_INPUTS_ARTIFACT_DIGEST" \
+            "Authenticated recipe inputs"
+          expected_inputs_name="stable-1.0-supply-chain-$INPUT_RELEASE_ID-inventory"
+          if [[ "$AUTHENTICATED_INPUTS_ARTIFACT_NAME" != "$expected_inputs_name" ]]; then
+            echo "::error::The authenticated recipe-input artifact is not the canonical inventory handoff."
+            exit 2
+          fi
+
+          if [[ "$INPUT_OPERATION" != "prepare-verifier-kit" ]]; then
+            require_coordinates \
+              ".github/workflows/stable-1.0-independent-reproducibility.yml" \
+              "$VERIFIER_KIT_RUN_ID" "$VERIFIER_KIT_RUN_ATTEMPT" \
+              "$VERIFIER_KIT_ARTIFACT_NAME" "$VERIFIER_KIT_ARTIFACT_DIGEST" "Verifier kit"
+            expected_kit_name="stable-1-0-independent-verifier-kit-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$VERIFIER_KIT_RUN_ID-$VERIFIER_KIT_RUN_ATTEMPT"
+            if [[ "$VERIFIER_KIT_ARTIFACT_NAME" != "$expected_kit_name" ]]; then
+              echo "::error::The verifier-kit artifact name does not match its immutable coordinates."
+              exit 2
+            fi
+            require_coordinates \
+              "$EXTERNAL_WORKFLOW" "$EXTERNAL_RUN_ID" "$EXTERNAL_RUN_ATTEMPT" \
+              "$EXTERNAL_ARTIFACT_NAME" "$EXTERNAL_ARTIFACT_DIGEST" "External bundle"
+            expected_external_name="stable-1-0-independent-external-bundle-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$EXTERNAL_RUN_ID-$EXTERNAL_RUN_ATTEMPT"
+            if [[ "$EXTERNAL_ARTIFACT_NAME" != "$expected_external_name" ]]; then
+              echo "::error::The external bundle name does not match its immutable transport coordinates."
+              exit 2
+            fi
+          fi
+          if [[ "$INPUT_OPERATION" == "compare" || "$INPUT_OPERATION" == "closeout" ]]; then
+            require_coordinates \
+              ".github/workflows/stable-1.0-rc-release.yml" \
+              "$SELECTED_RC_RUN_ID" "$SELECTED_RC_RUN_ATTEMPT" \
+              "$SELECTED_RC_ARTIFACT_NAME" "$SELECTED_RC_ARTIFACT_DIGEST" "Selected RC"
+            expected_rc_name="stable-1-0-rc-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$SELECTED_RC_RUN_ID-$SELECTED_RC_RUN_ATTEMPT"
+            if [[ "$SELECTED_RC_ARTIFACT_NAME" != "$expected_rc_name" ]]; then
+              echo "::error::The selected RC artifact name does not match its immutable coordinates."
+              exit 2
+            fi
+            require_coordinates \
+              ".github/workflows/stable-1.0-supply-chain.yml" \
+              "$PRIMARY_RUN_ID" "$PRIMARY_RUN_ATTEMPT" \
+              "$PRIMARY_ARTIFACT_NAME" "$PRIMARY_ARTIFACT_DIGEST" "Primary supply-chain"
+            expected_primary_name="stable-1.0-supply-chain-$INPUT_RELEASE_ID-comparison"
+            if [[ "$PRIMARY_ARTIFACT_NAME" != "$expected_primary_name" ]]; then
+              echo "::error::The primary supply-chain artifact is not the canonical comparison handoff."
+              exit 2
+            fi
+            jq -e 'type == "object" and keys == ["artifactDigest", "artifactName", "runAttempt", "runId"]' \
+              <<< "$PRIMARY_SUBJECT_BUNDLE_COORDINATES" >/dev/null
+            PRIMARY_SUBJECT_RUN_ID="$(jq -er '.runId | tostring' <<< "$PRIMARY_SUBJECT_BUNDLE_COORDINATES")"
+            PRIMARY_SUBJECT_RUN_ATTEMPT="$(jq -er '.runAttempt | tostring' <<< "$PRIMARY_SUBJECT_BUNDLE_COORDINATES")"
+            PRIMARY_SUBJECT_ARTIFACT_NAME="$(jq -er .artifactName <<< "$PRIMARY_SUBJECT_BUNDLE_COORDINATES")"
+            PRIMARY_SUBJECT_ARTIFACT_DIGEST="$(jq -er .artifactDigest <<< "$PRIMARY_SUBJECT_BUNDLE_COORDINATES")"
+            require_coordinates \
+              ".github/workflows/stable-1.0-supply-chain.yml" \
+              "$PRIMARY_SUBJECT_RUN_ID" "$PRIMARY_SUBJECT_RUN_ATTEMPT" \
+              "$PRIMARY_SUBJECT_ARTIFACT_NAME" "$PRIMARY_SUBJECT_ARTIFACT_DIGEST" \
+              "Primary subject bundle"
+            expected_subject_name="stable-1.0-supply-chain-$INPUT_RELEASE_ID-independent-primary-subjects-attempt-$PRIMARY_RUN_ATTEMPT"
+            if [[ "$PRIMARY_SUBJECT_RUN_ID" != "$PRIMARY_RUN_ID" \
+                  || "$PRIMARY_SUBJECT_RUN_ATTEMPT" != "$PRIMARY_RUN_ATTEMPT" \
+                  || "$PRIMARY_SUBJECT_ARTIFACT_NAME" != "$expected_subject_name" ]]; then
+              echo "::error::The primary subject bundle is not from the exact supply-chain attempt."
+              exit 2
+            fi
+          elif [[ "$PRIMARY_SUBJECT_BUNDLE_COORDINATES" != "null" ]]; then
+            echo "::error::Primary subject bundle coordinates are permitted only for compare or closeout."
+            exit 2
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          def closed_pairs(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON key")
+                  value[key] = item
+              return value
+
+          raw = os.environ["INPUT_CONTRACT_JSON"]
+          if len(raw.encode("utf-8")) > 1_048_576:
+              raise SystemExit("::error::The execution contract exceeds the one-MiB dispatch bound.")
+          try:
+              contract = json.loads(raw, object_pairs_hook=closed_pairs)
+          except (UnicodeError, ValueError, json.JSONDecodeError):
+              raise SystemExit("::error::The execution contract is not duplicate-free JSON.") from None
+          if not isinstance(contract, dict):
+              raise SystemExit("::error::The execution contract must be one JSON object.")
+          if contract.get("operationMode") != os.environ["INPUT_OPERATION"]:
+              raise SystemExit("::error::The execution contract operation does not match the dispatch.")
+          release = contract.get("release", {})
+          repository = contract.get("repository", {})
+          if (
+              release.get("id") != os.environ["INPUT_RELEASE_ID"]
+              or str(release.get("integerBuild")) != os.environ["INPUT_BUILD_VERSION"]
+              or repository.get("sourceCommit") != os.environ["INPUT_SOURCE_COMMIT"]
+          ):
+              raise SystemExit("::error::The execution contract candidate identity differs from dispatch.")
+          mode = os.environ["INPUT_OPERATION"]
+          selected = contract.get("selectedRc", {})
+          selected_supply = selected.get("supplyChain", {})
+          if mode in {"compare", "closeout"} and (
+              selected.get("workflowPath") != ".github/workflows/stable-1.0-rc-release.yml"
+              or selected.get("runId") != os.environ["SELECTED_RC_RUN_ID"]
+              or str(selected.get("runAttempt")) != os.environ["SELECTED_RC_RUN_ATTEMPT"]
+              or selected.get("artifactName") != os.environ["SELECTED_RC_ARTIFACT_NAME"]
+              or selected.get("artifactDigest") != os.environ["SELECTED_RC_ARTIFACT_DIGEST"]
+          ):
+              raise SystemExit("::error::Selected RC dispatch coordinates differ from the execution contract.")
+          if mode in {"compare", "closeout"} and (
+              selected_supply.get("workflowPath") != ".github/workflows/stable-1.0-supply-chain.yml"
+              or selected_supply.get("workflowCommit") != os.environ["INPUT_SOURCE_COMMIT"]
+              or selected_supply.get("runId") != os.environ["PRIMARY_RUN_ID"]
+              or str(selected_supply.get("runAttempt")) != os.environ["PRIMARY_RUN_ATTEMPT"]
+              or selected_supply.get("artifactName") != os.environ["PRIMARY_ARTIFACT_NAME"]
+              or selected_supply.get("artifactDigest") != os.environ["PRIMARY_ARTIFACT_DIGEST"]
+          ):
+              raise SystemExit("::error::Primary supply-chain coordinates differ from the selected RC binding.")
+
+          def require_binding_root(binding, root, label):
+              if not isinstance(binding, dict):
+                  raise SystemExit(f"::error::{label} binding is absent from the execution contract.")
+              path = binding.get("path")
+              if not isinstance(path, str) or not path.startswith(root + "/"):
+                  raise SystemExit(f"::error::{label} binding is outside its authenticated download root.")
+
+          for name, binding in contract.get("authenticatedInputFiles", {}).items():
+              require_binding_root(
+                  binding,
+                  "build/independent-reproducibility-inputs/authenticated-inputs",
+                  f"Authenticated input {name}",
+              )
+          if mode != "prepare-verifier-kit":
+              require_binding_root(
+                  contract.get("verifierKit"),
+                  "build/independent-reproducibility-inputs/verifier-kit",
+                  "Verifier kit",
+              )
+              for name, binding in contract.get("externalBuild", {}).items():
+                  require_binding_root(
+                      binding,
+                      "build/independent-reproducibility-inputs/external",
+                      f"External build {name}",
+                  )
+          if mode in {"compare", "closeout"}:
+              comparison = contract.get("comparison", {})
+              for name in (
+                  "primaryBuilderReceipt",
+                  "primaryAuthorityAttestation",
+              ):
+                  require_binding_root(
+                      comparison.get(name),
+                      "build/independent-reproducibility-inputs/primary-supply-chain",
+                      f"Primary comparison {name}",
+                  )
+              require_binding_root(
+                  comparison.get("candidateSubjectBundle"),
+                  "build/independent-reproducibility-inputs/primary-subjects",
+                  "Primary comparison candidateSubjectBundle",
+              )
+          PY
+
+  prepare-verifier-kit:
+    name: Prepare candidate-byte-free verifier kit
+    if: inputs.operation == 'prepare-verifier-kit'
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Authenticate exact candidate-byte-free recipe-input coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN_ID: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runId }}
+          EXPECTED_RUN_ATTEMPT: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runAttempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactName }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactDigest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed" and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          attempt_started="$(jq -er .run_started_at <<< "$run")"
+          attempt_updated="$(jq -er .updated_at <<< "$run")"
+          jq -e \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_ARTIFACT_DIGEST" \
+            --arg started "$attempt_started" \
+            --arg updated "$attempt_updated" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest
+              and .[0].created_at >= $started
+              and .[0].created_at <= $updated' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download authenticated recipe inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactName }}
+          path: build/independent-reproducibility-inputs/authenticated-input-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runId }}
+
+      - name: Stage only the exact authenticated recipe documents
+        env:
+          INPUT_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+        run: |
+          set -euo pipefail
+          test -z "$(find build/independent-reproducibility-inputs/authenticated-input-artifact \
+            \( -type l -o -type f -links +1 \) -print -quit)"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          contract = json.loads(os.environ["INPUT_CONTRACT_JSON"])
+          source_root = Path(
+              "build/independent-reproducibility-inputs/authenticated-input-artifact/artifacts/legacy"
+          ).resolve(strict=True)
+          destination = Path(
+              "build/independent-reproducibility-inputs/authenticated-inputs"
+          )
+          destination.mkdir(parents=True, mode=0o700)
+          names = {
+              "buildMaterials": "stable-1.0-build-materials.json",
+              "resolutionSnapshot": "stable-1.0-resolved-dependency-snapshot.json",
+              "componentInventory": "stable-1.0-component-inventory.json",
+              "subjectInventory": "stable-1.0-release-subject-inventory.json",
+              "sbomBinding": "stable-1.0-sbom-binding.json",
+          }
+          for key, name in names.items():
+              source = (source_root / name).resolve(strict=True)
+              source.relative_to(source_root)
+              if source.is_symlink() or not source.is_file() or source.stat().st_nlink != 1:
+                  raise SystemExit(f"authenticated input {key} is not a regular file")
+              target = destination / name
+              binding = contract["authenticatedInputFiles"][key]
+              if binding["path"] != target.as_posix():
+                  raise SystemExit(f"authenticated input {key} path differs from the contract")
+              data = source.read_bytes()
+              digest = "sha256:" + hashlib.sha256(data).hexdigest()
+              if binding["sha256"] != digest or binding["size"] != len(data):
+                  raise SystemExit(f"authenticated input {key} bytes differ from the contract")
+              target.write_bytes(data)
+          PY
+
+      - name: Materialize the reviewed contract deterministically
+        env:
+          INPUT_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def closed_pairs(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON key")
+                  value[key] = item
+              return value
+
+          value = json.loads(os.environ["INPUT_CONTRACT_JSON"], object_pairs_hook=closed_pairs)
+          encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          destination = Path(os.environ["CONTRACT_PATH"])
+          destination.parent.mkdir(parents=True, mode=0o700)
+          destination.write_text(encoded, encoding="utf-8", newline="\n")
+          PY
+
+      # This job has no selected-RC coordinates and no candidate artifact download step.
+      - name: Generate verifier kit without candidate product bytes
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          OUTPUT_ROOT: build/independent-reproducibility-output
+        run: |
+          set -euo pipefail
+          updated="$(mktemp "$RUNNER_TEMP/independent-contract.XXXXXX")"
+          jq -S --arg evaluationTime "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            '.evaluationTime = $evaluationTime' "$CONTRACT_PATH" > "$updated"
+          mv "$updated" "$CONTRACT_PATH"
+          python3 tools/release-certification/certify.py stable-independent-reproducibility \
+            --mode prepare-verifier-kit \
+            --execution-contract "$CONTRACT_PATH" \
+            --out-dir "$OUTPUT_ROOT"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-verifier-kit.json"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-verifier-kit.sha256"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-redaction-report.json"
+          test "$(find "$OUTPUT_ROOT" -type f | wc -l)" -eq 3
+          test -z "$(find "$OUTPUT_ROOT" -type l -print -quit)"
+
+      - name: Upload the bounded verifier kit
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-independent-verifier-kit-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/independent-reproducibility-output/stable-1.0-independent-verifier-kit.json
+            build/independent-reproducibility-output/stable-1.0-independent-verifier-kit.sha256
+            build/independent-reproducibility-output/stable-1.0-independent-reproducibility-redaction-report.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false
+
+  authenticate-and-compare:
+    name: Authenticate and compare independent rebuild
+    if: inputs.operation != 'prepare-verifier-kit'
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: stable-1.0-independent-reproducibility-external-receipt
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Authenticate exact candidate-byte-free recipe-input coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN_ID: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runId }}
+          EXPECTED_RUN_ATTEMPT: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runAttempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactName }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactDigest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed" and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          attempt_started="$(jq -er .run_started_at <<< "$run")"
+          attempt_updated="$(jq -er .updated_at <<< "$run")"
+          jq -e \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_ARTIFACT_DIGEST" \
+            --arg started "$attempt_started" \
+            --arg updated "$attempt_updated" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest
+              and .[0].created_at >= $started
+              and .[0].created_at <= $updated' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download authenticated recipe inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ fromJSON(inputs.authenticated_inputs_coordinates).artifactName }}
+          path: build/independent-reproducibility-inputs/authenticated-input-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ fromJSON(inputs.authenticated_inputs_coordinates).runId }}
+
+      - name: Stage only the exact authenticated recipe documents
+        env:
+          INPUT_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+        run: |
+          set -euo pipefail
+          test -z "$(find build/independent-reproducibility-inputs/authenticated-input-artifact \
+            \( -type l -o -type f -links +1 \) -print -quit)"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          contract = json.loads(os.environ["INPUT_CONTRACT_JSON"])
+          source_root = Path(
+              "build/independent-reproducibility-inputs/authenticated-input-artifact/artifacts/legacy"
+          ).resolve(strict=True)
+          destination = Path(
+              "build/independent-reproducibility-inputs/authenticated-inputs"
+          )
+          destination.mkdir(parents=True, mode=0o700)
+          names = {
+              "buildMaterials": "stable-1.0-build-materials.json",
+              "resolutionSnapshot": "stable-1.0-resolved-dependency-snapshot.json",
+              "componentInventory": "stable-1.0-component-inventory.json",
+              "subjectInventory": "stable-1.0-release-subject-inventory.json",
+              "sbomBinding": "stable-1.0-sbom-binding.json",
+          }
+          for key, name in names.items():
+              source = (source_root / name).resolve(strict=True)
+              source.relative_to(source_root)
+              if source.is_symlink() or not source.is_file() or source.stat().st_nlink != 1:
+                  raise SystemExit(f"authenticated input {key} is not a regular file")
+              target = destination / name
+              binding = contract["authenticatedInputFiles"][key]
+              if binding["path"] != target.as_posix():
+                  raise SystemExit(f"authenticated input {key} path differs from the contract")
+              data = source.read_bytes()
+              digest = "sha256:" + hashlib.sha256(data).hexdigest()
+              if binding["sha256"] != digest or binding["size"] != len(data):
+                  raise SystemExit(f"authenticated input {key} bytes differ from the contract")
+              target.write_bytes(data)
+          PY
+
+      - name: Materialize the reviewed contract deterministically
+        env:
+          INPUT_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def closed_pairs(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON key")
+                  value[key] = item
+              return value
+
+          value = json.loads(os.environ["INPUT_CONTRACT_JSON"], object_pairs_hook=closed_pairs)
+          encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+          destination = Path(os.environ["CONTRACT_PATH"])
+          destination.parent.mkdir(parents=True, mode=0o700)
+          destination.write_text(encoded, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Bind phase-local protected coordinator identity
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          set -euo pipefail
+          if [ "$INPUT_OPERATION" = "closeout" ]; then
+            artifact_name="stable-1-0-independent-closeout-${INPUT_RELEASE_ID}-${INPUT_BUILD_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          else
+            artifact_name="stable-1-0-independent-comparison-${INPUT_RELEASE_ID}-${INPUT_BUILD_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          updated="$(mktemp "$RUNNER_TEMP/independent-contract.XXXXXX")"
+          jq \
+            --arg commit "$GITHUB_SHA" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --argjson runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg artifactName "$artifact_name" '
+              .coordinator = {
+                repository: "crypta-network/cryptad",
+                workflowPath: ".github/workflows/stable-1.0-independent-reproducibility.yml",
+                workflowCommit: $commit,
+                runId: $runId,
+                runAttempt: $runAttempt,
+                jobName: "Authenticate and compare independent rebuild",
+                environment: "stable-1.0-independent-reproducibility-external-receipt",
+                artifactName: $artifactName,
+                artifactDigest: null
+              }' "$CONTRACT_PATH" > "$updated"
+          mv "$updated" "$CONTRACT_PATH"
+
+      - name: Authenticate exact candidate-byte-free verifier-kit coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN_ID: ${{ fromJSON(inputs.verifier_kit_coordinates).runId }}
+          EXPECTED_RUN_ATTEMPT: ${{ fromJSON(inputs.verifier_kit_coordinates).runAttempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ fromJSON(inputs.verifier_kit_coordinates).artifactName }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ fromJSON(inputs.verifier_kit_coordinates).artifactDigest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed" and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-independent-reproducibility.yml"
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          jq -e --arg digest "$EXPECTED_ARTIFACT_DIGEST" '
+            length == 1 and .[0].expired == false and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download the exact candidate-byte-free verifier kit
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ fromJSON(inputs.verifier_kit_coordinates).artifactName }}
+          path: build/independent-reproducibility-inputs/verifier-kit
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ fromJSON(inputs.verifier_kit_coordinates).runId }}
+
+      - name: Bind the verifier-kit bytes to the execution contract
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+        run: |
+          set -euo pipefail
+          root="build/independent-reproducibility-inputs/verifier-kit"
+          test -z "$(find "$root" \( -type l -o -type f -links +1 \) -print -quit)"
+          test "$(find "$root" -type f | wc -l)" -eq 3
+          test -f "$root/stable-1.0-independent-verifier-kit.json"
+          test -f "$root/stable-1.0-independent-verifier-kit.sha256"
+          test -f "$root/stable-1.0-independent-reproducibility-redaction-report.json"
+          kit_digest="sha256:$(sha256sum "$root/stable-1.0-independent-verifier-kit.json" | cut -d' ' -f1)"
+          test "$(tr -d '\r\n' < "$root/stable-1.0-independent-verifier-kit.sha256")" = \
+            "$(jq -er .kitDigest "$root/stable-1.0-independent-verifier-kit.json")"
+          jq -e \
+            --arg path "$root/stable-1.0-independent-verifier-kit.json" \
+            --arg digest "$kit_digest" \
+            --argjson size "$(stat -c %s "$root/stable-1.0-independent-verifier-kit.json")" '
+              .verifierKit.path == $path
+              and .verifierKit.sha256 == $digest
+              and .verifierKit.size == $size
+              and .verifierKit.schema == "stable-1.0-independent-verifier-kit-v1.schema.json"' \
+            "$CONTRACT_PATH" >/dev/null
+
+      - name: Authenticate exact external-bundle transport coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW: ${{ inputs.external_bundle_workflow }}
+          EXPECTED_RUN_ID: ${{ inputs.external_bundle_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.external_bundle_run_attempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.external_bundle_artifact_name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.external_bundle_artifact_digest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" \
+            --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg workflow "$EXPECTED_WORKFLOW" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == $workflow
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          attempt_started="$(jq -er .run_started_at <<< "$run")"
+          attempt_updated="$(jq -er .updated_at <<< "$run")"
+          jq -e \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_ARTIFACT_DIGEST" \
+            --arg started "$attempt_started" \
+            --arg updated "$attempt_updated" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest
+              and .[0].created_at >= $started
+              and .[0].created_at <= $updated' \
+            <<< "$artifacts" >/dev/null
+
+      # This artifact is transport only. The CLI authenticates the exact raw bundle and
+      # verification-transcript bytes plus the closed workload claims. Only a separately reviewed
+      # operational adapter/profile may claim cryptographic verification; checked-in templates may not.
+      - name: Download the sealed external rebuild bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.external_bundle_artifact_name }}
+          path: build/independent-reproducibility-inputs/external
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.external_bundle_run_id }}
+
+      - name: Authenticate sealed external receipt before candidate access
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          RECEIPT_CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-receipt-phase.json
+          OUTPUT_ROOT: build/independent-reproducibility-output
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("build/independent-reproducibility-inputs/external")
+          contract = json.loads(Path(os.environ["CONTRACT_PATH"]).read_text(encoding="utf-8"))
+          expected = {
+              Path(contract["externalBuild"][field]["path"]).name
+              for field in (
+                  "builderReceipt",
+                  "authorityAttestation",
+                  "rawArtifactAttestationBundle",
+                  "verificationTranscript",
+                  "outputManifest",
+                  "outputBundle",
+              )
+          }
+          files = [item for item in root.rglob("*") if item.is_file()]
+          names = [item.name for item in files]
+          if any(item.is_symlink() for item in root.rglob("*")):
+              raise SystemExit("::error::The external transport contains a symbolic link.")
+          if len(expected) != 6 or len(names) != len(set(names)) or set(names) != expected:
+              raise SystemExit("::error::The external transport member allowlist does not match the contract.")
+          PY
+          # operationMode, evaluationTime, and transport bindings are phase-local and excluded from
+          # executionContractDigest. Authenticate the sealed external evidence with a receipt-only
+          # projection; retain the reviewed compare/closeout contract for the later candidate phase.
+          updated="$(mktemp "$RUNNER_TEMP/independent-receipt-contract.XXXXXX")"
+          jq -S --arg evaluationTime "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '
+            .operationMode = "verify-external-receipt"
+            | .evaluationTime = $evaluationTime
+            | .comparison.primaryBuilderReceipt = null
+            | .comparison.primaryAuthorityAttestation = null
+            | .comparison.candidateSubjectBundle = null
+            | .comparison.comparisonPlan = null
+            | .comparison.reproducibilityResult = null' \
+            "$CONTRACT_PATH" > "$updated"
+          mv "$updated" "$RECEIPT_CONTRACT_PATH"
+          python3 tools/release-certification/certify.py stable-independent-reproducibility \
+            --mode verify-external-receipt \
+            --execution-contract "$RECEIPT_CONTRACT_PATH" \
+            --out-dir "$OUTPUT_ROOT"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-builder-attestation.json"
+
+      # Candidate coordinates are authenticated only after the external receipt and output seal
+      # have passed. No earlier job or step receives the selected RC artifact.
+      - name: Authenticate exact primary supply-chain coordinates after external sealing
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN_ID: ${{ inputs.primary_supply_chain_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.primary_supply_chain_run_attempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.primary_supply_chain_artifact_name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.primary_supply_chain_artifact_digest }}
+          EXPECTED_SUBJECT_ARTIFACT_NAME: ${{ fromJSON(inputs.primary_subject_bundle_coordinates).artifactName }}
+          EXPECTED_SUBJECT_ARTIFACT_DIGEST: ${{ fromJSON(inputs.primary_subject_bundle_coordinates).artifactDigest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" \
+            --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-supply-chain.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          attempt_started="$(jq -er .run_started_at <<< "$run")"
+          attempt_updated="$(jq -er .updated_at <<< "$run")"
+          jq -e \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_ARTIFACT_DIGEST" \
+            --arg started "$attempt_started" \
+            --arg updated "$attempt_updated" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest
+              and .[0].created_at >= $started
+              and .[0].created_at <= $updated' \
+            <<< "$artifacts" >/dev/null
+          subject_artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_SUBJECT_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          jq -e \
+            --arg name "$EXPECTED_SUBJECT_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_SUBJECT_ARTIFACT_DIGEST" \
+            --arg started "$attempt_started" \
+            --arg updated "$attempt_updated" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest
+              and .[0].created_at >= $started
+              and .[0].created_at <= $updated' \
+            <<< "$subject_artifacts" >/dev/null
+
+      - name: Download primary supply-chain evidence only after external receipt authentication
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.primary_supply_chain_artifact_name }}
+          path: build/independent-reproducibility-inputs/primary-supply-chain
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.primary_supply_chain_run_id }}
+
+      - name: Download primary subject bundle only after external receipt authentication
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ fromJSON(inputs.primary_subject_bundle_coordinates).artifactName }}
+          path: build/independent-reproducibility-inputs/primary-subjects
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ fromJSON(inputs.primary_subject_bundle_coordinates).runId }}
+
+      - name: Bind authenticated primary authority facts to this execution contract
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        env:
+          PYTHONPATH: tools/release-certification
+        run: |
+          set -euo pipefail
+          python3 -m cryptad_certification.engines.stable_1_0_independent_handoff \
+            bind-primary-authority \
+            --workspace . \
+            --contract build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json \
+            --primary-root build/independent-reproducibility-inputs/primary-supply-chain/independent-reproducibility \
+            --workflow .github/workflows/stable-1.0-supply-chain.yml
+
+      - name: Bind primary receipt, authority evidence, and candidate bundle to the contract
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+        run: |
+          set -euo pipefail
+          root="build/independent-reproducibility-inputs/primary-supply-chain"
+          subject_root="build/independent-reproducibility-inputs/primary-subjects"
+          test -z "$(find "$root" "$subject_root" \( -type l -o -type f -links +1 \) -print -quit)"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          contract = json.loads(Path(os.environ["CONTRACT_PATH"]).read_text(encoding="utf-8"))
+          root = Path("build/independent-reproducibility-inputs/primary-supply-chain")
+          paths = {
+              "primaryBuilderReceipt": root / "independent-reproducibility/stable-1.0-primary-builder-receipt.json",
+              "primaryAuthorityAttestation": root / "independent-reproducibility/stable-1.0-primary-authority-attestation.json",
+              "candidateSubjectBundle": Path("build/independent-reproducibility-inputs/primary-subjects/stable-1.0-primary-subject-bundle.zip"),
+          }
+          for key, path in paths.items():
+              if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+                  raise SystemExit(f"primary comparison input {key} is absent or unsafe")
+              binding = contract["comparison"][key]
+              data = path.read_bytes()
+              if (
+                  binding["path"] != path.as_posix()
+                  or binding["sha256"] != "sha256:" + hashlib.sha256(data).hexdigest()
+                  or binding["size"] != len(data)
+              ):
+                  raise SystemExit(f"primary comparison input {key} differs from the contract")
+          authority = json.loads(
+              paths["primaryAuthorityAttestation"].read_text(encoding="utf-8")
+          )
+          for key in ("rawArtifactAttestationBundle", "verificationTranscript"):
+              binding = authority[key]
+              path = Path(binding["path"])
+              if not path.as_posix().startswith(root.as_posix() + "/"):
+                  raise SystemExit(f"primary authority {key} escapes its authenticated artifact")
+              data = path.read_bytes()
+              if (
+                  path.is_symlink()
+                  or not path.is_file()
+                  or path.stat().st_nlink != 1
+                  or binding["sha256"] != "sha256:" + hashlib.sha256(data).hexdigest()
+                  or binding["size"] != len(data)
+              ):
+                  raise SystemExit(f"primary authority {key} differs from its file binding")
+          PY
+
+      - name: Authenticate exact selected RC coordinates after external sealing
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_RUN_ID: ${{ inputs.selected_rc_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.selected_rc_artifact_name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.selected_rc_artifact_digest }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT")"
+          jq -e \
+            --arg id "$EXPECTED_RUN_ID" \
+            --arg attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" '
+              (.id | tostring) == $id
+              and (.run_attempt | tostring) == $attempt
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"
+              and .path == ".github/workflows/stable-1.0-rc-release.yml"
+              and .actor.login == "leumor"
+              and .triggering_actor.login == "leumor"
+              and .head_sha == $commit
+              and .head_repository.full_name == "crypta-network/cryptad"' \
+            <<< "$run" >/dev/null
+          artifacts="$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" \
+            | jq --arg name "$EXPECTED_ARTIFACT_NAME" '[.[].artifacts[] | select(.name == $name)]')"
+          jq -e \
+            --arg name "$EXPECTED_ARTIFACT_NAME" \
+            --arg digest "$EXPECTED_ARTIFACT_DIGEST" '
+              length == 1
+              and .[0].expired == false
+              and .[0].name == $name
+              and .[0].digest == $digest' \
+            <<< "$artifacts" >/dev/null
+
+      - name: Download selected RC only after external receipt authentication
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.selected_rc_artifact_name }}
+          path: build/independent-reproducibility-inputs/selected-rc
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.selected_rc_run_id }}
+
+      - name: Bind the selected RC freeze and product identity to the contract
+        if: inputs.operation == 'compare' || inputs.operation == 'closeout'
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          PYTHONPATH: tools/release-certification
+        run: |
+          set -euo pipefail
+          root="build/independent-reproducibility-inputs/selected-rc"
+          test -z "$(find "$root" \( -type l -o -type f -links +1 \) -print -quit)"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cryptad_certification.engines.stable_1_0_rc_freeze import freeze_content_digest
+          from cryptad_certification.io import read_json
+
+          contract = json.loads(Path(os.environ["CONTRACT_PATH"]).read_text(encoding="utf-8"))
+          selected = contract["selectedRc"]
+          root = Path("build/independent-reproducibility-inputs/selected-rc").resolve(strict=True)
+          freezes = [path for path in root.rglob("stable-1.0-rc-freeze.json") if path.is_file()]
+          if len(freezes) != 1 or freezes[0].is_symlink() or freezes[0].stat().st_nlink != 1:
+              raise SystemExit("selected RC does not contain exactly one safe canonical freeze")
+          freeze_path = freezes[0]
+          freeze = json.loads(freeze_path.read_text(encoding="utf-8"))
+          candidate = freeze.get("candidate", {})
+          file_digest = "sha256:" + hashlib.sha256(freeze_path.read_bytes()).hexdigest()
+          if (
+              file_digest != selected["freezeFileDigest"]
+              or freeze.get("contentDigest") != freeze_content_digest(freeze)
+              or freeze.get("contentDigest") != selected["freezeDigest"]
+              or candidate.get("releaseId") != contract["release"]["id"]
+              or str(candidate.get("buildVersion")) != str(contract["release"]["integerBuild"])
+              or candidate.get("sourceCommit") != contract["repository"]["sourceCommit"]
+              or candidate.get("productionDistributionDigest") != selected["productDigest"]
+          ):
+              raise SystemExit("selected RC freeze or product identity differs from the contract")
+          coordinate_paths = [
+              path
+              for path in root.rglob("stable-1.0-selected-rc-supply-chain-coordinate.json")
+              if path.is_file()
+          ]
+          if (
+              len(coordinate_paths) != 1
+              or coordinate_paths[0].is_symlink()
+              or coordinate_paths[0].stat().st_nlink != 1
+          ):
+              raise SystemExit("selected RC lacks one safe retained supply-chain authority")
+          retained_coordinate = read_json(coordinate_paths[0])
+          expected_coordinate = {
+              "runId": selected["supplyChain"]["runId"],
+              "runAttempt": selected["supplyChain"]["runAttempt"],
+              "artifactName": selected["supplyChain"]["artifactName"],
+              "artifactDigest": selected["supplyChain"]["artifactDigest"],
+          }
+          if retained_coordinate != expected_coordinate:
+              raise SystemExit("selected RC retained a different supply-chain authority")
+          output = Path("build/independent-reproducibility-output")
+          output.mkdir(parents=True, exist_ok=True)
+          (output / "stable-1.0-selected-rc-supply-chain-coordinate.json").write_bytes(
+              coordinate_paths[0].read_bytes()
+          )
+          PY
+
+      - name: Compare with the existing Stable comparison authority
+        if: inputs.operation == 'compare'
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          OUTPUT_ROOT: build/independent-reproducibility-output
+        run: |
+          set -euo pipefail
+          test -z "$(find build/independent-reproducibility-inputs/selected-rc -type l -print -quit)"
+          updated="$(mktemp "$RUNNER_TEMP/independent-contract.XXXXXX")"
+          jq -S --arg evaluationTime "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            '.evaluationTime = $evaluationTime' "$CONTRACT_PATH" > "$updated"
+          mv "$updated" "$CONTRACT_PATH"
+          python3 tools/release-certification/certify.py stable-independent-reproducibility \
+            --mode compare \
+            --execution-contract "$CONTRACT_PATH" \
+            --out-dir "$OUTPUT_ROOT"
+          test -f "$OUTPUT_ROOT/stable-1.0-rebuild-comparison-plan.json"
+          test -f "$OUTPUT_ROOT/stable-1.0-reproducibility-report.json"
+          for member in \
+            stable-1.0-primary-builder-receipt.json \
+            stable-1.0-primary-authority-attestation.json \
+            stable-1.0-independent-builder-receipt.json \
+            stable-1.0-independent-builder-attestation.json \
+            stable-1.0-independent-output-manifest.json; do
+            test -f "$OUTPUT_ROOT/$member"
+          done
+
+      - name: Produce protected operational closeout
+        if: inputs.operation == 'closeout'
+        env:
+          CONTRACT_PATH: build/independent-reproducibility-inputs/execution/stable-1.0-independent-reproducibility-execution.json
+          OUTPUT_ROOT: build/independent-reproducibility-output
+        run: |
+          set -euo pipefail
+          updated="$(mktemp "$RUNNER_TEMP/independent-contract.XXXXXX")"
+          jq -S --arg evaluationTime "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            '.evaluationTime = $evaluationTime' "$CONTRACT_PATH" > "$updated"
+          mv "$updated" "$CONTRACT_PATH"
+          python3 tools/release-certification/certify.py stable-independent-reproducibility \
+            --mode closeout \
+            --execution-contract "$CONTRACT_PATH" \
+            --out-dir "$OUTPUT_ROOT"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-summary.json"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-report.md"
+          test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-redaction-report.json"
+
+      - name: Upload authenticated external receipt
+        if: inputs.operation == 'verify-external-receipt'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-independent-external-receipt-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/independent-reproducibility-output/stable-1.0-independent-builder-attestation.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false
+
+      - name: Upload independent comparison
+        if: always() && inputs.operation == 'compare'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-independent-comparison-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/independent-reproducibility-output/stable-1.0-primary-builder-receipt.json
+            build/independent-reproducibility-output/stable-1.0-primary-authority-attestation.json
+            build/independent-reproducibility-output/stable-1.0-independent-builder-receipt.json
+            build/independent-reproducibility-output/stable-1.0-independent-builder-attestation.json
+            build/independent-reproducibility-output/stable-1.0-independent-output-manifest.json
+            build/independent-reproducibility-output/stable-1.0-independent-raw-artifact-attestation.bundle
+            build/independent-reproducibility-output/stable-1.0-independent-attestation-verification-transcript.json
+            build/independent-reproducibility-output/stable-1.0-selected-rc-supply-chain-coordinate.json
+            build/independent-reproducibility-output/stable-1.0-rebuild-comparison-plan.json
+            build/independent-reproducibility-output/stable-1.0-reproducibility-report.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false
+
+      - name: Upload bounded independent-reproducibility closeout
+        if: always() && inputs.operation == 'closeout'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-independent-closeout-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/independent-reproducibility-output/stable-1.0-primary-builder-receipt.json
+            build/independent-reproducibility-output/stable-1.0-primary-authority-attestation.json
+            build/independent-reproducibility-output/stable-1.0-independent-builder-receipt.json
+            build/independent-reproducibility-output/stable-1.0-independent-builder-attestation.json
+            build/independent-reproducibility-output/stable-1.0-independent-output-manifest.json
+            build/independent-reproducibility-output/stable-1.0-independent-raw-artifact-attestation.bundle
+            build/independent-reproducibility-output/stable-1.0-independent-attestation-verification-transcript.json
+            build/independent-reproducibility-output/stable-1.0-selected-rc-supply-chain-coordinate.json
+            build/independent-reproducibility-output/stable-1.0-rebuild-comparison-plan.json
+            build/independent-reproducibility-output/stable-1.0-reproducibility-report.json
+            build/independent-reproducibility-output/stable-1.0-independent-reproducibility-summary.json
+            build/independent-reproducibility-output/stable-1.0-independent-reproducibility-report.md
+            build/independent-reproducibility-output/stable-1.0-independent-reproducibility-redaction-report.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false
+
+  retain-failure-closeout:
+    name: Retain bounded failure closeout
+    if: >-
+      always() &&
+      (needs.validate-dispatch.result != 'success' ||
+       (inputs.operation == 'prepare-verifier-kit' &&
+        needs.prepare-verifier-kit.result != 'success') ||
+       (inputs.operation != 'prepare-verifier-kit' &&
+        needs.authenticate-and-compare.result != 'success'))
+    needs:
+      - validate-dispatch
+      - prepare-verifier-kit
+      - authenticate-and-compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+
+    steps:
+      - name: Write public-safe failure state
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          VALIDATION_RESULT: ${{ needs.validate-dispatch.result }}
+          PREPARE_RESULT: ${{ needs.prepare-verifier-kit.result }}
+          ACCEPT_RESULT: ${{ needs.authenticate-and-compare.result }}
+          FAILURE_ROOT: ${{ runner.temp }}/stable-independent-failure
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$FAILURE_ROOT"
+          jq -n \
+            --arg operation "$INPUT_OPERATION" \
+            --arg validation "$VALIDATION_RESULT" \
+            --arg preparation "$PREPARE_RESULT" \
+            --arg acceptance "$ACCEPT_RESULT" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-independent-reproducibility-workflow-failure",
+                operation: $operation,
+                lifecycleState: "blocked",
+                operationalStatus: "blocked",
+                validationResult: $validation,
+                verifierKitPreparationResult: $preparation,
+                externalReceiptAndComparisonResult: $acceptance,
+                repositoryIdentity: "github.com/crypta-network/cryptad",
+                workflowPath: ".github/workflows/stable-1.0-independent-reproducibility.yml",
+                runId: $runId,
+                runAttempt: $runAttempt,
+                independentlyReproduced: false,
+                publicationPerformed: false,
+                publicVerificationPerformed: false,
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$FAILURE_ROOT/summary.json"
+
+      - name: Upload bounded failure closeout
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-independent-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stable-independent-failure/summary.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false

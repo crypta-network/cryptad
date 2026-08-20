@@ -67,7 +67,13 @@ dependencies {
       libs.versions.foojayResolver.get()
   add(rootSettingsPluginClasspath.name, foojayMarker)
   add(buildLogicSettingsPluginClasspath.name, foojayMarker)
+
+  testImplementation(libs.junitJupiterApi)
+  testRuntimeOnly(libs.junitJupiterEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
 }
+
+tasks.withType<Test>().configureEach { useJUnitPlatform() }
 
 tasks.withType<KotlinCompile>().configureEach {
   compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)

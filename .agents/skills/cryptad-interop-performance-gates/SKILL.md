@@ -835,3 +835,24 @@ protected success. Closeout binds the exact freeze record through RC lineage, re
 promotion identity from the canonical validation-authorization identity, and accepts public
 observation only from the read-only `stable-1.0-public-observation.yml` authority. Follow
 `docs/stable-1.0-protected-release-execution.md`.
+
+For provider-distinct reproducibility, use the closed
+`stable-1.0-independent-reproducibility-execution-v1.schema.json` contract and
+`stable-independent-reproducibility`. Its `prepare-verifier-kit` output excludes candidate bytes,
+candidate product digests, and the primary receipt. Authenticate the external workload identity,
+provider/control-plane/trust-domain separation, immutable pipeline, runner image, receipt, and
+sealed output bundle by verifying the exact raw attestation bundle and bounded adapter transcript
+before making the selected RC artifact available. `compare` delegates product
+comparison to the existing Stable supply-chain plan/result authority. Authenticate and download
+the bounded primary comparison handoff and its separately attested attempt-scoped subject bundle
+only after the external seal, separately from the selected RC;
+`closeout` binds those results to PR-291. Never promote a same-GitHub-provider run,
+fixture/template profile, self-test, Actions transport upload, or protected coordinator run to
+external or public completion. The external app partition must run the kit-bound
+`:packageUnsignedFirstPartyAppsForIndependentReproducibility` task without producer signing
+material. Compare those unsigned outputs through the closed
+`crypta-app-signature-envelope-v1` payload view, which excludes only
+`cryptad-app.digests` and `cryptad-app.signature`; continue authenticating the selected RC's signed
+ZIPs and signature receipts as release evidence. Never describe the external authority as an app
+signer. Follow
+`docs/stable-1.0-independent-reproducible-build-verification.md`.

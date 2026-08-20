@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-independent-reproducibility-summary-v1.schema.json",
+  "title": "Crypta Stable 1.0 independent reproducibility closeout summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "tag",
+    "sourceCommit",
+    "sourceRef",
+    "selectedRc",
+    "stableSupplyChainPolicyDigest",
+    "independentReproducibilityPolicyDigest",
+    "executionContractDigest",
+    "verifierKitDigest",
+    "componentInventoryDigest",
+    "subjectInventoryDigest",
+    "buildMaterialsDigest",
+    "resolutionSnapshotDigest",
+    "primaryBuilderReceiptDigest",
+    "primaryAuthorityAttestationDigest",
+    "externalBuilderReceiptDigest",
+    "externalAuthorityAttestationDigest",
+    "externalOutputManifestDigest",
+    "externalOutputBundleDigest",
+    "comparisonPlanDigest",
+    "reproducibilityResultDigest",
+    "providerIndependence",
+    "subjectCoverage",
+    "coordinator",
+    "timing",
+    "operationMode",
+    "lifecycleState",
+    "status",
+    "comparisonStatus",
+    "evidenceClassification",
+    "fixture",
+    "selfTest",
+    "operational",
+    "publicVerification",
+    "blockers",
+    "redaction",
+    "generatedAt",
+    "summaryDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-independent-reproducibility-summary"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$", "maxLength": 32},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/sourceRef"},
+    "selectedRc": {"$ref": "#/$defs/selectedRc"},
+    "stableSupplyChainPolicyDigest": {"$ref": "#/$defs/digest"},
+    "independentReproducibilityPolicyDigest": {"$ref": "#/$defs/digest"},
+    "executionContractDigest": {"$ref": "#/$defs/digest"},
+    "verifierKitDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "componentInventoryDigest": {"$ref": "#/$defs/digest"},
+    "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+    "buildMaterialsDigest": {"$ref": "#/$defs/digest"},
+    "resolutionSnapshotDigest": {"$ref": "#/$defs/digest"},
+    "primaryBuilderReceiptDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "primaryAuthorityAttestationDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "externalBuilderReceiptDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "externalAuthorityAttestationDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "externalOutputManifestDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "externalOutputBundleDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "comparisonPlanDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "reproducibilityResultDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "providerIndependence": {"$ref": "#/$defs/providerIndependence"},
+    "subjectCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredSubjectCount", "comparedSubjectCount", "missingSubjectKeys", "extraSubjectKeys", "complete"],
+      "properties": {
+        "requiredSubjectCount": {"type": "integer", "minimum": 1, "maximum": 512},
+        "comparedSubjectCount": {"type": "integer", "minimum": 0, "maximum": 512},
+        "missingSubjectKeys": {"type": "array", "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subjectKey"}},
+        "extraSubjectKeys": {"type": "array", "maxItems": 512, "uniqueItems": true, "items": {"$ref": "#/$defs/subjectKey"}},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "coordinator": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/coordinator"}]},
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kitPreparedAt", "externalBuildStartedAt", "externalBuildCompletedAt", "externalOutputsSealedAt", "externalReceiptAuthenticatedAt", "candidateInputsAvailableAt", "comparisonCompletedAt"],
+      "properties": {
+        "kitPreparedAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "externalBuildStartedAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "externalBuildCompletedAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "externalOutputsSealedAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "externalReceiptAuthenticatedAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "candidateInputsAvailableAt": {"$ref": "#/$defs/nullableTimestamp"},
+        "comparisonCompletedAt": {"$ref": "#/$defs/nullableTimestamp"}
+      }
+    },
+    "operationMode": {"enum": ["prepare-verifier-kit", "verify-external-receipt", "compare", "closeout", "self-test"]},
+    "lifecycleState": {"enum": ["planned", "kit-prepared", "external-build-sealed", "external-receipt-authenticated", "comparison-complete", "independently-reproduced", "blocked", "partial"]},
+    "status": {"enum": ["pending", "authenticated-external-build", "comparison-failed", "independently-reproduced", "blocked", "partial"]},
+    "comparisonStatus": {"enum": ["not-performed", "pass", "fail"]},
+    "evidenceClassification": {"enum": ["repository-implementation", "fixture", "self-test", "protected-coordinator", "authenticated-external-provider", "public-verification"]},
+    "fixture": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "operational": {"type": "boolean"},
+    "publicVerification": {"enum": ["not-performed", "completed"]},
+    "blockers": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/blocker"}},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "credentialsExcluded", "privateUrisExcluded", "absolutePathsExcluded", "rawContentExcluded", "candidateBytesExcludedFromVerifierKit", "sideEffectsPerformed"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "credentialsExcluded": {"type": "boolean"},
+        "privateUrisExcluded": {"type": "boolean"},
+        "absolutePathsExcluded": {"type": "boolean"},
+        "rawContentExcluded": {"type": "boolean"},
+        "candidateBytesExcludedFromVerifierKit": {"type": "boolean"},
+        "sideEffectsPerformed": {"const": false}
+      }
+    },
+    "generatedAt": {"$ref": "#/$defs/timestamp"},
+    "summaryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "maxLength": 71},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "maxLength": 40},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+/-]*$", "maxLength": 512},
+    "sourceRef": {"type": "string", "pattern": "^(refs/(heads|tags)/[A-Za-z0-9._/-]+|commit:[0-9a-f]{40})$", "maxLength": 512},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 32},
+    "nullableTimestamp": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]},
+    "subjectKey": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+    "selectedRc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest", "freezeDigest", "freezeFileDigest", "productDigest", "subjectInventoryDigest", "supplyChain"],
+      "properties": {
+        "workflowPath": {"const": ".github/workflows/stable-1.0-rc-release.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "artifactName": {"$ref": "#/$defs/identifier"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "freezeFileDigest": {"$ref": "#/$defs/digest"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "subjectInventoryDigest": {"$ref": "#/$defs/digest"},
+        "supplyChain": {"$ref": "#/$defs/supplyChainCoordinate"}
+      }
+    },
+    "supplyChainCoordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest"],
+      "properties": {
+        "workflowPath": {"const": ".github/workflows/stable-1.0-supply-chain.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "artifactName": {"$ref": "#/$defs/identifier"},
+        "artifactDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authorityProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerProfileId", "providerProfileDigest", "providerId", "controlPlaneId", "trustDomainId", "organizationId", "accountId", "projectId", "pipelineDefinitionId", "pipelineRevision", "runId", "runAttempt", "jobId", "artifactAttestationDigest"],
+      "properties": {
+        "providerProfileId": {"$ref": "#/$defs/identifier"},
+        "providerProfileDigest": {"$ref": "#/$defs/digest"},
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "controlPlaneId": {"$ref": "#/$defs/identifier"},
+        "trustDomainId": {"$ref": "#/$defs/identifier"},
+        "organizationId": {"$ref": "#/$defs/identifier"},
+        "accountId": {"$ref": "#/$defs/identifier"},
+        "projectId": {"$ref": "#/$defs/identifier"},
+        "pipelineDefinitionId": {"$ref": "#/$defs/identifier"},
+        "pipelineRevision": {"$ref": "#/$defs/digest"},
+        "runId": {"$ref": "#/$defs/identifier"},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "jobId": {"$ref": "#/$defs/identifier"},
+        "artifactAttestationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "providerIndependence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer", "verifier", "organizationIndependenceRequired", "checks", "status", "evaluationDigest"],
+      "properties": {
+        "producer": {"$ref": "#/$defs/authorityProjection"},
+        "verifier": {"$ref": "#/$defs/authorityProjection"},
+        "organizationIndependenceRequired": {"type": "boolean"},
+        "checks": {"type": "array", "minItems": 8, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/independenceCheck"}},
+        "status": {"enum": ["not-evaluated", "pass", "fail"]},
+        "evaluationDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    },
+    "independenceCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": {"enum": ["artifact-attestation-distinct", "control-plane-distinct", "executor-controller-independent", "organization-distinct", "pipeline-run-distinct", "provider-distinct", "producer-workflow-not-reused", "trust-domain-distinct", "workload-identity-authenticated"]},
+        "status": {"enum": ["not-evaluated", "pass", "fail", "not-required"]}
+      }
+    },
+    "coordinator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "workflowPath", "workflowCommit", "runId", "runAttempt", "jobName", "environment", "artifactName", "artifactDigest"],
+      "properties": {
+        "repository": {"const": "crypta-network/cryptad"},
+        "workflowPath": {"const": ".github/workflows/stable-1.0-independent-reproducibility.yml"},
+        "workflowCommit": {"$ref": "#/$defs/commit"},
+        "runId": {"type": "string", "pattern": "^[1-9][0-9]*$", "maxLength": 20},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "jobName": {"const": "Authenticate and compare independent rebuild"},
+        "environment": {"const": "stable-1.0-independent-reproducibility-external-receipt"},
+        "artifactName": {"$ref": "#/$defs/identifier"},
+        "artifactDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "classification", "message"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "maxLength": 128},
+        "classification": {"enum": ["authority", "binding", "comparison", "freshness", "redaction", "subject-coverage", "withholding"]},
+        "message": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 .:_/-]{0,511}$", "maxLength": 512}
+      }
+    }
+  }
+}

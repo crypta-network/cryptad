@@ -4271,14 +4271,24 @@ jobs:
       - name: Stage flat authenticated comparison handoff
         env:
           RELEASE_ID: ${{ inputs.release_id }}
+          PYTHONPATH: tools/release-certification
         run: |
           set -euo pipefail
           source="build/release-certification/$RELEASE_ID/stable-supply-chain/artifacts/legacy"
           handoff="build/stable-supply-chain/comparison-handoff"
+          subject_bundle="build/stable-supply-chain/independent-primary-subjects/stable-1.0-primary-subject-bundle.zip"
           test -d "$source"
           mkdir -p "$handoff"
           cp -a "$source/." "$handoff/"
           cp build/stable-supply-chain-phase/manifest.json "$handoff/manifest.json"
+          python3 -m cryptad_certification.engines.stable_1_0_independent_handoff \
+            stage-primary \
+            --workspace . \
+            --manifest build/stable-supply-chain-phase/manifest.json \
+            --original-root build/stable-supply-chain-original \
+            --output-root "$handoff/independent-reproducibility" \
+            --subject-bundle "$subject_bundle" \
+            --source-ref "$GITHUB_REF"
 
       - name: Attest comparison or promotion evidence
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
@@ -4293,6 +4303,24 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
+          overwrite: false
+          retention-days: 30
+
+      # Product bytes are intentionally outside the canonical comparison handoff. Existing Stable
+      # RC and certification consumers enforce a 256 MiB bound on that legacy artifact.
+      - name: Attest independent primary subject bundle
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: build/stable-supply-chain/independent-primary-subjects/stable-1.0-primary-subject-bundle.zip
+
+      - name: Upload attempt-scoped independent primary subject bundle
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1.0-supply-chain-${{ inputs.release_id }}-independent-primary-subjects-attempt-${{ github.run_attempt }}
+          path: build/stable-supply-chain/independent-primary-subjects/stable-1.0-primary-subject-bundle.zip
+          compression-level: 0
+          if-no-files-found: error
+          include-hidden-files: false
           overwrite: false
           retention-days: 30
 

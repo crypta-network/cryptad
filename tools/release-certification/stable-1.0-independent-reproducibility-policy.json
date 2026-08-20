@@ -1,0 +1,256 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-independent-reproducibility-policy",
+  "edition": 1,
+  "effectiveAt": "2026-08-18T00:00:00Z",
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "policyDigest": "sha256:f4a252db2378b0c355e1324eddc9891cc447bcaa803b3785b7a4ba359ae1e1ba",
+  "schemas": {
+    "execution": "stable-1.0-independent-reproducibility-execution-v1.schema.json",
+    "verifierKit": "stable-1.0-independent-verifier-kit-v1.schema.json",
+    "builderReceipt": "stable-1.0-independent-builder-receipt-v2.schema.json",
+    "authorityAttestation": "stable-1.0-independent-authority-attestation-v1.schema.json",
+    "outputManifest": "stable-1.0-independent-output-manifest-v1.schema.json",
+    "summary": "stable-1.0-independent-reproducibility-summary-v1.schema.json",
+    "comparisonPlan": "stable-1.0-rebuild-comparison-plan-v1.schema.json",
+    "reproducibilityResult": "stable-1.0-reproducibility-result-v1.schema.json"
+  },
+  "operationModes": [
+    "prepare-verifier-kit",
+    "verify-external-receipt",
+    "compare",
+    "closeout",
+    "self-test"
+  ],
+  "lifecycleStates": [
+    "planned",
+    "kit-prepared",
+    "external-build-sealed",
+    "external-receipt-authenticated",
+    "comparison-complete",
+    "independently-reproduced",
+    "blocked",
+    "partial"
+  ],
+  "closeoutStatuses": [
+    "pending",
+    "authenticated-external-build",
+    "comparison-failed",
+    "independently-reproduced",
+    "blocked",
+    "partial"
+  ],
+  "freshness": {
+    "verifierKitMaximumAgeSeconds": 259200,
+    "externalReceiptMaximumAgeSeconds": 259200,
+    "authorityAttestationMaximumAgeSeconds": 259200,
+    "maximumClockSkewSeconds": 300,
+    "expirationBoundary": "exclusive"
+  },
+  "candidateWithholding": {
+    "candidateBytesExcludedFromVerifierKit": true,
+    "candidateProductDigestsExcludedFromVerifierKit": true,
+    "producerReceiptExcludedFromVerifierKit": true,
+    "candidateAvailableOnlyAfterExternalOutputsSealed": true,
+    "candidateAvailableOnlyAfterExternalReceiptAuthenticated": true
+  },
+  "independenceRules": {
+    "differentProviderRequired": true,
+    "differentControlPlaneRequired": true,
+    "differentTrustDomainRequired": true,
+    "organizationIndependencePolicyBound": true,
+    "differentRunRequired": true,
+    "differentAttestationRequired": true,
+    "producerWorkflowAsVerifierProhibited": true,
+    "producerControlledExecutorProhibited": true,
+    "mutableWorkflowRevisionProhibited": true,
+    "mutableRunnerImageProhibitedWhenProfileRequiresDigest": true,
+    "selfAssertedIdentityProhibited": true,
+    "operationalProfileRequiredForOperationalSuccess": true
+  },
+  "attestationAdapters": [
+    {
+      "adapterId": "external-oidc-dsse-v1",
+      "attestationFormat": "dsse-in-toto-json",
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "verificationMechanism": "policy-pinned-oidc-workload-identity",
+      "requiredClaims": [
+        "audience",
+        "issuer",
+        "organization",
+        "pipeline-definition",
+        "pipeline-revision",
+        "project",
+        "subject"
+      ],
+      "trustRootMode": "profile-pinned",
+      "operationalAllowed": false,
+      "adapterDigest": "sha256:ddc1c2a14033b64f0d9b0861d90ccc59c85ed4b2375103c45e6532a76270ce9d"
+    },
+    {
+      "adapterId": "github-artifact-attestations-v1",
+      "attestationFormat": "sigstore-bundle-in-toto-json",
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "verificationMechanism": "github-artifact-attestations",
+      "requiredClaims": [
+        "issuer",
+        "repository",
+        "runner-environment",
+        "source-digest",
+        "source-ref",
+        "subject",
+        "workflow"
+      ],
+      "trustRootMode": "github-public-good-instance",
+      "operationalAllowed": true,
+      "adapterDigest": "sha256:e950562cd8054f0af1a2df4754f88f28fd45ff9072dcaeb3dfb0ce3acf7721e7"
+    },
+    {
+      "adapterId": "fixture-static-v1",
+      "attestationFormat": "fixture-json",
+      "predicateType": "fixture-only",
+      "verificationMechanism": "fixture-only",
+      "requiredClaims": [],
+      "trustRootMode": "none",
+      "operationalAllowed": false,
+      "adapterDigest": "sha256:6d5678ba42bacb5175db64f94318d5e3d202479efe8ef0e4ac22efa4972cc02d"
+    }
+  ],
+  "providerProfiles": [
+    {
+      "profileId": "fixture-external-oidc-v1",
+      "profileType": "fixture",
+      "providerType": "fixture",
+      "providerId": "fixture.invalid",
+      "controlPlaneId": "fixture.invalid/control-plane",
+      "trustDomainId": "fixture.invalid/trust-domain",
+      "organizationId": "fixture-organization",
+      "accountId": "fixture-account",
+      "projectId": "fixture-project",
+      "adapterId": "fixture-static-v1",
+      "issuer": "https://fixture.invalid",
+      "audiences": ["cryptad-stable-independent-reproducibility-fixture"],
+      "subjectPattern": "^fixture:non-operational$",
+      "pipelineDefinitionPattern": "^fixture-pipeline$",
+      "pipelineRevisionType": "sha256",
+      "executorPolicy": "fixture-only",
+      "immutableRunnerImageRequired": false,
+      "organizationIndependenceRequired": true,
+      "operationalAllowed": false,
+      "profileDigest": "sha256:07c746162428c98f5a6ad06556ba5197ad8db900590985ba6b7d694cd9ccc337"
+    },
+    {
+      "profileId": "generic-external-oidc-template-v1",
+      "profileType": "template",
+      "providerType": "external-oidc",
+      "providerId": "replace-me.invalid",
+      "controlPlaneId": "replace-me.invalid/control-plane",
+      "trustDomainId": "replace-me.invalid/trust-domain",
+      "organizationId": "replace-me-organization",
+      "accountId": "replace-me-account",
+      "projectId": "replace-me-project",
+      "adapterId": "external-oidc-dsse-v1",
+      "issuer": "https://replace-me.invalid",
+      "audiences": ["cryptad-stable-independent-reproducibility"],
+      "subjectPattern": "^replace-me:immutable-workload-subject$",
+      "pipelineDefinitionPattern": "^replace-me:immutable-pipeline-definition$",
+      "pipelineRevisionType": "sha256",
+      "executorPolicy": "provider-hosted-or-independently-controlled",
+      "immutableRunnerImageRequired": true,
+      "organizationIndependenceRequired": true,
+      "operationalAllowed": false,
+      "profileDigest": "sha256:94cb9001580bfd934f778530ce6261e0c76cb90fa80ca6a1792c830a3f9e5ed9"
+    },
+    {
+      "profileId": "github-actions-cryptad-producer-v1",
+      "profileType": "producer",
+      "providerType": "github-actions",
+      "providerId": "github.com",
+      "controlPlaneId": "github.com/actions",
+      "trustDomainId": "github.com/actions",
+      "organizationId": "crypta-network",
+      "accountId": "crypta-network",
+      "projectId": "crypta-network/cryptad",
+      "adapterId": "github-artifact-attestations-v1",
+      "issuer": "https://token.actions.githubusercontent.com",
+      "audiences": ["sigstore"],
+      "subjectPattern": "^repo:crypta-network/cryptad:ref:refs/heads/(release|hotfix)/[1-9][0-9]*$",
+      "pipelineDefinitionPattern": "^github.com/crypta-network/cryptad/.github/workflows/stable-1.0-supply-chain.yml@[0-9a-f]{40}$",
+      "pipelineRevisionType": "git-commit-sha1-content-binding",
+      "executorPolicy": "provider-hosted",
+      "immutableRunnerImageRequired": true,
+      "organizationIndependenceRequired": true,
+      "operationalAllowed": true,
+      "profileDigest": "sha256:752a561aacb3ede911d046cbc193ecfcf379461c0237807494d941a9b1a9ae0e"
+    }
+  ],
+  "requiredExecutionIds": [
+    "linux-installers",
+    "macos-installer",
+    "portable-apps",
+    "windows-installer"
+  ],
+  "requiredExecutionTasks": {
+    "linux-installers": [
+      ":jpackageInstallerLinuxAll"
+    ],
+    "macos-installer": [
+      ":jpackageInstallerCryptad"
+    ],
+    "portable-apps": [
+      ":dist",
+      ":packageUnsignedFirstPartyAppsForIndependentReproducibility"
+    ],
+    "windows-installer": [
+      ":jpackageInstallerWindowsExeCryptad"
+    ]
+  },
+  "requiredBuildTasks": [
+    ":assembleCryptadDist",
+    ":distJlinkCryptad",
+    ":distTarCryptad",
+    ":distZipCryptad",
+    ":jpackageInstallerCryptad",
+    ":packageUnsignedFirstPartyAppsForIndependentReproducibility"
+  ],
+  "differenceClassifications": [
+    "archive-member-ordering-drift",
+    "archive-timestamp-drift",
+    "build-material-drift",
+    "compression-parameter-drift",
+    "dependency-resolution-drift",
+    "embedded-timestamp-drift",
+    "environment-drift",
+    "extra-subject",
+    "file-content-drift",
+    "line-ending-or-encoding-drift",
+    "manifest-or-property-ordering-drift",
+    "missing-subject",
+    "normalized-payload-drift",
+    "owner-group-or-mode-drift",
+    "payload-permission-drift",
+    "signing-or-notarization-envelope-only-drift",
+    "source-tree-drift",
+    "task-set-drift",
+    "toolchain-drift",
+    "unknown-or-unexplained-difference"
+  ],
+  "redaction": {
+    "absolutePathsProhibited": true,
+    "candidateBytesInVerifierKitProhibited": true,
+    "candidateDigestsInVerifierKitProhibited": true,
+    "credentialsProhibited": true,
+    "privateUrisProhibited": true,
+    "rawBinaryContentProhibited": true,
+    "rawFetchedContentProhibited": true,
+    "rawAppDataProhibited": true,
+    "unpublishedVulnerabilityDetailsProhibited": true
+  },
+  "limits": {
+    "maximumJsonBytes": 10000000,
+    "maximumArchiveMembers": 20000,
+    "maximumExpandedArchiveBytes": 5000000000,
+    "maximumSubjects": 512,
+    "maximumDifferenceRows": 4096
+  }
+}
