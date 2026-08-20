@@ -30,6 +30,10 @@ _ZIP_EOCD_SIGNATURE = b"PK\x05\x06"
 _ZIP_EOCD_MINIMUM_BYTES = 22
 _ZIP_MAXIMUM_COMMENT_BYTES = 65_535
 _ZIP_TAIL_BYTES = _ZIP_EOCD_MINIMUM_BYTES + _ZIP_MAXIMUM_COMMENT_BYTES
+_APP_SIGNATURE_ENVELOPE_RULE = "crypta-app-signature-envelope-v1"
+_APP_SIGNATURE_ENVELOPE_PATHS = frozenset(
+    {"cryptad-app.digests", "cryptad-app.signature"}
+)
 
 
 def inspect_archive_safety(
@@ -97,6 +101,9 @@ def build_archive_payload_manifest(
         maximum_entries=maximum_entries,
         maximum_expanded=maximum_expanded,
     )
+    entries, metadata = _normalized_archive_view(
+        entries, metadata, package_type, normalization_rule
+    )
     canonical_components = sorted(set(component_ids))
     mapped_entries = [
         {**entry, "componentIds": canonical_components}
@@ -153,6 +160,19 @@ def archive_subject_errors(
         )
     except (OSError, tarfile.TarError, zipfile.BadZipFile, ValueError) as exc:
         return errors + [f"archive subject is unsafe or malformed: {type(exc).__name__}"]
+
+    rules = {
+        row.get("id"): row
+        for row in policy.get("normalizationRules", [])
+        if isinstance(row, dict)
+    }
+    rule = rules.get(manifest.get("normalizationRuleId"), {})
+    try:
+        actual, metadata = _normalized_archive_view(
+            actual, metadata, package_type, rule
+        )
+    except ValueError as exc:
+        return errors + [str(exc)]
 
     supplied_entries = manifest.get("entries", [])
     supplied_by_path = {
@@ -221,6 +241,37 @@ def archive_subject_errors(
     if manifest.get("preSigningPayloadDigest") != payload_digest:
         errors.append("archive canonical payload digest differs from actual entries")
     return errors
+
+
+def _normalized_archive_view(
+    entries: list[dict[str, Any]],
+    metadata: list[dict[str, Any]],
+    package_type: str,
+    normalization_rule: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Remove only the policy-named first-party app signing envelope.
+
+    A provider-distinct verifier builds and seals the unsigned application payload. The selected
+    RC remains a signed product: its digest inventory and signature sidecars are authenticated by
+    the producer receipt, but those two producer-authority files are outside the independently
+    reproducible payload view. No caller-provided ignore list participates in this projection.
+    """
+
+    if package_type != "app-zip" or normalization_rule.get("id") != _APP_SIGNATURE_ENVELOPE_RULE:
+        return entries, metadata
+    if normalization_rule.get("allowedExcludedFields") != ["container-signature"]:
+        raise ValueError("app signature-envelope normalization policy differs")
+    present = {
+        row.get("path")
+        for row in entries
+        if row.get("path") in _APP_SIGNATURE_ENVELOPE_PATHS
+    }
+    if present not in (set(), set(_APP_SIGNATURE_ENVELOPE_PATHS)):
+        raise ValueError("app ZIP contains a partial signing envelope")
+    return (
+        [row for row in entries if row.get("path") not in _APP_SIGNATURE_ENVELOPE_PATHS],
+        [row for row in metadata if row.get("path") not in _APP_SIGNATURE_ENVELOPE_PATHS],
+    )
 
 
 def _package_type(path: Path, subject: dict[str, Any]) -> str:
