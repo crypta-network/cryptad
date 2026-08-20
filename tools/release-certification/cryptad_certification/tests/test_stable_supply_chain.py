@@ -53,6 +53,7 @@ from ..engines.stable_1_0_supply_chain_core import (
 )
 from ..engines.stable_1_0_supply_chain_jdk import jdk_installation_identity
 from ..engines.stable_1_0_supply_chain_reproducibility import (
+    _payload_comparison_view,
     build_comparison_plan,
     builder_receipt_errors,
     builder_independence_errors,
@@ -1428,6 +1429,116 @@ class StableSupplyChainTest(unittest.TestCase):
         _seal(value, "manifestDigest")
         self.assertTrue(any("ignored" in error for error in payload_manifest_errors(value, self.policy)))
 
+    def test_app_payload_normalization_excludes_only_the_signing_envelope(self) -> None:
+        build_root = REPOSITORY / "build"
+        build_root.mkdir(exist_ok=True)
+        normalization = next(
+            row
+            for row in self.policy["normalizationRules"]
+            if row["id"] == "crypta-app-signature-envelope-v1"
+        )
+        component_id = _component(["app-queue-manager"])["componentId"]
+        with tempfile.TemporaryDirectory(prefix="supply-app-envelope-", dir=build_root) as temporary:
+            root = Path(temporary)
+            unsigned = root / "unsigned.zip"
+            signed = root / "signed.zip"
+            partial = root / "partial.zip"
+            drifted = root / "drifted.zip"
+            payload = {
+                "bin/launch": b"#!/bin/sh\n",
+                "cryptad-app.properties": b"app.id=queue-manager\n",
+            }
+
+            def write_app(path: Path, *, include_envelope: bool) -> None:
+                members = dict(payload)
+                if include_envelope:
+                    members["cryptad-app.digests"] = b"digest.version=1\n"
+                    members["cryptad-app.signature"] = b"signature.version=1\n"
+                with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+                    for name, content in sorted(members.items()):
+                        info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                        info.compress_type = zipfile.ZIP_STORED
+                        info.create_system = 3
+                        info.external_attr = (stat.S_IFREG | 0o644) << 16
+                        archive.writestr(info, content)
+
+            write_app(unsigned, include_envelope=False)
+            write_app(signed, include_envelope=True)
+            write_app(partial, include_envelope=False)
+            with zipfile.ZipFile(partial, "a", compression=zipfile.ZIP_STORED) as archive:
+                info = zipfile.ZipInfo(
+                    "cryptad-app.signature", date_time=(1980, 1, 1, 0, 0, 0)
+                )
+                info.compress_type = zipfile.ZIP_STORED
+                info.create_system = 3
+                info.external_attr = (stat.S_IFREG | 0o644) << 16
+                archive.writestr(info, b"signature.version=1\n")
+            drifted_payload = dict(payload)
+            drifted_payload["bin/launch"] = b"#!/bin/sh\nexit 1\n"
+            with zipfile.ZipFile(
+                drifted, "w", compression=zipfile.ZIP_STORED
+            ) as archive:
+                for name, content in sorted(drifted_payload.items()):
+                    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFREG | 0o644) << 16
+                    archive.writestr(info, content)
+            unsigned_manifest = build_archive_payload_manifest(
+                unsigned,
+                "app-queue-manager",
+                "first-party-app",
+                [component_id],
+                normalization,
+                self.policy,
+            )
+            signed_manifest = build_archive_payload_manifest(
+                signed,
+                "app-queue-manager",
+                "first-party-app",
+                [component_id],
+                normalization,
+                self.policy,
+            )
+            drifted_manifest = build_archive_payload_manifest(
+                drifted,
+                "app-queue-manager",
+                "first-party-app",
+                [component_id],
+                normalization,
+                self.policy,
+            )
+
+            self.assertEqual(
+                _payload_comparison_view(unsigned_manifest),
+                _payload_comparison_view(signed_manifest),
+            )
+            self.assertNotEqual(
+                unsigned_manifest["publishedSubjectDigest"],
+                signed_manifest["publishedSubjectDigest"],
+            )
+            self.assertEqual(
+                [],
+                [
+                    row["path"]
+                    for row in signed_manifest["entries"]
+                    if row["path"] in {"cryptad-app.digests", "cryptad-app.signature"}
+                ],
+            )
+            self.assertNotEqual(
+                _payload_comparison_view(unsigned_manifest),
+                _payload_comparison_view(drifted_manifest),
+            )
+            with self.assertRaisesRegex(ValueError, "partial signing envelope"):
+                build_archive_payload_manifest(
+                    partial,
+                    "app-queue-manager",
+                    "first-party-app",
+                    [component_id],
+                    normalization,
+                    self.policy,
+                )
+
     def test_payload_and_archive_paths_reject_dot_and_repeated_separators(self) -> None:
         for path in ("./opt/cryptad/core.jar", "opt//cryptad/core.jar", "opt/./core.jar"):
             with self.subTest(payloadPath=path):
@@ -1771,6 +1882,48 @@ class StableSupplyChainTest(unittest.TestCase):
                 )
             )
 
+            verifier = fixture.receipt("independent-verifier", 102)
+            verifier_app = next(
+                row
+                for row in verifier["subjects"]
+                if row["subjectKey"] == "app-queue-manager"
+            )
+            verifier_app["digest"] = _digest("different-signed-app-envelope")
+            _seal(verifier, "receiptDigest")
+            self.assertIn(
+                "builder app-queue-manager signed app bundle bytes differ",
+                builder_independence_errors(primary, verifier, fixture.policy),
+            )
+
+            verifier = fixture.receipt("independent-verifier", 102)
+            verifier_recipe = {
+                "buildTasks": [":dist", ":packageUnsignedFirstPartyApps"],
+                "executionTasks": copy.deepcopy(
+                    fixture.policy["builderPolicy"]["executionTasks"]
+                ),
+            }
+            verifier_recipe["executionTasks"]["portable-apps"] = [
+                ":dist",
+                ":packageUnsignedFirstPartyApps",
+            ]
+            verifier["buildTasks"] = verifier_recipe["buildTasks"]
+            for execution in verifier["builderExecutions"]:
+                tasks = verifier_recipe["executionTasks"][execution["executionId"]]
+                execution["taskSet"] = tasks
+                execution["taskSetDigest"] = sha256_digest(canonical_json_bytes(tasks))
+            _seal(verifier, "receiptDigest")
+
+            self.assertEqual(
+                [],
+                builder_independence_errors(
+                    primary,
+                    verifier,
+                    fixture.policy,
+                    provider_distinct=True,
+                    provider_distinct_recipe=verifier_recipe,
+                ),
+            )
+
     def test_normalized_packages_may_differ_only_when_payload_views_match(self) -> None:
         build_root = REPOSITORY / "build"
         build_root.mkdir(exist_ok=True)
@@ -1785,7 +1938,10 @@ class StableSupplyChainTest(unittest.TestCase):
                 destination = verifier_root / subject["fileName"]
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 data = source.read_bytes()
-                if subject["reproducibilityClass"] == "normalized-payload-identical":
+                if (
+                    subject["reproducibilityClass"] == "normalized-payload-identical"
+                    and not subject["subjectKey"].startswith("app-")
+                ):
                     data += b":different-signature-container"
                     changed[subject["subjectKey"]] = data
                 destination.write_bytes(data)
@@ -3501,6 +3657,15 @@ class StableSupplyChainTest(unittest.TestCase):
             "      - name: Stage flat authenticated comparison handoff",
             comparison,
         )
+        self.assertIn("stable_1_0_independent_handoff", comparison)
+        self.assertIn("stage-primary", comparison)
+        self.assertIn("--subject-bundle", comparison)
+        self.assertIn("independent-primary-subjects-attempt-${{ github.run_attempt }}", comparison)
+        bounded_handoff = comparison[
+            comparison.index("- name: Upload immutable comparison handoff") :
+            comparison.index("- name: Attest independent primary subject bundle")
+        ]
+        self.assertNotIn("stable-1.0-primary-subject-bundle.zip", bounded_handoff)
 
     def test_workflow_preserves_closed_cross_platform_execution_provenance(self) -> None:
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -3770,8 +3935,8 @@ class StableSupplyChainTest(unittest.TestCase):
             "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1": 8,
             "actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961": 4,
             "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c": 13,
-            "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f": 8,
-            "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373": 8,
+            "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f": 9,
+            "actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373": 9,
             "gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884": 4,
         }
 

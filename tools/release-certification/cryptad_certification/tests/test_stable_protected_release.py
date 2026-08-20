@@ -20,7 +20,7 @@ from cryptad_certification.engines import stable_1_0_supply_chain as supply_chai
 from cryptad_certification.engines.stable_1_0_supply_chain_reproducibility import (
     promotion_summary_errors,
 )
-from cryptad_certification.io import write_json
+from cryptad_certification.io import read_json, write_json
 from cryptad_certification.models import EvidenceEnvelope
 from cryptad_certification.schema_validation import validate_schema
 from cryptad_certification.tests.test_release_certification_stable_dependency_vulnerability import (
@@ -355,6 +355,7 @@ def _contract(root: Path) -> dict[str, object]:
             "publicObservationArtifact": None,
             "independentReproducibility": None,
             "independentReproducibilityArtifact": None,
+            "independentReproducibilityCoordinate": None,
         },
         "lifecycleState": "planned",
         "evidenceClassification": {
@@ -447,124 +448,6 @@ def _rc_input_map(root: Path, contract: dict[str, object]) -> dict[str, object]:
         },
         "preflightReceipt": preflight_relative.as_posix(),
     }
-
-
-def _independent_reproducibility_evidence(
-    root: Path,
-    contract: dict[str, object],
-    policy: dict[str, object],
-) -> tuple[Path, Path, Path]:
-    digest = "sha256:" + "9" * 64
-    policy_digest = policy["requiredEvidenceContracts"]["stable-supply-chain"][  # type: ignore[index]
-        "policyDigest"
-    ]
-    release = {
-        "releaseId": RELEASE_ID,
-        "buildVersion": 3,
-        "tag": "v3",
-        "sourceCommit": COMMIT,
-        "sourceRef": f"commit:{COMMIT}",
-        "policyDigest": policy_digest,
-    }
-    plan = {
-        "schemaVersion": 1,
-        "kind": "stable-1.0-rebuild-comparison-plan",
-        **release,
-        "componentInventoryDigest": digest,
-        "subjectInventoryDigest": digest,
-        "primaryBuilderReceiptDigest": "sha256:" + "a" * 64,
-        "verifierBuilderReceiptDigest": "sha256:" + "b" * 64,
-        "comparisons": [
-            {
-                "subjectKey": "cryptad-core",
-                "fileName": "cryptad.jar",
-                "reproducibilityClass": "byte-identical",
-                "normalizationRuleId": None,
-                "primaryDigest": digest,
-                "verifierDigest": digest,
-                "primarySize": 1,
-                "verifierSize": 1,
-                "primaryPayloadManifestDigest": None,
-                "verifierPayloadManifestDigest": None,
-            }
-        ],
-        "equalityInferred": False,
-        "planDigest": DIGEST_ZERO,
-    }
-    plan["planDigest"] = protected.supply_chain_semantic_digest(plan, "planDigest")
-    result = {
-        "schemaVersion": 1,
-        "kind": "stable-1.0-reproducibility-result",
-        **release,
-        "comparisonPlanDigest": plan["planDigest"],
-        "primaryBuilderReceiptDigest": plan["primaryBuilderReceiptDigest"],
-        "verifierBuilderReceiptDigest": plan["verifierBuilderReceiptDigest"],
-        "comparisons": [
-            {
-                "subjectKey": "cryptad-core",
-                "reproducibilityClass": "byte-identical",
-                "status": "pass",
-                "primaryDigest": digest,
-                "verifierDigest": digest,
-                "primaryPayloadManifestDigest": None,
-                "verifierPayloadManifestDigest": None,
-                "differences": [],
-            }
-        ],
-        "status": "pass",
-        "unexplainedDifferences": 0,
-        "resultDigest": DIGEST_ZERO,
-    }
-    result["resultDigest"] = protected.supply_chain_semantic_digest(
-        result, "resultDigest"
-    )
-    summary = supply_chain_promotion_summary()
-    summary.update(release)
-    selected = contract["ga"]["selectedRc"]  # type: ignore[index]
-    if isinstance(selected, dict):
-        lineage_binding = contract["operationEvidence"]["rcFreeze"]  # type: ignore[index]
-        assert isinstance(lineage_binding, dict)
-        lineage = json.loads(
-            (root / str(lineage_binding["path"])).read_text(encoding="utf-8")
-        )
-        summary["candidateFreezeDigest"] = lineage["selectedFreeze"][
-            "freezeFileDigest"
-        ]
-        summary["productDigest"] = selected["productDigest"]
-    summary["comparisonPlanDigest"] = plan["planDigest"]
-    summary["primaryBuilderReceiptDigest"] = plan["primaryBuilderReceiptDigest"]
-    summary["verifierBuilderReceiptDigest"] = plan["verifierBuilderReceiptDigest"]
-    summary["reproducibilityResultDigest"] = result["resultDigest"]
-    summary["summaryDigest"] = protected.supply_chain_semantic_digest(
-        summary, "summaryDigest"
-    )
-    result_path = root / "stable-1.0-reproducibility-report.json"
-    plan_path = root / "stable-1.0-rebuild-comparison-plan.json"
-    summary_path = root / "stable-1.0-supply-chain-summary.json"
-    write_json(result_path, result)
-    write_json(plan_path, plan)
-    write_json(summary_path, summary)
-    supply_row = next(
-        row
-        for row in contract["upstreamEvidence"]  # type: ignore[index]
-        if row["id"] == "stable-supply-chain"
-    )
-    supply_row["kind"] = "stable-1.0-supply-chain-promotion-summary"
-    supply_row["file"] = {
-        **_binding(root, Path(summary_path.name)),
-        "schema": protected.SUPPLY_CHAIN_SUMMARY_SCHEMA,
-    }
-    supply_row["producer"] = _coordinate(
-        ".github/workflows/stable-1.0-supply-chain.yml",
-        "stable-1.0-supply-chain-evidence",
-        run_id="50",
-        artifact_name=f"stable-1.0-supply-chain-{RELEASE_ID}-comparison",
-    )
-    contract["operationEvidence"]["independentReproducibility"] = {  # type: ignore[index]
-        **_binding(root, Path(result_path.name)),
-        "schema": protected.REPRODUCIBILITY_SCHEMA,
-    }
-    return result_path, plan_path, summary_path
 
 
 def _coordinate(
@@ -1670,6 +1553,50 @@ class StableProtectedReleaseTests(unittest.TestCase):
             any(item.startswith("upstream evidence third-party-intake") for item in evidence_findings),
             evidence_findings,
         )
+
+    def test_legacy_v1_contract_without_independent_coordinate_preserves_preflight(self) -> None:
+        legacy = copy.deepcopy(self.contract)
+        legacy["operationEvidence"].pop("independentReproducibilityCoordinate")  # type: ignore[index]
+
+        legacy_digest = protected._plan_digest(legacy)  # noqa: SLF001
+        current_digest = protected._plan_digest(self.contract)  # noqa: SLF001
+        input_map = _rc_input_map(self.root, legacy)
+        preflight_binding = legacy["operationEvidence"]["preflight"]  # type: ignore[index]
+        preflight_receipt = read_json(self.root / preflight_binding["path"])
+        observed = protected._timestamp("2026-08-16T01:01:00Z")  # noqa: SLF001
+        legacy["lifecycleState"] = "preflight-passed"
+        legacy["evidenceClassification"]["offlineVerification"] = "passed"  # type: ignore[index]
+
+        with mock.patch.object(protected, "_policy_errors", return_value=[]):
+            closeout_findings, closeout_statuses = protected._closeout(  # noqa: SLF001
+                self.root,
+                legacy,
+                self.policy,
+            )
+
+        self.assertEqual([], validate_schema(legacy, protected.CONTRACT_SCHEMA))
+        self.assertNotEqual(current_digest, legacy_digest)
+        self.assertEqual(legacy_digest, preflight_receipt["contractDigest"])
+        self.assertEqual(
+            [],
+            protected.credential_free_preflight_receipt_errors(
+                legacy,
+                preflight_receipt,
+                preflight_binding["sha256"],
+            ),
+        )
+        self.assertEqual(
+            [],
+            protected._rc_dispatch_errors(  # noqa: SLF001
+                self.root,
+                legacy,
+                self.policy,
+                input_map,
+                observed,
+            ),
+        )
+        self.assertEqual([], closeout_findings)
+        self.assertEqual("pending", closeout_statuses["independentReproducibility"])
 
     def test_rc_dispatch_binds_every_materialized_input_and_stable_coordinate(self) -> None:
         input_map = _rc_input_map(self.root, self.contract)
@@ -2858,9 +2785,22 @@ class StableProtectedReleaseTests(unittest.TestCase):
             with self.subTest(status_name=status_name):
                 self.assertEqual("not-performed", statuses[status_name])
 
-    def test_closeout_rejects_self_asserted_independent_reproducibility(self) -> None:
+    def test_closeout_rejects_legacy_same_provider_supply_chain_evidence(self) -> None:
         contract = copy.deepcopy(self.contract)
-        _independent_reproducibility_evidence(self.root, contract, self.policy)
+        legacy_path = self.root / "legacy-same-provider-reproducibility.json"
+        write_json(
+            legacy_path,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-reproducibility-result",
+                "status": "pass",
+                "resultDigest": DIGEST_ZERO,
+            },
+        )
+        contract["operationEvidence"]["independentReproducibility"] = {  # type: ignore[index]
+            **_binding(self.root, Path(legacy_path.name)),
+            "schema": protected.REPRODUCIBILITY_SCHEMA,
+        }
 
         with mock.patch.object(protected, "_policy_errors", return_value=[]):
             findings, statuses = protected._closeout(  # noqa: SLF001
@@ -2871,151 +2811,8 @@ class StableProtectedReleaseTests(unittest.TestCase):
 
         self.assertEqual("pending", statuses["independentReproducibility"])
         self.assertTrue(
-            any("archive is missing" in item for item in findings), findings
+            any("summary schema differs" in item for item in findings), findings
         )
-
-    def test_closeout_authenticates_independent_reproducibility_artifact(self) -> None:
-        contract = copy.deepcopy(self.contract)
-        _configure_publication_receipt(self.root, contract)
-        result_path, plan_path, summary_path = _independent_reproducibility_evidence(
-            self.root,
-            contract,
-            self.policy,
-        )
-        archive_path = self.root / "stable-supply-chain-comparison.zip"
-        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_STORED) as archive:
-            for path in (result_path, plan_path, summary_path):
-                archive.write(path, path.name)
-        archive_binding = _binding(self.root, Path(archive_path.name))
-        contract["operationEvidence"]["independentReproducibilityArtifact"] = (  # type: ignore[index]
-            archive_binding
-        )
-        supply_row = next(
-            row
-            for row in contract["upstreamEvidence"]  # type: ignore[index]
-            if row["id"] == "stable-supply-chain"
-        )
-        supply_row["producer"]["artifactDigest"] = archive_binding["sha256"]
-        _configure_publication_receipt(self.root, contract)
-
-        with mock.patch.object(protected, "_policy_errors", return_value=[]):
-            findings, statuses = protected._closeout(  # noqa: SLF001
-                self.root,
-                contract,
-                self.policy,
-            )
-
-        self.assertEqual([], findings)
-        self.assertEqual("completed", statuses["independentReproducibility"])
-
-    def test_closeout_binds_reproducibility_to_authenticated_selected_rc_bytes(self) -> None:
-        for field, expected_finding in (
-            ("candidateFreezeDigest", "different selected RC freeze"),
-            ("productDigest", "different selected RC product bytes"),
-        ):
-            with self.subTest(field=field):
-                contract = copy.deepcopy(self.contract)
-                _configure_publication_receipt(self.root, contract)
-                result_path, plan_path, summary_path = (
-                    _independent_reproducibility_evidence(
-                        self.root,
-                        contract,
-                        self.policy,
-                    )
-                )
-                summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                summary[field] = "sha256:" + "e" * 64
-                summary["summaryDigest"] = protected.supply_chain_semantic_digest(
-                    summary,
-                    "summaryDigest",
-                )
-                write_json(summary_path, summary)
-                supply_row = next(
-                    row
-                    for row in contract["upstreamEvidence"]  # type: ignore[index]
-                    if row["id"] == "stable-supply-chain"
-                )
-                supply_row["file"] = {
-                    **_binding(self.root, Path(summary_path.name)),
-                    "schema": protected.SUPPLY_CHAIN_SUMMARY_SCHEMA,
-                }
-                archive_path = self.root / f"comparison-wrong-{field}.zip"
-                with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_STORED) as archive:
-                    for path in (result_path, plan_path, summary_path):
-                        archive.write(path, path.name)
-                archive_binding = _binding(self.root, Path(archive_path.name))
-                contract["operationEvidence"][  # type: ignore[index]
-                    "independentReproducibilityArtifact"
-                ] = archive_binding
-                supply_row["producer"]["artifactDigest"] = archive_binding["sha256"]
-                _configure_publication_receipt(self.root, contract)
-
-                with mock.patch.object(protected, "_policy_errors", return_value=[]):
-                    findings, statuses = protected._closeout(  # noqa: SLF001
-                        self.root,
-                        contract,
-                        self.policy,
-                    )
-
-                self.assertEqual("pending", statuses["independentReproducibility"])
-                self.assertTrue(
-                    any(expected_finding in item for item in findings),
-                    findings,
-                )
-
-    def test_closeout_rejects_reproducibility_producer_or_member_substitution(self) -> None:
-        for mutation in ("environment", "member"):
-            with self.subTest(mutation=mutation):
-                contract = copy.deepcopy(self.contract)
-                result_path, plan_path, summary_path = (
-                    _independent_reproducibility_evidence(
-                        self.root,
-                        contract,
-                        self.policy,
-                    )
-                )
-                archive_path = self.root / f"comparison-{mutation}.zip"
-                with zipfile.ZipFile(
-                    archive_path, "w", zipfile.ZIP_STORED
-                ) as archive:
-                    for path in (result_path, plan_path, summary_path):
-                        archive.write(path, path.name)
-                archive_binding = _binding(self.root, Path(archive_path.name))
-                contract["operationEvidence"][  # type: ignore[index]
-                    "independentReproducibilityArtifact"
-                ] = archive_binding
-                supply_row = next(
-                    row
-                    for row in contract["upstreamEvidence"]  # type: ignore[index]
-                    if row["id"] == "stable-supply-chain"
-                )
-                supply_row["producer"]["artifactDigest"] = archive_binding["sha256"]
-                if mutation == "environment":
-                    supply_row["producer"]["environment"] = "unprotected"
-                else:
-                    result = json.loads(result_path.read_text(encoding="utf-8"))
-                    result["comparisons"][0]["primaryDigest"] = DIGEST_ZERO
-                    result["resultDigest"] = protected.supply_chain_semantic_digest(
-                        result, "resultDigest"
-                    )
-                    write_json(result_path, result)
-                    contract["operationEvidence"][  # type: ignore[index]
-                        "independentReproducibility"
-                    ] = {
-                        **_binding(self.root, Path(result_path.name)),
-                        "schema": protected.REPRODUCIBILITY_SCHEMA,
-                    }
-
-                with mock.patch.object(protected, "_policy_errors", return_value=[]):
-                    findings, statuses = protected._closeout(  # noqa: SLF001
-                        self.root,
-                        contract,
-                        self.policy,
-                    )
-
-                self.assertEqual("pending", statuses["independentReproducibility"])
-                expected = "environment" if mutation == "environment" else "member"
-                self.assertTrue(any(expected in item for item in findings), findings)
 
     def test_closeout_rejects_self_asserted_publication_complete_object(self) -> None:
         contract = copy.deepcopy(self.contract)
@@ -4807,6 +4604,10 @@ class StableProtectedReleaseTests(unittest.TestCase):
         self.assertIn("reviewPolicyVersion: $review_policy_version", rc)
         self.assertIn("catalogSigningKeyId: $catalog_signing_key_id", rc)
         self.assertIn("stable-1.0-protected-release-preflight-summary.json", rc)
+        self.assertIn(
+            "jq -S '.stableSupplyChain | .runAttempt |= tonumber'",
+            rc,
+        )
         self.assertIn('DISPATCH_ACTOR: ${{ github.actor }}', rc)
         self.assertIn('TRIGGERING_ACTOR: ${{ github.triggering_actor }}', rc)
         self.assertIn('"$DISPATCH_ACTOR" != "leumor"', rc)
