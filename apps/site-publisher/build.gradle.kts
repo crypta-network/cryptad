@@ -18,6 +18,8 @@ val appDistCli by configurations.creating
 val stageAppDir = layout.buildDirectory.dir("cryptad-app/$appId")
 val generatedManifestDir = layout.buildDirectory.dir("generated/stageApp")
 val packagedAppFile = layout.buildDirectory.file("cryptad-app-bundle/$appId-${project.version}.zip")
+val reproducibilityPayloadFile =
+  layout.buildDirectory.file("cryptad-app-reproducibility-payload/$appId-${project.version}.zip")
 val stageAssetsDir = layout.projectDirectory.dir("src/staged")
 val manifestTemplateFile = stageAssetsDir.file("cryptad-app.properties.template")
 val platformDesignSystemResourceDir =
@@ -223,6 +225,44 @@ val packageApp by
           stageAppDir.get().asFile.absolutePath,
           "--output-zip",
           packagedAppFile.get().asFile.absolutePath,
+        )
+      )
+    }
+  }
+
+val packageUnsignedAppForIndependentReproducibility by
+  tasks.registering(JavaExec::class) {
+    group = "build"
+    description = "Packages the unsigned $appDisplayName payload for independent reproducibility."
+    dependsOn(stageApp)
+    classpath = appDistCli
+    mainClass.set(appDistMainClass)
+    inputs
+      .dir(stageAppDir)
+      .withPropertyName("unsignedBundleForIndependentReproducibility")
+      .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file(reproducibilityPayloadFile)
+    doFirst {
+      val stagedRoot = stageAppDir.get().asFile.toPath()
+      val prohibitedSidecars =
+        listOf(
+          "cryptad-app.digests",
+          "cryptad-app.signature",
+          "cryptad-app.catalog",
+          "cryptad-app.catalog.signature",
+        )
+      if (prohibitedSidecars.any { Files.exists(stagedRoot.resolve(it)) }) {
+        throw GradleException(
+          "$name requires an unsigned staged bundle without distribution sidecars."
+        )
+      }
+      setArgs(
+        listOf(
+          "package",
+          "--bundle-dir",
+          stageAppDir.get().asFile.absolutePath,
+          "--output-zip",
+          reproducibilityPayloadFile.get().asFile.absolutePath,
         )
       )
     }
