@@ -134,13 +134,14 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
         }
         publication = {
             "cryptad-app-catalog.properties",
             "cryptad-app-catalog.signature",
             "stable-1.0-ga-publication-plan.json",
             "stable-1.0-ga-publication-receipt.json",
-            "stable-1.0-protected-release-public-observation.json",
         }
         rollback = {
             "stable-1.0-rollback-app-catalog.properties",
@@ -212,6 +213,8 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
         }
         coordinates = self._retained_preparation_coordinates(common)
 
@@ -260,10 +263,19 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
             "stable-1.0-previous-public-key-transparency.json",
             "stable-1.0-previous-public-key-transparency.signature",
         }
-        coordinates = self._retained_preparation_coordinates(targets)
+        retained = self._retained_preparation_coordinates(
+            targets - {"stable-1.0-primary-subject-bundle.zip"}
+        )
+        direct = self._coordinates_for_targets(
+            {"stable-1.0-primary-subject-bundle.zip"}
+        )
+        retained["artifacts"].extend(direct["artifacts"])
+        coordinates = retained
 
         completed = self._run_validation(
             "verify-ceremony", coordinates, "recovery-signature"
@@ -279,6 +291,8 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
         }
         coordinates = self._coordinates_for_targets(targets)
         for coordinate in coordinates["artifacts"]:
@@ -348,6 +362,7 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
         }
+        subject_bundle = {"stable-1.0-primary-subject-bundle.zip"}
         public_observation = {
             "stable-1.0-protected-release-public-observation.json",
         }
@@ -378,6 +393,16 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
                 {},
             ),
             (
+                109,
+                targets & subject_bundle,
+                ".github/workflows/stable-1.0-supply-chain.yml",
+                (
+                    "stable-1.0-supply-chain-stable-fixture-"
+                    "independent-primary-subjects-attempt-1"
+                ),
+                {},
+            ),
+            (
                 105,
                 targets & public_observation,
                 ".github/workflows/stable-1.0-public-observation.yml",
@@ -393,6 +418,7 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
                 targets
                 - protected
                 - independent
+                - subject_bundle
                 - public_observation
                 - live
                 - mirror
@@ -803,6 +829,7 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             '".github/workflows/stable-1.0-independent-reproducibility.yml"',
             validation,
         )
+        self.assertIn('".github/workflows/stable-1.0-supply-chain.yml"', validation)
         self.assertIn(
             '".github/workflows/stable-1.0-public-observation.yml"', validation
         )
@@ -843,6 +870,20 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             independent,
         )
 
+    def test_protected_closeout_when_hashing_large_artifacts_expect_streaming_digest(
+        self,
+    ) -> None:
+        protected = PROTECTED_CLOSEOUT_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "from cryptad_certification.engines.stable_1_0_supply_chain_core import (",
+            protected,
+        )
+        self.assertIn("actual_archive = file_digest(archive_path)", protected)
+        self.assertNotIn("archive_path.read_bytes()", protected)
+        self.assertIn("test \"$size\" -le 2147483648", protected)
+        self.assertIn("test \"$total\" -le 4294967296", protected)
+
     def test_workflow_when_first_mirror_receipt_is_supplied_expect_direct_collector_only(
         self,
     ) -> None:
@@ -850,6 +891,7 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
             "cryptad-app-catalog.properties",
             "cryptad-app-catalog.signature",
             "stable-1.0-ga-publication-plan.json",
@@ -896,6 +938,8 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
             "stable-1.0-previous-public-key-transparency.json",
             "stable-1.0-previous-public-key-transparency.signature",
             "stable-1.0-protected-recovery-quorum-receipt.json",
@@ -926,13 +970,14 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
         self.assertNotEqual(0, rejected.returncode)
         self.assertIn("role-confused", rejected.stderr)
 
-    def test_workflow_when_protected_recovery_closes_expect_sixteen_member_handoff(
+    def test_workflow_when_protected_recovery_closes_expect_seventeen_member_handoff(
         self,
     ) -> None:
         targets = {
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
             "cryptad-app-catalog.properties",
             "cryptad-app-catalog.signature",
             "stable-1.0-ga-publication-plan.json",
@@ -955,14 +1000,14 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "closeout", coordinates, "protected-recovery-quorum"
         )
 
-        self.assertEqual(16, len(targets))
+        self.assertEqual(17, len(targets))
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn(
-            'test "$(find build/catalog-authority-input -type f | wc -l)" -le 16',
+            'test "$(find build/catalog-authority-input -type f | wc -l)" -le 17',
             assembly,
         )
         self.assertIn(
-            'test "$(find build/catalog-authority-input -type f | wc -l)" -le 16',
+            'test "$(find build/catalog-authority-input -type f | wc -l)" -le 17',
             closeout,
         )
         self.assertNotIn(
@@ -997,6 +1042,8 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
             "stable-1.0-protected-release-execution-summary.json",
             "stable-1.0-independent-reproducibility-summary.json",
             "stable-1.0-release-subject-inventory.json",
+            "stable-1.0-primary-subject-bundle.zip",
+            "stable-1.0-protected-release-public-observation.json",
             "stable-1.0-previous-public-key-transparency.json",
             "stable-1.0-previous-public-key-transparency.signature",
             "stable-1.0-rollback-app-catalog.properties",
@@ -1021,6 +1068,7 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
                 ".github/workflows/stable-1.0-independent-reproducibility.yml",
                 ".github/workflows/stable-1.0-protected-release-closeout.yml",
                 ".github/workflows/stable-1.0-public-observation.yml",
+                ".github/workflows/stable-1.0-supply-chain.yml",
             },
             authenticated_producers,
         )

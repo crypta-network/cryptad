@@ -256,8 +256,10 @@ verification failed. The failed job and non-operational partial receipt still ca
 publication success.
 
 Every protected workflow operation uses a closed v1 aggregate of exact Actions artifact
-coordinates. The required member set is operation-specific: ceremony modes require the three
-release-root identities, publication modes add the Stable GA handoff, observation adds the live
+coordinates. The required member set is operation-specific: ceremony modes require the PR-291
+summary, PR-292 summary and inventory, the direct public-observation receipt, and the original
+attempt-scoped primary subject bundle; publication modes add the Stable GA handoff, and observation
+adds the live
 publication and mirror receipts, and drill modes add the retained rollback sidecars and protected
 drill-receipt bundle. The bundle is accepted only from
 `.github/workflows/stable-1.0-catalog-drill-acceptance.yml`, whose fixed release and security
@@ -265,7 +267,12 @@ approval boundaries emit the original root receipt artifact. Catalog-authority v
 consume that artifact but cannot reupload itself as its producer. A successful
 first ceremony takes its PR-291 summary from the dedicated protected-release closeout workflow,
 its PR-292 summary and subject inventory from the independent-reproducibility closeout, and its
-public observation directly from the read-only observation workflow. The protected-release
+public observation directly from the read-only observation workflow. It takes the exact subject
+bundle only from the selected supply-chain attempt; a catalog-authority reupload is not a bootstrap
+authority. The verifier matches every bundled subject to the PR-292 inventory, verifies the frozen
+first-party bundle signatures with the ceremony app key, and verifies the inline frozen review
+receipts with the ceremony reviewer key at each signed `reviewedAt` timestamp. A matching key ID
+without a matching public key therefore cannot produce a deployable registry. The protected-release
 closeout materializes only files already digest-bound by the reviewed PR-291 contract, verifies
 their exact producer coordinates, and invokes the existing `stable-protected-release --mode
 closeout` authority. Its bootstrap contract must leave the optional PR-293 coordinate and evidence

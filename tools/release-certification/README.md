@@ -1235,9 +1235,13 @@ without turning an incomplete insert or failed exact-subject check into success.
 Every protected catalog-authority operation uses a closed v1 coordinate aggregate rather than one
 catch-all artifact. The operation-specific aggregate authenticates every contributing Actions run
 and artifact digest, then verifies the
-digest of each selected member while flattening only the exact PR-291, PR-292, Stable GA, live
+digest of each selected member while flattening only the exact PR-291, PR-292, original
+supply-chain primary subject bundle, Stable GA, live
 publication, mirror observation, rollback, and applicable transition files into a confined input
-directory. Successful side-effect-free publication preparation retains the exact PR-291, PR-292,
+directory. The subject bundle must come directly from the selected attempt-scoped supply-chain
+producer; its inventory-bound app bundles and inline review receipts prove that the ceremony app
+and reviewer public keys are the keys that authenticated the frozen Stable subjects. Successful
+side-effect-free publication preparation retains the exact PR-291, PR-292,
 subject-inventory, and public-observation members it already verified; it does not substitute the
 earlier PR-291 RC-dispatch summary for the required publicly observed PR-291 closeout summary.
 Stable GA separately stages the current and rollback catalog sidecars plus its exact plan and final

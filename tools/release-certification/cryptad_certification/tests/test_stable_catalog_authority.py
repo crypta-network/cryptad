@@ -5,11 +5,14 @@ from __future__ import annotations
 import base64
 import copy
 import hashlib
+import io
 import json
 from pathlib import Path
+import stat
 import tempfile
 import unittest
 from unittest import mock
+import zipfile
 
 from cryptad_certification.cli import build_parser
 from cryptad_certification.engines import stable_1_0_catalog_authority as authority
@@ -368,6 +371,128 @@ def _drill_receipt_bundle(manifest: dict[str, object]) -> dict[str, object]:
     }
     bundle["bundleDigest"] = authority._semantic_digest(bundle, "bundleDigest")
     return bundle
+
+
+def _signed_frozen_subject_bundle(
+    destination: Path,
+) -> tuple[dict[str, object], dict[str, object], dict[str, dict[str, object]]]:
+    """Create one visibly non-production frozen app/catalog subject bundle."""
+
+    app_id = "fixture-app"
+    app_version = "1.0.0"
+    app_key_id = "stable-app-fixture-1"
+    reviewer_key_id = "stable-reviewer-fixture-1"
+    app_seed, app_public = _fixture_keypair(app_key_id)
+    reviewer_seed, reviewer_public = _fixture_keypair(reviewer_key_id)
+    digest_bytes = b"digest.version=1\ndigest.algorithm=SHA-256\n"
+    app_signature = _fixture_sign(app_seed, app_public, digest_bytes)
+    signature_bytes = (
+        "signature.version=1\n"
+        "signature.algorithm=Ed25519\n"
+        f"signature.key.id={app_key_id}\n"
+        "signature.payload=cryptad-app.digests\n"
+        f"signature.value.base64={base64.b64encode(app_signature).decode()}\n"
+    ).encode()
+    app_buffer = io.BytesIO()
+    with zipfile.ZipFile(app_buffer, "w", compression=zipfile.ZIP_STORED) as bundle:
+        for name, value in (
+            ("cryptad-app.digests", digest_bytes),
+            ("cryptad-app.properties", b"app.id=fixture-app\napp.version=1.0.0\n"),
+            ("cryptad-app.signature", signature_bytes),
+        ):
+            member = zipfile.ZipInfo(name)
+            member.create_system = 3
+            member.external_attr = (stat.S_IFREG | 0o644) << 16
+            bundle.writestr(member, value)
+    app_bytes = app_buffer.getvalue()
+    app_digest = authority._digest_bytes(app_bytes)
+    reviewed_at = "2026-08-21T12:00:00Z"
+    payload_lines = (
+        "review.receipt.version=1",
+        f"review.receipt.app.id={app_id}",
+        f"review.receipt.app.version={app_version}",
+        f"review.receipt.artifact.sha256={app_digest.removeprefix('sha256:')}",
+        f"review.receipt.artifact.size={len(app_bytes)}",
+        f"review.receipt.bundle.key.id={app_key_id}",
+        "review.receipt.policy.id=stable-review-policy",
+        "review.receipt.policy.version=1",
+        "review.receipt.status=reviewed",
+        f"review.receipt.reviewer.key.id={reviewer_key_id}",
+        f"review.receipt.reviewed.at={reviewed_at}",
+    )
+    payload = ("\n".join(payload_lines) + "\n").encode()
+    receipt_signature = _fixture_sign(reviewer_seed, reviewer_public, payload)
+    receipt_lines = payload_lines + (
+        "review.receipt.signature.algorithm=Ed25519",
+        (
+            "review.receipt.signature.value.base64="
+            + base64.b64encode(receipt_signature).decode()
+        ),
+    )
+    receipt_bytes = ("\n".join(receipt_lines) + "\n").encode()
+    prefix = f"app.{app_id}."
+    catalog_lines = [
+        "catalog.version=1",
+        "catalog.id=crypta-stable-apps",
+        f"catalog.entries={app_id}",
+        f"{prefix}id={app_id}",
+        f"{prefix}version={app_version}",
+        f"{prefix}bundle.sha256={app_digest.removeprefix('sha256:')}",
+        f"{prefix}bundle.size.bytes={len(app_bytes)}",
+    ]
+    catalog_lines.extend(prefix + line for line in receipt_lines)
+    catalog_bytes = ("\n".join(catalog_lines) + "\n").encode()
+    inventory: dict[str, object] = {
+        "subjects": [
+            {
+                "subjectKey": "stable-catalog",
+                "subjectClass": "catalog",
+                "fileName": "cryptad-app-catalog.properties",
+                "digest": authority._digest_bytes(catalog_bytes),
+                "size": len(catalog_bytes),
+                "payloadManifestDigest": None,
+                "app": None,
+            },
+            {
+                "subjectKey": "first-party-app.fixture-app",
+                "subjectClass": "first-party-app",
+                "fileName": "fixture-app.zip",
+                "digest": app_digest,
+                "size": len(app_bytes),
+                "payloadManifestDigest": None,
+                "app": {
+                    "appId": app_id,
+                    "version": app_version,
+                    "bundleSignatureDigest": authority._digest_bytes(signature_bytes),
+                    "reviewReceiptDigest": authority._digest_bytes(receipt_bytes),
+                },
+            },
+        ]
+    }
+    protected: dict[str, object] = {
+        "dispatchPackage": {
+            "rc": {
+                "keyIdentities": {
+                    "appSigningKeyId": app_key_id,
+                    "reviewerKeyId": reviewer_key_id,
+                    "reviewPolicyId": "stable-review-policy",
+                    "reviewPolicyVersion": "1",
+                }
+            }
+        }
+    }
+    manifest = _manifest()
+    by_id = {key["keyId"]: key for key in manifest["keyset"]["keys"]}
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as bundle:
+        for name, value in (
+            ("subjects/cryptad-app-catalog.properties", catalog_bytes),
+            ("subjects/fixture-app.zip", app_bytes),
+        ):
+            member = zipfile.ZipInfo(name)
+            member.create_system = 3
+            member.external_attr = (stat.S_IFREG | 0o644) << 16
+            bundle.writestr(member, value)
+    return protected, inventory, by_id
 
 
 class StableCatalogAuthorityTest(unittest.TestCase):
@@ -1494,6 +1619,69 @@ class StableCatalogAuthorityTest(unittest.TestCase):
 
         self.assertEqual([], valid)
         self.assertIn("frozen first-party app signer", " ".join(substituted))
+
+    def test_frozen_subjects_bind_app_and_reviewer_public_keys(self) -> None:
+        bundle = self.root / "stable-1.0-primary-subject-bundle.zip"
+        protected, inventory, by_id = _signed_frozen_subject_bundle(bundle)
+
+        valid = authority._frozen_subject_trust_errors(
+            bundle, protected, inventory, by_id
+        )
+        substituted = copy.deepcopy(by_id)
+        wrong_key, _, _ = _key(
+            "first-party-app-signing", "different-fixture-app-key"
+        )
+        wrong_key["keyId"] = "stable-app-fixture-1"
+        substituted["stable-app-fixture-1"] = wrong_key
+        app_errors = authority._frozen_subject_trust_errors(
+            bundle, protected, inventory, substituted
+        )
+        wrong_reviewer = copy.deepcopy(by_id)
+        reviewer_key, _, _ = _key("app-reviewer", "different-fixture-reviewer")
+        reviewer_key["keyId"] = "stable-reviewer-fixture-1"
+        wrong_reviewer["stable-reviewer-fixture-1"] = reviewer_key
+        reviewer_errors = authority._frozen_subject_trust_errors(
+            bundle, protected, inventory, wrong_reviewer
+        )
+
+        self.assertEqual([], valid)
+        self.assertIn("bundle signature does not verify", " ".join(app_errors))
+        self.assertIn("does not verify with the ceremony reviewer", " ".join(reviewer_errors))
+
+    def test_frozen_reviewer_must_be_deployable_at_reviewed_at(self) -> None:
+        bundle = self.root / "stable-1.0-primary-subject-bundle.zip"
+        protected, inventory, by_id = _signed_frozen_subject_bundle(bundle)
+        retired = copy.deepcopy(by_id)
+        retired["stable-reviewer-fixture-1"]["lifecycle"] = "retired"
+        staged = copy.deepcopy(by_id)
+        staged["stable-reviewer-fixture-1"]["lifecycle"] = "staged"
+
+        retired_errors = authority._frozen_subject_trust_errors(
+            bundle, protected, inventory, retired
+        )
+        staged_errors = authority._frozen_subject_trust_errors(
+            bundle, protected, inventory, staged
+        )
+
+        self.assertEqual([], retired_errors)
+        self.assertIn("not lifecycle-eligible", " ".join(staged_errors))
+
+    def test_keyset_rejects_staged_only_reviewer_registry(self) -> None:
+        manifest = _manifest()
+        reviewer = next(
+            key
+            for key in manifest["keyset"]["keys"]
+            if key["role"] == "app-reviewer"
+        )
+        reviewer["lifecycle"] = "staged"
+        _reseal(manifest)
+
+        errors, _ = authority._validate_keyset(manifest, True)
+
+        self.assertIn(
+            "keyset lacks a deployable reviewer identity for frozen review receipts",
+            errors,
+        )
 
     def test_checked_in_policy_must_match_every_enforced_closed_contract(self) -> None:
         policy_path = (

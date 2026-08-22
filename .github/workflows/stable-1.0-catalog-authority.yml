@@ -158,13 +158,14 @@ jobs:
               "stable-1.0-protected-release-execution-summary.json",
               "stable-1.0-independent-reproducibility-summary.json",
               "stable-1.0-release-subject-inventory.json",
+              "stable-1.0-primary-subject-bundle.zip",
+              "stable-1.0-protected-release-public-observation.json",
           }
           publication_targets = {
               "cryptad-app-catalog.properties",
               "cryptad-app-catalog.signature",
               "stable-1.0-ga-publication-plan.json",
               "stable-1.0-ga-publication-receipt.json",
-              "stable-1.0-protected-release-public-observation.json",
           }
           rollback_targets = {
               "stable-1.0-rollback-app-catalog.properties",
@@ -221,6 +222,9 @@ jobs:
               },
               "stable-1.0-release-subject-inventory.json": {
                   ".github/workflows/stable-1.0-independent-reproducibility.yml"
+              },
+              "stable-1.0-primary-subject-bundle.zip": {
+                  ".github/workflows/stable-1.0-supply-chain.yml"
               },
               "cryptad-app-catalog.properties": {
                   ".github/workflows/stable-1.0-ga-promotion.yml"
@@ -347,6 +351,11 @@ jobs:
                               catalog_workflow: "catalog-authority-input/stable-1.0-release-subject-inventory.json",
                               ".github/workflows/stable-1.0-independent-reproducibility.yml": "stable-1.0-release-subject-inventory.json",
                           },
+                          "stable-1.0-primary-subject-bundle.zip": {
+                              ".github/workflows/stable-1.0-supply-chain.yml": (
+                                  "stable-1.0-primary-subject-bundle.zip"
+                              )
+                          },
                           "stable-1.0-protected-release-public-observation.json": {
                               catalog_workflow: "catalog-authority-input/stable-1.0-protected-release-public-observation.json",
                               ".github/workflows/stable-1.0-public-observation.yml": "stable-1.0-public-observation.json",
@@ -397,6 +406,13 @@ jobs:
                   ".github/workflows/stable-1.0-public-observation.yml"
               ] = {
                   f"stable-1-0-public-observation-{os.environ['INPUT_BUILD_VERSION']}-{run_id}-{run_attempt}"
+              }
+              canonical_names["stable-1.0-primary-subject-bundle.zip"] = {
+                  ".github/workflows/stable-1.0-supply-chain.yml": {
+                      "stable-1.0-supply-chain-"
+                      f"{os.environ['INPUT_RELEASE_ID']}-"
+                      f"independent-primary-subjects-attempt-{run_attempt}"
+                  }
               }
               canonical_names["stable-1.0-live-usk-publication.json"] = {
                   catalog_workflow: {
@@ -477,7 +493,7 @@ jobs:
             artifact_name="$(jq -er .artifactName <<< "$coordinate")"
             artifact_digest="$(jq -er .artifactDigest <<< "$coordinate")"
             case "$workflow" in
-              .github/workflows/stable-1.0-ga-promotion.yml|.github/workflows/stable-1.0-public-observation.yml|.github/workflows/stable-1.0-protected-release-closeout.yml|.github/workflows/stable-1.0-independent-reproducibility.yml|.github/workflows/stable-1.0-catalog-authority.yml|.github/workflows/stable-1.0-catalog-mirror-observation.yml|.github/workflows/stable-1.0-catalog-recovery-quorum.yml|.github/workflows/stable-1.0-catalog-drill-acceptance.yml) ;;
+              .github/workflows/stable-1.0-ga-promotion.yml|.github/workflows/stable-1.0-public-observation.yml|.github/workflows/stable-1.0-protected-release-closeout.yml|.github/workflows/stable-1.0-independent-reproducibility.yml|.github/workflows/stable-1.0-supply-chain.yml|.github/workflows/stable-1.0-catalog-authority.yml|.github/workflows/stable-1.0-catalog-mirror-observation.yml|.github/workflows/stable-1.0-catalog-recovery-quorum.yml|.github/workflows/stable-1.0-catalog-drill-acceptance.yml) ;;
               *) echo "::error::Protected input workflow is outside the closed authority set."; exit 2 ;;
             esac
             run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt")"
@@ -576,7 +592,7 @@ jobs:
             --out build/catalog-authority-input
           test -z "$(find build/catalog-authority-input \( -type l -o -type f -links +1 \) -print -quit)"
           test "$(find build/catalog-authority-input -type f | wc -l)" -ge 3
-          test "$(find build/catalog-authority-input -type f | wc -l)" -le 16
+          test "$(find build/catalog-authority-input -type f | wc -l)" -le 17
           find build/catalog-authority-archives -type f -delete
 
       - name: Upload exact assembled operation handoff
@@ -996,7 +1012,7 @@ jobs:
           set -euo pipefail
           test -z "$(find build/catalog-authority-input \( -type l -o -type f -links +1 \) -print -quit)"
           test "$(find build/catalog-authority-input -type f | wc -l)" -ge 12
-          test "$(find build/catalog-authority-input -type f | wc -l)" -le 16
+          test "$(find build/catalog-authority-input -type f | wc -l)" -le 17
 
       - name: Derive truthful closeout from exact protected receipts
         env:

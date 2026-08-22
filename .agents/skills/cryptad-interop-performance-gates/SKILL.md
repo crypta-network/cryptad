@@ -882,7 +882,12 @@ fixed canonical evidence members after their individual digests pass. The protec
 artifact may retain the exact upstream PR-291, PR-292, subject-inventory, and public-observation
 members that preparation already verified; it must not substitute the RC-dispatch PR-291 summary.
 Bootstrap the first preparation from the dedicated PR-291 closeout producer, the direct PR-292
-closeout summary/inventory, and the direct public-observation artifact. The PR-291 bootstrap
+closeout summary/inventory, the direct public-observation artifact, and the original attempt-scoped
+primary subject bundle from the selected supply-chain producer. Match every subject-bundle member
+to the authenticated PR-292 inventory, then verify the exact frozen first-party bundle and review
+receipt signatures against the role-specific ceremony public keys; a matching key ID alone is not
+a public-key binding. Never accept a catalog-authority reupload as the subject-bundle producer. The
+PR-291 bootstrap
 contract must leave catalog-authority evidence and coordinates null, and its workflow must call the
 existing protected-release closeout engine over exact contract-bound producer bytes; never accept
 a prior preparation artifact as the first producer.

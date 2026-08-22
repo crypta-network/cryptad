@@ -8,12 +8,14 @@ import datetime as dt
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import posixpath
 import re
 import stat
+import tempfile
 from typing import Any, Iterable
 from urllib.parse import quote, unquote_to_bytes, urlsplit, urlunsplit
+import zipfile
 
 from ..io import read_json, read_json_bytes, write_bytes, write_json, write_text
 from ..redaction import scan_value
@@ -34,6 +36,7 @@ POLICY_FILE = "stable-1.0-catalog-authority-policy.json"
 PROTECTED_RELEASE_SUMMARY_FILE = "stable-1.0-protected-release-execution-summary.json"
 INDEPENDENT_SUMMARY_FILE = "stable-1.0-independent-reproducibility-summary.json"
 SUBJECT_INVENTORY_FILE = "stable-1.0-release-subject-inventory.json"
+PRIMARY_SUBJECT_BUNDLE_FILE = "stable-1.0-primary-subject-bundle.zip"
 FROZEN_CATALOG_FILE = "cryptad-app-catalog.properties"
 FROZEN_SIGNATURE_FILE = "cryptad-app-catalog.signature"
 ROLLBACK_CATALOG_FILE = "stable-1.0-rollback-app-catalog.properties"
@@ -62,6 +65,9 @@ CATALOG_REGISTRY_FILE = "stable-1.0-catalog-trusted-keys.properties"
 APP_REGISTRY_FILE = "stable-1.0-app-trusted-keys.properties"
 REVIEWER_REGISTRY_FILE = "stable-1.0-reviewer-trusted-keys.properties"
 MAX_LIVE_PUBLICATION_RESULT_BYTES = 64 * 1024
+MAX_PRIMARY_SUBJECT_BUNDLE_BYTES = 256 * 1024 * 1024
+MAX_APP_BUNDLE_BYTES = 512 * 1024 * 1024
+MAX_BUNDLE_MEMBERS = 20_000
 
 MODES = (
     "prepare-ceremony",
@@ -602,6 +608,13 @@ def _validate_keyset(manifest: dict[str, Any], verify_signatures: bool) -> tuple
                 errors.append(str(exc))
     if roles != ROLES:
         errors.append("keyset must contain every role in the closed Stable ecosystem role set")
+    if not any(
+        key["role"] == "app-reviewer"
+        and key["lifecycle"] in {"active", "retiring", "retired"}
+        and key["compromiseState"] == "uncompromised"
+        for key in keys
+    ):
+        errors.append("keyset lacks a deployable reviewer identity for frozen review receipts")
     try:
         registry_effective_at = _timestamp(manifest["transparency"]["effectiveAt"])
         if not any(
@@ -1511,9 +1524,17 @@ def _inspect_evidence_directory(path: Path) -> tuple[Path | None, list[str]]:
             if stat.S_ISREG(metadata.st_mode):
                 file_count += 1
                 total_size += metadata.st_size
-                if candidate.suffix.casefold() in archive_suffixes:
+                if (
+                    candidate.suffix.casefold() in archive_suffixes
+                    and candidate.name != PRIMARY_SUBJECT_BUNDLE_FILE
+                ):
                     errors.append("protected evidence contains an uninspected nested archive")
-    if file_count > 64 or total_size > 32 * 1024 * 1024:
+                if (
+                    candidate.name == PRIMARY_SUBJECT_BUNDLE_FILE
+                    and metadata.st_size > MAX_PRIMARY_SUBJECT_BUNDLE_BYTES
+                ):
+                    errors.append("protected primary subject bundle exceeds its byte bound")
+    if file_count > 64 or total_size > MAX_PRIMARY_SUBJECT_BUNDLE_BYTES + 32 * 1024 * 1024:
         errors.append("protected evidence exceeds its file-count or byte bound")
     return resolved, sorted(set(errors))
 
@@ -1576,6 +1597,18 @@ def _evidence_json(root: Path, name: str) -> tuple[dict[str, Any], bytes]:
     if not isinstance(value, dict):
         raise ValueError(f"protected evidence member is not an object: {name}")
     return value, encoded
+
+
+def _evidence_file(root: Path, name: str, maximum: int) -> Path:
+    """Return one bounded, single-link evidence file without reading it into memory."""
+
+    candidate = root / name
+    if candidate.parent != root or candidate.is_symlink() or not candidate.is_file():
+        raise ValueError(f"required protected evidence member is missing: {name}")
+    metadata = candidate.stat(follow_symlinks=False)
+    if metadata.st_nlink != 1 or not 1 <= metadata.st_size <= maximum:
+        raise ValueError(f"required protected evidence member is unsafe: {name}")
+    return candidate
 
 
 def _bounded_regular_file_bytes(path: Path, label: str, maximum: int) -> bytes:
@@ -1910,6 +1943,432 @@ def _protected_app_signer_errors(
     return []
 
 
+def _strict_properties(encoded: bytes, label: str) -> dict[str, str]:
+    """Parse the platform's duplicate-rejecting UTF-8 sidecar grammar."""
+
+    try:
+        text = encoded.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{label} is not UTF-8") from exc
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    properties: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        if "=" not in line:
+            raise ValueError(f"{label} contains a malformed property")
+        name, value = line.split("=", 1)
+        name = name.strip()
+        if not name or name in properties:
+            raise ValueError(f"{label} contains an empty or duplicate property")
+        properties[name] = value
+    return properties
+
+
+def _safe_zip_member(info: zipfile.ZipInfo, *, stored: bool) -> bool:
+    """Return whether one ZIP member has an unambiguous portable regular-file shape."""
+
+    path = PurePosixPath(info.filename)
+    mode = info.external_attr >> 16
+    file_type = stat.S_IFMT(mode)
+    return (
+        not info.is_dir()
+        and not info.flag_bits & 1
+        and info.create_system in {0, 3}
+        and not path.is_absolute()
+        and bool(path.parts)
+        and all(part not in {"", ".", "..", "__MACOSX", ".DS_Store"} for part in path.parts)
+        and not any(part.startswith("._") for part in path.parts)
+        and "\\" not in info.filename
+        and "\x00" not in info.filename
+        and not stat.S_ISLNK(mode)
+        and file_type in {0, stat.S_IFREG}
+        and (
+            info.compress_type == zipfile.ZIP_STORED
+            if stored
+            else info.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+        )
+    )
+
+
+def _zip_members(
+    archive: zipfile.ZipFile,
+    *,
+    label: str,
+    maximum_bytes: int,
+    stored: bool,
+) -> dict[str, zipfile.ZipInfo]:
+    """Validate one closed ZIP member table before any member content is consumed."""
+
+    infos = archive.infolist()
+    names = [info.filename for info in infos]
+    if archive.comment or not infos or len(infos) > MAX_BUNDLE_MEMBERS:
+        raise ValueError(f"{label} has an invalid member table")
+    if names != sorted(names) or len(names) != len(set(names)):
+        raise ValueError(f"{label} has duplicate or non-canonical member ordering")
+    if len({name.casefold() for name in names}) != len(names):
+        raise ValueError(f"{label} has a case-colliding member")
+    if any(not _safe_zip_member(info, stored=stored) for info in infos):
+        raise ValueError(f"{label} contains an unsafe member")
+    if sum(info.file_size for info in infos) > maximum_bytes:
+        raise ValueError(f"{label} exceeds its expanded byte bound")
+    return {info.filename: info for info in infos}
+
+
+def _read_zip_member(
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    maximum: int,
+    label: str,
+) -> bytes:
+    """Read one already-inspected ZIP member under a strict byte bound."""
+
+    if not 0 <= info.file_size <= maximum:
+        raise ValueError(f"{label} exceeds its byte bound")
+    with archive.open(info) as stream:
+        value = stream.read(maximum + 1)
+    if len(value) != info.file_size or len(value) > maximum:
+        raise ValueError(f"{label} changed while read or exceeds its byte bound")
+    return value
+
+
+def _bundle_signature_errors(
+    bundle_stream: Any,
+    inventory_row: dict[str, Any],
+    signer_id: str,
+    signer: dict[str, Any],
+) -> list[str]:
+    """Bind one exact frozen first-party bundle to the ceremony app public key."""
+
+    errors: list[str] = []
+    try:
+        with zipfile.ZipFile(bundle_stream) as bundle:
+            members = _zip_members(
+                bundle,
+                label=f"frozen app bundle {inventory_row.get('subjectKey')}",
+                maximum_bytes=MAX_APP_BUNDLE_BYTES,
+                stored=False,
+            )
+            digest_info = members.get("cryptad-app.digests")
+            signature_info = members.get("cryptad-app.signature")
+            if digest_info is None or signature_info is None:
+                raise ValueError("frozen app bundle omits its root distribution sidecars")
+            digest_bytes = _read_zip_member(
+                bundle, digest_info, 16 * 1024 * 1024, "app digest sidecar"
+            )
+            signature_bytes = _read_zip_member(
+                bundle, signature_info, 64 * 1024, "app signature sidecar"
+            )
+            app = inventory_row["app"]
+            if _file_digest(signature_bytes) != app["bundleSignatureDigest"]:
+                errors.append("frozen app signature sidecar differs from the PR-292 inventory")
+            properties = _strict_properties(signature_bytes, "app signature sidecar")
+            expected_fields = {
+                "signature.version",
+                "signature.algorithm",
+                "signature.key.id",
+                "signature.payload",
+                "signature.value.base64",
+            }
+            if set(properties) != expected_fields:
+                raise ValueError("app signature sidecar has missing or unknown properties")
+            if (
+                properties["signature.version"] != "1"
+                or properties["signature.algorithm"] != "Ed25519"
+                or properties["signature.key.id"] != signer_id
+                or properties["signature.payload"] != "cryptad-app.digests"
+            ):
+                raise ValueError("app signature sidecar does not bind the frozen signer identity")
+            signature = _decode_signature(
+                properties["signature.value.base64"], "app bundle signature"
+            )
+            if not _verify_ed25519(_raw_public_key(signer), digest_bytes, signature):
+                errors.append(
+                    "frozen app bundle signature does not verify with the ceremony app key"
+                )
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile) as exc:
+        errors.append(str(exc))
+    return errors
+
+
+_RECEIPT_FIELDS = (
+    "review.receipt.version",
+    "review.receipt.app.id",
+    "review.receipt.app.version",
+    "review.receipt.artifact.sha256",
+    "review.receipt.artifact.size",
+    "review.receipt.bundle.key.id",
+    "review.receipt.policy.id",
+    "review.receipt.policy.version",
+    "review.receipt.status",
+    "review.receipt.reviewer.key.id",
+    "review.receipt.reviewed.at",
+    "review.receipt.expires.at",
+    "review.receipt.evidence.sha256",
+    "review.receipt.decision.reason.sha256",
+    "review.receipt.evidence.uri",
+    "review.receipt.note",
+    "review.receipt.signature.algorithm",
+    "review.receipt.signature.value.base64",
+)
+_REQUIRED_RECEIPT_FIELDS = frozenset(
+    {
+        "review.receipt.version",
+        "review.receipt.app.id",
+        "review.receipt.app.version",
+        "review.receipt.artifact.sha256",
+        "review.receipt.artifact.size",
+        "review.receipt.policy.id",
+        "review.receipt.policy.version",
+        "review.receipt.status",
+        "review.receipt.reviewer.key.id",
+        "review.receipt.reviewed.at",
+        "review.receipt.signature.algorithm",
+        "review.receipt.signature.value.base64",
+    }
+)
+
+
+def _reviewer_eligible_at(key: dict[str, Any] | None, reviewed_at: dt.datetime) -> bool:
+    """Apply the runtime's signed-review-time lifecycle semantics."""
+
+    if (
+        key is None
+        or key.get("role") != "app-reviewer"
+        or key.get("lifecycle") in {"staged", "revoked"}
+        or key.get("compromiseState") != "uncompromised"
+    ):
+        return False
+    try:
+        return _timestamp(key["validFrom"]) <= reviewed_at < _timestamp(key["validUntil"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _review_receipt_errors(
+    catalog: dict[str, str],
+    inventory_row: dict[str, Any],
+    signer_id: str,
+    reviewer_id: str,
+    review_policy_id: str,
+    review_policy_version: str,
+    reviewer: dict[str, Any] | None,
+) -> list[str]:
+    """Bind an inline frozen review receipt to its ceremony reviewer public key."""
+
+    errors: list[str] = []
+    app = inventory_row["app"]
+    app_id = app["appId"]
+    prefix = f"app.{app_id}."
+    receipt = {
+        field: catalog[prefix + field]
+        for field in _RECEIPT_FIELDS
+        if prefix + field in catalog
+    }
+    present = {
+        name.removeprefix(prefix)
+        for name in catalog
+        if name.startswith(prefix + "review.receipt.")
+    }
+    if present != set(receipt) or not _REQUIRED_RECEIPT_FIELDS.issubset(receipt):
+        return [f"frozen review receipt for {app_id} has missing or unknown properties"]
+    payload = b"".join(
+        f"{field}={receipt[field]}\n".encode("utf-8")
+        for field in _RECEIPT_FIELDS[:-2]
+        if field in receipt
+    )
+    serialized = payload + b"".join(
+        f"{field}={receipt[field]}\n".encode("utf-8")
+        for field in _RECEIPT_FIELDS[-2:]
+    )
+    try:
+        reviewed_at = _timestamp(receipt["review.receipt.reviewed.at"])
+        if (
+            receipt["review.receipt.version"] not in {"1", "2"}
+            or receipt["review.receipt.status"] not in {"reviewed", "caution", "rejected"}
+            or catalog.get(prefix + "id") != app_id
+            or catalog.get(prefix + "version") != app["version"]
+            or catalog.get(prefix + "bundle.sha256")
+            != inventory_row["digest"].removeprefix("sha256:")
+            or catalog.get(prefix + "bundle.size.bytes") != str(inventory_row["size"])
+            or receipt["review.receipt.app.id"] != app_id
+            or receipt["review.receipt.app.version"] != app["version"]
+            or receipt["review.receipt.artifact.sha256"]
+            != inventory_row["digest"].removeprefix("sha256:")
+            or int(receipt["review.receipt.artifact.size"]) != inventory_row["size"]
+            or receipt.get("review.receipt.bundle.key.id") != signer_id
+            or receipt["review.receipt.policy.id"] != review_policy_id
+            or receipt["review.receipt.policy.version"] != review_policy_version
+            or receipt["review.receipt.reviewer.key.id"] != reviewer_id
+            or receipt["review.receipt.signature.algorithm"] != "Ed25519"
+        ):
+            errors.append(
+                f"frozen review receipt for {app_id} does not bind its exact release subject"
+            )
+        if _file_digest(serialized) != app["reviewReceiptDigest"]:
+            errors.append(f"frozen review receipt for {app_id} differs from the PR-292 inventory")
+        published_fingerprint = catalog.get(
+            prefix + "review.receipt.fingerprint.sha256"
+        )
+        if published_fingerprint is not None and published_fingerprint != _file_digest(
+            serialized
+        ).removeprefix("sha256:"):
+            errors.append(
+                f"frozen review receipt fingerprint differs for {app_id}"
+            )
+        if not _reviewer_eligible_at(reviewer, reviewed_at):
+            errors.append(f"frozen reviewer {reviewer_id} is not lifecycle-eligible at reviewedAt")
+        elif not _verify_ed25519(
+            _raw_public_key(reviewer),
+            payload,
+            _decode_signature(
+                receipt["review.receipt.signature.value.base64"],
+                f"review receipt signature for {app_id}",
+            ),
+        ):
+            errors.append(
+                f"frozen review receipt for {app_id} does not verify with the ceremony reviewer key"
+            )
+    except (KeyError, TypeError, ValueError) as exc:
+        errors.append(str(exc))
+    return errors
+
+
+def _frozen_subject_trust_errors(
+    bundle_path: Path,
+    protected: dict[str, Any],
+    inventory: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Authenticate frozen app and review signer material from the original subject bundle."""
+
+    errors: list[str] = []
+    try:
+        identities = protected["dispatchPackage"]["rc"]["keyIdentities"]
+        signer_id = identities["appSigningKeyId"]
+        reviewer_id = identities["reviewerKeyId"]
+        signer = by_id.get(signer_id)
+        reviewer = by_id.get(reviewer_id)
+        rows = inventory["subjects"]
+        first_party_rows = [
+            row for row in rows if row.get("subjectClass") == "first-party-app"
+        ]
+        if not first_party_rows or any(row.get("app") is None for row in first_party_rows):
+            errors.append(
+                "PR-292 inventory lacks closed first-party app signing metadata"
+            )
+        expected = {f"subjects/{row['fileName']}" for row in rows}
+        expected.update(
+            f"payload-manifests/{row['subjectKey']}.json"
+            for row in rows
+            if row.get("payloadManifestDigest") is not None
+        )
+        catalog_bytes: bytes | None = None
+        app_rows: list[dict[str, Any]] = []
+        with zipfile.ZipFile(bundle_path) as bundle:
+            members = _zip_members(
+                bundle,
+                label="primary subject bundle",
+                maximum_bytes=MAX_PRIMARY_SUBJECT_BUNDLE_BYTES,
+                stored=True,
+            )
+            if set(members) != expected:
+                raise ValueError("primary subject bundle has missing or extra inventory members")
+            for row in rows:
+                info = members[f"subjects/{row['fileName']}"]
+                if info.file_size != row["size"]:
+                    errors.append(f"primary subject bundle size differs for {row['subjectKey']}")
+                    continue
+                digest = hashlib.sha256()
+                temporary = tempfile.TemporaryFile() if row.get("app") is not None else None
+                collected = bytearray() if row.get("subjectKey") == "stable-catalog" else None
+                with bundle.open(info) as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                        if temporary is not None:
+                            temporary.write(chunk)
+                        if collected is not None:
+                            if len(collected) + len(chunk) > 1024 * 1024:
+                                raise ValueError("frozen catalog exceeds its one-MiB bound")
+                            collected.extend(chunk)
+                if "sha256:" + digest.hexdigest() != row["digest"]:
+                    errors.append(f"primary subject bundle digest differs for {row['subjectKey']}")
+                if collected is not None:
+                    catalog_bytes = bytes(collected)
+                if temporary is not None:
+                    temporary.seek(0)
+                    errors.extend(
+                        _bundle_signature_errors(temporary, row, signer_id, signer)
+                        if signer is not None
+                        else ["PR-291 frozen app signer is absent from the ceremony keyset"]
+                    )
+                    temporary.close()
+                    app_rows.append(row)
+            for row in rows:
+                payload_digest = row.get("payloadManifestDigest")
+                if payload_digest is None:
+                    continue
+                info = members[f"payload-manifests/{row['subjectKey']}.json"]
+                payload_bytes = _read_zip_member(
+                    bundle, info, 16 * 1024 * 1024, "subject payload manifest"
+                )
+                payload = read_json_bytes(payload_bytes, "subject payload manifest")
+                if (
+                    not isinstance(payload, dict)
+                    or payload.get("manifestDigest") != payload_digest
+                    or _semantic_digest(payload, "manifestDigest") != payload_digest
+                    or payload.get("publishedSubjectDigest") != row["digest"]
+                ):
+                    errors.append(f"primary payload manifest differs for {row['subjectKey']}")
+        if catalog_bytes is None:
+            errors.append("primary subject bundle omits the frozen Stable catalog")
+        else:
+            catalog = _strict_properties(catalog_bytes, "frozen Stable catalog")
+            for row in app_rows:
+                errors.extend(
+                    _review_receipt_errors(
+                        catalog,
+                        row,
+                        signer_id,
+                        reviewer_id,
+                        identities["reviewPolicyId"],
+                        identities["reviewPolicyVersion"],
+                        reviewer,
+                    )
+                )
+    except (KeyError, OSError, TypeError, ValueError, zipfile.BadZipFile) as exc:
+        errors.append(str(exc))
+    return sorted(set(errors))
+
+
+def _direct_public_observation_errors(
+    observation: dict[str, Any],
+    independent: dict[str, Any],
+    manifest: dict[str, Any],
+) -> list[str]:
+    """Bind the direct read-only PR-291 observation to ceremony preparation."""
+
+    errors = validate_schema(
+        observation, "stable-1.0-protected-release-public-observation-v1.schema.json"
+    )
+    errors.extend(_identity_errors(observation, manifest))
+    if (
+        observation.get("status") != "pass"
+        or observation.get("fixture") is not False
+        or observation.get("redaction")
+        != {"status": "pass", "findingCount": 0, "findings": []}
+        or observation.get("productDigest")
+        != independent.get("selectedRc", {}).get("productDigest")
+        or observation.get("observer", {}).get("workflowPath")
+        != ".github/workflows/stable-1.0-public-observation.yml"
+        or observation.get("observer", {}).get("workflowCommit")
+        != manifest["release"]["sourceCommit"]
+    ):
+        errors.append("direct public observation does not bind the exact protected Stable release")
+    return errors
+
+
 def _catalog_sidecar_errors(
     catalog_bytes: bytes,
     signature_bytes: bytes,
@@ -2011,6 +2470,13 @@ def _validate_bound_evidence(
             or independent.get("subjectInventoryDigest") != bindings["independentSubjectInventoryDigest"]
         ):
             errors.append("PR-292 result is not the exact operational independently reproduced authority")
+        if (
+            independent.get("selectedRc", {})
+            .get("supplyChain", {})
+            .get("workflowCommit")
+            != manifest["release"]["sourceCommit"]
+        ):
+            errors.append("PR-292 selected supply-chain attempt uses a different source commit")
 
         inventory, _ = _evidence_json(root, SUBJECT_INVENTORY_FILE)
         errors.extend(validate_schema(inventory, "stable-1.0-release-subject-inventory-v1.schema.json"))
@@ -2029,6 +2495,27 @@ def _validate_bound_evidence(
             row = subjects.get(key)
             if row is None or row.get("digest") != manifest["catalog"][digest_field] or row.get("size") != manifest["catalog"][size_field]:
                 errors.append(f"PR-292 subject inventory does not bind the exact {key} subject")
+        subject_bundle = _evidence_file(
+            root,
+            PRIMARY_SUBJECT_BUNDLE_FILE,
+            MAX_PRIMARY_SUBJECT_BUNDLE_BYTES,
+        )
+        errors.extend(
+            _frozen_subject_trust_errors(
+                subject_bundle,
+                protected,
+                inventory,
+                by_id,
+            )
+        )
+        direct_observation, _ = _evidence_json(root, GA_OBSERVATION_FILE)
+        errors.extend(
+            _direct_public_observation_errors(
+                direct_observation,
+                independent,
+                manifest,
+            )
+        )
     except ValueError as exc:
         errors.append(str(exc))
 

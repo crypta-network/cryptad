@@ -344,6 +344,12 @@ rollback drills, public key transparency, and closeout. It consumes the exact au
 protected release root and PR-292 independently reproduced catalog subject. It never rebuilds,
 rewrites, re-signs, inserts, or remotely fetches the selected Stable catalog.
 
+Operational ceremony verification also consumes the original attempt-scoped supply-chain primary
+subject bundle. Every bundled subject must match the PR-292 inventory before the engine verifies
+the frozen first-party bundle signatures and inline review receipts against the role-specific
+ceremony public keys. This closes same-ID/different-key substitution without adding a new
+self-asserted fingerprint to the PR-291 summary.
+
 The closed modes prepare and verify ceremonies and publication, verify rotation or rollback drill
 evidence, and produce closeout. Outputs distinguish implementation, fixture verification,
 authenticated ceremony, network-primary publication, mirror observation, drills, transparency

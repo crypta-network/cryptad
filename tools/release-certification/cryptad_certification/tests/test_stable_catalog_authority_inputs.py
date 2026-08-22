@@ -85,6 +85,20 @@ class StableCatalogAuthorityInputsTest(unittest.TestCase):
         )
         self.assertEqual(1, len(list(output.iterdir())))
 
+    def test_assemble_when_subject_bundle_exceeds_json_limit_expect_bounded_streaming_copy(
+        self,
+    ) -> None:
+        value = b"x" * (inputs.MAX_EVIDENCE_MEMBER_BYTES + 1)
+        source = inputs.PRIMARY_SUBJECT_BUNDLE
+        archive = self._write_archive({source: value})
+        coordinates = self._coordinates(archive, source, source, value)
+        output = self.root / "output"
+
+        inputs.assemble(coordinates, self.archives, output)
+
+        self.assertEqual(_digest(value), inputs._digest_file(output / source))
+        self.assertEqual(len(value), (output / source).stat().st_size)
+
     def test_assemble_when_member_digest_drifts_expect_fail_closed(self) -> None:
         value = b"exact"
         source = "stable-1.0-live-usk-publication.json"

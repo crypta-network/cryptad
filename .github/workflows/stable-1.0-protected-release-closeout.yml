@@ -300,6 +300,9 @@ jobs:
           from cryptad_certification.engines.stable_1_0_supply_chain_archive import (
               inspect_archive_safety,
           )
+          from cryptad_certification.engines.stable_1_0_supply_chain_core import (
+              file_digest,
+          )
 
           workspace = Path.cwd().resolve()
           root = workspace / "build/protected-release-closeout"
@@ -316,7 +319,7 @@ jobs:
           for index, coordinate in enumerate(coordinates["artifacts"]):
               archive_path = root / "archives" / f"artifact-{index:02d}.zip"
               expected_archive = coordinate["artifactDigest"]
-              actual_archive = "sha256:" + hashlib.sha256(archive_path.read_bytes()).hexdigest()
+              actual_archive = file_digest(archive_path)
               if actual_archive != expected_archive:
                   raise SystemExit("downloaded protected artifact digest differs")
               inspect_archive_safety(
