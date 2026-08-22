@@ -167,7 +167,8 @@ final class AppCatalogOperations {
     FetchedCatalog fetched = sourceStore.readRevision(normalizedCatalogId, revisionDigest);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     AppCatalog catalog =
-        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+        AppCatalogVerifier.verifyHistorical(
+            fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
     if (!normalizedCatalogId.equals(catalog.catalogId())) {
       throw new AppCatalogException(
           AppCatalogSidecars.CATALOG_ID_MISMATCH, "rollback catalog id does not match source");
@@ -194,7 +195,8 @@ final class AppCatalogOperations {
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     String currentKeyId =
         AppCatalogVerifier.readSignature(stored.fetchedCatalog().signatureBytes()).keyId();
-    boolean trusted = trustedKeys.find(currentKeyId).isPresent();
+    boolean trusted =
+        trustedKeys.findHistoricalForVerification(currentKeyId, Instant.now()).isPresent();
     if (trusted) {
       AppCatalogManager.verifyStoredCatalog(stored, trustedKeys);
     }
@@ -502,7 +504,8 @@ final class AppCatalogOperations {
     try {
       FetchedCatalog fetched = sourceStore.readRevision(catalogId, revision.revisionDigest());
       AppCatalog catalog =
-          AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+          AppCatalogVerifier.verifyHistorical(
+              fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
       if (!catalogId.equals(catalog.catalogId())) {
         return new AppCatalogRollbackCandidate(revision, false, Optional.of("catalog_id_mismatch"));
       }

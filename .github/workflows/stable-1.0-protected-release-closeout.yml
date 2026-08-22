@@ -1,0 +1,389 @@
+name: Stable 1.0 Protected Release Closeout
+run-name: Stable 1.0 protected release closeout ${{ inputs.release_id }} build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Exact Stable release identity from the reviewed PR-291 contract.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive-integer Stable build.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase protected Stable source commit.
+        required: true
+        type: string
+      execution_contract_json:
+        description: Complete reviewed, non-secret PR-291 execution contract JSON.
+        required: true
+        type: string
+      protected_input_coordinates:
+        description: Closed aggregate of exact Actions artifacts and contract-bound members.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-release-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  closeout:
+    name: Authenticate final protected-release evidence
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-protected-release-closeout
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate closed contract and materialization coordinates
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXECUTION_CONTRACT_JSON: ${{ inputs.execution_contract_json }}
+          PROTECTED_INPUT_COORDINATES: ${{ inputs.protected_input_coordinates }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" ]]; then
+            echo "::error::Protected closeout is not bound to the exact release source and operator."
+            exit 2
+          fi
+          mkdir -p build/protected-release-closeout
+          chmod 700 build/protected-release-closeout
+          printf '%s\n' "$EXECUTION_CONTRACT_JSON" \
+            > build/protected-release-closeout/stable-1.0-protected-release.json
+          printf '%s\n' "$PROTECTED_INPUT_COORDINATES" \
+            > build/protected-release-closeout/materialization-coordinates.json
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import PurePosixPath
+
+          from cryptad_certification.schema_validation import validate_schema
+
+          def closed_pairs(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON key")
+                  value[key] = item
+              return value
+
+          contract = json.loads(
+              os.environ["EXECUTION_CONTRACT_JSON"], object_pairs_hook=closed_pairs
+          )
+          coordinates = json.loads(
+              os.environ["PROTECTED_INPUT_COORDINATES"], object_pairs_hook=closed_pairs
+          )
+          errors = validate_schema(
+              contract, "stable-1.0-protected-release-execution-v1.schema.json"
+          )
+          if errors:
+              raise SystemExit("protected-release contract failed its closed schema")
+          release = contract["release"]
+          repository = contract["repository"]
+          if (
+              release["id"] != os.environ["INPUT_RELEASE_ID"]
+              or str(release["integerBuild"]) != os.environ["INPUT_BUILD_VERSION"]
+              or repository["candidateCommit"] != os.environ["INPUT_SOURCE_COMMIT"]
+              or repository["sourceRef"]
+              != f"refs/heads/release/{os.environ['INPUT_BUILD_VERSION']}"
+              or contract["lifecycleState"] != "publicly-observed"
+              or contract["workflowCoordinates"].get("catalogAuthority") is not None
+              or contract["operationEvidence"].get("catalogAuthority") is not None
+          ):
+              raise SystemExit("bootstrap contract identity or lifecycle is invalid")
+          if (
+              not isinstance(coordinates, dict)
+              or set(coordinates) != {"schemaVersion", "artifacts"}
+              or coordinates.get("schemaVersion") != 1
+              or not isinstance(coordinates.get("artifacts"), list)
+              or not 1 <= len(coordinates["artifacts"]) <= 32
+          ):
+              raise SystemExit("protected closeout requires a bounded v1 artifact aggregate")
+
+          bindings = {}
+          expected_identities = set()
+
+          def add_binding(binding):
+              if not isinstance(binding, dict) or "path" not in binding:
+                  return
+              path = binding.get("path")
+              digest = binding.get("sha256")
+              if (
+                  not isinstance(path, str)
+                  or not path
+                  or path.startswith("/")
+                  or "\\" in path
+                  or any(part in {"", ".", ".."} for part in PurePosixPath(path).parts)
+                  or not isinstance(digest, str)
+                  or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+              ):
+                  raise SystemExit("protected-release file binding is unsafe")
+              if path in bindings and bindings[path] != digest:
+                  raise SystemExit("protected-release file binding path is ambiguous")
+              bindings[path] = digest
+
+          def add_identity(value):
+              if not isinstance(value, dict):
+                  return
+              required = ("workflowPath", "runId", "runAttempt", "artifactName", "artifactDigest")
+              if all(value.get(field) is not None for field in required):
+                  expected_identities.add(tuple(str(value[field]) for field in required))
+
+          for row in contract["upstreamEvidence"]:
+              add_binding(row.get("file"))
+              add_identity(row.get("producer"))
+          for value in contract["rcInputs"].values():
+              add_binding(value)
+          for value in contract["operationEvidence"].values():
+              add_binding(value)
+              add_identity(value)
+          authorization = contract["ga"].get("authorization")
+          if isinstance(authorization, dict):
+              add_binding(authorization.get("file"))
+          for value in contract.get("archives", []):
+              add_binding(value)
+          for value in contract["workflowCoordinates"].values():
+              add_identity(value)
+          add_identity(
+              contract["operationEvidence"].get(
+                  "independentReproducibilityCoordinate"
+              )
+          )
+
+          coordinate_fields = {
+              "archiveTargetPath",
+              "artifactDigest",
+              "artifactName",
+              "members",
+              "runAttempt",
+              "runId",
+              "workflowPath",
+          }
+          member_fields = {"digest", "sourcePath", "targetPath"}
+          covered = []
+          coordinate_ids = set()
+          for coordinate in coordinates["artifacts"]:
+              if not isinstance(coordinate, dict) or set(coordinate) != coordinate_fields:
+                  raise SystemExit("protected closeout coordinate has an invalid closed shape")
+              identity = tuple(
+                  str(coordinate[field])
+                  for field in (
+                      "workflowPath",
+                      "runId",
+                      "runAttempt",
+                      "artifactName",
+                      "artifactDigest",
+                  )
+              )
+              if identity not in expected_identities or identity in coordinate_ids:
+                  raise SystemExit("protected closeout coordinate is unbound or duplicated")
+              coordinate_ids.add(identity)
+              archive_target = coordinate["archiveTargetPath"]
+              if archive_target is not None:
+                  if bindings.get(archive_target) != coordinate["artifactDigest"]:
+                      raise SystemExit("protected closeout archive target is not contract-bound")
+                  covered.append(archive_target)
+              members = coordinate["members"]
+              if not isinstance(members, list) or len(members) > 128:
+                  raise SystemExit("protected closeout member selection is not bounded")
+              if archive_target is None and not members:
+                  raise SystemExit("protected closeout coordinate does not materialize evidence")
+              for member in members:
+                  if not isinstance(member, dict) or set(member) != member_fields:
+                      raise SystemExit("protected closeout member has an invalid closed shape")
+                  source = member["sourcePath"]
+                  target = member["targetPath"]
+                  if (
+                      not isinstance(source, str)
+                      or not source
+                      or source.startswith("/")
+                      or "\\" in source
+                      or any(part in {"", ".", ".."} for part in PurePosixPath(source).parts)
+                      or bindings.get(target) != member["digest"]
+                  ):
+                      raise SystemExit("protected closeout member is unsafe or unbound")
+                  covered.append(target)
+          if set(covered) != set(bindings) or len(covered) != len(set(covered)):
+              raise SystemExit("protected closeout aggregate does not cover the exact contract files")
+          PY
+
+      - name: Authenticate and download exact producer artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          coordinates=build/protected-release-closeout/materialization-coordinates.json
+          mkdir -p build/protected-release-closeout/archives
+          count="$(jq -er '.artifacts | length' "$coordinates")"
+          total=0
+          for ((index = 0; index < count; index++)); do
+            run_id="$(jq -er ".artifacts[$index].runId | tostring" "$coordinates")"
+            run_attempt="$(jq -er ".artifacts[$index].runAttempt | tostring" "$coordinates")"
+            workflow="$(jq -er ".artifacts[$index].workflowPath" "$coordinates")"
+            artifact_name="$(jq -er ".artifacts[$index].artifactName" "$coordinates")"
+            artifact_digest="$(jq -er ".artifacts[$index].artifactDigest" "$coordinates")"
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt")"
+            jq -e \
+              --arg workflow "$workflow" \
+              --arg commit "$GITHUB_SHA" \
+              --argjson attempt "$run_attempt" '
+                .repository.full_name == "crypta-network/cryptad"
+                and .head_repository.full_name == "crypta-network/cryptad"
+                and .path == $workflow
+                and .head_sha == $commit
+                and .event == "workflow_dispatch"
+                and .status == "completed"
+                and .conclusion == "success"
+                and .run_attempt == $attempt
+                and .actor.login == "leumor"
+                and .triggering_actor.login == "leumor"' <<< "$run" >/dev/null
+            artifacts="$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
+            matches="$(jq --arg name "$artifact_name" --arg digest "$artifact_digest" \
+              '[.[].artifacts[] | select(.name == $name and .digest == $digest and .expired == false)]' \
+              <<< "$artifacts")"
+            test "$(jq 'length' <<< "$matches")" -eq 1
+            artifact_id="$(jq -er '.[0].id' <<< "$matches")"
+            size="$(jq -er '.[0].size_in_bytes' <<< "$matches")"
+            test "$size" -gt 0
+            test "$size" -le 2147483648
+            total=$((total + size))
+            test "$total" -le 4294967296
+            archive="$(printf 'build/protected-release-closeout/archives/artifact-%02d.zip' "$index")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$archive"
+            test "$(stat -c '%s' "$archive")" -eq "$size"
+          done
+
+      - name: Materialize exact contract-bound files
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import hashlib
+          import json
+          import shutil
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          from cryptad_certification.io import read_json
+          from cryptad_certification.engines.stable_1_0_supply_chain_archive import (
+              inspect_archive_safety,
+          )
+
+          workspace = Path.cwd().resolve()
+          root = workspace / "build/protected-release-closeout"
+          coordinates = read_json(root / "materialization-coordinates.json")
+
+          def target_path(value):
+              target = (workspace / value).resolve()
+              target.relative_to(workspace)
+              if target.exists() or target.is_symlink():
+                  raise SystemExit("protected closeout target already exists")
+              target.parent.mkdir(parents=True, exist_ok=True)
+              return target
+
+          for index, coordinate in enumerate(coordinates["artifacts"]):
+              archive_path = root / "archives" / f"artifact-{index:02d}.zip"
+              expected_archive = coordinate["artifactDigest"]
+              actual_archive = "sha256:" + hashlib.sha256(archive_path.read_bytes()).hexdigest()
+              if actual_archive != expected_archive:
+                  raise SystemExit("downloaded protected artifact digest differs")
+              inspect_archive_safety(
+                  archive_path,
+                  maximum_entries=10000,
+                  maximum_expanded_bytes=2_147_483_648,
+                  reject_links=True,
+                  reject_nested_archives=False,
+              )
+              archive_target = coordinate["archiveTargetPath"]
+              if archive_target is not None:
+                  shutil.copyfile(archive_path, target_path(archive_target))
+              with zipfile.ZipFile(archive_path) as archive:
+                  by_name = {}
+                  for row in archive.infolist():
+                      if row.is_dir():
+                          continue
+                      mode = (row.external_attr >> 16) & 0o170000
+                      if mode not in {0, stat.S_IFREG} or row.filename in by_name:
+                          raise SystemExit("protected artifact member is duplicated or unsafe")
+                      by_name[row.filename] = row
+                  for member in coordinate["members"]:
+                      row = by_name.get(member["sourcePath"])
+                      if row is None:
+                          raise SystemExit("protected artifact omits a contract-bound member")
+                      encoded = archive.read(row)
+                      digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+                      if digest != member["digest"]:
+                          raise SystemExit("protected artifact member digest differs")
+                      target_path(member["targetPath"]).write_bytes(encoded)
+          PY
+          find build/protected-release-closeout/archives -type f -delete
+
+      - name: Derive final PR-291 closeout with the existing authority
+        env:
+          GH_TOKEN: ${{ secrets.CRYPTAD_PROTECTED_RELEASE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          python3 tools/release-certification/certify.py stable-protected-release \
+            --mode closeout \
+            --execution-contract build/protected-release-closeout/stable-1.0-protected-release.json \
+            --out-dir build/protected-release-closeout/output
+          unset GH_TOKEN
+          summary=build/protected-release-closeout/output/stable-1.0-protected-release-execution-summary.json
+          jq -e \
+            --arg release "${{ inputs.release_id }}" \
+            --arg build "${{ inputs.build_version }}" \
+            --arg commit "${{ inputs.source_commit }}" '
+              .mode == "closeout"
+              and .status == "pass"
+              and .lifecycleState == "publicly-observed"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .candidateCommit == $commit
+              and .evidenceClassification.catalogAuthority == "pending"' \
+            "$summary" >/dev/null
+
+      - name: Upload canonical protected-release closeout
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-protected-release-closeout-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/protected-release-closeout/output/stable-1.0-protected-release-execution-summary.json
+            build/protected-release-closeout/output/stable-1.0-protected-release-execution-report.md
+            build/protected-release-closeout/output/redaction-report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+          overwrite: false

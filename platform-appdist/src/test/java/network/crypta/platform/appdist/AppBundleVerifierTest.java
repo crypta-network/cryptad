@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.time.Instant;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,6 +35,125 @@ class AppBundleVerifierTest {
     assertEquals(writtenSignature, verifiedSignature);
     assertEquals(TEST_KEY_ID, verifiedSignature.keyId());
     assertEquals(AppBundleSignature.SIGNATURE_ALGORITHM, verifiedSignature.algorithm());
+  }
+
+  @Test
+  void verify_whenActiveLifecycleKeyIsWithinWindow_expectNewBundleAccepted() throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppBundleSignature writtenSignature =
+        AppBundleSigner.sign(bundleRoot, TEST_KEY_ID, keyPair.getPrivate());
+    TrustedAppKeys trustedKeys =
+        trustedKeys(
+            keyPair,
+            TrustedAppKeyLifecycle.ACTIVE,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppBundleSignature verifiedSignature = AppBundleVerifier.verify(bundleRoot, trustedKeys);
+
+    assertEquals(writtenSignature, verifiedSignature);
+  }
+
+  @Test
+  void verify_whenRetiredKeyIsWithinSupportWindow_expectOnlyHistoricalPathAccepts()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppBundleSigner.sign(bundleRoot, TEST_KEY_ID, keyPair.getPrivate());
+    TrustedAppKeys trustedKeys =
+        trustedKeys(
+            keyPair,
+            TrustedAppKeyLifecycle.RETIRED,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppDistributionException newBundleFailure =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleVerifier.verify(bundleRoot, trustedKeys));
+    AppBundleSignature historicalSignature =
+        AppBundleVerifier.verifyHistorical(bundleRoot, trustedKeys);
+
+    assertEquals(
+        "trusted key is not authorized for new bundle verification: " + TEST_KEY_ID,
+        newBundleFailure.getMessage());
+    assertEquals(TEST_KEY_ID, historicalSignature.keyId());
+  }
+
+  @Test
+  void verify_whenRetiringKeyIsWithinSupportWindow_expectHistoricalVerifierAccepts()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppBundleSigner.sign(bundleRoot, TEST_KEY_ID, keyPair.getPrivate());
+    TrustedAppKeys trustedKeys =
+        trustedKeys(
+            keyPair,
+            TrustedAppKeyLifecycle.RETIRING,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppDistributionException newBundleFailure =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleVerifier.verify(bundleRoot, trustedKeys));
+    AppBundleVerification verification =
+        AppBundleVerifier.requireSignedForHistoricalVerification(trustedKeys).verify(bundleRoot);
+
+    assertEquals(
+        "trusted key is not authorized for new bundle verification: " + TEST_KEY_ID,
+        newBundleFailure.getMessage());
+    assertEquals(TEST_KEY_ID, verification.keyId());
+  }
+
+  @Test
+  void verify_whenKeyIsRevoked_expectNewAndHistoricalPathsFail() throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppBundleSigner.sign(bundleRoot, TEST_KEY_ID, keyPair.getPrivate());
+    TrustedAppKeys trustedKeys =
+        trustedKeys(
+            keyPair,
+            TrustedAppKeyLifecycle.REVOKED,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppDistributionException newBundleFailure =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleVerifier.verify(bundleRoot, trustedKeys));
+    AppDistributionException historicalFailure =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundleVerifier.verifyHistorical(bundleRoot, trustedKeys));
+
+    assertEquals(
+        "trusted key is not authorized for new bundle verification: " + TEST_KEY_ID,
+        newBundleFailure.getMessage());
+    assertEquals(
+        "trusted key is not authorized for historical bundle verification: " + TEST_KEY_ID,
+        historicalFailure.getMessage());
+  }
+
+  @Test
+  void verify_whenActiveKeyValidityWindowExpired_expectNewAndHistoricalPathsFail()
+      throws Exception {
+    Path bundleRoot = createBundle();
+    KeyPair keyPair = generateEd25519KeyPair();
+    AppBundleSigner.sign(bundleRoot, TEST_KEY_ID, keyPair.getPrivate());
+    TrustedAppKeys trustedKeys =
+        trustedKeys(
+            keyPair,
+            TrustedAppKeyLifecycle.ACTIVE,
+            Instant.parse("2000-01-01T00:00:00Z"),
+            Instant.parse("2001-01-01T00:00:00Z"));
+
+    assertThrows(
+        AppDistributionException.class, () -> AppBundleVerifier.verify(bundleRoot, trustedKeys));
+    assertThrows(
+        AppDistributionException.class,
+        () -> AppBundleVerifier.verifyHistorical(bundleRoot, trustedKeys));
   }
 
   @Test
@@ -301,5 +421,13 @@ class AppBundleVerifierTest {
   private static TrustedAppKeys trustedKeys(KeyPair keyPair, String keyId) {
     return TrustedAppKeys.of(
         new TrustedAppKey(keyId, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic()));
+  }
+
+  private static TrustedAppKeys trustedKeys(
+      KeyPair keyPair, TrustedAppKeyLifecycle lifecycle, Instant validFrom, Instant validUntil) {
+    TrustedAppKey key =
+        new TrustedAppKey(TEST_KEY_ID, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic());
+    return TrustedAppKeys.ofPolicies(
+        new TrustedAppKeyPolicy(key, lifecycle, validFrom, validUntil));
   }
 }

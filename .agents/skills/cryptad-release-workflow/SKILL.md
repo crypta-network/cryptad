@@ -34,6 +34,16 @@ Build: 2
 - For Stable 1.0, freeze with `stable-rc` and promote that exact product with `stable-ga`. Do not
   rebuild, re-sign, rewrite the catalog, or create the GA tag/Release outside the explicitly
   protected publication operation.
+- Treat Stable catalog ceremony and network-primary publication as a separate PR-293 protected
+  authority layered on the exact RC/GA bytes. Keep catalog, first-party app, reviewer, and recovery
+  keys distinct; keep the offline recovery key out of routine signing; and retain Stable GA's HTTPS
+  observations when adding the public Crypta USK primary and independent mirror. Restrict the
+  mutation job to the dedicated protected `cryptad-stable-catalog-publication` self-hosted runner;
+  its managed localhost daemon, shared filesystem identity, and matching form-password secret are
+  provisioning prerequisites. Require credential-free daemon and Platform API contract checks
+  before secrets enter the job, and do not build, start, restart, or stop the daemon from the
+  release workflow. Follow
+  `docs/stable-1.0-catalog-publication-and-key-ceremony.md`.
 - After Stable 1.0 GA, use `stable-maintenance` for both routine maintenance and security hotfix
   candidates. It builds and freezes one new integer-build candidate; the protected maintenance
   workflow publishes only those authorized bytes and never merges the branch.
@@ -234,6 +244,9 @@ GitHub Release creation.
       catalog primary/mirrors before publication is called complete.
 - [ ] For Stable 1.0, retain `stable-1.0-maintenance-baseline.json`; do not create the tag or
       GitHub Release from tests, local validation, or an ordinary PR workflow.
+- [ ] When the release policy requires PR-293 evidence, authenticate the exact catalog-authority
+      protected receipt against PR-291 and PR-292. Do not substitute a fixture, self-test, local
+      report, workflow definition, partial publication, or mirror upload claim.
 - [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, private
       reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
       feed bodies, raw social message bodies, raw trust documents, raw app-data values, raw
@@ -415,6 +428,14 @@ read-only `stable-1.0-public-observation.yml` workflow after publication. A miss
 receipt is not replaceable by a repository claim. Follow
 `docs/stable-1.0-protected-release-execution.md` before continuing the merge/tag workflow.
 
+For PR-293 bootstrap, produce the final `publicly-observed` PR-291 summary with the dedicated
+protected-release closeout workflow over exact contract-bound RC, GA, and observation artifacts.
+The bootstrap contract must leave its optional catalog-authority coordinate and binding null so
+PR-291 can precede PR-293 without a digest cycle. Consume PR-292 summary/inventory and public
+observation from their direct protected producers on the first ceremony; a retained preparation
+artifact may be used only after it has already authenticated those origins. Never treat a local
+digest-only catalog-authority binding as operational security-response or maintenance authority.
+
 Provider-distinct reproducibility is a separate protected closeout input. Do not describe the
 existing GitHub Actions producer/verifier runs as independent providers. Prepare the
 product-byte-free kit and authenticate an already sealed external receipt with
@@ -433,3 +454,20 @@ uses the closed `crypta-app-signature-envelope-v1` view, which excludes only
 authority remain authenticated separately.
 Follow
 `docs/stable-1.0-independent-reproducible-build-verification.md`.
+
+Stable catalog-authority closeout is another separate protected input. Run
+`stable-catalog-authority --self-test` locally, but treat that result only as fixture or
+implementation verification. A real ceremony, USK publication, independent mirror observation,
+rotation, rollback, and transparency publication remain pending until their authentic protected
+receipts are verified. PR-293 must reuse the exact PR-291 release root, PR-292 catalog subject,
+Stable RC freeze, and Stable GA HTTPS observations; it never authorizes rebuilding or re-signing
+the selected catalog. Only its approved publication job receives insert capability, and mirrors
+remain transport availability rather than trust authorities.
+
+For every protected PR-293 operation, supply the closed v1 aggregate of exact Actions coordinates
+and per-member digests required by that operation. The workflow authenticates each producer and
+assembles a fresh allowlisted evidence directory; one catch-all artifact, a legacy single
+coordinate, or a locally resealed summary cannot satisfy a protected phase.
+Source the first exact mirror receipt from `stable-1.0-catalog-mirror-observation.yml` and any
+protected recovery-quorum receipt from `stable-1.0-catalog-recovery-quorum.yml`. Do not use the
+catalog-authority verifier's retained or reuploaded copy as the origin coordinate.

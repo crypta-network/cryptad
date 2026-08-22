@@ -1,0 +1,496 @@
+name: Stable 1.0 Catalog Mirror Observation
+run-name: >-
+  Stable 1.0 catalog mirror observation ${{ inputs.release_id }} build
+  ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id: {description: Exact Stable release identity., required: true, type: string}
+      build_version: {description: Exact positive-integer Stable build., required: true, type: string}
+      source_commit: {description: Exact protected lowercase 40-character source commit., required: true, type: string}
+      observed_at: {description: Canonical RFC 3339 observation instant bound by the reviewed manifest., required: true, type: string}
+      authority_manifest_json: {description: Complete reviewed non-secret Stable catalog-authority manifest JSON., required: true, type: string}
+      protected_input_coordinates:
+        description: Exact preparation, GA handoff, and live-publication artifact coordinates.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-release-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-inputs:
+    name: Authenticate exact observation inputs
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      resolved_coordinates: ${{ steps.coordinates.outputs.resolved_coordinates }}
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate the closed producer graph
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_OBSERVED_AT: ${{ inputs.observed_at }}
+          PROTECTED_INPUT_COORDINATES: ${{ inputs.protected_input_coordinates }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != crypta-network/cryptad \
+                || "$GITHUB_EVENT_NAME" != workflow_dispatch \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != leumor \
+                || "$TRIGGERING_ACTOR" != leumor \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Mirror-observation dispatch is not bound to the exact protected Stable source."
+            exit 2
+          fi
+          test "${#AUTHORITY_MANIFEST_JSON}" -le 65535
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+          from cryptad_certification.schema_validation import validate_schema
+
+          def closed_pairs(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          manifest = json.loads(os.environ["AUTHORITY_MANIFEST_JSON"], object_pairs_hook=closed_pairs)
+          coordinates = json.loads(os.environ["PROTECTED_INPUT_COORDINATES"], object_pairs_hook=closed_pairs)
+          if validate_schema(manifest, authority.EXECUTION_SCHEMA):
+              raise SystemExit("observation manifest is schema-invalid")
+          release = manifest.get("release", {})
+          if (
+              manifest.get("fixtureOnly") is not False
+              or release.get("releaseId") != os.environ["INPUT_RELEASE_ID"]
+              or str(release.get("buildVersion")) != os.environ["INPUT_BUILD_VERSION"]
+              or release.get("sourceCommit") != os.environ["INPUT_SOURCE_COMMIT"]
+          ):
+              raise SystemExit("observation manifest identity is invalid")
+          observed = dt.datetime.fromisoformat(os.environ["INPUT_OBSERVED_AT"].replace("Z", "+00:00"))
+          if observed.tzinfo is None:
+              raise SystemExit("observation timestamp must include a timezone")
+          if abs((dt.datetime.now(dt.timezone.utc) - observed.astimezone(dt.timezone.utc)).total_seconds()) > 900:
+              raise SystemExit("observation timestamp is outside the protected collection window")
+          if not isinstance(coordinates, dict) or set(coordinates) != {"schemaVersion", "artifacts"} or coordinates.get("schemaVersion") != 1:
+              raise SystemExit("observation requires a closed v1 artifact aggregate")
+          targets = {
+              "stable-1.0-catalog-publication-plan.json": (
+                  ".github/workflows/stable-1.0-catalog-authority.yml",
+                  f"stable-1-0-catalog-authority-preparation-{release['releaseId']}-{release['buildVersion']}",
+                  "catalog-authority-output/stable-1.0-catalog-publication-plan.json",
+              ),
+              "cryptad-app-catalog.properties": (
+                  ".github/workflows/stable-1.0-ga-promotion.yml",
+                  f"stable-1-0-ga-catalog-authority-handoff-{release['releaseId']}-{release['buildVersion']}",
+                  "cryptad-app-catalog.properties",
+              ),
+              "cryptad-app-catalog.signature": (
+                  ".github/workflows/stable-1.0-ga-promotion.yml",
+                  f"stable-1-0-ga-catalog-authority-handoff-{release['releaseId']}-{release['buildVersion']}",
+                  "cryptad-app-catalog.signature",
+              ),
+              "stable-1.0-live-usk-publication.json": (
+                  ".github/workflows/stable-1.0-catalog-authority.yml",
+                  f"stable-1-0-catalog-publication-{release['releaseId']}-{release['buildVersion']}",
+                  "stable-1.0-live-usk-publication.json",
+              ),
+          }
+          found = []
+          coordinate_fields = {"artifactDigest", "artifactName", "members", "runAttempt", "runId", "workflowPath"}
+          member_fields = {"digest", "sourcePath", "targetName"}
+          for coordinate in coordinates.get("artifacts", []):
+              if not isinstance(coordinate, dict) or set(coordinate) != coordinate_fields:
+                  raise SystemExit("observation coordinate has an invalid closed shape")
+              run_id = str(coordinate["runId"])
+              attempt = str(coordinate["runAttempt"])
+              name = coordinate["artifactName"]
+              workflow = coordinate["workflowPath"]
+              if (
+                  re.fullmatch(r"[1-9][0-9]{0,19}", run_id) is None
+                  or re.fullmatch(r"[1-9][0-9]{0,9}", attempt) is None
+                  or re.fullmatch(r"sha256:[0-9a-f]{64}", coordinate["artifactDigest"]) is None
+                  or not isinstance(coordinate["members"], list)
+                  or not 1 <= len(coordinate["members"]) <= 3
+              ):
+                  raise SystemExit("observation coordinate identity is invalid")
+              for member in coordinate["members"]:
+                  if not isinstance(member, dict) or set(member) != member_fields:
+                      raise SystemExit("observation member has an invalid closed shape")
+                  target = member["targetName"]
+                  if target not in targets:
+                      raise SystemExit("observation member is not allowlisted")
+                  expected_workflow, prefix, source = targets[target]
+                  expected_name = f"{prefix}-{run_id}-{attempt}"
+                  if (
+                      workflow != expected_workflow
+                      or name != expected_name
+                      or member["sourcePath"] != source
+                      or re.fullmatch(r"sha256:[0-9a-f]{64}", member["digest"]) is None
+                  ):
+                      raise SystemExit("observation member producer coordinate is not canonical")
+                  found.append(target)
+          if sorted(found) != sorted(targets) or len(found) != len(set(found)):
+              raise SystemExit("observation aggregate does not cover the exact producer set")
+          PY
+      - name: Authenticate each exact producer run and artifact
+        id: coordinates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PROTECTED_INPUT_COORDINATES: ${{ inputs.protected_input_coordinates }}
+        run: |
+          set -euo pipefail
+          resolved='[]'
+          while IFS= read -r coordinate; do
+            run_id="$(jq -er '.runId | tostring' <<< "$coordinate")"
+            attempt="$(jq -er '.runAttempt | tostring' <<< "$coordinate")"
+            workflow="$(jq -er .workflowPath <<< "$coordinate")"
+            artifact_name="$(jq -er .artifactName <<< "$coordinate")"
+            artifact_digest="$(jq -er .artifactDigest <<< "$coordinate")"
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$attempt")"
+            jq -e --arg sha "$INPUT_SOURCE_COMMIT" --arg workflow "$workflow" --argjson attempt "$attempt" '
+              .head_sha == $sha and .path == $workflow and .run_attempt == $attempt
+              and .status == "completed" and .conclusion == "success"
+              and .head_repository.full_name == "crypta-network/cryptad"
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"' <<< "$run" >/dev/null
+            artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")"
+            match="$(jq -c --arg name "$artifact_name" '[.artifacts[] | select(.name == $name)]' <<< "$artifacts")"
+            jq -e --arg digest "$artifact_digest" 'length == 1 and .[0].expired == false and .[0].digest == $digest' <<< "$match" >/dev/null
+            artifact_id="$(jq -er '.[0].id' <<< "$match")"
+            artifact_size="$(jq -er '.[0].size_in_bytes' <<< "$match")"
+            test "$artifact_size" -gt 0
+            test "$artifact_size" -le 1073741824
+            resolved="$(jq -cn --argjson current "$resolved" --argjson coordinate "$coordinate" --argjson artifactId "$artifact_id" --argjson artifactSize "$artifact_size" '$current + [$coordinate + {artifactId: $artifactId, artifactSize: $artifactSize}]')"
+          done < <(jq -c '.artifacts[]' <<< "$PROTECTED_INPUT_COORDINATES")
+          echo "resolved_coordinates=$(jq -cn --argjson artifacts "$resolved" '{schemaVersion: 1, artifacts: $artifacts}')" >> "$GITHUB_OUTPUT"
+
+  collect-observation:
+    name: Collect exact primary and independent-mirror subjects
+    needs: validate-inputs
+    runs-on: [self-hosted, linux, x64, cryptad-stable-catalog-observation]
+    timeout-minutes: 30
+    environment: stable-1-0-catalog-mirror-observation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact protected collector source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download isolated authenticated producer archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESOLVED_COORDINATES: ${{ needs.validate-inputs.outputs.resolved_coordinates }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/catalog-observation-archives build/catalog-observation-execution
+          printf '%s\n' "$RESOLVED_COORDINATES" > build/catalog-observation-execution/resolved-coordinates.json
+          count="$(jq -er '.artifacts | length' build/catalog-observation-execution/resolved-coordinates.json)"
+          for ((index = 0; index < count; index++)); do
+            artifact_id="$(jq -er ".artifacts[$index].artifactId" build/catalog-observation-execution/resolved-coordinates.json)"
+            expected_size="$(jq -er ".artifacts[$index].artifactSize" build/catalog-observation-execution/resolved-coordinates.json)"
+            archive="$(printf 'build/catalog-observation-archives/artifact-%02d.zip' "$index")"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$archive"
+            test "$(stat -c '%s' "$archive")" -eq "$expected_size"
+          done
+          PYTHONPATH=tools/release-certification python3 -m cryptad_certification.engines.stable_1_0_catalog_authority_inputs \
+            --coordinates build/catalog-observation-execution/resolved-coordinates.json \
+            --archives-root build/catalog-observation-archives \
+            --out build/catalog-observation-input
+          test "$(find build/catalog-observation-input -type f | wc -l)" -eq 4
+          find build/catalog-observation-archives -type f -delete
+      - name: Verify the managed read-only observation node
+        run: |
+          set -euo pipefail
+          curl_version="$(curl --version | head -n 1 | awk '{print $2}')"
+          python3 - "$curl_version" <<'PY'
+          import re
+          import sys
+
+          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", sys.argv[1])
+          if match is None or tuple(map(int, match.groups())) < (8, 4, 0):
+              raise SystemExit("managed observation runner requires curl 8.4.0 or newer")
+          PY
+          curl --disable --fail --silent --show-error --noproxy '*' --connect-timeout 2 --max-time 5 \
+            http://127.0.0.1:7654/api/v1/node/greeting >/dev/null
+          curl --disable --fail --silent --show-error --noproxy '*' --connect-timeout 2 --max-time 5 \
+            http://127.0.0.1:8888/ >/dev/null
+      - name: Fetch exact public sidecars without insert or mutation authority
+        id: collect
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+          INPUT_OBSERVED_AT: ${{ inputs.observed_at }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/catalog-observation-fetched
+          printf '%s\n' "$AUTHORITY_MANIFEST_JSON" > build/catalog-observation-execution/authority-manifest.json
+          collection_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PYTHONPATH=tools/release-certification python3 - \
+            "$INPUT_OBSERVED_AT" "$collection_started_at" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.engines import stable_1_0_catalog_observation as observation
+          from cryptad_certification.io import read_json_bytes
+
+          manifest = read_json_bytes(
+              Path("build/catalog-observation-execution/authority-manifest.json").read_bytes(),
+              "authority manifest",
+          )
+          observation._collection_window(manifest, sys.argv[1], sys.argv[2], sys.argv[2])
+          PY
+          echo "collection_started_at=$collection_started_at" >> "$GITHUB_OUTPUT"
+          accept_bounded_download() {
+            local partial="$1"
+            local output="$2"
+            local maximum="$3"
+            local description="$4"
+            if [[ ! -f "$partial" || -L "$partial" \
+                  || "$(stat -c '%h' "$partial")" -ne 1 \
+                  || "$(stat -c '%s' "$partial")" -lt 1 \
+                  || "$(stat -c '%s' "$partial")" -gt "$maximum" ]]; then
+              rm -f "$partial"
+              echo "::error::$description exceeded its closed transfer bound or was unsafe."
+              return 1
+            fi
+            mv "$partial" "$output"
+          }
+          fetch_local_bounded() {
+            local value="$1"
+            local output="$2"
+            local maximum="$3"
+            local description="$4"
+            rm -f "$output.partial"
+            if ! curl --disable --fail --silent --show-error --noproxy '*' \
+                --proto '=http' --connect-timeout 5 --max-time 90 --max-redirs 0 \
+                --max-filesize "$maximum" "$value" -o "$output.partial"; then
+              rm -f "$output.partial"
+              echo "::error::$description could not be fetched within its closed transfer bound."
+              return 1
+            fi
+            accept_bounded_download "$output.partial" "$output" "$maximum" "$description"
+          }
+          fetch_public_https() {
+            local value="$1"
+            local output="$2"
+            local maximum="$3"
+            local description="$4"
+            local resolution_rows
+            resolution_rows="$(python3 - "$value" <<'PY'
+          import ipaddress
+          import socket
+          import sys
+          from urllib.parse import urlsplit
+
+          value = sys.argv[1]
+          parsed = urlsplit(value)
+          hostname = parsed.hostname
+          try:
+              port = parsed.port
+          except ValueError as error:
+              raise SystemExit("public mirror has an invalid port") from error
+          if (
+              parsed.scheme != "https"
+              or not hostname
+              or parsed.username is not None
+              or parsed.password is not None
+              or parsed.query
+              or parsed.fragment
+              or port not in {None, 443}
+              or hostname in {"localhost", "localhost.localdomain"}
+              or hostname.endswith(".local")
+          ):
+              raise SystemExit("public mirror is not canonical credential-free HTTPS")
+          try:
+              literal = ipaddress.ip_address(hostname)
+          except ValueError:
+              literal = None
+          if literal is None:
+              try:
+                  addresses = {
+                      row[4][0]
+                      for row in socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+                  }
+              except OSError as error:
+                  raise SystemExit("public mirror hostname cannot be resolved") from error
+              mode = "dns"
+          else:
+              addresses = {str(literal)}
+              mode = "literal"
+          if not addresses or any(
+              not ipaddress.ip_address(address).is_global for address in addresses
+          ):
+              raise SystemExit("public mirror resolves to a non-public address")
+          for address in sorted(
+              addresses,
+              key=lambda item: (ipaddress.ip_address(item).version, ipaddress.ip_address(item)),
+          ):
+              print(f"{hostname}\t{address}\t{mode}")
+          PY
+            )"
+            test -n "$resolution_rows"
+            local host mode resolve_addresses=""
+            host="$(head -n 1 <<< "$resolution_rows" | cut -f1)"
+            mode="$(head -n 1 <<< "$resolution_rows" | cut -f3)"
+            local curl_resolution=()
+            if [[ "$mode" == dns ]]; then
+              while IFS=$'\t' read -r _ address _; do
+                if [[ "$address" == *:* ]]; then
+                  address="[$address]"
+                fi
+                resolve_addresses="${resolve_addresses:+$resolve_addresses,}$address"
+              done <<< "$resolution_rows"
+              curl_resolution=(--resolve "${host}:443:${resolve_addresses}")
+            fi
+            rm -f "$output.partial"
+            if ! curl --disable --fail --silent --show-error --noproxy '*' \
+                --proto '=https' --tlsv1.2 --connect-timeout 5 --max-time 90 \
+                --max-redirs 0 --max-filesize "$maximum" "${curl_resolution[@]}" \
+                "$value" -o "$output.partial"; then
+              rm -f "$output.partial"
+              echo "::error::$description could not be fetched from an approved public address."
+              return 1
+            fi
+            accept_bounded_download "$output.partial" "$output" "$maximum" "$description"
+          }
+          while IFS=$'\t' read -r location_id location_type public_uri; do
+            signature_uri="${public_uri%/*}/cryptad-app-catalog.signature"
+            if [[ "$location_type" == network-primary || "$location_type" == network-mirror ]]; then
+              [[ "$public_uri" == crypta:USK@*/cryptad-app-catalog.properties ]]
+              catalog_fetch="http://127.0.0.1:8888/${public_uri#crypta:}"
+              signature_fetch="http://127.0.0.1:8888/${signature_uri#crypta:}"
+              fetch_local_bounded "$catalog_fetch" \
+                "build/catalog-observation-fetched/$location_id.catalog" 1048576 \
+                "$location_id catalog"
+              fetch_local_bounded "$signature_fetch" \
+                "build/catalog-observation-fetched/$location_id.signature" 65536 \
+                "$location_id signature"
+            else
+              [[ "$location_type" == public-web-mirror && "$public_uri" == https://*/cryptad-app-catalog.properties ]]
+              fetch_public_https "$public_uri" \
+                "build/catalog-observation-fetched/$location_id.catalog" 1048576 \
+                "$location_id catalog"
+              fetch_public_https "$signature_uri" \
+                "build/catalog-observation-fetched/$location_id.signature" 65536 \
+                "$location_id signature"
+            fi
+          done < <(jq -er '[.publication.networkPrimary, .publication.mirrors[]] | .[] | [.locationId, .locationType, .publicUri] | @tsv' build/catalog-observation-execution/authority-manifest.json)
+          catalog_id="$(jq -er .catalog.catalogId build/catalog-observation-execution/authority-manifest.json)"
+          scheduler_health_uri="http://127.0.0.1:7654/api/v1/app-catalogs/$catalog_id/operations/health"
+          scheduler_fresh=false
+          for _ in {1..31}; do
+            fetch_local_bounded "$scheduler_health_uri" \
+              build/catalog-observation-execution/scheduler-health.json 1048576 \
+              "scheduler health"
+            collection_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if PYTHONPATH=tools/release-certification python3 - \
+                "$INPUT_OBSERVED_AT" "$collection_started_at" \
+                "$collection_completed_at" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+          from cryptad_certification.engines import stable_1_0_catalog_observation as observation
+
+          manifest, _ = observation._json(
+              Path("build/catalog-observation-execution/authority-manifest.json"),
+              "authority manifest",
+          )
+          health, _ = observation._json(
+              Path("build/catalog-observation-execution/scheduler-health.json"),
+              "scheduler health",
+          )
+          started, completed = observation._collection_window(
+              manifest, sys.argv[1], sys.argv[2], sys.argv[3]
+          )
+          catalog = observation._safe_bytes(
+              Path("build/catalog-observation-input/cryptad-app-catalog.properties"),
+              "frozen catalog",
+              1024 * 1024,
+          )
+          signature = observation._safe_bytes(
+              Path("build/catalog-observation-input/cryptad-app-catalog.signature"),
+              "frozen catalog signature",
+              64 * 1024,
+          )
+          findings = observation._health_errors(
+              health,
+              authority._catalog_subject(manifest["catalog"]),
+              observation._revision_digest(catalog, signature),
+              started,
+              completed,
+          )
+          if findings:
+              raise SystemExit("; ".join(findings))
+          PY
+            then
+              scheduler_fresh=true
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$scheduler_fresh" != true ]]; then
+            echo "::error::Scheduler did not report fresh exact primary and mirror refreshes."
+            exit 1
+          fi
+          echo "collection_completed_at=$collection_completed_at" >> "$GITHUB_OUTPUT"
+      - name: Construct the canonical receipt only after exact-byte and scheduler checks
+        env:
+          COLLECTION_COMPLETED_AT: ${{ steps.collect.outputs.collection_completed_at }}
+          COLLECTION_STARTED_AT: ${{ steps.collect.outputs.collection_started_at }}
+          INPUT_OBSERVED_AT: ${{ inputs.observed_at }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/release-certification python3 -m \
+            cryptad_certification.engines.stable_1_0_catalog_observation \
+            --authority-manifest build/catalog-observation-execution/authority-manifest.json \
+            --evidence-dir build/catalog-observation-input \
+            --fetched-dir build/catalog-observation-fetched \
+            --scheduler-health build/catalog-observation-execution/scheduler-health.json \
+            --observed-at "$INPUT_OBSERVED_AT" \
+            --collection-started-at "$COLLECTION_STARTED_AT" \
+            --collection-completed-at "$COLLECTION_COMPLETED_AT" \
+            --output build/catalog-observation-output/stable-1.0-catalog-mirror-observation.json
+      - name: Upload only the canonical observation receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-catalog-mirror-observation-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/catalog-observation-output/stable-1.0-catalog-mirror-observation.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false

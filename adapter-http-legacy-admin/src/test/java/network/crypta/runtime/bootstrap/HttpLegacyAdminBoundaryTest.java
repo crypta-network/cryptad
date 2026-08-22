@@ -98,6 +98,7 @@ class HttpLegacyAdminBoundaryTest {
           ADAPTER_HTTP_SHELL_BROWSE_BOOTSTRAP,
           ADAPTER_PAGE_MAKER,
           ADAPTER_INTERVAL_PUSHER_MANAGER);
+
   private static final List<String> FORBIDDEN_BROWSE_OWNED_COLLABORATOR_IMPORTS =
       List.of(
           "import network.crypta.clients.http.bookmark.BookmarkManager;",
@@ -242,6 +243,20 @@ class HttpLegacyAdminBoundaryTest {
           "network.crypta.clients.http.bridge.HttpShellContainers",
           "network.crypta.clients.http.bridge.geoip.HttpGeoIpCountryLookups",
           "network.crypta.clients.http.bridge.security.CorePasswordFormPageRenderer");
+
+  @Test
+  void toadletContextImpl_whenCheckingFormPassword_expectCredentialNeverLogged()
+      throws IOException {
+    String source = Files.readString(repoRoot().resolve(ADAPTER_TOADLET_CONTEXT_IMPL));
+    int methodStart = source.indexOf("public boolean hasFormPassword(HTTPRequest request)");
+    int methodEnd = source.indexOf("\n  /**", methodStart);
+
+    assertTrue(methodStart >= 0, "ToadletContextImpl must retain the form-password check.");
+    assertTrue(methodEnd > methodStart, "The form-password check must have a bounded method body.");
+    String methodSource = source.substring(methodStart, methodEnd);
+
+    assertFalse(methodSource.contains("LOG."), "Form-password checks must never log credentials.");
+  }
 
   @Test
   void mainSourceLayout_whenCheckingLegacyHttpOwnership_expectOnlyAdapterOwnsHttpTree()
@@ -895,10 +910,9 @@ class HttpLegacyAdminBoundaryTest {
       }
       String mapArgs = trimmedArgs.substring(openParen + 1, closeParen);
       for (String entry : splitTopLevel(mapArgs, ',')) {
-        Matcher pathEntryMatcher =
-            Pattern.compile("^\\s*\"path\"\\s*to\\s*(.+)$", Pattern.DOTALL).matcher(entry);
-        if (pathEntryMatcher.matches()) {
-          return pathEntryMatcher.group(1).trim();
+        String pathExpression = extractMapPathEntry(entry);
+        if (pathExpression != null) {
+          return pathExpression;
         }
       }
       return null;
@@ -916,6 +930,20 @@ class HttpLegacyAdminBoundaryTest {
     }
 
     return trimmedArgs;
+  }
+
+  private static String extractMapPathEntry(String entry) {
+    String trimmedEntry = entry.trim();
+    String pathKey = "\"path\"";
+    if (!trimmedEntry.startsWith(pathKey)) {
+      return null;
+    }
+    String mapping = trimmedEntry.substring(pathKey.length()).trim();
+    if (!mapping.startsWith("to")) {
+      return null;
+    }
+    String pathExpression = mapping.substring("to".length()).trim();
+    return pathExpression.isEmpty() ? null : pathExpression;
   }
 
   private static String resolveStringExpression(

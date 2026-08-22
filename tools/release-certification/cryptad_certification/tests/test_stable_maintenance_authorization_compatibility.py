@@ -22,8 +22,10 @@ from ..engines.stable_1_0_maintenance import (
 )
 from ..engines.stable_1_0_maintenance_core import (
     AUTHORIZATION_SCHEMA,
+    CANDIDATE_INPUT_SCHEMA,
     LoadedJson,
     ValidationState,
+    catalog_authority_binding_errors,
     file_digest,
 )
 
@@ -72,6 +74,22 @@ def _authorization_fixture(
         "redaction": fixtures._redaction(),  # noqa: SLF001
     }
     return context, candidate, expected, authorization
+
+
+def _catalog_authority_binding() -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-catalog-authority-evidence-binding",
+        "summaryDigest": fixtures._digest("1"),  # noqa: SLF001
+        "protectedEvidenceDigest": fixtures._digest("2"),  # noqa: SLF001
+        "state": "public-key-transparency-published",
+        "keysetDigest": fixtures._digest("3"),  # noqa: SLF001
+        "transparencyDigest": fixtures._digest("4"),  # noqa: SLF001
+        "catalogSigningKeyId": "stable-catalog-key-2026",
+        "catalogSigningKeyFingerprintSha256": fixtures._digest("5"),  # noqa: SLF001
+        "fixtureOnly": False,
+        "operational": True,
+    }
 
 
 class StableMaintenanceAuthorizationCompatibilityTest(unittest.TestCase):
@@ -169,6 +187,37 @@ class StableMaintenanceAuthorizationCompatibilityTest(unittest.TestCase):
 
             self.assertEqual(validate_schema(legacy, AUTHORIZATION_SCHEMA), [])
             self.assertEqual(errors, [])
+
+    def test_selected_local_catalog_authority_cannot_claim_operational_authority(
+        self,
+    ) -> None:
+        candidate_input = fixtures._candidate_input()  # noqa: SLF001
+        candidate_input["packages"] = fixtures._packages()  # noqa: SLF001
+        binding = _catalog_authority_binding()
+        binding["catalogSigningKeyId"] = candidate_input["stableCatalog"][  # type: ignore[index]
+            "signingKeyId"
+        ]
+        candidate_input["catalogAuthority"] = binding
+
+        self.assertEqual(validate_schema(candidate_input, CANDIDATE_INPUT_SCHEMA), [])
+        self.assertTrue(
+            any(
+                "cannot authenticate protected operational evidence" in error
+                for error in catalog_authority_binding_errors(candidate_input)
+            )
+        )
+
+    def test_selected_catalog_authority_rejects_wrong_signer_and_fixture(self) -> None:
+        candidate_input = fixtures._candidate_input()  # noqa: SLF001
+        binding = _catalog_authority_binding()
+        binding["fixtureOnly"] = True
+        candidate_input["catalogAuthority"] = binding
+
+        schema_errors = validate_schema(candidate_input, CANDIDATE_INPUT_SCHEMA)
+        binding_errors = catalog_authority_binding_errors(candidate_input)
+
+        self.assertTrue(schema_errors)
+        self.assertTrue(any("catalog signer" in error for error in binding_errors))
 
 
 if __name__ == "__main__":

@@ -87,7 +87,8 @@ separate from ordinary refresh:
 2. The operator selects one digest and supplies a bounded reason.
 3. Cryptad re-verifies the stored catalog and signature against the current trusted catalog-key
    policy.
-4. Cryptad rejects unknown, untrusted, or revoked signing keys and catalog id mismatches.
+4. Cryptad rejects unknown, untrusted, revoked, or compromised signing keys and catalog id
+   mismatches.
 5. Cryptad records the current revision in history and replaces the active catalog sidecars with
    the selected verified revision.
 
@@ -109,6 +110,13 @@ state, and bounded blocker reasons such as `next_key_not_trusted`,
 The status is derived from verified catalog metadata and local trusted-key policy. Release
 certification verifies that key-rotation status is visible and redacted; it does not require real
 production signing keys in the repository or in local test fixtures.
+
+For Stable 1.0, a status display is not transition authority. Planned rotation additionally
+requires a recovery-authorized successor keyset, the successor's canonical proof of possession,
+an overlap window, a later revision and USK edition for the successor-signed catalog, and protected
+mirror/client verification before predecessor retirement. Compromise recovery has no ordinary
+overlap assumption and makes rollback to the compromised signer ineligible. See
+[Stable 1.0 catalog publication and key ceremony](stable-1.0-catalog-publication-and-key-ceremony.md).
 
 ## Emergency advisory refresh
 
@@ -221,3 +229,26 @@ revision must advance. Equal counters are allowed only when all three identities
 Catalog publication and the package-based CoreUpdater descriptor remain separate protected
 mutations with separate receipts. See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Stable network-primary publication
+
+The Stable catalog-authority layer adds a public Crypta USK network primary without weakening the
+Stable GA HTTPS authority. Its protected publication plan binds the exact frozen catalog and
+detached signature, catalog ID and channel, revision and USK edition, signer ID and fingerprint,
+PR-291 protected release root, PR-292 independently reproduced catalog subject, public locations,
+and retained rollback subject.
+
+At least one observed mirror must have an independently identified operator, provider, or control
+plane. Independence is availability metadata only: every primary and mirror still returns the same
+exact signed subject and is verified against the catalog-only trusted-key registry. Duplicate or
+aliased locations, missing signature siblings, stale or unauthorized newer bytes, signer drift,
+and byte mismatches fail closed. Exact existing state is idempotent only after observation;
+conflicting state is never overwritten, and a partial publication remains `partial`.
+
+Only the protected publication job may materialize the private insert URI and form password. It
+invokes the existing live publication boundary and removes secrets from ambient state before it
+constructs a receipt. Side-effect-free certification, fixtures, workflow definitions, and this
+guide do not prove that a Stable USK, independent mirror, or rollback was published or observed.
+The job is restricted to the protected Stable catalog-publication runner, whose managed localhost
+daemon and matching form-password secret are provisioning prerequisites. A bounded, secret-free
+readiness and Platform API contract check must pass before publication secrets enter the job.

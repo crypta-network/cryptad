@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-catalog-publication-receipt-v1.schema.json",
+  "title": "Stable 1.0 catalog network publication receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "sourceCommit",
+    "planDigest",
+    "keysetDigest",
+    "catalog",
+    "networkPrimary",
+    "mirrors",
+    "rollback",
+    "observations",
+    "livePublicationResultDigest",
+    "mirrorObservationReceiptDigest",
+    "publicationState",
+    "operational",
+    "blockers",
+    "receiptDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-catalog-publication-receipt"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "planDigest": {"$ref": "#/$defs/digest"},
+    "keysetDigest": {"$ref": "#/$defs/digest"},
+    "catalog": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/catalog"},
+    "networkPrimary": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/location"},
+    "mirrors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/location"}
+    },
+    "rollback": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/rollback"},
+    "observations": {
+      "type": "array",
+      "maxItems": 9,
+      "items": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/observation"}
+    },
+    "livePublicationResultDigest": {"$ref": "#/$defs/nullableDigest"},
+    "mirrorObservationReceiptDigest": {"$ref": "#/$defs/nullableDigest"},
+    "publicationState": {"enum": ["fixture-observed", "verified-partial", "partial"]},
+    "operational": {"const": false},
+    "blockers": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "findingCount": {"type": "integer", "minimum": 0, "maximum": 64},
+        "findings": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    }
+  }
+}

@@ -29,6 +29,7 @@ python3 tools/release-certification/certify.py stable-dependency-vulnerability -
 python3 tools/release-certification/certify.py stable-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-protected-release --self-test
 python3 tools/release-certification/certify.py stable-independent-reproducibility --self-test
+python3 tools/release-certification/certify.py stable-catalog-authority --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -112,6 +113,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-lifecycle` | Evaluate and prepare authenticated Stable 1.0 build-support lifecycle transitions without publishing them. |
 | `stable-supply-chain` | Assemble and verify Stable component, SBOM, license, isolated-rebuild, promotion, and publication-observation evidence; the CLI is side-effect-free and the protected workflow has an explicit publication boundary. |
 | `stable-independent-reproducibility` | Prepare a candidate-byte-free verifier kit, authenticate a provider-distinct external build, reuse the Stable comparison authority, and produce protected closeout without publication. |
+| `stable-catalog-authority` | Prepare and verify the role-separated Stable key ceremony, exact catalog publication, rotation and rollback drills, transparency artifact, and authenticated closeout without remote mutation. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -1149,6 +1151,139 @@ checked-in operational external-adapter allowlist is empty; changing a policy fl
 self-asserted transcript cannot complete the gate. See
 [Stable 1.0 independent reproducible-build
 verification](../../docs/stable-1.0-independent-reproducible-build-verification.md).
+
+## Stable 1.0 catalog authority
+
+Run the focused local contract suite with:
+
+```bash
+python3 tools/release-certification/certify.py stable-catalog-authority --self-test
+python3 tools/release-certification/certify.py stable-catalog-authority --help
+```
+
+Outside fixture self-tests, pass the exact authenticated handoff with `--evidence-dir`. Publication
+modes hash and verify the canonical frozen catalog and detached signature, authenticate the PR-291,
+PR-292, GA, and HTTPS-observation members, and compare a supplied sanitized live result when
+`--live-publication-result` is present. A manifest containing only claimed digests or `pass` flags
+fails closed for non-fixture verification.
+
+The catalog-authority engine is deterministic and side-effect-free. Its closed operations prepare
+or verify a ceremony and publication, use `verify-rotation-drill` for closed typed planned-rotation
+or rollback evidence, and close out the authenticated result. It does not possess production
+private keys, contact a live publisher, mutate a catalog, create a tag or GitHub Release, or infer
+remote completion. The protected workflow exposes a distinct `rollback-drill` orchestration
+operation and is the only place that may call the existing live USK publication boundary; only its
+approved mutation job may materialize the private insert URI and form password.
+
+Non-fixture drill verification additionally requires the original
+`stable-1.0-catalog-drill-receipts.json` artifact from
+`.github/workflows/stable-1.0-catalog-drill-acceptance.yml`. Its protected release and security
+approval boundaries accept a bounded evidence-digest inventory and emit one closed bundle for the
+exact six drill types. Each manifest `subjectDigest` must equal its matching receipt's semantic
+digest, and rollback lifecycle checks use the authenticated receipt completion time. The authority
+workflow cannot self-produce or reupload this bootstrap evidence; missing, substituted, replayed,
+fixture, or non-operational receipts keep drill verification and closeout blocked.
+
+The checked-in policy closes four key roles—catalog signing, first-party app signing, app review,
+and offline recovery—and binds the exact PR-291 protected release root plus PR-292 independent
+reproducibility result. Ceremony verification checks global key-ID and fingerprint uniqueness,
+Ed25519 X.509 SubjectPublicKeyInfo, validity and lifecycle, acyclic same-role lineage, canonical
+proof of possession, recovery-only usage, protected transition authorization, and evidence
+classification. Public key bytes are confined to the public key-transparency artifact and derived
+role registries; summaries and receipts use IDs, fingerprints, and digests.
+
+Proof records are lifecycle-specific. Staged, active, and retiring routine keys use a
+`current-keyset` statement and signature over the exact new keyset digest. Retired and revoked
+routine keys use a `retained-historical` statement and its already-existing signature from an
+earlier keyset; the verifier checks the historical signature and immutable public identity without
+requesting a new signature from the predecessor. Offline recovery keys are
+`not-applicable-recovery` and carry no routine proof material. Ceremony receipts and public
+transparency rows preserve this classification so historical proof metadata cannot be confused
+with current signing eligibility.
+
+Publication verification reuses the frozen catalog and detached-signature identities instead of
+forking Stable GA comparison semantics. It binds catalog ID, channel, revision, USK edition,
+digests, sizes, signer ID and fingerprint, public Crypta USK primary, independently operated
+mirror, and an older eligible rollback subject. Every source must return the same exact catalog
+and signature. Duplicate or aliased locations, stale or unauthorized newer bytes, signature
+sibling mismatch, changed signer without a later revision/edition, compromised-key rollback, and
+conflicting existing state fail closed. Protected public-web locations are canonical
+credential-free HTTPS on port 443, matching the exact port resolved, pinned, and fetched by the
+collector.
+
+Normal output is confined beneath the selected output root and includes ceremony, transparency,
+publication, drill, closeout, Markdown report, and redaction records. Closed schemas reject
+duplicate JSON keys and unknown roles, lifecycle states, ceremony types, locations, and drill
+types. Redaction rejects private-key-shaped material, insert capability, credentials,
+secret-bearing command lines, absolute or temporary paths, raw fetched bodies, unsafe archives,
+and unpublished incident details.
+
+Fixture and self-test inputs can prove only fixture verification. Authentic protected receipts are
+required before the summary can report ceremony authentication, network-primary publication,
+mirror observation, operational drills, transparency publication, or complete closeout. Preserve
+sanitized partial evidence and bounded blockers on failure; never relabel it as success.
+
+The protected network-primary mutation step preserves its sanitized local result across ordinary
+publisher or post-publication verification failures. It records both exit statuses, removes the
+insert URI and form password before certification, bounds and checks the result file, and stages it
+only after the generated and receipt-local redaction checks pass and the receipt binds the exact
+result digest. The atomically committed retention set contains exactly that result, its partial
+receipt, and the redaction report. Its artifact upload uses `always()`, while the mutation step
+returns the original failure status after staging. This retains authenticated retry evidence
+without turning an incomplete insert or failed exact-subject check into success.
+
+Every protected catalog-authority operation uses a closed v1 coordinate aggregate rather than one
+catch-all artifact. The operation-specific aggregate authenticates every contributing Actions run
+and artifact digest, then verifies the
+digest of each selected member while flattening only the exact PR-291, PR-292, Stable GA, live
+publication, mirror observation, rollback, and applicable transition files into a confined input
+directory. Successful side-effect-free publication preparation retains the exact PR-291, PR-292,
+subject-inventory, and public-observation members it already verified; it does not substitute the
+earlier PR-291 RC-dispatch summary for the required publicly observed PR-291 closeout summary.
+Stable GA separately stages the current and rollback catalog sidecars plus its exact plan and final
+receipt only after its existing verifier passes. Network publication and observation remain
+separate artifacts. A single coordinate, an incomplete aggregate, or a member supplied by the
+wrong protected phase fails before certification starts.
+
+The first mirror receipt comes only from
+`.github/workflows/stable-1.0-catalog-mirror-observation.yml`, whose managed observer has no insert
+capability and generates the root-level receipt after exact primary, mirror, detached-signature,
+and scheduler checks. The dedicated collector revalidates its reviewed timestamp after protected
+admission, requires the active catalog signer to remain valid through actual collection completion,
+and accepts scheduler primary/mirror success only when both refresh timestamps fall within that
+collection window. The closed receipt binds both actual collection instants, and closeout
+independently rechecks the signer against its completion instant. Its FProxy and HTTPS transfers
+are bounded to the schema's 1 MiB catalog and
+64 KiB signature limits before files or memory are accepted. The protected recovery-quorum
+exception comes only from
+`.github/workflows/stable-1.0-catalog-recovery-quorum.yml`; two fixed protected approval jobs derive
+the count and emit the exact transition-bound root-level receipt. Catalog-authority verification
+artifacts can consume these receipts but are never accepted as their origin. Drill and closeout
+aggregates likewise accept the protected drill bundle only from the dedicated drill-acceptance
+producer and bind every row to the exact PR-291 root, PR-292 result/inventory, keyset, ceremony,
+catalog subject, completion time, and supporting evidence digests.
+
+The first preparation does not depend on a previous preparation artifact. Run the protected
+release closeout workflow over the reviewed PR-291 contract and its exact authenticated producer
+artifacts; it calls the existing PR-291 closeout engine and emits the canonical
+`publicly-observed` summary. PR-292 closeout now retains its already-authenticated subject
+inventory beside its summary, and the public-observation receipt is consumed directly from its
+producer. Later preparation artifacts may retain those verified members, but cannot bootstrap or
+replace their original authorities.
+
+The security-response and maintenance CLIs reject local `catalogAuthority` objects that claim
+protected operational completion. Those digest-only objects remain reserved for a future
+protected archive/coordinate intake; omitting the optional binding preserves historical operation.
+
+The engine constructs and scans the complete output set before writing its first file. Any final
+redaction finding aborts the command without uploadable evidence. The selected output directory
+must be empty at entry, preventing stale evidence from an earlier successful attempt from
+surviving a failed retry.
+
+See the [Stable 1.0 catalog publication and key ceremony
+runbook](../../docs/stable-1.0-catalog-publication-and-key-ceremony.md) for custody, approvals,
+role-registry deployment, legacy fallback, exact-byte publication, retry, stop, and remaining
+protected operations.
 
 ## Stable 1.0 dependency-vulnerability governance
 

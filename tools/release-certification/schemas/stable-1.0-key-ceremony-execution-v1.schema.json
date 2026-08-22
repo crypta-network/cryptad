@@ -1,0 +1,446 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-key-ceremony-execution-v1.schema.json",
+  "title": "Stable 1.0 catalog authority key ceremony execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "fixtureOnly",
+    "ceremony",
+    "release",
+    "bindings",
+    "keyset",
+    "recoveryAuthorization",
+    "catalog",
+    "publication",
+    "drills",
+    "transparency"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-key-ceremony-execution"},
+    "fixtureOnly": {"type": "boolean"},
+    "ceremony": {"$ref": "#/$defs/ceremony"},
+    "release": {"$ref": "#/$defs/release"},
+    "bindings": {"$ref": "#/$defs/bindings"},
+    "keyset": {"$ref": "#/$defs/keyset"},
+    "recoveryAuthorization": {"$ref": "#/$defs/recoveryAuthorization"},
+    "catalog": {"$ref": "#/$defs/catalog"},
+    "publication": {"$ref": "#/$defs/publication"},
+    "drills": {"$ref": "#/$defs/drills"},
+    "transparency": {"$ref": "#/$defs/transparency"}
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullableDigest": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "nullableIdentifier": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]
+    },
+    "signature": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+      ]
+    },
+    "ceremony": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ceremonyId",
+        "ceremonyType",
+        "releaseMilestone",
+        "preparedAt",
+        "effectiveAt",
+        "custodyClass",
+        "approvalQuorum"
+      ],
+      "properties": {
+        "ceremonyId": {"$ref": "#/$defs/identifier"},
+        "ceremonyType": {
+          "enum": [
+            "genesis",
+            "planned-rotation",
+            "compromise-recovery",
+            "emergency-replacement"
+          ]
+        },
+        "releaseMilestone": {"const": "Stable 1.0"},
+        "preparedAt": {"$ref": "#/$defs/timestamp"},
+        "effectiveAt": {"$ref": "#/$defs/timestamp"},
+        "custodyClass": {
+          "enum": ["offline-quorum", "protected-hardware", "fixture-memory-only"]
+        },
+        "approvalQuorum": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requiredApprovals", "approvalRole", "protectedEnvironment"],
+          "properties": {
+            "requiredApprovals": {"type": "integer", "minimum": 1, "maximum": 16},
+            "approvalRole": {"$ref": "#/$defs/identifier"},
+            "protectedEnvironment": {"$ref": "#/$defs/identifier"}
+          }
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "sourceCommit", "sourceRef"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/identifier"},
+        "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "sourceRef": {"type": "string", "pattern": "^refs/heads/release/[1-9][0-9]*$"}
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protectedReleaseSummaryDigest",
+        "protectedReleaseContractDigest",
+        "protectedReleaseLifecycleState",
+        "independentReproducibilitySummaryDigest",
+        "independentReproducibilityResultDigest",
+        "independentSubjectInventoryDigest",
+        "independentReproducibilityOperational",
+        "providerIndependent"
+      ],
+      "properties": {
+        "protectedReleaseSummaryDigest": {"$ref": "#/$defs/digest"},
+        "protectedReleaseContractDigest": {"$ref": "#/$defs/digest"},
+        "protectedReleaseLifecycleState": {"const": "publicly-observed"},
+        "independentReproducibilitySummaryDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityResultDigest": {"$ref": "#/$defs/digest"},
+        "independentSubjectInventoryDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityOperational": {"type": "boolean"},
+        "providerIndependent": {"type": "boolean"}
+      }
+    },
+    "proofStatement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "domain",
+        "ceremonyId",
+        "releaseMilestone",
+        "keyRole",
+        "keyId",
+        "algorithm",
+        "publicKeyFingerprintSha256",
+        "validFrom",
+        "validUntil",
+        "predecessorKeyId",
+        "successorKeyId",
+        "keysetDigest"
+      ],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "kind": {"const": "stable-1.0-key-proof-of-possession"},
+        "domain": {"const": "cryptad-stable-1.0-key-proof-of-possession-v1"},
+        "ceremonyId": {"$ref": "#/$defs/identifier"},
+        "releaseMilestone": {"const": "Stable 1.0"},
+        "keyRole": {"enum": ["catalog-signing", "first-party-app-signing", "app-reviewer"]},
+        "keyId": {"$ref": "#/$defs/identifier"},
+        "algorithm": {"const": "Ed25519"},
+        "publicKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "validFrom": {"$ref": "#/$defs/timestamp"},
+        "validUntil": {"$ref": "#/$defs/timestamp"},
+        "predecessorKeyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "successorKeyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "keysetDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proofType", "statement", "statementDigest", "signatureBase64"],
+      "properties": {
+        "proofType": {
+          "enum": ["current-keyset", "retained-historical", "not-applicable-recovery"]
+        },
+        "statement": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/proofStatement"}]
+        },
+        "statementDigest": {"$ref": "#/$defs/nullableDigest"},
+        "signatureBase64": {"$ref": "#/$defs/signature"}
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "role",
+        "algorithm",
+        "publicKeySpkiBase64",
+        "publicKeyFingerprintSha256",
+        "lifecycle",
+        "validFrom",
+        "validUntil",
+        "predecessorKeyId",
+        "successorKeyId",
+        "compromiseState",
+        "publicTransparencyEligible",
+        "proofOfPossession"
+      ],
+      "properties": {
+        "keyId": {"$ref": "#/$defs/identifier"},
+        "role": {
+          "enum": [
+            "catalog-signing",
+            "first-party-app-signing",
+            "app-reviewer",
+            "offline-recovery"
+          ]
+        },
+        "algorithm": {"const": "Ed25519"},
+        "publicKeySpkiBase64": {
+          "type": "string",
+          "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"
+        },
+        "publicKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "lifecycle": {"enum": ["staged", "active", "retiring", "retired", "revoked"]},
+        "validFrom": {"$ref": "#/$defs/timestamp"},
+        "validUntil": {"$ref": "#/$defs/timestamp"},
+        "predecessorKeyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "successorKeyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "compromiseState": {"enum": ["uncompromised", "suspected", "compromised"]},
+        "publicTransparencyEligible": {"type": "boolean"},
+        "proofOfPossession": {"$ref": "#/$defs/proof"}
+      }
+    },
+    "keyset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keysetVersion", "previousKeysetDigest", "keysetDigest", "keys"],
+      "properties": {
+        "keysetVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "previousKeysetDigest": {"$ref": "#/$defs/nullableDigest"},
+        "keysetDigest": {"$ref": "#/$defs/digest"},
+        "keys": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/key"}
+        }
+      }
+    },
+    "recoveryAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationType",
+        "signingRecoveryKeyId",
+        "statementDigest",
+        "signatureBase64",
+        "protectedRecoveryQuorumDigest"
+      ],
+      "properties": {
+        "authorizationType": {"enum": ["recovery-signature", "protected-recovery-quorum"]},
+        "signingRecoveryKeyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "statementDigest": {"$ref": "#/$defs/digest"},
+        "signatureBase64": {"$ref": "#/$defs/signature"},
+        "protectedRecoveryQuorumDigest": {"$ref": "#/$defs/nullableDigest"}
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogId",
+        "channel",
+        "revision",
+        "uskEdition",
+        "catalogDigest",
+        "catalogSize",
+        "signatureDigest",
+        "signatureSize",
+        "signingKeyId",
+        "signingKeyFingerprintSha256",
+        "freezeDigest",
+        "productDigest",
+        "selectedRcDigest"
+      ],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "selectedRcDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locationId",
+        "locationType",
+        "publicUri",
+        "operatorId",
+        "providerId",
+        "controlPlaneId",
+        "trustAuthority"
+      ],
+      "properties": {
+        "locationId": {"$ref": "#/$defs/identifier"},
+        "locationType": {"enum": ["network-primary", "public-web-mirror", "network-mirror"]},
+        "publicUri": {"type": "string", "minLength": 12, "maxLength": 2048},
+        "operatorId": {"$ref": "#/$defs/identifier"},
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "controlPlaneId": {"$ref": "#/$defs/identifier"},
+        "trustAuthority": {"const": false}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locationId",
+        "observedAt",
+        "status",
+        "catalogDigest",
+        "catalogSize",
+        "signatureDigest",
+        "signatureSize",
+        "catalogId",
+        "channel",
+        "revision",
+        "uskEdition",
+        "signingKeyId",
+        "signingKeyFingerprintSha256"
+      ],
+      "properties": {
+        "locationId": {"$ref": "#/$defs/identifier"},
+        "observedAt": {"$ref": "#/$defs/timestamp"},
+        "status": {"enum": ["exact-match", "missing", "stale", "conflict"]},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 0, "maximum": 65536},
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"enum": ["stable", "beta", "unknown"]},
+        "revision": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 0, "maximum": 2147483647},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicUri",
+        "catalogId",
+        "channel",
+        "revision",
+        "uskEdition",
+        "catalogDigest",
+        "catalogSize",
+        "signatureDigest",
+        "signatureSize",
+        "signingKeyId",
+        "signingKeyFingerprintSha256"
+      ],
+      "properties": {
+        "publicUri": {"type": "string", "minLength": 12, "maxLength": 2048},
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["networkPrimary", "mirrors", "rollback", "observations", "requestedState"],
+      "properties": {
+        "networkPrimary": {"$ref": "#/$defs/location"},
+        "mirrors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {"$ref": "#/$defs/location"}
+        },
+        "rollback": {"$ref": "#/$defs/rollback"},
+        "observations": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {"$ref": "#/$defs/observation"}
+        },
+        "requestedState": {"enum": ["planned", "partial", "observed"]}
+      }
+    },
+    "drill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["drillType", "status", "fixtureOnly", "subjectDigest", "completedAt"],
+      "properties": {
+        "drillType": {
+          "enum": [
+            "planned-catalog-key-rotation",
+            "compromised-catalog-key-recovery",
+            "app-signing-key-rotation",
+            "reviewer-key-rotation",
+            "emergency-replacement-catalog",
+            "catalog-rollback"
+          ]
+        },
+        "status": {"enum": ["pass", "fail", "not-run"]},
+        "fixtureOnly": {"type": "boolean"},
+        "subjectDigest": {"$ref": "#/$defs/digest"},
+        "completedAt": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]
+        }
+      }
+    },
+    "drills": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/drill"}
+    },
+    "transparency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generatedAt", "effectiveAt", "signingKeyId", "signatureBase64"],
+      "properties": {
+        "generatedAt": {"$ref": "#/$defs/timestamp"},
+        "effectiveAt": {"$ref": "#/$defs/timestamp"},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signatureBase64": {"$ref": "#/$defs/signature"}
+      }
+    }
+  }
+}

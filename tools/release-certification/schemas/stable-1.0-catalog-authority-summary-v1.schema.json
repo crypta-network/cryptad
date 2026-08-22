@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-catalog-authority-summary-v1.schema.json",
+  "title": "Stable 1.0 catalog authority summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "mode", "releaseId", "buildVersion", "sourceCommit",
+    "policyDigest", "protectedReleaseSummaryDigest", "protectedReleaseContractDigest",
+    "independentReproducibilitySummaryDigest", "independentReproducibilityResultDigest",
+    "independentSubjectInventoryDigest", "keysetDigest", "catalogSubject", "checks",
+    "fixtureOnly", "operational", "state", "status", "blockers", "generatedAt", "summaryDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-catalog-authority-summary"},
+    "mode": {"enum": ["prepare-ceremony", "verify-ceremony", "prepare-publication", "verify-publication", "verify-rotation-drill", "closeout"]},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "protectedReleaseSummaryDigest": {"$ref": "#/$defs/digest"},
+    "protectedReleaseContractDigest": {"$ref": "#/$defs/digest"},
+    "independentReproducibilitySummaryDigest": {"$ref": "#/$defs/digest"},
+    "independentReproducibilityResultDigest": {"$ref": "#/$defs/digest"},
+    "independentSubjectInventoryDigest": {"$ref": "#/$defs/digest"},
+    "keysetDigest": {"$ref": "#/$defs/digest"},
+    "catalogSubject": {"$ref": "stable-1.0-public-key-transparency-v1.schema.json#/$defs/catalog"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ceremony", "publication", "rotationAndRollbackDrills", "roleSpecificRegistries", "redaction"],
+      "properties": {
+        "ceremony": {"enum": ["pass", "fail"]},
+        "publication": {"enum": ["pass", "fail"]},
+        "rotationAndRollbackDrills": {"enum": ["pass", "fail"]},
+        "roleSpecificRegistries": {"enum": ["pass", "fail"]},
+        "redaction": {"enum": ["pass", "fail"]}
+      }
+    },
+    "fixtureOnly": {"type": "boolean"},
+    "operational": {"const": false},
+    "state": {"enum": ["implementation-complete", "fixture-verification-complete", "partial", "blocked"]},
+    "status": {"enum": ["pass", "fail"]},
+    "blockers": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+    "generatedAt": {"type": "string", "format": "date-time", "maxLength": 40},
+    "summaryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

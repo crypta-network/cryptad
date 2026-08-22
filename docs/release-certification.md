@@ -336,6 +336,34 @@ observation for the independent `verify-publication` run.
 See [Stable 1.0 supply-chain inventory and reproducible-build
 governance](stable-1.0-supply-chain-inventory-and-reproducible-build-governance.md).
 
+## Stable 1.0 catalog-authority component
+
+`stable-catalog-authority` is the side-effect-free PR-293 authority for role-separated Stable
+public keys, ceremony verification, exact frozen-catalog publication evidence, rotation and
+rollback drills, public key transparency, and closeout. It consumes the exact authenticated PR-291
+protected release root and PR-292 independently reproduced catalog subject. It never rebuilds,
+rewrites, re-signs, inserts, or remotely fetches the selected Stable catalog.
+
+The closed modes prepare and verify ceremonies and publication, verify rotation or rollback drill
+evidence, and produce closeout. Outputs distinguish implementation, fixture verification,
+authenticated ceremony, network-primary publication, mirror observation, drills, transparency
+publication, `partial`, and `blocked`. Operational states require authentic protected receipts;
+fixtures, self-tests, local JSON, and workflow definitions cannot advance them.
+
+The keyset is closed to catalog signing, first-party app signing, app review, and offline recovery.
+Certification rejects role reuse by key ID or public-key fingerprint, invalid lifecycle or
+lineage, missing proof of possession, recovery-key routine signing, replayed authorization,
+unbound PR-291/PR-292 identity, and secret-shaped or path-bearing evidence. Public key bytes are
+allowed only in the dedicated transparency artifact and derived role registries; normal reports
+remain fingerprint-only.
+
+The protected workflow owns the separately approved live mutation through the existing
+`crypta-app publish-usk --live` boundary. Stable GA's canonical HTTPS observations remain
+mandatory. PR-293 additionally requires the same exact catalog and detached-signature bytes from
+a public Crypta USK primary and at least one independently operated mirror, plus an eligible
+previous signed revision for rollback. See
+[Stable 1.0 catalog publication and key ceremony](stable-1.0-catalog-publication-and-key-ceremony.md).
+
 ## Stable 1.0 maintenance component
 
 `stable-maintenance` is the canonical component for both routine maintenance and critical security

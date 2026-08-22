@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.clients.http.BrowseContentClient;
 import network.crypta.clients.http.FProxyFetchTracker;
@@ -113,6 +114,10 @@ public record CoreHttpShellRuntimeSupport(
   private static final String APPHOST_ALLOW_UNSIGNED_ENV = "CRYPTAD_APPHOST_ALLOW_UNSIGNED";
   private static final String TRUSTED_KEYS_FILE_PROPERTY = "cryptad.apphost.trustedKeysFile";
   private static final String TRUSTED_KEYS_FILE_ENV = "CRYPTAD_APPHOST_TRUSTED_KEYS_FILE";
+  private static final String CATALOG_TRUSTED_KEYS_FILE_PROPERTY =
+      "cryptad.appcatalog.trustedKeysFile";
+  private static final String CATALOG_TRUSTED_KEYS_FILE_ENV =
+      "CRYPTAD_APPCATALOG_TRUSTED_KEYS_FILE";
   private static final String TRUSTED_KEY_ID_PROPERTY = "cryptad.apphost.trustedKeyId";
   private static final String TRUSTED_KEY_ID_ENV = "CRYPTAD_APPHOST_TRUSTED_KEY_ID";
   private static final String TRUSTED_PUBLIC_KEY_BASE64_PROPERTY =
@@ -125,6 +130,7 @@ public record CoreHttpShellRuntimeSupport(
       "CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE";
   private static final String TRUST_CONFIGURATION_ERROR_MESSAGE =
       "Failed to load trusted app verification configuration.";
+  private static final AtomicBoolean LEGACY_CATALOG_TRUST_WARNING_EMITTED = new AtomicBoolean();
 
   /**
    * Creates a core-backed HTTP runtime adapter.
@@ -549,6 +555,7 @@ public record CoreHttpShellRuntimeSupport(
             core.getPersistentTempDir().toPath(),
             core.getNode().runDir().dir().toPath());
     AppHostTrustConfiguration trustConfiguration = readTrustConfiguration();
+    warnWhenCatalogTrustUsesLegacyFallback(trustConfiguration);
     AppHost appHost =
         new LocalProcessAppHost(layout, createInstallVerificationPolicy(trustConfiguration));
     AppCatalogManager appCatalogManager =
@@ -624,11 +631,12 @@ public record CoreHttpShellRuntimeSupport(
       RuntimePorts runtimePorts) {
     AppCatalogSourceStore catalogSourceStore =
         new AppCatalogSourceStore(layout.dataDir().resolve("apps").resolve("catalogs"));
-    TrustedKeyProvider trustedCatalogKeys = () -> loadTrustedAppKeys(trustConfiguration);
+    TrustedKeyProvider trustedCatalogKeys = () -> loadTrustedCatalogKeys(trustConfiguration);
+    TrustedKeyProvider trustedBundleKeys = () -> loadTrustedAppKeys(trustConfiguration);
     return runtimePorts == null
-        ? new AppCatalogManager(catalogSourceStore, trustedCatalogKeys)
+        ? new AppCatalogManager(catalogSourceStore, trustedCatalogKeys, trustedBundleKeys)
         : new AppCatalogManager(
-            catalogSourceStore, trustedCatalogKeys, runtimePorts.contentFetch());
+            catalogSourceStore, trustedCatalogKeys, trustedBundleKeys, runtimePorts.contentFetch());
   }
 
   private static AppUpdateScheduler createAppUpdateScheduler(
@@ -720,23 +728,30 @@ public record CoreHttpShellRuntimeSupport(
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
       AppHostTrustConfiguration trustConfiguration) {
-    AppInstallVerificationPolicy.CopiedBundleVerifier verifier =
+    AppInstallVerificationPolicy.CopiedBundleVerifier newBundleVerifier =
         copiedBundleDirectory ->
-            verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration);
+            verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration, false);
+    AppInstallVerificationPolicy.CopiedBundleVerifier historicalBundleVerifier =
+        copiedBundleDirectory ->
+            verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration, true);
     return trustConfiguration.allowUnsigned()
-        ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(verifier)
-        : AppInstallVerificationPolicy.requireSigned(verifier);
+        ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(
+            newBundleVerifier, historicalBundleVerifier)
+        : AppInstallVerificationPolicy.requireSigned(newBundleVerifier, historicalBundleVerifier);
   }
 
   private static void verifyBundleAgainstConfiguredTrust(
-      Path copiedBundleDirectory, AppHostTrustConfiguration trustConfiguration) throws IOException {
+      Path copiedBundleDirectory,
+      AppHostTrustConfiguration trustConfiguration,
+      boolean historicalVerification)
+      throws IOException {
     if (trustConfiguration.allowUnsigned()
-        && !AppBundleVerifier.hasDistributionSidecar(copiedBundleDirectory)) {
+        && AppBundleVerifier.isDistributionSidecarFree(copiedBundleDirectory)) {
       return;
     }
     AppBundleVerifier verifier;
     try {
-      verifier = createBundleVerifier(trustConfiguration);
+      verifier = createBundleVerifier(trustConfiguration, historicalVerification);
     } catch (RuntimeException exception) {
       throw new AppHostConfigurationException(
           messageOrTrustConfigurationDefault(exception), exception);
@@ -745,8 +760,11 @@ public record CoreHttpShellRuntimeSupport(
   }
 
   private static AppBundleVerifier createBundleVerifier(
-      AppHostTrustConfiguration trustConfiguration) {
+      AppHostTrustConfiguration trustConfiguration, boolean historicalVerification) {
     TrustedAppKeys trustedKeys = loadTrustedAppKeys(trustConfiguration);
+    if (historicalVerification) {
+      return AppBundleVerifier.requireSignedForHistoricalVerification(trustedKeys);
+    }
     return trustConfiguration.allowUnsigned()
         ? AppBundleVerifier.allowUnsignedForDevelopmentOnly(trustedKeys)
         : AppBundleVerifier.requireSigned(trustedKeys);
@@ -756,6 +774,7 @@ public record CoreHttpShellRuntimeSupport(
     return new AppHostTrustConfiguration(
         allowUnsignedBundles(),
         configuredValue(TRUSTED_KEYS_FILE_PROPERTY, TRUSTED_KEYS_FILE_ENV),
+        configuredValue(CATALOG_TRUSTED_KEYS_FILE_PROPERTY, CATALOG_TRUSTED_KEYS_FILE_ENV),
         configuredValue(TRUSTED_KEY_ID_PROPERTY, TRUSTED_KEY_ID_ENV),
         configuredValue(TRUSTED_PUBLIC_KEY_BASE64_PROPERTY, TRUSTED_PUBLIC_KEY_BASE64_ENV),
         configuredValue(TRUSTED_PUBLIC_KEY_FILE_PROPERTY, TRUSTED_PUBLIC_KEY_FILE_ENV));
@@ -768,6 +787,11 @@ public record CoreHttpShellRuntimeSupport(
   }
 
   private static TrustedAppKeys loadTrustedAppKeys(AppHostTrustConfiguration trustConfiguration) {
+    return loadRoleSpecificTrustedKeys(trustConfiguration).bundleKeys();
+  }
+
+  private static TrustedAppKeys loadConfiguredAppKeys(
+      AppHostTrustConfiguration trustConfiguration) {
     TrustedAppKeys trustedKeys =
         loadTrustedKeysFileIfConfigured(trustConfiguration.trustedKeysFile());
     rejectPartialDirectTrustedKeyConfiguration(trustConfiguration);
@@ -779,6 +803,42 @@ public record CoreHttpShellRuntimeSupport(
             trustConfiguration.keyId(),
             trustConfiguration.publicKeyBase64(),
             trustConfiguration.publicKeyFile()));
+  }
+
+  private static TrustedAppKeys loadTrustedCatalogKeys(
+      AppHostTrustConfiguration trustConfiguration) {
+    return loadRoleSpecificTrustedKeys(trustConfiguration).catalogKeys();
+  }
+
+  private static RoleSpecificTrustedKeys loadRoleSpecificTrustedKeys(
+      AppHostTrustConfiguration trustConfiguration) {
+    TrustedAppKeys bundleKeys = loadConfiguredAppKeys(trustConfiguration);
+    if (trustConfiguration.catalogTrustedKeysFile() == null) {
+      return new RoleSpecificTrustedKeys(bundleKeys, bundleKeys);
+    }
+    TrustedAppKeys catalogKeys;
+    try {
+      catalogKeys = TrustedAppKeys.load(Path.of(trustConfiguration.catalogTrustedKeysFile()));
+    } catch (IOException | RuntimeException exception) {
+      throw new IllegalStateException("Failed to load trusted catalog keys file.", exception);
+    }
+    try {
+      catalogKeys.requireDisjointFrom(bundleKeys);
+    } catch (RuntimeException exception) {
+      throw new IllegalStateException(
+          "Trusted catalog and app signing key registries must be role-distinct.", exception);
+    }
+    return new RoleSpecificTrustedKeys(bundleKeys, catalogKeys);
+  }
+
+  private static void warnWhenCatalogTrustUsesLegacyFallback(
+      AppHostTrustConfiguration trustConfiguration) {
+    if (trustConfiguration.catalogTrustedKeysFile() == null
+        && LEGACY_CATALOG_TRUST_WARNING_EMITTED.compareAndSet(false, true)) {
+      LOG.warn(
+          "Catalog signature verification is using the deprecated AppHost trusted-key fallback;"
+              + " configure cryptad.appcatalog.trustedKeysFile.");
+    }
   }
 
   private static void rejectPartialDirectTrustedKeyConfiguration(
@@ -847,9 +907,12 @@ public record CoreHttpShellRuntimeSupport(
   private record AppHostTrustConfiguration(
       boolean allowUnsigned,
       String trustedKeysFile,
+      String catalogTrustedKeysFile,
       String keyId,
       String publicKeyBase64,
       String publicKeyFile) {}
+
+  private record RoleSpecificTrustedKeys(TrustedAppKeys bundleKeys, TrustedAppKeys catalogKeys) {}
 
   private record AppPlatformServices(
       AppHost appHost,

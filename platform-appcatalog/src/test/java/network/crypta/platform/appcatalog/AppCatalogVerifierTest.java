@@ -5,7 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.time.Instant;
 import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeyLifecycle;
+import network.crypta.platform.appdist.TrustedAppKeyPolicy;
 import network.crypta.platform.appdist.TrustedAppKeys;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -103,6 +106,118 @@ class AppCatalogVerifierTest {
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
   }
 
+  @Test
+  void verify_whenVersionTwoCatalogKeyIsActiveAndValid_expectCatalogAccepted() throws Exception {
+    KeyPair signingKey = keyPair();
+    Path catalog = writeCatalog();
+    AppCatalogSigner.sign(catalog, EXPECTED_KEY_ID, signingKey.getPrivate());
+    Path signature = catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+    TrustedAppKeys trustedKeys =
+        lifecycleKeys(
+            signingKey,
+            TrustedAppKeyLifecycle.ACTIVE,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppCatalog verified =
+        AppCatalogVerifier.verify(catalog, signature, trustedKeys, EXPECTED_KEY_ID);
+
+    assertEquals("stable", verified.catalogId());
+  }
+
+  @Test
+  void verify_whenVersionTwoCatalogKeyIsRetired_expectCatalogRejected() throws Exception {
+    KeyPair signingKey = keyPair();
+    Path catalog = writeCatalog();
+    AppCatalogSigner.sign(catalog, EXPECTED_KEY_ID, signingKey.getPrivate());
+    Path signature = catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+    TrustedAppKeys trustedKeys =
+        lifecycleKeys(
+            signingKey,
+            TrustedAppKeyLifecycle.RETIRED,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> AppCatalogVerifier.verify(catalog, signature, trustedKeys, EXPECTED_KEY_ID));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+    assertEquals(
+        "trusted catalog key is not authorized for routine catalog verification: "
+            + EXPECTED_KEY_ID,
+        exception.getMessage());
+  }
+
+  @Test
+  void verifyHistorical_whenVersionTwoCatalogKeyIsRetired_expectRetainedCatalogAccepted()
+      throws Exception {
+    KeyPair signingKey = keyPair();
+    Path catalog = writeCatalog();
+    AppCatalogSigner.sign(catalog, EXPECTED_KEY_ID, signingKey.getPrivate());
+    Path signature = catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+    TrustedAppKeys trustedKeys =
+        lifecycleKeys(
+            signingKey,
+            TrustedAppKeyLifecycle.RETIRED,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+
+    AppCatalog verified =
+        AppCatalogVerifier.verifyHistorical(
+            Files.readAllBytes(catalog), Files.readAllBytes(signature), trustedKeys);
+
+    assertEquals("stable", verified.catalogId());
+  }
+
+  @Test
+  void verify_whenVersionTwoCatalogKeyIsRevoked_expectCatalogRejected() throws Exception {
+    KeyPair signingKey = keyPair();
+    Path catalog = writeCatalog();
+    AppCatalogSigner.sign(catalog, EXPECTED_KEY_ID, signingKey.getPrivate());
+    Path signature = catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+    TrustedAppKeys trustedKeys =
+        lifecycleKeys(
+            signingKey,
+            TrustedAppKeyLifecycle.REVOKED,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z"));
+    byte[] catalogBytes = Files.readAllBytes(catalog);
+    byte[] signatureBytes = Files.readAllBytes(signature);
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> AppCatalogVerifier.verify(catalog, signature, trustedKeys, EXPECTED_KEY_ID));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+    assertThrows(
+        AppCatalogException.class,
+        () -> AppCatalogVerifier.verifyHistorical(catalogBytes, signatureBytes, trustedKeys));
+  }
+
+  @Test
+  void verify_whenVersionTwoCatalogKeyIsExpired_expectCatalogRejected() throws Exception {
+    KeyPair signingKey = keyPair();
+    Path catalog = writeCatalog();
+    AppCatalogSigner.sign(catalog, EXPECTED_KEY_ID, signingKey.getPrivate());
+    Path signature = catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+    TrustedAppKeys trustedKeys =
+        lifecycleKeys(
+            signingKey,
+            TrustedAppKeyLifecycle.ACTIVE,
+            Instant.parse("2000-01-01T00:00:00Z"),
+            Instant.parse("2001-01-01T00:00:00Z"));
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> AppCatalogVerifier.verify(catalog, signature, trustedKeys, EXPECTED_KEY_ID));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+  }
+
   private Path writeCatalog() throws Exception {
     Path catalog = tempDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -130,5 +245,14 @@ class AppCatalogVerifierTest {
             OTHER_TRUSTED_KEY_ID,
             AppCatalogSignature.SIGNATURE_ALGORITHM,
             otherTrustedKey.getPublic()));
+  }
+
+  private static TrustedAppKeys lifecycleKeys(
+      KeyPair keyPair, TrustedAppKeyLifecycle lifecycle, Instant validFrom, Instant validUntil) {
+    TrustedAppKey key =
+        new TrustedAppKey(
+            EXPECTED_KEY_ID, AppCatalogSignature.SIGNATURE_ALGORITHM, keyPair.getPublic());
+    return TrustedAppKeys.ofPolicies(
+        new TrustedAppKeyPolicy(key, lifecycle, validFrom, validUntil));
   }
 }

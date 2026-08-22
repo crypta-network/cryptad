@@ -742,6 +742,114 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void rollback_whenPurposeSpecificVerifiersConfigured_expectHistoricalVerifierUsed()
+      throws IOException {
+    AtomicInteger newBundleVerifications = new AtomicInteger();
+    AtomicInteger historicalVerifications = new AtomicInteger();
+    AppInstallVerificationPolicy verificationPolicy =
+        AppInstallVerificationPolicy.requireSigned(
+            _ -> newBundleVerifications.incrementAndGet(),
+            _ -> historicalVerifications.incrementAndGet());
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            layout(),
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            new AppEnv(),
+            TEST_TIMING,
+            verificationPolicy);
+    host.installFromDirectory(
+        stageInstalledAppAt(
+            tempDir.resolve("stage-purpose-install").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of()));
+    host.updateFromDirectory(
+        SAMPLE_APP_ID,
+        stageInstalledAppAt(
+            tempDir.resolve("stage-purpose-update").resolve(SAMPLE_APP_ID),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            scriptContent(new AppEnv()),
+            Map.of()));
+
+    InstalledAppSnapshot rolledBack = host.rollback(SAMPLE_APP_ID);
+
+    assertEquals(APP_VERSION, rolledBack.manifest().appVersion());
+    assertEquals(2, newBundleVerifications.get());
+    assertEquals(1, historicalVerifications.get());
+  }
+
+  @Test
+  void start_whenPurposeSpecificVerifiersConfigured_expectEveryLaunchUsesHistoricalVerifier()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AtomicInteger newBundleVerifications = new AtomicInteger();
+    AtomicInteger historicalVerifications = new AtomicInteger();
+    AppInstallVerificationPolicy verificationPolicy =
+        AppInstallVerificationPolicy.requireSigned(
+            _ -> newBundleVerifications.incrementAndGet(),
+            _ -> historicalVerifications.incrementAndGet());
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            layout(),
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            appEnv,
+            TEST_TIMING,
+            verificationPolicy);
+    host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+
+    host.start(RUNNER_APP_ID);
+    assertTrue(host.stop(RUNNER_APP_ID));
+    host.start(RUNNER_APP_ID);
+
+    try {
+      assertEquals(1, newBundleVerifications.get());
+      assertEquals(2, historicalVerifications.get());
+    } finally {
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
+  void start_whenHistoricalVerifierRejectsInstalledBundle_expectLaunchRejectedBeforeSideEffects()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AtomicReference<Path> verifiedRoot = new AtomicReference<>();
+    AppInstallVerificationPolicy verificationPolicy =
+        AppInstallVerificationPolicy.requireSigned(
+            _ -> {},
+            installedRoot -> {
+              verifiedRoot.set(installedRoot);
+              throw new AppBundleVerificationException(
+                  "installed app signing key is no longer historically trusted");
+            });
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            layout(),
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            appEnv,
+            TEST_TIMING,
+            verificationPolicy);
+    InstalledAppSnapshot installation =
+        host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+
+    AppBundleVerificationException exception =
+        assertThrows(AppBundleVerificationException.class, () -> host.start(RUNNER_APP_ID));
+
+    assertEquals(
+        "installed app signing key is no longer historically trusted", exception.getMessage());
+    assertEquals(installation.paths().installedRoot(), verifiedRoot.get());
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
+    assertFalse(Files.exists(installation.paths().processLogFile()));
+  }
+
+  @Test
   void rollback_whenAppIsRunning_expectFailureAndInstalledBundleUnchanged() throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
@@ -1811,6 +1919,49 @@ class LocalProcessAppHostTest {
     assertNotNull(status.lastExitAt());
 
     assertTrue(host.stop(RUNNER_APP_ID));
+  }
+
+  @Test
+  void restartPolicy_whenHistoricalVerifierRejectsRelaunch_expectAutomaticRestartBlocked()
+      throws IOException {
+    AppEnv appEnv = new AppEnv();
+    Assumptions.assumeFalse(appEnv.isWindows());
+    AtomicInteger historicalVerifications = new AtomicInteger();
+    AppInstallVerificationPolicy verificationPolicy =
+        AppInstallVerificationPolicy.requireSigned(
+            _ -> {},
+            _ -> {
+              if (historicalVerifications.incrementAndGet() > 1) {
+                throw new AppBundleVerificationException(
+                    "installed app signing key was revoked before restart");
+              }
+            });
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            layout(),
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            appEnv,
+            TEST_TIMING,
+            verificationPolicy);
+    Path stagedApp = stageInstalledRunnerApp(RESTART_ON_FAILURE_SCRIPT);
+    appendOnFailureRestartPolicy(stagedApp, 10);
+    InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
+
+    host.start(RUNNER_APP_ID);
+
+    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    waitForFileContent(runCountFile, "1\n");
+    AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.CRASHED);
+    assertEquals(2, historicalVerifications.get());
+    assertEquals(1, status.currentRestartAttempt());
+    assertEquals(0, status.restartCount());
+    assertTrue(
+        status
+            .warnings()
+            .contains("Installed app bundle verification failed; automatic restart was blocked."));
+    assertEquals("1\n", Files.readString(runCountFile, StandardCharsets.UTF_8));
+    assertTrue(host.status(RUNNER_APP_ID).isEmpty());
   }
 
   @Test

@@ -2,14 +2,21 @@ package network.crypta.platform.appdist;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,45 +27,51 @@ import java.util.regex.Pattern;
  * <p>The registry maps stable signature key ids to explicit public keys. It is passed into {@link
  * AppBundleVerifier} rather than read from global state, which keeps app-host policy construction
  * deterministic and testable. Instances are immutable snapshots; adding a direct key returns a new
- * registry and duplicate key ids are rejected instead of silently overriding trust material.
+ * registry and duplicate key ids or public keys are rejected instead of silently overriding or
+ * aliasing trust material.
  *
- * <p>The local file format is intentionally small and line-oriented. It supports only version
- * {@code 1}, contiguous {@code key.N.*} entries, and Ed25519 public keys encoded as X.509 base64.
- * Remote catalog trust and key discovery are outside this module.
+ * <p>The local file format is intentionally small and line-oriented. Version {@code 1} remains the
+ * compatibility format and treats every key as active without a bounded validity interval. Version
+ * {@code 2} adds a closed lifecycle state and an explicit verification window. Both versions use
+ * contiguous {@code key.N.*} entries and Ed25519 public keys encoded as X.509 base64. Remote
+ * catalog trust and key discovery are outside this module.
  */
 public final class TrustedAppKeys {
-  private static final Pattern KEY_PROPERTY_PATTERN =
+  private static final int COMPATIBILITY_VERSION = 1;
+  private static final int LIFECYCLE_VERSION = 2;
+  private static final Pattern V1_KEY_PROPERTY_PATTERN =
       Pattern.compile("key\\.(\\d+)\\.(id|algorithm|public\\.key\\.base64)");
+  private static final Pattern V2_KEY_PROPERTY_PATTERN =
+      Pattern.compile(
+          "key\\.(\\d+)\\.(id|algorithm|public\\.key\\.base64|status|valid\\.from|valid\\.until)");
   private static final TrustedAppKeys EMPTY = new TrustedAppKeys(Map.of());
 
-  private final Map<String, TrustedAppKey> keysById;
+  private final Map<String, TrustedAppKeyPolicy> policiesById;
 
-  private TrustedAppKeys(Map<String, TrustedAppKey> keysById) {
-    this.keysById = Map.copyOf(keysById);
+  private TrustedAppKeys(Map<String, TrustedAppKeyPolicy> policiesById) {
+    requireUniquePublicKeys(policiesById.values());
+    this.policiesById = Map.copyOf(policiesById);
   }
 
   /**
    * Creates a trusted-key registry from a collection.
    *
-   * <p>The collection is copied immediately, null entries are rejected, and duplicate key ids fail
-   * fast. Iteration order is preserved only for deterministic construction; lookup behavior is by
-   * key id.
+   * <p>The collection is copied immediately, null entries are rejected, and duplicate key ids or
+   * canonical public-key fingerprints fail fast. Iteration order is preserved only for
+   * deterministic construction; lookup behavior is by key id.
    *
    * @param keys trusted public keys indexed by their stable key ids
    * @return immutable trusted-key registry
-   * @throws IllegalArgumentException if two entries use the same key id
+   * @throws IllegalArgumentException if two entries use the same key id or public key, or if a
+   *     public key has no canonical encoding
    */
   public static TrustedAppKeys of(Collection<TrustedAppKey> keys) {
     Objects.requireNonNull(keys, "keys");
-    Map<String, TrustedAppKey> keysById = new LinkedHashMap<>();
+    List<TrustedAppKeyPolicy> policies = new ArrayList<>(keys.size());
     for (TrustedAppKey key : keys) {
-      TrustedAppKey trustedKey = Objects.requireNonNull(key, "key");
-      TrustedAppKey previous = keysById.putIfAbsent(trustedKey.keyId(), trustedKey);
-      if (previous != null) {
-        throw new IllegalArgumentException("duplicate trusted key id: " + trustedKey.keyId());
-      }
+      policies.add(TrustedAppKeyPolicy.activeCompatibilityKey(key));
     }
-    return new TrustedAppKeys(keysById);
+    return ofPolicies(policies);
   }
 
   /**
@@ -66,10 +79,50 @@ public final class TrustedAppKeys {
    *
    * @param keys trusted public keys indexed by their stable key ids
    * @return immutable trusted-key registry
-   * @throws IllegalArgumentException if two entries use the same key id
+   * @throws IllegalArgumentException if two entries use the same key id or public key, or if a
+   *     public key has no canonical encoding
    */
   public static TrustedAppKeys of(TrustedAppKey... keys) {
     return of(Arrays.asList(keys));
+  }
+
+  /**
+   * Creates a trusted-key registry from lifecycle-aware policies.
+   *
+   * <p>The policies are copied immediately. Duplicate stable key ids and duplicate canonical
+   * public-key fingerprints are rejected. This factory is intended for v2 derived registries and
+   * deterministic lifecycle tests; existing callers can continue using {@link
+   * #of(TrustedAppKey...)}.
+   *
+   * @param policies lifecycle-aware trusted public-key policies
+   * @return immutable trusted-key registry
+   * @throws IllegalArgumentException if two policies use the same key id or public key, or if a
+   *     public key has no canonical encoding
+   */
+  public static TrustedAppKeys ofPolicies(Collection<TrustedAppKeyPolicy> policies) {
+    Objects.requireNonNull(policies, "policies");
+    Map<String, TrustedAppKeyPolicy> policiesById = new LinkedHashMap<>();
+    for (TrustedAppKeyPolicy policy : policies) {
+      TrustedAppKeyPolicy checkedPolicy = Objects.requireNonNull(policy, "policy");
+      String keyId = checkedPolicy.key().keyId();
+      TrustedAppKeyPolicy previous = policiesById.putIfAbsent(keyId, checkedPolicy);
+      if (previous != null) {
+        throw new IllegalArgumentException("duplicate trusted key id: " + keyId);
+      }
+    }
+    return new TrustedAppKeys(policiesById);
+  }
+
+  /**
+   * Creates a trusted-key registry from lifecycle-aware policies.
+   *
+   * @param policies lifecycle-aware trusted public-key policies
+   * @return immutable trusted-key registry
+   * @throws IllegalArgumentException if two policies use the same key id or public key, or if a
+   *     public key has no canonical encoding
+   */
+  public static TrustedAppKeys ofPolicies(TrustedAppKeyPolicy... policies) {
+    return ofPolicies(Arrays.asList(policies));
   }
 
   /**
@@ -87,7 +140,7 @@ public final class TrustedAppKeys {
   /**
    * Loads trusted public keys from a local properties-style sidecar.
    *
-   * <p>The supported format is:
+   * <p>The v1 compatibility format is:
    *
    * <pre>{@code
    * trusted.keys.version=1
@@ -96,9 +149,13 @@ public final class TrustedAppKeys {
    * key.0.public.key.base64=<base64-x509-public-key>
    * }</pre>
    *
+   * <p>The v2 lifecycle format additionally requires {@code key.N.status}, {@code
+   * key.N.valid.from}, and {@code key.N.valid.until}. Status is one of {@code active}, {@code
+   * retiring}, {@code retired}, or {@code revoked}; validity timestamps are ISO-8601 instants.
+   *
    * <p>A leading UTF-8 byte-order mark is tolerated so operator-edited files saved by common text
    * editors remain usable. Unknown properties, non-contiguous indexes, incomplete entries,
-   * unsupported algorithms, and duplicate ids are rejected.
+   * unsupported algorithms, duplicate ids, and duplicate public keys are rejected.
    *
    * @param trustedKeysFile local trusted-key sidecar path
    * @return parsed trusted-key registry
@@ -109,12 +166,12 @@ public final class TrustedAppKeys {
         AppDistributionSidecars.readRequiredUtf8File(trustedKeysFile, "trusted keys file");
     Map<String, String> properties =
         AppDistributionSidecars.parseKeyValueSidecar(content, "trusted keys file");
-    validateTrustedKeysVersion(properties.remove("trusted.keys.version"));
-    Map<Integer, TrustedKeyBuilder> builders = readTrustedKeyBuilders(properties);
-    return buildTrustedKeys(builders);
+    int version = validateTrustedKeysVersion(properties.remove("trusted.keys.version"));
+    Map<Integer, TrustedKeyBuilder> builders = readTrustedKeyBuilders(properties, version);
+    return buildTrustedKeys(builders, version);
   }
 
-  private static void validateTrustedKeysVersion(String versionText)
+  private static int validateTrustedKeysVersion(String versionText)
       throws AppDistributionException {
     if (versionText == null) {
       throw new AppDistributionException("missing trusted.keys.version");
@@ -125,16 +182,17 @@ public final class TrustedAppKeys {
     } catch (NumberFormatException exception) {
       throw new AppDistributionException("invalid trusted.keys.version: " + versionText, exception);
     }
-    if (version != 1) {
+    if (version != COMPATIBILITY_VERSION && version != LIFECYCLE_VERSION) {
       throw new AppDistributionException("unsupported trusted.keys.version: " + version);
     }
+    return version;
   }
 
   private static Map<Integer, TrustedKeyBuilder> readTrustedKeyBuilders(
-      Map<String, String> properties) throws AppDistributionException {
+      Map<String, String> properties, int version) throws AppDistributionException {
     Map<Integer, TrustedKeyBuilder> builders = new TreeMap<>();
     for (Map.Entry<String, String> property : properties.entrySet()) {
-      TrustedKeyProperty trustedKeyProperty = parseTrustedKeyProperty(property.getKey());
+      TrustedKeyProperty trustedKeyProperty = parseTrustedKeyProperty(property.getKey(), version);
       TrustedKeyBuilder builder =
           builders.computeIfAbsent(trustedKeyProperty.index(), ignored -> new TrustedKeyBuilder());
       setTrustedKeyField(builder, trustedKeyProperty.field(), property.getValue());
@@ -142,36 +200,58 @@ public final class TrustedAppKeys {
     return builders;
   }
 
-  private static TrustedKeyProperty parseTrustedKeyProperty(String propertyName)
+  private static TrustedKeyProperty parseTrustedKeyProperty(String propertyName, int version)
       throws AppDistributionException {
-    Matcher matcher = KEY_PROPERTY_PATTERN.matcher(propertyName);
+    Pattern propertyPattern =
+        version == COMPATIBILITY_VERSION ? V1_KEY_PROPERTY_PATTERN : V2_KEY_PROPERTY_PATTERN;
+    Matcher matcher = propertyPattern.matcher(propertyName);
     if (!matcher.matches()) {
       throw new AppDistributionException("unsupported trusted keys property: " + propertyName);
     }
     return new TrustedKeyProperty(parseIndex(matcher.group(1), propertyName), matcher.group(2));
   }
 
-  private static void setTrustedKeyField(TrustedKeyBuilder builder, String field, String value) {
+  private static void setTrustedKeyField(TrustedKeyBuilder builder, String field, String value)
+      throws AppDistributionException {
     switch (field) {
       case "id" -> builder.id = value;
       case "algorithm" -> builder.algorithm = value;
       case "public.key.base64" -> builder.publicKeyBase64 = value;
-      default -> throw new IllegalArgumentException("unsupported trusted key field: " + field);
+      case "status" -> builder.lifecycle = parseLifecycle(value);
+      case "valid.from" -> builder.validFrom = value;
+      case "valid.until" -> builder.validUntil = value;
+      default -> throw new AppDistributionException("unsupported trusted key field: " + field);
     }
   }
 
-  private static TrustedAppKeys buildTrustedKeys(Map<Integer, TrustedKeyBuilder> builders)
-      throws IOException {
+  private static TrustedAppKeyLifecycle parseLifecycle(String value)
+      throws AppDistributionException {
+    return switch (value) {
+      case "active" -> TrustedAppKeyLifecycle.ACTIVE;
+      case "retiring" -> TrustedAppKeyLifecycle.RETIRING;
+      case "retired" -> TrustedAppKeyLifecycle.RETIRED;
+      case "revoked" -> TrustedAppKeyLifecycle.REVOKED;
+      default -> throw new AppDistributionException("unsupported trusted app key status: " + value);
+    };
+  }
+
+  private static TrustedAppKeys buildTrustedKeys(
+      Map<Integer, TrustedKeyBuilder> builders, int version) throws IOException {
     if (builders.isEmpty()) {
       return empty();
     }
 
-    List<TrustedAppKey> keys = new ArrayList<>(builders.size());
+    List<TrustedAppKeyPolicy> policies = new ArrayList<>(builders.size());
     for (int expectedIndex = 0; expectedIndex < builders.size(); expectedIndex++) {
       TrustedKeyBuilder builder = requireTrustedKeyBuilder(builders, expectedIndex);
-      keys.add(buildTrustedKey(builder, expectedIndex));
+      policies.add(buildTrustedKeyPolicy(builder, expectedIndex, version));
     }
-    return of(keys);
+    try {
+      return ofPolicies(policies);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(
+          "trusted keys file is ambiguous: " + exception.getMessage(), exception);
+    }
   }
 
   private static TrustedKeyBuilder requireTrustedKeyBuilder(
@@ -183,45 +263,175 @@ public final class TrustedAppKeys {
     return builder;
   }
 
-  private static TrustedAppKey buildTrustedKey(TrustedKeyBuilder builder, int expectedIndex)
-      throws IOException {
+  private static TrustedAppKeyPolicy buildTrustedKeyPolicy(
+      TrustedKeyBuilder builder, int expectedIndex, int version) throws IOException {
     if (builder.id == null || builder.algorithm == null || builder.publicKeyBase64 == null) {
       throw new AppDistributionException("trusted key " + expectedIndex + " is incomplete");
     }
     if (!AppBundleSignature.SIGNATURE_ALGORITHM.equals(builder.algorithm)) {
       throw new AppDistributionException("unsupported trusted key algorithm: " + builder.algorithm);
     }
-    return TrustedAppKey.ed25519(builder.id, builder.publicKeyBase64);
+    TrustedAppKey key = TrustedAppKey.ed25519(builder.id, builder.publicKeyBase64);
+    if (version == COMPATIBILITY_VERSION) {
+      return TrustedAppKeyPolicy.activeCompatibilityKey(key);
+    }
+    if (builder.lifecycle == null || builder.validFrom == null || builder.validUntil == null) {
+      throw new AppDistributionException("trusted key " + expectedIndex + " is incomplete");
+    }
+    try {
+      return new TrustedAppKeyPolicy(
+          key,
+          builder.lifecycle,
+          Instant.parse(builder.validFrom),
+          Instant.parse(builder.validUntil));
+    } catch (DateTimeParseException | IllegalArgumentException exception) {
+      throw new AppDistributionException(
+          "trusted key " + expectedIndex + " has an invalid validity window", exception);
+    }
   }
 
   /**
    * Looks up a trusted key by id.
    *
+   * <p>This compatibility lookup does not apply lifecycle policy. Verification code must use {@link
+   * AppBundleVerifier}, which enforces the key's intended new or historical verification purpose.
+   *
    * @param keyId stable signature key identifier from a bundle signature sidecar
    * @return matching trusted key, when configured
    */
   public Optional<TrustedAppKey> find(String keyId) {
-    return Optional.ofNullable(keysById.get(keyId));
+    return findPolicy(keyId).map(TrustedAppKeyPolicy::key);
+  }
+
+  /**
+   * Looks up the lifecycle policy for a trusted key id.
+   *
+   * <p>This method exposes public-key lifecycle metadata only; it does not itself authorize a
+   * verification purpose. Bundle verification remains responsible for applying new-versus-
+   * historical policy.
+   *
+   * @param keyId stable signature key identifier from a bundle signature sidecar
+   * @return matching trusted-key lifecycle policy, when configured
+   */
+  public Optional<TrustedAppKeyPolicy> findPolicy(String keyId) {
+    return Optional.ofNullable(policiesById.get(keyId));
+  }
+
+  /**
+   * Looks up a key that is authorized for routine verification at one instant.
+   *
+   * <p>Version 1 and direct compatibility keys remain active across the full representable time
+   * range. Version 2 keys must be explicitly active and inside their declared half-open validity
+   * interval. Registry membership without this policy check is not authorization.
+   *
+   * @param keyId stable signature key identifier
+   * @param verifiedAt instant at which authorization is evaluated
+   * @return matching public key when it is active and currently valid
+   */
+  public Optional<TrustedAppKey> findActiveForVerification(String keyId, Instant verifiedAt) {
+    Objects.requireNonNull(verifiedAt, "verifiedAt");
+    return findPolicy(keyId)
+        .filter(policy -> policy.allowsRoutineVerification(verifiedAt))
+        .map(TrustedAppKeyPolicy::key);
+  }
+
+  /**
+   * Looks up a key authorized to verify an exact retained historical subject.
+   *
+   * <p>Active, retiring, and retired version 2 keys remain eligible only during their declared
+   * support interval. Revoked keys always fail. Version 1 compatibility keys remain active across
+   * the full representable time range.
+   *
+   * @param keyId stable signature key identifier
+   * @param verifiedAt instant at which historical support is evaluated
+   * @return matching public key when historical verification remains authorized
+   */
+  public Optional<TrustedAppKey> findHistoricalForVerification(String keyId, Instant verifiedAt) {
+    Objects.requireNonNull(verifiedAt, "verifiedAt");
+    return findPolicy(keyId)
+        .filter(policy -> policy.allowsHistoricalVerification(verifiedAt))
+        .map(TrustedAppKeyPolicy::key);
   }
 
   /**
    * Returns a new trusted-key registry with one additional key.
    *
    * <p>This is used by runtime configuration when an operator supplies both a trusted-keys file and
-   * one direct key. A duplicate key id is treated as configuration ambiguity and rejected.
+   * one direct key. A duplicate key id or canonical public-key fingerprint is treated as
+   * configuration ambiguity and rejected.
    *
    * @param key trusted key to add
    * @return combined trusted-key registry
-   * @throws IllegalArgumentException if the key id already exists in this registry
+   * @throws IllegalArgumentException if the key id or public key already exists in this registry,
+   *     or if a public key has no canonical encoding
    */
   public TrustedAppKeys plus(TrustedAppKey key) {
-    Map<String, TrustedAppKey> combined = new LinkedHashMap<>(keysById);
-    TrustedAppKey trustedKey = Objects.requireNonNull(key, "key");
-    TrustedAppKey previous = combined.putIfAbsent(trustedKey.keyId(), trustedKey);
+    Map<String, TrustedAppKeyPolicy> combined = new LinkedHashMap<>(policiesById);
+    TrustedAppKeyPolicy policy = TrustedAppKeyPolicy.activeCompatibilityKey(key);
+    TrustedAppKeyPolicy previous = combined.putIfAbsent(policy.key().keyId(), policy);
     if (previous != null) {
-      throw new IllegalArgumentException("duplicate trusted key id: " + trustedKey.keyId());
+      throw new IllegalArgumentException("duplicate trusted key id: " + policy.key().keyId());
     }
     return new TrustedAppKeys(combined);
+  }
+
+  private static void requireUniquePublicKeys(Collection<TrustedAppKeyPolicy> policies) {
+    Map<String, String> keyIdByFingerprint = new LinkedHashMap<>();
+    for (TrustedAppKeyPolicy policy : policies) {
+      String keyId = policy.key().keyId();
+      String fingerprint = publicKeyFingerprint(policy.key());
+      String previousKeyId = keyIdByFingerprint.putIfAbsent(fingerprint, keyId);
+      if (previousKeyId != null && !previousKeyId.equals(keyId)) {
+        throw new IllegalArgumentException(
+            "duplicate trusted public-key fingerprint for key ids: "
+                + previousKeyId
+                + " and "
+                + keyId);
+      }
+    }
+  }
+
+  /**
+   * Requires this registry and another role registry to contain disjoint trust material.
+   *
+   * <p>Role separation applies to every configured key, including retiring, retired, and revoked
+   * entries. Reusing either a stable key id or the SHA-256 fingerprint of canonical X.509 public
+   * key bytes across roles is configuration ambiguity and fails closed. Callers that deliberately
+   * support a legacy shared registry should not invoke this method for that fallback.
+   *
+   * @param other trusted-key registry assigned to another signing role
+   * @throws IllegalArgumentException if a key id or public-key fingerprint occurs in both
+   *     registries, or if a public key has no canonical encoding
+   */
+  public void requireDisjointFrom(TrustedAppKeys other) {
+    Objects.requireNonNull(other, "other");
+    for (String keyId : policiesById.keySet()) {
+      if (other.policiesById.containsKey(keyId)) {
+        throw new IllegalArgumentException("trusted key registries overlap on key id: " + keyId);
+      }
+    }
+    Set<String> fingerprints = new HashSet<>();
+    for (TrustedAppKeyPolicy policy : policiesById.values()) {
+      fingerprints.add(publicKeyFingerprint(policy.key()));
+    }
+    for (TrustedAppKeyPolicy policy : other.policiesById.values()) {
+      if (fingerprints.contains(publicKeyFingerprint(policy.key()))) {
+        throw new IllegalArgumentException(
+            "trusted key registries overlap on public-key fingerprint");
+      }
+    }
+  }
+
+  private static String publicKeyFingerprint(TrustedAppKey key) {
+    byte[] encoded = key.publicKey().getEncoded();
+    if (encoded == null || encoded.length == 0) {
+      throw new IllegalArgumentException("trusted public key has no canonical encoding");
+    }
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(encoded));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is unavailable", exception);
+    }
   }
 
   private static int parseIndex(String rawIndex, String propertyName)
@@ -240,5 +450,8 @@ public final class TrustedAppKeys {
     private String id;
     private String algorithm;
     private String publicKeyBase64;
+    private TrustedAppKeyLifecycle lifecycle;
+    private String validFrom;
+    private String validUntil;
   }
 }

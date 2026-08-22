@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.AppHostLayout;
@@ -96,6 +97,8 @@ public final class LocalProcessAppHost implements AppHost {
   private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
   private static final String PROC_ROOT = "/proc";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
+  private static final String RESTART_BUNDLE_VERIFICATION_WARNING =
+      "Installed app bundle verification failed; automatic restart was blocked.";
   private static final List<String> WINDOWS_ROOT_ENVIRONMENT_NAMES =
       List.of("SystemRoot", "SYSTEMROOT", "WINDIR");
   private static final int MAX_SHEBANG_PROBE_BYTES = 4096;
@@ -550,7 +553,7 @@ public final class LocalProcessAppHost implements AppHost {
     }
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
-    verifyCopiedBundle(rollbackRoot);
+    verifyHistoricalCopiedBundle(rollbackRoot);
     AppManifest rollbackManifest = validateCopiedBundle(rollbackRoot);
     requireMatchingUpdateTarget(normalizedAppId, rollbackManifest);
     Path currentInstallBackupRoot =
@@ -684,6 +687,7 @@ public final class LocalProcessAppHost implements AppHost {
       throws IOException {
     String normalizedAppId = installation.appId();
     InstalledAppPaths paths = installation.paths();
+    installVerificationPolicy.verifyHistoricalCopiedBundle(paths.installedRoot());
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
     quotaEnforcer.enforceLaunch(installation.manifest(), paths);
@@ -1173,6 +1177,10 @@ public final class LocalProcessAppHost implements AppHost {
     installVerificationPolicy.verifyCopiedBundle(copiedRoot);
   }
 
+  private void verifyHistoricalCopiedBundle(Path copiedRoot) throws IOException {
+    installVerificationPolicy.verifyHistoricalCopiedBundle(copiedRoot);
+  }
+
   private AppManifest validateCopiedBundle(Path copiedRoot) throws IOException {
     Path manifestFile =
         resolveBundleEntry(
@@ -1371,6 +1379,9 @@ public final class LocalProcessAppHost implements AppHost {
 
   private static List<String> restartFailureWarnings(IOException failure) {
     String message = failure.getMessage();
+    if (failure instanceof AppBundleVerificationException) {
+      return List.of(RESTART_BUNDLE_VERIFICATION_WARNING);
+    }
     if (message == null) {
       return List.of();
     }
@@ -1972,24 +1983,6 @@ public final class LocalProcessAppHost implements AppHost {
     return List.of(executableText);
   }
 
-  private static List<String> posixShellLaunchCommand(
-      Path executable, List<String> interpreter, TimingConfig timing) {
-    List<String> command = new ArrayList<>(interpreter);
-    command.add("-c");
-    command.add(
-        "trap 'sleep %s' EXIT%nset --%n. \"$0\"%n"
-            .formatted(posixShellExitTrapDelaySeconds(timing)));
-    command.add(executable.toString());
-    return List.copyOf(command);
-  }
-
-  private static List<String> directInterpreterLaunchCommand(
-      Path executable, List<String> interpreter) {
-    List<String> command = new ArrayList<>(interpreter);
-    command.add(executable.toString());
-    return List.copyOf(command);
-  }
-
   private static boolean isWindowsBatchScript(Path executable) {
     String fileName = fileNameLowercase(executable);
     return fileName.endsWith(".cmd") || fileName.endsWith(".bat");
@@ -2183,11 +2176,6 @@ public final class LocalProcessAppHost implements AppHost {
 
   private static String posixShellInterpreter() {
     return Path.of("/bin", "sh").toString();
-  }
-
-  private static String posixShellExitTrapDelaySeconds(TimingConfig timing) {
-    return String.format(
-        Locale.ROOT, "%.3f", timing.startupProcessCaptureWindow().toMillis() / 1000.0d);
   }
 
   private static String windowsCommandInterpreter() {
@@ -3061,8 +3049,29 @@ public final class LocalProcessAppHost implements AppHost {
 
     private List<String> command(Path executable, TimingConfig timing) {
       return shellInterpreter
-          ? posixShellLaunchCommand(executable, interpreter, timing)
-          : directInterpreterLaunchCommand(executable, interpreter);
+          ? shellCommand(executable, timing)
+          : directInterpreterCommand(executable);
+    }
+
+    private List<String> shellCommand(Path executable, TimingConfig timing) {
+      List<String> command = new ArrayList<>(interpreter);
+      command.add("-c");
+      command.add(
+          "trap 'sleep %s' EXIT%nset --%n. \"$0\"%n"
+              .formatted(posixShellExitTrapDelaySeconds(timing)));
+      command.add(executable.toString());
+      return List.copyOf(command);
+    }
+
+    private List<String> directInterpreterCommand(Path executable) {
+      List<String> command = new ArrayList<>(interpreter);
+      command.add(executable.toString());
+      return List.copyOf(command);
+    }
+
+    private static String posixShellExitTrapDelaySeconds(TimingConfig timing) {
+      return String.format(
+          Locale.ROOT, "%.3f", timing.startupProcessCaptureWindow().toMillis() / 1000.0d);
     }
   }
 

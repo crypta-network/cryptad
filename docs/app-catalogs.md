@@ -44,6 +44,8 @@ rotation, emergency replacement apps, and release notes is covered by
 source operations for a primary source plus mirrors, transport fallback, verified revision history,
 explicit rollback, key-rotation status, and emergency advisory refresh are covered by
 [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md).
+Stable 1.0 role-separated key governance and network-primary publication are covered by
+[stable-1.0-catalog-publication-and-key-ceremony.md](stable-1.0-catalog-publication-and-key-ceremony.md).
 
 The host/operator consent layer groups catalog trust metadata into one install or update preview
 before a material mutation. Permission rationales, review receipt state, reviewer-key lifecycle,
@@ -730,17 +732,41 @@ re-serialize the catalog after signing.
 
 ## Trusted keys
 
-Catalog verification reuses the trusted app key configuration already used for signed bundles:
+Catalog verification has a catalog-specific registry boundary:
 
 | Setting | Environment variable |
 | --- | --- |
-| `cryptad.apphost.trustedKeysFile` | `CRYPTAD_APPHOST_TRUSTED_KEYS_FILE` |
-| `cryptad.apphost.trustedKeyId` | `CRYPTAD_APPHOST_TRUSTED_KEY_ID` |
-| `cryptad.apphost.trustedPublicKeyBase64` | `CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_BASE64` |
-| `cryptad.apphost.trustedPublicKeyFile` | `CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE` |
+| `cryptad.appcatalog.trustedKeysFile` | `CRYPTAD_APPCATALOG_TRUSTED_KEYS_FILE` |
+
+AppHost keeps using its existing app-bundle trusted-key settings, and reviewer verification keeps
+using the separate reviewer lifecycle registry. A key trusted for one role is not thereby trusted
+for another role. Stable production uses separate registry files and distinct key IDs and
+fingerprints for catalog signing, first-party app signing, and review. When the catalog-specific
+setting is present, the runtime compares the complete catalog and app-bundle registries and rejects
+any stable key ID or SHA-256 X.509 public-key fingerprint present in both, including retiring,
+retired, or revoked entries. Pointing both roles at the same file therefore fails closed.
+Each lifecycle registry independently rejects a canonical public-key fingerprint repeated under
+different stable IDs. This prevents a detached sidecar from relabeling revoked signing material as
+an active alias while preserving existing v1 and v2 file shapes.
+
+App-bundle trusted-key files retain version 1 compatibility. A version 1 entry is treated as an
+active compatibility key. Ceremony-derived Stable app registries use closed version 2 entries
+with `status`, `valid.from`, and `valid.until`. Normal install and update verification accepts only
+an active key inside that interval. The explicit historical-verification path accepts active,
+retiring, or retired keys inside their support interval; a revoked or out-of-window key fails both
+purposes. AppHost applies that historical policy before every explicit installed-app launch and
+every automatic restart, as well as before restoring a retained rollback bundle. The bundle
+signature sidecar itself remains version 1 and unchanged.
+
+For compatibility with deployments created before the catalog-specific setting existed, catalog
+verification may use the AppHost trusted-key registry only when the catalog setting is absent. The
+runtime emits a bounded migration warning. This fallback does not merge the roles permanently and
+does not satisfy Stable production certification. A partial or conflicting catalog configuration
+fails closed.
 
 Unsigned catalogs are rejected. The local unsigned-bundle development bypass does not make remote
-catalogs or catalog artifacts trusted.
+catalogs or catalog artifacts trusted. Existing v1 catalog and app signature sidecars remain
+unchanged; role separation is applied by registry selection and lifecycle policy.
 
 ## Source and artifact fetching
 
@@ -824,7 +850,7 @@ Recommended catalog configuration:
 | `cryptad.firstPartyCatalog.enabled` | `CRYPTAD_FIRST_PARTY_CATALOG_ENABLED` | Set to `false` to hide the recommendation. |
 | `cryptad.firstPartyCatalog.id` | `CRYPTAD_FIRST_PARTY_CATALOG_ID` | Expected signed catalog id. Defaults to `crypta-first-party-beta`. |
 | `cryptad.firstPartyCatalog.source` | `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` | Source URI for `cryptad-app-catalog.properties`, usually `crypta:USK@.../cryptad-app-catalog.properties`. |
-| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID` | Trusted catalog signing key id that must be present in the normal AppHost trusted-key registry. |
+| `cryptad.firstPartyCatalog.trustedCatalogKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_CATALOG_KEY_ID` | Trusted catalog signing key id that must be present in the catalog-specific trusted-key registry or the explicitly selected legacy fallback. |
 | `cryptad.firstPartyCatalog.trustedKeyId` | `CRYPTAD_FIRST_PARTY_CATALOG_TRUSTED_KEY_ID` | Legacy trusted-key id alias, retained for older packaging. |
 | `cryptad.firstPartyCatalog.reviewerPolicyHint` | `CRYPTAD_FIRST_PARTY_CATALOG_REVIEWER_POLICY_HINT` | Optional display hint for the review policy used by the catalog. |
 
@@ -880,12 +906,14 @@ POST   /api/v1/app-catalogs/<catalogId>/operations/emergency-refresh
 ```
 
 Refresh failures update the catalog source's last-attempt and last-failure status, but they do not
-replace or delete the last successfully verified catalog sidecars. Catalog listing, detail,
-install, and update operations continue to use the last verified catalog until a later refresh
-verifies a replacement. Already installed apps are not removed or rolled back because a catalog
-refresh failed. Mirror fallback records the active source and whether fallback was used. Verified
-revision history is bounded and rollback candidates are re-verified before use. Emergency advisory
-refresh uses the same fail-closed verification path and only updates verified catalog metadata.
+replace or delete the last successfully verified catalog sidecars. Catalog listing, detail, review
+metadata, and security inspection continue to use the last historically verifiable catalog until
+a later refresh verifies a replacement. Preparing a new install or update additionally requires
+that cached catalog's signing key remain active and inside its routine verification window.
+Already installed apps are not removed or rolled back because a catalog refresh failed. Mirror
+fallback records the active source and whether fallback was used. Verified revision history is
+bounded and rollback candidates are re-verified before use. Emergency advisory refresh uses the
+same fail-closed verification path and only updates verified catalog metadata.
 
 Install and update endpoints prepare a verified temporary staged bundle, then delegate to
 `AppHost.installFromDirectory(...)` or `AppHost.updateFromDirectory(...)`. Existing local

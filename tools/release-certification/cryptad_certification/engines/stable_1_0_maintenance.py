@@ -2085,7 +2085,7 @@ def _authorization_expected(
 ) -> dict[str, Any]:
     scope = candidate.input_value.get("changeScope")
     scope = scope if isinstance(scope, dict) else {}
-    return {
+    expected = {
         "releaseId": context.manifest.release.release_id,
         "buildVersion": context.manifest.release.version,
         "releaseClass": context.manifest.policies.get("releaseClass"),
@@ -2137,6 +2137,22 @@ def _authorization_expected(
         ),
         "hotfixFollowUpObligationDigest": follow_up_digest,
     }
+    catalog_authority = candidate.input_value.get("catalogAuthority")
+    if isinstance(catalog_authority, dict):
+        expected.update(
+            {
+                "catalogAuthoritySummaryDigest": catalog_authority.get(
+                    "summaryDigest"
+                ),
+                "catalogAuthorityEvidenceDigest": catalog_authority.get(
+                    "protectedEvidenceDigest"
+                ),
+                "catalogAuthorityBindingDigest": semantic_digest(
+                    catalog_authority
+                ),
+            }
+        )
+    return expected
 
 
 def _required_authorization_decision(expected: dict[str, Any]) -> str:

@@ -1665,6 +1665,41 @@ def stable_catalog_verification_identity(
     }
 
 
+def catalog_authority_binding_errors(candidate: Mapping[str, Any]) -> list[str]:
+    """Reject unauthenticated local projections of protected PR-293 authority."""
+
+    binding = candidate.get("catalogAuthority")
+    if binding is None:
+        return []
+    if not isinstance(binding, Mapping):
+        return ["selected catalog-authority evidence binding is malformed"]
+    catalog = candidate.get("stableCatalog")
+    catalog = catalog if isinstance(catalog, Mapping) else {}
+    errors: list[str] = []
+    if binding.get("catalogSigningKeyId") != catalog.get("signingKeyId"):
+        errors.append(
+            "selected catalog-authority evidence does not authorize the candidate catalog signer"
+        )
+    digest_fields = (
+        "summaryDigest",
+        "protectedEvidenceDigest",
+        "keysetDigest",
+        "transparencyDigest",
+        "catalogSigningKeyFingerprintSha256",
+    )
+    digests = [binding.get(field) for field in digest_fields]
+    if any(value == "sha256:" + "0" * 64 for value in digests):
+        errors.append("selected catalog-authority evidence contains an unbound digest")
+    if binding.get("summaryDigest") == binding.get("protectedEvidenceDigest"):
+        errors.append(
+            "catalog-authority summary and protected evidence must be distinct exact artifacts"
+        )
+    errors.append(
+        "a local catalog-authority binding cannot authenticate protected operational evidence"
+    )
+    return errors
+
+
 def _candidate_package_notarization_errors(
     row: dict[str, Any], package_key: str
 ) -> list[str]:
@@ -1998,6 +2033,7 @@ def authenticate_candidate(
     assert loaded and freeze and provenance and checksums_path
     errors = validate_schema(loaded.value, CANDIDATE_INPUT_SCHEMA)
     value = loaded.value
+    errors.extend(catalog_authority_binding_errors(value))
     source = value.get("source") if isinstance(value.get("source"), dict) else {}
     product = value.get("product") if isinstance(value.get("product"), dict) else {}
     packages = value.get("packages") if isinstance(value.get("packages"), list) else []
@@ -2278,6 +2314,11 @@ def authenticate_candidate(
         "rebuildPerformedAfterFreeze": False,
         "redaction": {"status": "pass", "findingCount": 0, "findings": []},
     }
+    catalog_authority = value.get("catalogAuthority")
+    if isinstance(catalog_authority, dict):
+        identity["catalogAuthorityBindingDigest"] = semantic_digest(
+            catalog_authority
+        )
     identity_digest = semantic_digest(identity)
     return Candidate(
         source,
