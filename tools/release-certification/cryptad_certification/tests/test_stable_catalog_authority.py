@@ -1442,6 +1442,59 @@ class StableCatalogAuthorityTest(unittest.TestCase):
                 code, _ = self.run_manifest(manifest)
                 self.assertEqual(1, code)
 
+    def test_keyset_requires_active_first_party_app_signer(self) -> None:
+        manifest = _manifest()
+        app_signer = next(
+            key
+            for key in manifest["keyset"]["keys"]
+            if key["role"] == "first-party-app-signing"
+        )
+        app_signer["lifecycle"] = "staged"
+        _reseal(manifest)
+
+        code, output = self.run_manifest(manifest)
+
+        summary = read_json(output / authority.AUTHORITY_SUMMARY_FILE)
+        app_registry = (output / authority.APP_REGISTRY_FILE).read_text()
+        self.assertEqual(1, code)
+        self.assertIn(
+            "keyset lacks an active authorized first-party app signer",
+            " ".join(summary["blockers"]),
+        )
+        self.assertNotIn(app_signer["keyId"], app_registry)
+
+    def test_protected_release_app_signer_must_match_active_keyset_authority(
+        self,
+    ) -> None:
+        manifest = _manifest()
+        by_id = {key["keyId"]: key for key in manifest["keyset"]["keys"]}
+        protected = {
+            "dispatchPackage": {
+                "rc": {
+                    "keyIdentities": {
+                        "appSigningKeyId": "stable-app-fixture-1"
+                    }
+                }
+            }
+        }
+
+        valid = authority._protected_app_signer_errors(
+            protected,
+            manifest,
+            by_id,
+        )
+        protected["dispatchPackage"]["rc"]["keyIdentities"][
+            "appSigningKeyId"
+        ] = "substituted-app-key"
+        substituted = authority._protected_app_signer_errors(
+            protected,
+            manifest,
+            by_id,
+        )
+
+        self.assertEqual([], valid)
+        self.assertIn("frozen first-party app signer", " ".join(substituted))
+
     def test_checked_in_policy_must_match_every_enforced_closed_contract(self) -> None:
         policy_path = (
             self.workspace

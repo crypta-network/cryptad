@@ -45,6 +45,14 @@
     ],
     "offlineRecoveryRoutineProofAllowed": false
   },
+  "routineSigningEligibility": {
+    "requiredActiveRoles": [
+      "catalog-signing",
+      "first-party-app-signing"
+    ],
+    "eligibilityInstant": "transparency-effective-at",
+    "bindProtectedFirstPartyAppSigner": true
+  },
   "requiredDrills": [
     "app-signing-key-rotation",
     "catalog-rollback",
@@ -82,5 +90,5 @@
     "maximumCatalogBytes": 1048576,
     "maximumSignatureBytes": 65536
   },
-  "policyDigest": "sha256:acc4cc39b594b46b592dcdfb337c8938cd4b55342afc2190f55d491885a07e65"
+  "policyDigest": "sha256:8eb848c6d7dcd7a669004f1b5e3a87ed80a3d66563ef471f7bc6b71cbc0cea2d"
 }

@@ -195,6 +195,14 @@ def _policy_contract_errors(policy: dict[str, Any]) -> list[str]:
             "retainedHistoricalLifecycles": sorted(HISTORICAL_LIFECYCLES),
             "offlineRecoveryRoutineProofAllowed": False,
         },
+        "routineSigningEligibility": {
+            "requiredActiveRoles": [
+                "catalog-signing",
+                "first-party-app-signing",
+            ],
+            "eligibilityInstant": "transparency-effective-at",
+            "bindProtectedFirstPartyAppSigner": True,
+        },
         "requiredDrills": sorted(REQUIRED_DRILLS),
         "publication": {
             "minimumIndependentMirrors": 1,
@@ -495,6 +503,24 @@ def _validate_lineage(keys: list[dict[str, Any]]) -> list[str]:
     return sorted(set(errors))
 
 
+def _is_active_signer_at(
+    key: dict[str, Any] | None,
+    role: str,
+    instant: dt.datetime,
+) -> bool:
+    if (
+        key is None
+        or key.get("role") != role
+        or key.get("lifecycle") != "active"
+        or key.get("compromiseState") != "uncompromised"
+    ):
+        return False
+    try:
+        return _timestamp(key["validFrom"]) <= instant < _timestamp(key["validUntil"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def _validate_keyset(manifest: dict[str, Any], verify_signatures: bool) -> tuple[list[str], dict[str, dict[str, Any]]]:
     errors: list[str] = []
     keys = manifest["keyset"]["keys"]
@@ -576,6 +602,21 @@ def _validate_keyset(manifest: dict[str, Any], verify_signatures: bool) -> tuple
                 errors.append(str(exc))
     if roles != ROLES:
         errors.append("keyset must contain every role in the closed Stable ecosystem role set")
+    try:
+        registry_effective_at = _timestamp(manifest["transparency"]["effectiveAt"])
+        if not any(
+            _is_active_signer_at(
+                key,
+                "first-party-app-signing",
+                registry_effective_at,
+            )
+            for key in keys
+        ):
+            errors.append(
+                "keyset lacks an active authorized first-party app signer at the transparency effective time"
+            )
+    except (KeyError, TypeError, ValueError):
+        errors.append("first-party app signer eligibility timestamp is invalid")
     expected_keyset_digest = _digest(_keyset_subject(manifest))
     if manifest["keyset"]["keysetDigest"] != expected_keyset_digest:
         errors.append("keyset digest does not match the canonical public keyset subject")
@@ -1844,6 +1885,31 @@ def _identity_errors(value: dict[str, Any], manifest: dict[str, Any]) -> list[st
     return errors
 
 
+def _protected_app_signer_errors(
+    protected: dict[str, Any],
+    manifest: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    try:
+        signer_id = protected["dispatchPackage"]["rc"]["keyIdentities"][
+            "appSigningKeyId"
+        ]
+        effective_at = _timestamp(manifest["transparency"]["effectiveAt"])
+    except (KeyError, TypeError, ValueError):
+        return [
+            "PR-291 protected release root lacks the frozen first-party app signer identity"
+        ]
+    if not isinstance(signer_id, str) or not _is_active_signer_at(
+        by_id.get(signer_id),
+        "first-party-app-signing",
+        effective_at,
+    ):
+        return [
+            "PR-291 frozen first-party app signer is not an active authorized app key"
+        ]
+    return []
+
+
 def _catalog_sidecar_errors(
     catalog_bytes: bytes,
     signature_bytes: bytes,
@@ -1928,6 +1994,7 @@ def _validate_bound_evidence(
             or protected.get("contractDigest") != bindings["protectedReleaseContractDigest"]
         ):
             errors.append("PR-291 protected release root is not publicly observed and exact")
+        errors.extend(_protected_app_signer_errors(protected, manifest, by_id))
 
         independent, independent_bytes = _evidence_json(root, INDEPENDENT_SUMMARY_FILE)
         errors.extend(validate_schema(independent, "stable-1.0-independent-reproducibility-summary-v1.schema.json"))
