@@ -177,17 +177,17 @@ malformed advisory or denylist records.
 | Step | Requirement |
 | --- | --- |
 | Trigger signals | Catalog key exposure, planned rotation, unknown catalog signature, failed signature audit, or release-manager key rollover. |
-| Required evidence | Old catalog signing key id, new catalog signing key id, rotation reason, effective timestamp, catalog id, and publication channel. |
-| Immediate containment | Stop accepting new catalogs signed by the compromised key after the trust registry update; fail closed on unknown key ids. |
-| Catalog/advisory/denylist actions | Publish emergency catalog metadata signed by the new trusted key after trust configuration is updated. |
+| Required evidence | Old and new catalog signing key ids and fingerprints, ceremony and keyset digests, proof-of-possession digest, protected recovery authorization, transition type, effective timestamp, exact catalog subject, and publication channel. |
+| Immediate containment | Stop accepting new catalogs signed by the compromised key after the trust registry update; fail closed on unknown key ids and do not assume a planned overlap for compromise. |
+| Catalog/advisory/denylist actions | Publish an emergency successor-signed catalog only at a later revision and USK edition after the recovery-authorized role-specific registry is deployed. |
 | Review/reviewer/revocation actions | No receipt revocation is needed unless review evidence is also affected. |
 | App update scheduler expected behavior | Refresh attempts signed by unknown, untrusted, or compromised catalog keys fail closed and do not create candidates. |
 | Web Shell/operator UX expected behavior | Show catalog key id and rotation status as compact metadata. Do not show key material or key paths. |
-| Recovery guidance | Operators update trusted catalog key configuration, then refresh the catalog and verify the signed candidate. |
+| Recovery guidance | Operators verify the recovery-authorized transition and successor proof of possession, deploy the catalog-only registry, then refresh and verify the exact signed candidate. The offline recovery key never signs the catalog. |
 | Redaction requirements | Exclude private catalog signing keys, public key bytes when not needed, trusted-key file paths, and command lines. |
 | Release note fields | Catalog id, old key id, new key id, rotation reason, effective timestamp, verification behavior, and channel status. |
-| Verification steps | Verify old signed candidate handling, new signed candidate verification, unknown-key fail-closed behavior, Web Shell summary, and release report key id. |
-| Rollback or follow-up | Keep old key trusted only for the planned overlap window when it is a rotation, not a compromise. |
+| Verification steps | Verify keyset lineage and recovery authorization, old signed candidate handling, successor-signed later-edition verification, unknown-key fail-closed behavior, primary/mirror exact bytes, Web Shell summary, and release report key identity. |
+| Rollback or follow-up | Keep the predecessor eligible only for a planned overlap window. Never rollback to a catalog signed by a compromised key. |
 
 ### Malicious catalog entry or catalog metadata compromise
 
@@ -259,6 +259,12 @@ malformed advisory or denylist records.
 
 ## Emergency catalog update workflow
 
+Stable catalog-key transitions and network-primary publication additionally follow the
+[Stable 1.0 catalog publication and key ceremony](stable-1.0-catalog-publication-and-key-ceremony.md)
+runbook. The deterministic drills below demonstrate implementation behavior; they do not
+authenticate a production ceremony, key rotation, emergency publication, mirror observation, or
+rollback.
+
 1. Create advisory and denylist records with fixed timestamps and exact affected versions.
 2. Revoke reviewer receipt fingerprints or reviewer keys when evidence requires it.
 3. Add replacement app/version metadata and review receipt references.
@@ -292,7 +298,9 @@ malformed advisory or denylist records.
    ```
 12. Run `python3 tools/release-certification/certify.py self-test all` before release-candidate
    certification.
-13. Publish only the signed emergency catalog and redacted release artifacts.
+13. Publish only the signed emergency catalog and redacted release artifacts. For Stable, use the
+    protected catalog-authority boundary and retain `partial` if any required primary, mirror,
+    scheduler, or transparency observation is missing.
 
 No production private key is required for deterministic tests. Fixture and dry-run artifacts use
 synthetic ids, digests, and test keys only.
@@ -315,6 +323,12 @@ digest, bounded verification evidence ids, per-step safe summaries, redacted rel
 redaction metadata. It must not include private keys, private insert URIs, raw receipt signatures,
 raw support bundle bodies, raw fetched content, raw app-data values, raw profile/feed/trust/social
 documents, raw app-service bodies, nested backup material, tokens, or absolute local paths.
+
+The `--catalog-authority-binding` option is a reserved compatibility seam, not an authentication
+boundary. A caller-authored JSON projection cannot prove an operational PR-293 state and is
+rejected. Run catalog-signing-key-rotation drills without that optional field until a protected
+consumer can authenticate the exact PR-293 Actions archive and its PR-291-derived evidence; never
+copy `operational=true` or a completion state from a local file.
 
 `drill run-all` writes one artifact per required scenario plus
 `security-drills-summary.json`. The summary uses

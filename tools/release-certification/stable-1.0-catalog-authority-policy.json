@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-catalog-authority-policy",
+  "policyId": "cryptad-stable-1.0-catalog-authority",
+  "releaseMilestone": "Stable 1.0",
+  "algorithm": "Ed25519",
+  "requiredRoles": [
+    "app-reviewer",
+    "catalog-signing",
+    "first-party-app-signing",
+    "offline-recovery"
+  ],
+  "routineSigningRoles": [
+    "app-reviewer",
+    "catalog-signing",
+    "first-party-app-signing"
+  ],
+  "ceremonyTypes": [
+    "compromise-recovery",
+    "emergency-replacement",
+    "genesis",
+    "planned-rotation"
+  ],
+  "lifecycleStates": [
+    "active",
+    "retired",
+    "retiring",
+    "revoked",
+    "staged"
+  ],
+  "compromiseStates": [
+    "compromised",
+    "suspected",
+    "uncompromised"
+  ],
+  "proofOfPossession": {
+    "currentKeysetLifecycles": [
+      "active",
+      "retiring",
+      "staged"
+    ],
+    "retainedHistoricalLifecycles": [
+      "retired",
+      "revoked"
+    ],
+    "offlineRecoveryRoutineProofAllowed": false
+  },
+  "routineSigningEligibility": {
+    "requiredActiveRoles": [
+      "catalog-signing",
+      "first-party-app-signing"
+    ],
+    "eligibilityInstant": "transparency-effective-at",
+    "bindProtectedFirstPartyAppSigner": true
+  },
+  "requiredDrills": [
+    "app-signing-key-rotation",
+    "catalog-rollback",
+    "compromised-catalog-key-recovery",
+    "emergency-replacement-catalog",
+    "planned-catalog-key-rotation",
+    "reviewer-key-rotation"
+  ],
+  "publication": {
+    "minimumIndependentMirrors": 1,
+    "networkPrimaryType": "network-primary",
+    "requiredChannel": "stable",
+    "requireExactSignatureSibling": true,
+    "requireRevisionAndEditionAdvanceOnSubjectChange": true,
+    "mirrorsAreTrustAuthorities": false
+  },
+  "recovery": {
+    "routineSigningAllowed": false,
+    "genesisRequiresProtectedApproval": true,
+    "successorRequiresPriorRecoveryAuthorization": true,
+    "compromiseQuorumRequiresProtectedAuthentication": true,
+    "protectedQuorumApprovals": 2,
+    "protectedQuorumApprovalRole": "stable-release-manager",
+    "protectedQuorumEnvironment": "stable-1-0-key-ceremony"
+  },
+  "evidence": {
+    "localModesAreSideEffectFree": true,
+    "fixtureOperationalCompletionAllowed": false,
+    "workflowDefinitionIsOperationalEvidence": false,
+    "publicKeysAllowedOnlyInTransparencyAndRegistries": true
+  },
+  "bounds": {
+    "maximumKeys": 64,
+    "maximumMirrors": 8,
+    "maximumCatalogBytes": 1048576,
+    "maximumSignatureBytes": 65536
+  },
+  "policyDigest": "sha256:8eb848c6d7dcd7a669004f1b5e3a87ed80a3d66563ef471f7bc6b71cbc0cea2d"
+}

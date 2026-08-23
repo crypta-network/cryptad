@@ -1,0 +1,223 @@
+name: Stable 1.0 Catalog Recovery Quorum
+run-name: >-
+  Stable 1.0 catalog recovery quorum ${{ inputs.release_id }} build
+  ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Exact path-safe Stable release identity.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive-integer Stable build.
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected lowercase 40-character source commit.
+        required: true
+        type: string
+      authority_manifest_json:
+        description: Reviewed public compromise-recovery or emergency-replacement ceremony manifest.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-release-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-transition:
+    name: Authenticate the exact public recovery transition
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact protected workflow source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate the closed recovery-only subject
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != crypta-network/cryptad \
+                || "$GITHUB_EVENT_NAME" != workflow_dispatch \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != leumor \
+                || "$TRIGGERING_ACTOR" != leumor \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Recovery-quorum dispatch is not bound to the exact protected Stable source."
+            exit 2
+          fi
+          test "${#AUTHORITY_MANIFEST_JSON}" -le 65535
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import json
+          import os
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+          from cryptad_certification.schema_validation import validate_schema
+
+          def closed_pairs(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          manifest = json.loads(
+              os.environ["AUTHORITY_MANIFEST_JSON"], object_pairs_hook=closed_pairs
+          )
+          errors = validate_schema(manifest, authority.EXECUTION_SCHEMA)
+          if errors:
+              raise SystemExit("recovery transition manifest is invalid")
+          release = manifest["release"]
+          ceremony = manifest["ceremony"]
+          approval = ceremony["approvalQuorum"]
+          authorization = manifest["recoveryAuthorization"]
+          if (
+              manifest["fixtureOnly"]
+              or release["releaseId"] != os.environ["INPUT_RELEASE_ID"]
+              or str(release["buildVersion"]) != os.environ["INPUT_BUILD_VERSION"]
+              or release["sourceCommit"] != os.environ["INPUT_SOURCE_COMMIT"]
+              or ceremony["ceremonyType"] not in {"compromise-recovery", "emergency-replacement"}
+              or approval != {
+                  "requiredApprovals": 2,
+                  "approvalRole": "stable-release-manager",
+                  "protectedEnvironment": "stable-1-0-key-ceremony",
+              }
+              or authorization["authorizationType"] != "protected-recovery-quorum"
+              or authorization["signatureBase64"] is not None
+              or authorization["signingRecoveryKeyId"] is not None
+              or not authorization["protectedRecoveryQuorumDigest"]
+          ):
+              raise SystemExit("recovery transition does not select the fixed protected quorum policy")
+          PY
+
+  release-approval:
+    name: Release recovery approval
+    needs: validate-transition
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: stable-1-0-key-ceremony-recovery-release
+    permissions: {}
+    steps:
+      - name: Record completion of the release-controlled approval boundary
+        run: test "$GITHUB_EVENT_NAME" = workflow_dispatch
+
+  security-approval:
+    name: Security recovery approval
+    needs: validate-transition
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: stable-1-0-key-ceremony-recovery-security
+    permissions: {}
+    steps:
+      - name: Record completion of the security-controlled approval boundary
+        run: test "$GITHUB_EVENT_NAME" = workflow_dispatch
+
+  emit-receipt:
+    name: Emit the exact transition-bound quorum receipt
+    needs: [validate-transition, release-approval, security-approval]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact protected receipt implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Construct and validate the receipt before its first write
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/catalog-recovery-quorum-output
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+
+          def closed_pairs(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          def encoded(value):
+              return json.dumps(
+                  value, ensure_ascii=False, allow_nan=False, indent=2, sort_keys=True
+              ).encode("utf-8") + b"\n"
+
+          manifest = json.loads(
+              os.environ["AUTHORITY_MANIFEST_JSON"], object_pairs_hook=closed_pairs
+          )
+          ceremony = manifest["ceremony"]
+          release = manifest["release"]
+          approval = ceremony["approvalQuorum"]
+          authorization = manifest["recoveryAuthorization"]
+          receipt = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-protected-recovery-quorum-receipt",
+              "releaseId": release["releaseId"],
+              "buildVersion": release["buildVersion"],
+              "sourceCommit": release["sourceCommit"],
+              "ceremonyId": ceremony["ceremonyId"],
+              "keysetDigest": manifest["keyset"]["keysetDigest"],
+              "recoveryStatementDigest": authorization["statementDigest"],
+              "protectedEnvironment": approval["protectedEnvironment"],
+              "approvalRole": approval["approvalRole"],
+              "requiredApprovals": 2,
+              "recordedApprovals": 2,
+              "fixtureOnly": False,
+              "operational": True,
+              "status": "pass",
+              "receiptDigest": None,
+          }
+          receipt["receiptDigest"] = authority._semantic_digest(receipt, "receiptDigest")
+          raw = encoded(receipt)
+          file_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+          if file_digest != authorization["protectedRecoveryQuorumDigest"]:
+              raise SystemExit("protected quorum receipt does not match the reviewed expected digest")
+          if authority._sensitive_findings(receipt):
+              raise SystemExit("protected quorum receipt failed redaction validation")
+          output = Path("build/catalog-recovery-quorum-output/stable-1.0-protected-recovery-quorum-receipt.json")
+          output.write_bytes(raw)
+          PY
+      - name: Upload only the canonical protected quorum receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-catalog-recovery-quorum-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/catalog-recovery-quorum-output/stable-1.0-protected-recovery-quorum-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false

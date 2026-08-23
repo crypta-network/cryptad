@@ -42,6 +42,7 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -95,6 +96,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CoreHttpShellRuntimeSupportTest {
   private static final String TRUSTED_KEY_ID = "local-dev";
+  private static final String CATALOG_KEY_ID = "stable-catalog";
 
   @Test
   void constructor_whenCoreIsNull_throwsNullPointerException() {
@@ -469,6 +471,205 @@ class CoreHttpShellRuntimeSupportTest {
       assertEquals(
           "demo-app", runtimeSupport.appHost().installFromDirectory(stagedDir).manifest().appId());
     } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appHost_whenInstalledSignerBecomesRevoked_expectNextLaunchRejected(@TempDir Path tempDir)
+      throws Exception {
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path trustedKeysFile = tempDir.resolve("app-trusted-keys.properties");
+    writeLifecycleTrustedKeysFile(trustedKeysFile, keyPair, "active");
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-revocation"), keyPair);
+    String previousTrustedKeysFile = System.getProperty("cryptad.apphost.trustedKeysFile");
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+
+    try {
+      System.setProperty("cryptad.apphost.trustedKeysFile", trustedKeysFile.toString());
+      System.clearProperty("cryptad.appcatalog.trustedKeysFile");
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+      runtimeSupport.appHost().installFromDirectory(stagedDir);
+      writeLifecycleTrustedKeysFile(trustedKeysFile, keyPair, "revoked");
+
+      AppBundleVerificationException exception =
+          assertThrows(
+              AppBundleVerificationException.class,
+              () -> runtimeSupport.appHost().start("demo-app"));
+
+      assertEquals(
+          "trusted key is not authorized for historical bundle verification: " + TRUSTED_KEY_ID,
+          exception.getMessage());
+      assertTrue(runtimeSupport.appHost().status("demo-app").isEmpty());
+    } finally {
+      restoreSystemProperty("cryptad.apphost.trustedKeysFile", previousTrustedKeysFile);
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
+    }
+  }
+
+  @Test
+  void appCatalog_whenRoleSpecificRegistryConfigured_expectTrustSeparatedFromAppHost(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair appKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path catalogKeysFile = tempDir.resolve("catalog-trusted-keys.properties");
+    writeTrustedKeysFile(catalogKeysFile, CATALOG_KEY_ID, catalogKeyPair);
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-role-specific"), appKeyPair);
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.appcatalog.trustedKeysFile", catalogKeysFile.toString());
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(appKeyPair.getPublic().getEncoded()));
+
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+
+      assertTrue(runtimeSupport.appCatalogManager().hasTrustedCatalogKey(CATALOG_KEY_ID));
+      assertFalse(runtimeSupport.appCatalogManager().hasTrustedCatalogKey(TRUSTED_KEY_ID));
+      assertEquals(
+          "demo-app", runtimeSupport.appHost().installFromDirectory(stagedDir).manifest().appId());
+    } finally {
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appCatalog_whenRoleSpecificRegistryReusesAppHostKeyId_expectConfigurationRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair appKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path catalogKeysFile = tempDir.resolve("catalog-overlapping-id.properties");
+    writeTrustedKeysFile(catalogKeysFile, TRUSTED_KEY_ID, catalogKeyPair);
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-overlapping-id"), appKeyPair);
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.appcatalog.trustedKeysFile", catalogKeysFile.toString());
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(appKeyPair.getPublic().getEncoded()));
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+      AppCatalogManager appCatalogManager = runtimeSupport.appCatalogManager();
+
+      IllegalStateException catalogFailure =
+          assertThrows(
+              IllegalStateException.class,
+              () -> appCatalogManager.hasTrustedCatalogKey(TRUSTED_KEY_ID));
+      AppHostConfigurationException bundleFailure =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(stagedDir));
+
+      assertEquals(
+          "Trusted catalog and app signing key registries must be role-distinct.",
+          catalogFailure.getMessage());
+      assertEquals(catalogFailure.getMessage(), bundleFailure.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appCatalog_whenRoleSpecificRegistryReusesAppHostPublicKey_expectConfigurationRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair sharedKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path catalogKeysFile = tempDir.resolve("catalog-overlapping-key.properties");
+    writeTrustedKeysFile(catalogKeysFile, CATALOG_KEY_ID, sharedKeyPair);
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.appcatalog.trustedKeysFile", catalogKeysFile.toString());
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(sharedKeyPair.getPublic().getEncoded()));
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+      AppCatalogManager appCatalogManager = runtimeSupport.appCatalogManager();
+
+      IllegalStateException exception =
+          assertThrows(
+              IllegalStateException.class,
+              () -> appCatalogManager.hasTrustedCatalogKey(CATALOG_KEY_ID));
+
+      assertEquals(
+          "Trusted catalog and app signing key registries must be role-distinct.",
+          exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appCatalog_whenRoleSpecificRegistryMalformed_expectFailureWithoutAppHostFallback(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair appKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path malformedCatalogKeysFile = tempDir.resolve("malformed-catalog-trusted-keys.properties");
+    Files.writeString(
+        malformedCatalogKeysFile, "trusted.keys.version=unsupported\n", StandardCharsets.UTF_8);
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.setProperty("cryptad.appcatalog.trustedKeysFile", malformedCatalogKeysFile.toString());
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(appKeyPair.getPublic().getEncoded()));
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+      AppCatalogManager appCatalogManager = runtimeSupport.appCatalogManager();
+
+      IllegalStateException exception =
+          assertThrows(
+              IllegalStateException.class,
+              () -> appCatalogManager.hasTrustedCatalogKey(TRUSTED_KEY_ID));
+
+      assertEquals("Failed to load trusted catalog keys file.", exception.getMessage());
+    } finally {
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
+      restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
+      restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appCatalog_whenRoleSpecificRegistryAbsent_expectLegacyAppHostTrustFallback(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path stagedDir = stageSignedApp(tempDir.resolve("staged-legacy-fallback"), keyPair);
+    String previousCatalogKeysFile = System.getProperty("cryptad.appcatalog.trustedKeysFile");
+    String previousKeyId = System.getProperty("cryptad.apphost.trustedKeyId");
+    String previousPublicKey = System.getProperty("cryptad.apphost.trustedPublicKeyBase64");
+
+    try {
+      System.clearProperty("cryptad.appcatalog.trustedKeysFile");
+      System.setProperty("cryptad.apphost.trustedKeyId", TRUSTED_KEY_ID);
+      System.setProperty(
+          "cryptad.apphost.trustedPublicKeyBase64",
+          Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+
+      assertTrue(runtimeSupport.appCatalogManager().hasTrustedCatalogKey(TRUSTED_KEY_ID));
+      assertEquals(
+          "demo-app", runtimeSupport.appHost().installFromDirectory(stagedDir).manifest().appId());
+    } finally {
+      restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
       restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
       restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
     }
@@ -1077,6 +1278,58 @@ class CoreHttpShellRuntimeSupportTest {
     Path unsigned = stageUnsignedApp(stagedDir);
     AppBundleSigner.sign(unsigned, TRUSTED_KEY_ID, keyPair.getPrivate());
     return unsigned;
+  }
+
+  private static CoreHttpShellRuntimeSupport managedRuntimeSupport(Path root) {
+    NodeClientCore core = mock(NodeClientCore.class);
+    Node node = mock(Node.class);
+    ProgramDirectory nodeDir = mock(ProgramDirectory.class);
+    ProgramDirectory runDir = mock(ProgramDirectory.class);
+    SemiOrderedShutdownHook shutdownHook = mock(SemiOrderedShutdownHook.class);
+    when(core.getNode()).thenReturn(node);
+    when(node.nodeDir()).thenReturn(nodeDir);
+    when(node.runDir()).thenReturn(runDir);
+    when(nodeDir.dir()).thenReturn(root.resolve("node").toFile());
+    when(runDir.dir()).thenReturn(root.resolve("run").toFile());
+    when(core.getPersistentTempDir()).thenReturn(root.resolve("persistent-temp").toFile());
+    try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
+        mockStatic(SemiOrderedShutdownHook.class)) {
+      stubShutdownHookLookup(shutdownHooks, shutdownHook);
+      return new CoreHttpShellRuntimeSupport(core);
+    }
+  }
+
+  private static void writeTrustedKeysFile(Path file, String keyId, KeyPair keyPair)
+      throws IOException {
+    Files.writeString(
+        file,
+        String.join(
+            "\n",
+            "trusted.keys.version=1",
+            "key.0.id=" + keyId,
+            "key.0.algorithm=Ed25519",
+            "key.0.public.key.base64="
+                + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+            ""),
+        StandardCharsets.UTF_8);
+  }
+
+  private static void writeLifecycleTrustedKeysFile(Path file, KeyPair keyPair, String status)
+      throws IOException {
+    Files.writeString(
+        file,
+        String.join(
+            "\n",
+            "trusted.keys.version=2",
+            "key.0.id=" + TRUSTED_KEY_ID,
+            "key.0.algorithm=Ed25519",
+            "key.0.public.key.base64="
+                + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+            "key.0.status=" + status,
+            "key.0.valid.from=2020-01-01T00:00:00Z",
+            "key.0.valid.until=2100-01-01T00:00:00Z",
+            ""),
+        StandardCharsets.UTF_8);
   }
 
   private static void stubShutdownHookLookup(

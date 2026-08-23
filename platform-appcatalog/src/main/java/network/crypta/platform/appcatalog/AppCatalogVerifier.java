@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.Signature;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeyPolicy;
 import network.crypta.platform.appdist.TrustedAppKeys;
 
 /**
@@ -94,6 +96,26 @@ public final class AppCatalogVerifier {
   }
 
   /**
+   * Verifies an exact retained catalog under historical signing-key policy.
+   *
+   * <p>This path is restricted to stored catalog state, retained revision inspection, and explicit
+   * rollback. Active, retiring, and retired keys may authenticate the exact retained bytes during
+   * their declared support window; revoked or expired keys fail. Newly fetched catalog admission
+   * must use {@link #verify(byte[], byte[], TrustedAppKeys)}.
+   *
+   * @param catalogBytes exact retained catalog-properties bytes
+   * @param signatureBytes exact retained detached-signature bytes
+   * @param trustedKeys explicit trusted Ed25519 public keys
+   * @return authenticated retained catalog content
+   * @throws AppCatalogException if signature, historical trust, or catalog parsing fails
+   */
+  public static AppCatalog verifyHistorical(
+      byte[] catalogBytes, byte[] signatureBytes, TrustedAppKeys trustedKeys)
+      throws AppCatalogException {
+    return verify(catalogBytes, signatureBytes, trustedKeys, null, VerificationPurpose.HISTORICAL);
+  }
+
+  /**
    * Verifies a catalog under one explicitly declared trusted signing-key identity.
    *
    * <p>This overload is intended for release boundaries that have already frozen the expected key
@@ -111,6 +133,17 @@ public final class AppCatalogVerifier {
   public static AppCatalog verify(
       byte[] catalogBytes, byte[] signatureBytes, TrustedAppKeys trustedKeys, String expectedKeyId)
       throws AppCatalogException {
+    return verify(
+        catalogBytes, signatureBytes, trustedKeys, expectedKeyId, VerificationPurpose.ROUTINE);
+  }
+
+  private static AppCatalog verify(
+      byte[] catalogBytes,
+      byte[] signatureBytes,
+      TrustedAppKeys trustedKeys,
+      String expectedKeyId,
+      VerificationPurpose purpose)
+      throws AppCatalogException {
     Objects.requireNonNull(catalogBytes, "catalogBytes");
     Objects.requireNonNull(signatureBytes, "signatureBytes");
     Objects.requireNonNull(trustedKeys, "trustedKeys");
@@ -119,14 +152,22 @@ public final class AppCatalogVerifier {
       throw AppCatalogSidecars.invalidSignature(
           "catalog signature key id does not match expected key id");
     }
-    TrustedAppKey trustedKey =
+    TrustedAppKeyPolicy trustedKeyPolicy =
         trustedKeys
-            .find(signature.keyId())
+            .findPolicy(signature.keyId())
             .orElseThrow(
                 () ->
                     new AppCatalogException(
                         AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
                         "unknown trusted catalog key id: " + signature.keyId()));
+    if (!allowsVerification(trustedKeyPolicy, purpose, Instant.now())) {
+      throw AppCatalogSidecars.invalidSignature(
+          "trusted catalog key is not authorized for "
+              + purpose.label
+              + " verification: "
+              + signature.keyId());
+    }
+    TrustedAppKey trustedKey = trustedKeyPolicy.key();
     if (!signature.algorithm().equals(trustedKey.algorithm())) {
       throw AppCatalogSidecars.invalidSignature(
           "trusted key algorithm does not match catalog signature: " + signature.keyId());
@@ -220,5 +261,23 @@ public final class AppCatalogVerifier {
       throw AppCatalogSidecars.invalidSignature("missing " + key);
     }
     return value;
+  }
+
+  private static boolean allowsVerification(
+      TrustedAppKeyPolicy policy, VerificationPurpose purpose, Instant verifiedAt) {
+    return purpose == VerificationPurpose.ROUTINE
+        ? policy.allowsRoutineVerification(verifiedAt)
+        : policy.allowsHistoricalVerification(verifiedAt);
+  }
+
+  private enum VerificationPurpose {
+    ROUTINE("routine catalog"),
+    HISTORICAL("historical catalog");
+
+    private final String label;
+
+    VerificationPurpose(String label) {
+      this.label = label;
+    }
   }
 }

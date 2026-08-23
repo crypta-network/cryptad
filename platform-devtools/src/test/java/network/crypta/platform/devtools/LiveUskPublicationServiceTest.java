@@ -7,7 +7,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -288,26 +291,56 @@ class LiveUskPublicationServiceTest {
     KeyPair keyPair = keyPair();
     Path catalogFile = writeSignedCatalog(keyPair);
     Path output = tempDir.resolve("live-summary.json");
-    FailingPublisher publisher =
-        new FailingPublisher(
-            LiveUskPublishException.afterQueueAccepted(
-                new AppDistributionException(
-                    "live_publish_verification_failed: fetched catalog bytes do not match local"
-                        + " catalog")));
+    LiveUskPublishException failure =
+        LiveUskPublishException.afterQueueAccepted(
+            new AppDistributionException(
+                "live_publish_verification_failed: fetched catalog bytes do not match local"
+                    + " catalog"));
+    FailingPublisher publisher = new FailingPublisher(failure);
 
     try {
-      assertThrows(
-          LiveUskPublishException.class,
-          () ->
-              LiveUskPublicationService.publish(
-                  request(catalogFile, output, true), trustedKeys(keyPair), publisher));
+      LiveUskPublishException actual =
+          assertThrows(
+              LiveUskPublishException.class,
+              () ->
+                  LiveUskPublicationService.publish(
+                      request(catalogFile, output, true), trustedKeys(keyPair), publisher));
 
+      assertSame(failure, actual);
       assertTrue(publisher.invoked);
       assertTrue(Files.exists(publisher.stagingDirectory));
       assertTrue(
           Files.isRegularFile(
               publisher.stagingDirectory.resolve(AppCatalogSignature.CATALOG_FILE_NAME)));
-      assertIncompleteSummaryMarker(output);
+      String summary = Files.readString(output, StandardCharsets.UTF_8);
+      String catalogSha256 = sha256(Files.readAllBytes(catalogFile));
+      String signatureSha256 =
+          sha256(
+              Files.readAllBytes(
+                  catalogFile.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME)));
+      assertTrue(summary.contains("\"mode\": \"live\""));
+      assertTrue(summary.contains("\"catalogId\": \"dev\""));
+      assertTrue(summary.contains(PUBLIC_SOURCE));
+      assertTrue(summary.contains(publicSignatureSource()));
+      assertTrue(summary.contains("\"edition\": \"42\""));
+      assertTrue(summary.contains("\"catalogSha256\": \"" + catalogSha256 + "\""));
+      assertTrue(summary.contains("\"signatureSha256\": \"" + signatureSha256 + "\""));
+      assertTrue(summary.contains("\"catalogSigningKeyId\": \"dev-local\""));
+      assertTrue(summary.contains("\"catalogInsertStatus\": \"queued\""));
+      assertTrue(summary.contains("\"signatureInsertStatus\": \"queued\""));
+      assertTrue(summary.contains("\"postPublishVerificationStatus\": \"failed\""));
+      assertTrue(summary.contains("\"schedulerRefreshVerificationStatus\": \"not_run\""));
+      assertTrue(summary.contains("staging_sidecars_retained_until_live_insert_completion"));
+      assertTrue(summary.contains("post_publish_fetch_verification_failed"));
+      assertFalse(summary.contains("\"publicationStatus\": \"incomplete\""));
+      assertSummaryExcludes(
+          summary,
+          "fetched catalog bytes do not match local catalog",
+          PRIVATE_INSERT_URI,
+          FORM_PASSWORD,
+          tempDir.toString(),
+          publisher.stagingDirectory.toString());
+      assertTrue(Files.size(output) <= 65536);
     } finally {
       if (publisher.stagingDirectory != null) {
         deleteRecursively(publisher.stagingDirectory);
@@ -360,6 +393,12 @@ class LiveUskPublicationServiceTest {
     assertFalse(summary.contains("\"publicationStatus\":\"complete\""));
   }
 
+  private static void assertSummaryExcludes(String summary, String... prohibitedValues) {
+    for (String prohibitedValue : prohibitedValues) {
+      assertFalse(summary.contains(prohibitedValue));
+    }
+  }
+
   private Path writeSignedCatalog(KeyPair keyPair) throws Exception {
     Path catalogFile = tempDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -388,6 +427,10 @@ class LiveUskPublicationServiceTest {
 
   private static KeyPair keyPair() throws Exception {
     return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+  }
+
+  private static String sha256(byte[] bytes) throws Exception {
+    return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
   }
 
   private static TrustedAppKeys trustedKeys(KeyPair keyPair) throws AppDistributionException {

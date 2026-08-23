@@ -402,6 +402,21 @@ Retain the exact protected coordinator artifact and its Actions digest for the P
 contract. Do not copy just the summary out of its authenticated container and treat it as closeout
 evidence.
 
+## Catalog-authority handoff
+
+PR-293 consumes the authenticated PR-292 summary and exact catalog subject; it does not reopen the
+comparison or promote a catalog that PR-292 did not bind. The handoff includes release ID, integer
+build, source commit, selected RC, catalog and detached-signature digests and sizes, catalog
+revision, signer identity, comparison result, provider-independence result, and the protected
+coordinator coordinates. Any mismatch or fixture, same-provider, partial, or resealed evidence
+blocks operational catalog-authority closeout.
+
+The independent builder never receives a first-party app-signing private key, catalog-signing
+private key, reviewer key, recovery key, or USK insert capability. Reproducibility evidence
+authenticates bytes; it does not authorize signing, key rotation, publication, mirror operation,
+rollback, or trust-registry deployment. See
+[Stable 1.0 catalog publication and key ceremony](stable-1.0-catalog-publication-and-key-ceremony.md).
+
 ## Redaction and archive safety
 
 All inputs and outputs use closed schemas and bounded sizes. Reject duplicate keys before digest
@@ -454,3 +469,7 @@ environment; authenticate the exact selected RC; run comparison and closeout; bi
 Actions artifact into PR-291; and, if desired, perform a separately authenticated public
 verification. Until those operations occur, the repository correctly reports independent
 reproducibility as `pending`.
+
+The PR-293 implementation does not change that pending state and does not itself perform a Stable
+key ceremony, USK publication, mirror observation, key rotation, or rollback. Those are separately
+protected operations requiring their own authentic receipts.

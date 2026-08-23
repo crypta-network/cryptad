@@ -30,6 +30,7 @@
     },
     "platformApi": {"$ref": "#/$defs/platformApi"},
     "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "catalogAuthority": {"$ref": "#/$defs/catalogAuthority"},
     "firstPartyApps": {
       "type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true,
       "items": {"$ref": "#/$defs/firstPartyApp"}
@@ -223,6 +224,27 @@
         ,"advisoryStatus": {"const": "pass"}
         ,"denylistStatus": {"const": "pass"}
         ,"keyRotationTrustTransitionStatus": {"enum": ["complete", "not-applicable"]}
+      }
+    },
+    "catalogAuthority": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schemaVersion", "kind", "summaryDigest", "protectedEvidenceDigest", "state",
+        "keysetDigest", "transparencyDigest", "catalogSigningKeyId",
+        "catalogSigningKeyFingerprintSha256", "fixtureOnly", "operational"
+      ],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "kind": {"const": "stable-1.0-catalog-authority-evidence-binding"},
+        "summaryDigest": {"$ref": "#/$defs/digest"},
+        "protectedEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "state": {"const": "public-key-transparency-published"},
+        "keysetDigest": {"$ref": "#/$defs/digest"},
+        "transparencyDigest": {"$ref": "#/$defs/digest"},
+        "catalogSigningKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "catalogSigningKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "fixtureOnly": {"const": false},
+        "operational": {"const": true}
       }
     },
     "firstPartyApp": {

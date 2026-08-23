@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.net.ssl.SSLContext;
@@ -41,6 +42,8 @@ import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeyLifecycle;
+import network.crypta.platform.appdist.TrustedAppKeyPolicy;
 import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
@@ -51,6 +54,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -62,6 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class AppCatalogManagerTest {
   private static final String KEY_ID = "catalog-test";
+  private static final String APP_SIGNING_KEY_ID = "app-signing-test";
   private static final String ROTATED_KEY_ID = "catalog-rotated";
   private static final String CATALOG_ID = "core";
   private static final String STAGING_CATALOG_ID = "staging";
@@ -118,6 +123,50 @@ class AppCatalogManagerTest {
           Files.isRegularFile(
               plan.stagedBundleDirectory().resolve(AppBundleManifestParser.MANIFEST_FILE_NAME)));
     }
+  }
+
+  @Test
+  void prepareInstallPlan_whenRoleSpecificKeysConfigured_expectEachSignatureUsesItsRole()
+      throws Exception {
+    KeyPair catalogKeyPair = keyPair();
+    KeyPair appKeyPair = keyPair();
+    Path bundle = signedBundle(appKeyPair, APP_SIGNING_KEY_ID);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, catalogKeyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            () -> trustedKeys(catalogKeyPair),
+            () -> TrustedAppKeys.of(trustedKey(APP_SIGNING_KEY_ID, appKeyPair)));
+
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertTrue(Files.isDirectory(plan.stagedBundleDirectory()));
+    }
+  }
+
+  @Test
+  void prepareInstallPlan_whenAppKeyIsOnlyCatalogTrusted_expectBundleVerificationFails()
+      throws Exception {
+    KeyPair catalogKeyPair = keyPair();
+    KeyPair appKeyPair = keyPair();
+    Path bundle = signedBundle(appKeyPair, APP_SIGNING_KEY_ID);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, catalogKeyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            () ->
+                TrustedAppKeys.of(
+                    trustedKey(KEY_ID, catalogKeyPair), trustedKey(APP_SIGNING_KEY_ID, appKeyPair)),
+            TrustedAppKeys::empty);
+    manager.addSource(catalog.toString());
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+
+    assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
   }
 
   @Test
@@ -915,10 +964,11 @@ class AppCatalogManagerTest {
     AppCatalogManager manager = manager(trustedKeys(keyPair));
 
     manager.addSource(catalog.toString());
+    String oversizedSource = oversizedMirrorSource();
     AppCatalogException exception =
         assertThrows(
             AppCatalogException.class,
-            () -> manager.addMirror(CATALOG_ID, "oversized", oversizedMirrorSource(), 1, true));
+            () -> manager.addMirror(CATALOG_ID, "oversized", oversizedSource, 1, true));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
     assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
@@ -939,10 +989,11 @@ class AppCatalogManagerTest {
 
     manager.addSource(catalog.toString());
     manager.addMirror(CATALOG_ID, "backup", originalSource, 1, true);
+    String oversizedSource = oversizedMirrorSource();
     AppCatalogException exception =
         assertThrows(
             AppCatalogException.class,
-            () -> manager.updateMirror(CATALOG_ID, "backup", oversizedMirrorSource(), null, null));
+            () -> manager.updateMirror(CATALOG_ID, "backup", oversizedSource, null, null));
     AppCatalogMirror retained =
         manager.listMirrors(CATALOG_ID).stream()
             .filter(mirror -> "backup".equals(mirror.id().value()))
@@ -970,14 +1021,13 @@ class AppCatalogManagerTest {
 
     manager.addSource(catalog.toString());
     sourceStore.writeMirrorHealth(CATALOG_ID, Map.of(AppCatalogMirrorId.PRIMARY, retainedHealth));
+    String oversizedSource = oversizedMirrorSource();
+    Map<AppCatalogMirrorId, AppCatalogMirrorHealth> oversizedHealth =
+        Map.of(AppCatalogMirrorId.PRIMARY, failedPrimaryHealth(oversizedSource));
     AppCatalogException exception =
         assertThrows(
             AppCatalogException.class,
-            () ->
-                sourceStore.writeMirrorHealth(
-                    CATALOG_ID,
-                    Map.of(
-                        AppCatalogMirrorId.PRIMARY, failedPrimaryHealth(oversizedMirrorSource()))));
+            () -> sourceStore.writeMirrorHealth(CATALOG_ID, oversizedHealth));
     AppCatalogMirrorHealth storedHealth =
         sourceStore.read(CATALOG_ID).mirrorHealth().get(AppCatalogMirrorId.PRIMARY);
 
@@ -1365,6 +1415,60 @@ class AppCatalogManagerTest {
         assertThrows(AppCatalogException.class, () -> manager.keyRotationStatus(CATALOG_ID));
 
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+  }
+
+  @Test
+  void keyRotationStatus_whenCurrentCatalogKeyBecomesRetired_expectHistoricalTrustOnly()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AtomicReference<TrustedAppKeys> registry =
+        new AtomicReference<>(lifecycleKeys(keyPair, TrustedAppKeyLifecycle.ACTIVE));
+    AppCatalogManager manager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            registry::get);
+    manager.addSource(catalog.toString());
+
+    registry.set(lifecycleKeys(keyPair, TrustedAppKeyLifecycle.RETIRED));
+    AppCatalogKeyRotationStatus status = manager.keyRotationStatus(CATALOG_ID);
+
+    assertFalse(manager.hasTrustedCatalogKey(KEY_ID));
+    assertTrue(status.currentKeyTrusted());
+    assertEquals(List.of(), status.blockerReasons());
+    assertEquals(CATALOG_ID, manager.listCatalogs().getFirst().catalogId());
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = TrustedAppKeyLifecycle.class,
+      names = {"RETIRING", "RETIRED"})
+  void prepareInstallPlan_whenCatalogKeyIsNotActive_expectHistoricalInspectionOnly(
+      TrustedAppKeyLifecycle lifecycle) throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AtomicReference<TrustedAppKeys> registry =
+        new AtomicReference<>(lifecycleKeys(keyPair, TrustedAppKeyLifecycle.ACTIVE));
+    AppCatalogManager manager =
+        new AppCatalogManager(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            registry::get);
+    manager.addSource(catalog.toString());
+    registry.set(lifecycleKeys(keyPair, lifecycle));
+
+    List<AppCatalogEntry> inspectedEntries = manager.listApps(CATALOG_ID);
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+
+    assertEquals(APP_ID, inspectedEntries.getFirst().appId());
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+    assertEquals(
+        "trusted catalog key is not authorized for routine catalog verification: " + KEY_ID,
+        exception.getMessage());
   }
 
   @Test
@@ -2024,6 +2128,13 @@ class AppCatalogManagerTest {
         () -> trustedKeys);
   }
 
+  @SuppressWarnings("EmptyTryBlock")
+  private static void prepareAndCloseInstallPlan(AppCatalogManager manager) throws IOException {
+    try (var _ = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      // An unexpected successful plan still owns scratch state that must be released.
+    }
+  }
+
   private AppCatalogManager manager(
       TrustedAppKeys trustedKeys, FakeContentFetchPort contentFetchPort) {
     return manager(
@@ -2075,6 +2186,10 @@ class AppCatalogManagerTest {
   }
 
   private Path signedBundle(KeyPair keyPair) throws IOException {
+    return signedBundle(keyPair, KEY_ID);
+  }
+
+  private Path signedBundle(KeyPair keyPair, String keyId) throws IOException {
     Path root = Files.createDirectories(tempDir.resolve("bundle").resolve(APP_ID));
     Path bin = Files.createDirectories(root.resolve("bin"));
     Files.writeString(bin.resolve("launch.sh"), "#!/bin/sh\nexit 0\n", StandardCharsets.UTF_8);
@@ -2091,7 +2206,7 @@ class AppCatalogManagerTest {
             .formatted(
                 APP_ID, APP_NAME, APP_VERSION, QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
-    AppBundleSigner.sign(root, KEY_ID, keyPair.getPrivate());
+    AppBundleSigner.sign(root, keyId, keyPair.getPrivate());
     return root;
   }
 
@@ -2441,6 +2556,15 @@ class AppCatalogManagerTest {
 
   private static TrustedAppKeys trustedKeys(KeyPair keyPair) {
     return TrustedAppKeys.of(trustedKey(KEY_ID, keyPair));
+  }
+
+  private static TrustedAppKeys lifecycleKeys(KeyPair keyPair, TrustedAppKeyLifecycle lifecycle) {
+    return TrustedAppKeys.ofPolicies(
+        new TrustedAppKeyPolicy(
+            trustedKey(KEY_ID, keyPair),
+            lifecycle,
+            Instant.parse("2020-01-01T00:00:00Z"),
+            Instant.parse("2100-01-01T00:00:00Z")));
   }
 
   private static TrustedAppKey trustedKey(String keyId, KeyPair keyPair) {

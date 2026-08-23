@@ -74,6 +74,7 @@ SELF_TEST_SUITES = (
     "stable-dependency-vulnerability",
     "stable-vulnerability",
     "stable-protected-release",
+    "stable-catalog-authority",
     "migration",
 )
 
@@ -119,6 +120,39 @@ def build_parser() -> argparse.ArgumentParser:
     protected.add_argument("--workspace-root", type=Path, default=Path.cwd())
     protected.add_argument("--out-dir", type=Path)
     protected.add_argument("--self-test", action="store_true")
+
+    catalog_authority = subparsers.add_parser("stable-catalog-authority")
+    catalog_authority.add_argument(
+        "--mode",
+        choices=(
+            "prepare-ceremony",
+            "verify-ceremony",
+            "prepare-publication",
+            "verify-publication",
+            "verify-rotation-drill",
+            "closeout",
+        ),
+    )
+    catalog_authority.add_argument(
+        "--authority-manifest",
+        "--manifest",
+        dest="authority_manifest",
+        type=Path,
+        help="Closed, non-secret Stable catalog authority manifest.",
+    )
+    catalog_authority.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    catalog_authority.add_argument("--out-dir", type=Path)
+    catalog_authority.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help="Confined exact PR-291, PR-292, GA, catalog, and observation evidence directory.",
+    )
+    catalog_authority.add_argument(
+        "--live-publication-result",
+        type=Path,
+        help="Sanitized result emitted by the protected live USK publication boundary.",
+    )
+    catalog_authority.add_argument("--self-test", action="store_true")
 
     independent = subparsers.add_parser("stable-independent-reproducibility")
     independent.add_argument(
@@ -1242,6 +1276,21 @@ def _run_command(args: argparse.Namespace) -> int:
             args.mode,
             args.out_dir,
             args.rc_input_map,
+        )
+    if command == "stable-catalog-authority":
+        from .engines import stable_1_0_catalog_authority
+
+        if args.mode is None or args.authority_manifest is None:
+            raise ValueError(
+                "stable-catalog-authority requires --mode and --authority-manifest"
+            )
+        return stable_1_0_catalog_authority.run(
+            args.workspace_root.resolve(),
+            args.authority_manifest,
+            args.mode,
+            args.out_dir,
+            args.evidence_dir,
+            args.live_publication_result,
         )
     if command == "stable-independent-reproducibility":
         from .engines import stable_1_0_independent_reproducibility

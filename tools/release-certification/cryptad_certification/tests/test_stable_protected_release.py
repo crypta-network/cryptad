@@ -1598,6 +1598,24 @@ class StableProtectedReleaseTests(unittest.TestCase):
         self.assertEqual([], closeout_findings)
         self.assertEqual("pending", closeout_statuses["independentReproducibility"])
 
+    def test_optional_catalog_authority_evidence_does_not_change_the_plan_root(self) -> None:
+        historical = copy.deepcopy(self.contract)
+        current = copy.deepcopy(self.contract)
+        current["workflowCoordinates"]["catalogAuthority"] = _coordinate(  # type: ignore[index]
+            protected.CATALOG_AUTHORITY_WORKFLOW,
+            protected.CATALOG_AUTHORITY_ENVIRONMENT,
+        )
+        current["operationEvidence"]["catalogAuthority"] = copy.deepcopy(  # type: ignore[index]
+            current["rcInputs"]["publicBetaKnownIssues"]  # type: ignore[index]
+        )
+
+        self.assertEqual([], validate_schema(historical, protected.CONTRACT_SCHEMA))
+        self.assertEqual([], validate_schema(current, protected.CONTRACT_SCHEMA))
+        self.assertEqual(
+            protected._plan_digest(historical),  # noqa: SLF001
+            protected._plan_digest(current),  # noqa: SLF001
+        )
+
     def test_rc_dispatch_binds_every_materialized_input_and_stable_coordinate(self) -> None:
         input_map = _rc_input_map(self.root, self.contract)
         observed = protected._timestamp("2026-08-16T01:01:00Z")  # noqa: SLF001
@@ -2758,6 +2776,7 @@ class StableProtectedReleaseTests(unittest.TestCase):
         self.assertEqual("not-performed", statuses["gaPublication"])
         self.assertEqual("not-performed", statuses["publicObservation"])
         self.assertEqual("pending", statuses["independentReproducibility"])
+        self.assertEqual("pending", statuses["catalogAuthority"])
 
     def test_closeout_rejects_verifier_checkout_that_differs_from_candidate(self) -> None:
         source_finding = "candidate commit differs from checked-out HEAD"

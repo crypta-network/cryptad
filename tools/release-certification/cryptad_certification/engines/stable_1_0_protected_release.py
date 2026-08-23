@@ -32,6 +32,14 @@ from .stable_1_0_ga_core import (
     is_supported_catalog_publication_uri,
     public_audit_redaction_findings,
 )
+from .stable_1_0_catalog_authority_closeout import (
+    ENVIRONMENT as CATALOG_AUTHORITY_ENVIRONMENT,
+    REDACTION_MEMBER as CATALOG_AUTHORITY_REDACTION_MEMBER,
+    REPORT_MEMBER as CATALOG_AUTHORITY_REPORT_MEMBER,
+    SUMMARY_MEMBER as CATALOG_AUTHORITY_SUMMARY_MEMBER,
+    WORKFLOW as CATALOG_AUTHORITY_WORKFLOW,
+    verify_artifact as verify_catalog_authority_artifact,
+)
 from .stable_1_0_independent_closeout import (
     independent_receipt_semantic_errors as _independent_receipt_semantic_errors,
 )
@@ -3189,6 +3197,113 @@ def _rc_lineage_coordinate_errors(
     return []
 
 
+def _independent_summary_digests(
+    workspace: Path,
+    contract: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    binding = contract["operationEvidence"].get("independentReproducibility")
+    if not isinstance(binding, dict):
+        return None, ["catalog authority closeout lacks the exact PR-292 summary"]
+    _path, summary, errors = _file_binding_errors(
+        workspace, binding, "catalog authority PR-292 summary"
+    )
+    if binding.get("schema") != INDEPENDENT_SUMMARY_SCHEMA or not isinstance(summary, dict):
+        return None, [*errors, "catalog authority PR-292 summary is missing or malformed"]
+    return {
+        "summaryDigest": summary.get("summaryDigest"),
+        "resultDigest": summary.get("reproducibilityResultDigest"),
+        "subjectInventoryDigest": summary.get("subjectInventoryDigest"),
+    }, errors
+
+
+def _catalog_authority_closeout(
+    workspace: Path,
+    contract: dict[str, Any],
+    freeze_record: dict[str, Any] | None,
+    independent_reproducibility_state: str,
+) -> tuple[str, list[str]]:
+    coordinate = contract["workflowCoordinates"].get("catalogAuthority")
+    binding = contract["operationEvidence"].get("catalogAuthority")
+    if coordinate is None and binding is None:
+        return "pending", []
+    if not isinstance(coordinate, dict) or not isinstance(binding, dict):
+        return "blocked", [
+            "catalog authority closeout requires both exact workflow coordinates and "
+            "artifact evidence"
+        ]
+    errors = _coordinate_errors(
+        coordinate,
+        workflow=CATALOG_AUTHORITY_WORKFLOW,
+        environment=CATALOG_AUTHORITY_ENVIRONMENT,
+        commit=contract["repository"]["candidateCommit"],
+        label="catalog authority closeout",
+    )
+    expected_artifact_name = (
+        f"stable-1-0-catalog-authority-closeout-{contract['release']['id']}-"
+        f"{contract['release']['integerBuild']}-{coordinate['runId']}-"
+        f"{coordinate['runAttempt']}"
+    )
+    if coordinate.get("artifactName") != expected_artifact_name:
+        errors.append("catalog authority closeout artifact name is not canonical for its run")
+    errors.extend(
+        _github_actions_coordinate_errors(
+            coordinate,
+            label="catalog authority closeout",
+            required_job_name="Close out only authenticated catalog-authority evidence",
+            required_job_steps=(
+                "Derive truthful closeout from exact protected receipts",
+            ),
+        )
+    )
+    independent_digests: dict[str, Any] | None = None
+    if independent_reproducibility_state != "independently-reproduced":
+        errors.append("catalog authority closeout lacks authenticated PR-292 completion")
+    else:
+        independent_digests, digest_errors = _independent_summary_digests(workspace, contract)
+        errors.extend(digest_errors)
+    if binding.get("schema") is not None:
+        return "blocked", [
+            *errors,
+            "catalog authority artifact archive must not declare a JSON schema",
+        ]
+    try:
+        archive_path = _confined_file(
+            workspace, binding["path"], "catalog authority artifact archive"
+        )
+    except (KeyError, OSError, ValueError) as exc:
+        return "blocked", [*errors, str(exc)]
+    if _digest(archive_path) != binding.get("sha256"):
+        errors.append("catalog authority artifact digest differs from the execution contract")
+    frozen_catalog = (
+        freeze_record.get("stableCatalog")
+        if isinstance(freeze_record, dict)
+        and isinstance(freeze_record.get("stableCatalog"), dict)
+        else None
+    )
+    state, artifact_errors = verify_catalog_authority_artifact(
+        archive_path,
+        expected_digest=coordinate["artifactDigest"],
+        contract_root=_plan_digest(contract),
+        release_id=contract["release"]["id"],
+        build_version=int(contract["release"]["integerBuild"]),
+        source_commit=contract["repository"]["candidateCommit"],
+        selected_rc=contract["ga"]["selectedRc"],
+        frozen_catalog=frozen_catalog,
+        independent_digests=independent_digests,
+    )
+    errors.extend(artifact_errors)
+    if errors:
+        return "blocked", sorted(set(errors))
+    # The local PR-293 engine deliberately cannot call its own receipts
+    # operational. At this boundary the exact closeout archive, workflow run,
+    # protected environment, candidate, and Actions artifact have all been
+    # authenticated. A passing non-fixture closeout therefore proves the
+    # bounded network-primary and mirror-observation state, while later public
+    # transparency publication remains a separate Phase 12 authority.
+    if state == "partial":
+        return "mirrors-observed", []
+    return state, []
+
 def _closeout(
     workspace: Path,
     contract: dict[str, Any],
@@ -3203,6 +3318,7 @@ def _closeout(
         "gaPublication": "not-performed",
         "publicObservation": "not-performed",
         "independentReproducibility": "pending",
+        "catalogAuthority": "pending",
     }
     if errors:
         return errors, statuses
@@ -4245,6 +4361,14 @@ def _closeout(
                 }
             ):
                 statuses["independentReproducibility"] = independent_summary["status"]
+    catalog_authority_state, catalog_authority_errors = _catalog_authority_closeout(
+        workspace,
+        contract,
+        authenticated_freeze_record,
+        statuses["independentReproducibility"],
+    )
+    statuses["catalogAuthority"] = catalog_authority_state
+    errors.extend(catalog_authority_errors)
     claimed_state = contract["lifecycleState"]
     state_status = {
         "rc-frozen": statuses["protectedRcOperation"],

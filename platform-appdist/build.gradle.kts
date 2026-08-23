@@ -13,6 +13,7 @@ dependencies {
 
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(libs.junitJupiterApi)
+  testImplementation(libs.junitJupiterParams)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }

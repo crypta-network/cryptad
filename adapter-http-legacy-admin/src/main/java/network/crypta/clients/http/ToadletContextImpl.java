@@ -561,10 +561,7 @@ public final class ToadletContextImpl implements ToadletContext {
     String pass = request.getPartAsStringFailsafe("formPassword", 32);
     byte[] inputBytes = pass.getBytes(StandardCharsets.UTF_8);
     byte[] compareBytes = getFormPassword().getBytes(StandardCharsets.UTF_8);
-    if (!MessageDigest.isEqual(inputBytes, compareBytes)) {
-      if (LOG.isDebugEnabled()) LOG.debug("Bad formPassword: {}", pass);
-      return false;
-    } else return true;
+    return MessageDigest.isEqual(inputBytes, compareBytes);
   }
 
   /**

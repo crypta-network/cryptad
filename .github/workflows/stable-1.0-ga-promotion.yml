@@ -3760,6 +3760,55 @@ jobs:
               | .finalVerificationStatus = "fail"' \
             "$candidate" > "$receipt"
 
+      - name: Stage exact verified catalog-authority handoff
+        if: steps.receipt_verification.outcome == 'success'
+        run: |
+          set -euo pipefail
+          stage="build/stable-ga-catalog-authority-handoff"
+          plan="build/stable-ga-publication/component/artifacts/legacy/stable-1.0-ga-publication-plan.json"
+          receipt="build/stable-1.0-ga-publication-receipt.json"
+          current="build/stable-ga-catalog-verification/final/primary"
+          rollback="build/stable-ga-catalog-verification/final/rollback"
+          test ! -e "$stage"
+          mkdir -m 700 "$stage"
+          for source in \
+            "$plan" \
+            "$receipt" \
+            "$current/cryptad-app-catalog.properties" \
+            "$current/cryptad-app-catalog.signature" \
+            "$rollback/cryptad-app-catalog.properties" \
+            "$rollback/cryptad-app-catalog.signature"; do
+            test -f "$source" && test ! -L "$source" && test "$(stat -c '%h' "$source")" -eq 1
+          done
+          test "sha256:$(sha256sum "$current/cryptad-app-catalog.properties" | awk '{print $1}')" \
+            = "$(jq -er '.catalog.catalogDigest' "$receipt")"
+          test "sha256:$(sha256sum "$current/cryptad-app-catalog.signature" | awk '{print $1}')" \
+            = "$(jq -er '.catalog.signatureDigest' "$receipt")"
+          test "sha256:$(sha256sum "$rollback/cryptad-app-catalog.properties" | awk '{print $1}')" \
+            = "$(jq -er '.catalog.rollback.digest' "$receipt")"
+          test "sha256:$(sha256sum "$rollback/cryptad-app-catalog.signature" | awk '{print $1}')" \
+            = "$(jq -er '.catalog.rollback.signatureDigest' "$receipt")"
+          cp -- "$plan" "$stage/stable-1.0-ga-publication-plan.json"
+          cp -- "$receipt" "$stage/stable-1.0-ga-publication-receipt.json"
+          cp -- "$current/cryptad-app-catalog.properties" "$stage/cryptad-app-catalog.properties"
+          cp -- "$current/cryptad-app-catalog.signature" "$stage/cryptad-app-catalog.signature"
+          cp -- "$rollback/cryptad-app-catalog.properties" \
+            "$stage/stable-1.0-rollback-app-catalog.properties"
+          cp -- "$rollback/cryptad-app-catalog.signature" \
+            "$stage/stable-1.0-rollback-app-catalog.signature"
+          test "$(find "$stage" -type f | wc -l)" -eq 6
+
+      - name: Upload exact verified catalog-authority handoff
+        if: steps.receipt_verification.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-ga-catalog-authority-handoff-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-ga-catalog-authority-handoff/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+          overwrite: false
+
       - name: Validate the redaction-safe publication audit record
         id: audit_receipt_validation
         if: always() && hashFiles('build/stable-1.0-ga-publication-receipt.json') != ''

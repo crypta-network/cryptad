@@ -1,0 +1,316 @@
+name: Stable 1.0 Catalog Drill Acceptance
+run-name: >-
+  Stable 1.0 catalog drill acceptance ${{ inputs.release_id }} build
+  ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Exact path-safe Stable release identity.
+        required: true
+        type: string
+      build_version:
+        description: Exact positive-integer Stable build.
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected lowercase 40-character source commit.
+        required: true
+        type: string
+      authority_manifest_json:
+        description: Reviewed non-fixture Stable catalog-authority manifest.
+        required: true
+        type: string
+      drill_evidence_json:
+        description: Closed six-row drill evidence digest inventory.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-release-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-evidence:
+    name: Validate exact drill evidence subjects
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate closed candidate-bound drill inventory
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+          DRILL_EVIDENCE_JSON: ${{ inputs.drill_evidence_json }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != crypta-network/cryptad \
+                || "$GITHUB_EVENT_NAME" != workflow_dispatch \
+                || "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != leumor \
+                || "$TRIGGERING_ACTOR" != leumor \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Drill acceptance is not bound to the exact protected Stable source."
+            exit 2
+          fi
+          test "${#AUTHORITY_MANIFEST_JSON}" -le 65535
+          test "${#DRILL_EVIDENCE_JSON}" -le 32768
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+          from cryptad_certification.schema_validation import validate_schema
+
+          def closed_pairs(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          manifest = json.loads(
+              os.environ["AUTHORITY_MANIFEST_JSON"], object_pairs_hook=closed_pairs
+          )
+          evidence = json.loads(
+              os.environ["DRILL_EVIDENCE_JSON"], object_pairs_hook=closed_pairs
+          )
+          errors = validate_schema(manifest, authority.EXECUTION_SCHEMA)
+          if errors:
+              raise SystemExit("drill authority manifest is invalid")
+          release = manifest["release"]
+          if (
+              manifest["fixtureOnly"]
+              or release["releaseId"] != os.environ["INPUT_RELEASE_ID"]
+              or str(release["buildVersion"]) != os.environ["INPUT_BUILD_VERSION"]
+              or release["sourceCommit"] != os.environ["INPUT_SOURCE_COMMIT"]
+          ):
+              raise SystemExit("drill authority manifest identity is invalid")
+          if not isinstance(evidence, dict) or set(evidence) != {"schemaVersion", "drills"}:
+              raise SystemExit("drill evidence inventory is not a closed v1 record")
+          rows = evidence.get("drills")
+          if evidence.get("schemaVersion") != 1 or not isinstance(rows, list) or len(rows) != 6:
+              raise SystemExit("drill evidence inventory does not contain six rows")
+          expected_fields = {"drillType", "completedAt", "evidenceDigests"}
+          types = []
+          effective_at = authority._timestamp(manifest["ceremony"]["effectiveAt"])
+          validation_now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+          maximum_completion_clock_skew = dt.timedelta(minutes=5)
+          for row in rows:
+              if not isinstance(row, dict) or set(row) != expected_fields:
+                  raise SystemExit("drill evidence row is not closed")
+              types.append(row.get("drillType"))
+              completed_at = authority._timestamp(row.get("completedAt"))
+              if completed_at > validation_now + maximum_completion_clock_skew:
+                  raise SystemExit(
+                      "drill evidence completion is future-dated beyond clock skew"
+                  )
+              digests = row.get("evidenceDigests")
+              if (
+                  completed_at < effective_at
+                  or not isinstance(digests, list)
+                  or not 1 <= len(digests) <= 16
+                  or len(digests) != len(set(digests))
+                  or any(
+                      not isinstance(value, str)
+                      or len(value) != 71
+                      or not value.startswith("sha256:")
+                      or any(character not in "0123456789abcdef" for character in value[7:])
+                      for value in digests
+                  )
+              ):
+                  raise SystemExit("drill evidence row is invalid or predates the ceremony")
+          if set(types) != authority.REQUIRED_DRILLS or len(types) != len(set(types)):
+              raise SystemExit("drill evidence inventory does not cover the closed type set")
+          manifest_rows = {row["drillType"]: row for row in manifest["drills"]}
+          for source in rows:
+              receipt = {
+                  "drillType": source["drillType"],
+                  "status": "pass",
+                  "completedAt": source["completedAt"],
+                  "evidenceDigests": source["evidenceDigests"],
+                  "receiptDigest": authority.ZERO_DIGEST,
+              }
+              receipt["receiptDigest"] = authority._semantic_digest(
+                  receipt, "receiptDigest"
+              )
+              claimed = manifest_rows.get(source["drillType"])
+              if claimed != {
+                  "drillType": source["drillType"],
+                  "status": "pass",
+                  "fixtureOnly": False,
+                  "subjectDigest": receipt["receiptDigest"],
+                  "completedAt": source["completedAt"],
+              }:
+                  raise SystemExit("manifest drill row does not bind its reviewed evidence receipt")
+          if authority._sensitive_findings(evidence):
+              raise SystemExit("drill evidence inventory failed redaction validation")
+          PY
+
+  release-approval:
+    name: Release drill acceptance approval
+    needs: validate-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: stable-1-0-catalog-drill-release
+    permissions: {}
+    steps:
+      - name: Record release-controlled approval
+        run: test "$GITHUB_EVENT_NAME" = workflow_dispatch
+
+  security-approval:
+    name: Security drill acceptance approval
+    needs: validate-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: stable-1-0-catalog-drill-security
+    permissions: {}
+    steps:
+      - name: Record security-controlled approval
+        run: test "$GITHUB_EVENT_NAME" = workflow_dispatch
+
+  emit-receipts:
+    name: Emit exact protected drill receipts
+    needs: [validate-evidence, release-approval, security-approval]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: stable-1-0-catalog-drill-acceptance
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact protected receipt implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Construct and validate receipt bundle before first write
+        env:
+          AUTHORITY_MANIFEST_JSON: ${{ inputs.authority_manifest_json }}
+          DRILL_EVIDENCE_JSON: ${{ inputs.drill_evidence_json }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/catalog-drill-acceptance-output
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+
+          from cryptad_certification.engines import stable_1_0_catalog_authority as authority
+          from cryptad_certification.schema_validation import validate_schema
+
+          def closed_pairs(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          manifest = json.loads(
+              os.environ["AUTHORITY_MANIFEST_JSON"], object_pairs_hook=closed_pairs
+          )
+          evidence = json.loads(
+              os.environ["DRILL_EVIDENCE_JSON"], object_pairs_hook=closed_pairs
+          )
+          rows = []
+          receipt_now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+          maximum_completion_clock_skew = dt.timedelta(minutes=5)
+          for source in sorted(evidence["drills"], key=lambda row: row["drillType"]):
+              completed_at = authority._timestamp(source["completedAt"])
+              if completed_at > receipt_now + maximum_completion_clock_skew:
+                  raise SystemExit(
+                      "drill evidence completion is future-dated beyond clock skew"
+                  )
+              receipt = {
+                  "drillType": source["drillType"],
+                  "status": "pass",
+                  "completedAt": source["completedAt"],
+                  "evidenceDigests": source["evidenceDigests"],
+                  "receiptDigest": authority.ZERO_DIGEST,
+              }
+              receipt["receiptDigest"] = authority._semantic_digest(
+                  receipt, "receiptDigest"
+              )
+              rows.append(receipt)
+          release = manifest["release"]
+          bindings = manifest["bindings"]
+          bundle = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-catalog-drill-receipts",
+              "releaseId": release["releaseId"],
+              "buildVersion": release["buildVersion"],
+              "sourceCommit": release["sourceCommit"],
+              "ceremonyId": manifest["ceremony"]["ceremonyId"],
+              "keysetDigest": manifest["keyset"]["keysetDigest"],
+              "bindings": {
+                  name: bindings[name]
+                  for name in (
+                      "protectedReleaseSummaryDigest",
+                      "protectedReleaseContractDigest",
+                      "independentReproducibilitySummaryDigest",
+                      "independentReproducibilityResultDigest",
+                      "independentSubjectInventoryDigest",
+                  )
+              },
+              "catalogSubject": authority._catalog_subject(manifest["catalog"]),
+              "protectedEnvironment": "stable-1-0-catalog-drill-acceptance",
+              "approvalRole": "stable-release-manager",
+              "requiredApprovals": 2,
+              "recordedApprovals": 2,
+              "fixtureOnly": False,
+              "operational": True,
+              "status": "pass",
+              "drills": rows,
+              "bundleDigest": authority.ZERO_DIGEST,
+          }
+          bundle["bundleDigest"] = authority._semantic_digest(bundle, "bundleDigest")
+          errors = validate_schema(bundle, authority.DRILL_RECEIPTS_SCHEMA)
+          if errors or authority._sensitive_findings(bundle):
+              raise SystemExit("generated protected drill receipts are invalid")
+          expected = {row["drillType"]: row for row in manifest["drills"]}
+          if any(
+              expected[row["drillType"]]["subjectDigest"] != row["receiptDigest"]
+              for row in rows
+          ):
+              raise SystemExit("generated drill receipt digest is not precommitted by the manifest")
+          raw = json.dumps(
+              bundle, ensure_ascii=False, allow_nan=False, indent=2, sort_keys=True
+          ).encode("utf-8") + b"\n"
+          Path(
+              "build/catalog-drill-acceptance-output/stable-1.0-catalog-drill-receipts.json"
+          ).write_bytes(raw)
+          PY
+      - name: Upload only canonical protected drill receipts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-catalog-drill-acceptance-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/catalog-drill-acceptance-output/stable-1.0-catalog-drill-receipts.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          overwrite: false

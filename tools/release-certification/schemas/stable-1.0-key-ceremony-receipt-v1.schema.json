@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-key-ceremony-receipt-v1.schema.json",
+  "title": "Stable 1.0 key ceremony receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "ceremonyId",
+    "ceremonyType",
+    "releaseId",
+    "buildVersion",
+    "sourceCommit",
+    "policyDigest",
+    "keysetVersion",
+    "previousKeysetDigest",
+    "keysetDigest",
+    "protectedReleaseSummaryDigest",
+    "protectedReleaseContractDigest",
+    "independentReproducibilitySummaryDigest",
+    "independentReproducibilityResultDigest",
+    "independentSubjectInventoryDigest",
+    "keys",
+    "recoveryAuthorization",
+    "transparencyDigest",
+    "transparencySignatureDigest",
+    "fixtureOnly",
+    "operational",
+    "state",
+    "authenticatedAt",
+    "receiptDigest",
+    "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-key-ceremony-receipt"},
+    "ceremonyId": {"$ref": "#/$defs/identifier"},
+    "ceremonyType": {
+      "enum": ["genesis", "planned-rotation", "compromise-recovery", "emergency-replacement"]
+    },
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "keysetVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "previousKeysetDigest": {"$ref": "#/$defs/nullableDigest"},
+    "keysetDigest": {"$ref": "#/$defs/digest"},
+    "protectedReleaseSummaryDigest": {"$ref": "#/$defs/digest"},
+    "protectedReleaseContractDigest": {"$ref": "#/$defs/digest"},
+    "independentReproducibilitySummaryDigest": {"$ref": "#/$defs/digest"},
+    "independentReproducibilityResultDigest": {"$ref": "#/$defs/digest"},
+    "independentSubjectInventoryDigest": {"$ref": "#/$defs/digest"},
+    "keys": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 64,
+      "items": {"$ref": "#/$defs/keyReceipt"}
+    },
+    "recoveryAuthorization": {"$ref": "#/$defs/recoveryReceipt"},
+    "transparencyDigest": {"$ref": "#/$defs/digest"},
+    "transparencySignatureDigest": {"$ref": "#/$defs/digest"},
+    "fixtureOnly": {"type": "boolean"},
+    "operational": {"const": false},
+    "state": {"enum": ["implementation-complete", "fixture-verification-complete", "partial", "blocked"]},
+    "authenticatedAt": {"$ref": "#/$defs/timestamp"},
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 40},
+    "keyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "role",
+        "publicKeyFingerprintSha256",
+        "lifecycle",
+        "compromiseState",
+        "proofType",
+        "proofCeremonyId",
+        "proofKeysetDigest",
+        "proofStatementDigest",
+        "proofSignatureDigest"
+      ],
+      "properties": {
+        "keyId": {"$ref": "#/$defs/identifier"},
+        "role": {"enum": ["catalog-signing", "first-party-app-signing", "app-reviewer", "offline-recovery"]},
+        "publicKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "lifecycle": {"enum": ["staged", "active", "retiring", "retired", "revoked"]},
+        "compromiseState": {"enum": ["uncompromised", "suspected", "compromised"]},
+        "proofType": {"enum": ["current-keyset", "retained-historical", "not-applicable-recovery"]},
+        "proofCeremonyId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+        "proofKeysetDigest": {"$ref": "#/$defs/nullableDigest"},
+        "proofStatementDigest": {"$ref": "#/$defs/nullableDigest"},
+        "proofSignatureDigest": {"$ref": "#/$defs/nullableDigest"}
+      }
+    },
+    "recoveryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorizationType", "signingRecoveryKeyId", "statementDigest", "signatureDigest", "protectedRecoveryQuorumDigest"],
+      "properties": {
+        "authorizationType": {"enum": ["recovery-signature", "protected-recovery-quorum"]},
+        "signingRecoveryKeyId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+        "statementDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/nullableDigest"},
+        "protectedRecoveryQuorumDigest": {"$ref": "#/$defs/nullableDigest"}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "findingCount": {"type": "integer", "minimum": 0, "maximum": 64},
+        "findings": {"type": "array", "maxItems": 64, "items": {"type": "string", "maxLength": 256}}
+      }
+    }
+  }
+}

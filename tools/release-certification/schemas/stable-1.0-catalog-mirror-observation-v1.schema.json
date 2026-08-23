@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-catalog-mirror-observation-v1.schema.json",
+  "title": "Stable 1.0 catalog network and mirror observation receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "releaseId",
+    "buildVersion",
+    "sourceCommit",
+    "catalogSubject",
+    "collectionStartedAt",
+    "collectionCompletedAt",
+    "observations",
+    "schedulerRefreshVerificationStatus",
+    "status",
+    "receiptDigest"
+  ],
+  "properties": {
+    "kind": {"const": "stable-1.0-catalog-mirror-observation"},
+    "releaseId": {"$ref": "#/$defs/identifier"},
+    "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "catalogSubject": {"$ref": "#/$defs/catalogSubject"},
+    "collectionStartedAt": {"$ref": "#/$defs/timestamp"},
+    "collectionCompletedAt": {"$ref": "#/$defs/timestamp"},
+    "observations": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 9,
+      "items": {"$ref": "#/$defs/observation"}
+    },
+    "schedulerRefreshVerificationStatus": {"enum": ["pass", "fail"]},
+    "status": {"enum": ["pass", "fail"]},
+    "receiptDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "catalogSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogId",
+        "channel",
+        "revision",
+        "uskEdition",
+        "catalogDigest",
+        "catalogSize",
+        "signatureDigest",
+        "signatureSize",
+        "signingKeyId",
+        "signingKeyFingerprintSha256"
+      ],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locationId",
+        "observedAt",
+        "status",
+        "catalogId",
+        "channel",
+        "revision",
+        "uskEdition",
+        "catalogDigest",
+        "catalogSize",
+        "signatureDigest",
+        "signatureSize",
+        "signingKeyId",
+        "signingKeyFingerprintSha256"
+      ],
+      "properties": {
+        "locationId": {"$ref": "#/$defs/identifier"},
+        "observedAt": {"$ref": "#/$defs/timestamp"},
+        "status": {"enum": ["exact-match", "missing", "stale", "conflict"]},
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

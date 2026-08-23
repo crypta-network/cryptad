@@ -71,6 +71,21 @@
             "blocked",
             "partial"
           ]
+        },
+        "catalogAuthority": {
+          "enum": [
+            "pending",
+            "implementation-complete",
+            "fixture-verification-complete",
+            "ceremony-authenticated",
+            "network-primary-published",
+            "mirrors-observed",
+            "rotation-drill-complete",
+            "rollback-drill-complete",
+            "public-key-transparency-published",
+            "blocked",
+            "partial"
+          ]
         }
       }
     },

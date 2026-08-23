@@ -27,6 +27,8 @@ Load only the docs needed for the change:
 - Signed catalogs: `docs/app-catalogs.md`
 - Production first-party catalog channels: `docs/production-first-party-catalog-channels.md`
 - Catalog operations and mirrors: `docs/catalog-operations-and-mirrors.md`
+- Stable 1.0 catalog publication and key ceremony:
+  `docs/stable-1.0-catalog-publication-and-key-ceremony.md`
 - Ecosystem security advisories and denylists: `docs/ecosystem-security-advisories.md`
 - Production security response runbook: `docs/production-security-response-runbook.md`
 - App-store submission and review workflow: `docs/app-store-submission-and-review-workflow.md`
@@ -239,6 +241,25 @@ Load only the docs needed for the change:
   permission-disclosure, and design-system checks.
 - Signed catalogs and bundles must verify before install/update. Unsigned live-node installs require
   the explicit development-only escape hatch.
+- Keep Stable catalog, first-party app, reviewer, and offline recovery keys role-distinct. Catalog
+  verification uses the catalog-specific registry when configured; AppHost keeps the app-bundle
+  registry, and review keeps `TrustedReviewerKeys`. The legacy AppHost-registry fallback is allowed
+  only when catalog-specific configuration is absent, must warn, and cannot satisfy Stable
+  production certification. When catalog-specific trust is present, reject cross-registry overlap
+  by stable key ID or SHA-256 X.509 public-key fingerprint across every lifecycle state. Within
+  each catalog or app-bundle registry, reject one public-key fingerprint under multiple IDs so an
+  unsigned sidecar ID cannot select active policy for revoked key material. Retain every
+  non-staged catalog/app identity in its role registry, mapping revoked, suspected, or compromised
+  material to `revoked`. Authenticate the preceding signed transparency artifact for every
+  non-genesis ceremony and keep key identity membership append-only so a later transition cannot
+  prune and reassign an old ID or fingerprint across roles. Reverify an installed
+  bundle with historical lifecycle policy before every explicit launch and automatic
+  restart; retiring and retired keys are bounded by their support windows, while revoked,
+  compromised, and out-of-window keys fail closed. Never auto-trust a key because a catalog or
+  mirror lists it. Derived reviewer registries must retain revoked, suspected, and compromised
+  reviewer identities as `revoked`; omitting them downgrades a force-blocking known revocation to
+  an unknown-reviewer result. Omit only staged reviewers, and preserve retired/uncompromised
+  historical reviewed-at semantics.
 - At a release boundary, verify the exact detached catalog sidecar and the independently frozen
   signer id. `crypta-app catalog verify --catalog-signature-file <path> --expected-key-id <id>`
   prevents another key in a broad trusted registry from satisfying that binding. Do not replace
@@ -277,6 +298,16 @@ Load only the docs needed for the change:
   current and rollback signed catalog bytes before any public release mutation and again afterward.
   A mirror is never a trust authority. Never serialize private insert URIs or publication
   credentials in the plan, maintenance baseline, or receipt.
+- PR-293 adds a public Crypta USK network primary; it does not remove the Stable GA HTTPS checks.
+  Bind the exact frozen catalog and detached signature, revision and USK edition, signer ID and
+  fingerprint, PR-291 release root, PR-292 catalog subject, independently operated mirror, and
+  eligible rollback subject. Only the protected mutation job may materialize insert capability.
+  Run that job on the dedicated protected Stable catalog-publication runner with a managed
+  localhost daemon and matching form-password secret. Its bounded greeting and Platform API
+  contract preflight must pass before secrets enter the job; daemon lifecycle remains a protected
+  runner-provisioning responsibility, not a release-workflow action.
+  Local engines, fixtures, docs, or workflow definitions never prove ceremony, publication,
+  observation, rotation, or rollback completion.
 - Catalog operation routes under `/api/v1/app-catalogs/{catalogId}/mirrors` and
   `/api/v1/app-catalogs/{catalogId}/operations/*` are host/operator-only local-management routes.
   They must deny app-process and app-browser principals, and mutating bridge requests must pass the
@@ -448,6 +479,7 @@ python3 tools/release-certification/certify.py stable-rc --self-test
 python3 tools/release-certification/certify.py stable-ga --self-test
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py stable-lifecycle --self-test
+python3 tools/release-certification/certify.py stable-catalog-authority --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests

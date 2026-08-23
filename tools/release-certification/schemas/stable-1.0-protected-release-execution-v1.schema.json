@@ -139,7 +139,8 @@
         "gaValidation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
         "gaEvidenceApproval": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
         "gaPublication": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
-        "publicObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]}
+        "publicObservation": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]},
+        "catalogAuthority": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/workflowCoordinate"}]}
       }
     },
     "ga": {
@@ -174,7 +175,8 @@
         "publicObservationArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
         "independentReproducibility": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
         "independentReproducibilityArtifact": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]},
-        "independentReproducibilityCoordinate": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/producer"}]}
+        "independentReproducibilityCoordinate": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/producer"}]},
+        "catalogAuthority": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/fileBinding"}]}
       }
     },
     "lifecycleState": {

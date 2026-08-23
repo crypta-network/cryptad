@@ -74,7 +74,14 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_protected_rc_preflight",
         "cryptad_certification.tests.test_stable_public_observation",
         "cryptad_certification.tests.test_stable_protected_release",
+        "cryptad_certification.tests.test_stable_protected_catalog_authority",
         "cryptad_certification.tests.test_stable_independent_protected_closeout",
+    ],
+    "stable-catalog-authority": [
+        "cryptad_certification.tests.test_stable_catalog_authority",
+        "cryptad_certification.tests.test_stable_catalog_authority_inputs",
+        "cryptad_certification.tests.test_stable_catalog_observation",
+        "cryptad_certification.tests.test_stable_catalog_authority_workflow",
     ],
     "stable-independent-reproducibility": [
         "cryptad_certification.tests.test_stable_independent_handoff",

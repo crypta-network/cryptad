@@ -9,7 +9,7 @@ import network.crypta.platform.appdist.TrustedAppKeys;
 
 /**
  * Selects how {@link network.crypta.platform.apphost.runtime.LocalProcessAppHost} validates copied
- * staged bundles before installation or update continues.
+ * staged or retained bundles before installation, update, rollback, or launch continues.
  *
  * <p>AppHost copies caller-owned staged directories into a managed temporary tree before it trusts
  * their contents. This policy runs against that copied tree and therefore decides whether a bundle
@@ -32,11 +32,15 @@ public final class AppInstallVerificationPolicy {
 
   private final boolean allowUnsignedForDevelopment;
   private final CopiedBundleVerifier verifier;
+  private final CopiedBundleVerifier historicalVerifier;
 
   private AppInstallVerificationPolicy(
-      boolean allowUnsignedForDevelopment, CopiedBundleVerifier verifier) {
+      boolean allowUnsignedForDevelopment,
+      CopiedBundleVerifier verifier,
+      CopiedBundleVerifier historicalVerifier) {
     this.allowUnsignedForDevelopment = allowUnsignedForDevelopment;
     this.verifier = Objects.requireNonNull(verifier, "verifier");
+    this.historicalVerifier = Objects.requireNonNull(historicalVerifier, "historicalVerifier");
   }
 
   /**
@@ -50,7 +54,24 @@ public final class AppInstallVerificationPolicy {
    * @return policy that requires signed-distribution verification
    */
   public static AppInstallVerificationPolicy requireSigned(CopiedBundleVerifier verifier) {
-    return new AppInstallVerificationPolicy(false, verifier);
+    return requireSigned(verifier, verifier);
+  }
+
+  /**
+   * Creates a policy with distinct new-bundle and retained historical verifiers.
+   *
+   * <p>Install and update admission use {@code verifier}. AppHost rollback uses {@code
+   * historicalVerifier}, allowing a lifecycle-aware runtime to launch or restore bundles signed by
+   * supported predecessor keys without permitting them to authorize another install or update.
+   *
+   * @param verifier verification callback for newly copied install and update bundles
+   * @param historicalVerifier verification callback for exact retained installed or rollback
+   *     bundles
+   * @return policy that requires signed-distribution verification for both purposes
+   */
+  public static AppInstallVerificationPolicy requireSigned(
+      CopiedBundleVerifier verifier, CopiedBundleVerifier historicalVerifier) {
+    return new AppInstallVerificationPolicy(false, verifier, historicalVerifier);
   }
 
   /**
@@ -96,7 +117,24 @@ public final class AppInstallVerificationPolicy {
    */
   public static AppInstallVerificationPolicy allowUnsignedForDevelopmentOnly(
       CopiedBundleVerifier verifier) {
-    return new AppInstallVerificationPolicy(true, verifier);
+    return allowUnsignedForDevelopmentOnly(verifier, verifier);
+  }
+
+  /**
+   * Creates a development-only policy with distinct new and historical verification callbacks.
+   *
+   * <p>The callbacks still decide whether a copied bundle is acceptable. Runtime integration uses
+   * this overload to preserve an explicit unsigned-development bypass while applying lifecycle-
+   * aware verification to every signed install, update, rollback, or launch bundle.
+   *
+   * @param verifier verification callback for newly copied install and update bundles
+   * @param historicalVerifier verification callback for exact retained installed or rollback
+   *     bundles
+   * @return development-only policy with purpose-separated verification
+   */
+  public static AppInstallVerificationPolicy allowUnsignedForDevelopmentOnly(
+      CopiedBundleVerifier verifier, CopiedBundleVerifier historicalVerifier) {
+    return new AppInstallVerificationPolicy(true, verifier, historicalVerifier);
   }
 
   /**
@@ -125,12 +163,32 @@ public final class AppInstallVerificationPolicy {
    *     be inspected
    */
   public void verifyCopiedBundle(Path copiedBundleDirectory) throws IOException {
+    verifyCopiedBundle(copiedBundleDirectory, verifier);
+  }
+
+  /**
+   * Verifies one exact retained bundle before AppHost launches or restores it.
+   *
+   * <p>This method applies the separately configured historical callback. It preserves the same
+   * path normalization and exception classification as new-bundle verification, but it does not
+   * permit callers to use historical lifecycle authority for install or update admission.
+   *
+   * @param copiedBundleDirectory retained managed installed or rollback bundle directory
+   * @throws IOException if verification fails, configuration is invalid, or the retained tree
+   *     cannot be inspected
+   */
+  public void verifyHistoricalCopiedBundle(Path copiedBundleDirectory) throws IOException {
+    verifyCopiedBundle(copiedBundleDirectory, historicalVerifier);
+  }
+
+  private static void verifyCopiedBundle(
+      Path copiedBundleDirectory, CopiedBundleVerifier copiedBundleVerifier) throws IOException {
     Path normalized =
         Objects.requireNonNull(copiedBundleDirectory, "copiedBundleDirectory")
             .toAbsolutePath()
             .normalize();
     try {
-      verifier.verifyCopiedBundle(normalized);
+      copiedBundleVerifier.verifyCopiedBundle(normalized);
     } catch (AppBundleVerificationException | AppHostConfigurationException e) {
       throw e;
     } catch (AppDistributionException | AppHostException e) {

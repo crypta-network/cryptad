@@ -32,9 +32,11 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  *
  * <p>The class is deliberately stateless. Production code supplies the Platform API publisher,
  * while tests can supply a fake publisher that observes the sanitized request boundary. Publication
- * either fails before the live adapter is called, or returns a report-safe result after the adapter
- * accepts the insertion request. Staged sidecars are retained because the live queue uses
- * disk-backed source files that may be consumed after the HTTP call returns.
+ * either fails before the live adapter is called, or writes a report-safe result after the adapter
+ * accepts the insertion request. A post-queue verification failure writes a sanitized partial
+ * result before propagating the failure so protected automation can retain mutation-specific retry
+ * evidence. Staged sidecars are retained because the live queue uses disk-backed source files that
+ * may be consumed after the HTTP call returns.
  */
 final class LiveUskPublicationService {
   /** Public Crypta URI scheme used by catalog sources. */
@@ -52,6 +54,19 @@ final class LiveUskPublicationService {
 
   /** Status used when the caller did not request immediate public-source fetch verification. */
   private static final String POST_PUBLISH_NOT_REQUESTED = "not_requested";
+
+  /** Insert status recorded after the localhost daemon accepts the directory queue request. */
+  private static final String INSERT_QUEUED = "queued";
+
+  /** Verification status recorded when a public-source fetch fails after queue acceptance. */
+  private static final String POST_PUBLISH_FAILED = "failed";
+
+  /** Scheduler status recorded because live publication does not run a scheduler refresh. */
+  private static final String SCHEDULER_REFRESH_NOT_RUN = "not_run";
+
+  /** Path-free warning identifying a failed post-queue public fetch. */
+  private static final String POST_PUBLISH_FAILED_WARNING =
+      "post_publish_fetch_verification_failed";
 
   /**
    * Path-free warning recorded whenever disk-backed sidecars remain available for the live queue.
@@ -86,7 +101,6 @@ final class LiveUskPublicationService {
     String formPassword = requireFormPassword(request.formPassword());
     String publicSignatureSource = publicSignatureSource(inputs.catalogSource());
     LiveUskPublicationResultWriter.preflightWritableOutput(inputs.output());
-    List<String> cleanupWarnings = new ArrayList<>();
     Path stagingDirectory = stageSidecars(inputs);
     LiveUskPublishRequest publishRequest =
         LiveUskPublishRequest.builder()
@@ -106,36 +120,69 @@ final class LiveUskPublicationService {
       response = publisher.publish(publishRequest);
     } catch (IOException exception) {
       cleanupStagingAfterFailedPublish(stagingDirectory, exception);
+      if (exception instanceof LiveUskPublishException) {
+        LiveUskPublishResponse failedResponse =
+            new LiveUskPublishResponse(
+                INSERT_QUEUED,
+                INSERT_QUEUED,
+                Optional.empty(),
+                POST_PUBLISH_FAILED,
+                SCHEDULER_REFRESH_NOT_RUN,
+                List.of(POST_PUBLISH_FAILED_WARNING));
+        LiveUskPublicationResultWriter.write(
+            publicationResult(inputs, publicSignatureSource, failedResponse, true));
+      }
       throw exception;
     }
-    cleanupWarnings.add(STAGING_RETAINED_WARNING);
+    LiveUskPublicationResult result =
+        publicationResult(inputs, publicSignatureSource, response, request.verifyLiveFetch());
+    LiveUskPublicationResultWriter.write(result);
+    return result;
+  }
+
+  /**
+   * Builds one secret-free result from validated sidecars and a publisher response.
+   *
+   * <p>The helper is shared by successful publication and post-queue failure handling so both paths
+   * bind the same catalog, signature, signer, public source, and edition. It adds only fixed
+   * path-free warnings and never reads from the private insert URI, form password, staging path, or
+   * exception message.
+   *
+   * @param inputs validated signed catalog and output metadata
+   * @param publicSignatureSource public sibling signature source
+   * @param response sanitized publisher outcome
+   * @param verifyLiveFetch whether immediate public fetch verification was requested
+   * @return report-safe live publication result
+   */
+  private static LiveUskPublicationResult publicationResult(
+      ValidatedPublicationInputs inputs,
+      String publicSignatureSource,
+      LiveUskPublishResponse response,
+      boolean verifyLiveFetch) {
     List<String> warnings = new ArrayList<>(response.warnings());
-    warnings.addAll(cleanupWarnings);
-    if (!request.verifyLiveFetch()
+    warnings.add(STAGING_RETAINED_WARNING);
+    if (!verifyLiveFetch
         && POST_PUBLISH_NOT_REQUESTED.equals(response.postPublishVerificationStatus())) {
       warnings.add("post_publish_fetch_verification_not_requested");
     }
-    LiveUskPublicationResult result =
-        new LiveUskPublicationResult(
-            inputs.catalog().catalogId(),
-            AppTestRedactor.fileName(inputs.catalogFile()),
-            AppTestRedactor.fileName(inputs.catalogSignatureFile()),
-            inputs.catalogSource(),
-            publicSignatureSource,
-            response.resolvedCatalogSource(),
-            edition(response.resolvedCatalogSource().orElse(inputs.catalogSource())),
-            inputs.catalogSha256(),
-            inputs.signatureSha256(),
-            inputs.signature().keyId(),
-            inputs.catalog().entries().size(),
-            response.catalogInsertStatus(),
-            response.signatureInsertStatus(),
-            response.postPublishVerificationStatus(),
-            response.schedulerRefreshVerificationStatus(),
-            sanitizeWarnings(warnings),
-            inputs.output());
-    LiveUskPublicationResultWriter.write(result);
-    return result;
+    return new LiveUskPublicationResult(
+        inputs.catalog().catalogId(),
+        AppTestRedactor.fileName(inputs.catalogFile()),
+        AppTestRedactor.fileName(inputs.catalogSignatureFile()),
+        inputs.catalogSource(),
+        publicSignatureSource,
+        response.resolvedCatalogSource(),
+        edition(response.resolvedCatalogSource().orElse(inputs.catalogSource())),
+        inputs.catalogSha256(),
+        inputs.signatureSha256(),
+        inputs.signature().keyId(),
+        inputs.catalog().entries().size(),
+        response.catalogInsertStatus(),
+        response.signatureInsertStatus(),
+        response.postPublishVerificationStatus(),
+        response.schedulerRefreshVerificationStatus(),
+        sanitizeWarnings(warnings),
+        inputs.output());
   }
 
   /**

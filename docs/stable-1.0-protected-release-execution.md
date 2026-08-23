@@ -122,6 +122,7 @@ Only names and purposes belong in operator records. Never record values.
 | GA publication | `LEUMOR_GITHUB_TOKEN` | The only token authorized for tag, draft Release, asset, and Release-finalization mutations. It must belong to `leumor`. |
 | GA publication | `STABLE_CATALOG_TRUSTED_KEYS_BASE64` | Public trusted catalog-key registry used to verify the exact catalog targets. |
 | Closeout operator | `GH_TOKEN` | Read-only GitHub API authentication of every retained protected run/attempt/artifact. It must authenticate as `leumor`; use a token with repository Actions metadata read access and no release-mutation purpose. |
+| Protected closeout workflow | `CRYPTAD_PROTECTED_RELEASE_READ_TOKEN` | Protected-environment materialization of that same read-only `leumor` credential. It is scoped only to the final PR-291 verification step and is not a publication or release-mutation token. |
 
 On the hosted Linux runner, base64 materialization is the normal key-file route. A `*_FILE` value
 is valid only when a separately trusted setup has placed that readable file on the runner. Do not
@@ -408,6 +409,16 @@ python3 tools/release-certification/certify.py stable-protected-release \
   --execution-contract build/protected-release/stable-1.0-protected-release.json
 ```
 
+For the PR-293 bootstrap root, dispatch
+`.github/workflows/stable-1.0-protected-release-closeout.yml` with that reviewed contract and a
+closed aggregate describing every exact contract-bound member and raw Actions ZIP. The workflow
+authenticates each producer run and artifact, recreates only the contract-declared repository
+paths, and invokes the same command above with a read-only token authenticated as `leumor`. Its
+contract must claim `publicly-observed` and leave both optional catalog-authority selections null;
+otherwise PR-291 and PR-293 would depend on each other. The resulting canonical artifact supplies
+the final PR-291 summary to the first PR-293 ceremony. The RC preflight or `rc-dispatch` summary is
+not eligible.
+
 Without `--out-dir`, closeout writes its JSON, Markdown, and redaction report beneath
 `build/release-certification/<execution-id>/stable-protected-release/closeout/`. It does not modify
 the exact preflight summary bound by `operationEvidence.preflight`; subsequent closeout runs must
@@ -481,6 +492,33 @@ stale, wrong-repository, wrong-commit, wrong-run, wrong-attempt, or wrong-digest
 rejected. Independent reproducibility remains `pending` until a concrete reviewed external
 provider profile, real adapter verification, protected coordinator coordinate, and exact retained
 PR-292 artifact exist and authenticate successfully.
+
+## Catalog-authority integration
+
+PR-291 remains the protected release root for Stable catalog authority. When a release contract
+selects catalog-authority evidence, closeout must authenticate the exact PR-293 summary and its
+protected workflow coordinates, then require its release ID, build, source commit, selected RC,
+freeze/product identity, catalog and detached-signature subject, and PR-292 digest to match this
+execution exactly. A locally generated summary, workflow definition, fixture ceremony, or
+self-digested receipt does not advance protected release state.
+
+The local PR-293 command deliberately leaves every non-fixture closeout non-operational. Only
+PR-291 closeout may promote a passing exact artifact after authenticating its workflow run,
+protected closeout environment, artifact name and digest, candidate, PR-291 root, PR-292 result,
+and frozen catalog subject. That boundary can derive `mirrors-observed` from the complete retained
+network-primary and independent-mirror receipt set. It does not infer that the separate public
+key-transparency publication occurred.
+
+Catalog-authority closeout adds facts monotonically; it never rewrites the frozen catalog or an
+already retained PR-291 record. Historical pre-PR-293 executions remain valid under their original
+contract and report the newer ceremony, network-primary, mirror, drill, and transparency facts as
+not selected or pending. Future maintenance, security-hotfix, catalog-key recovery, and Phase 12
+closeout authorities may require the authenticated PR-293 handoff explicitly.
+
+See [Stable 1.0 catalog publication and key ceremony](stable-1.0-catalog-publication-and-key-ceremony.md)
+for the separate approval, custody, USK publication, mirror observation, rollback, and redaction
+boundaries. Merging that implementation is not evidence that any of those protected operations
+occurred.
 
 ## Stop conditions and non-goals
 

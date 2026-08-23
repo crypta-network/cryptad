@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-catalog-publication-plan-v1.schema.json",
+  "title": "Stable 1.0 catalog network publication plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "release",
+    "bindings",
+    "policyDigest",
+    "keysetDigest",
+    "catalog",
+    "networkPrimary",
+    "mirrors",
+    "rollback",
+    "mutationBoundary",
+    "sideEffectFree",
+    "planDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-catalog-publication-plan"},
+    "release": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/release"},
+    "bindings": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/bindings"},
+    "policyDigest": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/digest"},
+    "keysetDigest": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/digest"},
+    "catalog": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/catalog"},
+    "networkPrimary": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/location"},
+    "mirrors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/location"}
+    },
+    "rollback": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/rollback"},
+    "mutationBoundary": {"const": "protected-live-usk-publication-only"},
+    "sideEffectFree": {"const": true},
+    "planDigest": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/digest"}
+  }
+}

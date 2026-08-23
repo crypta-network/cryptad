@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-public-key-transparency-v1.schema.json",
+  "title": "Stable 1.0 public key transparency artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "keysetVersion",
+    "keysetDigest",
+    "previousKeysetDigest",
+    "ceremonyId",
+    "ceremonyType",
+    "governance",
+    "release",
+    "bindings",
+    "keys",
+    "catalog",
+    "locations",
+    "transparencySigningKeyId",
+    "recoveryAuthorization",
+    "generatedAt",
+    "effectiveAt",
+    "selfDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-public-key-transparency"},
+    "keysetVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+    "keysetDigest": {"$ref": "#/$defs/digest"},
+    "previousKeysetDigest": {"$ref": "#/$defs/nullableDigest"},
+    "ceremonyId": {"$ref": "#/$defs/identifier"},
+    "ceremonyType": {"enum": ["genesis", "planned-rotation", "compromise-recovery", "emergency-replacement"]},
+    "governance": {"$ref": "#/$defs/governance"},
+    "release": {"$ref": "#/$defs/release"},
+    "bindings": {"$ref": "#/$defs/bindings"},
+    "keys": {"type": "array", "minItems": 4, "maxItems": 64, "items": {"$ref": "#/$defs/key"}},
+    "catalog": {"$ref": "#/$defs/catalog"},
+    "locations": {"type": "array", "minItems": 2, "maxItems": 9, "items": {"$ref": "#/$defs/location"}},
+    "transparencySigningKeyId": {"$ref": "#/$defs/identifier"},
+    "recoveryAuthorization": {"$ref": "#/$defs/recoveryAuthorization"},
+    "generatedAt": {"$ref": "#/$defs/timestamp"},
+    "effectiveAt": {"$ref": "#/$defs/timestamp"},
+    "selfDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "nullableIdentifier": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 40},
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preparedAt", "effectiveAt", "custodyClass", "approvalQuorum"],
+      "properties": {
+        "preparedAt": {"$ref": "#/$defs/timestamp"},
+        "effectiveAt": {"$ref": "#/$defs/timestamp"},
+        "custodyClass": {"enum": ["offline-quorum", "protected-hardware", "fixture-memory-only"]},
+        "approvalQuorum": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requiredApprovals", "approvalRole", "protectedEnvironment"],
+          "properties": {
+            "requiredApprovals": {"type": "integer", "minimum": 1, "maximum": 16},
+            "approvalRole": {"$ref": "#/$defs/identifier"},
+            "protectedEnvironment": {"$ref": "#/$defs/identifier"}
+          }
+        }
+      }
+    },
+    "recoveryAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorizationType", "signingRecoveryKeyId", "statementDigest", "signatureDigest", "protectedRecoveryQuorumDigest"],
+      "properties": {
+        "authorizationType": {"enum": ["recovery-signature", "protected-recovery-quorum"]},
+        "signingRecoveryKeyId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+        "statementDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/nullableDigest"},
+        "protectedRecoveryQuorumDigest": {"$ref": "#/$defs/nullableDigest"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "sourceCommit"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/identifier"},
+        "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedReleaseSummaryDigest", "protectedReleaseContractDigest", "independentReproducibilitySummaryDigest", "independentReproducibilityResultDigest", "independentSubjectInventoryDigest"],
+      "properties": {
+        "protectedReleaseSummaryDigest": {"$ref": "#/$defs/digest"},
+        "protectedReleaseContractDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilitySummaryDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityResultDigest": {"$ref": "#/$defs/digest"},
+        "independentSubjectInventoryDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "role", "algorithm", "publicKeySpkiBase64", "publicKeyFingerprintSha256", "lifecycle", "validFrom", "validUntil", "predecessorKeyId", "successorKeyId", "compromiseState", "proofType", "proofCeremonyId", "proofKeysetDigest", "proofStatementDigest", "proofSignatureDigest", "publicTransparencyEligible"],
+      "properties": {
+        "keyId": {"$ref": "#/$defs/identifier"},
+        "role": {"enum": ["catalog-signing", "first-party-app-signing", "app-reviewer", "offline-recovery"]},
+        "algorithm": {"const": "Ed25519"},
+        "publicKeySpkiBase64": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"},
+        "publicKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "lifecycle": {"enum": ["staged", "active", "retiring", "retired", "revoked"]},
+        "validFrom": {"$ref": "#/$defs/timestamp"},
+        "validUntil": {"$ref": "#/$defs/timestamp"},
+        "predecessorKeyId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+        "successorKeyId": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/identifier"}]},
+        "compromiseState": {"enum": ["uncompromised", "suspected", "compromised"]},
+        "proofType": {"enum": ["current-keyset", "retained-historical", "not-applicable-recovery"]},
+        "proofCeremonyId": {"$ref": "#/$defs/nullableIdentifier"},
+        "proofKeysetDigest": {"$ref": "#/$defs/nullableDigest"},
+        "proofStatementDigest": {"$ref": "#/$defs/nullableDigest"},
+        "proofSignatureDigest": {"$ref": "#/$defs/nullableDigest"},
+        "publicTransparencyEligible": {"type": "boolean"}
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "channel", "revision", "uskEdition", "catalogDigest", "catalogSize", "signatureDigest", "signatureSize", "signingKeyId", "signingKeyFingerprintSha256"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/identifier"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "uskEdition": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogSize": {"type": "integer", "minimum": 1, "maximum": 1048576},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureSize": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "signingKeyId": {"$ref": "#/$defs/identifier"},
+        "signingKeyFingerprintSha256": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locationId", "locationType", "publicUri", "operatorId", "providerId", "controlPlaneId", "trustAuthority"],
+      "properties": {
+        "locationId": {"$ref": "#/$defs/identifier"},
+        "locationType": {"enum": ["network-primary", "public-web-mirror", "network-mirror"]},
+        "publicUri": {"type": "string", "minLength": 12, "maxLength": 2048},
+        "operatorId": {"$ref": "#/$defs/identifier"},
+        "providerId": {"$ref": "#/$defs/identifier"},
+        "controlPlaneId": {"$ref": "#/$defs/identifier"},
+        "trustAuthority": {"const": false}
+      }
+    }
+  }
+}

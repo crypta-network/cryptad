@@ -37,6 +37,27 @@ REQUIRED_DRILLS = (
     "support-bundle-intake-redaction",
 )
 DRILL_OUTPUT_FILENAMES = {scenario: f"{scenario}.json" for scenario in REQUIRED_DRILLS}
+CATALOG_AUTHORITY_SCENARIOS = ("catalog-signing-key-rotation",)
+CATALOG_AUTHORITY_STATES = (
+    "rotation-drill-complete",
+    "rollback-drill-complete",
+    "public-key-transparency-published",
+)
+CATALOG_AUTHORITY_BINDING_FIELDS = frozenset(
+    {
+        "schemaVersion",
+        "kind",
+        "summaryDigest",
+        "protectedEvidenceDigest",
+        "state",
+        "keysetDigest",
+        "transparencyDigest",
+        "catalogSigningKeyId",
+        "catalogSigningKeyFingerprintSha256",
+        "fixtureOnly",
+        "operational",
+    }
+)
 REQUIRED_DRILL_FIELDS = (
     "id",
     "severity",
@@ -757,11 +778,12 @@ def drill_artifact(
     mode: str,
     evidence_mode: str,
     fixture_only: bool,
+    catalog_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     redaction_findings = forbidden_findings(*json_string_values(drill))
     redaction_findings.extend(forbidden_json_key_findings(drill))
     redaction_status = "pass" if not redaction_findings else "fail"
-    return {
+    artifact = {
         "kind": "cryptad-security-response-drill",
         "schemaVersion": DRILL_ARTIFACT_SCHEMA_VERSION,
         "scenario": scenario,
@@ -791,6 +813,60 @@ def drill_artifact(
             "findings": redaction_findings,
         },
     }
+    if catalog_authority is not None:
+        artifact["catalogAuthority"] = catalog_authority
+    return artifact
+
+
+def validate_catalog_authority_binding(
+    scenario: Any, binding: Any
+) -> list[str]:
+    """Validate an optionally selected, public-safe PR-293 evidence binding."""
+
+    if binding is None:
+        return []
+    if scenario not in CATALOG_AUTHORITY_SCENARIOS:
+        return ["catalog-authority evidence is selected for an unrelated drill"]
+    if not isinstance(binding, dict):
+        return ["catalog-authority evidence binding must be an object"]
+    errors: list[str] = []
+    if set(binding) != CATALOG_AUTHORITY_BINDING_FIELDS:
+        errors.append("catalog-authority evidence binding fields are not the closed set")
+    if binding.get("schemaVersion") != 1:
+        errors.append("catalog-authority evidence binding schemaVersion must be 1")
+    if binding.get("kind") != "stable-1.0-catalog-authority-evidence-binding":
+        errors.append("catalog-authority evidence binding kind is invalid")
+    for field in (
+        "summaryDigest",
+        "protectedEvidenceDigest",
+        "keysetDigest",
+        "transparencyDigest",
+        "catalogSigningKeyFingerprintSha256",
+    ):
+        value = binding.get(field)
+        if (
+            not isinstance(value, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+        ):
+            errors.append(f"catalog-authority {field} is not a canonical SHA-256 digest")
+        elif value == "sha256:" + "0" * 64:
+            errors.append(f"catalog-authority {field} must be bound")
+    if binding.get("summaryDigest") == binding.get("protectedEvidenceDigest"):
+        errors.append("catalog-authority summary and protected evidence must be distinct")
+    if binding.get("state") not in CATALOG_AUTHORITY_STATES:
+        errors.append("catalog-authority evidence state does not authorize a rotation drill")
+    key_id = binding.get("catalogSigningKeyId")
+    if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+        errors.append("catalog-authority catalog signing key id is invalid")
+    if (
+        binding.get("fixtureOnly") is not False
+        or binding.get("operational") is not True
+    ):
+        errors.append("catalog-authority drill evidence must be authentic and operational")
+    errors.append(
+        "a local catalog-authority binding cannot authenticate protected operational evidence"
+    )
+    return errors
 
 
 def drill_summary_non_release(mode: str, fixture_only: bool) -> bool:
@@ -806,12 +882,21 @@ def drill_create(
     mode: str = "release-candidate",
     evidence_mode: str = "release-operations",
     fixture_only: bool = False,
+    catalog_authority_path: Path | None = None,
 ) -> dict[str, Any]:
     model = load_model(model_path)
     drills = model_drills(model)
     drill = drills.get(scenario)
     if drill is None:
         raise ValueError(f"unknown scenario: {scenario}")
+    catalog_authority = (
+        load_model(catalog_authority_path)
+        if catalog_authority_path is not None
+        else None
+    )
+    binding_errors = validate_catalog_authority_binding(scenario, catalog_authority)
+    if binding_errors:
+        raise ValueError("; ".join(binding_errors))
     artifact = drill_artifact(
         model,
         drill,
@@ -821,6 +906,7 @@ def drill_create(
         mode,
         evidence_mode,
         fixture_only,
+        catalog_authority,
     )
     write_json(out, artifact)
     return artifact
@@ -855,6 +941,9 @@ def validate_v2_drill_artifact(value: dict[str, Any], model_path: Path = DEFAULT
             errors.append(f"runbook model could not be loaded: {exc}")
     if value.get("kind") != "cryptad-security-response-drill":
         errors.append("kind must be cryptad-security-response-drill")
+    errors.extend(
+        validate_catalog_authority_binding(scenario, value.get("catalogAuthority"))
+    )
     if value.get("schemaVersion") != DRILL_ARTIFACT_SCHEMA_VERSION:
         errors.append(f"schemaVersion must be {DRILL_ARTIFACT_SCHEMA_VERSION}")
     if normalize_status(value.get("status")) != "pass":
@@ -1313,7 +1402,15 @@ def drill_run_all(
     fixture_only: bool = False,
     max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     release_notes_out: Path | None = None,
+    catalog_authority_path: Path | None = None,
 ) -> dict[str, Any]:
+    if catalog_authority_path is not None:
+        catalog_authority = load_model(catalog_authority_path)
+        binding_errors = validate_catalog_authority_binding(
+            CATALOG_AUTHORITY_SCENARIOS[0], catalog_authority
+        )
+        if binding_errors:
+            raise ValueError("; ".join(binding_errors))
     timestamp = generated_at or utc_now()
     artifacts: list[tuple[Path, dict[str, Any], dict[str, Any]]] = []
     artifact_values: list[dict[str, Any]] = []
@@ -1328,6 +1425,11 @@ def drill_run_all(
             mode=mode,
             evidence_mode=evidence_mode,
             fixture_only=fixture_only,
+            catalog_authority_path=(
+                catalog_authority_path
+                if scenario in CATALOG_AUTHORITY_SCENARIOS
+                else None
+            ),
         )
         verification = drill_verify(path, model_path)
         artifacts.append((path, artifact, verification))
@@ -2159,6 +2261,11 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--mode", choices=DRILL_MODES, default="release-candidate")
     create.add_argument("--evidence-mode", default="release-operations")
     create.add_argument("--fixture-only", action="store_true")
+    create.add_argument(
+        "--catalog-authority-binding",
+        type=Path,
+        help="Reserved for authenticated protected intake; local bindings are rejected.",
+    )
     verify_drill = drill_sub.add_parser("verify", help="Verify a drill artifact or model.")
     verify_drill.add_argument("--input", type=Path, required=True)
     verify_drill.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -2173,6 +2280,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_all.add_argument("--fixture-only", action="store_true")
     run_all.add_argument("--max-age-days", type=int, default=DEFAULT_MAX_AGE_DAYS)
     run_all.add_argument("--release-notes-out", type=Path)
+    run_all.add_argument(
+        "--catalog-authority-binding",
+        type=Path,
+        help="Reserved for authenticated protected intake; local bindings are rejected.",
+    )
     verify_all = drill_sub.add_parser("verify-all", help="Verify all required drill artifacts and write a summary.")
     verify_all.add_argument("--input-dir", type=Path, required=True)
     verify_all.add_argument("--summary-out", type=Path, required=True)
@@ -2215,6 +2327,7 @@ def main(argv: list[str] | None = None) -> int:
                 mode=args.mode,
                 evidence_mode=args.evidence_mode,
                 fixture_only=args.fixture_only,
+                catalog_authority_path=args.catalog_authority_binding,
             )
             print(f"created {args.out}")
             return 0
@@ -2234,6 +2347,7 @@ def main(argv: list[str] | None = None) -> int:
                 fixture_only=args.fixture_only,
                 max_age_days=args.max_age_days,
                 release_notes_out=args.release_notes_out,
+                catalog_authority_path=args.catalog_authority_binding,
             )
             print(json.dumps(result, indent=2, sort_keys=True))
             return 0 if result["status"] == "pass" else 1

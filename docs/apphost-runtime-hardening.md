@@ -11,7 +11,8 @@ unsupported hosts continue to report best-effort or unsupported status honestly.
 
 The current boundary provides:
 
-- signed bundle and catalog verification before install and update;
+- signed bundle and catalog verification before install and update, plus lifecycle-aware retained
+  bundle verification before launch, automatic restart, and rollback;
 - per-app install, data, cache, and run directories;
 - a minimal launch environment with AppHost variables only;
 - combined stdout/stderr capture in an app-owned `process.log`;
@@ -246,7 +247,11 @@ Defaults preserve existing behavior: `policy=never`, `maxAttempts=0`, and `backo
 
 When `policy=on-failure`, AppHost restarts only after a non-zero process exit, only within the
 current daemon session, and only up to `app.restart.maxAttempts`. Each restart gets a fresh launch
-token. Explicit operator stop suppresses automatic restart.
+token. Before manual launch or automatic restart creates a token, log, mutable directory, or child
+process, AppHost reverifies the exact installed bundle with the historical key-lifecycle policy.
+Retiring or retired signing keys remain eligible only inside their declared support window;
+revoked, compromised, or out-of-window trust fails closed and blocks the launch. Explicit operator
+stop suppresses automatic restart.
 
 AppHost also applies a bounded rolling restart-storm guard. The default guard suppresses automatic
 restart after five restart attempts within five minutes and records a runtime warning. Manual start

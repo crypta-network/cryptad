@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/stable-1.0-catalog-rotation-drill-v1.schema.json",
+  "title": "Stable 1.0 catalog rotation and rollback drill evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "fixtureOnly", "operational", "status", "drills", "blockers"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-catalog-rotation-drill"},
+    "fixtureOnly": {"type": "boolean"},
+    "operational": {"const": false},
+    "status": {"enum": ["pass", "fail", "not-run"]},
+    "drills": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/drill"}
+    },
+    "blockers": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    }
+  }
+}

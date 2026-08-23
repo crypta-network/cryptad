@@ -16,17 +16,18 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  */
 final class AppCatalogInstallPlanner {
   private final AppCatalogSourceStore sourceStore;
-  private final AppCatalogManager.TrustedKeyProvider trustedKeyProvider;
+  private final AppCatalogManager.TrustedKeyProvider trustedBundleKeyProvider;
   private final AppCatalogArtifactDownloader artifactDownloader;
   private final AppCatalogBundleExtractor bundleExtractor;
 
   AppCatalogInstallPlanner(
       AppCatalogSourceStore sourceStore,
-      AppCatalogManager.TrustedKeyProvider trustedKeyProvider,
+      AppCatalogManager.TrustedKeyProvider trustedBundleKeyProvider,
       AppCatalogArtifactDownloader artifactDownloader,
       AppCatalogBundleExtractor bundleExtractor) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
-    this.trustedKeyProvider = Objects.requireNonNull(trustedKeyProvider, "trustedKeyProvider");
+    this.trustedBundleKeyProvider =
+        Objects.requireNonNull(trustedBundleKeyProvider, "trustedBundleKeyProvider");
     this.artifactDownloader = Objects.requireNonNull(artifactDownloader, "artifactDownloader");
     this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
   }
@@ -58,6 +59,6 @@ final class AppCatalogInstallPlanner {
   }
 
   private TrustedAppKeys trustedKeys() throws IOException {
-    return trustedKeyProvider.trustedKeys();
+    return trustedBundleKeyProvider.trustedKeys();
   }
 }

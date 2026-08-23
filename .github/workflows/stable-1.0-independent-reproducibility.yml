@@ -1214,6 +1214,18 @@ jobs:
           test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-summary.json"
           test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-report.md"
           test -f "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-redaction-report.json"
+          inventory_source="build/independent-reproducibility-inputs/authenticated-inputs/stable-1.0-release-subject-inventory.json"
+          inventory_output="$OUTPUT_ROOT/stable-1.0-release-subject-inventory.json"
+          test -f "$inventory_source"
+          test ! -L "$inventory_source"
+          test "$(stat -c '%h' "$inventory_source")" -eq 1
+          install -m 0444 "$inventory_source" "$inventory_output"
+          cmp -s -- "$inventory_source" "$inventory_output"
+          inventory_digest="$(jq -er .subjectInventoryDigest "$inventory_output")"
+          jq -e --arg digest "$inventory_digest" \
+            '.subjectInventoryDigest == $digest' \
+            "$OUTPUT_ROOT/stable-1.0-independent-reproducibility-summary.json" \
+            >/dev/null
 
       - name: Upload authenticated external receipt
         if: inputs.operation == 'verify-external-receipt'
@@ -1266,6 +1278,7 @@ jobs:
             build/independent-reproducibility-output/stable-1.0-independent-reproducibility-summary.json
             build/independent-reproducibility-output/stable-1.0-independent-reproducibility-report.md
             build/independent-reproducibility-output/stable-1.0-independent-reproducibility-redaction-report.json
+            build/independent-reproducibility-output/stable-1.0-release-subject-inventory.json
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
