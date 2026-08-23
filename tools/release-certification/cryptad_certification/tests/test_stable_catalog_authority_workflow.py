@@ -1323,6 +1323,11 @@ class StableCatalogAuthorityWorkflowTest(unittest.TestCase):
         self.assertIn("observation._collection_window(", mirror)
         self.assertIn("observation._health_errors(", mirror)
         self.assertIn("observation._revision_digest(catalog, signature)", mirror)
+        self.assertIn(
+            "Scheduler did not report a fresh exact primary refresh and configured mirror fallback.",
+            mirror,
+        )
+        self.assertNotIn("fresh exact primary and mirror refreshes", mirror)
         self.assertIn('--collection-started-at "$COLLECTION_STARTED_AT"', mirror)
         self.assertIn('--collection-completed-at "$COLLECTION_COMPLETED_AT"', mirror)
         self.assertNotIn(

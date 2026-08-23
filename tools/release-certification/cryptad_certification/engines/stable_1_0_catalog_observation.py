@@ -85,10 +85,19 @@ def _health_errors(
     sources = body.get("sourceHealth")
     if not isinstance(sources, list):
         return errors + ["scheduler health does not contain bounded source observations"]
-    exact: list[dict[str, Any]] = []
+    mirrors = body.get("mirrors")
+    configured_mirror = isinstance(mirrors, list) and any(
+        isinstance(row, dict)
+        and row.get("role") == "mirror"
+        and row.get("enabled") is True
+        for row in mirrors
+    )
+    fresh_exact_primary = False
     for row in sources:
+        if not isinstance(row, dict):
+            continue
         if (
-            not isinstance(row, dict)
+            row.get("role") != "primary"
             or row.get("lastFetchStatus") != "success"
             or row.get("lastCatalogDigest") != revision_digest
             or row.get("lastSignatureKeyId") != subject["signingKeyId"]
@@ -103,12 +112,13 @@ def _health_errors(
             attempted_at == successful_at
             and collection_started_at <= successful_at <= collection_completed_at
         ):
-            exact.append(row)
-    roles = {row.get("role") for row in exact}
-    if "primary" not in roles or "mirror" not in roles:
+            fresh_exact_primary = True
+    if not configured_mirror:
+        errors.append("scheduler health does not expose a configured mirror fallback")
+    if not fresh_exact_primary:
         errors.append(
-            "scheduler health lacks fresh exact successful primary and mirror refreshes "
-            "inside the protected collection window"
+            "scheduler health lacks a fresh exact successful primary refresh inside the "
+            "protected collection window"
         )
     return errors
 

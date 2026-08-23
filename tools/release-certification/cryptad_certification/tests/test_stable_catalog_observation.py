@@ -67,6 +67,13 @@ class StableCatalogObservationTest(unittest.TestCase):
                 "catalogDigest": self.revision_digest,
                 "signatureKeyId": subject["signingKeyId"],
                 "status": "success",
+                "mirrors": [
+                    {
+                        "mirrorId": "independent-web-mirror",
+                        "role": "mirror",
+                        "enabled": True,
+                    }
+                ],
                 "sourceHealth": [
                     {
                         "role": role,
@@ -152,38 +159,71 @@ class StableCatalogObservationTest(unittest.TestCase):
                     self.collection_completed_at,
                 )
 
-    def test_construct_receipt_when_scheduler_has_no_exact_mirror_expect_rejection(
+    def test_construct_receipt_when_scheduler_mirror_is_not_attempted_expect_pass(
         self,
     ) -> None:
         health = copy.deepcopy(self.health)
-        health["health"]["sourceHealth"] = health["health"]["sourceHealth"][:1]
+        mirror = health["health"]["sourceHealth"][1]
+        mirror.update(
+            {
+                "lastFetchStatus": "skipped",
+                "lastAttemptAt": None,
+                "lastSuccessfulRefreshAt": None,
+                "lastCatalogDigest": None,
+                "lastSignatureKeyId": None,
+            }
+        )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             evidence, fetched = self._write_sidecars(root)
 
-            with self.assertRaisesRegex(ValueError, "primary and mirror"):
-                observation.construct_receipt(
-                    self.manifest,
-                    self.plan,
-                    self.live,
-                    evidence,
-                    fetched,
-                    health,
-                    self.observed_at,
-                    self.collection_started_at,
-                    self.collection_completed_at,
-                )
+            receipt = observation.construct_receipt(
+                self.manifest,
+                self.plan,
+                self.live,
+                evidence,
+                fetched,
+                health,
+                self.observed_at,
+                self.collection_started_at,
+                self.collection_completed_at,
+            )
+
+        self.assertEqual("pass", receipt["schedulerRefreshVerificationStatus"])
+
+    def test_construct_receipt_when_scheduler_has_no_enabled_mirror_fallback_expect_rejection(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence, fetched = self._write_sidecars(Path(directory))
+            for mirrors in ([], [{"role": "mirror", "enabled": False}]):
+                with self.subTest(mirrors=mirrors):
+                    health = copy.deepcopy(self.health)
+                    health["health"]["mirrors"] = mirrors
+
+                    with self.assertRaisesRegex(ValueError, "configured mirror fallback"):
+                        observation.construct_receipt(
+                            self.manifest,
+                            self.plan,
+                            self.live,
+                            evidence,
+                            fetched,
+                            health,
+                            self.observed_at,
+                            self.collection_started_at,
+                            self.collection_completed_at,
+                        )
 
     def test_construct_receipt_when_scheduler_success_is_stale_expect_rejection(self) -> None:
         health = copy.deepcopy(self.health)
-        health["health"]["sourceHealth"][1]["lastAttemptAt"] = "2026-08-22T01:59:59Z"
-        health["health"]["sourceHealth"][1]["lastSuccessfulRefreshAt"] = (
+        health["health"]["sourceHealth"][0]["lastAttemptAt"] = "2026-08-22T01:59:59Z"
+        health["health"]["sourceHealth"][0]["lastSuccessfulRefreshAt"] = (
             "2026-08-22T01:59:59Z"
         )
         with tempfile.TemporaryDirectory() as directory:
             evidence, fetched = self._write_sidecars(Path(directory))
 
-            with self.assertRaisesRegex(ValueError, "fresh exact successful primary and mirror"):
+            with self.assertRaisesRegex(ValueError, "fresh exact successful primary refresh"):
                 observation.construct_receipt(
                     self.manifest,
                     self.plan,
@@ -213,7 +253,7 @@ class StableCatalogObservationTest(unittest.TestCase):
                     health["health"]["sourceHealth"][0][field] = value
 
                     with self.assertRaisesRegex(
-                        ValueError, "fresh exact successful primary and mirror"
+                        ValueError, "fresh exact successful primary refresh"
                     ):
                         observation.construct_receipt(
                             self.manifest,

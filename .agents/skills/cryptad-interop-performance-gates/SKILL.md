@@ -896,7 +896,10 @@ network publication, mirror observation, and transition verification as distinct
 bind mirror observation to the protected collector's actual bounded execution window. Revalidate
 the reviewed observation time after environment/runner admission, require the catalog signer to
 remain active and valid through collection completion, reject scheduler refresh timestamps outside
-that window, and bound catalog/signature transfers before disk or memory acceptance. Keep
+that window, and bound catalog/signature transfers before disk or memory acceptance. Require a
+fresh exact primary scheduler refresh and a configured mirror fallback, but do not require a fresh
+mirror scheduler attempt after primary success: prove every mirror independently through the
+collector's exact catalog-and-signature fetches. Keep
 their evidence trees separated; never merge whole producer trees or let a local bundle stand in
 for them.
 The first mirror-observation receipt must come from the dedicated protected read-only collector,

@@ -464,7 +464,7 @@ jobs:
             sleep 10
           done
           if [[ "$scheduler_fresh" != true ]]; then
-            echo "::error::Scheduler did not report fresh exact primary and mirror refreshes."
+            echo "::error::Scheduler did not report a fresh exact primary refresh and configured mirror fallback."
             exit 1
           fi
           echo "collection_completed_at=$collection_completed_at" >> "$GITHUB_OUTPUT"

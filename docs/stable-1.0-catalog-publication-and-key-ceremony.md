@@ -358,9 +358,13 @@ cannot complete a drill. Keep these phases separate:
    Catalog transfers are limited to 1 MiB and detached signatures to 64 KiB before either a final
    file or an in-memory value is accepted.
 7. Verify scheduler/catalog refresh behavior through that preconfigured read-only observation
-   node. Exact successful primary and mirror refresh metadata must fall inside the protected
-   collector's actual start-to-completion window; persisted successes from an earlier observation
-   do not qualify. The collector has no insert capability or publication credentials.
+   node. An exact successful primary refresh must fall inside the protected collector's actual
+   start-to-completion window, and scheduler health must expose a configured mirror fallback;
+   persisted primary successes from an earlier observation do not qualify. Ordinary refresh stops
+   after a successful primary response, so mirror availability is proved separately by the
+   collector's exact catalog-and-signature fetch from every declared mirror rather than by
+   manufacturing a fallback scheduler attempt. The collector has no insert capability or
+   publication credentials.
 8. Run separately authorized rotation and rollback drills when required, then accept their exact
    evidence digests through `stable-1.0-catalog-drill-acceptance.yml`. Its independent release and
    security approval boundaries emit one closed bundle with six self-digested receipt rows. Both

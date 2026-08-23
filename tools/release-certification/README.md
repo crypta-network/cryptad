@@ -1254,8 +1254,11 @@ The first mirror receipt comes only from
 capability and generates the root-level receipt after exact primary, mirror, detached-signature,
 and scheduler checks. The dedicated collector revalidates its reviewed timestamp after protected
 admission, requires the active catalog signer to remain valid through actual collection completion,
-and accepts scheduler primary/mirror success only when both refresh timestamps fall within that
-collection window. The closed receipt binds both actual collection instants, and closeout
+and accepts scheduler refresh verification only when an exact primary success falls within that
+collection window and scheduler health exposes a configured mirror fallback. Normal refresh stops
+after primary success, so the collector proves mirror availability through its separate exact-byte
+catalog-and-signature fetches rather than requiring a synthetic fallback attempt. The closed receipt
+binds both actual collection instants, and closeout
 independently rechecks the signer against its completion instant. Its FProxy and HTTPS transfers
 are bounded to the schema's 1 MiB catalog and
 64 KiB signature limits before files or memory are accepted. The protected recovery-quorum
