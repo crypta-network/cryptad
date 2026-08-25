@@ -1,0 +1,148 @@
+name: Stable 1.0 third-party pilot evidence producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      pilot_id:
+        description: Closed pilot identity bound by execution.json
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected Cryptad source commit
+        required: true
+        type: string
+      evidence_url:
+        description: Canonical public HTTPS URL for the exact aggregate ZIP
+        required: true
+        type: string
+      evidence_digest:
+        description: Exact sha256 digest of the aggregate ZIP
+        required: true
+        type: string
+      evidence_size:
+        description: Exact byte size of the aggregate ZIP
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-1-0-third-party-pilot-evidence-${{ inputs.pilot_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  validate-dispatch:
+    name: Validate exact protected evidence request
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate source, operator, and public immutable coordinates
+        env:
+          INPUT_PILOT_ID: ${{ inputs.pilot_id }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_EVIDENCE_URL: ${{ inputs.evidence_url }}
+          INPUT_EVIDENCE_DIGEST: ${{ inputs.evidence_digest }}
+          INPUT_EVIDENCE_SIZE: ${{ inputs.evidence_size }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_PILOT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || ! "$INPUT_EVIDENCE_URL" =~ ^https://[^/?#]+/[^?#]+$ \
+                || ! "$INPUT_EVIDENCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$INPUT_EVIDENCE_SIZE" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo "::error::Dispatch is not bound to an exact protected source and public artifact."
+            exit 2
+          fi
+
+  produce-evidence:
+    name: Authenticate and confine exact pilot evidence
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-third-party-pilot-import
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - name: Authenticate download before exact-member extraction
+        env:
+          CRYPTAD_THIRD_PARTY_PILOT_EVIDENCE_URL: ${{ inputs.evidence_url }}
+          EXPECTED_DIGEST: ${{ inputs.evidence_digest }}
+          EXPECTED_SIZE: ${{ inputs.evidence_size }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_third_party_pilot_evidence_producer.py \
+            --expected-digest "$EXPECTED_DIGEST" \
+            --expected-size "$EXPECTED_SIZE" \
+            --archive "$RUNNER_TEMP/third-party-pilot-evidence.zip" \
+            --output-dir build/third-party-pilot-evidence
+      - name: Reject fixture topology and verify authenticated external handoff
+        env:
+          EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          jq -e \
+            '.pilotId == env.EXPECTED_PILOT_ID
+             and .repository.identity == "github.com/crypta-network/cryptad"
+             and .repository.sourceCommit == env.EXPECTED_SOURCE_COMMIT
+             and .fixtureOnly == false
+             and .selfTest == false' \
+            build/third-party-pilot-evidence/execution.json >/dev/null
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-external-handoff \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-import-verification
+      - name: Select canonical consumer artifact name
+        id: names
+        env:
+          PILOT_ID: ${{ inputs.pilot_id }}
+        run: |
+          set -euo pipefail
+          echo "artifact_name=stable-1-0-third-party-pilot-$PILOT_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - name: Upload exact authenticated pilot evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.artifact_name }}
+          path: build/third-party-pilot-evidence
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+      - name: Upload bounded non-canonical diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-evidence-failure-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-import-verification
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 7

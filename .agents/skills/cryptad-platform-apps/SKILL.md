@@ -19,6 +19,8 @@ Load only the docs needed for the change:
 - Third-party app submission checklist: `docs/third-party-app-submission-checklist.md`
 - Third-party app compatibility support window: `docs/platform-api-compatibility-support-window.md`
 - Third-party Hello Stable SDK example: `docs/examples/third-party-hello-stable.md`
+- Protected external third-party app pilot:
+  `docs/stable-1.0-external-third-party-app-pilot.md`
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
 - Platform API 1.0 stable baseline reference: `docs/platform-api-1.0-stable-reference.md`
@@ -414,6 +416,22 @@ Load only the docs needed for the change:
   source/key metadata, app-principal browser-session workflows, content/feed/profile/trust
   fixtures, optional app-service scoring, timing metadata, cleanup, and redaction without leaking
   secrets or becoming a normal CI dependency.
+- `tools/release-certification/certify.py stable-third-party-pilot` is the side-effect-free
+  external-pilot authenticator. Keep its `third-party-pilot.*` operational evidence separate from
+  sample-oriented `third-party-intake.*` rows. A fixture can reach only
+  `fixture-verification-complete`; operational completion requires signed external handoff,
+  PR-293 reviewer/catalog receipts, the bounded pilot publisher approval, the existing
+  live-network collector receipt, exact rollback/cleanup, and PR-291/292/293 roots.
+- External pilot trust uses a dedicated or ephemeral app registry and
+  `PilotPublisherVerificationPolicy`. Bind the exact normal Stable, canonical PR-293 catalog, and
+  pilot registry byte digests; keep all three roles disjoint by key id and public key. Pilot cleanup,
+  expiry, or revocation must disable only the approved external publisher, not ordinary Stable app
+  or catalog verification. Never add the publisher key silently to the normal Stable registry,
+  authorize another app/version/sidecar, or let intake `install-smoke` substitute for a live AppHost
+  drill.
+- External-pilot closeout must derive the expected PR-293 catalog subject from the authenticated
+  PR-291 selected RC, exact selected-RC freeze, and PR-292 subject inventory. Never use PR-293's own
+  closeout subject as its expected revision, edition, catalog/signature digest, or signer.
 - `tools/release-certification/certify.py app-platform-docs` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.

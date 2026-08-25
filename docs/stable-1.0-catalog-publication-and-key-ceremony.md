@@ -40,6 +40,12 @@ Evidence classifications remain distinct:
 A local JSON file, self-test, example manifest, workflow definition, or documentation statement
 cannot cross any of these boundaries.
 
+The [external third-party app pilot](stable-1.0-external-third-party-app-pilot.md) consumes this
+authority without extending it. PR-293 signs and observes a distinct beta catalog subject; the
+pilot coordinator receives only the public keyset and sanitized publication receipts. The external
+publisher key is held in a dedicated pilot app registry and must remain distinct from all four
+PR-293 roles. No pilot request can be relabeled as Stable publication.
+
 ## Key roles and custody
 
 The Stable ecosystem keyset is closed to four roles:

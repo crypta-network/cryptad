@@ -147,6 +147,12 @@ review decision. Keep the headings stable so release certification can detect th
       `third-party-intake.redaction` and is marked non-production when fixture/test material is
       used.
 
+For a selected external operational pilot, also complete
+[Stable 1.0 external third-party app pilot](stable-1.0-external-third-party-app-pilot.md). The pilot
+requires an immutable external source revision, authenticated workload identity, an app-bundle and
+developer attestation signed by the same approved publisher key, and protected receipts. Completing
+this checklist or the checked-in sample does not authenticate an external handoff or live drill.
+
 ## Resubmission requirements
 
 - [ ] Rejected or cautionary findings are addressed in the app bundle and review notes.

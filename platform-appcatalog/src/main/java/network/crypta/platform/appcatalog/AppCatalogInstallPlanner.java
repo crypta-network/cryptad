@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
-import network.crypta.platform.appdist.TrustedAppKeys;
 
 /**
  * Prepares and re-verifies staged app bundles selected from a verified catalog.
@@ -16,18 +15,18 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  */
 final class AppCatalogInstallPlanner {
   private final AppCatalogSourceStore sourceStore;
-  private final AppCatalogManager.TrustedKeyProvider trustedBundleKeyProvider;
+  private final AppCatalogBundleVerificationPolicy bundleVerificationPolicy;
   private final AppCatalogArtifactDownloader artifactDownloader;
   private final AppCatalogBundleExtractor bundleExtractor;
 
   AppCatalogInstallPlanner(
       AppCatalogSourceStore sourceStore,
-      AppCatalogManager.TrustedKeyProvider trustedBundleKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
       AppCatalogArtifactDownloader artifactDownloader,
       AppCatalogBundleExtractor bundleExtractor) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
-    this.trustedBundleKeyProvider =
-        Objects.requireNonNull(trustedBundleKeyProvider, "trustedBundleKeyProvider");
+    this.bundleVerificationPolicy =
+        Objects.requireNonNull(bundleVerificationPolicy, "bundleVerificationPolicy");
     this.artifactDownloader = Objects.requireNonNull(artifactDownloader, "artifactDownloader");
     this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
   }
@@ -50,15 +49,11 @@ final class AppCatalogInstallPlanner {
   void verifyInstallPlan(AppCatalogInstallPlan plan) throws IOException {
     AppCatalogInstallPlan checkedPlan = Objects.requireNonNull(plan, "plan");
     bundleExtractor.verifyStagedBundle(
-        checkedPlan.entry(), checkedPlan.stagedBundleDirectory(), trustedKeys());
+        checkedPlan.entry(), checkedPlan.stagedBundleDirectory(), bundleVerificationPolicy);
   }
 
   private Path extractBundle(AppCatalogEntry entry, Path artifactZip, Path scratchRoot)
       throws IOException {
-    return bundleExtractor.extract(entry, artifactZip, scratchRoot, trustedKeys());
-  }
-
-  private TrustedAppKeys trustedKeys() throws IOException {
-    return trustedBundleKeyProvider.trustedKeys();
+    return bundleExtractor.extract(entry, artifactZip, scratchRoot, bundleVerificationPolicy);
   }
 }

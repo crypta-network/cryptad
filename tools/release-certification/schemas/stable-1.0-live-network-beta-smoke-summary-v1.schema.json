@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-live-network-beta-smoke-summary-v1.schema.json",
+  "title": "Bound live-network beta smoke collector summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "mode", "enabled", "required", "status", "startedAt", "finishedAt", "durationMs", "node", "fixturePresence", "stepCounts", "artifactPaths", "evidence", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "live-network-beta-smoke"},
+    "mode": {"const": "release-candidate"},
+    "enabled": {"const": true},
+    "required": {"const": true},
+    "status": {"const": "pass"},
+    "startedAt": {"type": "string", "format": "date-time"},
+    "finishedAt": {"type": "string", "format": "date-time"},
+    "durationMs": {"type": "integer", "minimum": 0},
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseUrlShape", "localhostOnly", "version", "build"],
+      "properties": {
+        "baseUrlShape": {"type": "string", "maxLength": 128},
+        "localhostOnly": {"const": true},
+        "version": {"type": "string", "maxLength": 128},
+        "build": {"type": "string", "maxLength": 128}
+      }
+    },
+    "fixturePresence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogSource", "contentFetchUri", "feedUskUri", "privateInsertFixture", "privateInsertFixtureSource", "profilePublicUri", "trustPublicUri"],
+      "properties": {
+        "catalogSource": {"type": "boolean"},
+        "contentFetchUri": {"type": "boolean"},
+        "feedUskUri": {"type": "boolean"},
+        "privateInsertFixture": {"type": "boolean"},
+        "privateInsertFixtureSource": {"enum": ["environment", "file-indirection", "missing"]},
+        "profilePublicUri": {"type": "boolean"},
+        "trustPublicUri": {"type": "boolean"}
+      }
+    },
+    "stepCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed", "warnings", "skipped"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "artifactPaths": {
+      "type": "array",
+      "const": ["summary.json", "live-network-beta-smoke-report.md"]
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "requiredForReleaseCandidate", "summary", "source", "details"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^live-network-beta\\.[a-z0-9-]+$"},
+          "status": {"enum": ["pass", "fail", "warn", "skip"]},
+          "requiredForReleaseCandidate": {"type": "boolean"},
+          "summary": {"type": "string", "minLength": 1, "maxLength": 512},
+          "source": {"const": "live-network-beta-smoke"},
+          "details": {"type": "object"}
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "forbiddenPatternsChecked", "rawBodiesStored", "privateInsertUrisStored", "localPathsStored"],
+      "properties": {
+        "status": {"const": "pass"},
+        "forbiddenPatternsChecked": {"const": true},
+        "rawBodiesStored": {"const": false},
+        "privateInsertUrisStored": {"const": false},
+        "localPathsStored": {"const": false}
+      }
+    }
+  }
+}

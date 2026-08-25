@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-third-party-app-pilot-policy",
+  "policyId": "cryptad-stable-1.0-external-third-party-app-pilot",
+  "policyDigest": "sha256:f581072139554d09d00a80b14b842a9529dc35fe6513f42d27eacf48817432f3",
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "requiredCatalogChannel": "beta",
+  "requiredCohort": [
+    "version-1-reviewed",
+    "version-2-rejected",
+    "version-2-corrected",
+    "version-3-caution"
+  ],
+  "prohibitedSourceRepositories": [
+    "github.com/crypta-network/cryptad"
+  ],
+  "prohibitedSourceOwners": [
+    "crypta-network"
+  ],
+  "prohibitedAppIds": [
+    "org.example.hello"
+  ],
+  "prohibitedIdentityMarkers": [
+    "fixture",
+    "sample",
+    "self-test",
+    "template",
+    "test"
+  ],
+  "allowedOperationalWorkloadProfiles": [
+    "operational"
+  ],
+  "requiredAuthorityRoles": [
+    "app-reviewer",
+    "catalog-signing",
+    "first-party-app-signing",
+    "offline-recovery"
+  ],
+  "requiredRuntimeEvents": [
+    "pilot-registry-installed",
+    "beta-catalog-refreshed",
+    "reviewed-v1-installed",
+    "rejected-v2-absent",
+    "corrected-v2-catalog-refreshed",
+    "corrected-v2-updated",
+    "caution-v3-catalog-refreshed",
+    "caution-v3-blocked-without-acknowledgement",
+    "caution-v3-consent-recorded",
+    "caution-v3-updated",
+    "corrected-v2-rollback",
+    "app-removed-or-restored",
+    "catalog-removed-or-restored",
+    "pilot-registry-removed-or-quarantined"
+  ],
+  "allowedPilotOperations": [
+    "install",
+    "update",
+    "caution-update",
+    "rollback",
+    "cleanup"
+  ],
+  "freshness": {
+    "maximumHandoffAgeSeconds": 604800,
+    "maximumReceiptAgeSeconds": 604800,
+    "maximumClockSkewSeconds": 300
+  },
+  "archiveBounds": {
+    "maximumSubmissionBytes": 268435456,
+    "maximumBundleBytes": 134217728,
+    "maximumExpandedBytes": 536870912,
+    "maximumMembers": 20000,
+    "maximumTextBytes": 16777216
+  },
+  "evidence": {
+    "localModesAreSideEffectFree": true,
+    "fixtureOperationalCompletionAllowed": false,
+    "workflowDefinitionIsOperationalEvidence": false,
+    "checkedInSampleIsOperationalEvidence": false,
+    "selfAssertedPublicationAllowed": false,
+    "partialCanComplete": false
+  },
+  "trust": {
+    "externalPublisherMayEnterStableRegistry": false,
+    "publisherMustMatchBundleAndAttestation": true,
+    "publisherMustBeRoleDistinct": true,
+    "reviewerMustBeDeveloperDistinct": true,
+    "catalogAuthorityMustBeDeveloperDistinct": true,
+    "pilotApprovalMustBindNodeAppAndExactSubjects": true
+  },
+  "redaction": {
+    "rejectPrivateKeys": true,
+    "rejectCredentials": true,
+    "rejectPrivateInsertUris": true,
+    "rejectAbsoluteLocalPaths": true,
+    "rejectRawAppData": true,
+    "rejectUnboundedMaintainerPii": true
+  }
+}

@@ -1,0 +1,397 @@
+name: Stable 1.0 External Third-Party App Pilot
+run-name: >-
+  External app pilot ${{ inputs.pilot_id }} (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Closed verification stage; this coordinator never signs or publishes.
+        required: true
+        type: choice
+        options:
+          - prepare-intake
+          - import-external-handoff
+          - verify-review-cohort
+          - verify-catalog-publication
+          - verify-runtime-drill
+          - closeout
+      pilot_id:
+        description: Exact path-safe reviewed pilot identity.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase 40-character Cryptad source commit.
+        required: true
+        type: string
+      evidence_workflow:
+        description: Exact in-repository protected workflow that sealed the handoff artifact.
+        required: true
+        type: string
+      evidence_run_id:
+        description: Exact completed workflow run containing the sealed evidence artifact.
+        required: true
+        type: string
+      evidence_run_attempt:
+        description: Exact workflow run attempt containing the sealed evidence artifact.
+        required: true
+        type: string
+      evidence_artifact_id:
+        description: Exact Actions artifact id for the sealed evidence archive.
+        required: true
+        type: string
+      evidence_artifact_name:
+        description: Exact immutable evidence artifact name.
+        required: true
+        type: string
+      evidence_artifact_digest:
+        description: Exact sha256 digest of the sealed Actions artifact archive.
+        required: true
+        type: string
+      evidence_artifact_size:
+        description: Exact byte size of the sealed Actions artifact archive.
+        required: true
+        type: string
+
+concurrency:
+  group: third-party-app-pilot-${{ inputs.pilot_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-dispatch:
+    name: Validate exact protected dispatch
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate source, operator, and immutable coordinates
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_PILOT_ID: ${{ inputs.pilot_id }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_EVIDENCE_WORKFLOW: ${{ inputs.evidence_workflow }}
+          INPUT_EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          INPUT_EVIDENCE_RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
+          INPUT_EVIDENCE_ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
+          INPUT_EVIDENCE_ARTIFACT_NAME: ${{ inputs.evidence_artifact_name }}
+          INPUT_EVIDENCE_ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+          INPUT_EVIDENCE_ARTIFACT_SIZE: ${{ inputs.evidence_artifact_size }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          case "$INPUT_OPERATION" in
+            prepare-intake|import-external-handoff|verify-review-cohort|verify-catalog-publication|verify-runtime-drill|closeout) ;;
+            *) echo "::error::Unknown third-party pilot operation."; exit 2 ;;
+          esac
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_PILOT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || "$INPUT_EVIDENCE_WORKFLOW" != ".github/workflows/stable-1.0-third-party-app-pilot-evidence.yml" \
+                || ! "$INPUT_EVIDENCE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$INPUT_EVIDENCE_RUN_ATTEMPT" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$INPUT_EVIDENCE_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$INPUT_EVIDENCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ \
+                || ! "$INPUT_EVIDENCE_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$INPUT_EVIDENCE_ARTIFACT_SIZE" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo "::error::Dispatch is not bound to the exact protected source, operator, and artifact."
+            exit 2
+          fi
+          expected_name="stable-1-0-third-party-pilot-$INPUT_PILOT_ID-$INPUT_EVIDENCE_RUN_ID-$INPUT_EVIDENCE_RUN_ATTEMPT"
+          if [[ "$INPUT_EVIDENCE_ARTIFACT_NAME" != "$expected_name" ]]; then
+            echo "::error::Evidence artifact name does not match immutable coordinates."
+            exit 2
+          fi
+
+  import-external-handoff:
+    name: Authenticate and confine external handoff
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-third-party-pilot-import
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      normalized_artifact_name: ${{ steps.names.outputs.normalized_artifact_name }}
+      normalized_artifact_digest: sha256:${{ steps.upload.outputs.artifact-digest }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Authenticate producer coordinates and download opaque archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_WORKFLOW: ${{ inputs.evidence_workflow }}
+          EXPECTED_RUN_ID: ${{ inputs.evidence_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
+          EXPECTED_ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.evidence_artifact_name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+          EXPECTED_ARTIFACT_SIZE: ${{ inputs.evidence_artifact_size }}
+        run: |
+          set -euo pipefail
+          run_json="$RUNNER_TEMP/pilot-run.json"
+          artifact_json="$RUNNER_TEMP/pilot-artifact.json"
+          archive="$RUNNER_TEMP/pilot-evidence.zip"
+          gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/attempts/$EXPECTED_RUN_ATTEMPT" \
+            > "$run_json"
+          jq -e \
+            --arg workflow "$EXPECTED_WORKFLOW" \
+            --arg sha "${{ inputs.source_commit }}" \
+            '.id == (env.EXPECTED_RUN_ID | tonumber)
+             and .run_attempt == (env.EXPECTED_RUN_ATTEMPT | tonumber)
+             and .path == $workflow
+             and .head_sha == $sha
+             and .status == "completed"
+             and .conclusion == "success"
+             and .repository.full_name == env.GITHUB_REPOSITORY' \
+            "$run_json" >/dev/null
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$EXPECTED_ARTIFACT_ID" > "$artifact_json"
+          jq -e \
+            '.id == (env.EXPECTED_ARTIFACT_ID | tonumber)
+             and .name == env.EXPECTED_ARTIFACT_NAME
+             and .workflow_run.id == (env.EXPECTED_RUN_ID | tonumber)
+             and .expired == false
+             and .digest == env.EXPECTED_ARTIFACT_DIGEST' \
+            "$artifact_json" >/dev/null
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$EXPECTED_ARTIFACT_ID/zip" > "$archive"
+          PYTHONPATH=tools/release-certification python3 -m \
+            cryptad_certification.engines.stable_1_0_third_party_pilot_inputs \
+            --archive "$archive" \
+            --expected-digest "$EXPECTED_ARTIFACT_DIGEST" \
+            --expected-size "$EXPECTED_ARTIFACT_SIZE" \
+            --output-dir "$GITHUB_WORKSPACE/build/third-party-pilot-evidence"
+
+      - name: Verify preflight and authenticated external handoff
+        env:
+          PILOT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          mode="verify-external-handoff"
+          if [[ "$PILOT_OPERATION" == "prepare-intake" ]]; then
+            mode="preflight"
+          fi
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode "$mode" \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-import-result
+
+      - name: Select immutable normalized artifact name
+        id: names
+        env:
+          PILOT_ID: ${{ inputs.pilot_id }}
+        run: |
+          set -euo pipefail
+          echo "normalized_artifact_name=stable-1-0-third-party-pilot-normalized-$PILOT_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload authenticated confined handoff
+        id: upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.normalized_artifact_name }}
+          path: build/third-party-pilot-evidence
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+
+      - name: Upload safe diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-import-diagnostics-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-import-result
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 7
+
+  verify-review-cohort:
+    name: Verify protected reviewer cohort
+    if: contains(fromJSON('["verify-review-cohort","verify-catalog-publication","verify-runtime-drill","closeout"]'), inputs.operation)
+    needs: import-external-handoff
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-third-party-pilot-review
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download authenticated handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import-external-handoff.outputs.normalized_artifact_name }}
+          path: build/third-party-pilot-evidence
+      - name: Verify reviewer assignment, decisions, receipts, transparency, and pilot key approval
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-review-cohort \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-review-result
+      - name: Upload safe review verification
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-review-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-review-result
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 14
+
+  verify-catalog-publication:
+    name: Verify PR-293 beta catalog publication
+    if: contains(fromJSON('["verify-catalog-publication","verify-runtime-drill","closeout"]'), inputs.operation)
+    needs: [import-external-handoff, verify-review-cohort]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-third-party-pilot-catalog-observation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download authenticated handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import-external-handoff.outputs.normalized_artifact_name }}
+          path: build/third-party-pilot-evidence
+      - name: Verify sanitized PR-293 publication and mirror receipts
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-catalog-publication \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-catalog-result
+      - name: Upload safe catalog verification
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-catalog-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-catalog-result
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 14
+
+  verify-runtime-drill:
+    name: Verify protected isolated-node drill
+    if: contains(fromJSON('["verify-runtime-drill","closeout"]'), inputs.operation)
+    needs: [import-external-handoff, verify-review-cohort, verify-catalog-publication]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-third-party-pilot-node-observation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download authenticated handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import-external-handoff.outputs.normalized_artifact_name }}
+          path: build/third-party-pilot-evidence
+      - name: Verify live-network collector receipt and exact runtime sequence
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-runtime-drill \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-runtime-result
+      - name: Upload safe runtime verification
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-runtime-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-runtime-result
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 14
+
+  closeout:
+    name: Authenticate operational closeout
+    if: inputs.operation == 'closeout'
+    needs: [import-external-handoff, verify-review-cohort, verify-catalog-publication, verify-runtime-drill]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-third-party-pilot-closeout
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download authenticated handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import-external-handoff.outputs.normalized_artifact_name }}
+          path: build/third-party-pilot-evidence
+      - name: Close only from authentic protected receipts
+        env:
+          GH_TOKEN: ${{ secrets.CRYPTAD_PROTECTED_RELEASE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode closeout \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-closeout
+      - name: Upload redacted closeout only
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-closeout-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-closeout
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 30

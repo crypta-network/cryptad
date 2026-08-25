@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-third-party-runtime-drill-v1.schema.json",
+  "title": "Protected third-party pilot runtime drill",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pilotId", "appId", "provenance", "pilotNodeId", "daemonIdentity", "publisherApprovalDigest", "catalogPublicationDigest", "collector", "normalStableRegistryInitiallyExcludedPublisher", "normalStableRegistryDigest", "catalogRegistryDigest", "pilotRegistryDigest", "preexistingApp", "preexistingCatalog", "events", "finalVersion", "finalBundleDigest", "finalPublisherKeyId", "rollbackExact", "appCleanupStatus", "catalogCleanupStatus", "registryCleanupStatus", "cleanStateRestored", "status", "partial", "completedAt", "nodeAttestationPublicKeySpkiBase64", "nodeAttestationFingerprint", "receiptDigest", "signatureBase64"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-third-party-runtime-drill"},
+    "pilotId": {"type": "string"},
+    "appId": {"type": "string"},
+    "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "pilotNodeId": {"type": "string"},
+    "daemonIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identitySource", "releaseId", "buildVersion", "sourceCommit", "protectedReleaseRootDigest", "productDistributionDigest", "managedDaemon", "appHostVerificationPolicy", "observedAt"],
+      "properties": {
+        "identitySource": {"const": "managed-daemon-product-attestation-v1"},
+        "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "protectedReleaseRootDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"},
+        "managedDaemon": {"const": true},
+        "appHostVerificationPolicy": {"const": "stable-1.0-pilot-publisher-v1"},
+        "observedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "publisherApprovalDigest": {"$ref": "#/$defs/digest"},
+    "catalogPublicationDigest": {"$ref": "#/$defs/digest"},
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "summaryFileName", "summaryDigest", "summarySize", "transportReused", "localhostOnly", "redirectsDisabled", "status", "redactionStatus"],
+      "properties": {
+        "kind": {"const": "live-network-beta-smoke"},
+        "summaryFileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}\\.json$"},
+        "summaryDigest": {"$ref": "#/$defs/digest"},
+        "summarySize": {"type": "integer", "minimum": 1, "maximum": 16777216},
+        "transportReused": {"const": true},
+        "localhostOnly": {"const": true},
+        "redirectsDisabled": {"const": true},
+        "status": {"const": "pass"},
+        "redactionStatus": {"const": "pass"}
+      }
+    },
+    "normalStableRegistryInitiallyExcludedPublisher": {"const": true},
+    "normalStableRegistryDigest": {"$ref": "#/$defs/digest"},
+    "catalogRegistryDigest": {"$ref": "#/$defs/digest"},
+    "pilotRegistryDigest": {"$ref": "#/$defs/digest"},
+    "preexistingApp": {"type": "boolean"},
+    "preexistingCatalog": {"type": "boolean"},
+    "events": {"type": "array", "minItems": 10, "maxItems": 32, "items": {"$ref": "#/$defs/event"}},
+    "finalVersion": {"type": "string"},
+    "finalBundleDigest": {"$ref": "#/$defs/digest"},
+    "finalPublisherKeyId": {"type": "string"},
+    "rollbackExact": {"type": "boolean"},
+    "appCleanupStatus": {"enum": ["pass", "failed", "not-required"]},
+    "catalogCleanupStatus": {"enum": ["pass", "failed", "not-required"]},
+    "registryCleanupStatus": {"enum": ["pass", "quarantined", "failed"]},
+    "cleanStateRestored": {"type": "boolean"},
+    "status": {"enum": ["pass", "partial", "fail"]},
+    "partial": {"type": "boolean"},
+    "completedAt": {"type": "string", "format": "date-time"},
+    "nodeAttestationPublicKeySpkiBase64": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"},
+    "nodeAttestationFingerprint": {"$ref": "#/$defs/digest"},
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "signatureBase64": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "event", "status", "version", "bundleDigest", "publisherKeyId", "reviewStatus", "catalogRevision", "catalogEdition", "catalogEntryDigest", "catalogSubjectDigest", "catalogSignatureSiblingDigest", "consentSnapshotDigest", "warningCodes", "sandboxStatus", "permissionsDigest", "appDataBoundaryStatus"],
+      "properties": {
+        "sequence": {"type": "integer", "minimum": 1, "maximum": 32},
+        "event": {"enum": ["pilot-registry-installed", "beta-catalog-refreshed", "reviewed-v1-installed", "rejected-v2-absent", "corrected-v2-catalog-refreshed", "corrected-v2-updated", "caution-v3-catalog-refreshed", "caution-v3-blocked-without-acknowledgement", "caution-v3-consent-recorded", "caution-v3-updated", "corrected-v2-rollback", "app-removed-or-restored", "catalog-removed-or-restored", "pilot-registry-removed-or-quarantined"]},
+        "status": {"enum": ["pass", "blocked-as-required", "fail"]},
+        "version": {"type": ["string", "null"]},
+        "bundleDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "publisherKeyId": {"type": ["string", "null"]},
+        "reviewStatus": {"type": ["string", "null"], "enum": ["reviewed", "caution", "rejected", "resubmission_requested", null]},
+        "catalogRevision": {"type": ["integer", "null"], "minimum": 1},
+        "catalogEdition": {"type": ["integer", "null"], "minimum": 1},
+        "catalogEntryDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "catalogSubjectDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "catalogSignatureSiblingDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "consentSnapshotDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "warningCodes": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string"}},
+        "sandboxStatus": {"type": ["string", "null"]},
+        "permissionsDigest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+        "appDataBoundaryStatus": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

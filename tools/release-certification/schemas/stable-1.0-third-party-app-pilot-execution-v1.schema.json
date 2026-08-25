@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-third-party-app-pilot-execution-v1.schema.json",
+  "title": "Stable 1.0 external third-party app pilot execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "pilotId",
+    "repository",
+    "release",
+    "evaluationTime",
+    "requestedState",
+    "fixtureOnly",
+    "selfTest",
+    "authorities",
+    "externalApp",
+    "cohort",
+    "protectedPilotNode",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-third-party-app-pilot-execution"},
+    "pilotId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "sourceCommit"],
+      "properties": {
+        "identity": {"const": "github.com/crypta-network/cryptad"},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "productDistributionDigest"],
+      "properties": {
+        "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "evaluationTime": {"type": "string", "format": "date-time"},
+    "requestedState": {
+      "enum": [
+        "planned",
+        "preflight-passed",
+        "external-handoff-authenticated",
+        "review-cohort-complete",
+        "beta-catalog-published",
+        "runtime-drill-complete",
+        "operational-pilot-complete",
+        "blocked",
+        "partial"
+      ]
+    },
+    "fixtureOnly": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "authorities": {"$ref": "#/$defs/authorities"},
+    "externalApp": {"$ref": "#/$defs/externalApp"},
+    "cohort": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {"$ref": "#/$defs/cohortRow"}
+    },
+    "protectedPilotNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "normalStableRegistryDigest", "catalogRegistryDigest", "pilotRegistryDigest"],
+      "properties": {
+        "nodeId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "normalStableRegistryDigest": {"$ref": "#/$defs/digest"},
+        "catalogRegistryDigest": {"$ref": "#/$defs/digest"},
+        "pilotRegistryDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protectedRelease",
+        "independentReproducibility",
+        "selectedRcFreeze",
+        "catalogAuthority",
+        "externalHandoff",
+        "reviewCohort",
+        "publisherApproval",
+        "catalogPublication",
+        "collectorSummary",
+        "runtimeDrill"
+      ],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/nullableBinding"},
+        "independentReproducibility": {"$ref": "#/$defs/nullableBinding"},
+        "selectedRcFreeze": {"$ref": "#/$defs/nullableBinding"},
+        "catalogAuthority": {"$ref": "#/$defs/nullableBinding"},
+        "externalHandoff": {"$ref": "#/$defs/nullableBinding"},
+        "reviewCohort": {"$ref": "#/$defs/nullableBinding"},
+        "publisherApproval": {"$ref": "#/$defs/nullableBinding"},
+        "catalogPublication": {"$ref": "#/$defs/nullableBinding"},
+        "collectorSummary": {"$ref": "#/$defs/nullableBinding"},
+        "runtimeDrill": {"$ref": "#/$defs/nullableBinding"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "spki": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"},
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "role", "publicKeySpkiBase64", "fingerprint", "lifecycle", "validFrom", "validUntil"],
+      "properties": {
+        "keyId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "role": {"enum": ["catalog-signing", "first-party-app-signing", "app-reviewer", "offline-recovery"]},
+        "publicKeySpkiBase64": {"$ref": "#/$defs/spki"},
+        "fingerprint": {"$ref": "#/$defs/digest"},
+        "lifecycle": {"enum": ["staged", "active", "retiring", "retired", "revoked"]},
+        "validFrom": {"type": "string", "format": "date-time"},
+        "validUntil": {"type": "string", "format": "date-time"}
+      }
+    },
+    "authorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedReleaseRootDigest", "independentReproducibilityDigest", "catalogAuthorityDigest", "keysetDigest", "keysetSubject", "catalogChannel", "keys"],
+      "properties": {
+        "protectedReleaseRootDigest": {"$ref": "#/$defs/digest"},
+        "independentReproducibilityDigest": {"$ref": "#/$defs/digest"},
+        "catalogAuthorityDigest": {"$ref": "#/$defs/digest"},
+        "keysetDigest": {"$ref": "#/$defs/digest"},
+        "keysetSubject": {"$ref": "#/$defs/keysetSubject"},
+        "catalogChannel": {"const": "beta"},
+        "keys": {"type": "array", "minItems": 4, "maxItems": 64, "items": {"$ref": "#/$defs/key"}}
+      }
+    },
+    "keysetSubjectKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "role", "algorithm", "publicKeySpkiBase64", "publicKeyFingerprintSha256", "lifecycle", "validFrom", "validUntil", "predecessorKeyId", "successorKeyId", "compromiseState", "publicTransparencyEligible"],
+      "properties": {
+        "keyId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "role": {"enum": ["catalog-signing", "first-party-app-signing", "app-reviewer", "offline-recovery"]},
+        "algorithm": {"const": "Ed25519"},
+        "publicKeySpkiBase64": {"$ref": "#/$defs/spki"},
+        "publicKeyFingerprintSha256": {"$ref": "#/$defs/digest"},
+        "lifecycle": {"enum": ["staged", "active", "retiring", "retired", "revoked"]},
+        "validFrom": {"type": "string", "format": "date-time"},
+        "validUntil": {"type": "string", "format": "date-time"},
+        "predecessorKeyId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "successorKeyId": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "compromiseState": {"enum": ["uncompromised", "suspected", "compromised"]},
+        "publicTransparencyEligible": {"type": "boolean"}
+      }
+    },
+    "keysetSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "keysetVersion", "previousKeysetDigest", "ceremony", "release", "bindings", "keys"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "kind": {"const": "stable-1.0-public-keyset-subject"},
+        "keysetVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "previousKeysetDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "ceremony": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/ceremony"},
+        "release": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/release"},
+        "bindings": {"$ref": "stable-1.0-key-ceremony-execution-v1.schema.json#/$defs/bindings"},
+        "keys": {"type": "array", "minItems": 4, "maxItems": 64, "items": {"$ref": "#/$defs/keysetSubjectKey"}}
+      }
+    },
+    "externalApp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId", "publisherKeyId", "publisherPublicKeySpkiBase64", "publisherFingerprint", "source", "workloadProfile"],
+      "properties": {
+        "appId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "publisherKeyId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "publisherPublicKeySpkiBase64": {"$ref": "#/$defs/spki"},
+        "publisherFingerprint": {"$ref": "#/$defs/digest"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repositoryIdentity", "host", "owner", "name", "revisionType", "revision", "archiveDigest", "treeDigest"],
+          "properties": {
+            "repositoryIdentity": {"type": "string", "pattern": "^[a-z0-9.-]+/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
+            "host": {"type": "string", "pattern": "^[a-z0-9.-]{1,253}$"},
+            "owner": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+            "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+            "revisionType": {"enum": ["git-commit-sha1", "git-commit-sha256", "content-addressed"]},
+            "revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$"},
+            "archiveDigest": {"$ref": "#/$defs/digest"},
+            "treeDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "workloadProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profileId", "profileType", "providerId", "organizationId", "accountId", "issuer", "audience", "subject", "pipelineDefinition", "pipelineRevision", "workloadPublicKeySpkiBase64", "workloadFingerprint", "operationalAllowed", "approvedAt", "expiresAt", "approvalReviewerKeyId", "approvalSignatureBase64"],
+          "properties": {
+            "profileId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+            "profileType": {"enum": ["fixture", "template", "operational"]},
+            "providerId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$"},
+            "organizationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+            "accountId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+            "issuer": {"type": "string", "format": "uri"},
+            "audience": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$"},
+            "subject": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$"},
+            "pipelineDefinition": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$"},
+            "pipelineRevision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$"},
+            "workloadPublicKeySpkiBase64": {"$ref": "#/$defs/spki"},
+            "workloadFingerprint": {"$ref": "#/$defs/digest"},
+            "operationalAllowed": {"type": "boolean"},
+            "approvedAt": {"type": "string", "format": "date-time"},
+            "expiresAt": {"type": "string", "format": "date-time"},
+            "approvalReviewerKeyId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+            "approvalSignatureBase64": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+          }
+        }
+      }
+    },
+    "cohortRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cohortId", "appVersion", "submissionId", "submissionType", "resubmissionOf", "expectedDecision", "submissionDigest", "bundleDigest", "bundleSignatureDigest", "preReviewDigest"],
+      "properties": {
+        "cohortId": {"enum": ["version-1-reviewed", "version-2-rejected", "version-2-corrected", "version-3-caution"]},
+        "appVersion": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+){1,7}$"},
+        "submissionId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "submissionType": {"enum": ["new_app", "update", "resubmission"]},
+        "resubmissionOf": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+        "expectedDecision": {"enum": ["reviewed", "rejected", "resubmission_requested", "caution"]},
+        "submissionDigest": {"$ref": "#/$defs/digest"},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "bundleSignatureDigest": {"$ref": "#/$defs/digest"},
+        "preReviewDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "digest", "size", "schema", "provenance"],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}\\.(?:json|zip)$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 2, "maximum": 16777216},
+        "schema": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}\\.schema\\.json$"},
+        "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"}
+      }
+    },
+    "nullableBinding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/binding"}]}
+  }
+}

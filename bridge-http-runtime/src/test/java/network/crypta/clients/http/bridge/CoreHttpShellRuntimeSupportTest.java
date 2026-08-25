@@ -8,9 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -537,6 +539,314 @@ class CoreHttpShellRuntimeSupportTest {
       restoreSystemProperty("cryptad.appcatalog.trustedKeysFile", previousCatalogKeysFile);
       restoreSystemProperty("cryptad.apphost.trustedKeyId", previousKeyId);
       restoreSystemProperty("cryptad.apphost.trustedPublicKeyBase64", previousPublicKey);
+    }
+  }
+
+  @Test
+  void appHost_whenBoundedPilotConfigurationPresent_expectExactExternalSubjectOnly(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-keys.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-keys.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, CATALOG_KEY_ID, catalogKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", publisherKeyPair);
+    Path approved =
+        stageSignedApp(
+            tempDir.resolve("approved-external"),
+            "demo-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path stableApp =
+        stageLongRunningSignedApp(tempDir.resolve("stable-first-party"), stableKeyPair);
+    Path stableAppAfterCleanup =
+        stageSignedApp(
+            tempDir.resolve("stable-first-party-after-cleanup"),
+            "stable-app-after-cleanup",
+            stableKeyPair,
+            "stable-first-party");
+    Path unrelated =
+        stageSignedApp(
+            tempDir.resolve("unrelated-external"),
+            "unrelated-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path approvalFile = tempDir.resolve("pilot-publisher-approval.json");
+    writePilotApproval(
+        approvalFile,
+        publisherKeyPair,
+        approved,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry));
+    Map<String, String> properties =
+        Map.of(
+            "cryptad.apphost.trustedKeysFile", normalRegistry.toString(),
+            "cryptad.appcatalog.trustedKeysFile", catalogRegistry.toString(),
+            "cryptad.apphost.pilot.id", "pilot-294",
+            "cryptad.apphost.pilot.nodeId", "node-294",
+            "cryptad.apphost.pilot.approvalFile", approvalFile.toString(),
+            "cryptad.apphost.pilot.approvalDigest", sha256(approvalFile),
+            "cryptad.apphost.pilot.trustedKeysFile", pilotRegistry.toString());
+
+    try (var _ = SystemPropertyScope.set(properties)) {
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+
+      assertEquals(
+          "demo-app", runtimeSupport.appHost().installFromDirectory(approved).manifest().appId());
+      assertEquals(
+          "stable-app",
+          runtimeSupport.appHost().installFromDirectory(stableApp).manifest().appId());
+      AppBundleVerificationException unrelatedFailure =
+          assertThrows(
+              AppBundleVerificationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(unrelated));
+
+      assertTrue(unrelatedFailure.getMessage().contains("does not authorize this app id"));
+      Files.delete(pilotRegistry);
+      assertTrue(runtimeSupport.appCatalogManager().hasTrustedCatalogKey(CATALOG_KEY_ID));
+      assertEquals(
+          "stable-app-after-cleanup",
+          runtimeSupport.appHost().installFromDirectory(stableAppAfterCleanup).manifest().appId());
+      runtimeSupport.appHost().start("stable-app");
+      runtimeSupport.appHost().stop("stable-app");
+      assertThrows(
+          AppHostConfigurationException.class, () -> runtimeSupport.appHost().start("demo-app"));
+    }
+  }
+
+  @Test
+  void appHost_whenPilotConfigurationIsPartial_expectBootstrapRejected(@TempDir Path tempDir) {
+    try (var _ = SystemPropertyScope.set(Map.of("cryptad.apphost.pilot.id", "pilot-294"))) {
+      IllegalStateException exception =
+          assertThrows(IllegalStateException.class, () -> managedRuntimeSupport(tempDir));
+
+      assertTrue(exception.getMessage().contains("incomplete"));
+    }
+  }
+
+  @Test
+  void appHost_whenPilotRegistryReusesCatalogKeyId_expectConfigurationRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-overlapping-id.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-overlapping-id.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, "external-publisher", catalogKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", publisherKeyPair);
+    Path approved =
+        stageSignedApp(
+            tempDir.resolve("approved-overlapping-id"),
+            "demo-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path approvalFile = tempDir.resolve("pilot-overlapping-id-approval.json");
+    writePilotApproval(
+        approvalFile,
+        publisherKeyPair,
+        approved,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry));
+
+    try (var _ =
+        SystemPropertyScope.set(
+            pilotProperties(normalRegistry, catalogRegistry, pilotRegistry, approvalFile))) {
+      IllegalStateException failure =
+          assertThrows(IllegalStateException.class, () -> managedRuntimeSupport(tempDir));
+
+      assertEquals(
+          "Failed to authenticate persistent pilot trust configuration.", failure.getMessage());
+    }
+  }
+
+  @Test
+  void appHost_whenPilotRegistryReusesCatalogPublicKey_expectConfigurationRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair sharedKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-overlapping-key.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-overlapping-key.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, CATALOG_KEY_ID, sharedKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", sharedKeyPair);
+    Path approved =
+        stageSignedApp(
+            tempDir.resolve("approved-overlapping-key"),
+            "demo-app",
+            sharedKeyPair,
+            "external-publisher");
+    Path approvalFile = tempDir.resolve("pilot-overlapping-key-approval.json");
+    writePilotApproval(
+        approvalFile,
+        sharedKeyPair,
+        approved,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry));
+
+    try (var _ =
+        SystemPropertyScope.set(
+            pilotProperties(normalRegistry, catalogRegistry, pilotRegistry, approvalFile))) {
+      IllegalStateException failure =
+          assertThrows(IllegalStateException.class, () -> managedRuntimeSupport(tempDir));
+
+      assertEquals(
+          "Failed to authenticate persistent pilot trust configuration.", failure.getMessage());
+    }
+  }
+
+  @Test
+  void appHost_whenPilotRegistryBytesDifferFromApproval_expectDigestMismatchRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair substitutedKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-keys.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-substituted.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, CATALOG_KEY_ID, catalogKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", publisherKeyPair);
+    Path approved =
+        stageSignedApp(
+            tempDir.resolve("approved-before-substitution"),
+            "demo-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path approvalFile = tempDir.resolve("pilot-before-substitution-approval.json");
+    writePilotApproval(
+        approvalFile,
+        publisherKeyPair,
+        approved,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry));
+    writeTrustedKeysFile(pilotRegistry, "substituted-publisher", substitutedKeyPair);
+
+    try (var _ =
+        SystemPropertyScope.set(
+            pilotProperties(normalRegistry, catalogRegistry, pilotRegistry, approvalFile))) {
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+
+      AppHostConfigurationException exception =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(approved));
+
+      assertEquals("pilot registry digest differs from the approval", exception.getMessage());
+    }
+  }
+
+  @Test
+  void appCatalog_whenCatalogRegistryBytesChangeAfterBootstrap_expectDigestMismatchRejected(
+      @TempDir Path tempDir) throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair substitutedCatalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-keys.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-keys.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, CATALOG_KEY_ID, catalogKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", publisherKeyPair);
+    Path approved =
+        stageSignedApp(
+            tempDir.resolve("approved-before-catalog-substitution"),
+            "demo-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path approvalFile = tempDir.resolve("catalog-substitution-approval.json");
+    writePilotApproval(
+        approvalFile,
+        publisherKeyPair,
+        approved,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry));
+
+    try (var _ =
+        SystemPropertyScope.set(
+            pilotProperties(normalRegistry, catalogRegistry, pilotRegistry, approvalFile))) {
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+      writeTrustedKeysFile(catalogRegistry, "substituted-catalog", substitutedCatalogKeyPair);
+      AppCatalogManager catalogManager = runtimeSupport.appCatalogManager();
+
+      IllegalStateException catalogFailure =
+          assertThrows(
+              IllegalStateException.class,
+              () -> catalogManager.hasTrustedCatalogKey("substituted-catalog"));
+      AppHostConfigurationException installFailure =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(approved));
+
+      assertEquals(
+          "Failed to load authenticated pilot catalog trust.", catalogFailure.getMessage());
+      assertEquals(
+          "catalog registry digest differs from the approval", installFailure.getMessage());
+    }
+  }
+
+  @Test
+  void appHost_whenPilotApprovalIsExpired_expectStableTrustRemainsAvailable(@TempDir Path tempDir)
+      throws Exception {
+    KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
+    Path catalogRegistry = tempDir.resolve("catalog-keys.properties");
+    Path pilotRegistry = tempDir.resolve("pilot-keys.properties");
+    writeTrustedKeysFile(normalRegistry, "stable-first-party", stableKeyPair);
+    writeTrustedKeysFile(catalogRegistry, CATALOG_KEY_ID, catalogKeyPair);
+    writeTrustedKeysFile(pilotRegistry, "external-publisher", publisherKeyPair);
+    Path externalApp =
+        stageSignedApp(
+            tempDir.resolve("expired-external"),
+            "demo-app",
+            publisherKeyPair,
+            "external-publisher");
+    Path stableApp =
+        stageSignedApp(
+            tempDir.resolve("stable-with-expired-pilot"),
+            "stable-app",
+            stableKeyPair,
+            "stable-first-party");
+    Path approvalFile = tempDir.resolve("expired-pilot-approval.json");
+    writePilotApproval(
+        approvalFile,
+        publisherKeyPair,
+        externalApp,
+        sha256(normalRegistry),
+        sha256(catalogRegistry),
+        sha256(pilotRegistry),
+        Instant.now().minusSeconds(7200),
+        Instant.now().minusSeconds(3600));
+
+    try (var _ =
+        SystemPropertyScope.set(
+            pilotProperties(normalRegistry, catalogRegistry, pilotRegistry, approvalFile))) {
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir);
+
+      assertEquals(
+          "stable-app",
+          runtimeSupport.appHost().installFromDirectory(stableApp).manifest().appId());
+      assertTrue(runtimeSupport.appCatalogManager().hasTrustedCatalogKey(CATALOG_KEY_ID));
+      AppHostConfigurationException failure =
+          assertThrows(
+              AppHostConfigurationException.class,
+              () -> runtimeSupport.appHost().installFromDirectory(externalApp));
+
+      assertTrue(failure.getMessage().contains("validity window"));
     }
   }
 
@@ -1280,6 +1590,101 @@ class CoreHttpShellRuntimeSupportTest {
     return unsigned;
   }
 
+  private static Path stageSignedApp(Path stagedDir, String appId, KeyPair keyPair, String keyId)
+      throws IOException {
+    Path unsigned = stageUnsignedApp(stagedDir);
+    String manifest =
+        Files.readString(unsigned.resolve(AppManifestParser.MANIFEST_FILE_NAME))
+            .replace("app.id=demo-app", "app.id=" + appId);
+    Files.writeString(
+        unsigned.resolve(AppManifestParser.MANIFEST_FILE_NAME), manifest, StandardCharsets.UTF_8);
+    AppBundleSigner.sign(unsigned, keyId, keyPair.getPrivate());
+    return unsigned;
+  }
+
+  private static Path stageLongRunningSignedApp(Path stagedDir, KeyPair keyPair)
+      throws IOException {
+    Path unsigned = stageUnsignedApp(stagedDir);
+    String manifest =
+        Files.readString(unsigned.resolve(AppManifestParser.MANIFEST_FILE_NAME))
+            .replace("app.id=demo-app", "app.id=stable-app");
+    Files.writeString(
+        unsigned.resolve(AppManifestParser.MANIFEST_FILE_NAME), manifest, StandardCharsets.UTF_8);
+    Files.writeString(
+        unsigned.resolve("bin").resolve("launch.sh"),
+        "#!/bin/sh\nsleep 30\n",
+        StandardCharsets.UTF_8);
+    AppBundleSigner.sign(unsigned, "stable-first-party", keyPair.getPrivate());
+    return unsigned;
+  }
+
+  private static void writePilotApproval(
+      Path file,
+      KeyPair publisherKeyPair,
+      Path approvedBundle,
+      String normalRegistryDigest,
+      String catalogRegistryDigest,
+      String pilotRegistryDigest)
+      throws Exception {
+    writePilotApproval(
+        file,
+        publisherKeyPair,
+        approvedBundle,
+        normalRegistryDigest,
+        catalogRegistryDigest,
+        pilotRegistryDigest,
+        Instant.now().minusSeconds(300),
+        Instant.now().plusSeconds(3600));
+  }
+
+  private static void writePilotApproval(
+      Path file,
+      KeyPair publisherKeyPair,
+      Path approvedBundle,
+      String normalRegistryDigest,
+      String catalogRegistryDigest,
+      String pilotRegistryDigest,
+      Instant validFrom,
+      Instant validUntil)
+      throws Exception {
+    String signatureDigest = sha256(approvedBundle.resolve("cryptad-app.signature"));
+    Files.writeString(
+        file,
+        """
+        {"schemaVersion":1,"kind":"stable-1.0-pilot-publisher-key-approval","pilotId":"pilot-294","appId":"demo-app","provenance":{},"publisherKeyId":"external-publisher","publisherFingerprint":"%s","sourceRepositoryIdentity":"github.com/external/pilot","handoffDigest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","pilotNodeId":"node-294","nodeAttestationFingerprint":"sha256:2222222222222222222222222222222222222222222222222222222222222222","normalStableRegistryDigest":"%s","catalogRegistryDigest":"%s","pilotRegistryDigest":"%s","permittedSubjects":[{"version":"1.0.0","bundleDigest":"sha256:3333333333333333333333333333333333333333333333333333333333333333","bundleSignatureDigest":"%s"},{"version":"2.0.0","bundleDigest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","bundleSignatureDigest":"sha256:5555555555555555555555555555555555555555555555555555555555555555"},{"version":"3.0.0","bundleDigest":"sha256:6666666666666666666666666666666666666666666666666666666666666666","bundleSignatureDigest":"sha256:7777777777777777777777777777777777777777777777777777777777777777"}],"allowedOperations":["install","update","caution-update","rollback","cleanup"],"validFrom":"%s","validUntil":"%s","revoked":false,"cleanupRequired":true,"approvalAuthorityKeyId":"reviewer-294","receiptDigest":"sha256:8888888888888888888888888888888888888888888888888888888888888888","signatureBase64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="}
+        """
+            .formatted(
+                sha256(publisherKeyPair.getPublic().getEncoded()),
+                normalRegistryDigest,
+                catalogRegistryDigest,
+                pilotRegistryDigest,
+                signatureDigest,
+                validFrom,
+                validUntil),
+        StandardCharsets.UTF_8);
+  }
+
+  private static Map<String, String> pilotProperties(
+      Path normalRegistry, Path catalogRegistry, Path pilotRegistry, Path approvalFile)
+      throws Exception {
+    return Map.of(
+        "cryptad.apphost.trustedKeysFile", normalRegistry.toString(),
+        "cryptad.appcatalog.trustedKeysFile", catalogRegistry.toString(),
+        "cryptad.apphost.pilot.id", "pilot-294",
+        "cryptad.apphost.pilot.nodeId", "node-294",
+        "cryptad.apphost.pilot.approvalFile", approvalFile.toString(),
+        "cryptad.apphost.pilot.approvalDigest", sha256(approvalFile),
+        "cryptad.apphost.pilot.trustedKeysFile", pilotRegistry.toString());
+  }
+
+  private static String sha256(Path file) throws Exception {
+    return sha256(Files.readAllBytes(file));
+  }
+
+  private static String sha256(byte[] value) throws Exception {
+    return "sha256:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+  }
+
   private static CoreHttpShellRuntimeSupport managedRuntimeSupport(Path root) {
     NodeClientCore core = mock(NodeClientCore.class);
     Node node = mock(Node.class);
@@ -1361,4 +1766,27 @@ class CoreHttpShellRuntimeSupportTest {
   private record PhysicalListenerContext(
       CoreHttpShellRuntimeSupport runtimeSupport,
       AtomicReference<SecurityLevelListener<PHYSICAL_THREAT_LEVEL>> listener) {}
+
+  private static final class SystemPropertyScope implements AutoCloseable {
+    private final Map<String, String> previousValues;
+
+    private SystemPropertyScope(Map<String, String> values) {
+      Map<String, String> previous = new java.util.LinkedHashMap<>();
+      values.forEach(
+          (name, value) -> {
+            previous.put(name, System.getProperty(name));
+            System.setProperty(name, value);
+          });
+      previousValues = previous;
+    }
+
+    private static SystemPropertyScope set(Map<String, String> values) {
+      return new SystemPropertyScope(values);
+    }
+
+    @Override
+    public void close() {
+      previousValues.forEach(CoreHttpShellRuntimeSupportTest::restoreSystemProperty);
+    }
+  }
 }

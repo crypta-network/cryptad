@@ -61,6 +61,20 @@ def _semantic_digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
+def inspect_artifact_safety(archive_path: Path) -> None:
+    """Reject a catalog-authority closeout archive before any member is read."""
+
+    if archive_path.suffix.lower() != ".zip":
+        raise ValueError("catalog authority artifact is not a ZIP archive")
+    inspect_archive_safety(
+        archive_path,
+        maximum_entries=4,
+        maximum_expanded_bytes=5_000_000,
+        reject_links=True,
+        reject_nested_archives=True,
+    )
+
+
 def _summary_errors(
     summary: dict[str, Any],
     *,
@@ -255,13 +269,7 @@ def verify_artifact(
     if archive_path.suffix.lower() != ".zip":
         return "blocked", [*errors, "catalog authority artifact is not a ZIP archive"]
     try:
-        inspect_archive_safety(
-            archive_path,
-            maximum_entries=4,
-            maximum_expanded_bytes=5_000_000,
-            reject_links=True,
-            reject_nested_archives=True,
-        )
+        inspect_artifact_safety(archive_path)
         with zipfile.ZipFile(archive_path) as archive:
             members = [row for row in archive.infolist() if not row.is_dir()]
             expected_names = {SUMMARY_MEMBER, REPORT_MEMBER, REDACTION_MEMBER}

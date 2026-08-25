@@ -1,0 +1,242 @@
+name: Stable 1.0 third-party pilot protected runtime producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      pilot_id:
+        description: Closed pilot identity bound by execution.json
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected Cryptad source commit
+        required: true
+        type: string
+      source_run_id:
+        description: Coordinator run containing the authenticated confined evidence
+        required: true
+        type: string
+      source_artifact_name:
+        description: Exact normalized evidence artifact name
+        required: true
+        type: string
+      source_artifact_digest:
+        description: Exact normalized evidence artifact sha256 digest
+        required: true
+        type: string
+      runtime_adapter_digest:
+        description: Exact sha256 digest of the protected node runtime adapter
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-1-0-third-party-pilot-runtime-${{ inputs.pilot_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  produce-runtime-receipt:
+    name: Produce protected isolated-node runtime receipt
+    if: github.ref_protected
+    runs-on: [self-hosted, linux, x64, cryptad-third-party-pilot-node]
+    timeout-minutes: 90
+    environment: stable-1-0-third-party-pilot-node
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate exact protected dispatch and runtime adapter
+        env:
+          INPUT_PILOT_ID: ${{ inputs.pilot_id }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_SOURCE_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          INPUT_SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          INPUT_RUNTIME_ADAPTER_DIGEST: ${{ inputs.runtime_adapter_digest }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || ! "$INPUT_PILOT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || "$DISPATCH_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || ! "$INPUT_SOURCE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$INPUT_SOURCE_ARTIFACT_NAME" =~ ^stable-1-0-third-party-pilot-normalized-[A-Za-z0-9._-]+$ \
+                || ! "$INPUT_SOURCE_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$INPUT_RUNTIME_ADAPTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Runtime dispatch is not bound to exact protected coordinates."
+            exit 2
+          fi
+          adapter="$(command -v cryptad-third-party-pilot-runtime || true)"
+          if [[ -z "$adapter" || "sha256:$(sha256sum "$adapter" | cut -d' ' -f1)" != "$INPUT_RUNTIME_ADAPTER_DIGEST" ]]; then
+            echo "::error::Protected node runtime adapter is missing or has the wrong digest."
+            exit 2
+          fi
+
+      - name: Authenticate normalized source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXPECTED_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+        run: |
+          set -euo pipefail
+          run_json="$RUNNER_TEMP/pilot-source-run.json"
+          artifact_json="$RUNNER_TEMP/pilot-source-artifacts.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID" > "$run_json"
+          jq -e \
+            '.id == (env.EXPECTED_RUN_ID | tonumber)
+             and .path == ".github/workflows/stable-1.0-third-party-app-pilot.yml"
+             and .head_sha == env.EXPECTED_SOURCE_COMMIT
+             and .event == "workflow_dispatch"
+             and .conclusion == "success"
+             and .repository.full_name == env.GITHUB_REPOSITORY' \
+            "$run_json" >/dev/null
+          source_run_attempt="$(jq -er \
+            '.run_attempt | select(type == "number" and . >= 1 and . <= 1000 and floor == .)' \
+            "$run_json")"
+          expected_name="stable-1-0-third-party-pilot-normalized-$EXPECTED_PILOT_ID-$EXPECTED_RUN_ID-$source_run_attempt"
+          if [[ "$EXPECTED_ARTIFACT_NAME" != "$expected_name" ]]; then
+            echo "::error::Normalized artifact name does not bind the exact pilot, run, and attempt."
+            exit 2
+          fi
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$EXPECTED_RUN_ID/artifacts?per_page=100" > "$artifact_json"
+          jq -e \
+            '[.artifacts[]
+              | select(.name == env.EXPECTED_ARTIFACT_NAME
+                       and .digest == env.EXPECTED_ARTIFACT_DIGEST
+                       and .expired == false)]
+             | length == 1' \
+            "$artifact_json" >/dev/null
+
+      - name: Download exact normalized source artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          path: build/third-party-pilot-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Bind downloaded execution contract to runtime dispatch
+        env:
+          EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          jq -e \
+            '.pilotId == env.EXPECTED_PILOT_ID
+             and .repository.identity == "github.com/crypta-network/cryptad"
+             and .repository.sourceCommit == env.EXPECTED_SOURCE_COMMIT
+             and .fixtureOnly == false
+             and .selfTest == false' \
+            build/third-party-pilot-evidence/execution.json >/dev/null
+
+      - name: Authenticate review catalog and publisher approval before node provisioning
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-catalog-publication \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-runtime-preflight
+
+      - name: Run isolated AppHost install update caution rollback and cleanup
+        env:
+          CRYPTAD_PILOT_ID: ${{ inputs.pilot_id }}
+          CRYPTAD_PILOT_ADAPTER_DIGEST: ${{ inputs.runtime_adapter_digest }}
+          CRYPTAD_PILOT_NODE_URL: ${{ secrets.CRYPTAD_THIRD_PARTY_PILOT_NODE_URL }}
+          CRYPTAD_PILOT_NODE_FORM_PASSWORD: ${{ secrets.CRYPTAD_THIRD_PARTY_PILOT_NODE_FORM_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cryptad-third-party-pilot-runtime run \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --require-managed-daemon \
+            --require-daemon-identity managed-daemon-product-attestation-v1 \
+            --require-apphost-policy stable-1.0-pilot-publisher-v1 \
+            --observation-dir build/third-party-pilot-runtime-observation
+
+      - name: Select immutable observation artifact name
+        id: names
+        env:
+          PILOT_ID: ${{ inputs.pilot_id }}
+        run: |
+          set -euo pipefail
+          echo "observation=stable-1-0-third-party-pilot-runtime-observation-$PILOT_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "receipt=stable-1-0-third-party-pilot-runtime-receipt-$PILOT_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable unsigned node observation
+        id: observation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.observation }}
+          path: build/third-party-pilot-runtime-observation
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+
+      - name: Sign exact runtime receipt with the pilot node attestation key
+        env:
+          CRYPTAD_PILOT_NODE_ATTESTATION_PRIVATE_KEY: ${{ secrets.CRYPTAD_THIRD_PARTY_PILOT_NODE_ATTESTATION_PRIVATE_KEY }}
+          PROVENANCE_ARTIFACT_NAME: ${{ steps.names.outputs.observation }}
+          PROVENANCE_ARTIFACT_DIGEST: ${{ steps.observation.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cryptad-third-party-pilot-runtime seal \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --observation-dir build/third-party-pilot-runtime-observation \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-path ".github/workflows/stable-1.0-third-party-app-pilot-runtime.yml" \
+            --workflow-commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --artifact-name "$PROVENANCE_ARTIFACT_NAME" \
+            --artifact-digest "$PROVENANCE_ARTIFACT_DIGEST" \
+            --environment "stable-1-0-third-party-pilot-node"
+
+      - name: Verify produced runtime receipt before retention
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-third-party-pilot \
+            --mode verify-runtime-drill \
+            --execution-contract build/third-party-pilot-evidence/execution.json \
+            --evidence-dir build/third-party-pilot-evidence \
+            --out-dir build/third-party-pilot-runtime-verification
+
+      - name: Upload exact signed runtime evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.receipt }}
+          path: build/third-party-pilot-evidence
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+
+      - name: Upload bounded failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-1-0-third-party-pilot-runtime-failure-${{ inputs.pilot_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/third-party-pilot-runtime-verification
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 7

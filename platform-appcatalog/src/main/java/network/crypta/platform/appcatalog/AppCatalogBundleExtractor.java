@@ -94,9 +94,10 @@ public final class AppCatalogBundleExtractor {
    * digest sidecar matches the extracted bundle contents.
    *
    * <p>Because catalog entry generation does not receive a trusted-key registry, this inspection
-   * does not make a publisher trust decision. Runtime install and update paths must continue to use
-   * {@link #extract(AppCatalogEntry, Path, Path, TrustedAppKeys)} so the signed digest is also
-   * verified against trusted app signing keys.
+   * does not make a publisher trust decision. Runtime install and update paths must use {@link
+   * #extract(AppCatalogEntry, Path, Path, AppCatalogBundleVerificationPolicy)} so an explicit
+   * policy authorizes the signed digest through either ordinary trusted app keys or a bounded pilot
+   * approval.
    *
    * @param artifactZip local artifact ZIP to inspect
    * @param scratchDirectory host-owned scratch directory used for temporary extraction
@@ -139,6 +140,33 @@ public final class AppCatalogBundleExtractor {
   public Path extract(
       AppCatalogEntry entry, Path artifactZip, Path scratchDirectory, TrustedAppKeys trustedKeys)
       throws IOException {
+    return extract(
+        entry,
+        artifactZip,
+        scratchDirectory,
+        stagedRoot -> AppBundleVerifier.verify(stagedRoot, trustedKeys));
+  }
+
+  /**
+   * Extracts and verifies one downloaded ZIP with an explicit publisher-authorization policy.
+   *
+   * <p>The extractor retains its archive confinement and catalog-entry manifest checks. Only the
+   * publisher trust decision is delegated, allowing a protected runtime to apply an app-aware
+   * approval without adding the publisher to the ordinary app-key registry.
+   *
+   * @param entry authenticated catalog entry and expected manifest identity
+   * @param artifactZip downloaded and digest-verified bundle ZIP
+   * @param scratchDirectory host-owned extraction root
+   * @param verificationPolicy publisher authorization applied to the extracted bundle
+   * @return staged bundle root ready for AppHost
+   * @throws IOException if extraction, verification, or manifest binding fails
+   */
+  public Path extract(
+      AppCatalogEntry entry,
+      Path artifactZip,
+      Path scratchDirectory,
+      AppCatalogBundleVerificationPolicy verificationPolicy)
+      throws IOException {
     AppCatalogEntry checkedEntry = Objects.requireNonNull(entry, "entry");
     Path zipPath = Objects.requireNonNull(artifactZip, "artifactZip").toAbsolutePath().normalize();
     Path scratchRoot = Objects.requireNonNull(scratchDirectory, "scratchDirectory");
@@ -146,7 +174,7 @@ public final class AppCatalogBundleExtractor {
     Path stagedRoot = Files.createTempDirectory(scratchRoot, "catalog-bundle-");
     try {
       extractZip(zipPath, stagedRoot);
-      verifyExtractedBundle(checkedEntry, stagedRoot, trustedKeys);
+      verifyExtractedBundle(checkedEntry, stagedRoot, verificationPolicy);
       return stagedRoot;
     } catch (IOException | RuntimeException exception) {
       deleteRecursively(stagedRoot);
@@ -155,26 +183,28 @@ public final class AppCatalogBundleExtractor {
   }
 
   /**
-   * Re-verifies an already-extracted staged bundle against a catalog entry.
+   * Re-verifies an already-extracted staged bundle with an explicit publisher policy.
    *
-   * <p>Catalog install plans retain a scratch directory between staging and apply. Callers that run
-   * code from that retained directory before handing it to AppHost must use this method to repeat
-   * signed-bundle verification and manifest/catalog binding checks. This detects scratch tampering
-   * before any staged executable is launched.
+   * <p>Catalog install plans retain a scratch directory between staging and apply. Callers must use
+   * this method to repeat publisher authorization and manifest/catalog binding checks before
+   * handing the retained directory to AppHost. This detects scratch tampering before any staged
+   * executable is launched.
    *
-   * @param entry catalog entry that supplied the staged bundle metadata
-   * @param stagedBundleDirectory extracted signed-bundle root from an installation plan
-   * @param trustedKeys explicit trusted keys used for signed-bundle verification
-   * @throws IOException if filesystem access or signed-bundle verification fails
+   * @param entry authenticated catalog entry and expected manifest identity
+   * @param stagedBundleDirectory retained private staging directory
+   * @param verificationPolicy publisher authorization applied before plan use
+   * @throws IOException if the staged bundle is no longer exact or authorized
    */
   public void verifyStagedBundle(
-      AppCatalogEntry entry, Path stagedBundleDirectory, TrustedAppKeys trustedKeys)
+      AppCatalogEntry entry,
+      Path stagedBundleDirectory,
+      AppCatalogBundleVerificationPolicy verificationPolicy)
       throws IOException {
     Path stagedRoot =
         Objects.requireNonNull(stagedBundleDirectory, "stagedBundleDirectory")
             .toAbsolutePath()
             .normalize();
-    verifyExtractedBundle(entry, stagedRoot, trustedKeys);
+    verifyExtractedBundle(entry, stagedRoot, verificationPolicy);
   }
 
   private static Path requireReadableArtifactZip(Path artifactZip) {
@@ -584,13 +614,14 @@ public final class AppCatalogBundleExtractor {
   }
 
   private static void verifyExtractedBundle(
-      AppCatalogEntry entry, Path stagedRoot, TrustedAppKeys trustedKeys) throws IOException {
+      AppCatalogEntry entry, Path stagedRoot, AppCatalogBundleVerificationPolicy verificationPolicy)
+      throws IOException {
     Path manifestFile = stagedRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME);
     if (!Files.isRegularFile(manifestFile, LinkOption.NOFOLLOW_LINKS)) {
       throw invalidBundle("zip artifact must contain cryptad-app.properties at the root");
     }
     try {
-      AppBundleVerifier.verify(stagedRoot, Objects.requireNonNull(trustedKeys, "trustedKeys"));
+      Objects.requireNonNull(verificationPolicy, "verificationPolicy").verify(stagedRoot);
       AppBundleManifest manifest = AppBundleManifestParser.parse(manifestFile);
       if (!entry.appId().equals(manifest.appId())) {
         throw invalidBundle("catalog app id does not match extracted bundle manifest");

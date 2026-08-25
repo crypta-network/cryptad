@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-pilot-publisher-key-approval-v1.schema.json",
+  "title": "Pilot publisher-key approval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pilotId", "appId", "provenance", "publisherKeyId", "publisherFingerprint", "sourceRepositoryIdentity", "handoffDigest", "pilotNodeId", "nodeAttestationFingerprint", "normalStableRegistryDigest", "catalogRegistryDigest", "pilotRegistryDigest", "permittedSubjects", "allowedOperations", "validFrom", "validUntil", "revoked", "cleanupRequired", "approvalAuthorityKeyId", "receiptDigest", "signatureBase64"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-pilot-publisher-key-approval"},
+    "pilotId": {"type": "string"},
+    "appId": {"type": "string"},
+    "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "publisherKeyId": {"type": "string"},
+    "publisherFingerprint": {"$ref": "#/$defs/digest"},
+    "sourceRepositoryIdentity": {"type": "string"},
+    "handoffDigest": {"$ref": "#/$defs/digest"},
+    "pilotNodeId": {"type": "string"},
+    "nodeAttestationFingerprint": {"$ref": "#/$defs/digest"},
+    "normalStableRegistryDigest": {"$ref": "#/$defs/digest"},
+    "catalogRegistryDigest": {"$ref": "#/$defs/digest"},
+    "pilotRegistryDigest": {"$ref": "#/$defs/digest"},
+    "permittedSubjects": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/subject"}},
+    "allowedOperations": {"type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true, "items": {"enum": ["install", "update", "caution-update", "rollback", "cleanup"]}},
+    "validFrom": {"type": "string", "format": "date-time"},
+    "validUntil": {"type": "string", "format": "date-time"},
+    "revoked": {"type": "boolean"},
+    "cleanupRequired": {"const": true},
+    "approvalAuthorityKeyId": {"type": "string"},
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "signatureBase64": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "bundleDigest", "bundleSignatureDigest"],
+      "properties": {
+        "version": {"type": "string"},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "bundleSignatureDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}
