@@ -26,6 +26,10 @@ RUNTIME_WORKFLOW = (
     workspace_root()
     / ".github/workflows/stable-1.0-third-party-app-pilot-runtime.yml"
 )
+EXECUTION_SCHEMA = (
+    workspace_root()
+    / "tools/release-certification/schemas/stable-1.0-third-party-app-pilot-execution-v1.schema.json"
+)
 
 
 def _digest(value: bytes) -> str:
@@ -88,6 +92,34 @@ class StableThirdPartyPilotWorkflowTest(unittest.TestCase):
         self.assertIn(".fixtureOnly == false", self.producer)
         self.assertIn(".selfTest == false", self.producer)
         self.assertNotIn("secrets.", self.producer)
+
+    def test_coordinator_when_pilot_id_is_maximum_length_expect_artifact_name_accepted(
+        self,
+    ) -> None:
+        schema = json.loads(EXECUTION_SCHEMA.read_text(encoding="utf-8"))
+        pilot_id = "p" * 96
+        artifact_name = (
+            f"stable-1-0-third-party-pilot-{pilot_id}-"
+            f"{'9' * 20}-{'9' * 10}"
+        )
+
+        self.assertRegex(pilot_id, schema["properties"]["pilotId"]["pattern"])
+        self.assertEqual(157, len(artifact_name))
+        self.assertGreater(len(artifact_name), 128)
+        self.assertLessEqual(len(artifact_name), 255)
+        self.assertRegex(
+            artifact_name,
+            r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$",
+        )
+        self.assertIn(
+            '"$INPUT_EVIDENCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$',
+            self.workflow,
+        )
+        self.assertIn(
+            'expected_name="stable-1-0-third-party-pilot-'
+            '$INPUT_PILOT_ID-$INPUT_EVIDENCE_RUN_ID-$INPUT_EVIDENCE_RUN_ATTEMPT"',
+            self.workflow,
+        )
 
     def test_workflow_when_dispatched_expect_closed_manual_operations(self) -> None:
         dispatch = self.workflow[
