@@ -42,7 +42,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Validate source, operator, and public immutable coordinates
@@ -85,7 +85,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Set up Python
@@ -107,7 +107,7 @@ jobs:
       - name: Reject fixture topology and verify authenticated external handoff
         env:
           EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
-          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           jq -e \

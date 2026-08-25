@@ -145,13 +145,30 @@ class StableThirdPartyPilotWorkflowTest(unittest.TestCase):
 
     def test_workflow_when_source_selected_expect_exact_protected_identity(self) -> None:
         self.assertIn("if: github.ref_protected", self.workflow)
-        self.assertIn("ref: ${{ inputs.source_commit }}", self.workflow)
+        self.assertIn("ref: ${{ github.sha }}", self.workflow)
         self.assertIn("fetch-depth: 1", self.workflow)
         self.assertIn("persist-credentials: false", self.workflow)
         self.assertIn('"$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT"', self.workflow)
         self.assertIn('"$WORKFLOW_SHA" != "$INPUT_SOURCE_COMMIT"', self.workflow)
         self.assertIn('"$DISPATCH_ACTOR" != "leumor"', self.workflow)
         self.assertIn('"$TRIGGERING_ACTOR" != "leumor"', self.workflow)
+
+    def test_workflows_when_repository_code_executes_expect_protected_event_sha_checkout(
+        self,
+    ) -> None:
+        for workflow, checkout_count in (
+            (self.producer, 2),
+            (self.workflow, 6),
+            (self.runtime, 1),
+        ):
+            with self.subTest(checkout_count=checkout_count):
+                self.assertEqual(checkout_count, workflow.count("ref: ${{ github.sha }}"))
+                self.assertNotIn("ref: ${{ inputs.source_commit }}", workflow)
+
+        self.assertIn("EXPECTED_SOURCE_COMMIT: ${{ github.sha }}", self.producer)
+        self.assertIn("EXPECTED_SOURCE_COMMIT: ${{ github.sha }}", self.workflow)
+        self.assertIn("EXPECTED_SOURCE_COMMIT: ${{ github.sha }}", self.runtime)
+        self.assertNotIn('--arg sha "${{ inputs.source_commit }}"', self.workflow)
 
     def test_workflow_when_permissions_examined_expect_minimal_read_only_authority(self) -> None:
         self.assertIn("\npermissions: {}\n", self.workflow)
@@ -206,7 +223,7 @@ class StableThirdPartyPilotWorkflowTest(unittest.TestCase):
         self.assertIn(".digest == env.EXPECTED_ARTIFACT_DIGEST", import_job)
         self.assertIn(".workflow_run.id ==", import_job)
         self.assertIn(".path == $workflow", import_job)
-        self.assertIn(".head_sha == $sha", import_job)
+        self.assertIn(".head_sha == env.EXPECTED_SOURCE_COMMIT", import_job)
         self.assertNotIn("actions/download-artifact@", import_job)
         self.assertNotIn("unzip ", import_job)
 

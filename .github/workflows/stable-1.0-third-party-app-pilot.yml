@@ -71,7 +71,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -137,7 +137,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -150,6 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_WORKFLOW: ${{ inputs.evidence_workflow }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           EXPECTED_RUN_ID: ${{ inputs.evidence_run_id }}
           EXPECTED_RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
           EXPECTED_ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
@@ -166,11 +167,10 @@ jobs:
             > "$run_json"
           jq -e \
             --arg workflow "$EXPECTED_WORKFLOW" \
-            --arg sha "${{ inputs.source_commit }}" \
             '.id == (env.EXPECTED_RUN_ID | tonumber)
              and .run_attempt == (env.EXPECTED_RUN_ATTEMPT | tonumber)
              and .path == $workflow
-             and .head_sha == $sha
+             and .head_sha == env.EXPECTED_SOURCE_COMMIT
              and .status == "completed"
              and .conclusion == "success"
              and .repository.full_name == env.GITHUB_REPOSITORY' \
@@ -248,7 +248,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Download authenticated handoff
@@ -288,7 +288,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Download authenticated handoff
@@ -328,7 +328,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Download authenticated handoff
@@ -368,7 +368,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Download authenticated handoff

@@ -48,7 +48,7 @@ jobs:
       - name: Check out exact source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ inputs.source_commit }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -91,7 +91,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
-          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
           EXPECTED_RUN_ID: ${{ inputs.source_run_id }}
           EXPECTED_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
           EXPECTED_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
@@ -136,7 +136,7 @@ jobs:
       - name: Bind downloaded execution contract to runtime dispatch
         env:
           EXPECTED_PILOT_ID: ${{ inputs.pilot_id }}
-          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EXPECTED_SOURCE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           jq -e \
