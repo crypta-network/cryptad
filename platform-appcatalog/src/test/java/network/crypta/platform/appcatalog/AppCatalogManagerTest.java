@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -41,6 +42,8 @@ import javax.net.ssl.SSLSession;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeyLifecycle;
 import network.crypta.platform.appdist.TrustedAppKeyPolicy;
@@ -144,6 +147,57 @@ class AppCatalogManagerTest {
     try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
       assertTrue(Files.isDirectory(plan.stagedBundleDirectory()));
     }
+  }
+
+  @Test
+  void verifyInstallPlan_whenExplicitBundlePolicyConfigured_expectPolicyRunsAtBothBoundaries()
+      throws Exception {
+    KeyPair catalogKeyPair = keyPair();
+    KeyPair appKeyPair = keyPair();
+    TrustedAppKeys appKeys = TrustedAppKeys.of(trustedKey(APP_SIGNING_KEY_ID, appKeyPair));
+    Path bundle = signedBundle(appKeyPair, APP_SIGNING_KEY_ID);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, catalogKeyPair, sha256(artifact), Files.size(artifact));
+    AtomicInteger verificationCount = new AtomicInteger();
+    AppCatalogManager manager =
+        AppCatalogManager.withBundleVerificationPolicy(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            () -> trustedKeys(catalogKeyPair),
+            stagedBundle -> {
+              verificationCount.incrementAndGet();
+              AppBundleVerifier.verify(stagedBundle, appKeys);
+            });
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      manager.verifyInstallPlan(plan);
+    }
+
+    assertEquals(2, verificationCount.get());
+  }
+
+  @Test
+  void prepareInstallPlan_whenExplicitBundlePolicyRejectsSubject_expectInvalidBundle()
+      throws Exception {
+    KeyPair catalogKeyPair = keyPair();
+    KeyPair appKeyPair = keyPair();
+    Path bundle = signedBundle(appKeyPair, APP_SIGNING_KEY_ID);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, catalogKeyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager =
+        AppCatalogManager.withBundleVerificationPolicy(
+            new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+            () -> trustedKeys(catalogKeyPair),
+            _ -> {
+              throw new AppDistributionException("publisher subject is outside approval");
+            });
+    manager.addSource(catalog.toString());
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+
+    assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
+    assertTrue(exception.getMessage().contains("outside approval"));
   }
 
   @Test
@@ -2150,10 +2204,13 @@ class AppCatalogManagerTest {
     return new AppCatalogManager(
         sourceStore,
         () -> trustedKeys,
-        new AppCatalogFetcher(
-            new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort),
-        new AppCatalogArtifactDownloader(),
-        new AppCatalogBundleExtractor());
+        new AppCatalogManagerDependencies(
+            new AppCatalogFetcher(
+                new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)),
+                contentFetchPort),
+            new AppCatalogArtifactDownloader(),
+            new AppCatalogBundleExtractor(),
+            AppReviewTransparencyLog.fileBacked(sourceStore.reviewTransparencyLogFile())));
   }
 
   private static AppCatalogMirrorHealth healthFor(

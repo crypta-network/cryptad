@@ -43,6 +43,31 @@ class TrustedAppKeysTest {
   }
 
   @Test
+  void load_whenCapturedBytesOutlivePathReplacement_expectCapturedRegistryParsed()
+      throws Exception {
+    KeyPair originalKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair replacementKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path trustedKeysFile = tempDir.resolve("captured-trusted-keys.properties");
+    Files.writeString(
+        trustedKeysFile,
+        versionOneRegistry("original-key", originalKeyPair),
+        StandardCharsets.UTF_8);
+    byte[] capturedBytes = Files.readAllBytes(trustedKeysFile);
+    Files.writeString(
+        trustedKeysFile,
+        versionOneRegistry("replacement-key", replacementKeyPair),
+        StandardCharsets.UTF_8);
+
+    TrustedAppKeys capturedKeys = TrustedAppKeys.load(capturedBytes);
+    TrustedAppKeys replacementKeys = TrustedAppKeys.load(trustedKeysFile);
+
+    assertTrue(capturedKeys.find("original-key").isPresent());
+    assertFalse(capturedKeys.find("replacement-key").isPresent());
+    assertTrue(replacementKeys.find("replacement-key").isPresent());
+    assertFalse(replacementKeys.find("original-key").isPresent());
+  }
+
+  @Test
   void load_whenVersionTwoLifecycleIsComplete_expectPolicyParsed() throws Exception {
     KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path trustedKeysFile = tempDir.resolve("trusted-keys-v2.properties");
@@ -272,5 +297,15 @@ class TrustedAppKeysTest {
         "duplicate trusted public-key fingerprint for key ids: configured-app-key and "
             + "direct-app-key-alias",
         exception.getMessage());
+  }
+
+  private static String versionOneRegistry(String keyId, KeyPair keyPair) {
+    return """
+    trusted.keys.version=1
+    key.0.id=%s
+    key.0.algorithm=Ed25519
+    key.0.public.key.base64=%s
+    """
+        .formatted(keyId, Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
   }
 }

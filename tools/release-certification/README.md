@@ -30,6 +30,7 @@ python3 tools/release-certification/certify.py stable-vulnerability --self-test
 python3 tools/release-certification/certify.py stable-protected-release --self-test
 python3 tools/release-certification/certify.py stable-independent-reproducibility --self-test
 python3 tools/release-certification/certify.py stable-catalog-authority --self-test
+python3 tools/release-certification/certify.py stable-third-party-pilot --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -114,6 +115,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-supply-chain` | Assemble and verify Stable component, SBOM, license, isolated-rebuild, promotion, and publication-observation evidence; the CLI is side-effect-free and the protected workflow has an explicit publication boundary. |
 | `stable-independent-reproducibility` | Prepare a candidate-byte-free verifier kit, authenticate a provider-distinct external build, reuse the Stable comparison authority, and produce protected closeout without publication. |
 | `stable-catalog-authority` | Prepare and verify the role-separated Stable key ceremony, exact catalog publication, rotation and rollback drills, transparency artifact, and authenticated closeout without remote mutation. |
+| `stable-third-party-pilot` | Authenticate one external developer handoff, reviewed/rejected/corrected/caution cohort, bounded publisher approval, PR-293 beta publication, exact live-collector bytes, isolated-node runtime drill, and read-only Actions-authenticated operational closeout without remote mutation. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |

@@ -2,10 +2,16 @@ package network.crypta.clients.http.bridge;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -49,17 +55,22 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.FileAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationPolicy;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
+import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeys;
+import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
+import network.crypta.platform.apphost.PilotPublisherApprovalReader;
+import network.crypta.platform.apphost.PilotPublisherVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.platform.appvault.AppVaultService;
@@ -128,6 +139,21 @@ public record CoreHttpShellRuntimeSupport(
       "cryptad.apphost.trustedPublicKeyFile";
   private static final String TRUSTED_PUBLIC_KEY_FILE_ENV =
       "CRYPTAD_APPHOST_TRUSTED_PUBLIC_KEY_FILE";
+  private static final String PILOT_ID_PROPERTY = "cryptad.apphost.pilot.id";
+  private static final String PILOT_ID_ENV = "CRYPTAD_APPHOST_PILOT_ID";
+  private static final String PILOT_NODE_ID_PROPERTY = "cryptad.apphost.pilot.nodeId";
+  private static final String PILOT_NODE_ID_ENV = "CRYPTAD_APPHOST_PILOT_NODE_ID";
+  private static final String PILOT_APPROVAL_FILE_PROPERTY = "cryptad.apphost.pilot.approvalFile";
+  private static final String PILOT_APPROVAL_FILE_ENV = "CRYPTAD_APPHOST_PILOT_APPROVAL_FILE";
+  private static final String PILOT_APPROVAL_DIGEST_PROPERTY =
+      "cryptad.apphost.pilot.approvalDigest";
+  private static final String PILOT_APPROVAL_DIGEST_ENV = "CRYPTAD_APPHOST_PILOT_APPROVAL_DIGEST";
+  private static final String PILOT_TRUSTED_KEYS_FILE_PROPERTY =
+      "cryptad.apphost.pilot.trustedKeysFile";
+  private static final String PILOT_TRUSTED_KEYS_FILE_ENV =
+      "CRYPTAD_APPHOST_PILOT_TRUSTED_KEYS_FILE";
+  private static final String NORMAL_STABLE_ROLE_LABEL = "normal Stable";
+  private static final String CATALOG_AUTHORITY_ROLE_LABEL = "catalog authority";
   private static final String TRUST_CONFIGURATION_ERROR_MESSAGE =
       "Failed to load trusted app verification configuration.";
   private static final AtomicBoolean LEGACY_CATALOG_TRUST_WARNING_EMITTED = new AtomicBoolean();
@@ -556,10 +582,12 @@ public record CoreHttpShellRuntimeSupport(
             core.getNode().runDir().dir().toPath());
     AppHostTrustConfiguration trustConfiguration = readTrustConfiguration();
     warnWhenCatalogTrustUsesLegacyFallback(trustConfiguration);
-    AppHost appHost =
-        new LocalProcessAppHost(layout, createInstallVerificationPolicy(trustConfiguration));
+    AppInstallVerificationPolicy installVerificationPolicy =
+        createInstallVerificationPolicy(trustConfiguration);
+    AppHost appHost = new LocalProcessAppHost(layout, installVerificationPolicy);
     AppCatalogManager appCatalogManager =
-        createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
+        createAppCatalogManager(
+            layout, trustConfiguration, installVerificationPolicy, core.getRuntimePorts());
     AppVaultService appVaultService = createAppVaultService(layout);
     AppDataService appDataService = createAppDataService(layout, appHost);
     AppNetworkBudgetService appNetworkBudgetService = createAppNetworkBudgetService(layout);
@@ -628,15 +656,28 @@ public record CoreHttpShellRuntimeSupport(
   private static AppCatalogManager createAppCatalogManager(
       AppHostLayout layout,
       AppHostTrustConfiguration trustConfiguration,
+      AppInstallVerificationPolicy installVerificationPolicy,
       RuntimePorts runtimePorts) {
     AppCatalogSourceStore catalogSourceStore =
         new AppCatalogSourceStore(layout.dataDir().resolve("apps").resolve("catalogs"));
     TrustedKeyProvider trustedCatalogKeys = () -> loadTrustedCatalogKeys(trustConfiguration);
-    TrustedKeyProvider trustedBundleKeys = () -> loadTrustedAppKeys(trustConfiguration);
+    AppCatalogBundleVerificationPolicy bundlePolicy =
+        stagedBundle -> verifyCatalogBundle(installVerificationPolicy, stagedBundle);
     return runtimePorts == null
-        ? new AppCatalogManager(catalogSourceStore, trustedCatalogKeys, trustedBundleKeys)
-        : new AppCatalogManager(
-            catalogSourceStore, trustedCatalogKeys, trustedBundleKeys, runtimePorts.contentFetch());
+        ? AppCatalogManager.withBundleVerificationPolicy(
+            catalogSourceStore, trustedCatalogKeys, bundlePolicy)
+        : AppCatalogManager.withBundleVerificationPolicy(
+            catalogSourceStore, trustedCatalogKeys, bundlePolicy, runtimePorts.contentFetch());
+  }
+
+  private static void verifyCatalogBundle(
+      AppInstallVerificationPolicy installVerificationPolicy, Path stagedBundle)
+      throws IOException {
+    try {
+      installVerificationPolicy.verifyCopiedBundle(stagedBundle);
+    } catch (AppBundleVerificationException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
   }
 
   private static AppUpdateScheduler createAppUpdateScheduler(
@@ -728,6 +769,9 @@ public record CoreHttpShellRuntimeSupport(
 
   private static AppInstallVerificationPolicy createInstallVerificationPolicy(
       AppHostTrustConfiguration trustConfiguration) {
+    if (trustConfiguration.pilot().configured()) {
+      return createPilotInstallVerificationPolicy(trustConfiguration);
+    }
     AppInstallVerificationPolicy.CopiedBundleVerifier newBundleVerifier =
         copiedBundleDirectory ->
             verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration, false);
@@ -738,6 +782,236 @@ public record CoreHttpShellRuntimeSupport(
         ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(
             newBundleVerifier, historicalBundleVerifier)
         : AppInstallVerificationPolicy.requireSigned(newBundleVerifier, historicalBundleVerifier);
+  }
+
+  private static AppInstallVerificationPolicy createPilotInstallVerificationPolicy(
+      AppHostTrustConfiguration trustConfiguration) {
+    requireCompletePilotConfiguration(trustConfiguration);
+    PilotTrustConfiguration pilot = trustConfiguration.pilot();
+    PilotPublisherVerificationPolicy.Approval approval;
+    try {
+      approval = loadPilotRoutingApproval(pilot);
+      requireAuthenticatedPersistentPilotRegistries(trustConfiguration, approval);
+    } catch (IOException | RuntimeException exception) {
+      throw new IllegalStateException(
+          "Failed to authenticate persistent pilot trust configuration.", exception);
+    }
+    return AppInstallVerificationPolicy.requireSigned(
+        copiedBundle ->
+            verifyBundleAgainstPilotOrStableTrust(
+                copiedBundle, trustConfiguration, pilot, approval, false),
+        copiedBundle ->
+            verifyBundleAgainstPilotOrStableTrust(
+                copiedBundle, trustConfiguration, pilot, approval, true));
+  }
+
+  private static PilotPublisherVerificationPolicy.Approval loadPilotRoutingApproval(
+      PilotTrustConfiguration pilot) throws IOException {
+    PilotPublisherVerificationPolicy.Approval approval =
+        PilotPublisherApprovalReader.read(Path.of(pilot.approvalFile()), pilot.approvalDigest());
+    if (!pilot.pilotId().equals(approval.pilotId())) {
+      throw new AppHostConfigurationException("pilot publisher approval is bound to another pilot");
+    }
+    if (!pilot.pilotNodeId().equals(approval.pilotNodeId())) {
+      throw new AppHostConfigurationException(
+          "pilot publisher approval is bound to another pilot node");
+    }
+    return approval;
+  }
+
+  private static void verifyBundleAgainstPilotOrStableTrust(
+      Path copiedBundle,
+      AppHostTrustConfiguration trustConfiguration,
+      PilotTrustConfiguration pilot,
+      PilotPublisherVerificationPolicy.Approval approval,
+      boolean historicalVerification)
+      throws IOException {
+    AppBundleSignature signature =
+        AppBundleVerifier.read(copiedBundle.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
+    if (approval.publisherKeyId().equals(signature.keyId())) {
+      AppInstallVerificationPolicy pilotPolicy =
+          loadPilotInstallVerificationPolicy(trustConfiguration, pilot);
+      if (historicalVerification) {
+        pilotPolicy.verifyHistoricalCopiedBundle(copiedBundle);
+      } else {
+        pilotPolicy.verifyCopiedBundle(copiedBundle);
+      }
+      return;
+    }
+    TrustedRegistrySnapshot normalRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.trustedKeysFile()), NORMAL_STABLE_ROLE_LABEL);
+    requireRegistryDigest(
+        normalRegistry,
+        approval.normalStableRegistryDigest(),
+        "normal Stable registry digest differs from the pilot approval");
+    requireRegistryExcludesPublisher(normalRegistry.keys(), approval, NORMAL_STABLE_ROLE_LABEL);
+    AppBundleVerifier verifier =
+        historicalVerification
+            ? AppBundleVerifier.requireSignedForHistoricalVerification(normalRegistry.keys())
+            : AppBundleVerifier.requireSigned(normalRegistry.keys());
+    verifier.verify(copiedBundle);
+  }
+
+  private static void requireCompletePilotConfiguration(
+      AppHostTrustConfiguration trustConfiguration) {
+    PilotTrustConfiguration pilot = trustConfiguration.pilot();
+    if (!pilot.complete()) {
+      throw new IllegalStateException("Pilot AppHost trust configuration is incomplete.");
+    }
+    if (trustConfiguration.allowUnsigned()) {
+      throw new IllegalStateException(
+          "Pilot AppHost trust cannot be combined with unsigned development mode.");
+    }
+    if (trustConfiguration.trustedKeysFile() == null) {
+      throw new IllegalStateException(
+          "Pilot AppHost trust requires a file-backed normal Stable registry.");
+    }
+    if (trustConfiguration.catalogTrustedKeysFile() == null) {
+      throw new IllegalStateException(
+          "Pilot AppHost trust requires a role-specific PR-293 catalog registry.");
+    }
+    if (trustConfiguration.keyId() != null
+        || trustConfiguration.publicKeyBase64() != null
+        || trustConfiguration.publicKeyFile() != null) {
+      throw new IllegalStateException(
+          "Pilot AppHost trust does not permit direct additions to the normal Stable registry.");
+    }
+  }
+
+  private static AppInstallVerificationPolicy loadPilotInstallVerificationPolicy(
+      AppHostTrustConfiguration trustConfiguration, PilotTrustConfiguration pilot)
+      throws IOException {
+    PilotPublisherVerificationPolicy.Approval approval = loadPilotRoutingApproval(pilot);
+    PilotRegistrySnapshots registries = loadPilotRegistrySnapshots(trustConfiguration);
+    return PilotPublisherVerificationPolicy.create(
+        pilot.pilotId(),
+        pilot.pilotNodeId(),
+        approval,
+        new PilotPublisherVerificationPolicy.Registries(
+            registries.normalStable().keys(),
+            registries.normalStable().digest(),
+            registries.catalog().keys(),
+            registries.catalog().digest(),
+            registries.pilot().keys(),
+            registries.pilot().digest()));
+  }
+
+  private static PersistentPilotRegistrySnapshots requireAuthenticatedPersistentPilotRegistries(
+      AppHostTrustConfiguration trustConfiguration,
+      PilotPublisherVerificationPolicy.Approval approval)
+      throws IOException {
+    TrustedRegistrySnapshot normalRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.trustedKeysFile()), NORMAL_STABLE_ROLE_LABEL);
+    TrustedRegistrySnapshot catalogRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.catalogTrustedKeysFile()), CATALOG_AUTHORITY_ROLE_LABEL);
+    requireRegistryDigest(
+        normalRegistry,
+        approval.normalStableRegistryDigest(),
+        "normal Stable registry digest differs from the pilot approval");
+    requireRegistryDigest(
+        catalogRegistry,
+        approval.catalogRegistryDigest(),
+        "catalog registry digest differs from the pilot approval");
+    try {
+      normalRegistry.keys().requireDisjointFrom(catalogRegistry.keys());
+    } catch (IllegalArgumentException exception) {
+      throw new AppHostConfigurationException(
+          "Normal Stable and catalog signing key registries must be role-distinct.", exception);
+    }
+    requireRegistryExcludesPublisher(normalRegistry.keys(), approval, NORMAL_STABLE_ROLE_LABEL);
+    requireRegistryExcludesPublisher(
+        catalogRegistry.keys(), approval, CATALOG_AUTHORITY_ROLE_LABEL);
+    return new PersistentPilotRegistrySnapshots(normalRegistry, catalogRegistry);
+  }
+
+  private static void requireRegistryDigest(
+      TrustedRegistrySnapshot registry, String expectedDigest, String message)
+      throws AppHostConfigurationException {
+    if (!expectedDigest.equals(registry.digest())) {
+      throw new AppHostConfigurationException(message);
+    }
+  }
+
+  private static void requireRegistryExcludesPublisher(
+      TrustedAppKeys keys, PilotPublisherVerificationPolicy.Approval approval, String registryRole)
+      throws AppHostConfigurationException {
+    if (keys.keyIds().contains(approval.publisherKeyId())) {
+      throw new AppHostConfigurationException(
+          registryRole + " registry reuses the pilot publisher key id");
+    }
+    for (String keyId : keys.keyIds()) {
+      TrustedAppKey key =
+          keys.find(keyId)
+              .orElseThrow(
+                  () -> new AppHostConfigurationException(registryRole + " registry changed"));
+      if (approval.publisherFingerprintSha256().equals(sha256(key.publicKey().getEncoded()))) {
+        throw new AppHostConfigurationException(
+            registryRole + " registry reuses the pilot publisher public key");
+      }
+    }
+  }
+
+  private static PilotRegistrySnapshots loadPilotRegistrySnapshots(
+      AppHostTrustConfiguration trustConfiguration) throws IOException {
+    TrustedRegistrySnapshot normalRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.trustedKeysFile()), NORMAL_STABLE_ROLE_LABEL);
+    TrustedRegistrySnapshot catalogRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.catalogTrustedKeysFile()), CATALOG_AUTHORITY_ROLE_LABEL);
+    TrustedRegistrySnapshot pilotRegistry =
+        loadExactTrustedRegistry(
+            Path.of(trustConfiguration.pilot().trustedKeysFile()), "pilot publisher");
+    try {
+      normalRegistry.keys().requireDisjointFrom(catalogRegistry.keys());
+      normalRegistry.keys().requireDisjointFrom(pilotRegistry.keys());
+      catalogRegistry.keys().requireDisjointFrom(pilotRegistry.keys());
+    } catch (IllegalArgumentException exception) {
+      throw new AppHostConfigurationException(
+          "Normal Stable, catalog, and pilot signing key registries must be role-distinct.",
+          exception);
+    }
+    return new PilotRegistrySnapshots(normalRegistry, catalogRegistry, pilotRegistry);
+  }
+
+  private static TrustedRegistrySnapshot loadExactTrustedRegistry(Path configuredPath, String role)
+      throws IOException {
+    Path path = requireRegularNonSymlinkFile(configuredPath, role + " trusted-key registry");
+    byte[] registryBytes;
+    try (var input =
+        Channels.newInputStream(
+            Files.newByteChannel(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS))) {
+      registryBytes = input.readAllBytes();
+    }
+    return new TrustedRegistrySnapshot(TrustedAppKeys.load(registryBytes), sha256(registryBytes));
+  }
+
+  private static Path requireRegularNonSymlinkFile(Path input, String description)
+      throws AppHostConfigurationException {
+    Path lexical = Objects.requireNonNull(input, "input").toAbsolutePath().normalize();
+    Path current = lexical.getRoot();
+    for (Path component : lexical) {
+      current = current == null ? component : current.resolve(component);
+      if (Files.isSymbolicLink(current)) {
+        throw new AppHostConfigurationException(description + " must not use symbolic links");
+      }
+    }
+    if (!Files.isRegularFile(lexical, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostConfigurationException(description + " must be a regular file");
+    }
+    return lexical;
+  }
+
+  private static String sha256(byte[] bytes) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return "sha256:" + HexFormat.of().formatHex(digest.digest(bytes));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is unavailable", exception);
+    }
   }
 
   private static void verifyBundleAgainstConfiguredTrust(
@@ -777,7 +1051,13 @@ public record CoreHttpShellRuntimeSupport(
         configuredValue(CATALOG_TRUSTED_KEYS_FILE_PROPERTY, CATALOG_TRUSTED_KEYS_FILE_ENV),
         configuredValue(TRUSTED_KEY_ID_PROPERTY, TRUSTED_KEY_ID_ENV),
         configuredValue(TRUSTED_PUBLIC_KEY_BASE64_PROPERTY, TRUSTED_PUBLIC_KEY_BASE64_ENV),
-        configuredValue(TRUSTED_PUBLIC_KEY_FILE_PROPERTY, TRUSTED_PUBLIC_KEY_FILE_ENV));
+        configuredValue(TRUSTED_PUBLIC_KEY_FILE_PROPERTY, TRUSTED_PUBLIC_KEY_FILE_ENV),
+        new PilotTrustConfiguration(
+            configuredValue(PILOT_ID_PROPERTY, PILOT_ID_ENV),
+            configuredValue(PILOT_NODE_ID_PROPERTY, PILOT_NODE_ID_ENV),
+            configuredValue(PILOT_APPROVAL_FILE_PROPERTY, PILOT_APPROVAL_FILE_ENV),
+            configuredValue(PILOT_APPROVAL_DIGEST_PROPERTY, PILOT_APPROVAL_DIGEST_ENV),
+            configuredValue(PILOT_TRUSTED_KEYS_FILE_PROPERTY, PILOT_TRUSTED_KEYS_FILE_ENV)));
   }
 
   private static boolean allowUnsignedBundles() {
@@ -807,6 +1087,19 @@ public record CoreHttpShellRuntimeSupport(
 
   private static TrustedAppKeys loadTrustedCatalogKeys(
       AppHostTrustConfiguration trustConfiguration) {
+    if (trustConfiguration.pilot().configured()) {
+      try {
+        requireCompletePilotConfiguration(trustConfiguration);
+        PilotPublisherVerificationPolicy.Approval approval =
+            loadPilotRoutingApproval(trustConfiguration.pilot());
+        return requireAuthenticatedPersistentPilotRegistries(trustConfiguration, approval)
+            .catalog()
+            .keys();
+      } catch (IOException | RuntimeException exception) {
+        throw new IllegalStateException(
+            "Failed to load authenticated pilot catalog trust.", exception);
+      }
+    }
     return loadRoleSpecificTrustedKeys(trustConfiguration).catalogKeys();
   }
 
@@ -910,7 +1203,41 @@ public record CoreHttpShellRuntimeSupport(
       String catalogTrustedKeysFile,
       String keyId,
       String publicKeyBase64,
-      String publicKeyFile) {}
+      String publicKeyFile,
+      PilotTrustConfiguration pilot) {}
+
+  private record PilotTrustConfiguration(
+      String pilotId,
+      String pilotNodeId,
+      String approvalFile,
+      String approvalDigest,
+      String trustedKeysFile) {
+    private boolean configured() {
+      return pilotId != null
+          || pilotNodeId != null
+          || approvalFile != null
+          || approvalDigest != null
+          || trustedKeysFile != null;
+    }
+
+    private boolean complete() {
+      return pilotId != null
+          && pilotNodeId != null
+          && approvalFile != null
+          && approvalDigest != null
+          && trustedKeysFile != null;
+    }
+  }
+
+  private record TrustedRegistrySnapshot(TrustedAppKeys keys, String digest) {}
+
+  private record PersistentPilotRegistrySnapshots(
+      TrustedRegistrySnapshot normalStable, TrustedRegistrySnapshot catalog) {}
+
+  private record PilotRegistrySnapshots(
+      TrustedRegistrySnapshot normalStable,
+      TrustedRegistrySnapshot catalog,
+      TrustedRegistrySnapshot pilot) {}
 
   private record RoleSpecificTrustedKeys(TrustedAppKeys bundleKeys, TrustedAppKeys catalogKeys) {}
 

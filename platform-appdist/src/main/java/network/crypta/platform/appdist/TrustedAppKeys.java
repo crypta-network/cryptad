@@ -1,6 +1,7 @@
 package network.crypta.platform.appdist;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -162,8 +163,26 @@ public final class TrustedAppKeys {
    * @throws IOException if the sidecar is missing, malformed, or contains unsupported algorithms
    */
   public static TrustedAppKeys load(Path trustedKeysFile) throws IOException {
+    return load(AppDistributionSidecars.readRequiredBytes(trustedKeysFile, "trusted keys file"));
+  }
+
+  /**
+   * Loads trusted public keys from one already-captured registry byte sequence.
+   *
+   * <p>The bytes are parsed synchronously and are not retained. This overload lets protected
+   * callers compute an authenticated digest and parse the registry from the same immutable file
+   * snapshot instead of reopening a mutable path. Path confinement and symbolic-link checks remain
+   * the responsibility of the caller that captured the bytes; {@link #load(Path)} provides those
+   * checks for ordinary file-backed use.
+   *
+   * @param trustedKeysBytes exact UTF-8 registry bytes to parse
+   * @return parsed trusted-key registry
+   * @throws IOException if the sidecar is malformed or contains unsupported algorithms
+   */
+  public static TrustedAppKeys load(byte[] trustedKeysBytes) throws IOException {
     String content =
-        AppDistributionSidecars.readRequiredUtf8File(trustedKeysFile, "trusted keys file");
+        new String(
+            Objects.requireNonNull(trustedKeysBytes, "trustedKeysBytes"), StandardCharsets.UTF_8);
     Map<String, String> properties =
         AppDistributionSidecars.parseKeyValueSidecar(content, "trusted keys file");
     int version = validateTrustedKeysVersion(properties.remove("trusted.keys.version"));
@@ -315,6 +334,21 @@ public final class TrustedAppKeys {
    */
   public Optional<TrustedAppKeyPolicy> findPolicy(String keyId) {
     return Optional.ofNullable(policiesById.get(keyId));
+  }
+
+  /**
+   * Returns the closed set of stable key ids present in this registry.
+   *
+   * <p>The returned set includes every lifecycle state, including staged, retiring, retired, and
+   * revoked entries. It exposes no key bytes and cannot be used as an authorization decision;
+   * callers must still use the purpose-specific lookup or {@link AppBundleVerifier}. This view is
+   * primarily useful for role-separation checks that must reject an otherwise valid registry when
+   * it contains identities outside an explicitly approved bounded cohort.
+   *
+   * @return immutable set of every configured stable key id
+   */
+  public Set<String> keyIds() {
+    return policiesById.keySet();
   }
 
   /**

@@ -1,0 +1,259 @@
+{
+  "authorities": {
+    "catalogAuthorityDigest": "sha256:6b54f4db690088ed9c0499bfea4ea6168a87c04e8d0b0830b45c513caa5b3030",
+    "catalogChannel": "beta",
+    "independentReproducibilityDigest": "sha256:c9e1c30c46f06e0a4bbd267d56e2a771e330e1916206c7962acc91215e36685b",
+    "keys": [
+      {
+        "fingerprint": "sha256:3486c4fac8d9b6053c67f072aed32587abb59025919734eb5bf6550a452dcbe6",
+        "keyId": "catalog-fixture-294",
+        "lifecycle": "active",
+        "publicKeySpkiBase64": "MCowBQYDK2VwAyEAb00+eUQyTn9N+q8HFTTj+I7ucgr8eVfyhqwRhBkjhAU=",
+        "role": "catalog-signing",
+        "validFrom": "2026-08-22T00:00:00Z",
+        "validUntil": "2026-08-30T00:00:00Z"
+      },
+      {
+        "fingerprint": "sha256:2d859577734558c0650c2dc7af592cf85b3fca4857c7a11c5454be4a6f9bd8d7",
+        "keyId": "first-party-app-fixture-294",
+        "lifecycle": "active",
+        "publicKeySpkiBase64": "MCowBQYDK2VwAyEAUPGlQoh1MNbnU2nn790UW+kXckFOeZJVD3w44o8+RJQ=",
+        "role": "first-party-app-signing",
+        "validFrom": "2026-08-22T00:00:00Z",
+        "validUntil": "2026-08-30T00:00:00Z"
+      },
+      {
+        "fingerprint": "sha256:c48b0b18588717359314de3c5401483ba0d03a21c4d4f11c93834e108dc4bc23",
+        "keyId": "reviewer-fixture-294",
+        "lifecycle": "active",
+        "publicKeySpkiBase64": "MCowBQYDK2VwAyEATp1VTjkPTKeHLxxr5q5Laq62tZwyh8hoHzp+YYJRjkU=",
+        "role": "app-reviewer",
+        "validFrom": "2026-08-22T00:00:00Z",
+        "validUntil": "2026-08-30T00:00:00Z"
+      },
+      {
+        "fingerprint": "sha256:d415bd7ecdf3f6074c61b4d9b71091771bc28677521453b6296b9a39648bfa40",
+        "keyId": "recovery-fixture-294",
+        "lifecycle": "active",
+        "publicKeySpkiBase64": "MCowBQYDK2VwAyEAEBB+ZPQHRfF4F3Q+jAejFUyxkdsBWSyiPq09qkhxa88=",
+        "role": "offline-recovery",
+        "validFrom": "2026-08-22T00:00:00Z",
+        "validUntil": "2026-08-30T00:00:00Z"
+      }
+    ],
+    "keysetDigest": "sha256:b4b47f57daa55a39789ed69c244ed8ad06991d69b5f1dc9701255d07a7d1ba6c",
+    "keysetSubject": {
+      "bindings": {
+        "independentReproducibilityOperational": true,
+        "independentReproducibilityResultDigest": "sha256:6a52b310ae8e68cbc3ec2a0f3b9e82b3afc9e041e46c717790b5b83fb279fa36",
+        "independentReproducibilitySummaryDigest": "sha256:c9e1c30c46f06e0a4bbd267d56e2a771e330e1916206c7962acc91215e36685b",
+        "independentSubjectInventoryDigest": "sha256:8e8f41c37ec0a58d0d6ff6b53a989225a8fe0459b44f7cf0ff8ff15ca3a9e601",
+        "protectedReleaseContractDigest": "sha256:100c365eaa76d6270ef78f82cd716b9554932ea9f6dbf08b4c8fce0a48ea3359",
+        "protectedReleaseLifecycleState": "publicly-observed",
+        "protectedReleaseSummaryDigest": "sha256:e12bbee0ffa43f0d42d08afdbd6405fd3008021f92006850cbd2c0aa651b3655",
+        "providerIndependent": true
+      },
+      "ceremony": {
+        "approvalQuorum": {
+          "approvalRole": "fixture-reviewer",
+          "protectedEnvironment": "fixture-only",
+          "requiredApprovals": 1
+        },
+        "ceremonyId": "catalog-authority-fixture-294",
+        "ceremonyType": "genesis",
+        "custodyClass": "fixture-memory-only",
+        "effectiveAt": "2026-08-22T00:00:00Z",
+        "preparedAt": "2026-08-22T00:00:00Z",
+        "releaseMilestone": "Stable 1.0"
+      },
+      "keys": [
+        {
+          "algorithm": "Ed25519",
+          "compromiseState": "uncompromised",
+          "keyId": "catalog-fixture-294",
+          "lifecycle": "active",
+          "predecessorKeyId": null,
+          "publicKeyFingerprintSha256": "sha256:3486c4fac8d9b6053c67f072aed32587abb59025919734eb5bf6550a452dcbe6",
+          "publicKeySpkiBase64": "MCowBQYDK2VwAyEAb00+eUQyTn9N+q8HFTTj+I7ucgr8eVfyhqwRhBkjhAU=",
+          "publicTransparencyEligible": true,
+          "role": "catalog-signing",
+          "successorKeyId": null,
+          "validFrom": "2026-08-22T00:00:00Z",
+          "validUntil": "2026-08-30T00:00:00Z"
+        },
+        {
+          "algorithm": "Ed25519",
+          "compromiseState": "uncompromised",
+          "keyId": "first-party-app-fixture-294",
+          "lifecycle": "active",
+          "predecessorKeyId": null,
+          "publicKeyFingerprintSha256": "sha256:2d859577734558c0650c2dc7af592cf85b3fca4857c7a11c5454be4a6f9bd8d7",
+          "publicKeySpkiBase64": "MCowBQYDK2VwAyEAUPGlQoh1MNbnU2nn790UW+kXckFOeZJVD3w44o8+RJQ=",
+          "publicTransparencyEligible": true,
+          "role": "first-party-app-signing",
+          "successorKeyId": null,
+          "validFrom": "2026-08-22T00:00:00Z",
+          "validUntil": "2026-08-30T00:00:00Z"
+        },
+        {
+          "algorithm": "Ed25519",
+          "compromiseState": "uncompromised",
+          "keyId": "recovery-fixture-294",
+          "lifecycle": "active",
+          "predecessorKeyId": null,
+          "publicKeyFingerprintSha256": "sha256:d415bd7ecdf3f6074c61b4d9b71091771bc28677521453b6296b9a39648bfa40",
+          "publicKeySpkiBase64": "MCowBQYDK2VwAyEAEBB+ZPQHRfF4F3Q+jAejFUyxkdsBWSyiPq09qkhxa88=",
+          "publicTransparencyEligible": true,
+          "role": "offline-recovery",
+          "successorKeyId": null,
+          "validFrom": "2026-08-22T00:00:00Z",
+          "validUntil": "2026-08-30T00:00:00Z"
+        },
+        {
+          "algorithm": "Ed25519",
+          "compromiseState": "uncompromised",
+          "keyId": "reviewer-fixture-294",
+          "lifecycle": "active",
+          "predecessorKeyId": null,
+          "publicKeyFingerprintSha256": "sha256:c48b0b18588717359314de3c5401483ba0d03a21c4d4f11c93834e108dc4bc23",
+          "publicKeySpkiBase64": "MCowBQYDK2VwAyEATp1VTjkPTKeHLxxr5q5Laq62tZwyh8hoHzp+YYJRjkU=",
+          "publicTransparencyEligible": true,
+          "role": "app-reviewer",
+          "successorKeyId": null,
+          "validFrom": "2026-08-22T00:00:00Z",
+          "validUntil": "2026-08-30T00:00:00Z"
+        }
+      ],
+      "keysetVersion": 1,
+      "kind": "stable-1.0-public-keyset-subject",
+      "previousKeysetDigest": null,
+      "release": {
+        "buildVersion": 294,
+        "releaseId": "stable-1.0-fixture",
+        "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceRef": "refs/heads/release/294"
+      },
+      "schemaVersion": 1
+    },
+    "protectedReleaseRootDigest": "sha256:100c365eaa76d6270ef78f82cd716b9554932ea9f6dbf08b4c8fce0a48ea3359"
+  },
+  "cohort": [
+    {
+      "appVersion": "1.0.0",
+      "bundleDigest": "sha256:1894454e57ece61df72cdf818c0f1a32ef71305e868772cedce70da586197dc2",
+      "bundleSignatureDigest": "sha256:8fdaa96862c131ced6787d05228044dac0874e1d699323c0968b8d9dd856845b",
+      "cohortId": "version-1-reviewed",
+      "expectedDecision": "reviewed",
+      "preReviewDigest": "sha256:41e42f29f107a937a2abc20329513cd4656350cc3280c4a3a346357e239b0d0e",
+      "resubmissionOf": null,
+      "submissionDigest": "sha256:e04baf60d06924899478922af132647dab836fa21c21398f7295f6d80457512f",
+      "submissionId": "submission-v1-fixture",
+      "submissionType": "new_app"
+    },
+    {
+      "appVersion": "2.0.0",
+      "bundleDigest": "sha256:175b78efc84b0fa05bd0e4bebe553160b84e3d99e5810c713cebd0b4db80d158",
+      "bundleSignatureDigest": "sha256:7102cef0b20876e4c48005c79089c5165c20352f6be51053a17a0cd33e8183c1",
+      "cohortId": "version-2-rejected",
+      "expectedDecision": "rejected",
+      "preReviewDigest": "sha256:32e9d722c35a7e7d31ea553558911682f7f06bac54b4450734aae85d328977b9",
+      "resubmissionOf": null,
+      "submissionDigest": "sha256:7762e6981ca1b57bb7a7ba64e30287b0b82da68511d272cf1cefa3400cc8ee42",
+      "submissionId": "submission-v2-rejected-fixture",
+      "submissionType": "update"
+    },
+    {
+      "appVersion": "2.0.0",
+      "bundleDigest": "sha256:e4ef2356e6227c320f6547155d1d4125ae7a5d18f350efd2267048bef58d16d4",
+      "bundleSignatureDigest": "sha256:254964455a43829bb05ed2a872810f2a7fd0821180ffbf9f9fb02bacf29200af",
+      "cohortId": "version-2-corrected",
+      "expectedDecision": "reviewed",
+      "preReviewDigest": "sha256:e058a7c1760999ca82bfac08d3ce2fc79e920e440e88cb5a6555e76474458bdd",
+      "resubmissionOf": "submission-v2-rejected-fixture",
+      "submissionDigest": "sha256:0784134295f637e8ea8d12ae85217aac3f7e72759e4b8f09795a4cae1e442650",
+      "submissionId": "submission-v2-corrected-fixture",
+      "submissionType": "resubmission"
+    },
+    {
+      "appVersion": "3.0.0",
+      "bundleDigest": "sha256:654d60b5e4785dda50bc698cab8e76718e135cf34e39cc3034c6309282b4cfbe",
+      "bundleSignatureDigest": "sha256:43f490b0986d873d276c3168a1d973ac3e8e2ec5db93c5bebfd2a318c3f602f5",
+      "cohortId": "version-3-caution",
+      "expectedDecision": "caution",
+      "preReviewDigest": "sha256:6c48d2880a5dd167b8b9b38f323d47af2835cf34e765e70728414e100e1f9a1b",
+      "resubmissionOf": null,
+      "submissionDigest": "sha256:223bb96461084ff8db078de8dd22dbaba316fafb6877cfb54887bad5f2cac3e9",
+      "submissionId": "submission-v3-caution-fixture",
+      "submissionType": "update"
+    }
+  ],
+  "evaluationTime": "2026-08-23T12:00:00Z",
+  "evidence": {
+    "catalogAuthority": null,
+    "catalogPublication": null,
+    "collectorSummary": null,
+    "externalHandoff": null,
+    "independentReproducibility": null,
+    "protectedRelease": null,
+    "selectedRcFreeze": null,
+    "publisherApproval": null,
+    "reviewCohort": null,
+    "runtimeDrill": null
+  },
+  "externalApp": {
+    "appId": "org.external.fixturepilot",
+    "publisherFingerprint": "sha256:92e68874bd56888789d4fd58971a5bcf00a1a860989c3f69f7d045c2d341d0b5",
+    "publisherKeyId": "external-publisher-fixture-294",
+    "publisherPublicKeySpkiBase64": "MCowBQYDK2VwAyEATJol0yeqT9jrw9d8EoM3uhSpz71zYhvFVV1+wQgZrXI=",
+    "source": {
+      "archiveDigest": "sha256:d54ed9c0d70ee6140d996c1ad98d22b09578edcd3b616d34ed3f5603dad44436",
+      "host": "code.external.example",
+      "name": "pilot-app",
+      "owner": "outside",
+      "repositoryIdentity": "code.external.example/outside/pilot-app",
+      "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "revisionType": "git-commit-sha1",
+      "treeDigest": "sha256:cca756ddd72361878a50bf7fa7c1fbbe677134bf8ee31dfe72d5df887d53e821"
+    },
+    "workloadProfile": {
+      "accountId": "fixture-account-294",
+      "approvalReviewerKeyId": "reviewer-fixture-294",
+      "approvalSignatureBase64": "7Z1/UkpVY7bp7HGvG7R4hzx1elajgxgLzRfI/7gcBLt7ZBeoGZoML5fmWWKOI0g5fFsvApdHpmhEWn8IAZ6dCQ==",
+      "approvedAt": "2026-08-22T00:00:00Z",
+      "audience": "cryptad-third-party-pilot",
+      "expiresAt": "2026-08-30T00:00:00Z",
+      "issuer": "https://ci.external.example",
+      "operationalAllowed": false,
+      "organizationId": "outside",
+      "pipelineDefinition": "outside/pilot-app/workflows/build.yml",
+      "pipelineRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "profileId": "fixture-profile-294",
+      "profileType": "fixture",
+      "providerId": "external-ci",
+      "subject": "repo:outside/pilot-app:fixture",
+      "workloadFingerprint": "sha256:e35377fc9f37adb141886a307c153e99d8c4a8f0d1392141047e2935ff334a87",
+      "workloadPublicKeySpkiBase64": "MCowBQYDK2VwAyEA7WvzAy6gPwV6RS9Gx03mA9fMAHaraBTO6rmbiVZ2LEg="
+    }
+  },
+  "fixtureOnly": true,
+  "kind": "stable-1.0-third-party-app-pilot-execution",
+  "pilotId": "pilot-fixture-294",
+  "protectedPilotNode": {
+    "nodeId": "isolated-pilot-node-fixture-294",
+    "normalStableRegistryDigest": "sha256:a2442f7b9aa45bcad5dd09a9d4b1290d254ea3d3057d5dfa1155413a5917fc09",
+    "catalogRegistryDigest": "sha256:0406e94eb13d3a973a28df61f6a331202800d0d2319a1dd8bfefb6ad17cc085b",
+    "pilotRegistryDigest": "sha256:1cac820a2ee9aec651ce2e0308da211987ab790c35174a6c10d1e582058a906c"
+  },
+  "release": {
+    "buildVersion": 294,
+    "productDistributionDigest": "sha256:9328ab486927851f58f3d917013f26ec76b5988ad80fbc6f4e9a96f1ca231c92",
+    "releaseId": "stable-1.0-fixture"
+  },
+  "repository": {
+    "identity": "github.com/crypta-network/cryptad",
+    "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "requestedState": "planned",
+  "schemaVersion": 1,
+  "selfTest": true
+}

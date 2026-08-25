@@ -75,6 +75,7 @@ SELF_TEST_SUITES = (
     "stable-vulnerability",
     "stable-protected-release",
     "stable-catalog-authority",
+    "stable-third-party-pilot",
     "migration",
 )
 
@@ -174,6 +175,34 @@ def build_parser() -> argparse.ArgumentParser:
     independent.add_argument("--workspace-root", type=Path, default=Path.cwd())
     independent.add_argument("--out-dir", type=Path)
     independent.add_argument("--self-test", action="store_true")
+
+    third_party_pilot = subparsers.add_parser("stable-third-party-pilot")
+    third_party_pilot.add_argument(
+        "--mode",
+        choices=(
+            "preflight",
+            "verify-external-handoff",
+            "verify-review-cohort",
+            "verify-catalog-publication",
+            "verify-runtime-drill",
+            "closeout",
+        ),
+    )
+    third_party_pilot.add_argument(
+        "--execution-contract",
+        "--contract",
+        dest="execution_contract",
+        type=Path,
+        help="Closed, non-secret external third-party app pilot contract.",
+    )
+    third_party_pilot.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    third_party_pilot.add_argument("--out-dir", type=Path)
+    third_party_pilot.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help="Confined authenticated handoff and protected receipt directory.",
+    )
+    third_party_pilot.add_argument("--self-test", action="store_true")
 
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
@@ -1304,6 +1333,20 @@ def _run_command(args: argparse.Namespace) -> int:
             args.execution_contract,
             args.mode,
             args.out_dir,
+        )
+    if command == "stable-third-party-pilot":
+        from .engines import stable_1_0_third_party_pilot
+
+        if args.mode is None or args.execution_contract is None:
+            raise ValueError(
+                "stable-third-party-pilot requires --mode and --execution-contract"
+            )
+        return stable_1_0_third_party_pilot.run(
+            args.workspace_root.resolve(),
+            args.execution_contract,
+            args.mode,
+            args.out_dir,
+            args.evidence_dir,
         )
     manifest_path = getattr(args, "manifest", None)
     if manifest_path is None:

@@ -15,6 +15,15 @@ wraps, rather than replaces, the Stable supply-chain comparison authority and ke
 self-test, protected coordinator, authenticated external-build, and public-verification states
 distinct.
 
+The later external ecosystem pilot is documented in
+[Stable 1.0 external third-party app pilot](stable-1.0-external-third-party-app-pilot.md). Its
+`stable-third-party-pilot` command authenticates external handoff, review cohort, beta publication,
+runtime drill, and closeout receipts. It does not retroactively alter Stable GA and does not treat
+the existing sample-oriented `third-party-intake.*` evidence as operational. A dedicated protected
+producer creates the coordinator's exact aggregate artifact from authenticated public bytes;
+operational closeout then uses read-only Actions metadata to authenticate the retained PR-291,
+PR-292, and PR-293 ZIPs and their exact summary members.
+
 Python 3.12 or newer is required. The public command is
 `tools/release-certification/certify.py`; the previous per-tool Python scripts and shell wrappers
 were removed when evidence envelope v2 became the release contract.
@@ -73,6 +82,7 @@ Each run writes:
   stable-ga/
   stable-supply-chain/
   stable-independent-reproducibility/
+  stable-third-party-pilot/
   stable-maintenance/
   stable-lifecycle/
 ```
@@ -161,6 +171,11 @@ Release-candidate certification continues to require:
 Live-network beta evidence is release-blocking only when required by the manifest profile or
 requirements. Disabled live evidence is ignored; stale live artifacts must not be copied into a
 new release record.
+
+External pilot evidence is a separate post-GA ecosystem class. A schema-valid PR-294 summary may be
+displayed as pending, blocked, partial, or complete by later closeout tooling, but current Stable GA
+evidence is not made dependent on it. Only `operationalPilotComplete=true` with authenticated
+protected roots supports an operational claim; fixtures remain `fixture-verification-complete`.
 
 `requirements.history=true` may intentionally be used without `inputs.releaseHistory`. In that
 case the manifest remains valid and the certification engine records the unavailable mandatory

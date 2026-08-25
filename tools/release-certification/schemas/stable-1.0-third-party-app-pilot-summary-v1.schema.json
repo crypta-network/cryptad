@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-third-party-app-pilot-summary-v1.schema.json",
+  "title": "Stable 1.0 external third-party app pilot summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pilotId", "releaseId", "buildVersion", "sourceCommit", "mode", "status", "state", "implementationComplete", "fixtureVerificationComplete", "externalHandoffAuthenticated", "reviewCohortComplete", "betaCatalogPublished", "runtimeDrillComplete", "operationalPilotComplete", "fixtureOnly", "selfTest", "operational", "authorityDigests", "externalApp", "evidence", "blockers", "summaryDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-third-party-app-pilot-summary"},
+    "pilotId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "buildVersion": {"type": "integer", "minimum": 1},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "mode": {"enum": ["preflight", "verify-external-handoff", "verify-review-cohort", "verify-catalog-publication", "verify-runtime-drill", "closeout"]},
+    "status": {"enum": ["pass", "fail", "partial"]},
+    "state": {"enum": ["planned", "preflight-passed", "fixture-verification-complete", "external-handoff-authenticated", "review-cohort-complete", "beta-catalog-published", "runtime-drill-complete", "operational-pilot-complete", "blocked", "partial"]},
+    "implementationComplete": {"type": "boolean"},
+    "fixtureVerificationComplete": {"type": "boolean"},
+    "externalHandoffAuthenticated": {"type": "boolean"},
+    "reviewCohortComplete": {"type": "boolean"},
+    "betaCatalogPublished": {"type": "boolean"},
+    "runtimeDrillComplete": {"type": "boolean"},
+    "operationalPilotComplete": {"type": "boolean"},
+    "fixtureOnly": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "operational": {"type": "boolean"},
+    "authorityDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "keyset"],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/digest"},
+        "independentReproducibility": {"$ref": "#/$defs/digest"},
+        "catalogAuthority": {"$ref": "#/$defs/digest"},
+        "keyset": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "externalApp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId", "sourceRepositoryIdentity", "sourceRevision", "publisherKeyId", "publisherFingerprint"],
+      "properties": {
+        "appId": {"type": "string"},
+        "sourceRepositoryIdentity": {"type": "string"},
+        "sourceRevision": {"type": "string"},
+        "publisherKeyId": {"type": "string"},
+        "publisherFingerprint": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "digest"],
+        "properties": {
+          "id": {"enum": ["third-party-pilot.external-developer", "third-party-pilot.bundle-signature", "third-party-pilot.reviewed-install", "third-party-pilot.rejected-resubmission", "third-party-pilot.caution-consent", "third-party-pilot.catalog-publication", "third-party-pilot.update-rollback", "third-party-pilot.transparency", "third-party-pilot.redaction"]},
+          "status": {"enum": ["pass", "fail", "pending", "partial", "fixture-only"]},
+          "digest": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "blockers": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"}},
+    "summaryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}
+}

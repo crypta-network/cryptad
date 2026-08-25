@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-external-developer-handoff-v1.schema.json",
+  "title": "Authenticated external developer handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pilotId", "appId", "evidenceClassification", "provenance", "source", "workload", "publisherKeyId", "publisherFingerprint", "cohort", "handoffDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-external-developer-handoff"},
+    "pilotId": {"type": "string"},
+    "appId": {"type": "string"},
+    "evidenceClassification": {"enum": ["fixture", "self-test", "authenticated-external-developer"]},
+    "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryIdentity", "revision", "archiveDigest", "treeDigest"],
+      "properties": {
+        "repositoryIdentity": {"type": "string"},
+        "revision": {"type": "string"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "treeDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "providerId", "organizationId", "accountId", "issuer", "audience", "subject", "pipelineDefinition", "pipelineRevision", "runId", "attestationDigest", "signatureBase64", "verifiedAt"],
+      "properties": {
+        "profileId": {"type": "string"},
+        "providerId": {"type": "string"},
+        "organizationId": {"type": "string"},
+        "accountId": {"type": "string"},
+        "issuer": {"type": "string", "format": "uri"},
+        "audience": {"type": "string"},
+        "subject": {"type": "string"},
+        "pipelineDefinition": {"type": "string"},
+        "pipelineRevision": {"type": "string"},
+        "runId": {"type": "string"},
+        "attestationDigest": {"$ref": "#/$defs/digest"},
+        "signatureBase64": {"$ref": "#/$defs/signature"},
+        "verifiedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "publisherKeyId": {"type": "string"},
+    "publisherFingerprint": {"$ref": "#/$defs/digest"},
+    "cohort": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cohortId", "submissionFile", "submissionDigest", "submissionSize", "bundleFile", "bundleDigest", "bundleSize", "bundleSignatureDigest", "attestation", "attestationSignatureBase64"],
+        "properties": {
+          "cohortId": {"type": "string"},
+          "submissionFile": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}\\.zip$"},
+          "submissionDigest": {"$ref": "#/$defs/digest"},
+          "submissionSize": {"type": "integer", "minimum": 1, "maximum": 268435456},
+          "bundleFile": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}\\.zip$"},
+          "bundleDigest": {"$ref": "#/$defs/digest"},
+          "bundleSize": {"type": "integer", "minimum": 1, "maximum": 134217728},
+          "bundleSignatureDigest": {"$ref": "#/$defs/digest"},
+          "attestation": {"$ref": "#/$defs/developerAttestation"},
+          "attestationSignatureBase64": {"$ref": "#/$defs/signature"}
+        }
+      }
+    },
+    "handoffDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "developerAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "schemaVersion", "pilotId", "appId", "appVersion", "submissionId", "submissionType", "resubmissionOf", "sourceRepositoryIdentity", "sourceRevision", "sourceArchiveDigest", "sourceTreeDigest", "buildProviderId", "buildWorkflow", "buildRunId", "bundleDigest", "bundleSignatureDigest", "publisherKeyId", "publisherFingerprint", "submissionDigest", "manifestDigest", "createdAt", "effectiveAt", "expiresAt"],
+      "properties": {
+        "domain": {"const": "cryptad.stable-1.0.external-third-party-app-pilot.developer-attestation.v1"},
+        "schemaVersion": {"const": 1},
+        "pilotId": {"type": "string"},
+        "appId": {"type": "string"},
+        "appVersion": {"type": "string"},
+        "submissionId": {"type": "string"},
+        "submissionType": {"enum": ["new_app", "update", "resubmission"]},
+        "resubmissionOf": {"type": ["string", "null"]},
+        "sourceRepositoryIdentity": {"type": "string"},
+        "sourceRevision": {"type": "string"},
+        "sourceArchiveDigest": {"$ref": "#/$defs/digest"},
+        "sourceTreeDigest": {"$ref": "#/$defs/digest"},
+        "buildProviderId": {"type": "string"},
+        "buildWorkflow": {"type": "string"},
+        "buildRunId": {"type": "string"},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "bundleSignatureDigest": {"$ref": "#/$defs/digest"},
+        "publisherKeyId": {"type": "string"},
+        "publisherFingerprint": {"$ref": "#/$defs/digest"},
+        "submissionDigest": {"$ref": "#/$defs/digest"},
+        "manifestDigest": {"$ref": "#/$defs/digest"},
+        "createdAt": {"type": "string", "format": "date-time"},
+        "effectiveAt": {"type": "string", "format": "date-time"},
+        "expiresAt": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

@@ -279,6 +279,15 @@ Keep developer artifacts deterministic and redacted:
 
 Redaction failures in generated release artifacts are release-blocking in production beta mode.
 
+## Selected external pilot
+
+Normal beta participation does not require the protected operational pilot. If a submission is
+selected, follow [Stable 1.0 external third-party app pilot](stable-1.0-external-third-party-app-pilot.md).
+The developer keeps its private key, produces a deterministic signed bundle and submission, signs
+the domain-separated developer attestation, and authenticates its immutable source/build workload.
+Crypta does not rebuild or re-sign the app. Selection and pilot completion do not imply Stable
+catalog promotion, general endorsement, or trust for another app or version.
+
 ## Sandbox limitations and known limits
 
 The developer beta mock server is an offline app-authoring surface. It can serve deterministic

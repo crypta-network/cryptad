@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-protected-artifact-provenance-v1.schema.json",
+  "title": "Protected artifact provenance definitions",
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryIdentity", "workflowPath", "workflowCommit", "runId", "runAttempt", "artifactName", "artifactDigest", "environment", "conclusion"],
+      "properties": {
+        "repositoryIdentity": {"type": "string", "pattern": "^[a-z0-9.-]+/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
+        "workflowPath": {"type": "string", "pattern": "^(?:\\.github/workflows/)?[A-Za-z0-9][A-Za-z0-9._/-]{0,254}\\.ya?ml$"},
+        "workflowCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "runId": {"type": "integer", "minimum": 1, "maximum": 9223372036854775807},
+        "runAttempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$"},
+        "artifactDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "environment": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "conclusion": {"const": "success"}
+      }
+    }
+  }
+}

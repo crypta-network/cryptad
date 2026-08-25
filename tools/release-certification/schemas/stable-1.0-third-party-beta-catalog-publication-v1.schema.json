@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-third-party-beta-catalog-publication-v1.schema.json",
+  "title": "PR-293-authorized third-party beta catalog publication",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "pilotId", "appId", "provenance", "channel", "catalogId", "catalogSigningKeyId", "catalogSigningKeyFingerprint", "keysetDigest", "catalogAuthorityDigest", "editions", "publishedSubject", "observations", "status", "partial", "publishedAt", "receiptDigest", "signatureBase64"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-third-party-beta-catalog-publication"},
+    "pilotId": {"type": "string"},
+    "appId": {"type": "string"},
+    "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "channel": {"const": "beta"},
+    "catalogId": {"type": "string"},
+    "catalogSigningKeyId": {"type": "string"},
+    "catalogSigningKeyFingerprint": {"$ref": "#/$defs/digest"},
+    "keysetDigest": {"$ref": "#/$defs/digest"},
+    "catalogAuthorityDigest": {"$ref": "#/$defs/digest"},
+    "editions": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/edition"}},
+    "publishedSubject": {"$ref": "#/$defs/publishedSubject"},
+    "observations": {"type": "array", "minItems": 2, "maxItems": 9, "items": {"$ref": "#/$defs/observation"}},
+    "status": {"enum": ["pass", "partial", "fail"]},
+    "partial": {"type": "boolean"},
+    "publishedAt": {"type": "string", "format": "date-time"},
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "signatureBase64": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "edition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogRevision", "catalogEdition", "version", "bundleDigest", "bundleSignatureDigest", "publisherKeyId", "publisherFingerprint", "submissionDigest", "reviewReceiptDigest", "decision", "cautionWarnings", "acknowledgementRequired", "entryDigest", "subjectDigest", "signatureSiblingDigest"],
+      "properties": {
+        "catalogRevision": {"type": "integer", "minimum": 1},
+        "catalogEdition": {"type": "integer", "minimum": 1},
+        "version": {"type": "string"},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "bundleSignatureDigest": {"$ref": "#/$defs/digest"},
+        "publisherKeyId": {"type": "string"},
+        "publisherFingerprint": {"$ref": "#/$defs/digest"},
+        "submissionDigest": {"$ref": "#/$defs/digest"},
+        "reviewReceiptDigest": {"$ref": "#/$defs/digest"},
+        "decision": {"enum": ["reviewed", "caution"]},
+        "cautionWarnings": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string"}},
+        "acknowledgementRequired": {"type": "boolean"},
+        "entryDigest": {"$ref": "#/$defs/digest"},
+        "subjectDigest": {"$ref": "#/$defs/digest"},
+        "signatureSiblingDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "publishedSubject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogRevision", "catalogEdition", "entryDigests", "subjectDigest", "signatureSiblingDigest"],
+      "properties": {
+        "catalogRevision": {"type": "integer", "minimum": 1},
+        "catalogEdition": {"type": "integer", "minimum": 1},
+        "entryDigests": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+        "subjectDigest": {"$ref": "#/$defs/digest"},
+        "signatureSiblingDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locationId", "locationType", "controlPlaneId", "subjectDigest", "signatureSiblingDigest", "observedAt", "status"],
+      "properties": {
+        "locationId": {"type": "string"},
+        "locationType": {"enum": ["primary", "mirror"]},
+        "controlPlaneId": {"type": "string"},
+        "subjectDigest": {"$ref": "#/$defs/digest"},
+        "signatureSiblingDigest": {"$ref": "#/$defs/digest"},
+        "observedAt": {"type": "string", "format": "date-time"},
+        "status": {"enum": ["pass", "fail", "stale"]}
+      }
+    }
+  }
+}

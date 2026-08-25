@@ -37,6 +37,16 @@ final class AppCatalogOperations {
     this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
   }
 
+  boolean hasTrustedCatalogKey(String keyId) throws IOException {
+    if (keyId == null || keyId.isBlank()) {
+      return false;
+    }
+    return trustedKeyProvider
+        .trustedKeys()
+        .findActiveForVerification(keyId.trim(), Instant.now())
+        .isPresent();
+  }
+
   AppCatalogSourceSnapshot addSource(String rawSource, String expectedCatalogId)
       throws IOException {
     AppCatalogSource source = AppCatalogSource.parse(rawSource);

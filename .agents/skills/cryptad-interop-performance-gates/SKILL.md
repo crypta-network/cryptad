@@ -401,6 +401,21 @@ python3 tools/release-certification/certify.py stable-ga \
   release-certification self-tests on the multi-OS matrix, and `performance-smoke` on
   schedule/manual. Certification self-tests allow 30 minutes on Ubuntu and macOS and 60 minutes on
   Windows; keep workspace paths canonical before comparing absolute paths across those runners.
+- PR-294 external-pilot evidence is a separate later operational class:
+  `third-party-pilot.external-developer`, `third-party-pilot.bundle-signature`,
+  `third-party-pilot.reviewed-install`, `third-party-pilot.rejected-resubmission`,
+  `third-party-pilot.caution-consent`, `third-party-pilot.catalog-publication`,
+  `third-party-pilot.update-rollback`, `third-party-pilot.transparency`, and
+  `third-party-pilot.redaction`. Do not make historical Stable GA depend retroactively on these
+  rows, and do not map sample, fixture, workflow-definition, intake install-smoke, partial
+  publication, or incomplete cleanup evidence to operational completion. Use
+  `docs/stable-1.0-external-third-party-app-pilot.md` and the `stable-third-party-pilot` command.
+  Authenticate the runtime's exact normal Stable, canonical PR-293 catalog, and dedicated pilot
+  registry digests independently. Expired, revoked, or cleaned-up pilot trust may block external
+  subjects only; it must not block ordinary Stable app or catalog verification.
+  At pilot closeout, derive PR-293's expected catalog subject from the mutually bound PR-291
+  selected RC, PR-292 subject inventory, and exact selected-RC freeze. Never learn revision,
+  edition, catalog/signature digest, or signer expectations from the PR-293 result being verified.
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
   branches and `v*` tags. When the manual extended gate produces

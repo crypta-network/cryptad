@@ -1,7 +1,6 @@
 package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -10,7 +9,7 @@ import network.crypta.runtime.spi.ContentFetchPort;
 /**
  * Coordinates signed catalog sources, refreshes, artifact staging, and bundle verification.
  *
- * <p>The manager owns no global state. Runtime composition supplies the file-backed store and a
+ * <p>The manager owns no global state. Runtime composition supplies the file-backed store and
  * trusted-key providers, and API handlers call the manager for catalog operations. Install and
  * update flows stop at {@link AppCatalogInstallPlan}; callers still delegate final installation to
  * AppHost so existing staged-directory semantics and verification policies remain intact.
@@ -68,11 +67,32 @@ public final class AppCatalogManager {
     this(
         sourceStore,
         trustedCatalogKeyProvider,
-        trustedBundleKeyProvider,
-        new AppCatalogFetcher(),
-        new AppCatalogArtifactDownloader(),
-        new AppCatalogBundleExtractor(),
-        defaultReviewTransparencyLog(sourceStore));
+        AppCatalogBundleVerificationPolicy.fromTrustedKeys(trustedBundleKeyProvider),
+        AppCatalogManagerDependencies.defaults(sourceStore));
+  }
+
+  /**
+   * Creates a manager with catalog authority trust and an explicit app-bundle policy.
+   *
+   * <p>The named factory avoids making existing three-argument constructor calls with {@code null}
+   * ambiguous with the content-transport overload. Protected runtimes use this entry point when
+   * publisher authorization is narrower than a generic trusted-key registry. Catalog signatures
+   * remain governed exclusively by {@code trustedCatalogKeyProvider}.
+   *
+   * @param sourceStore file-backed catalog source store
+   * @param trustedCatalogKeyProvider provider for catalog-signing trust
+   * @param bundleVerificationPolicy app-publisher authorization for extracted bundles
+   * @return manager using the explicit bundle policy
+   */
+  public static AppCatalogManager withBundleVerificationPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.defaults(sourceStore));
   }
 
   /**
@@ -114,96 +134,81 @@ public final class AppCatalogManager {
     this(
         sourceStore,
         trustedCatalogKeyProvider,
-        trustedBundleKeyProvider,
-        new AppCatalogFetcher(contentFetchPort),
-        new AppCatalogArtifactDownloader(contentFetchPort),
-        new AppCatalogBundleExtractor(),
-        defaultReviewTransparencyLog(sourceStore));
+        AppCatalogBundleVerificationPolicy.fromTrustedKeys(trustedBundleKeyProvider),
+        AppCatalogManagerDependencies.withContentFetchPort(sourceStore, contentFetchPort));
   }
 
   /**
-   * Creates a manager with explicit collaborators for tests and controlled embeddings.
+   * Creates a manager with explicit bundle authorization and Crypta content transport.
    *
-   * <p>Supplying collaborators keeps network and filesystem edges deterministic in unit tests while
-   * preserving the same orchestration order as production: fetch, verify catalog, download
-   * artifact, extract, verify bundle, then return a plan. Catalog and bundle verification share the
+   * @param sourceStore file-backed catalog source store
+   * @param trustedCatalogKeyProvider provider for catalog-signing trust
+   * @param bundleVerificationPolicy app-publisher authorization for extracted bundles
+   * @param contentFetchPort runtime content transport for {@code crypta:} sources
+   * @return manager using the explicit bundle policy and content transport
+   */
+  public static AppCatalogManager withBundleVerificationPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      ContentFetchPort contentFetchPort) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.withContentFetchPort(sourceStore, contentFetchPort));
+  }
+
+  /**
+   * Creates a manager with explicit pipeline dependencies for tests and controlled embeddings.
+   *
+   * <p>Supplying a dependency bundle keeps network and filesystem edges deterministic while
+   * preserving the production orchestration order. Catalog and bundle verification share the
    * supplied provider for source compatibility.
    *
    * @param sourceStore file-backed catalog source store
    * @param trustedKeyProvider provider for the current trusted app/catalog keys
-   * @param fetcher catalog source fetcher
-   * @param artifactDownloader artifact downloader and digest checker
-   * @param bundleExtractor ZIP extractor and signed-bundle verifier
+   * @param dependencies fetch, download, extraction, and transparency-log dependencies
    */
   public AppCatalogManager(
       AppCatalogSourceStore sourceStore,
       TrustedKeyProvider trustedKeyProvider,
-      AppCatalogFetcher fetcher,
-      AppCatalogArtifactDownloader artifactDownloader,
-      AppCatalogBundleExtractor bundleExtractor) {
+      AppCatalogManagerDependencies dependencies) {
     this(
         sourceStore,
         trustedKeyProvider,
-        trustedKeyProvider,
-        fetcher,
-        artifactDownloader,
-        bundleExtractor,
-        defaultReviewTransparencyLog(sourceStore));
-  }
-
-  /**
-   * Creates a manager with explicit collaborators and transparency log.
-   *
-   * <p>Catalog and bundle verification share the supplied provider for source compatibility.
-   *
-   * @param sourceStore file-backed catalog source store
-   * @param trustedKeyProvider provider for the current trusted app/catalog keys
-   * @param fetcher catalog source fetcher
-   * @param artifactDownloader artifact downloader and digest checker
-   * @param bundleExtractor ZIP extractor and signed-bundle verifier
-   * @param reviewTransparencyLog local review transparency log
-   */
-  public AppCatalogManager(
-      AppCatalogSourceStore sourceStore,
-      TrustedKeyProvider trustedKeyProvider,
-      AppCatalogFetcher fetcher,
-      AppCatalogArtifactDownloader artifactDownloader,
-      AppCatalogBundleExtractor bundleExtractor,
-      AppReviewTransparencyLog reviewTransparencyLog) {
-    this(
-        sourceStore,
-        trustedKeyProvider,
-        trustedKeyProvider,
-        fetcher,
-        artifactDownloader,
-        bundleExtractor,
-        reviewTransparencyLog);
+        AppCatalogBundleVerificationPolicy.fromTrustedKeys(trustedKeyProvider),
+        dependencies);
   }
 
   private AppCatalogManager(
       AppCatalogSourceStore sourceStore,
       TrustedKeyProvider trustedCatalogKeyProvider,
-      TrustedKeyProvider trustedBundleKeyProvider,
-      AppCatalogFetcher fetcher,
-      AppCatalogArtifactDownloader artifactDownloader,
-      AppCatalogBundleExtractor bundleExtractor,
-      AppReviewTransparencyLog reviewTransparencyLog) {
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      AppCatalogManagerDependencies dependencies) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
     this.trustedCatalogKeyProvider =
         Objects.requireNonNull(trustedCatalogKeyProvider, "trustedCatalogKeyProvider");
-    TrustedKeyProvider checkedBundleKeyProvider =
-        Objects.requireNonNull(trustedBundleKeyProvider, "trustedBundleKeyProvider");
-    AppCatalogFetcher checkedFetcher = Objects.requireNonNull(fetcher, "fetcher");
-    this.reviewTransparencyLog =
-        Objects.requireNonNull(reviewTransparencyLog, "reviewTransparencyLog");
+    AppCatalogBundleVerificationPolicy checkedBundleVerificationPolicy =
+        Objects.requireNonNull(bundleVerificationPolicy, "bundleVerificationPolicy");
+    AppCatalogManagerDependencies checkedDependencies =
+        Objects.requireNonNull(dependencies, "dependencies");
+    this.reviewTransparencyLog = checkedDependencies.reviewTransparencyLog();
     this.operations =
-        new AppCatalogOperations(this.sourceStore, this.trustedCatalogKeyProvider, checkedFetcher);
+        new AppCatalogOperations(
+            this.sourceStore, this.trustedCatalogKeyProvider, checkedDependencies.fetcher());
     this.refreshCoordinator =
         new AppCatalogRefreshCoordinator(
-            this.sourceStore, this.trustedCatalogKeyProvider, checkedFetcher, this.operations);
+            this.sourceStore,
+            this.trustedCatalogKeyProvider,
+            checkedDependencies.fetcher(),
+            this.operations);
     this.installPlanner =
         new AppCatalogInstallPlanner(
-            this.sourceStore, checkedBundleKeyProvider, artifactDownloader, bundleExtractor);
+            this.sourceStore,
+            checkedBundleVerificationPolicy,
+            checkedDependencies.artifactDownloader(),
+            checkedDependencies.bundleExtractor());
   }
 
   /**
@@ -213,12 +218,6 @@ public final class AppCatalogManager {
    */
   public AppReviewTransparencyLog reviewTransparencyLog() {
     return reviewTransparencyLog;
-  }
-
-  private static AppReviewTransparencyLog defaultReviewTransparencyLog(
-      AppCatalogSourceStore sourceStore) {
-    return AppReviewTransparencyLog.fileBacked(
-        Objects.requireNonNull(sourceStore, "sourceStore").reviewTransparencyLogFile());
   }
 
   /**
@@ -555,13 +554,7 @@ public final class AppCatalogManager {
    * @throws IOException if trusted-key configuration cannot be read
    */
   public synchronized boolean hasTrustedCatalogKey(String keyId) throws IOException {
-    if (keyId == null || keyId.isBlank()) {
-      return false;
-    }
-    return trustedCatalogKeyProvider
-        .trustedKeys()
-        .findActiveForVerification(keyId.trim(), Instant.now())
-        .isPresent();
+    return operations.hasTrustedCatalogKey(keyId);
   }
 
   private AppCatalog readVerifiedCatalog(String catalogId) throws IOException {

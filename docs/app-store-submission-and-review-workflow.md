@@ -413,6 +413,7 @@ stable third-party app-facing Platform API 1.0 surface.
 Submission tooling can append local hash-chained transparency log events:
 
 - `submission_created`
+- `reviewer_assigned`
 - `pre_review_completed`
 - `review_decision_recorded`
 - `review_receipt_issued`
@@ -494,6 +495,14 @@ artifacts, reviewed/caution/rejected/resubmission decisions, beta catalog candid
 install-from-beta-catalog smoke status, transparency export verification, rejected-candidate
 blocking, caution warnings, and redaction. Fixture evidence remains non-production and must not be
 used as production promotion evidence.
+
+The external pilot is a separate operational layer. It reuses this queue and decision state
+machine, but authenticates an external publisher, immutable source and workload, exact signed
+bundles, protected reviewer cohort, PR-293 beta publication, and a live AppHost
+install/update/caution/rollback drill. The intake `install-smoke` command remains structural and
+cannot satisfy runtime pilot evidence. See
+[Stable 1.0 external third-party app pilot](stable-1.0-external-third-party-app-pilot.md) and its
+separate `third-party-pilot.*` evidence rows.
 
 PR-281 support-feedback-loop evidence links review appeals, app submission feedback, compatibility
 reports, known issues, backlog candidates, and beta release notes. Use
