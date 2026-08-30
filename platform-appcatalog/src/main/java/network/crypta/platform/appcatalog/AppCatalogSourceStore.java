@@ -56,6 +56,8 @@ public final class AppCatalogSourceStore {
   private static final String LAST_FETCH_ERROR_CODE_KEY = "source.lastFetchErrorCode";
   private static final String LAST_FETCH_ERROR_MESSAGE_KEY = "source.lastFetchErrorMessage";
   private static final String LAST_RESOLVED_URI_KEY = "source.lastResolvedUri";
+  private static final String TRUST_BINDING_ID_KEY = "source.trustBindingId";
+  private static final String TRUST_BINDING_DIGEST_KEY = "source.trustBindingDigest";
   private static final String REVISION_DIGEST_KEY = "revision.digest";
   private static final String REVISION_SIGNATURE_DIGEST_KEY = "revision.signatureDigest";
   private static final String REVISION_GENERATED_AT_KEY = "revision.generatedAt";
@@ -180,6 +182,33 @@ public final class AppCatalogSourceStore {
     return List.copyOf(sources);
   }
 
+  /** Lists normalized configured IDs without parsing another catalog's persisted record. */
+  List<String> configuredCatalogIds() throws IOException {
+    if (!Files.isDirectory(rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return List.of();
+    }
+    List<String> catalogIds = new ArrayList<>();
+    try (var children = Files.list(rootDirectory)) {
+      for (Path child :
+          children.sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
+        if (!Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)
+            || child.equals(stagingDirectory())
+            || !Files.isRegularFile(child.resolve(SOURCE_FILE_NAME), LinkOption.NOFOLLOW_LINKS)) {
+          continue;
+        }
+        String catalogId = child.getFileName().toString();
+        try {
+          if (catalogId.equals(AppCatalog.normalizeCatalogId(catalogId))) {
+            catalogIds.add(catalogId);
+          }
+        } catch (AppCatalogException _) {
+          // One malformed local directory cannot become an identity or disable unrelated catalogs.
+        }
+      }
+    }
+    return List.copyOf(catalogIds);
+  }
+
   /**
    * Reads one stored catalog source.
    *
@@ -273,7 +302,9 @@ public final class AppCatalogSourceStore {
               source,
               addedAt,
               refreshedAt,
-              AppCatalogSourceRefreshMetadata.success(refreshedAt, resolvedUri)));
+              AppCatalogSourceRefreshMetadata.success(refreshedAt, resolvedUri),
+              catalogWrite.trustBindingId().orElse(null),
+              catalogWrite.trustBindingDigest().orElse(null)));
     } catch (IOException | AppCatalogException exception) {
       if (previousSnapshot == null) {
         cleanupIncompleteAdd(directory, exception);
@@ -312,7 +343,9 @@ public final class AppCatalogSourceStore {
             stored.source(),
             stored.addedAt(),
             stored.refreshedAt(),
-            metadata));
+            metadata,
+            stored.trustBindingId().orElse(null),
+            stored.trustBindingDigest().orElse(null)));
     Map<AppCatalogMirrorId, AppCatalogMirrorHealth> health =
         new LinkedHashMap<>(stored.mirrorHealth());
     AppCatalogMirror primary = AppCatalogMirror.primary(stored.source(), stored.addedAt());
@@ -416,6 +449,13 @@ public final class AppCatalogSourceStore {
         parseInstant(removeRequired(properties, REFRESHED_AT_KEY), REFRESHED_AT_KEY);
     AppCatalogSourceRefreshMetadata refreshMetadata =
         parseRefreshMetadata(properties, refreshedAt, source);
+    Optional<String> trustBindingId = removeOptional(properties, TRUST_BINDING_ID_KEY);
+    Optional<String> trustBindingDigest = removeOptional(properties, TRUST_BINDING_DIGEST_KEY);
+    if (trustBindingId.isPresent() != trustBindingDigest.isPresent()) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "catalog source trust binding metadata is incomplete");
+    }
     if (!properties.isEmpty()) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_SOURCE,
@@ -430,7 +470,9 @@ public final class AppCatalogSourceStore {
         refreshMetadata,
         fetchedCatalog,
         readMirrors(directory, source, addedAt),
-        readHealth(directory));
+        readHealth(directory),
+        trustBindingId,
+        trustBindingDigest);
   }
 
   private static List<AppCatalogMirror> readMirrors(
@@ -642,7 +684,33 @@ public final class AppCatalogSourceStore {
       AppCatalogSource source,
       FetchedCatalog fetchedCatalog,
       Instant addedAt,
-      Instant refreshedAt) {}
+      Instant refreshedAt,
+      Optional<String> trustBindingId,
+      Optional<String> trustBindingDigest) {
+    VerifiedCatalogWrite {
+      Objects.requireNonNull(trustBindingId, "trustBindingId");
+      Objects.requireNonNull(trustBindingDigest, "trustBindingDigest");
+      if (trustBindingId.isPresent() != trustBindingDigest.isPresent()) {
+        throw new IllegalArgumentException("catalog trust binding metadata is incomplete");
+      }
+    }
+
+    VerifiedCatalogWrite(
+        AppCatalog catalog,
+        AppCatalogSource source,
+        FetchedCatalog fetchedCatalog,
+        Instant addedAt,
+        Instant refreshedAt) {
+      this(
+          catalog,
+          source,
+          fetchedCatalog,
+          addedAt,
+          refreshedAt,
+          Optional.empty(),
+          Optional.empty());
+    }
+  }
 
   record EndpointWriteState(
       AppCatalogMirror selectedEndpoint,
@@ -655,14 +723,6 @@ public final class AppCatalogSourceStore {
         List<AppCatalogMirror> mirrors,
         Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
       this(selectedEndpoint, mirrors, mirrorHealth, null, null);
-    }
-
-    EndpointWriteState(
-        AppCatalogMirror selectedEndpoint,
-        List<AppCatalogMirror> mirrors,
-        Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
-        String selectedResolvedUri) {
-      this(selectedEndpoint, mirrors, mirrorHealth, selectedResolvedUri, null);
     }
 
     String resolvedCatalogUri(FetchedCatalog fetchedCatalog) {
@@ -910,7 +970,9 @@ public final class AppCatalogSourceStore {
       AppCatalogSource source,
       Instant addedAt,
       Instant refreshedAt,
-      AppCatalogSourceRefreshMetadata refreshMetadata) {
+      AppCatalogSourceRefreshMetadata refreshMetadata,
+      String trustBindingId,
+      String trustBindingDigest) {
     StringBuilder builder =
         new StringBuilder()
             .append(SOURCE_VERSION_KEY)
@@ -946,6 +1008,12 @@ public final class AppCatalogSourceStore {
     refreshMetadata
         .lastFetchErrorCode()
         .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_CODE_KEY, value));
+    if (trustBindingId != null) {
+      appendProperty(builder, TRUST_BINDING_ID_KEY, trustBindingId);
+    }
+    if (trustBindingDigest != null) {
+      appendProperty(builder, TRUST_BINDING_DIGEST_KEY, trustBindingDigest);
+    }
     refreshMetadata
         .lastFetchErrorMessage()
         .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_MESSAGE_KEY, value));

@@ -22,6 +22,17 @@ class TrustedAppKeysTest {
   @TempDir Path tempDir;
 
   @Test
+  void sha256_whenSameParsedPublicKeyIsFingerprinted_expectCanonicalStableValue() throws Exception {
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+
+    String first = PublicKeyFingerprint.sha256(keyPair.getPublic());
+    String second = PublicKeyFingerprint.sha256(keyPair.getPublic());
+
+    assertEquals(first, second);
+    assertTrue(first.matches("[0-9a-f]{64}"));
+  }
+
+  @Test
   void load_whenTrustedKeysFileStartsWithUtf8Bom_expectTrustedKeyParsed() throws Exception {
     KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path trustedKeysFile = tempDir.resolve("trusted-keys.properties");
@@ -93,6 +104,27 @@ class TrustedAppKeysTest {
     assertEquals(Instant.parse("2030-01-01T00:00:00Z"), policy.validUntil());
     assertFalse(policy.allowsNewBundleVerification(Instant.parse("2026-01-01T00:00:00Z")));
     assertTrue(policy.allowsHistoricalBundleVerification(Instant.parse("2026-01-01T00:00:00Z")));
+  }
+
+  @Test
+  void plus_whenSameRoleRegistriesAreDistinct_expectLifecyclePoliciesPreserved() throws Exception {
+    KeyPair stableKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair pilotKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    TrustedAppKeys stable =
+        TrustedAppKeys.of(new TrustedAppKey("stable-publisher", "Ed25519", stableKey.getPublic()));
+    TrustedAppKeyPolicy retiredPilot =
+        new TrustedAppKeyPolicy(
+            new TrustedAppKey("pilot-publisher", "Ed25519", pilotKey.getPublic()),
+            TrustedAppKeyLifecycle.RETIRED,
+            Instant.parse("2025-01-01T00:00:00Z"),
+            Instant.parse("2030-01-01T00:00:00Z"));
+
+    TrustedAppKeys combined = stable.plus(TrustedAppKeys.ofPolicies(retiredPilot));
+
+    assertTrue(combined.find("stable-publisher").isPresent());
+    assertEquals(
+        TrustedAppKeyLifecycle.RETIRED,
+        combined.findPolicy("pilot-publisher").orElseThrow().lifecycle());
   }
 
   @ParameterizedTest(name = "{index}: keyId={0}")

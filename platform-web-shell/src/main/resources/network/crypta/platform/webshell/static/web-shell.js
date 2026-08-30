@@ -27,6 +27,8 @@
   const shellState = {
     alertsSnapshot: null,
     appCatalogsSnapshot: null,
+    catalogFederationSnapshot: null,
+    catalogFederationError: "",
     appsSnapshot: null,
     appSubmissionIntakeSnapshot: null,
     betaDashboardSnapshot: null,
@@ -135,6 +137,10 @@
     catalogChannelSelect: document.getElementById("catalog-channel-select"),
     catalogSourceForm: document.getElementById("catalog-source-form"),
     catalogSourceInput: document.getElementById("catalog-source-input"),
+    catalogSourceSubmit: document.getElementById("catalog-source-submit"),
+    catalogSourceTrustBindingField: document.getElementById("catalog-source-trust-binding-field"),
+    catalogSourceTrustBinding: document.getElementById("catalog-source-trust-binding"),
+    catalogSourceTrustBindingStatus: document.getElementById("catalog-source-trust-binding-status"),
   };
   const publisherControls = {
     fileForm: document.getElementById("publisher-file-form"),
@@ -4266,6 +4272,9 @@
   function renderApps(data) {
     shellState.appsSnapshot = data;
     shellState.appCatalogsSnapshot = Array.isArray(data.catalogs) ? data.catalogs : null;
+    shellState.catalogFederationSnapshot = recordValue(data.catalogFederation);
+    shellState.catalogFederationError =
+      typeof data.catalogFederationError === "string" ? data.catalogFederationError : "";
     shellState.identityVaultSnapshot = recordValue(data.identityVault);
     shellState.recommendedCatalogsSnapshot = Array.isArray(data.recommendedCatalogs)
       ? data.recommendedCatalogs
@@ -4347,6 +4356,7 @@
 
     renderAppServices(appServices, appServicesError);
     renderIdentityVault(identityVault, identityVaultError, apps);
+    renderCatalogDiscovery(recordValue(data.catalogFederation));
     renderRecommendedCatalogs(recommendedCatalogs, recommendedCatalogError, catalogs);
     renderCatalogs(catalogs, catalogError);
   }
@@ -4959,30 +4969,98 @@
 
   function renderCatalogs(catalogs, catalogError) {
     const selectedChannel = normalizeCatalogChannel(shellState.catalogChannel);
+    const routineCatalogs = Array.isArray(catalogs) ? catalogs : [];
+    const federation = recordValue(shellState.catalogFederationSnapshot);
+    const configuredIds = Array.isArray(federation.configuredCatalogIds)
+      ? federation.configuredCatalogIds.filter(
+          (catalogId) => typeof catalogId === "string" && catalogId,
+        )
+      : [];
+    const routineIds = new Set(
+      routineCatalogs
+        .map((catalog) => (catalog && typeof catalog.catalogId === "string" ? catalog.catalogId : ""))
+        .filter(Boolean),
+    );
+    const unavailableConfiguredIds = configuredIds.filter((catalogId) => !routineIds.has(catalogId));
     sections.apps.append(text("h3", "app-card-title", "Catalog apps"));
     sections.apps.append(
       text("p", "panel-description", `Showing ${catalogChannelLabel(selectedChannel)} channel apps.`),
     );
     if (catalogError) {
       sections.apps.append(text("p", "error-state", `Catalogs unavailable: ${catalogError}`));
-      return;
     }
-    if (!Array.isArray(catalogs) || catalogs.length === 0) {
+    if (!routineCatalogs.length && !unavailableConfiguredIds.length) {
       sections.apps.append(text("p", "empty-state", "No app catalogs were returned."));
       return;
     }
     const list = document.createElement("div");
     list.className = "app-card-list";
-    catalogs.forEach((catalog) => {
+    routineCatalogs.forEach((catalog) => {
       list.append(
         renderCatalogCard(catalog && typeof catalog === "object" ? catalog : {}, selectedChannel),
       );
     });
+    const bindings = Array.isArray(federation.bindings) ? federation.bindings : [];
+    unavailableConfiguredIds.forEach((catalogId) => {
+      const binding = bindings.find((candidate) => candidate && candidate.catalogId === catalogId);
+      list.append(renderUnavailableConfiguredCatalogCard(catalogId, recordValue(binding)));
+    });
     sections.apps.append(list);
+  }
+
+  function renderUnavailableConfiguredCatalogCard(catalogId, binding) {
+    const card = document.createElement("article");
+    card.className = "app-card";
+    const status = typeof binding.status === "string" ? binding.status : "unavailable";
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h3", "app-card-title", catalogId),
+      text("p", "app-card-subtitle", "Configured source unavailable for routine work"),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(
+      createPill(status, operatorStatusTone(status)),
+      createPill("local recovery required", "is-warning"),
+    );
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Catalog ID", catalogId],
+        ["Local binding", scalar(binding.bindingId)],
+        ["Binding status", status],
+      ]),
+      text(
+        "p",
+        "panel-description",
+        "This source remains configured but is not authorized for refresh, install, or update. Remove it before re-adding it under an active, exact local trust binding.",
+      ),
+    );
+    if (formPassword) {
+      const removeForm = buildCatalogActionForm({ catalogId }, null, "remove", "Remove");
+      if (removeForm) {
+        const actions = document.createElement("div");
+        actions.className = "app-card-actions";
+        actions.append(removeForm);
+        card.append(actions);
+      }
+    }
+    return card;
   }
 
   function renderRecommendedCatalogs(recommendedCatalogs, recommendedCatalogError, catalogs) {
     sections.apps.append(text("h3", "app-card-title", "Recommended catalogs"));
+    sections.apps.append(
+      text(
+        "p",
+        "app-card-subtitle",
+        "Known, recommended, and endorsed catalogs are evidence only. Local trust is explicit; suspended, revoked, or conflicted catalogs cannot authorize routine app operations, and source switching is never automatic.",
+      ),
+    );
     if (recommendedCatalogError) {
       sections.apps.append(
         text("p", "error-state", `Recommended catalogs unavailable: ${recommendedCatalogError}`),
@@ -5004,6 +5082,145 @@
       );
     });
     sections.apps.append(list);
+  }
+
+  function renderCatalogDiscovery(federation) {
+    sections.apps.append(text("h3", "app-card-title", "Federated catalog discovery"));
+    sections.apps.append(
+      text(
+        "p",
+        "app-card-subtitle",
+        "Signed descriptors and direct endorsements are local evidence only. Import never trusts a catalog, configures a source, follows an endorsement chain, or publishes this node's subscriptions.",
+      ),
+    );
+    const pending = Array.isArray(federation.pendingDiscoveries)
+      ? federation.pendingDiscoveries
+      : [];
+    if (federation.mode !== "federated-local-trust") {
+      sections.apps.append(
+        text("p", "empty-state", "Pending discovery import is available only in federated local-trust mode."),
+      );
+      return;
+    }
+    if (federation.discoveryAvailable && formPassword) {
+      sections.apps.append(buildCatalogDiscoveryImportForm());
+    } else if (!federation.discoveryAvailable) {
+      sections.apps.append(
+        text("p", "status-message is-warning", "Pending catalog discovery storage is unavailable."),
+      );
+    }
+    if (!pending.length) {
+      sections.apps.append(text("p", "empty-state", "No pending discovery recommendations."));
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    pending.forEach((recommendation) => {
+      list.append(renderPendingCatalogDiscoveryCard(recordValue(recommendation)));
+    });
+    sections.apps.append(list);
+  }
+
+  function buildCatalogDiscoveryImportForm() {
+    const form = document.createElement("form");
+    form.className = "control-form";
+    form.dataset.catalogDiscoveryAction = "import";
+    const descriptorLabel = document.createElement("label");
+    descriptorLabel.className = "queue-field";
+    descriptorLabel.append(text("span", "", "Signed discovery descriptor JSON"));
+    const descriptor = document.createElement("textarea");
+    descriptor.name = "descriptorDocument";
+    descriptor.rows = 6;
+    descriptor.required = true;
+    descriptor.autocomplete = "off";
+    descriptorLabel.append(descriptor);
+    const endorsementsLabel = document.createElement("label");
+    endorsementsLabel.className = "queue-field";
+    endorsementsLabel.append(text("span", "", "Optional direct endorsements JSON array"));
+    const endorsements = document.createElement("textarea");
+    endorsements.name = "endorsementDocuments";
+    endorsements.rows = 4;
+    endorsements.autocomplete = "off";
+    endorsementsLabel.append(endorsements);
+    const actions = document.createElement("div");
+    actions.className = "control-form-actions";
+    const submit = document.createElement("button");
+    submit.className = "button button-primary";
+    submit.type = "submit";
+    submit.textContent = "Import pending evidence";
+    actions.append(submit);
+    form.append(
+      descriptorLabel,
+      endorsementsLabel,
+      text(
+        "p",
+        "panel-description",
+        "Only the supplied public documents are verified and retained locally; no source hint is fetched automatically.",
+      ),
+      actions,
+    );
+    return form;
+  }
+
+  function renderPendingCatalogDiscoveryCard(recommendation) {
+    const card = document.createElement("article");
+    card.className = "app-card";
+    const header = document.createElement("div");
+    header.className = "app-card-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h3", "app-card-title", scalar(recommendation.name || recommendation.catalogId)),
+      text("p", "app-card-subtitle", scalar(recommendation.catalogId)),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill("known", "is-info"), createPill("recommended", "is-warning"));
+    pills.append(
+      createPill(
+        scalar(recommendation.descriptorStatus),
+        recommendation.descriptorStatus === "active" ? "is-success" : "is-error",
+      ),
+    );
+    if (Number(recommendation.endorsementCount || 0) > 0) {
+      pills.append(createPill("endorsed evidence", "is-warning"));
+    }
+    pills.append(createPill("not locally trusted", "is-error"));
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Descriptor ID", scalar(recommendation.descriptorId)],
+        ["Current descriptor evidence", scalar(recommendation.descriptorStatus)],
+        ["Summary", scalar(recommendation.summary)],
+        ["Provider", scalar(recommendation.providerId)],
+        ["Catalog signer", scalar(recommendation.catalogSignerKeyId)],
+        ["Signer fingerprint", scalar(recommendation.catalogSignerFingerprintSha256)],
+        ["Public source hints", stringList(recommendation.sourceHints).join(", ") || "Unavailable"],
+        ["Channels", stringList(recommendation.channels).join(", ") || "Unavailable"],
+        ["Descriptor digest", scalar(recommendation.descriptorDigestSha256)],
+        ["Issuer", scalar(recommendation.issuerId)],
+        ["Expires", formatIsoTimestamp(recommendation.expiresAt)],
+        ["Direct endorsements", scalar(recommendation.endorsementCount || 0)],
+        ["Local trust", "Not granted"],
+        ["Catalog source", "Not configured"],
+      ]),
+    );
+    if (formPassword && typeof recommendation.descriptorId === "string") {
+      const actions = document.createElement("div");
+      actions.className = "app-card-actions";
+      const discard = document.createElement("form");
+      discard.dataset.catalogDiscoveryAction = "discard";
+      discard.dataset.descriptorId = recommendation.descriptorId;
+      const button = document.createElement("button");
+      button.className = "button button-secondary";
+      button.type = "submit";
+      button.textContent = "Discard pending evidence";
+      discard.append(button);
+      actions.append(discard);
+      card.append(actions);
+    }
+    return card;
   }
 
   function matchingConfiguredCatalog(recommended, catalogs) {
@@ -6174,9 +6391,72 @@
     if (appsControls.catalogChannelSelect) {
       appsControls.catalogChannelSelect.value = normalizeCatalogChannel(shellState.catalogChannel);
     }
+    updateCatalogSourceTrustBinding();
     if (sections.appsReadonlyHint) {
       sections.appsReadonlyHint.hidden = !!formPassword;
     }
+  }
+
+  function updateCatalogSourceTrustBinding() {
+    const field = appsControls.catalogSourceTrustBindingField;
+    const select = appsControls.catalogSourceTrustBinding;
+    const submit = appsControls.catalogSourceSubmit;
+    const status = appsControls.catalogSourceTrustBindingStatus;
+    if (!field || !select || !submit || !status) {
+      return;
+    }
+    const federation = recordValue(shellState.catalogFederationSnapshot);
+    const mode = typeof federation.mode === "string" ? federation.mode : "";
+    const federated = mode === "federated-local-trust";
+    const legacy = mode === "legacy-global-compatibility";
+    field.hidden = !federated;
+    select.required = federated;
+    select.disabled = !formPassword || !federated;
+
+    const previous = select.value;
+    select.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select an active local binding";
+    select.append(placeholder);
+    const configuredCatalogIds = new Set(
+      (Array.isArray(federation.configuredCatalogIds) ? federation.configuredCatalogIds : [])
+        .filter((catalogId) => typeof catalogId === "string" && catalogId),
+    );
+    const bindings = Array.isArray(federation.bindings) ? federation.bindings : [];
+    bindings
+      .filter(
+        (binding) =>
+          binding &&
+          binding.status === "active" &&
+          typeof binding.catalogId === "string" &&
+          !configuredCatalogIds.has(binding.catalogId),
+      )
+      .sort((left, right) => left.catalogId.localeCompare(right.catalogId))
+      .forEach((binding) => {
+        const option = document.createElement("option");
+        option.value = binding.catalogId;
+        option.textContent = binding.catalogId;
+        select.append(option);
+      });
+    if (Array.from(select.options).some((option) => option.value === previous)) {
+      select.value = previous;
+    }
+    const activeBindingAvailable = select.options.length > 1;
+    if (federated && !activeBindingAvailable) {
+      select.disabled = true;
+    }
+    status.hidden = legacy || (!shellState.catalogFederationError && activeBindingAvailable);
+    status.textContent = shellState.catalogFederationError
+      ? "Local catalog trust state is unavailable; adding a source is disabled."
+      : federated && !activeBindingAvailable
+        ? "No unused active local catalog trust binding is available."
+        : !legacy && !federated
+          ? "Local catalog trust mode is unavailable; adding a source is disabled."
+          : "";
+    submit.disabled =
+      !formPassword ||
+      (!legacy && (!federated || !activeBindingAvailable || !!shellState.catalogFederationError));
   }
 
   function updatePublisherToolbar() {
@@ -6962,6 +7242,8 @@
     const loadGeneration = ++appsLoadGeneration;
     shellState.appsSnapshot = null;
     shellState.appCatalogsSnapshot = null;
+    shellState.catalogFederationSnapshot = null;
+    shellState.catalogFederationError = "";
     shellState.identityVaultSnapshot = null;
     shellState.recommendedCatalogsSnapshot = null;
     clear(sections.apps);
@@ -7009,6 +7291,19 @@
           : [];
     } catch (error) {
       recommendedCatalogError =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    }
+
+    let catalogFederation = {};
+    let catalogFederationError = "";
+    try {
+      const federationSnapshot = await loadOptionalJson(apiUrl("operator/catalog-federation"));
+      catalogFederation = recordValue(federationSnapshot);
+      if (typeof catalogFederation.mode !== "string") {
+        catalogFederationError = "Local catalog federation mode was not reported.";
+      }
+    } catch (error) {
+      catalogFederationError =
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
     }
 
@@ -7095,6 +7390,8 @@
       catalogError,
       recommendedCatalogs,
       recommendedCatalogError,
+      catalogFederation,
+      catalogFederationError,
       identityVault,
       identityVaultError,
       appServices,
@@ -7321,6 +7618,14 @@
     if (typeof form.reportValidity === "function" && !form.reportValidity()) {
       return;
     }
+    const federation = recordValue(shellState.catalogFederationSnapshot);
+    if (federation.mode === "federated-local-trust") {
+      const expectedCatalogId = appsControls.catalogSourceTrustBinding?.value || "";
+      if (!expectedCatalogId) {
+        setAppsStatus("Select an active local catalog trust binding before adding the source.", "is-error");
+        return;
+      }
+    }
     try {
       await postForm(
         "app-catalogs/add",
@@ -7329,6 +7634,68 @@
       );
       form.reset();
       setAppsStatus("Catalog source added.", "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function catalogDiscoveryImportData(form) {
+    const source = new FormData(form);
+    const descriptorText = String(source.get("descriptorDocument") || "").trim();
+    if (!descriptorText) {
+      throw new Error("Paste a signed discovery descriptor before importing.");
+    }
+    const descriptor = JSON.parse(descriptorText);
+    if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) {
+      throw new Error("The discovery descriptor must be one JSON object.");
+    }
+    const target = new FormData();
+    target.set(
+      "descriptorBase64",
+      bytesToUrlSafeBase64(new TextEncoder().encode(JSON.stringify(descriptor))),
+    );
+    const endorsementsText = String(source.get("endorsementDocuments") || "").trim();
+    if (endorsementsText) {
+      const endorsements = JSON.parse(endorsementsText);
+      if (!Array.isArray(endorsements) || endorsements.length > 8) {
+        throw new Error("Direct endorsements must be a JSON array containing at most eight objects.");
+      }
+      endorsements.forEach((endorsement) => {
+        if (!endorsement || typeof endorsement !== "object" || Array.isArray(endorsement)) {
+          throw new Error("Every direct endorsement must be one JSON object.");
+        }
+        target.append(
+          "endorsementBase64",
+          bytesToUrlSafeBase64(new TextEncoder().encode(JSON.stringify(endorsement))),
+        );
+      });
+    }
+    return target;
+  }
+
+  async function submitCatalogDiscoveryMutation(form, action) {
+    try {
+      if (action === "import") {
+        await postForm(
+          "operator/catalog-federation/discovery",
+          catalogDiscoveryImportData(form),
+          "Catalog discovery import is unavailable in read-only mode.",
+        );
+        form.reset();
+        setAppsStatus("Signed catalog discovery evidence imported as pending only.", "is-success");
+      } else if (action === "discard") {
+        const descriptorId = form.dataset.descriptorId || "";
+        if (!descriptorId) {
+          throw new Error("Pending discovery descriptor ID is unavailable.");
+        }
+        await postForm(
+          `operator/catalog-federation/discovery/${encodeURIComponent(descriptorId)}/discard`,
+          new FormData(),
+          "Catalog discovery retention actions are unavailable in read-only mode.",
+        );
+        setAppsStatus("Pending catalog discovery evidence discarded.", "is-success");
+      }
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -8913,6 +9280,12 @@
       if (appServiceBundleAction) {
         event.preventDefault();
         await submitAppServiceBundleMutation(form, appServiceBundleAction);
+        return;
+      }
+      const catalogDiscoveryAction = form.dataset.catalogDiscoveryAction;
+      if (catalogDiscoveryAction) {
+        event.preventDefault();
+        await submitCatalogDiscoveryMutation(form, catalogDiscoveryAction);
         return;
       }
       const catalogAction = form.dataset.catalogAction;

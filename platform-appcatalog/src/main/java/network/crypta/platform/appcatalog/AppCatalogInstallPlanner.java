@@ -31,15 +31,25 @@ final class AppCatalogInstallPlanner {
     this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
   }
 
-  AppCatalogInstallPlan prepareInstallPlan(String normalizedCatalogId, AppCatalogEntry entry)
+  AppCatalogInstallPlan prepareInstallPlan(
+      String normalizedCatalogId, AppCatalogEntry entry, AppCatalogOriginContext originContext)
       throws IOException {
     Path stagingDirectory = sourceStore.stagingDirectory();
     Files.createDirectories(stagingDirectory);
     Path scratchRoot = Files.createTempDirectory(stagingDirectory, normalizedCatalogId + "-");
     try {
       Path artifactZip = artifactDownloader.download(entry, scratchRoot);
-      Path stagedBundle = extractBundle(entry, artifactZip, scratchRoot);
-      return new AppCatalogInstallPlan(normalizedCatalogId, entry, stagedBundle, scratchRoot);
+      AppCatalogBundleVerificationContext context =
+          new AppCatalogBundleVerificationContext(normalizedCatalogId, entry);
+      AppCatalogBundleExtractor.VerifiedBundle verifiedBundle =
+          extractBundle(context, artifactZip, scratchRoot);
+      return new AppCatalogInstallPlan(
+          normalizedCatalogId,
+          entry,
+          verifiedBundle.stagedBundleDirectory(),
+          scratchRoot,
+          verifiedBundle.verificationResult(),
+          java.util.Optional.of(Objects.requireNonNull(originContext, "originContext")));
     } catch (IOException | RuntimeException exception) {
       AppCatalogBundleExtractor.deleteRecursively(scratchRoot);
       throw exception;
@@ -48,12 +58,21 @@ final class AppCatalogInstallPlanner {
 
   void verifyInstallPlan(AppCatalogInstallPlan plan) throws IOException {
     AppCatalogInstallPlan checkedPlan = Objects.requireNonNull(plan, "plan");
-    bundleExtractor.verifyStagedBundle(
-        checkedPlan.entry(), checkedPlan.stagedBundleDirectory(), bundleVerificationPolicy);
+    AppCatalogBundleVerificationContext context =
+        new AppCatalogBundleVerificationContext(checkedPlan.catalogId(), checkedPlan.entry());
+    AppCatalogBundleVerificationResult currentResult =
+        bundleExtractor.verifyStagedBundle(
+            context, checkedPlan.stagedBundleDirectory(), bundleVerificationPolicy);
+    if (!checkedPlan.bundleVerification().equals(currentResult)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_APP_BUNDLE,
+          "catalog bundle publisher authorization changed after plan creation");
+    }
   }
 
-  private Path extractBundle(AppCatalogEntry entry, Path artifactZip, Path scratchRoot)
+  private AppCatalogBundleExtractor.VerifiedBundle extractBundle(
+      AppCatalogBundleVerificationContext context, Path artifactZip, Path scratchRoot)
       throws IOException {
-    return bundleExtractor.extract(entry, artifactZip, scratchRoot, bundleVerificationPolicy);
+    return bundleExtractor.extract(context, artifactZip, scratchRoot, bundleVerificationPolicy);
   }
 }

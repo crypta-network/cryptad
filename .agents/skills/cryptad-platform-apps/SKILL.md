@@ -21,6 +21,8 @@ Load only the docs needed for the change:
 - Third-party Hello Stable SDK example: `docs/examples/third-party-hello-stable.md`
 - Protected external third-party app pilot:
   `docs/stable-1.0-external-third-party-app-pilot.md`
+- Federated catalog discovery and local trust:
+  `docs/stable-1.0-federated-catalog-discovery-and-trust.md`
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
 - Platform API 1.0 stable baseline reference: `docs/platform-api-1.0-stable-reference.md`
@@ -432,6 +434,38 @@ Load only the docs needed for the change:
 - External-pilot closeout must derive the expected PR-293 catalog subject from the authenticated
   PR-291 selected RC, exact selected-RC freeze, and PR-292 subject inventory. Never use PR-293's own
   closeout subject as its expected revision, edition, catalog/signature digest, or signer.
+- `tools/release-certification/certify.py stable-federated-catalog` is the side-effect-free PR-295
+  verifier. Signed discovery and endorsement records are public hints only; they must not install
+  keys, add sources, create trust, disclose subscriptions, or authorize publishers/reviewers.
+  Runtime evidence must preserve catalog/app/reviewer/recovery role separation, classify hard
+  conflicts without lexical trust decisions, keep updates pinned to installed origin, require
+  explicit source/publisher-switch consent, restore origin with rollback, and isolate one
+  catalog's suspension/revocation. Operational closeout requires exact authenticated PR-291,
+  PR-292, PR-293, and PR-294 coordinates plus a signed non-partial protected runtime observation.
+  Compose catalog/app-scoped publisher verification with any existing PR-294 pilot approval; do
+  not replace the exact pilot app/version/sidecar boundary. Lifecycle source switching must carry
+  an explicit target catalog and its exact preview digest through retained-plan verification before
+  any migration dry run.
+  Capture the authenticated catalog-origin subject in the retained install plan and reverify it
+  before mutation. A legacy plan may carry non-federation-scoped context for that retained-plan
+  check, but default nodes must not persist it as installed origin, pin updates, apply federation
+  conflicts, or require source-switch consent. Commit federation-scoped catalog origin through
+  AppHost together with bundle install/update so migration or health rollback always sees matching
+  current/rollback slots; provenance write failure must leave or restore the prior bundle state.
+  Before committing or restoring a catalog bundle, AppHost must compare the copied bundle's actual
+  signing-key ID, canonical signing-key fingerprint, and signed content commitment with the stored
+  origin; a broadly trusted signature plus matching manifest metadata is insufficient.
+  AppHost interface defaults must reject catalog install/update and standalone origin persistence
+  before bundle mutation. Dispatch rollback from the retained rollback slot: catalog provenance
+  requires the authorized overload, while an untracked legacy slot retains the original
+  `rollback(String)` compatibility path.
+  Resource-consuming source-switch previews are host/operator-only form-password-guarded `POST`
+  routes; never expose catalog download, extraction, or verification preparation through `GET`.
+  Suspension blocks routine work but may authorize explicit rollback of exact retained bytes when
+  the stable binding identity and current signer, catalog, channel, and historical lifecycle policy
+  still match; revocation, removal, and pending state remain blocked. Fixtures and self-tests can
+  reach only
+  `fixture-verification-complete`.
 - `tools/release-certification/certify.py app-platform-docs` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.

@@ -20,10 +20,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import network.crypta.platform.api.PlatformApiContract;
-import network.crypta.platform.api.PlatformApiContractVerifier;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiException;
-import network.crypta.platform.api.appdata.AppDataNamespaceMetadata;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataUpdateSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
@@ -31,34 +29,17 @@ import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogManager;
-import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
-import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
-import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
-import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
-import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
-import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
-import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
-import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
-import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
-import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
-import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
-import network.crypta.platform.appdist.AppDataMigrationStep;
-import network.crypta.platform.appdist.AppDataNamespaceSchema;
-import network.crypta.platform.appdist.AppDataSchemaContract;
-import network.crypta.platform.appdist.AppSandboxMode;
-import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
-import network.crypta.platform.apphost.AppRollbackRecord;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
-import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
-import network.crypta.platform.apphost.manifest.AppManifestException;
-import network.crypta.platform.apphost.manifest.AppManifestParser;
-import network.crypta.platform.appvault.AppVaultException;
 import network.crypta.platform.appvault.AppVaultService;
+
+import static network.crypta.platform.api.appupdates.AppUpdateDigestSupport.securityDecisionDigest;
 
 /**
  * Coordinates conservative app update checks, staging, apply, policy, history, and rollback.
@@ -107,6 +88,8 @@ public final class AppUpdateService {
   private static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
   private static final String ERROR_CONSENT_REQUIRED = "consent_required";
   private static final String ERROR_UPDATE_CANDIDATE_CHANGED = "update_candidate_changed";
+  private static final String ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED =
+      "catalog_source_switch_consent_required";
   private static final String ERROR_ROLLBACK_NOT_AVAILABLE = "rollback_not_available";
   private static final String ERROR_ROLLBACK_APP_RUNNING = "rollback_app_running";
   private static final String ERROR_ROLLBACK_FAILED = "rollback_failed";
@@ -114,7 +97,8 @@ public final class AppUpdateService {
   private static final String ERROR_HEALTH_CHECK_FAILED = "health_check_failed";
   private static final String ERROR_UPDATE_FAILED = "update_failed";
   private static final String ERROR_STAGE_FAILED = "stage_failed";
-  private static final String ERROR_APP_DATA_MIGRATION_MISSING = "app_data_migration_missing";
+  private static final String ERROR_APP_DATA_MIGRATION_MISSING =
+      AppUpdateMigrationPlanner.ERROR_MISSING_MIGRATION;
   private static final String ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED =
       "app_data_migration_dry_run_failed";
   private static final String ERROR_APP_DATA_MIGRATION_APPLY_FAILED =
@@ -134,6 +118,8 @@ public final class AppUpdateService {
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
   private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
   private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
+  private static final String ERROR_CATALOG_ROLLBACK_TRUST_BLOCKED =
+      "catalog_rollback_trust_blocked";
   private static final String ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED =
       "app_security_acknowledgement_required";
   private static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
@@ -151,10 +137,7 @@ public final class AppUpdateService {
       "Staged update no longer matches the installed app version.";
   private static final String MESSAGE_APP_DATA_MIGRATION_DRY_RUN_FAILED =
       "App-data migration dry-run failed.";
-  private static final String VERSION_NEWER = "newer";
-  private static final String VERSION_LOWER = "lower";
   private static final String VERSION_EQUAL = "equal";
-  private static final String VERSION_AMBIGUOUS = "ambiguous";
   private static final String JSON_APP_ID = "appId";
   private static final String JSON_STATUS = "status";
   private static final String JSON_AVAILABLE = "available";
@@ -165,15 +148,22 @@ public final class AppUpdateService {
   private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
   private static final String JSON_BLOCKS_AUTOMATIC_APPLY = "blocksAutomaticApply";
   private static final String JSON_MESSAGE = "message";
+  private static final String JSON_CATALOG_ID = "catalogId";
+
+  private enum ReviewGate {
+    UPDATE,
+    POLICY_APPLY
+  }
 
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
-  private final AppReviewPolicy reviewPolicy;
-  private final ReviewerKeysProvider reviewerKeysProvider;
+  private final AppUpdateCatalogAuthority catalogAuthority;
   private final AppVaultService appVaultService;
   private final AppDataService appDataService;
   private final AppDataMigrationRunner migrationRunner;
   private SchedulerSummaryProvider schedulerSummaryProvider;
+  private final AtomicReference<AppUpdateFederationAuthority> federatedConflictPolicy =
+      new AtomicReference<>();
   private SchedulerStateCleaner schedulerStateCleaner = _ -> {};
   private final Map<String, AppUpdatePolicy> policies = new LinkedHashMap<>();
   private final Map<String, AppUpdateCandidate> candidates = new LinkedHashMap<>();
@@ -185,7 +175,7 @@ public final class AppUpdateService {
       AppVaultService appVaultService, AppDataService appDataService) {
     return new AppUpdateDependencies(
         AppReviewPolicy.loadFromSystem(),
-        trustedReviewerKeysFromSystem(),
+        AppUpdateReviewAuthority.systemReviewerKeysProvider(),
         appVaultService,
         appDataService,
         AppDataMigrationRunner.localProcess(),
@@ -344,16 +334,16 @@ public final class AppUpdateService {
     this.catalogManager = Objects.requireNonNull(catalogManager, "catalogManager");
     AppUpdateDependencies checkedDependencies =
         Objects.requireNonNull(dependencies, "dependencies");
-    this.reviewPolicy = checkedDependencies.reviewPolicy();
-    this.reviewerKeysProvider = checkedDependencies.reviewerKeysProvider();
+    this.catalogAuthority =
+        new AppUpdateCatalogAuthority(
+            appHost,
+            catalogManager,
+            checkedDependencies.reviewPolicy(),
+            checkedDependencies.reviewerKeysProvider());
     this.appVaultService = checkedDependencies.appVaultService();
     this.appDataService = checkedDependencies.appDataService();
     this.migrationRunner = checkedDependencies.migrationRunner();
     this.schedulerSummaryProvider = checkedDependencies.schedulerSummaryProvider();
-  }
-
-  private static ReviewerKeysProvider trustedReviewerKeysFromSystem() {
-    return TrustedReviewerKeysLoader::loadFromSystem;
   }
 
   /**
@@ -456,6 +446,220 @@ public final class AppUpdateService {
       SchedulerSummaryProvider schedulerSummaryProvider) {
     this.schedulerSummaryProvider =
         Objects.requireNonNull(schedulerSummaryProvider, "schedulerSummaryProvider");
+  }
+
+  /** Attaches the host-owned catalog/app reviewer-scope policy used by later candidate checks. */
+  public synchronized void setCatalogScopedReviewerPolicy(
+      CatalogScopedReviewerPolicy catalogScopedReviewerPolicy) {
+    catalogAuthority.setScopedReviewerPolicy(catalogScopedReviewerPolicy);
+    candidates.clear();
+    for (String appId : List.copyOf(stagedUpdates.keySet())) {
+      closeStage(appId);
+    }
+  }
+
+  /** Returns the shared local reviewer-scope policy for direct catalog mutation gates. */
+  public synchronized Optional<CatalogScopedReviewerPolicy> catalogScopedReviewerPolicy() {
+    return catalogAuthority.scopedReviewerPolicy();
+  }
+
+  /** Attaches the host-owned exact-subject conflict policy used by later candidate checks. */
+  public synchronized void setFederatedCatalogConflictPolicy(
+      AppUpdateFederationAuthority federationAuthority) {
+    federatedConflictPolicy.set(Objects.requireNonNull(federationAuthority, "federationAuthority"));
+    candidates.clear();
+  }
+
+  /** Returns the exact current cross-catalog conflict set for one app namespace. */
+  public synchronized Map<String, Object> federatedConflict(String appId) {
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    return requireFederatedConflictPolicy()
+        .conflicts()
+        .summary(currentFederatedConflictCandidates(normalizedAppId), this::conflictSecurityDigest);
+  }
+
+  /** Records one operator decision only when it binds the exact current conflict subjects. */
+  public synchronized Map<String, Object> resolveFederatedConflict(
+      String appId,
+      String expectedConflictId,
+      String expectedSubjectSetDigest,
+      String kind,
+      String catalogId,
+      String publisherFingerprint,
+      String reason) {
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    Map<String, Object> summary =
+        requireFederatedConflictPolicy()
+            .conflicts()
+            .resolve(
+                currentFederatedConflictCandidates(normalizedAppId),
+                this::conflictSecurityDigest,
+                AppUpdateFederationAuthority.conflictResolutionRequest(
+                    expectedConflictId,
+                    expectedSubjectSetDigest,
+                    kind,
+                    catalogId,
+                    publisherFingerprint,
+                    reason));
+    candidates.remove(normalizedAppId);
+    closeStage(normalizedAppId);
+    return summary;
+  }
+
+  /**
+   * Applies the lifecycle service's exact-subject conflict authority to a direct catalog mutation.
+   *
+   * <p>The caller invokes this from the AppHost mutation-authorization boundary after the retained
+   * catalog plan has been reverified. Every currently authenticated catalog subject for the app is
+   * classified, and any stored resolution must bind the exact current conflict set and select this
+   * exact plan. Legacy nodes retain their existing direct mutation behavior.
+   *
+   * @param selectedPlan exact retained plan proposed by the direct catalog route
+   * @param installed installed snapshot when the current manifest could be inspected
+   */
+  public void requireDirectCatalogMutationAllowed(
+      AppCatalogInstallPlan selectedPlan, InstalledAppSnapshot installed) {
+    requireDirectCatalogMutationAllowed(selectedPlan, installed, false);
+  }
+
+  /**
+   * Applies the exact-subject conflict authority with an already verified source-switch decision.
+   *
+   * <p>The explicit-switch flag is accepted only for an applicable {@code
+   * EXPLICIT_SOURCE_SWITCH_REQUIRED} resolution that binds the complete current conflict set and
+   * contains the selected plan's exact catalog subject. The caller must set it only after checking
+   * the digest produced by the source-switch preview.
+   *
+   * @param selectedPlan exact retained plan proposed for mutation
+   * @param installed installed snapshot when the current manifest could be inspected
+   * @param explicitSourceSwitchAuthorized whether exact source-switch consent was verified
+   */
+  public void requireDirectCatalogMutationAllowed(
+      AppCatalogInstallPlan selectedPlan,
+      InstalledAppSnapshot installed,
+      boolean explicitSourceSwitchAuthorized) {
+    Objects.requireNonNull(selectedPlan, "selectedPlan");
+    if (!catalogManager.federationEnabled()) {
+      return;
+    }
+    List<AppUpdateCandidate> subjects =
+        catalogAuthority.catalogConflictCandidates(selectedPlan.entry().appId(), installed);
+    AppUpdateCandidate selected =
+        conflictCandidateFor(selectedPlan.catalogId(), selectedPlan.entry(), installed);
+    boolean selectedIsInstalledOrigin = selectedIsInstalledOrigin(selected);
+    if (!requireFederatedConflictPolicy()
+        .conflicts()
+        .authorizes(
+            subjects,
+            selected,
+            selectedIsInstalledOrigin,
+            explicitSourceSwitchAuthorized,
+            this::conflictSecurityDigest)) {
+      throw lifecycleFailure(
+          409,
+          "catalog_conflict_unresolved",
+          "The current cross-catalog conflict decision does not authorize this exact subject.");
+    }
+  }
+
+  private AppHost.CatalogMutationAuthorizationLease retainDirectCatalogConflictAuthorization(
+      AppCatalogInstallPlan selectedPlan,
+      InstalledAppSnapshot installed,
+      boolean explicitSourceSwitchAuthorized)
+      throws IOException {
+    List<AppUpdateCandidate> conflictCandidates =
+        catalogAuthority.catalogConflictCandidates(selectedPlan.entry().appId(), installed);
+    AppUpdateFederationAuthority policy = requireFederatedConflictPolicy();
+    AppUpdateCandidate selected =
+        conflictCandidateFor(selectedPlan.catalogId(), selectedPlan.entry(), installed);
+    return policy
+        .conflicts()
+        .retainAuthorization(
+            conflictCandidates,
+            selected,
+            selectedIsInstalledOrigin(selected),
+            explicitSourceSwitchAuthorized,
+            this::conflictSecurityDigest);
+  }
+
+  /**
+   * Retains the exact conflict, publisher, and reviewer policies for a direct catalog host
+   * mutation.
+   *
+   * <p>The caller must already retain the catalog-manager authorization lease. The returned lease
+   * keeps the local conflict decision and both independent scoped policy stores stable until
+   * AppHost has durably committed or compensated the bundle/provenance mutation. Publisher and
+   * reviewer authorization leases are acquired before the complete cross-catalog subject set is
+   * constructed, so a nonselected catalog cannot change either policy between classification and
+   * retention.
+   *
+   * @param plan exact retained catalog plan proposed for mutation
+   * @param installed current installed snapshot, empty for a new installation
+   * @param targetOrigin exact provenance that AppHost will commit with the bundle
+   * @return composite same-thread lease for conflict, publisher, and reviewer policy
+   * @throws IOException if local policy cannot be read or retained
+   */
+  public AppHost.CatalogMutationAuthorizationLease retainDirectCatalogPolicyAuthorization(
+      AppCatalogInstallPlan plan, InstalledAppSnapshot installed, InstalledAppOrigin targetOrigin)
+      throws IOException {
+    return retainDirectCatalogPolicyAuthorization(plan, installed, targetOrigin, false);
+  }
+
+  /** Retains conflict, publisher, and reviewer policy through one exact direct host mutation. */
+  public AppHost.CatalogMutationAuthorizationLease retainDirectCatalogPolicyAuthorization(
+      AppCatalogInstallPlan plan,
+      InstalledAppSnapshot installed,
+      InstalledAppOrigin targetOrigin,
+      boolean explicitSourceSwitchAuthorized)
+      throws IOException {
+    Objects.requireNonNull(plan, "plan");
+    InstalledAppOrigin checkedOrigin = Objects.requireNonNull(targetOrigin, "targetOrigin");
+    if (!catalogManager.federationEnabled()) {
+      return () -> {};
+    }
+    AppUpdateFederationAuthority policy = requireFederatedConflictPolicy();
+    AppHost.CatalogMutationAuthorizationLease publisherAuthorization =
+        policy.retainRoutinePublisherAuthorization(plan, checkedOrigin);
+    boolean publisherTransferred = false;
+    try {
+      AppHost.CatalogMutationAuthorizationLease reviewerAuthorization =
+          retainRoutineReviewerAuthorization(plan, checkedOrigin, installed == null);
+      boolean reviewerTransferred = false;
+      try {
+        AppHost.CatalogMutationAuthorizationLease conflictAuthorization =
+            retainDirectCatalogConflictAuthorization(
+                plan, installed, explicitSourceSwitchAuthorized);
+        publisherTransferred = true;
+        reviewerTransferred = true;
+        return compositeAuthorizationLease(
+            conflictAuthorization, reviewerAuthorization, publisherAuthorization);
+      } finally {
+        if (!reviewerTransferred) {
+          reviewerAuthorization.close();
+        }
+      }
+    } finally {
+      if (!publisherTransferred) {
+        publisherAuthorization.close();
+      }
+    }
+  }
+
+  private static AppHost.CatalogMutationAuthorizationLease compositeAuthorizationLease(
+      AppHost.CatalogMutationAuthorizationLease conflictAuthorization,
+      AppHost.CatalogMutationAuthorizationLease reviewerAuthorization,
+      AppHost.CatalogMutationAuthorizationLease publisherAuthorization) {
+    return () -> {
+      try {
+        conflictAuthorization.close();
+      } finally {
+        try {
+          reviewerAuthorization.close();
+        } finally {
+          publisherAuthorization.close();
+        }
+      }
+    };
   }
 
   /**
@@ -676,22 +880,95 @@ public final class AppUpdateService {
       boolean reviewAcknowledged,
       boolean securityAcknowledged,
       boolean migrationAcknowledged) {
+    return stage(appId, reviewAcknowledged, securityAcknowledged, migrationAcknowledged, null);
+  }
+
+  /**
+   * Stages a verified candidate with an exact source-switch consent digest when one is required.
+   */
+  public synchronized Map<String, Object> stage(
+      String appId,
+      boolean reviewAcknowledged,
+      boolean securityAcknowledged,
+      boolean migrationAcknowledged,
+      String sourceSwitchConsent) {
+    return stage(
+        appId,
+        reviewAcknowledged,
+        securityAcknowledged,
+        migrationAcknowledged,
+        sourceSwitchConsent,
+        null);
+  }
+
+  /** Stages an explicitly selected catalog candidate under an exact source-switch consent. */
+  public synchronized Map<String, Object> stage(
+      String appId,
+      boolean reviewAcknowledged,
+      boolean securityAcknowledged,
+      boolean migrationAcknowledged,
+      String sourceSwitchConsent,
+      String targetCatalogId) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
-    AppUpdateCandidate candidate = candidateOrDetect(normalizedAppId, installed);
+    AppUpdateCandidate candidate =
+        targetCatalogId == null
+            ? candidateOrDetect(normalizedAppId, installed)
+            : explicitSourceSwitchCandidate(
+                normalizedAppId, installed, targetCatalogId, sourceSwitchConsent);
     try {
-      requireStageableCandidate(candidate, reviewAcknowledged, securityAcknowledged);
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "explicit_stage_allowed");
+      requireStageableCandidate(
+          candidate, reviewAcknowledged, securityAcknowledged, targetCatalogId != null);
+      recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "explicit_stage_allowed");
     } catch (PlatformApiException exception) {
       recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
-          candidate,
-          "explicit_stage_blocked:" + exception.errorCode());
+          ReviewGate.UPDATE, candidate, "explicit_stage_blocked:" + exception.errorCode());
       throw exception;
     }
-    stageCandidate(normalizedAppId, installed, candidate, migrationAcknowledged);
+    stageCandidate(
+        normalizedAppId,
+        installed,
+        candidate,
+        migrationAcknowledged,
+        sourceSwitchConsent,
+        targetCatalogId != null);
     return summary(normalizedAppId, installed);
+  }
+
+  private AppUpdateCandidate explicitSourceSwitchCandidate(
+      String appId,
+      InstalledAppSnapshot installed,
+      String targetCatalogId,
+      String sourceSwitchConsent) {
+    if (sourceSwitchConsent == null || sourceSwitchConsent.isBlank()) {
+      throw lifecycleFailure(
+          409,
+          ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+          "An explicit target catalog requires an exact source-switch preview.");
+    }
+    if (installedCatalogOrigin(appId).isEmpty()) {
+      throw lifecycleFailure(
+          409,
+          ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+          "An explicit target catalog requires an installed catalog origin and exact preview.");
+    }
+    String normalizedTarget;
+    try {
+      normalizedTarget = CatalogSourceSwitchConsent.normalizeTargetCatalogId(targetCatalogId);
+    } catch (AppCatalogException _) {
+      throw lifecycleFailure(400, "invalid_catalog_id", "Target catalog ID is invalid.");
+    }
+    AppUpdateCandidate selected =
+        catalogAuthority.explicitCatalogCandidate(
+            appId, installed, policyFor(appId), normalizedTarget);
+    if (selected == null) {
+      throw lifecycleFailure(
+          409,
+          "catalog_source_switch_target_unavailable",
+          "The explicitly selected target catalog is unavailable for this app.");
+    }
+    candidates.put(appId, selected);
+    return selected;
   }
 
   /**
@@ -726,6 +1003,9 @@ public final class AppUpdateService {
       }
       verifyStageStillMatchesInstalledForApply(normalizedAppId, staged, installed);
       AppManifest targetManifest = stagedManifestForApplyOrReject(staged);
+      verifyStagedBundleBeforeApply(staged);
+      revalidateSourceSwitchAuthorizationForApply(normalizedAppId, staged);
+      requireCurrentStagedReviewDecision(normalizedAppId, staged);
       if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
         appDataWriteBarrier = beginUpdateMigrationWriteBarrier(normalizedAppId);
       }
@@ -738,7 +1018,22 @@ public final class AppUpdateService {
         appDataSnapshot = createUpdateSnapshot(normalizedAppId);
         migrationPlan = migrationPlan.withSnapshotCreated();
       }
-      updated = appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory());
+      requireCurrentStagedReviewDecision(normalizedAppId, staged);
+      InstalledAppOrigin targetOrigin = catalogOrigin(staged);
+      updated =
+          targetOrigin == null
+              ? appHost.updateFromDirectory(normalizedAppId, staged.stagedBundleDirectory())
+              : appHost.updateCatalogFromDirectory(
+                  normalizedAppId,
+                  staged.stagedBundleDirectory(),
+                  targetOrigin,
+                  staged.sourceSwitchAuthorization().expectedCurrentOriginExpectation(),
+                  catalogMutationAuthorization(
+                      staged.plan(),
+                      staged
+                          .sourceSwitchAuthorization()
+                          .approvedConsentDigestSha256()
+                          .isPresent()));
       if (migrationPlan.required()) {
         runApplyMigrationOrRollback(
             normalizedAppId, updated, migrationPlan, appDataSnapshot, healthFailureState);
@@ -760,10 +1055,7 @@ public final class AppUpdateService {
           staged.candidate().targetVersion(),
           null,
           vaultCleanupFailed ? MESSAGE_APPLY_VAULT_CLEANUP_FAILED : "Staged update applied.");
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_applied");
+      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_applied");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
       handlePlatformApplyFailure(
@@ -812,14 +1104,11 @@ public final class AppUpdateService {
       String appId, StagedUpdate staged, InstalledAppSnapshot installed, ApplyOptions options) {
     try {
       boolean wasRunning = validateApplyRequest(appId, staged, installed, options);
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_allowed");
+      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_allowed");
       return wasRunning;
     } catch (PlatformApiException exception) {
       recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          ReviewGate.POLICY_APPLY,
           staged.candidate(),
           "explicit_apply_blocked:" + exception.errorCode());
       throw exception;
@@ -891,7 +1180,7 @@ public final class AppUpdateService {
 
   private boolean validateApplyRequest(
       String appId, StagedUpdate staged, InstalledAppSnapshot installed, ApplyOptions options) {
-    if (!staged.candidate().eligibleByDefault()) {
+    if (!staged.candidate().eligibleByDefault() && !stagedExplicitSameVersionSwitch(staged)) {
       throw lifecycleFailure(
           409, ERROR_UPDATE_POLICY_BLOCKED, "The staged update is not eligible by default.");
     }
@@ -933,7 +1222,7 @@ public final class AppUpdateService {
 
   private void requireCurrentStagedSecurityDecision(String appId, StagedUpdate staged) {
     Map<String, Object> currentDecision =
-        targetSecurityDecision(staged.candidate().catalogId(), staged.entry()).toJsonValue();
+        targetSecurityDecision(staged.candidate().catalogId(), staged.entry());
     if (stagedSecurityDecisionStillAllowsApply(staged, currentDecision)) {
       return;
     }
@@ -953,6 +1242,32 @@ public final class AppUpdateService {
         "Staged update security policy changed before apply.");
     throw lifecycleFailure(
         409, errorCode, "Staged update security policy changed; check for updates again.");
+  }
+
+  private void requireCurrentStagedReviewDecision(String appId, StagedUpdate staged) {
+    Map<String, Object> currentDecision =
+        reviewTrust(staged.candidate().catalogId(), staged.entry());
+    if (staged.candidate().reviewTrust().equals(currentDecision)) {
+      return;
+    }
+    closeStage(appId);
+    candidates.remove(appId);
+    boolean requiresOperator =
+        Boolean.TRUE.equals(currentDecision.get(JSON_BLOCKS_UPDATE))
+            || Boolean.TRUE.equals(currentDecision.get(JSON_BLOCKS_POLICY_APPLY))
+            || Boolean.TRUE.equals(currentDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
+    String errorCode =
+        requiresOperator ? reviewGateFailureCode(currentDecision) : ERROR_UPDATE_CANDIDATE_CHANGED;
+    appendHistory(
+        appId,
+        ACTION_APPLY,
+        STATUS_FAILED,
+        staged.candidate().catalogId(),
+        staged.candidate().targetVersion(),
+        errorCode,
+        "Staged update reviewer policy changed before apply.");
+    throw lifecycleFailure(
+        409, errorCode, "Staged update reviewer policy changed; check for updates again.");
   }
 
   private static boolean stagedSecurityDecisionStillAllowsApply(
@@ -989,9 +1304,9 @@ public final class AppUpdateService {
       StagedUpdate staged,
       InstalledAppSnapshot installed,
       AppManifest targetManifest) {
-    verifyStagedBundleBeforeApply(staged);
     AppDataMigrationPlan refreshedPlan =
-        buildMigrationPlan(appId, installed.manifest(), targetManifest);
+        AppUpdateMigrationPlanner.buildPlan(
+            appDataService, appId, installed.manifest(), targetManifest);
     requireApplicableMigrationPlan(staged.migrationPlan(), refreshedPlan, targetManifest);
     if (refreshedPlan.required()) {
       AppDataMigrationRunner.MigrationExecutionResult dryRunResult =
@@ -1027,8 +1342,7 @@ public final class AppUpdateService {
 
   private AppManifest stagedManifestForApplyOrReject(StagedUpdate staged) {
     try {
-      return AppManifestParser.parse(
-          staged.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+      return AppUpdateBundleSupport.readManifest(staged.stagedBundleDirectory());
     } catch (IOException _) {
       throw lifecycleFailure(
           400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle manifest is invalid.");
@@ -1187,10 +1501,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_APPLY_FAILED);
-    recordUpdateReviewGate(
-        AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-        candidate,
-        "apply_failed:" + errorCode);
+    recordUpdateReviewGate(ReviewGate.POLICY_APPLY, candidate, "apply_failed:" + errorCode);
   }
 
   private PlatformApiException appHostApplyFailure(
@@ -1205,6 +1516,10 @@ public final class AppUpdateService {
       updateCandidateAfterPostApplyFailure(
           appId, staged.candidate(), updated, healthFailureState, migrationPlan);
       return lifecycleFailure(500, ERROR_UPDATE_FAILED, MESSAGE_APPLY_FAILED);
+    }
+    if (exception instanceof AppHostException.CatalogOriginChangedException) {
+      clearRejectedStage(appId);
+      return staleSourceSwitchAuthorization();
     }
     if (isRunningUpdateFailure(exception) || appHost.status(appId).isPresent()) {
       return lifecycleFailure(409, ERROR_APP_RUNNING, "App must be stopped before update.");
@@ -1282,7 +1597,7 @@ public final class AppUpdateService {
 
   private void requireRollbackAvailableBeforeStop(String appId) {
     try {
-      if (rollbackStatusOrFailure(appId).isPresent()) {
+      if (rollbackAvailable(appId)) {
         return;
       }
     } catch (PlatformApiException exception) {
@@ -1294,16 +1609,7 @@ public final class AppUpdateService {
   }
 
   private boolean disableVaultGrantsRemovedByUpdate(InstalledAppSnapshot updated) {
-    if (appVaultService == null) {
-      return true;
-    }
-    try {
-      appVaultService.disableGrantsForRemovedVaultPermissions(
-          updated.appId(), new java.util.LinkedHashSet<>(updated.manifest().permissions()));
-      return true;
-    } catch (AppVaultException _) {
-      return false;
-    }
+    return AppUpdateVaultAuthority.disableRemovedGrants(appVaultService, updated);
   }
 
   private boolean disableVaultGrantsAfterCommittedUpdate(
@@ -1361,6 +1667,12 @@ public final class AppUpdateService {
   }
 
   private static PlatformApiException appHostRollbackFailure(AppHostException exception) {
+    if (exception instanceof AppHostException.CatalogRollbackAuthorizationException) {
+      return lifecycleFailure(
+          409,
+          ERROR_CATALOG_ROLLBACK_TRUST_BLOCKED,
+          "Rollback is blocked by current local catalog trust policy.");
+    }
     if (isRunningRollbackFailure(exception)) {
       return lifecycleFailure(
           409, ERROR_ROLLBACK_APP_RUNNING, "App must be stopped before rollback.");
@@ -1500,9 +1812,7 @@ public final class AppUpdateService {
     if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
       appendCompatibilityGateHistory(appId, candidate);
       recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-          candidate,
-          "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
+          ReviewGate.POLICY_APPLY, candidate, "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
       return;
     }
     if (!stageCandidateForAutomaticPolicy(appId, installed, candidate, ACTION_APPLY)) {
@@ -1521,9 +1831,7 @@ public final class AppUpdateService {
         ERROR_APP_RUNNING,
         "Policy skipped apply because the app is running.");
     recordUpdateReviewGate(
-        AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-        candidate,
-        "policy_apply_skipped:" + ERROR_APP_RUNNING);
+        ReviewGate.POLICY_APPLY, candidate, "policy_apply_skipped:" + ERROR_APP_RUNNING);
   }
 
   private boolean stageCandidateForAutomaticPolicy(
@@ -1532,7 +1840,7 @@ public final class AppUpdateService {
       AppUpdateCandidate candidate,
       String automaticAction) {
     try {
-      stageCandidate(appId, installed, candidate, false);
+      stageCandidate(appId, installed, candidate, false, null, false);
       return true;
     } catch (PlatformApiException exception) {
       if (isAutomaticPolicyMigrationSkip(exception.errorCode())) {
@@ -1565,7 +1873,9 @@ public final class AppUpdateService {
       String appId,
       InstalledAppSnapshot installed,
       AppUpdateCandidate candidate,
-      boolean migrationAcknowledged) {
+      boolean migrationAcknowledged,
+      String sourceSwitchConsent,
+      boolean explicitTargetSelected) {
     if (candidateDiffersFromInstalled(candidate, installed)) {
       closeStage(appId);
       candidates.remove(appId);
@@ -1578,22 +1888,41 @@ public final class AppUpdateService {
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Candidate no longer matches the installed app version.");
       recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
-          candidate,
-          "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+          ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Installed app version changed since candidate detection.");
     }
+    boolean explicitConflictResolution =
+        requireNoCurrentFederatedConflictBeforeStage(
+            appId, installed, candidate, explicitTargetSelected);
     try (StagePlanLease planLease = prepareStagePlanLease(appId, candidate)) {
       AppCatalogInstallPlan plan = planLease.plan();
       if (planDiffersFromCandidate(candidate, installed, plan)) {
         rejectChangedStagePlan(appId, candidate);
       }
+      SourceSwitchAuthorization sourceSwitchAuthorization =
+          requirePinnedPublisherForStage(appId, candidate, plan, sourceSwitchConsent);
+      if (explicitConflictResolution
+          && sourceSwitchAuthorization.approvedConsentDigestSha256().isEmpty()) {
+        throw lifecycleFailure(
+            409,
+            ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+            "The explicit conflict resolution requires an exact source-switch preview.");
+      }
+      if (explicitTargetSelected
+          && isSameVersionSourceSwitchCandidate(candidate)
+          && sourceSwitchAuthorization.approvedConsentDigestSha256().isEmpty()) {
+        throw lifecycleFailure(
+            409,
+            ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+            "A same-version source switch requires an exact source-switch preview.");
+      }
       AppManifest targetManifest = stagedManifestOrReject(appId, candidate, plan);
       AppDataMigrationPlan migrationPlan =
-          buildMigrationPlan(appId, installed.manifest(), targetManifest);
+          AppUpdateMigrationPlanner.buildPlan(
+              appDataService, appId, installed.manifest(), targetManifest);
       requireStageableMigrationPlan(appId, candidate, migrationPlan, migrationAcknowledged, plan);
       requireStoppedForStageDryRun(appId, candidate, migrationPlan, plan);
       requireStageableMigrationExecution(appId, candidate, migrationPlan, targetManifest, plan);
@@ -1612,7 +1941,12 @@ public final class AppUpdateService {
       closeStage(appId);
       stagedUpdates.put(
           appId,
-          new StagedUpdate(stagedCandidate, planLease.release(), migrationPlan, Instant.now()));
+          new StagedUpdate(
+              stagedCandidate,
+              planLease.release(),
+              migrationPlan,
+              sourceSwitchAuthorization,
+              Instant.now()));
       appendHistory(
           appId,
           ACTION_STAGE,
@@ -1621,9 +1955,135 @@ public final class AppUpdateService {
           stagedCandidate.targetVersion(),
           null,
           "Verified update candidate staged.");
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, stagedCandidate, "stage_staged");
+      recordUpdateReviewGate(ReviewGate.UPDATE, stagedCandidate, "stage_staged");
     }
+  }
+
+  private boolean requireNoCurrentFederatedConflictBeforeStage(
+      String appId,
+      InstalledAppSnapshot installed,
+      AppUpdateCandidate candidate,
+      boolean explicitTargetSelected) {
+    if (!catalogManager.federationEnabled()) {
+      return false;
+    }
+    List<AppUpdateCandidate> currentSubjects =
+        catalogAuthority.catalogCandidates(appId, installed, policyFor(appId), false);
+    AppUpdateCandidate conflictDecision = unresolvedCrossCatalogConflict(currentSubjects);
+    if (conflictDecision == null) {
+      return false;
+    }
+    if (conflictDecision.status() == AppUpdateCandidateStatus.BLOCKED) {
+      if (exactDuplicatePreservesInstalledOrigin(currentSubjects, candidate)) {
+        candidates.put(appId, candidate);
+        return false;
+      }
+      if (explicitTargetSelected
+          && exactExplicitSourceSwitchResolutionAllows(currentSubjects, candidate)) {
+        candidates.put(appId, candidate);
+        return true;
+      }
+      candidates.put(appId, conflictDecision);
+      recordStageFailure(appId, candidate, ERROR_UPDATE_NOT_AVAILABLE);
+      throw lifecycleFailure(
+          409,
+          ERROR_UPDATE_NOT_AVAILABLE,
+          "Current cross-catalog conflict state blocks staging; check for updates again.");
+    }
+    if (!sameCatalogCandidateSubject(candidate, conflictDecision)
+        && !exactDuplicatePreservesInstalledOrigin(currentSubjects, candidate)) {
+      rejectChangedStagePlan(appId, candidate);
+    }
+    candidates.put(appId, candidate);
+    return false;
+  }
+
+  private boolean exactDuplicatePreservesInstalledOrigin(
+      List<AppUpdateCandidate> matches, AppUpdateCandidate selected) {
+    AppUpdateFederationAuthority policy = federatedConflictPolicy.get();
+    return policy != null
+        && policy
+            .conflicts()
+            .exactDuplicatePreservesInstalledOrigin(
+                matches,
+                selected,
+                selectedIsInstalledOrigin(selected),
+                this::conflictSecurityDigest);
+  }
+
+  private static boolean sameCatalogCandidateSubject(
+      AppUpdateCandidate left, AppUpdateCandidate right) {
+    return AppUpdateConflictAuthority.sameCandidate(left, right);
+  }
+
+  private SourceSwitchAuthorization requirePinnedPublisherForStage(
+      String appId,
+      AppUpdateCandidate candidate,
+      AppCatalogInstallPlan plan,
+      String sourceSwitchConsent) {
+    Optional<InstalledAppOrigin> current = installedCatalogOrigin(appId);
+    if (current.isEmpty()) {
+      if (sourceSwitchConsent != null && !sourceSwitchConsent.isBlank()) {
+        recordStageFailure(appId, candidate, ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED);
+        closePlan(plan);
+        throw staleSourceSwitchAuthorization();
+      }
+      return SourceSwitchAuthorization.withoutCurrentOrigin();
+    }
+    InstalledAppOrigin origin = current.orElseThrow();
+    CatalogSourceSwitchConsent.Decision decision;
+    try {
+      decision = CatalogSourceSwitchConsent.evaluate(plan, origin);
+    } catch (IllegalArgumentException _) {
+      recordStageFailure(appId, candidate, ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED);
+      closePlan(plan);
+      throw lifecycleFailure(
+          409,
+          ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+          "Catalog source switching requires an authenticated target origin.");
+    }
+    if (!decision.requiresExplicitConsent()) {
+      return SourceSwitchAuthorization.forCurrentOrigin(origin, null);
+    }
+    if (decision.consentDigestSha256().equals(sourceSwitchConsent)) {
+      return SourceSwitchAuthorization.forCurrentOrigin(origin, decision.consentDigestSha256());
+    }
+    recordStageFailure(appId, candidate, ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED);
+    closePlan(plan);
+    throw lifecycleFailure(
+        409,
+        ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+        "Catalog or publisher switching requires an exact operator source-switch preview.");
+  }
+
+  private void revalidateSourceSwitchAuthorizationForApply(String appId, StagedUpdate staged) {
+    SourceSwitchAuthorization authorization = staged.sourceSwitchAuthorization();
+    InstalledAppOrigin current = installedCatalogOrigin(appId).orElse(null);
+    if (!authorization.matches(current)) {
+      throw staleSourceSwitchAuthorization();
+    }
+    if (current == null) {
+      return;
+    }
+    CatalogSourceSwitchConsent.Decision decision;
+    try {
+      decision = CatalogSourceSwitchConsent.evaluate(staged.plan(), current);
+    } catch (IllegalArgumentException _) {
+      throw staleSourceSwitchAuthorization();
+    }
+    if (decision.requiresExplicitConsent()
+        && !authorization
+            .approvedConsentDigestSha256()
+            .equals(Optional.of(decision.consentDigestSha256()))) {
+      throw staleSourceSwitchAuthorization();
+    }
+  }
+
+  private static PlatformApiException staleSourceSwitchAuthorization() {
+    return lifecycleFailure(
+        409,
+        ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
+        "Installed catalog origin changed; prepare and approve a new source-switch preview.");
   }
 
   private void rejectChangedStagePlan(String appId, AppUpdateCandidate candidate) {
@@ -1638,9 +2098,7 @@ public final class AppUpdateService {
         ERROR_UPDATE_CANDIDATE_CHANGED,
         "Prepared catalog plan no longer matches the reviewed candidate.");
     recordUpdateReviewGate(
-        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
-        candidate,
-        "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+        ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
     throw lifecycleFailure(
         409,
         ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -1675,8 +2133,7 @@ public final class AppUpdateService {
   private AppManifest stagedManifestOrReject(
       String appId, AppUpdateCandidate candidate, AppCatalogInstallPlan plan) {
     try {
-      return AppManifestParser.parse(
-          plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+      return AppUpdateBundleSupport.readManifest(plan.stagedBundleDirectory());
     } catch (IOException _) {
       recordStageFailure(appId, candidate, ERROR_INVALID_APP_BUNDLE);
       closePlan(plan);
@@ -1748,7 +2205,7 @@ public final class AppUpdateService {
       AppDataMigrationPlan migrationPlan,
       AppManifest targetManifest,
       AppCatalogInstallPlan plan) {
-    if (migrationExecutionAllowed(migrationPlan, targetManifest)) {
+    if (AppUpdateMigrationPlanner.migrationExecutionAllowed(migrationPlan, targetManifest)) {
       return;
     }
     AppDataMigrationPlan blockedPlan =
@@ -1770,20 +2227,13 @@ public final class AppUpdateService {
 
   private void requireMigrationExecutionAllowed(
       AppDataMigrationPlan migrationPlan, AppManifest targetManifest) {
-    if (migrationExecutionAllowed(migrationPlan, targetManifest)) {
+    if (AppUpdateMigrationPlanner.migrationExecutionAllowed(migrationPlan, targetManifest)) {
       return;
     }
     throw lifecycleFailure(
         409,
         ERROR_APP_DATA_MIGRATION_SANDBOX_UNAVAILABLE,
         "App-data migration runner cannot enforce the requested app sandbox.");
-  }
-
-  private boolean migrationExecutionAllowed(
-      AppDataMigrationPlan migrationPlan, AppManifest targetManifest) {
-    return !migrationPlan.required()
-        || !targetManifest.sandboxPolicy().required()
-        || targetManifest.sandboxPolicy().mode() == AppSandboxMode.NONE;
   }
 
   private AppDataMigrationRunner.MigrationExecutionResult runStageDryRunOrReject(
@@ -1984,229 +2434,6 @@ public final class AppUpdateService {
     }
   }
 
-  private AppDataMigrationPlan buildMigrationPlan(
-      String appId, AppManifest installedManifest, AppManifest targetManifest) {
-    AppDataSchemaContract installedContract = installedManifest.dataSchemaContract();
-    AppDataSchemaContract targetContract = targetManifest.dataSchemaContract();
-    if (!targetContract.declared()) {
-      return AppDataMigrationPlan.notRequired(
-          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
-    }
-    if (appDataService == null) {
-      return AppDataMigrationPlan.blocked(
-          AppDataMigrationPlan.STATUS_FAILED,
-          installedContract.currentSchemaVersion(),
-          targetContract.currentSchemaVersion(),
-          List.of(),
-          false,
-          "app_data_store_unavailable");
-    }
-    List<AppDataNamespaceMetadata> currentNamespaces =
-        appDataService.listNamespaceMetadataForUpdate(appId);
-    if (currentNamespaces.isEmpty()) {
-      return AppDataMigrationPlan.notRequired(
-          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
-    }
-    Map<String, AppDataNamespaceMetadata> currentMetadata = namespaceMetadataMap(currentNamespaces);
-    List<String> migrationNamespaces = migrationNamespaces(targetContract, currentMetadata);
-    ArrayList<AppDataMigrationPlan.NamespaceStep> steps = new ArrayList<>();
-    for (String namespace : migrationNamespaces) {
-      if (currentMetadata.containsKey(namespace)) {
-        Optional<AppDataMigrationPlan> blocker =
-            appendNamespaceMigrationSteps(
-                namespace, installedContract, targetContract, currentMetadata, steps);
-        if (blocker.isPresent()) {
-          return blocker.orElseThrow();
-        }
-      }
-    }
-    if (steps.isEmpty()) {
-      return AppDataMigrationPlan.notRequired(
-          installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion());
-    }
-    return AppDataMigrationPlan.ready(
-        installedContract.currentSchemaVersion(), targetContract.currentSchemaVersion(), steps);
-  }
-
-  private static Optional<AppDataMigrationPlan> appendNamespaceMigrationSteps(
-      String namespace,
-      AppDataSchemaContract installedContract,
-      AppDataSchemaContract targetContract,
-      Map<String, AppDataNamespaceMetadata> currentMetadata,
-      List<AppDataMigrationPlan.NamespaceStep> steps) {
-    int currentVersion = currentSchemaVersion(namespace, installedContract, currentMetadata);
-    int targetVersion = targetSchemaVersion(namespace, targetContract, currentVersion);
-    if (targetVersion < currentVersion) {
-      return Optional.of(
-          AppDataMigrationPlan.blocked(
-              AppDataMigrationPlan.STATUS_MISSING_MIGRATION,
-              installedContract.currentSchemaVersion(),
-              targetContract.currentSchemaVersion(),
-              steps,
-              false,
-              ERROR_APP_DATA_MIGRATION_MISSING));
-    }
-    if (targetVersion == currentVersion) {
-      return Optional.empty();
-    }
-    List<AppDataMigrationPlan.NamespaceStep> path =
-        migrationPath(namespace, currentVersion, targetVersion, targetContract.migrations());
-    if (path.isEmpty()) {
-      return Optional.of(
-          AppDataMigrationPlan.blocked(
-              AppDataMigrationPlan.STATUS_MISSING_MIGRATION,
-              currentVersion,
-              targetVersion,
-              steps,
-              false,
-              ERROR_APP_DATA_MIGRATION_MISSING));
-    }
-    steps.addAll(path);
-    return Optional.empty();
-  }
-
-  private static Map<String, AppDataNamespaceMetadata> namespaceMetadataMap(
-      List<AppDataNamespaceMetadata> namespaces) {
-    LinkedHashMap<String, AppDataNamespaceMetadata> byNamespace = new LinkedHashMap<>();
-    for (AppDataNamespaceMetadata namespace : namespaces) {
-      byNamespace.put(namespace.namespace(), namespace);
-    }
-    return byNamespace;
-  }
-
-  private static List<String> migrationNamespaces(
-      AppDataSchemaContract targetContract, Map<String, AppDataNamespaceMetadata> currentMetadata) {
-    if (!targetContract.namespaces().isEmpty()) {
-      return targetContract.namespaces().stream().map(AppDataNamespaceSchema::namespace).toList();
-    }
-    if (targetContract.currentSchemaVersion() != null) {
-      return List.copyOf(currentMetadata.keySet());
-    }
-    return List.of();
-  }
-
-  private static int currentSchemaVersion(
-      String namespace,
-      AppDataSchemaContract installedContract,
-      Map<String, AppDataNamespaceMetadata> currentMetadata) {
-    AppDataNamespaceMetadata metadata = currentMetadata.get(namespace);
-    if (metadata != null) {
-      return metadata.schemaVersion();
-    }
-    AppDataNamespaceSchema installedNamespace = installedContract.namespace(namespace);
-    if (installedNamespace != null) {
-      return installedNamespace.currentSchemaVersion();
-    }
-    Integer globalCurrent = installedContract.currentSchemaVersion();
-    return globalCurrent == null ? 1 : globalCurrent;
-  }
-
-  private static int targetSchemaVersion(
-      String namespace, AppDataSchemaContract targetContract, int currentVersion) {
-    AppDataNamespaceSchema targetNamespace = targetContract.namespace(namespace);
-    if (targetNamespace != null) {
-      return targetNamespace.currentSchemaVersion();
-    }
-    Integer globalTarget = targetContract.currentSchemaVersion();
-    return globalTarget == null ? currentVersion : globalTarget;
-  }
-
-  private static List<AppDataMigrationPlan.NamespaceStep> migrationPath(
-      String namespace,
-      int currentVersion,
-      int targetVersion,
-      List<AppDataMigrationStep> migrations) {
-    Optional<List<AppDataMigrationStep>> path =
-        bestMigrationPath(
-            namespace, currentVersion, targetVersion, migrations, new LinkedHashMap<>());
-    return path.map(steps -> steps.stream().map(AppUpdateService::namespaceStep).toList())
-        .orElseGet(List::of);
-  }
-
-  private static Optional<List<AppDataMigrationStep>> bestMigrationPath(
-      String namespace,
-      int currentVersion,
-      int targetVersion,
-      List<AppDataMigrationStep> migrations,
-      Map<Integer, Optional<List<AppDataMigrationStep>>> memoizedPaths) {
-    if (currentVersion == targetVersion) {
-      return Optional.of(List.of());
-    }
-    if (memoizedPaths.containsKey(currentVersion)) {
-      return memoizedPaths.get(currentVersion);
-    }
-    Optional<List<AppDataMigrationStep>> best = Optional.empty();
-    List<AppDataMigrationStep> candidates =
-        migrations.stream()
-            .filter(step -> step.namespace().equals(namespace))
-            .filter(step -> step.fromSchemaVersion() == currentVersion)
-            .filter(step -> step.toSchemaVersion() <= targetVersion)
-            .sorted(
-                Comparator.comparingInt(AppDataMigrationStep::toSchemaVersion)
-                    .thenComparing(AppDataMigrationStep::stepId))
-            .toList();
-    for (AppDataMigrationStep candidate : candidates) {
-      Optional<List<AppDataMigrationStep>> suffix =
-          bestMigrationPath(
-              namespace, candidate.toSchemaVersion(), targetVersion, migrations, memoizedPaths);
-      if (suffix.isEmpty()) {
-        continue;
-      }
-      ArrayList<AppDataMigrationStep> candidatePath = new ArrayList<>();
-      candidatePath.add(candidate);
-      candidatePath.addAll(suffix.get());
-      if (best.isEmpty() || compareMigrationPaths(candidatePath, best.get()) < 0) {
-        best = Optional.of(List.copyOf(candidatePath));
-      }
-    }
-    memoizedPaths.put(currentVersion, best);
-    return best;
-  }
-
-  private static int compareMigrationPaths(
-      List<AppDataMigrationStep> left, List<AppDataMigrationStep> right) {
-    int comparison =
-        Integer.compare(rollbackIncompatibleSteps(left), rollbackIncompatibleSteps(right));
-    if (comparison != 0) {
-      return comparison;
-    }
-    comparison = Integer.compare(requiresStoppedSteps(left), requiresStoppedSteps(right));
-    if (comparison != 0) {
-      return comparison;
-    }
-    comparison = Integer.compare(left.size(), right.size());
-    if (comparison != 0) {
-      return comparison;
-    }
-    for (int index = 0; index < left.size(); index++) {
-      comparison = left.get(index).stepId().compareTo(right.get(index).stepId());
-      if (comparison != 0) {
-        return comparison;
-      }
-    }
-    return 0;
-  }
-
-  private static int rollbackIncompatibleSteps(List<AppDataMigrationStep> steps) {
-    return (int) steps.stream().filter(step -> !step.rollbackCompatible()).count();
-  }
-
-  private static int requiresStoppedSteps(List<AppDataMigrationStep> steps) {
-    return (int) steps.stream().filter(AppDataMigrationStep::requiresStopped).count();
-  }
-
-  private static AppDataMigrationPlan.NamespaceStep namespaceStep(AppDataMigrationStep step) {
-    return new AppDataMigrationPlan.NamespaceStep(
-        step.namespace(),
-        step.fromSchemaVersion(),
-        step.toSchemaVersion(),
-        step.stepId(),
-        step.rollbackCompatible(),
-        step.requiresStopped(),
-        step.description(),
-        step.command());
-  }
-
   private AppUpdateCandidate candidateWithMigrationPlan(
       AppUpdateCandidate candidate, AppDataMigrationPlan migrationPlan) {
     return new AppUpdateCandidate(
@@ -2253,7 +2480,9 @@ public final class AppUpdateService {
       AppManifest targetManifest = stagedManifestForConsentPreview(plan);
       return candidateWithMigrationPlan(
           candidate,
-          buildMigrationPlan(appId, installed.manifest(), targetManifest).withoutDryRunResult());
+          AppUpdateMigrationPlanner.buildPlan(
+                  appDataService, appId, installed.manifest(), targetManifest)
+              .withoutDryRunResult());
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -2273,11 +2502,15 @@ public final class AppUpdateService {
 
   private static AppManifest stagedManifestForConsentPreview(AppCatalogInstallPlan plan)
       throws IOException {
-    return AppManifestParser.parse(
-        plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    return AppUpdateBundleSupport.readManifest(plan.stagedBundleDirectory());
   }
 
   private AppUpdateCandidate candidateOrDetect(String appId, InstalledAppSnapshot installed) {
+    if (catalogManager.federationEnabled()) {
+      AppUpdateCandidate candidate = detectCandidate(appId, installed, false);
+      candidates.put(appId, candidate);
+      return candidate;
+    }
     return candidates.computeIfAbsent(appId, _ -> detectCandidate(appId, installed, false));
   }
 
@@ -2290,67 +2523,139 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_STAGE_FAILED);
-    recordUpdateReviewGate(
-        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "stage_failed:" + errorCode);
+    recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "stage_failed:" + errorCode);
   }
 
   private AppUpdateCandidate detectCandidate(
       String appId, InstalledAppSnapshot installed, boolean refreshCatalogs) {
-    List<AppCatalogSourceSnapshot> catalogs = listCatalogs();
-    if (refreshCatalogs) {
-      catalogs = refreshCatalogs(catalogs);
-    }
-    List<AppUpdateCandidate> matches = new ArrayList<>();
-    for (AppCatalogSourceSnapshot catalog : catalogs) {
-      for (AppCatalogEntry entry : listCatalogApps(catalog.catalogId())) {
-        if (appId.equals(entry.appId())) {
-          matches.add(candidateFor(catalog.catalogId(), entry, installed, policyFor(appId)));
-        }
-      }
-    }
-    return selectBestCandidate(appId, installed, matches);
+    List<AppUpdateCandidate> matches =
+        catalogAuthority.catalogCandidates(appId, installed, policyFor(appId), refreshCatalogs);
+    return selectBestCandidate(
+        appId, installed, matches, installedCatalogOrigin(appId).orElse(null));
   }
 
-  private List<AppCatalogSourceSnapshot> listCatalogs() {
+  private AppUpdateCandidate conflictCandidateFor(
+      String catalogId, AppCatalogEntry entry, InstalledAppSnapshot installed) {
+    return catalogAuthority.conflictCandidate(catalogId, entry, installed);
+  }
+
+  private Optional<InstalledAppOrigin> installedCatalogOrigin(String appId) {
+    if (!catalogManager.federationEnabled()) {
+      return Optional.empty();
+    }
     try {
-      return catalogManager.listCatalogs();
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
+      return appHost.catalogOrigin(appId);
     } catch (IOException _) {
-      throw lifecycleFailure(500, "catalog_list_failed", "Failed to list app catalogs.");
-    }
-  }
-
-  private List<AppCatalogSourceSnapshot> refreshCatalogs(List<AppCatalogSourceSnapshot> catalogs) {
-    List<AppCatalogSourceSnapshot> refreshed = new ArrayList<>(catalogs.size());
-    for (AppCatalogSourceSnapshot catalog : catalogs) {
-      try {
-        refreshed.add(catalogManager.refresh(catalog.catalogId()));
-      } catch (AppCatalogException | IOException _) {
-        refreshed.add(catalog);
-      }
-    }
-    return List.copyOf(refreshed);
-  }
-
-  private List<AppCatalogEntry> listCatalogApps(String catalogId) {
-    try {
-      return catalogManager.listApps(catalogId);
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw lifecycleFailure(500, "catalog_list_failed", "Failed to list catalog apps.");
+      throw lifecycleFailure(
+          500, "catalog_origin_read_failed", "Installed catalog origin could not be inspected.");
     }
   }
 
   private AppUpdateCandidate selectBestCandidate(
-      String appId, InstalledAppSnapshot installed, List<AppUpdateCandidate> matches) {
+      String appId,
+      InstalledAppSnapshot installed,
+      List<AppUpdateCandidate> matches,
+      InstalledAppOrigin installedOrigin) {
     if (matches.isEmpty()) {
-      return noneCandidate(appId, installed);
+      AppUpdateCandidate none = noneCandidate(appId, installed);
+      return installedOrigin != null ? none.blockedByUnavailableCatalogOrigin() : none;
+    }
+    if (installedOrigin != null) {
+      AppUpdateCandidate pinned =
+          selectPinnedOriginCandidate(appId, installed, matches, installedOrigin);
+      AppUpdateCandidate conflict = unresolvedCrossCatalogConflict(matches);
+      if (conflict != null
+          && conflict.status() == AppUpdateCandidateStatus.BLOCKED
+          && !exactDuplicatePreservesInstalledOrigin(matches, pinned)) {
+        return conflict;
+      }
+      return pinned;
+    }
+    if (!catalogManager.federationEnabled()) {
+      return matches.stream()
+          .max(AppUpdateService::compareLegacyCandidates)
+          .orElseGet(() -> noneCandidate(appId, installed));
+    }
+    AppUpdateCandidate conflict = unresolvedCrossCatalogConflict(matches);
+    if (conflict != null) {
+      return conflict;
     }
     return matches.stream()
         .max(AppUpdateService::compareCandidates)
         .orElseGet(() -> noneCandidate(appId, installed));
+  }
+
+  private AppUpdateCandidate selectPinnedOriginCandidate(
+      String appId,
+      InstalledAppSnapshot installed,
+      List<AppUpdateCandidate> matches,
+      InstalledAppOrigin installedOrigin) {
+    List<AppUpdateCandidate> pinnedMatches =
+        matches.stream()
+            .filter(candidate -> installedOrigin.catalogId().equals(candidate.catalogId()))
+            .toList();
+    if (!pinnedMatches.isEmpty()) {
+      return pinnedMatches.stream()
+          .max(AppUpdateService::compareCandidates)
+          .orElseGet(() -> noneCandidate(appId, installed));
+    }
+    return matches.stream()
+        .max(AppUpdateService::compareCandidates)
+        .orElseGet(() -> noneCandidate(appId, installed))
+        .blockedByUnavailableCatalogOrigin();
+  }
+
+  private AppUpdateCandidate unresolvedCrossCatalogConflict(List<AppUpdateCandidate> matches) {
+    if (matches.stream().map(AppUpdateCandidate::catalogId).distinct().count() < 2) {
+      return null;
+    }
+    AppUpdateFederationAuthority policy = federatedConflictPolicy.get();
+    if (policy == null) {
+      return blockedCatalogConflict(matches);
+    }
+    return policy.conflicts().decision(matches, this::conflictSecurityDigest);
+  }
+
+  private List<AppUpdateCandidate> currentFederatedConflictCandidates(String appId) {
+    if (!catalogManager.federationEnabled()) {
+      throw lifecycleFailure(
+          503, "catalog_federation_unavailable", "Catalog federation is not enabled on this node.");
+    }
+    try {
+      InstalledAppSnapshot installed = appHost.describe(appId).orElse(null);
+      return catalogAuthority.catalogConflictCandidates(appId, installed);
+    } catch (IOException _) {
+      throw lifecycleFailure(
+          500,
+          "catalog_conflict_policy_unavailable",
+          "The current catalog conflict policy could not be authenticated.");
+    }
+  }
+
+  private AppUpdateFederationAuthority requireFederatedConflictPolicy() {
+    AppUpdateFederationAuthority policy = federatedConflictPolicy.get();
+    if (policy == null) {
+      throw lifecycleFailure(
+          503,
+          "catalog_conflict_policy_unavailable",
+          "Federated catalog conflict policy is unavailable.");
+    }
+    return policy;
+  }
+
+  private boolean exactExplicitSourceSwitchResolutionAllows(
+      List<AppUpdateCandidate> matches, AppUpdateCandidate selected) {
+    AppUpdateFederationAuthority policy = federatedConflictPolicy.get();
+    return policy != null
+        && policy
+            .conflicts()
+            .explicitSourceSwitchAllows(matches, selected, this::conflictSecurityDigest);
+  }
+
+  private static AppUpdateCandidate blockedCatalogConflict(List<AppUpdateCandidate> candidates) {
+    return candidates
+        .getFirst()
+        .blockedByCatalogConflict("multiple_catalog_origins_require_an_exact_local_resolution");
   }
 
   private static int compareCandidates(AppUpdateCandidate left, AppUpdateCandidate right) {
@@ -2372,10 +2677,14 @@ public final class AppUpdateService {
     if (versionComparison != null && versionComparison != 0) {
       return versionComparison;
     }
-    int reviewTrustComparison =
-        Integer.compare(reviewTrustRank(left.reviewTrust()), reviewTrustRank(right.reviewTrust()));
-    if (reviewTrustComparison != 0) {
-      return reviewTrustComparison;
+    return Integer.compare(
+        reviewTrustRank(left.reviewTrust()), reviewTrustRank(right.reviewTrust()));
+  }
+
+  private static int compareLegacyCandidates(AppUpdateCandidate left, AppUpdateCandidate right) {
+    int policyComparison = compareCandidates(left, right);
+    if (policyComparison != 0) {
+      return policyComparison;
     }
     int catalogComparison = left.catalogId().compareTo(right.catalogId());
     if (catalogComparison != 0) {
@@ -2453,198 +2762,41 @@ public final class AppUpdateService {
         };
   }
 
-  private AppUpdateCandidate candidateFor(
-      String catalogId,
-      AppCatalogEntry entry,
-      InstalledAppSnapshot installed,
-      AppUpdatePolicy policy) {
-    String installedVersion = installed.manifest().appVersion();
-    VersionDecision decision = versionDecision(entry.version(), installedVersion);
-    Map<String, Object> apiCompatibility =
-        PlatformApiContractVerifier.summarize(
-            entry.compatibility().apiCompatibility(),
-            entry.permissions(),
-            PlatformApiContract.current());
-    AppUpdateCandidateStatus status = statusFor(decision, apiCompatibility);
-    AppCatalogReviewMetadata review = entry.review();
-    Map<String, Object> reviewTrust = reviewTrust(entry).toJsonValue();
-    AppCatalogProductionMetadata productionMetadata = entry.productionMetadata();
-    boolean channelPolicyAllowed = policyAllowsAutomaticCandidate(policy, productionMetadata);
-    return new AppUpdateCandidate(
-        installed.appId(),
-        catalogId,
-        catalogId,
-        installedVersion,
-        entry.version(),
-        status,
-        decision.label(),
-        productionMetadata.channel().catalogValue(),
-        productionMetadata.supportStatus().catalogValue(),
-        deprecationSummary(productionMetadata),
-        securityAdvisoriesSummary(productionMetadata),
-        targetSecurityDecision(catalogId, entry).toJsonValue(),
-        channelPolicyAllowed,
-        channelPolicyAllowed ? null : ERROR_CHANNEL_POLICY_BLOCKED,
-        entry.bundleSha256(),
-        entry.bundleSizeBytes(),
-        entry.bundleType(),
-        AppUpdateCandidate.reviewSummary(
-            review.status().catalogValue(), review.note().orElse(null)),
-        reviewTrust,
-        apiCompatibility,
-        AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions()),
-        AppDataMigrationPlan.notChecked().toJsonValue(),
-        appHost.status(installed.appId()).isPresent(),
-        Instant.now());
+  private Map<String, Object> reviewTrust(String catalogId, AppCatalogEntry entry) {
+    return catalogAuthority.reviewTrust(catalogId, entry);
   }
 
-  private static boolean policyAllowsAutomaticCandidate(
-      AppUpdatePolicy policy, AppCatalogProductionMetadata metadata) {
-    return policy.allowsAutomaticChannel(metadata.channel())
-        && !metadata.deprecatedForAutomaticUpdates();
+  private Map<String, Object> securityDecision(String catalogId, String appId) {
+    return catalogAuthority.catalogSecurityDecision(catalogId, appId);
   }
 
-  private static Map<String, Object> deprecationSummary(AppCatalogProductionMetadata metadata) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
-    json.put(JSON_STATUS, metadata.deprecationStatus().catalogValue());
-    json.put(JSON_MESSAGE, metadata.deprecationMessage().orElse(null));
-    json.put("replacementAppId", metadata.replacementAppId().orElse(null));
-    return json;
+  private String conflictSecurityDigest(AppUpdateCandidate candidate) {
+    return securityDecisionDigest(securityDecision(candidate.catalogId(), candidate.appId()));
   }
 
-  private static List<Map<String, Object>> securityAdvisoriesSummary(
-      AppCatalogProductionMetadata metadata) {
-    return metadata.securityAdvisories().stream()
-        .map(AppUpdateService::securityAdvisorySummary)
-        .toList();
+  private boolean selectedIsInstalledOrigin(AppUpdateCandidate selected) {
+    return installedCatalogOrigin(selected.appId())
+        .filter(origin -> origin.catalogId().equals(selected.catalogId()))
+        .isPresent();
   }
 
-  private static Map<String, Object> securityAdvisorySummary(AppCatalogSecurityAdvisory advisory) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
-    json.put("id", advisory.id());
-    json.put("uri", advisory.uri().toString());
-    return json;
+  private Map<String, Object> installedSecurityDecision(String appId, String version) {
+    return catalogAuthority.installedSecurityDecision(appId, version);
   }
 
-  private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
-    return AppReviewReceiptVerifier.evaluate(
-        entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  private Map<String, Object> targetSecurityDecision(String catalogId, AppCatalogEntry entry) {
+    return catalogAuthority.targetSecurityDecision(catalogId, entry);
   }
 
-  private AppCatalogSecurityDecision securityDecision(String catalogId, AppCatalogEntry entry) {
-    try {
-      AppCatalogSecurityDecision decision =
-          catalogManager.securityDecision(catalogId, entry.appId());
-      return decision == null ? AppCatalogSecurityDecision.OK : decision;
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw lifecycleFailure(
-          500, "catalog_security_policy_failed", "Failed to read catalog security policy.");
-    }
-  }
-
-  private AppCatalogSecurityDecision installedSecurityDecision(String appId, String version) {
-    try {
-      AppCatalogSecurityDecision decision =
-          catalogManager.installedSecurityDecision(appId, version);
-      return decision == null ? AppCatalogSecurityDecision.OK : decision;
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw lifecycleFailure(
-          500, "catalog_security_policy_failed", "Failed to read catalog security policy.");
-    }
-  }
-
-  private AppCatalogSecurityDecision targetSecurityDecision(
-      String catalogId, AppCatalogEntry entry) {
-    return AppCatalogSecurityDecision.combine(
-        List.of(
-            securityDecision(catalogId, entry),
-            installedSecurityDecision(entry.appId(), entry.version())));
-  }
-
-  private AppReviewTransparencyLog reviewTransparencyLog() {
-    AppReviewTransparencyLog log = catalogManager.reviewTransparencyLog();
-    return log == null ? AppReviewTransparencyLog.disabled() : log;
-  }
-
-  private void recordUpdateReviewGate(
-      AppReviewTransparencyEventKind kind, AppUpdateCandidate candidate, String phase) {
-    reviewTransparencyLog()
-        .recordReviewTrustMap(
-            kind,
-            new AppReviewTransparencyLog.ReviewTrustMapSubject(
-                candidate.appId(),
-                candidate.targetVersion(),
-                candidate.catalogId(),
-                candidate.bundleSha256(),
-                candidate.bundleSizeBytes()),
-            candidate.reviewTrust(),
-            List.of("phase=" + phase));
-  }
-
-  private TrustedReviewerKeys trustedReviewerKeysOrEmpty() {
-    try {
-      return reviewerKeysProvider.trustedReviewerKeys();
-    } catch (AppCatalogException | IOException _) {
-      return TrustedReviewerKeys.empty();
+  private void recordUpdateReviewGate(ReviewGate kind, AppUpdateCandidate candidate, String phase) {
+    switch (kind) {
+      case UPDATE -> catalogAuthority.recordUpdateGate(candidate, phase);
+      case POLICY_APPLY -> catalogAuthority.recordPolicyApplyGate(candidate, phase);
     }
   }
 
   private AppUpdateCandidate noneCandidate(String appId, InstalledAppSnapshot installed) {
-    return new AppUpdateCandidate(
-        appId,
-        "none",
-        "none",
-        installed.manifest().appVersion(),
-        installed.manifest().appVersion(),
-        AppUpdateCandidateStatus.NONE,
-        VERSION_EQUAL,
-        "stable",
-        "supported",
-        deprecationSummary(AppCatalogProductionMetadata.DEFAULT),
-        List.of(),
-        AppCatalogSecurityDecision.OK.toJsonValue(),
-        true,
-        null,
-        "not_applicable",
-        0L,
-        "not_applicable",
-        AppUpdateCandidate.reviewSummary(AppCatalogReviewStatus.UNREVIEWED.catalogValue(), null),
-        AppReviewReceiptVerifier.evaluateMissingReceipt(
-                AppCatalogReviewMetadata.EMPTY, TrustedReviewerKeys.empty(), reviewPolicy)
-            .toJsonValue(),
-        PlatformApiContractVerifier.summarize(
-            installed.manifest().apiCompatibility(),
-            installed.manifest().permissions(),
-            PlatformApiContract.current()),
-        AppUpdateCandidate.permissionDelta(
-            installed.manifest().permissions(), installed.manifest().permissions()),
-        AppDataMigrationPlan.notRequired(
-                installed.manifest().dataSchemaContract().currentSchemaVersion(),
-                installed.manifest().dataSchemaContract().currentSchemaVersion())
-            .toJsonValue(),
-        appHost.status(appId).isPresent(),
-        Instant.now());
-  }
-
-  private static AppUpdateCandidateStatus statusFor(
-      VersionDecision decision, Map<String, Object> apiCompatibility) {
-    return switch (decision.label()) {
-      case VERSION_NEWER ->
-          apiCompatibilityBlocksUpdate(apiCompatibility)
-              ? AppUpdateCandidateStatus.INCOMPATIBLE
-              : AppUpdateCandidateStatus.AVAILABLE;
-      case VERSION_AMBIGUOUS ->
-          apiCompatibilityBlocksUpdate(apiCompatibility)
-              ? AppUpdateCandidateStatus.INCOMPATIBLE
-              : AppUpdateCandidateStatus.AMBIGUOUS;
-      case VERSION_LOWER -> AppUpdateCandidateStatus.NOT_NEWER;
-      case VERSION_EQUAL -> AppUpdateCandidateStatus.NONE;
-      default -> AppUpdateCandidateStatus.AMBIGUOUS;
-    };
+    return catalogAuthority.none(appId, installed);
   }
 
   private static boolean apiCompatibilityBlocksUpdate(Map<String, Object> apiCompatibility) {
@@ -2652,21 +2804,7 @@ public final class AppUpdateService {
     return "below_minimum".equals(apiStatus) || "incompatible".equals(apiStatus);
   }
 
-  private static VersionDecision versionDecision(String catalogVersion, String installedVersion) {
-    if (catalogVersion == null || installedVersion == null) {
-      return new VersionDecision(VERSION_AMBIGUOUS);
-    }
-    if (catalogVersion.equals(installedVersion)) {
-      return new VersionDecision(VERSION_EQUAL);
-    }
-    Integer comparison = compareDottedNumericVersions(catalogVersion, installedVersion);
-    if (comparison == null) {
-      return new VersionDecision(VERSION_AMBIGUOUS);
-    }
-    return new VersionDecision(comparison > 0 ? VERSION_NEWER : VERSION_LOWER);
-  }
-
-  private static Integer compareDottedNumericVersions(String left, String right) {
+  static Integer compareDottedNumericVersions(String left, String right) {
     List<Integer> leftParts = parseDottedNumericVersion(left);
     List<Integer> rightParts = parseDottedNumericVersion(right);
     if (leftParts.isEmpty() || rightParts.isEmpty()) {
@@ -2703,17 +2841,33 @@ public final class AppUpdateService {
   }
 
   private static void requireStageableCandidate(
-      AppUpdateCandidate candidate, boolean reviewAcknowledged, boolean securityAcknowledged) {
+      AppUpdateCandidate candidate,
+      boolean reviewAcknowledged,
+      boolean securityAcknowledged,
+      boolean explicitTargetSelected) {
     if (candidate.status() == AppUpdateCandidateStatus.INCOMPATIBLE) {
       throw lifecycleFailure(
           409, ERROR_UPDATE_INCOMPATIBLE, "Candidate is incompatible with this Platform API.");
     }
-    if (!candidate.eligibleByDefault()) {
+    if (!candidate.eligibleByDefault()
+        && !(explicitTargetSelected && isSameVersionSourceSwitchCandidate(candidate))) {
       throw lifecycleFailure(
           409, ERROR_UPDATE_NOT_AVAILABLE, "No safely newer update candidate is available.");
     }
     requireSecurityGate(candidate.securityDecision(), securityAcknowledged);
     requireReviewGate(candidate.reviewTrust(), reviewAcknowledged);
+  }
+
+  private static boolean isSameVersionSourceSwitchCandidate(AppUpdateCandidate candidate) {
+    return candidate.status() == AppUpdateCandidateStatus.NONE
+        && VERSION_EQUAL.equals(candidate.versionComparison())
+        && !apiCompatibilityBlocksUpdate(candidate.apiCompatibility());
+  }
+
+  private static boolean stagedExplicitSameVersionSwitch(StagedUpdate staged) {
+    return isSameVersionSourceSwitchCandidate(staged.candidate())
+        && staged.sourceSwitchAuthorization().expectedCurrentOrigin().isPresent()
+        && staged.sourceSwitchAuthorization().approvedConsentDigestSha256().isPresent();
   }
 
   private static void requireSecurityGate(
@@ -2782,9 +2936,7 @@ public final class AppUpdateService {
         reviewGateFailureCode(candidate.reviewTrust()),
         "Policy skipped update because no trusted positive review receipt verified.");
     recordUpdateReviewGate(
-        ACTION_STAGE.equals(action)
-            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
-            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
         candidate,
         policyBlockedEventStatus(action, reviewGateFailureCode(candidate.reviewTrust())));
   }
@@ -2801,9 +2953,7 @@ public final class AppUpdateService {
         ERROR_CHANNEL_POLICY_BLOCKED,
         "Policy skipped update because the catalog channel is not allowed.");
     recordUpdateReviewGate(
-        ACTION_STAGE.equals(action)
-            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
-            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
         candidate,
         policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
   }
@@ -2819,9 +2969,7 @@ public final class AppUpdateService {
         ERROR_CONSENT_REQUIRED,
         "Policy skipped update because material consent is required.");
     recordUpdateReviewGate(
-        ACTION_STAGE.equals(action)
-            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
-            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
         candidate,
         policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
   }
@@ -2912,16 +3060,16 @@ public final class AppUpdateService {
 
   private Map<String, Object> summaryJson(
       String appId, InstalledAppSnapshot installed, Map<String, Object> candidate) {
-    RunningAppSnapshot running = appHost.status(appId).orElse(null);
+    boolean running = appHost.status(appId).isPresent();
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put(JSON_APP_ID, appId);
     json.put("installedVersion", installed.manifest().appVersion());
-    json.put("running", running != null);
+    json.put("running", running);
     json.put("policy", policyFor(appId).toJsonValue());
     json.put("candidate", candidate);
     json.put(
         "installedSecurityDecision",
-        installedSecurityDecision(appId, installed.manifest().appVersion()).toJsonValue());
+        installedSecurityDecision(appId, installed.manifest().appVersion()));
     json.put("staged", stagedSummary(appId));
     json.put(ACTION_ROLLBACK, rollbackSummary(appId));
     json.put("lastCheck", lastCheckSummary(appId));
@@ -2953,7 +3101,7 @@ public final class AppUpdateService {
     json.put(JSON_STATUS, AppUpdateCandidateStatus.STAGED.jsonValue());
     json.put(JSON_AVAILABLE, true);
     json.put(JSON_APP_ID, appId);
-    json.put("catalogId", candidate.catalogId());
+    json.put(JSON_CATALOG_ID, candidate.catalogId());
     json.put("catalogSourceId", candidate.catalogSourceId());
     json.put("targetVersion", candidate.targetVersion());
     json.put("channel", candidate.channel());
@@ -2975,35 +3123,7 @@ public final class AppUpdateService {
   }
 
   private Map<String, Object> rollbackSummary(String appId) {
-    AppRollbackRecord rollbackRecord;
-    String statusErrorCode = null;
-    String statusMessage = null;
-    try {
-      rollbackRecord = appHost.rollbackStatus(appId).orElse(null);
-    } catch (IOException _) {
-      rollbackRecord = null;
-      statusErrorCode = ERROR_ROLLBACK_FAILED;
-      statusMessage = "Rollback state could not be inspected.";
-    }
-    boolean available = rollbackRecord != null;
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
-    json.put(JSON_AVAILABLE, available);
-    json.put(
-        JSON_STATUS, statusErrorCode == null ? rollbackStatusStatus(available) : STATUS_FAILED);
-    json.put(JSON_APP_ID, appId);
-    json.put("createdAt", null);
-    json.put("previousVersion", rollbackRecord == null ? null : rollbackRecord.appVersion());
-    json.put("previousName", rollbackRecord == null ? null : rollbackRecord.appName());
-    json.put("replacedVersion", null);
-    json.put("retentionLimit", 1);
-    json.put("scope", "bundle_only");
-    json.put("errorCode", statusErrorCode);
-    json.put(JSON_MESSAGE, statusMessage);
-    return json;
-  }
-
-  private static String rollbackStatusStatus(boolean rollbackAvailable) {
-    return rollbackAvailable ? JSON_AVAILABLE : "none";
+    return AppUpdateFederationAuthority.rollbackSummary(appHost, appId);
   }
 
   private Map<String, Object> lastCheckSummary(String appId) {
@@ -3077,38 +3197,7 @@ public final class AppUpdateService {
 
   private boolean planDiffersFromCandidate(
       AppUpdateCandidate candidate, InstalledAppSnapshot installed, AppCatalogInstallPlan plan) {
-    AppCatalogEntry entry = plan.entry();
-    if (!candidate.catalogId().equals(plan.catalogId())
-        || !candidate.appId().equals(entry.appId())
-        || !candidate.targetVersion().equals(entry.version())
-        || !candidate.bundleSha256().equals(entry.bundleSha256())
-        || candidate.bundleSizeBytes() != entry.bundleSizeBytes()
-        || !candidate.bundleType().equals(entry.bundleType())) {
-      return true;
-    }
-    AppCatalogReviewMetadata review = entry.review();
-    AppCatalogProductionMetadata productionMetadata = entry.productionMetadata();
-    Map<String, Object> reviewSummary =
-        AppUpdateCandidate.reviewSummary(
-            review.status().catalogValue(), review.note().orElse(null));
-    Map<String, Object> apiCompatibility =
-        PlatformApiContractVerifier.summarize(
-            entry.compatibility().apiCompatibility(),
-            entry.permissions(),
-            PlatformApiContract.current());
-    Map<String, Object> permissionDelta =
-        AppUpdateCandidate.permissionDelta(entry.permissions(), installed.manifest().permissions());
-    return !candidate.review().equals(reviewSummary)
-        || !candidate.channel().equals(productionMetadata.channel().catalogValue())
-        || !candidate.supportStatus().equals(productionMetadata.supportStatus().catalogValue())
-        || !candidate.deprecation().equals(deprecationSummary(productionMetadata))
-        || !candidate.securityAdvisories().equals(securityAdvisoriesSummary(productionMetadata))
-        || !candidate
-            .securityDecision()
-            .equals(targetSecurityDecision(plan.catalogId(), entry).toJsonValue())
-        || !candidate.reviewTrust().equals(reviewTrust(entry).toJsonValue())
-        || !candidate.apiCompatibility().equals(apiCompatibility)
-        || !candidate.permissionDelta().equals(permissionDelta);
+    return catalogAuthority.planDiffers(candidate, installed, plan);
   }
 
   private void updateCandidateAfterPostApplyFailure(
@@ -3202,19 +3291,136 @@ public final class AppUpdateService {
   }
 
   private boolean rollbackAvailable(String appId) {
-    return rollbackStatusOrFailure(appId).isPresent();
-  }
-
-  private Optional<AppRollbackRecord> rollbackStatusOrFailure(String appId) {
-    try {
-      return appHost.rollbackStatus(appId);
-    } catch (IOException _) {
-      throw lifecycleFailure(500, ERROR_ROLLBACK_FAILED, "Rollback state could not be inspected.");
-    }
+    return AppUpdateFederationAuthority.rollbackAvailable(appHost, appId);
   }
 
   private InstalledAppSnapshot invokeRollback(String appId) throws IOException {
+    if (appHost.rollbackRequiresCatalogAuthorization(appId)) {
+      return appHost.rollback(appId, this::authorizeCatalogRollback);
+    }
     return appHost.rollback(appId);
+  }
+
+  private AppHost.CatalogMutationAuthorizationLease authorizeCatalogRollback(
+      InstalledAppOrigin origin) throws IOException {
+    try {
+      AppUpdateFederationAuthority policy =
+          Objects.requireNonNull(
+              federatedConflictPolicy.get(), "federated catalog rollback policy is not configured");
+      AppCatalogManager.HistoricalAppOriginAuthorization catalogAuthorization =
+          policy.authorizeHistoricalCatalog(catalogManager, origin);
+      AppHost.CatalogMutationAuthorizationLease publisherAuthorization =
+          policy.retainHistoricalPublisherAuthorization(origin, catalogAuthorization.entry());
+      boolean publisherTransferred = false;
+      try (var reviewerTransfer =
+          new HistoricalReviewerAuthorizationTransfer(
+              retainHistoricalReviewerAuthorization(origin, catalogAuthorization.entry()))) {
+        AppHost.CatalogMutationAuthorizationLease reviewerAuthorization =
+            reviewerTransfer.transfer();
+        publisherTransferred = true;
+        return () -> {
+          try {
+            reviewerAuthorization.close();
+          } finally {
+            try {
+              publisherAuthorization.close();
+            } finally {
+              catalogAuthorization.authorization().close();
+            }
+          }
+        };
+      } finally {
+        if (!publisherTransferred) {
+          try {
+            publisherAuthorization.close();
+          } finally {
+            catalogAuthorization.authorization().close();
+          }
+        }
+      }
+    } catch (IOException | RuntimeException exception) {
+      throw catalogRollbackAuthorizationFailure(exception);
+    }
+  }
+
+  private static AppHostException.CatalogRollbackAuthorizationException
+      catalogRollbackAuthorizationFailure(Exception cause) {
+    if (cause instanceof AppHostException.CatalogRollbackAuthorizationException authorization) {
+      return authorization;
+    }
+    return new AppHostException.CatalogRollbackAuthorizationException(cause);
+  }
+
+  /** Closes a reviewer lease unless ownership transfers to the AppHost mutation callback. */
+  private static final class HistoricalReviewerAuthorizationTransfer implements AutoCloseable {
+    private AppHost.CatalogMutationAuthorizationLease authorization;
+
+    private HistoricalReviewerAuthorizationTransfer(
+        AppHost.CatalogMutationAuthorizationLease authorization) {
+      this.authorization = Objects.requireNonNull(authorization, "authorization");
+    }
+
+    private AppHost.CatalogMutationAuthorizationLease transfer() {
+      AppHost.CatalogMutationAuthorizationLease transferred = authorization;
+      authorization = null;
+      return transferred;
+    }
+
+    @Override
+    public void close() {
+      if (authorization != null) {
+        authorization.close();
+      }
+    }
+  }
+
+  private AppHost.CatalogMutationAuthorizationLease retainRoutineReviewerAuthorization(
+      AppCatalogInstallPlan plan, InstalledAppOrigin targetOrigin, boolean install)
+      throws IOException {
+    return catalogAuthority.retainRoutineAuthorization(plan, targetOrigin, install);
+  }
+
+  private AppHost.CatalogMutationAuthorizationLease retainHistoricalReviewerAuthorization(
+      InstalledAppOrigin origin, AppCatalogEntry entry) throws IOException {
+    return catalogAuthority.retainHistoricalAuthorization(origin, entry);
+  }
+
+  private InstalledAppOrigin catalogOrigin(StagedUpdate staged) {
+    return AppUpdateFederationAuthority.installedOrigin(
+        staged.plan(),
+        staged.candidate(),
+        staged.sourceSwitchAuthorization().expectedCurrentOriginDigestSha256().orElse(null),
+        catalogManager.federationEnabled());
+  }
+
+  private AppHost.CatalogMutationAuthorization catalogMutationAuthorization(
+      AppCatalogInstallPlan plan, boolean explicitSourceSwitchAuthorized) {
+    return targetOrigin -> {
+      AppHost.CatalogMutationAuthorizationLease authorization =
+          requireFederatedConflictPolicy().retainCatalogPlanAuthorization(catalogManager, plan);
+      boolean transferred = false;
+      try {
+        InstalledAppSnapshot currentInstalled = appHost.describe(plan.entry().appId()).orElse(null);
+        if (currentInstalled == null) {
+          throw new AppHostException(APP_NOT_INSTALLED_PREFIX + plan.entry().appId());
+        }
+        AppHost.CatalogMutationAuthorizationLease scopedPolicyAuthorization =
+            retainDirectCatalogPolicyAuthorization(
+                plan, currentInstalled, targetOrigin, explicitSourceSwitchAuthorized);
+        transferred = true;
+        return () -> {
+          try {
+            scopedPolicyAuthorization.close();
+          } finally {
+            authorization.close();
+          }
+        };
+      } finally {
+        if (!transferred) {
+          authorization.close();
+        }
+      }
+    };
   }
 
   private InstalledAppSnapshot requireInstalled(String appId) {
@@ -3428,24 +3634,11 @@ public final class AppUpdateService {
   }
 
   private static boolean isSignedBundleVerificationFailure(AppHostException exception) {
-    return exception instanceof AppBundleVerificationException;
+    return AppUpdateBundleSupport.isSignedBundleVerificationFailure(exception);
   }
 
   private static boolean isInvalidAppBundleFailure(AppHostException exception) {
-    if (exception instanceof AppManifestException) {
-      return true;
-    }
-    String message = exception.getMessage();
-    if (message == null || message.isBlank()) {
-      return false;
-    }
-    return message.startsWith("stagedAppDirectory ")
-        || message.startsWith("staging directory ")
-        || message.startsWith("copied manifest ")
-        || message.startsWith("copied app.exec ")
-        || message.startsWith("app.ui.entry ")
-        || message.startsWith("app.exec ")
-        || message.startsWith("staged app bundle ");
+    return AppUpdateBundleSupport.isInvalidBundleFailure(exception);
   }
 
   private static PlatformApiException lifecycleFailure(
@@ -3513,11 +3706,13 @@ public final class AppUpdateService {
       AppUpdateCandidate candidate,
       AppCatalogInstallPlan plan,
       AppDataMigrationPlan migrationPlan,
+      SourceSwitchAuthorization sourceSwitchAuthorization,
       Instant stagedAt) {
     private StagedUpdate {
       Objects.requireNonNull(candidate, "candidate");
       Objects.requireNonNull(plan, "plan");
       Objects.requireNonNull(migrationPlan, "migrationPlan");
+      Objects.requireNonNull(sourceSwitchAuthorization, "sourceSwitchAuthorization");
       Objects.requireNonNull(stagedAt, JSON_STAGED_AT);
     }
 
@@ -3527,6 +3722,41 @@ public final class AppUpdateService {
 
     private AppCatalogEntry entry() {
       return plan.entry();
+    }
+  }
+
+  private record SourceSwitchAuthorization(
+      Optional<InstalledAppOrigin> expectedCurrentOrigin,
+      Optional<String> approvedConsentDigestSha256) {
+    private SourceSwitchAuthorization {
+      Objects.requireNonNull(expectedCurrentOrigin, "expectedCurrentOrigin");
+      Objects.requireNonNull(approvedConsentDigestSha256, "approvedConsentDigestSha256");
+    }
+
+    private static SourceSwitchAuthorization withoutCurrentOrigin() {
+      return new SourceSwitchAuthorization(Optional.empty(), Optional.empty());
+    }
+
+    private static SourceSwitchAuthorization forCurrentOrigin(
+        InstalledAppOrigin current, String approvedConsentDigestSha256) {
+      return new SourceSwitchAuthorization(
+          Optional.of(Objects.requireNonNull(current, "current")),
+          Optional.ofNullable(approvedConsentDigestSha256));
+    }
+
+    private Optional<String> expectedCurrentOriginDigestSha256() {
+      return expectedCurrentOrigin.map(InstalledAppOrigin::selfDigestSha256);
+    }
+
+    private AppHost.CatalogOriginExpectation expectedCurrentOriginExpectation() {
+      return expectedCurrentOriginDigestSha256()
+          .map(AppHost.CatalogOriginExpectation::matching)
+          .orElseGet(AppHost.CatalogOriginExpectation::absent);
+    }
+
+    private boolean matches(InstalledAppOrigin current) {
+      return expectedCurrentOriginDigestSha256()
+          .equals(Optional.ofNullable(current).map(InstalledAppOrigin::selfDigestSha256));
     }
   }
 
@@ -3609,6 +3839,4 @@ public final class AppUpdateService {
       rollbackFailed = true;
     }
   }
-
-  private record VersionDecision(String label) {}
 }

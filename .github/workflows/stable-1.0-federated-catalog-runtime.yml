@@ -1,0 +1,315 @@
+name: Stable 1.0 federated catalog protected runtime producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      federation_id:
+        description: Closed federation identity bound by the execution contract.
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected Cryptad source commit.
+        required: true
+        type: string
+      source_run_id:
+        description: Exact protected evidence-producer run.
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact protected evidence-producer attempt.
+        required: true
+        type: string
+      source_artifact_id:
+        description: Immutable confined source artifact ID.
+        required: true
+        type: string
+      source_artifact_name:
+        description: Immutable confined source artifact name.
+        required: true
+        type: string
+      source_artifact_digest:
+        description: Exact GitHub artifact archive digest.
+        required: true
+        type: string
+permissions: {}
+
+concurrency:
+  group: stable-federated-catalog-runtime-${{ inputs.federation_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  runtime-observation:
+    name: Collect and sign exact federation runtime observation
+    if: github.ref_protected
+    runs-on: [self-hosted, linux, x64, cryptad-federated-catalog-runtime]
+    timeout-minutes: 90
+    environment: stable-1-0-federated-catalog-runtime-observation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate exact protected dispatch and reviewed runtime adapter
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          RUNTIME_ADAPTER_DIGEST: ${{ vars.CRYPTAD_FEDERATED_CATALOG_RUNTIME_ADAPTER_DIGEST }}
+          OBSERVER_KEY_ID: ${{ vars.CRYPTAD_FEDERATED_CATALOG_OBSERVER_KEY_ID }}
+          OBSERVER_KEY_FINGERPRINT: ${{ vars.CRYPTAD_FEDERATED_CATALOG_OBSERVER_KEY_FINGERPRINT }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || "$GITHUB_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || ! "$FEDERATION_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$SOURCE_COMMIT" != "$GITHUB_SHA" \
+                || "$WORKFLOW_SHA" != "$GITHUB_SHA" \
+                || "$(git rev-parse HEAD)" != "$GITHUB_SHA" \
+                || ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$SOURCE_RUN_ATTEMPT" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$SOURCE_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$SOURCE_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$ \
+                || ! "$SOURCE_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$RUNTIME_ADAPTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$OBSERVER_KEY_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$ \
+                || ! "$OBSERVER_KEY_FINGERPRINT" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Runtime dispatch is not bound to exact protected coordinates."
+            exit 2
+          fi
+          adapter="$(command -v cryptad-federated-catalog-runtime || true)"
+          if [[ -z "$adapter" \
+                || "sha256:$(sha256sum "$adapter" | cut -d' ' -f1)" != "$RUNTIME_ADAPTER_DIGEST" ]]; then
+            echo "::error::Protected federation runtime adapter is missing or substituted."
+            exit 2
+          fi
+
+      - name: Authenticate exact confined source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_ARTIFACT_ID: ${{ inputs.source_artifact_id }}
+          SOURCE_ARTIFACT_NAME: ${{ inputs.source_artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ inputs.source_artifact_digest }}
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/attempts/$SOURCE_RUN_ATTEMPT" \
+            > "$RUNNER_TEMP/source-run.json"
+          jq -e '.id == (env.SOURCE_RUN_ID | tonumber)
+            and .run_attempt == (env.SOURCE_RUN_ATTEMPT | tonumber)
+            and .path == ".github/workflows/stable-1.0-federated-catalog-evidence.yml"
+            and .head_sha == env.GITHUB_SHA and .head_branch == env.GITHUB_REF_NAME
+            and .event == "workflow_dispatch" and .conclusion == "success"
+            and .repository.full_name == env.GITHUB_REPOSITORY
+            and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
+            "$RUNNER_TEMP/source-run.json" >/dev/null
+          expected_name="stable-1-0-federated-catalog-$FEDERATION_ID-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          [[ "$SOURCE_ARTIFACT_NAME" == "$expected_name" ]]
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/source-artifact.json"
+          jq -e '.id == (env.SOURCE_ARTIFACT_ID | tonumber)
+            and .name == env.SOURCE_ARTIFACT_NAME
+            and .workflow_run.id == (env.SOURCE_RUN_ID | tonumber)
+            and .digest == env.SOURCE_ARTIFACT_DIGEST and .expired == false' \
+            "$RUNNER_TEMP/source-artifact.json" >/dev/null
+
+          jobs="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/attempts/$SOURCE_RUN_ATTEMPT/jobs" \
+            -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+          jq -e '[.jobs[] | select(
+            .name == "Authenticate and confine exact federation evidence"
+            and .head_sha == env.GITHUB_SHA and .conclusion == "success")] | length == 1' \
+            <<< "$jobs" >/dev/null
+          job_started_at="$(jq -er '.jobs[] | select(
+            .name == "Authenticate and confine exact federation evidence"
+            and .conclusion == "success") | .started_at' <<< "$jobs")"
+          job_completed_at="$(jq -er '.jobs[] | select(
+            .name == "Authenticate and confine exact federation evidence"
+            and .conclusion == "success") | .completed_at' <<< "$jobs")"
+          deployment_verified=false
+          deployments="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/deployments" -f sha="$GITHUB_SHA" \
+            -f environment="stable-1-0-federated-catalog-evidence-import" -f per_page=100 \
+            | jq -s '[.[][]]')"
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            statuses="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+              -f per_page=100 | jq -s '[.[][]]')"
+            if jq -e --arg run_id "$SOURCE_RUN_ID" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" 'any(.[];
+                .state == "success" and .created_at >= $started and .created_at <= $completed
+                and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              <<< "$statuses" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r '.[] | select(
+            .environment == "stable-1-0-federated-catalog-evidence-import"
+            and .creator.login == "github-actions[bot]") | .id' <<< "$deployments")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "::error::Source artifact lacks its exact protected producer deployment."
+            exit 2
+          fi
+
+      - name: Download exact confined source artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.source_artifact_name }}
+          path: build/federated-catalog-source
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify source contract before node access
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: |
+          set -euo pipefail
+          jq -e '.executionId == env.FEDERATION_ID
+            and .repository.identity == "github.com/crypta-network/cryptad"
+            and .repository.sourceCommit == env.GITHUB_SHA
+            and .fixtureOnly == false and .selfTest == false' \
+            build/federated-catalog-source/execution.json >/dev/null
+          python3 tools/release-certification/certify.py stable-federated-catalog \
+            --mode preflight \
+            --execution-contract build/federated-catalog-source/execution.json \
+            --evidence-dir build/federated-catalog-source \
+            --out-dir build/federated-runtime-preflight
+
+      - name: Exercise protected federation topology
+        env:
+          CRYPTAD_FEDERATION_ID: ${{ inputs.federation_id }}
+          CRYPTAD_FEDERATION_NODE_URL: ${{ secrets.CRYPTAD_FEDERATED_CATALOG_NODE_URL }}
+          CRYPTAD_FEDERATION_NODE_FORM_PASSWORD: ${{ secrets.CRYPTAD_FEDERATED_CATALOG_NODE_FORM_PASSWORD }}
+          RUNTIME_ADAPTER_DIGEST: ${{ vars.CRYPTAD_FEDERATED_CATALOG_RUNTIME_ADAPTER_DIGEST }}
+        run: |
+          set -euo pipefail
+          umask 077
+          resolved_adapter="$(command -v cryptad-federated-catalog-runtime || true)"
+          adapter="$(mktemp "$RUNNER_TEMP/cryptad-federated-catalog-runtime.XXXXXX")"
+          trap 'rm -f -- "$adapter"' EXIT
+          if [[ -z "$resolved_adapter" || ! -f "$resolved_adapter" || ! -x "$resolved_adapter" ]]; then
+            echo "::error::Protected federation runtime adapter is missing or substituted."
+            exit 2
+          fi
+          cp -- "$resolved_adapter" "$adapter"
+          chmod 500 "$adapter"
+          if [[ "sha256:$(sha256sum "$adapter" | cut -d' ' -f1)" != "$RUNTIME_ADAPTER_DIGEST" ]]; then
+            echo "::error::Protected federation runtime adapter is missing or substituted."
+            exit 2
+          fi
+          "$adapter" run \
+            --execution-contract build/federated-catalog-source/execution.json \
+            --evidence-dir build/federated-catalog-source \
+            --require-managed-daemon \
+            --observation-dir build/federated-catalog-runtime-observation
+
+      - name: Select immutable runtime artifact names
+        id: names
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: |
+          set -euo pipefail
+          echo "observation=stable-1-0-federated-catalog-runtime-observation-$FEDERATION_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "receipt=stable-1-0-federated-catalog-runtime-receipt-$FEDERATION_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable unsigned runtime observation
+        id: observation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.observation }}
+          path: build/federated-catalog-runtime-observation
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+
+      - name: Authenticate immutable uploaded runtime observation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OBSERVATION_ARTIFACT_ID: ${{ steps.observation.outputs.artifact-id }}
+          OBSERVATION_ARTIFACT_NAME: ${{ steps.names.outputs.observation }}
+          OBSERVATION_ARTIFACT_DIGEST: ${{ steps.observation.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$OBSERVATION_ARTIFACT_ID" \
+            > "$RUNNER_TEMP/runtime-observation-artifact.json"
+          jq -e '.id == (env.OBSERVATION_ARTIFACT_ID | tonumber)
+            and .name == env.OBSERVATION_ARTIFACT_NAME
+            and .workflow_run.id == (env.GITHUB_RUN_ID | tonumber)
+            and .digest == env.OBSERVATION_ARTIFACT_DIGEST
+            and .expired == false' \
+            "$RUNNER_TEMP/runtime-observation-artifact.json" >/dev/null
+
+      - name: Download exact immutable runtime observation for sealing
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.observation.outputs.artifact-id }}
+          path: build/federated-catalog-runtime-observation-sealed-input
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+
+      - name: Seal runtime receipt with independently approved observer key
+        env:
+          CRYPTAD_FEDERATION_OBSERVER_PRIVATE_KEY: ${{ secrets.CRYPTAD_FEDERATED_CATALOG_OBSERVER_PRIVATE_KEY }}
+          OBSERVER_KEY_ID: ${{ vars.CRYPTAD_FEDERATED_CATALOG_OBSERVER_KEY_ID }}
+          OBSERVER_KEY_FINGERPRINT: ${{ vars.CRYPTAD_FEDERATED_CATALOG_OBSERVER_KEY_FINGERPRINT }}
+          OBSERVATION_ARTIFACT_NAME: ${{ steps.names.outputs.observation }}
+          OBSERVATION_ARTIFACT_DIGEST: ${{ steps.observation.outputs.artifact-digest }}
+          RUNTIME_ADAPTER_DIGEST: ${{ vars.CRYPTAD_FEDERATED_CATALOG_RUNTIME_ADAPTER_DIGEST }}
+        run: |
+          set -euo pipefail
+          umask 077
+          resolved_adapter="$(command -v cryptad-federated-catalog-runtime || true)"
+          adapter="$(mktemp "$RUNNER_TEMP/cryptad-federated-catalog-runtime.XXXXXX")"
+          trap 'rm -f -- "$adapter"' EXIT
+          if [[ -z "$resolved_adapter" || ! -f "$resolved_adapter" || ! -x "$resolved_adapter" ]]; then
+            echo "::error::Protected federation runtime adapter is missing or substituted."
+            exit 2
+          fi
+          cp -- "$resolved_adapter" "$adapter"
+          chmod 500 "$adapter"
+          if [[ "sha256:$(sha256sum "$adapter" | cut -d' ' -f1)" != "$RUNTIME_ADAPTER_DIGEST" ]]; then
+            echo "::error::Protected federation runtime adapter is missing or substituted."
+            exit 2
+          fi
+          "$adapter" seal \
+            --execution-contract build/federated-catalog-source/execution.json \
+            --observation-dir build/federated-catalog-runtime-observation-sealed-input \
+            --receipt-dir build/federated-catalog-runtime-receipt \
+            --observer-key-id "$OBSERVER_KEY_ID" \
+            --observer-key-fingerprint "$OBSERVER_KEY_FINGERPRINT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-path ".github/workflows/stable-1.0-federated-catalog-runtime.yml" \
+            --workflow-commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --artifact-name "$OBSERVATION_ARTIFACT_NAME" \
+            --artifact-digest "$OBSERVATION_ARTIFACT_DIGEST" \
+            --environment "stable-1-0-federated-catalog-runtime-observation"
+
+      - name: Upload exact signed runtime receipt
+        id: receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.receipt }}
+          path: build/federated-catalog-runtime-receipt
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-federated-catalog-policy",
+  "policyId": "stable-1.0-federated-catalog-v1",
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "freshness": {
+    "maximumClockSkewSeconds": 300,
+    "maximumDescriptorAgeSeconds": 2592000,
+    "maximumRuntimeObservationAgeSeconds": 604800
+  },
+  "limits": {
+    "maximumEvidenceBytes": 1048576,
+    "maximumEndorsements": 8,
+    "maximumCatalogs": 32
+  },
+  "requiredAuthorityWorkflows": {
+    "protectedRelease": ".github/workflows/stable-1.0-protected-release-closeout.yml",
+    "independentReproducibility": ".github/workflows/stable-1.0-independent-reproducibility.yml",
+    "catalogAuthority": ".github/workflows/stable-1.0-catalog-authority.yml",
+    "thirdPartyPilot": ".github/workflows/stable-1.0-third-party-app-pilot.yml"
+  },
+  "runtimeAuthority": {
+    "workflowPath": ".github/workflows/stable-1.0-federated-catalog-runtime.yml",
+    "jobName": "Collect and sign exact federation runtime observation",
+    "environment": "stable-1-0-federated-catalog-runtime-observation"
+  },
+  "fixtureOperationalCompletionAllowed": false,
+  "policyDigest": "sha256:95318c3f09f61524e6fc8df162df2d37b452c733e1757967e12d74208c3a1893"
+}

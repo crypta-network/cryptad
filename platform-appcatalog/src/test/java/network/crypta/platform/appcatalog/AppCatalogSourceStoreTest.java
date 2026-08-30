@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +55,30 @@ class AppCatalogSourceStoreTest {
         source.resolvedCatalogFetchUri(), stored.refreshMetadata().lastResolvedUri().orElseThrow());
     assertArrayEquals(fetchedCatalog.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(fetchedCatalog.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
+  void writeAndRead_whenFederatedBindingProvided_expectExactBindingIdentityPersists()
+      throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog fetchedCatalog = fetchedCatalog("core");
+    AppCatalogSource source = source("core");
+    AppCatalogMirror primary = AppCatalogMirror.primary(source, ADDED_AT);
+
+    store.write(
+        new AppCatalogSourceStore.VerifiedCatalogWrite(
+            catalog("core"),
+            source,
+            fetchedCatalog,
+            ADDED_AT,
+            REFRESHED_AT,
+            Optional.of("binding-1"),
+            Optional.of("a".repeat(64))),
+        new AppCatalogSourceStore.EndpointWriteState(primary, List.of(primary), Map.of()));
+    StoredCatalogSource stored = store.read("core");
+
+    assertEquals(Optional.of("binding-1"), stored.trustBindingId());
+    assertEquals(Optional.of("a".repeat(64)), stored.trustBindingDigest());
   }
 
   @Test

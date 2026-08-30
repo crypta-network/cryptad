@@ -135,7 +135,7 @@ public final class PilotPublisherVerificationPolicy {
     AppBundleVerifier pilotNewBundleVerifier = AppBundleVerifier.requireSigned(checkedPilotKeys);
     AppBundleVerifier pilotHistoricalVerifier =
         AppBundleVerifier.requireSignedForHistoricalVerification(checkedPilotKeys);
-    return AppInstallVerificationPolicy.requireSigned(
+    return AppInstallVerificationPolicy.requireSignedWithIdentity(
         bundleRoot ->
             verifyBundle(
                 bundleRoot,
@@ -152,7 +152,7 @@ public final class PilotPublisherVerificationPolicy {
                 checkedClock.instant()));
   }
 
-  private static void verifyBundle(
+  private static AppBundleVerification verifyBundle(
       Path bundleRoot,
       Approval approval,
       AppBundleVerifier normalVerifier,
@@ -162,13 +162,12 @@ public final class PilotPublisherVerificationPolicy {
     AppBundleSignature signature =
         AppBundleVerifier.read(bundleRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
     if (approval.publisherKeyId().equals(signature.keyId())) {
-      verifyApprovedBundle(bundleRoot, approval, pilotVerifier, verifiedAt);
-      return;
+      return verifyApprovedBundle(bundleRoot, approval, pilotVerifier, verifiedAt);
     }
-    normalVerifier.verify(bundleRoot);
+    return normalVerifier.verify(bundleRoot);
   }
 
-  private static void verifyApprovedBundle(
+  private static AppBundleVerification verifyApprovedBundle(
       Path bundleRoot, Approval approval, AppBundleVerifier verifier, Instant verifiedAt)
       throws IOException {
     requireApprovalActive(approval, verifiedAt);
@@ -194,6 +193,7 @@ public final class PilotPublisherVerificationPolicy {
       throw new AppDistributionException(
           "bundle signature sidecar differs from the pilot-approved subject");
     }
+    return verification;
   }
 
   private static void requireApprovalActive(Approval approval, Instant instant)
@@ -243,7 +243,7 @@ public final class PilotPublisherVerificationPolicy {
    * <p>This projection does not grant trust by itself. {@link
    * PilotPublisherVerificationPolicy#create(String, String, Approval, Registries)} compares it with
    * independently captured registry snapshots, confirms the publisher fingerprint, and evaluates
-   * revocation and time before returning an install policy.
+   * revocation and time before returning an installation policy.
    *
    * @param pilotId protected pilot identity
    * @param pilotNodeId isolated node identity authorized to use the approval

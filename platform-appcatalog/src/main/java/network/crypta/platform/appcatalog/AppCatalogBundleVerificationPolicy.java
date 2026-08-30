@@ -2,6 +2,9 @@ package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Objects;
+import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleVerifier;
 
 /**
  * Defines the app-publisher authorization boundary for bundles obtained from an app catalog.
@@ -49,4 +52,32 @@ public interface AppCatalogBundleVerificationPolicy {
    * @throws IOException if the bundle is unauthorized, malformed, or cannot be inspected safely
    */
   void verify(Path stagedBundleDirectory) throws IOException;
+
+  /**
+   * Verifies one staged bundle in its authenticated catalog/app context.
+   *
+   * <p>The default preserves source compatibility for existing lambdas and bounded pilot policies:
+   * it invokes {@link #verify(Path)} and records the verified signature key id as an explicitly
+   * unscoped compatibility result. A development policy that explicitly accepts a completely
+   * sidecar-free bundle receives an unsigned, unscoped compatibility result; partial or malformed
+   * sidecars still fail closed. Federation-aware policies override this method to authorize the
+   * exact catalog/app pair and return their canonical key fingerprint and local policy digest.
+   *
+   * @param context authenticated catalog and entry identity
+   * @param stagedBundleDirectory private catalog staging directory
+   * @return exact authorization identity for retained-plan comparison
+   * @throws IOException if the bundle is unauthorized, malformed, or cannot be inspected safely
+   */
+  default AppCatalogBundleVerificationResult verify(
+      AppCatalogBundleVerificationContext context, Path stagedBundleDirectory) throws IOException {
+    Objects.requireNonNull(context, "context");
+    Path stagedRoot = Objects.requireNonNull(stagedBundleDirectory, "stagedBundleDirectory");
+    verify(stagedRoot);
+    if (AppBundleVerifier.isDistributionSidecarFree(stagedRoot)) {
+      return AppCatalogBundleVerificationResult.unsignedDevelopmentCompatibility();
+    }
+    AppBundleSignature signature =
+        AppBundleVerifier.read(stagedRoot.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
+    return AppCatalogBundleVerificationResult.legacyCompatibility(signature);
+  }
 }

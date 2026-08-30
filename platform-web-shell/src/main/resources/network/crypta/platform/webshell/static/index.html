@@ -256,7 +256,14 @@
                 <span>Catalog source</span>
                 <input id="catalog-source-input" name="source" type="text" autocomplete="off">
               </label>
+              <label class="queue-field" hidden id="catalog-source-trust-binding-field" for="catalog-source-trust-binding">
+                <span>Local catalog trust binding</span>
+                <select disabled id="catalog-source-trust-binding" name="expectedCatalogId">
+                  <option value="">Select an active local binding</option>
+                </select>
+              </label>
             </div>
+            <p class="panel-description" hidden id="catalog-source-trust-binding-status"></p>
             <div class="control-form-actions">
               <button class="button button-primary" id="catalog-source-submit" type="submit">
                 Add catalog

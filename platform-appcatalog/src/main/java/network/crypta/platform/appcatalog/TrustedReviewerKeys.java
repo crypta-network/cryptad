@@ -8,15 +8,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.platform.appdist.PublicKeyFingerprint;
+import network.crypta.platform.appdist.TrustedAppKeys;
 
 /**
  * Immutable registry of reviewer public keys trusted by the current node.
@@ -31,10 +35,11 @@ import java.util.regex.Pattern;
  * reviewer can sign a {@code reviewed}, {@code caution}, or {@code rejected} receipt; the verifier
  * and local {@link AppReviewPolicy} convert that evidence into install and update decisions.
  *
- * <p>The registry is immutable and fail-closed. Duplicate key ids, unsupported algorithms,
- * incomplete property blocks, and non-contiguous file entries are rejected at load time so callers
- * cannot accidentally verify a receipt against an ambiguous or partially configured trust source.
- * Public key bytes remain inside this verification layer and are not included in API summaries.
+ * <p>The registry is immutable and fail-closed. Duplicate key ids, duplicate canonical public-key
+ * fingerprints, unsupported algorithms, incomplete property blocks, and non-contiguous file entries
+ * are rejected at load time so callers cannot accidentally verify a receipt against an ambiguous or
+ * partially configured trust source. Public key bytes remain inside this verification layer and are
+ * not included in API summaries.
  */
 public final class TrustedReviewerKeys {
   private static final Pattern REVIEWER_PROPERTY_PATTERN =
@@ -56,6 +61,7 @@ public final class TrustedReviewerKeys {
       int registryVersion,
       Map<String, TrustedReviewerKey> keysById,
       List<AppReviewReceiptRevocation> receiptRevocations) {
+    requireUniquePublicKeys(keysById.values());
     this.registryVersion = registryVersion;
     this.keysById = Map.copyOf(keysById);
     this.receiptRevocations = List.copyOf(receiptRevocations);
@@ -65,8 +71,9 @@ public final class TrustedReviewerKeys {
    * Creates a trusted reviewer registry from a collection.
    *
    * <p>The input order is preserved for deterministic diagnostics, but lookup semantics are by
-   * reviewer key id. Two keys with the same id are rejected even if their public key bytes are
-   * identical, because duplicate ids would make receipt verification and audit output ambiguous.
+   * reviewer key id. Two keys with the same id are rejected, as are different ids that alias the
+   * same canonical public-key fingerprint. Either case would make receipt verification and audit
+   * output ambiguous.
    *
    * @param keys reviewer keys to index by id
    * @return immutable reviewer-key registry
@@ -120,9 +127,9 @@ public final class TrustedReviewerKeys {
    * examples can use human-friendly numbering while tests can mirror existing app-key fixtures.
    *
    * <p>Only the Ed25519 review receipt algorithm is accepted. Unknown properties, unsupported
-   * algorithms, duplicate ids, and incomplete key entries fail the whole load rather than producing
-   * a partially trusted registry. The file contains public key material only; private reviewer keys
-   * belong in offline signing workflows and are never read here.
+   * algorithms, duplicate ids or public-key fingerprints, and incomplete key entries fail the whole
+   * load rather than producing a partially trusted registry. The file contains public key material
+   * only; private reviewer keys belong in offline signing workflows and are never read here.
    *
    * @param trustedReviewerKeysFile local reviewer-key properties file
    * @return parsed reviewer-key registry
@@ -249,7 +256,7 @@ public final class TrustedReviewerKeys {
    *
    * <p>The existing registry is not modified. This is used by configuration loading to combine a
    * properties-file registry with one direct key from system properties or environment variables
-   * while preserving duplicate-id validation.
+   * while preserving duplicate-id and duplicate-public-key validation.
    *
    * @param key reviewer key to add
    * @return combined immutable registry
@@ -262,6 +269,52 @@ public final class TrustedReviewerKeys {
       throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + trustedKey.keyId());
     }
     return new TrustedReviewerKeys(registryVersion, combined, receiptRevocations);
+  }
+
+  /**
+   * Requires reviewer and app-publisher registries to contain disjoint key identities.
+   *
+   * <p>The check covers both stable key ids and canonical public-key fingerprints, including keys
+   * that are retired or revoked. A catalog or local policy cannot make one signing identity serve
+   * both roles merely by assigning it a second id.
+   *
+   * @param appKeys app-publisher registry assigned to the distinct bundle-signing role
+   * @throws IllegalArgumentException if either a key id or public-key fingerprint overlaps
+   */
+  public void requireDisjointFrom(TrustedAppKeys appKeys) {
+    TrustedAppKeys checkedAppKeys = Objects.requireNonNull(appKeys, "appKeys");
+    Set<String> appKeyIds = checkedAppKeys.keyIds();
+    Set<String> appFingerprints = new HashSet<>();
+    for (String appKeyId : appKeyIds) {
+      if (keysById.containsKey(appKeyId)) {
+        throw new IllegalArgumentException(
+            "reviewer and app-publisher registries overlap on key id: " + appKeyId);
+      }
+      checkedAppKeys
+          .find(appKeyId)
+          .ifPresent(key -> appFingerprints.add(PublicKeyFingerprint.sha256(key.publicKey())));
+    }
+    for (TrustedReviewerKey reviewerKey : keysById.values()) {
+      if (appFingerprints.contains(PublicKeyFingerprint.sha256(reviewerKey.publicKey()))) {
+        throw new IllegalArgumentException(
+            "reviewer and app-publisher registries overlap on public-key fingerprint");
+      }
+    }
+  }
+
+  private static void requireUniquePublicKeys(Collection<TrustedReviewerKey> keys) {
+    Map<String, String> keyIdByFingerprint = new LinkedHashMap<>();
+    for (TrustedReviewerKey key : keys) {
+      String fingerprint = PublicKeyFingerprint.sha256(key.publicKey());
+      String previousKeyId = keyIdByFingerprint.putIfAbsent(fingerprint, key.keyId());
+      if (previousKeyId != null && !previousKeyId.equals(key.keyId())) {
+        throw AppCatalogSidecars.invalidEntry(
+            "duplicate trusted reviewer public-key fingerprint for key ids: "
+                + previousKeyId
+                + " and "
+                + key.keyId());
+      }
+    }
   }
 
   private int count(TrustedReviewerKeyStatus status) {

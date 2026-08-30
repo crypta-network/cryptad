@@ -35,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppBundleVerificationException;
@@ -53,6 +54,8 @@ import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.apphost.AppUninstallOptions;
+import network.crypta.platform.apphost.FileInstalledAppOriginStore;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -94,6 +97,16 @@ public final class LocalProcessAppHost implements AppHost {
   private static final String LOCAL_DIRECTORY_NAME = "local";
   private static final String INSTALLED_APPS_DIR_LABEL = "installedAppsDir";
   private static final String ROLLBACK_APPS_DIR_LABEL = "rollbackAppsDir";
+  private static final String MUTATION_TRANSACTIONS_DIR_LABEL = "mutationTransactionsDir";
+  private static final String ACTIVE_TRANSACTION_SUFFIX = ".active";
+  private static final String COMMITTED_TRANSACTION_PREFIX = ".committed-";
+  private static final String PREPARING_TRANSACTION_PREFIX = ".preparing-";
+  private static final String TRANSACTION_RECORD_FILE = "transaction.properties";
+  private static final String TRANSACTION_CURRENT_BACKUP = "current-bundle";
+  private static final String TRANSACTION_ROLLBACK_BACKUP = "rollback-bundle";
+  private static final String TRANSACTION_ORIGIN_BACKUP = "origins";
+  private static final String ORIGIN_PARAMETER = "origin";
+  private static final String AUTHORIZATION_PARAMETER = "authorization";
   private static final String WINDOWS_SYSTEM32_DIRECTORY = "System32";
   private static final String PROC_ROOT = "/proc";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
@@ -148,10 +161,12 @@ public final class LocalProcessAppHost implements AppHost {
   private final AppQuotaEnforcer quotaEnforcer;
   private final Duration restartStormWindow;
   private final int restartStormMaxInWindow;
+  private boolean persistentMutationsRecovered;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
   private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
   private final Map<String, Deque<Instant>> automaticRestartAttempts = new ConcurrentHashMap<>();
   private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
+  private final FileInstalledAppOriginStore originStore;
 
   /**
    * Creates a host bound to the supplied layout.
@@ -378,6 +393,7 @@ public final class LocalProcessAppHost implements AppHost {
       TimingConfig timing,
       HostDependencies dependencies) {
     this.layout = Objects.requireNonNull(layout, "layout");
+    this.originStore = new FileInstalledAppOriginStore(this.layout.appOriginProvenanceDir());
     this.stopTimeout = Objects.requireNonNull(stopTimeout, "stopTimeout");
     this.secureRandom = Objects.requireNonNull(secureRandom, "secureRandom");
     this.appEnv = Objects.requireNonNull(appEnv, "appEnv");
@@ -415,6 +431,12 @@ public final class LocalProcessAppHost implements AppHost {
   @Override
   public synchronized InstalledAppSnapshot installFromDirectory(Path stagedAppDirectory)
       throws IOException {
+    ensurePersistentMutationsRecovered();
+    return installBundleFromDirectory(stagedAppDirectory, null);
+  }
+
+  private InstalledAppSnapshot installBundleFromDirectory(
+      Path stagedAppDirectory, InstalledAppOrigin expectedOrigin) throws IOException {
     Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
     rejectOverlappingInstallTree(stagingRoot, layout.installedAppsDir());
     Path installedAppsDir = layout.installedAppsDir();
@@ -423,8 +445,11 @@ public final class LocalProcessAppHost implements AppHost {
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
-      verifyCopiedBundle(temporaryInstallRoot);
+      AppBundleVerification bundleVerification = verifyCopiedBundle(temporaryInstallRoot);
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
+      if (expectedOrigin != null) {
+        requireMatchingCatalogOrigin(manifest, bundleVerification, expectedOrigin);
+      }
       InstalledAppPaths paths = layout.pathsFor(manifest.appId());
       rejectOverlappingMutableAppDirectories(stagingRoot, paths);
       if (Files.exists(paths.installedRoot())) {
@@ -438,6 +463,45 @@ public final class LocalProcessAppHost implements AppHost {
     } catch (IOException | RuntimeException e) {
       deleteRecursively(temporaryInstallRoot);
       throw e;
+    }
+  }
+
+  @Override
+  public synchronized InstalledAppSnapshot installCatalogFromDirectory(
+      Path stagedAppDirectory, InstalledAppOrigin origin) throws IOException {
+    return installCatalogFromDirectory(stagedAppDirectory, origin, ignored -> () -> {});
+  }
+
+  @Override
+  public synchronized InstalledAppSnapshot installCatalogFromDirectory(
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      AppHost.CatalogMutationAuthorization authorization)
+      throws IOException {
+    ensurePersistentMutationsRecovered();
+    InstalledAppOrigin checked = Objects.requireNonNull(origin, ORIGIN_PARAMETER);
+    AppHost.CatalogMutationAuthorization checkedAuthorization =
+        Objects.requireNonNull(authorization, AUTHORIZATION_PARAMETER);
+    FileInstalledAppOriginStore.State previous = originStore.snapshot(checked.appId());
+    if (previous.current().isPresent() || previous.rollback().isPresent()) {
+      throw new AppHostException("stale catalog origin exists for a new installation");
+    }
+    try (var _ =
+        Objects.requireNonNull(
+            checkedAuthorization.authorize(checked), "catalog mutation authorization lease")) {
+      PersistentMutation mutation =
+          beginPersistentMutation(
+              checked.appId(), PersistentMutationOperation.CATALOG_INSTALL, previous);
+      try {
+        originStore.put(checked);
+        InstalledAppSnapshot installed = installBundleFromDirectory(stagedAppDirectory, checked);
+        requireMatchingCatalogOrigin(installed, checked);
+        commitPersistentMutation(mutation);
+        return installed;
+      } catch (IOException | RuntimeException failure) {
+        abortPersistentMutation(mutation, failure);
+        throw failure;
+      }
     }
   }
 
@@ -462,10 +526,48 @@ public final class LocalProcessAppHost implements AppHost {
   @Override
   public synchronized InstalledAppSnapshot updateFromDirectory(
       String appId, Path stagedAppDirectory) throws IOException {
+    ensurePersistentMutationsRecovered();
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    FileInstalledAppOriginStore.State previous = originStore.snapshot(normalizedAppId);
+    boolean originTracked = previous.current().isPresent() || previous.rollback().isPresent();
+    PreparedUpdateBundle prepared = prepareUpdateBundle(normalizedAppId, stagedAppDirectory, null);
+    try {
+      return commitGenericUpdate(prepared, previous, originTracked);
+    } catch (IOException | RuntimeException failure) {
+      discardPreparedUpdateBundle(prepared, failure);
+      throw failure;
+    }
+  }
+
+  private InstalledAppSnapshot commitGenericUpdate(
+      PreparedUpdateBundle prepared,
+      FileInstalledAppOriginStore.State previous,
+      boolean originTracked)
+      throws IOException {
+    PersistentMutation mutation =
+        beginPersistentMutation(
+            prepared.normalizedAppId(), PersistentMutationOperation.GENERIC_UPDATE, previous);
+    try {
+      if (originTracked) {
+        originStore.restore(
+            prepared.normalizedAppId(),
+            new FileInstalledAppOriginStore.State(Optional.empty(), previous.current()));
+      }
+      InstalledAppSnapshot updated = commitPreparedUpdateBundle(prepared);
+      commitPersistentMutation(mutation);
+      return updated;
+    } catch (IOException | RuntimeException failure) {
+      abortPersistentMutation(mutation, failure);
+      throw failure;
+    }
+  }
+
+  private PreparedUpdateBundle prepareUpdateBundle(
+      String normalizedAppId, Path stagedAppDirectory, InstalledAppOrigin expectedReplacementOrigin)
+      throws IOException {
     Path stagingRoot = normalizeExistingDirectory(stagedAppDirectory);
     Path installedAppsDir = validateInstalledAppsDirectory();
-    Path rollbackAppsDir = ensureRollbackAppsDirectory();
+    Path rollbackAppsDir = validateRollbackAppsDirectory();
     rejectOverlappingInstallTree(stagingRoot, installedAppsDir);
     rejectOverlappingRollbackTree(stagingRoot, rollbackAppsDir);
     InstalledAppPaths paths = layout.pathsFor(normalizedAppId);
@@ -477,30 +579,182 @@ public final class LocalProcessAppHost implements AppHost {
       throw new AppHostException(APP_NOT_INSTALLED_PREFIX + normalizedAppId);
     }
     validateManagedMutableDirectories(paths);
-    paths.ensureMutableDirectories();
 
     Path temporaryInstallRoot = Files.createTempDirectory(installedAppsDir, TEMP_INSTALL_PREFIX);
-    Path backupInstallRoot =
-        temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
-    Path rollbackRoot = rollbackRootFor(normalizedAppId);
-    Path previousRollbackBackupRoot =
-        temporaryManagedPath(rollbackAppsDir, TEMP_ROLLBACK_BACKUP_PREFIX + normalizedAppId + "-");
     try {
       copyDirectoryTree(stagingRoot, temporaryInstallRoot);
-      verifyCopiedBundle(temporaryInstallRoot);
+      AppBundleVerification bundleVerification = verifyCopiedBundle(temporaryInstallRoot);
       AppManifest manifest = validateCopiedBundle(temporaryInstallRoot);
       requireMatchingUpdateTarget(normalizedAppId, manifest);
-      replaceInstalledBundle(
-          paths.installedRoot(),
+      if (expectedReplacementOrigin != null) {
+        requireMatchingCatalogOrigin(manifest, bundleVerification, expectedReplacementOrigin);
+      }
+      paths.ensureMutableDirectories();
+      Path ensuredRollbackAppsDir = ensureRollbackAppsDirectory();
+      Path backupInstallRoot =
+          temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
+      Path rollbackRoot = rollbackRootFor(normalizedAppId);
+      Path previousRollbackBackupRoot =
+          temporaryManagedPath(
+              ensuredRollbackAppsDir, TEMP_ROLLBACK_BACKUP_PREFIX + normalizedAppId + "-");
+      return new PreparedUpdateBundle(
+          normalizedAppId,
           temporaryInstallRoot,
+          manifest,
+          paths,
           backupInstallRoot,
           rollbackRoot,
           previousRollbackBackupRoot);
-      cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
-      return new InstalledAppSnapshot(manifest, paths);
     } catch (IOException | RuntimeException e) {
-      deleteScratchTreeIfPresent(temporaryInstallRoot);
+      discardPreparedUpdateBundle(temporaryInstallRoot, e);
       throw e;
+    }
+  }
+
+  private InstalledAppSnapshot commitPreparedUpdateBundle(PreparedUpdateBundle prepared)
+      throws IOException {
+    replaceInstalledBundle(
+        prepared.paths().installedRoot(),
+        prepared.replacementRoot(),
+        prepared.backupInstallRoot(),
+        prepared.rollbackRoot(),
+        prepared.previousRollbackBackupRoot());
+    cancelPendingRestartAfterAcceptedUpdate(prepared.normalizedAppId());
+    return new InstalledAppSnapshot(prepared.manifest(), prepared.paths());
+  }
+
+  private static void discardPreparedUpdateBundle(
+      PreparedUpdateBundle prepared, Throwable failure) {
+    discardPreparedUpdateBundle(prepared.replacementRoot(), failure);
+  }
+
+  private static void discardPreparedUpdateBundle(Path replacementRoot, Throwable failure) {
+    try {
+      deleteScratchTreeIfPresent(replacementRoot);
+    } catch (IOException cleanupFailure) {
+      failure.addSuppressed(cleanupFailure);
+    }
+  }
+
+  @Override
+  public synchronized InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId, Path stagedAppDirectory, InstalledAppOrigin origin) throws IOException {
+    ensurePersistentMutationsRecovered();
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    Optional<String> currentOriginDigest =
+        originStore.snapshot(normalizedAppId).current().map(InstalledAppOrigin::selfDigestSha256);
+    AppHost.CatalogOriginExpectation expectedCurrentOrigin =
+        currentOriginDigest
+            .map(AppHost.CatalogOriginExpectation::matching)
+            .orElseGet(AppHost.CatalogOriginExpectation::absent);
+    return updateCatalogFromDirectory(
+        normalizedAppId, stagedAppDirectory, origin, expectedCurrentOrigin);
+  }
+
+  @Override
+  public synchronized InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId,
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      AppHost.CatalogOriginExpectation expectedCurrentOrigin)
+      throws IOException {
+    return updateCatalogFromDirectory(
+        appId, stagedAppDirectory, origin, expectedCurrentOrigin, ignored -> () -> {});
+  }
+
+  @Override
+  public synchronized InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId,
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      AppHost.CatalogOriginExpectation expectedCurrentOrigin,
+      AppHost.CatalogMutationAuthorization authorization)
+      throws IOException {
+    ensurePersistentMutationsRecovered();
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    InstalledAppOrigin checked = Objects.requireNonNull(origin, ORIGIN_PARAMETER);
+    Optional<String> expected =
+        Objects.requireNonNull(expectedCurrentOrigin, "expectedCurrentOrigin").digestSha256();
+    AppHost.CatalogMutationAuthorization checkedAuthorization =
+        Objects.requireNonNull(authorization, AUTHORIZATION_PARAMETER);
+    if (!normalizedAppId.equals(checked.appId())) {
+      throw new AppHostException("catalog origin app id does not match update target");
+    }
+    FileInstalledAppOriginStore.State previous = originStore.snapshot(normalizedAppId);
+    Optional<String> actual = previous.current().map(InstalledAppOrigin::selfDigestSha256);
+    if (!actual.equals(expected) || !checked.previousOriginDigestSha256().equals(expected)) {
+      throw new AppHostException.CatalogOriginChangedException();
+    }
+    PreparedUpdateBundle prepared =
+        prepareUpdateBundle(normalizedAppId, stagedAppDirectory, checked);
+    try {
+      return commitAuthorizedCatalogUpdate(prepared, checked, previous, checkedAuthorization);
+    } catch (IOException | RuntimeException failure) {
+      discardPreparedUpdateBundle(prepared, failure);
+      throw failure;
+    }
+  }
+
+  private InstalledAppSnapshot commitAuthorizedCatalogUpdate(
+      PreparedUpdateBundle prepared,
+      InstalledAppOrigin origin,
+      FileInstalledAppOriginStore.State previous,
+      AppHost.CatalogMutationAuthorization authorization)
+      throws IOException {
+    try (var _ =
+        Objects.requireNonNull(
+            authorization.authorize(origin), "catalog mutation authorization lease")) {
+      return commitCatalogUpdate(prepared, origin, previous);
+    }
+  }
+
+  private InstalledAppSnapshot commitCatalogUpdate(
+      PreparedUpdateBundle prepared,
+      InstalledAppOrigin origin,
+      FileInstalledAppOriginStore.State previous)
+      throws IOException {
+    PersistentMutation mutation =
+        beginPersistentMutation(
+            prepared.normalizedAppId(), PersistentMutationOperation.CATALOG_UPDATE, previous);
+    try {
+      originStore.put(origin);
+      InstalledAppSnapshot updated = commitPreparedUpdateBundle(prepared);
+      requireMatchingCatalogOrigin(updated, origin);
+      commitPersistentMutation(mutation);
+      return updated;
+    } catch (IOException | RuntimeException failure) {
+      abortPersistentMutation(mutation, failure);
+      throw failure;
+    }
+  }
+
+  private void requireMatchingCatalogOrigin(
+      InstalledAppSnapshot installed, InstalledAppOrigin origin) throws IOException {
+    AppBundleVerification verification =
+        verifyHistoricalCopiedBundle(installed.paths().installedRoot());
+    requireMatchingCatalogOrigin(installed.manifest(), verification, origin);
+  }
+
+  private void requireMatchingCatalogOrigin(
+      AppManifest manifest, AppBundleVerification verification, InstalledAppOrigin origin)
+      throws AppHostException {
+    if (!manifest.appId().equals(origin.appId())
+        || !manifest.appVersion().equals(origin.appVersion())) {
+      throw new AppHostException("catalog origin does not match the committed app bundle");
+    }
+    if (!verification.signed()) {
+      if (!installVerificationPolicy.allowsUnsignedForDevelopmentOnly()
+          || !origin.publisherKeyFingerprintSha256().isEmpty()
+          || !origin.signedContentDigestSha256().isEmpty()) {
+        throw new AppHostException("catalog origin requires an exact signed app bundle");
+      }
+      return;
+    }
+    if (!origin.publisherKeyId().equals(verification.keyId())
+        || !origin.publisherKeyFingerprintSha256().equals(verification.keyFingerprintSha256())
+        || !origin.signedContentDigestSha256().equals(verification.signedContentDigestSha256())) {
+      throw new AppHostException(
+          "catalog origin does not match the verified publisher or signed bundle content");
     }
   }
 
@@ -514,6 +768,7 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized Optional<AppRollbackRecord> rollbackStatus(String appId) throws IOException {
+    ensurePersistentMutationsRecovered();
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     validateInstalledAppsDirectory();
     validateRollbackAppsDirectory();
@@ -537,6 +792,26 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized InstalledAppSnapshot rollback(String appId) throws IOException {
+    return rollbackInternal(appId, null);
+  }
+
+  /**
+   * Restores a retained catalog bundle after authorizing its exact host-selected origin.
+   *
+   * @param appId stable application identifier
+   * @param authorization current local federation-policy authorization callback
+   * @return installed application snapshot after rollback
+   * @throws IOException if authorization, validation, or rollback fails
+   */
+  @Override
+  public synchronized InstalledAppSnapshot rollback(
+      String appId, AppHost.CatalogRollbackAuthorization authorization) throws IOException {
+    return rollbackInternal(appId, Objects.requireNonNull(authorization, AUTHORIZATION_PARAMETER));
+  }
+
+  private InstalledAppSnapshot rollbackInternal(
+      String appId, AppHost.CatalogRollbackAuthorization authorization) throws IOException {
+    ensurePersistentMutationsRecovered();
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     Path installedAppsDir = validateInstalledAppsDirectory();
     ensureRollbackAppsDirectory();
@@ -553,15 +828,64 @@ public final class LocalProcessAppHost implements AppHost {
     }
     validateManagedMutableDirectories(paths);
     paths.ensureMutableDirectories();
-    verifyHistoricalCopiedBundle(rollbackRoot);
+    AppBundleVerification rollbackVerification = verifyHistoricalCopiedBundle(rollbackRoot);
     AppManifest rollbackManifest = validateCopiedBundle(rollbackRoot);
     requireMatchingUpdateTarget(normalizedAppId, rollbackManifest);
     Path currentInstallBackupRoot =
         temporaryManagedPath(installedAppsDir, TEMP_UPDATE_BACKUP_PREFIX + normalizedAppId + "-");
 
-    swapInstalledBundleWithRollback(paths.installedRoot(), rollbackRoot, currentInstallBackupRoot);
+    FileInstalledAppOriginStore.State originState = originStore.snapshot(normalizedAppId);
+    boolean originTracked = originState.current().isPresent() || originState.rollback().isPresent();
+    AppHost.CatalogMutationAuthorizationLease rollbackAuthorization = () -> {};
+    if (originState.rollback().isPresent()) {
+      if (authorization == null) {
+        throw new AppHostException.CatalogRollbackAuthorizationException();
+      }
+      InstalledAppOrigin rollbackOrigin = originState.rollback().orElseThrow();
+      requireMatchingCatalogOrigin(rollbackManifest, rollbackVerification, rollbackOrigin);
+      rollbackAuthorization =
+          Objects.requireNonNull(
+              authorization.authorize(rollbackOrigin), "catalog rollback authorization lease");
+    }
+    try (var _ = rollbackAuthorization) {
+      PersistentMutation mutation =
+          beginPersistentMutation(
+              normalizedAppId, PersistentMutationOperation.ROLLBACK, originState);
+      try {
+        swapInstalledBundleWithRollback(
+            paths.installedRoot(), rollbackRoot, currentInstallBackupRoot);
+        if (originTracked) {
+          originStore.swapRollback(normalizedAppId);
+        }
+        commitPersistentMutation(mutation);
+      } catch (IOException | RuntimeException failure) {
+        abortPersistentMutation(mutation, failure);
+        throw failure;
+      }
+    }
     cancelPendingRestartAfterAcceptedUpdate(normalizedAppId);
     return new InstalledAppSnapshot(rollbackManifest, paths);
+  }
+
+  @Override
+  public synchronized void recordCatalogOrigin(InstalledAppOrigin origin) throws IOException {
+    ensurePersistentMutationsRecovered();
+    Objects.requireNonNull(origin, ORIGIN_PARAMETER);
+    throw new AppHostException(
+        "catalog origin must be committed with the corresponding bundle mutation");
+  }
+
+  @Override
+  public synchronized Optional<InstalledAppOrigin> catalogOrigin(String appId) throws IOException {
+    ensurePersistentMutationsRecovered();
+    return originStore.find(InstalledAppPaths.normalizeAppId(appId));
+  }
+
+  @Override
+  public synchronized boolean rollbackRequiresCatalogAuthorization(String appId)
+      throws IOException {
+    ensurePersistentMutationsRecovered();
+    return originStore.snapshot(InstalledAppPaths.normalizeAppId(appId)).rollback().isPresent();
   }
 
   /**
@@ -581,6 +905,7 @@ public final class LocalProcessAppHost implements AppHost {
 
   @Override
   public synchronized void uninstall(String appId, AppUninstallOptions options) throws IOException {
+    ensurePersistentMutationsRecovered();
     Objects.requireNonNull(options, "options");
     validateInstalledAppsDirectory();
     validateRollbackAppsDirectory();
@@ -592,13 +917,24 @@ public final class LocalProcessAppHost implements AppHost {
       throw new AppHostException(APP_NOT_INSTALLED_PREFIX + appId);
     }
 
-    deleteRecursively(paths.installedRoot());
+    FileInstalledAppOriginStore.State previousOrigin = originStore.snapshot(paths.appId());
+    PersistentMutation mutation =
+        beginPersistentMutation(
+            paths.appId(), PersistentMutationOperation.UNINSTALL, previousOrigin);
+    try {
+      deleteRecursively(paths.installedRoot());
+      deleteRollbackRecordIfPresent(paths.appId());
+      originStore.remove(paths.appId());
+      commitPersistentMutation(mutation);
+    } catch (IOException | RuntimeException failure) {
+      abortPersistentMutation(mutation, failure);
+      throw failure;
+    }
     if (!options.preserveData()) {
       deleteRecursively(paths.dataDir());
     }
     deleteRecursively(paths.cacheDir());
     deleteRecursively(paths.runDir());
-    deleteRollbackRecordIfPresent(paths.appId());
     runtimeRecords.remove(paths.appId());
     automaticRestartAttempts.remove(paths.appId());
     explicitStopRequests.remove(paths.appId());
@@ -616,6 +952,7 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized List<InstalledAppSnapshot> listInstalled() throws IOException {
+    ensurePersistentMutationsRecovered();
     Path installedAppsDir = validateInstalledAppsDirectory();
     if (!Files.isDirectory(installedAppsDir, LinkOption.NOFOLLOW_LINKS)) {
       return List.of();
@@ -646,6 +983,7 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized Optional<InstalledAppSnapshot> describe(String appId) throws IOException {
+    ensurePersistentMutationsRecovered();
     validateInstalledAppsDirectory();
     InstalledAppPaths paths = layout.pathsFor(appId);
     if (!Files.isDirectory(paths.installedRoot(), LinkOption.NOFOLLOW_LINKS)) {
@@ -670,6 +1008,7 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized RunningAppSnapshot start(String appId) throws IOException {
+    ensurePersistentMutationsRecovered();
     String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
     if (liveRunningProcess(normalizedAppId) != null) {
       throw new AppHostException("app is already running: " + appId);
@@ -1173,12 +1512,12 @@ public final class LocalProcessAppHost implements AppHost {
     return manifest;
   }
 
-  private void verifyCopiedBundle(Path copiedRoot) throws IOException {
-    installVerificationPolicy.verifyCopiedBundle(copiedRoot);
+  private AppBundleVerification verifyCopiedBundle(Path copiedRoot) throws IOException {
+    return installVerificationPolicy.verifyCopiedBundle(copiedRoot);
   }
 
-  private void verifyHistoricalCopiedBundle(Path copiedRoot) throws IOException {
-    installVerificationPolicy.verifyHistoricalCopiedBundle(copiedRoot);
+  private AppBundleVerification verifyHistoricalCopiedBundle(Path copiedRoot) throws IOException {
+    return installVerificationPolicy.verifyHistoricalCopiedBundle(copiedRoot);
   }
 
   private AppManifest validateCopiedBundle(Path copiedRoot) throws IOException {
@@ -2232,6 +2571,289 @@ public final class LocalProcessAppHost implements AppHost {
     return layout.rollbackAppsDir().resolve(InstalledAppPaths.normalizeAppId(appId));
   }
 
+  private void ensurePersistentMutationsRecovered() throws IOException {
+    if (persistentMutationsRecovered) {
+      return;
+    }
+    Path transactionRoot = layout.appMutationTransactionsDir();
+    if (!Files.exists(transactionRoot, LinkOption.NOFOLLOW_LINKS)) {
+      persistentMutationsRecovered = true;
+      return;
+    }
+    validateManagedDirectory(transactionRoot, MUTATION_TRANSACTIONS_DIR_LABEL);
+    try (var entries = Files.list(transactionRoot)) {
+      for (Path entry :
+          entries.sorted(Comparator.comparing(LocalProcessAppHost::fileNameText)).toList()) {
+        String name = fileNameText(entry);
+        if (!Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(entry)) {
+          throw new AppHostException("app mutation transaction entry is unsafe");
+        }
+        if (name.endsWith(ACTIVE_TRANSACTION_SUFFIX)) {
+          recoverActiveMutation(entry);
+        } else if (name.startsWith(COMMITTED_TRANSACTION_PREFIX)
+            || name.startsWith(PREPARING_TRANSACTION_PREFIX)) {
+          deleteRecursively(entry);
+        } else {
+          throw new AppHostException("unknown app mutation transaction entry");
+        }
+      }
+    }
+    persistentMutationsRecovered = true;
+  }
+
+  private PersistentMutation beginPersistentMutation(
+      String appId, PersistentMutationOperation operation, FileInstalledAppOriginStore.State before)
+      throws IOException {
+    ensurePersistentMutationsRecovered();
+    String normalizedAppId = InstalledAppPaths.normalizeAppId(appId);
+    Path transactionRoot = layout.appMutationTransactionsDir();
+    ensureManagedDirectory(layout.dataDir(), transactionRoot, MUTATION_TRANSACTIONS_DIR_LABEL);
+    Path active = transactionRoot.resolve(normalizedAppId + ACTIVE_TRANSACTION_SUFFIX);
+    if (Files.exists(active, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppHostException("app mutation transaction is already active");
+    }
+    Path preparing =
+        Files.createTempDirectory(
+            transactionRoot, PREPARING_TRANSACTION_PREFIX + normalizedAppId + "-");
+    boolean currentPresent = false;
+    boolean rollbackPresent = false;
+    try {
+      Path current = layout.pathsFor(normalizedAppId).installedRoot();
+      if (Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+        currentPresent = true;
+        Path backup = preparing.resolve(TRANSACTION_CURRENT_BACKUP);
+        Files.createDirectory(backup);
+        copyDirectoryTree(current, backup);
+      }
+      Path rollback = rollbackRootFor(normalizedAppId);
+      if (Files.isDirectory(rollback, LinkOption.NOFOLLOW_LINKS)) {
+        rollbackPresent = true;
+        Path backup = preparing.resolve(TRANSACTION_ROLLBACK_BACKUP);
+        Files.createDirectory(backup);
+        copyDirectoryTree(rollback, backup);
+      }
+      new FileInstalledAppOriginStore(preparing.resolve(TRANSACTION_ORIGIN_BACKUP))
+          .restore(normalizedAppId, before);
+      PersistentMutationRecord mutationRecord =
+          new PersistentMutationRecord(
+              normalizedAppId,
+              operation,
+              currentPresent,
+              rollbackPresent,
+              before.current().isPresent(),
+              before.rollback().isPresent());
+      Files.writeString(
+          preparing.resolve(TRANSACTION_RECORD_FILE),
+          mutationRecord.canonicalText(),
+          StandardCharsets.UTF_8,
+          StandardOpenOption.CREATE_NEW,
+          StandardOpenOption.WRITE);
+      moveIntoPlace(preparing, active);
+      return new PersistentMutation(active, mutationRecord);
+    } catch (IOException | RuntimeException failure) {
+      try {
+        deleteRecursively(preparing);
+      } catch (IOException cleanupFailure) {
+        failure.addSuppressed(cleanupFailure);
+      }
+      throw failure;
+    }
+  }
+
+  private void commitPersistentMutation(PersistentMutation mutation) throws IOException {
+    Path committed =
+        mutation
+            .activeDirectory()
+            .getParent()
+            .resolve(
+                COMMITTED_TRANSACTION_PREFIX
+                    + mutation.mutationRecord().appId()
+                    + "-"
+                    + generateToken());
+    movePersistentMutationCommitIntoPlace(mutation.activeDirectory(), committed);
+    try {
+      deleteRecursively(committed);
+    } catch (IOException _) {
+      // The atomic rename is the commit point. A later recovery pass safely finishes cleanup.
+    }
+  }
+
+  private void abortPersistentMutation(PersistentMutation mutation, Throwable failure) {
+    try {
+      recoverActiveMutation(mutation.activeDirectory());
+    } catch (IOException recoveryFailure) {
+      persistentMutationsRecovered = false;
+      failure.addSuppressed(recoveryFailure);
+    }
+  }
+
+  private void recoverActiveMutation(Path activeDirectory) throws IOException {
+    PersistentMutationRecord mutationRecord = readPersistentMutationRecord(activeDirectory);
+    String expectedName = mutationRecord.appId() + ACTIVE_TRANSACTION_SUFFIX;
+    if (!expectedName.equals(fileNameText(activeDirectory))) {
+      throw new AppHostException("app mutation transaction identity does not match directory");
+    }
+    FileInstalledAppOriginStore.State before =
+        new FileInstalledAppOriginStore(activeDirectory.resolve(TRANSACTION_ORIGIN_BACKUP))
+            .snapshot(mutationRecord.appId());
+    if (before.current().isPresent() != mutationRecord.currentOriginPresent()
+        || before.rollback().isPresent() != mutationRecord.rollbackOriginPresent()) {
+      throw new AppHostException("app mutation transaction origin snapshot is incomplete");
+    }
+    restoreBundleSlot(
+        activeDirectory.resolve(TRANSACTION_CURRENT_BACKUP),
+        layout.pathsFor(mutationRecord.appId()).installedRoot(),
+        mutationRecord.currentBundlePresent());
+    restoreBundleSlot(
+        activeDirectory.resolve(TRANSACTION_ROLLBACK_BACKUP),
+        rollbackRootFor(mutationRecord.appId()),
+        mutationRecord.rollbackBundlePresent());
+    originStore.restore(mutationRecord.appId(), before);
+    deleteRecursively(activeDirectory);
+  }
+
+  private void restoreBundleSlot(Path backup, Path canonical, boolean expectedPresent)
+      throws IOException {
+    Path parent = canonical.getParent();
+    if (parent == null) {
+      throw new AppHostException("app mutation bundle slot has no managed parent");
+    }
+    ensureManagedDirectory(layout.dataDir(), parent, "appMutationBundleParent");
+    if (!expectedPresent) {
+      if (Files.exists(backup, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppHostException("unexpected app mutation bundle backup");
+      }
+      deleteScratchTreeIfPresent(canonical);
+      return;
+    }
+    if (!Files.isDirectory(backup, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(backup)) {
+      throw new AppHostException("required app mutation bundle backup is missing");
+    }
+    Path restored = Files.createTempDirectory(parent, TEMP_INSTALL_PREFIX + "recovery-");
+    try {
+      copyDirectoryTree(backup, restored);
+      deleteScratchTreeIfPresent(canonical);
+      moveIntoPlace(restored, canonical);
+    } catch (IOException | RuntimeException failure) {
+      deleteScratchTreeIfPresent(restored);
+      throw failure;
+    }
+  }
+
+  private static PersistentMutationRecord readPersistentMutationRecord(Path activeDirectory)
+      throws IOException {
+    Path recordPath = activeDirectory.resolve(TRANSACTION_RECORD_FILE);
+    if (!Files.isRegularFile(recordPath, LinkOption.NOFOLLOW_LINKS)
+        || Files.isSymbolicLink(recordPath)
+        || Files.size(recordPath) > 4096) {
+      throw new AppHostException("app mutation transaction record is unsafe");
+    }
+    LinkedHashMap<String, String> fields = new LinkedHashMap<>();
+    for (String line : Files.readAllLines(recordPath, StandardCharsets.UTF_8)) {
+      int separator = line.indexOf('=');
+      if (separator <= 0 || line.indexOf('=', separator + 1) >= 0) {
+        throw new AppHostException("invalid app mutation transaction record");
+      }
+      if (fields.putIfAbsent(line.substring(0, separator), line.substring(separator + 1)) != null) {
+        throw new AppHostException("duplicate app mutation transaction property");
+      }
+    }
+    try {
+      int schemaVersion = Integer.parseInt(removeTransactionField(fields, "schemaVersion"));
+      if (schemaVersion != 1) {
+        throw new AppHostException("unsupported app mutation transaction schema version");
+      }
+      PersistentMutationRecord mutationRecord =
+          new PersistentMutationRecord(
+              removeTransactionField(fields, "appId"),
+              PersistentMutationOperation.valueOf(
+                  removeTransactionField(fields, "operation").toUpperCase(Locale.ROOT)),
+              parseTransactionBoolean(fields, "currentBundlePresent"),
+              parseTransactionBoolean(fields, "rollbackBundlePresent"),
+              parseTransactionBoolean(fields, "currentOriginPresent"),
+              parseTransactionBoolean(fields, "rollbackOriginPresent"));
+      if (!fields.isEmpty()) {
+        throw new AppHostException("unsupported app mutation transaction property");
+      }
+      return mutationRecord;
+    } catch (IllegalArgumentException exception) {
+      throw new AppHostException("invalid app mutation transaction record", exception);
+    }
+  }
+
+  private static boolean parseTransactionBoolean(Map<String, String> fields, String name)
+      throws AppHostException {
+    String value = removeTransactionField(fields, name);
+    if (!"true".equals(value) && !"false".equals(value)) {
+      throw new AppHostException("invalid app mutation transaction boolean");
+    }
+    return Boolean.parseBoolean(value);
+  }
+
+  private static String removeTransactionField(Map<String, String> fields, String name)
+      throws AppHostException {
+    String value = fields.remove(name);
+    if (value == null) {
+      throw new AppHostException("missing app mutation transaction property");
+    }
+    return value;
+  }
+
+  private enum PersistentMutationOperation {
+    CATALOG_INSTALL,
+    CATALOG_UPDATE,
+    GENERIC_UPDATE,
+    ROLLBACK,
+    UNINSTALL
+  }
+
+  private record PersistentMutation(
+      Path activeDirectory, PersistentMutationRecord mutationRecord) {}
+
+  private record PreparedUpdateBundle(
+      String normalizedAppId,
+      Path replacementRoot,
+      AppManifest manifest,
+      InstalledAppPaths paths,
+      Path backupInstallRoot,
+      Path rollbackRoot,
+      Path previousRollbackBackupRoot) {}
+
+  private record PersistentMutationRecord(
+      String appId,
+      PersistentMutationOperation operation,
+      boolean currentBundlePresent,
+      boolean rollbackBundlePresent,
+      boolean currentOriginPresent,
+      boolean rollbackOriginPresent) {
+    private PersistentMutationRecord {
+      appId = InstalledAppPaths.normalizeAppId(appId);
+      Objects.requireNonNull(operation, "operation");
+    }
+
+    private String canonicalText() {
+      return "schemaVersion=1\n"
+          + "appId="
+          + appId
+          + '\n'
+          + "operation="
+          + operation.name().toLowerCase(Locale.ROOT)
+          + '\n'
+          + "currentBundlePresent="
+          + currentBundlePresent
+          + '\n'
+          + "rollbackBundlePresent="
+          + rollbackBundlePresent
+          + '\n'
+          + "currentOriginPresent="
+          + currentOriginPresent
+          + '\n'
+          + "rollbackOriginPresent="
+          + rollbackOriginPresent
+          + '\n';
+    }
+  }
+
   private void deleteRollbackRecordIfPresent(String appId) throws IOException {
     Path rollbackAppsDir = validateRollbackAppsDirectory();
     if (!Files.exists(rollbackAppsDir, LinkOption.NOFOLLOW_LINKS)) {
@@ -2347,6 +2969,11 @@ public final class LocalProcessAppHost implements AppHost {
     } catch (AtomicMoveNotSupportedException _) {
       Files.move(source, destination);
     }
+  }
+
+  private static void movePersistentMutationCommitIntoPlace(Path active, Path committed)
+      throws IOException {
+    Files.move(active, committed, StandardCopyOption.ATOMIC_MOVE);
   }
 
   private static void copyDirectoryTree(Path sourceRoot, Path targetRoot) throws IOException {

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-federated-catalog-execution-v1.schema.json",
+  "title": "Stable 1.0 federated catalog execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "executionId", "repository", "release", "evaluationTime", "requestedState", "fixtureOnly", "selfTest", "policyDigest", "authorities", "evidence"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-federated-catalog-execution"},
+    "executionId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "sourceCommit"],
+      "properties": {
+        "identity": {"const": "github.com/crypta-network/cryptad"},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "buildVersion"],
+      "properties": {
+        "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+        "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]{0,9}$"}
+      }
+    },
+    "evaluationTime": {"type": "string", "format": "date-time"},
+    "requestedState": {"enum": ["implementation-complete", "fixture-verification-complete", "discovery-authenticated", "local-trust-configured", "conflict-policy-verified", "runtime-federation-verified", "operational-federation-complete", "blocked", "partial"]},
+    "fixtureOnly": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "authorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "thirdPartyPilot"],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/authority"},
+        "independentReproducibility": {"$ref": "#/$defs/authority"},
+        "catalogAuthority": {"$ref": "#/$defs/authority"},
+        "thirdPartyPilot": {"$ref": "#/$defs/authority"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["descriptor", "endorsements", "runtimeObservation"],
+      "properties": {
+        "descriptor": {"$ref": "#/$defs/nullableSignedDocumentBinding"},
+        "endorsements": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/signedDocumentBinding"}},
+        "runtimeObservation": {"$ref": "#/$defs/nullableRuntimeObservationBinding"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summaryDigest", "artifactDigest", "operational", "provenance", "summary"],
+      "properties": {
+        "summaryDigest": {"$ref": "#/$defs/digest"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "operational": {"type": "boolean"},
+        "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+        "summary": {"$ref": "#/$defs/nullableBinding"}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "digest", "size"],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 2, "maximum": 1048576}
+      }
+    },
+    "signedDocumentBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "digest", "size", "issuerPublicKeySpkiBase64"],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 2, "maximum": 1048576},
+        "issuerPublicKeySpkiBase64": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"}
+      }
+    },
+    "nullableSignedDocumentBinding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/signedDocumentBinding"}]},
+    "runtimeObservationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "digest", "size", "observerKeyId", "observerFingerprint", "observerPublicKeySpkiBase64", "receiptProvenance"],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 2, "maximum": 1048576},
+        "observerKeyId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"},
+        "observerFingerprint": {"$ref": "#/$defs/digest"},
+        "observerPublicKeySpkiBase64": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"},
+        "receiptProvenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"}
+      }
+    },
+    "nullableRuntimeObservationBinding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/runtimeObservationBinding"}]},
+    "nullableBinding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/binding"}]}
+  }
+}

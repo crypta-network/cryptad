@@ -24,17 +24,22 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * private insert URIs, local scratch paths, staged bundle paths, or trusted-key material.
  */
 final class AppCatalogOperations {
+  private static final String APP_NOT_FOUND_MESSAGE = "Catalog app not found.";
+
   private final AppCatalogSourceStore sourceStore;
   private final AppCatalogManager.TrustedKeyProvider trustedKeyProvider;
   private final AppCatalogFetcher fetcher;
+  private final FileFederatedCatalogTrustStore federatedTrustStore;
 
   AppCatalogOperations(
       AppCatalogSourceStore sourceStore,
       AppCatalogManager.TrustedKeyProvider trustedKeyProvider,
-      AppCatalogFetcher fetcher) {
+      AppCatalogFetcher fetcher,
+      FileFederatedCatalogTrustStore federatedTrustStore) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
     this.trustedKeyProvider = Objects.requireNonNull(trustedKeyProvider, "trustedKeyProvider");
     this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
+    this.federatedTrustStore = federatedTrustStore;
   }
 
   boolean hasTrustedCatalogKey(String keyId) throws IOException {
@@ -53,11 +58,29 @@ final class AppCatalogOperations {
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     FetchedCatalog fetched = fetcher.fetch(source);
     AppCatalog catalog =
-        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+        AppCatalogTrustVerification.verifyRoutine(
+            fetched.catalogBytes(),
+            fetched.signatureBytes(),
+            trustedKeys,
+            expectedCatalogId,
+            federatedTrustStore);
     rejectUnexpectedCatalog(catalog, expectedCatalogId);
     rejectExistingCatalog(catalog);
     Instant now = Instant.now();
-    sourceStore.write(catalog, source, fetched, now, now);
+    Optional<FederatedCatalogTrustBinding> binding = trustBinding(catalog.catalogId());
+    sourceStore.write(
+        new AppCatalogSourceStore.VerifiedCatalogWrite(
+            catalog,
+            source,
+            fetched,
+            now,
+            now,
+            binding.map(FederatedCatalogTrustBinding::bindingId),
+            binding.map(FederatedCatalogTrustBinding::selfDigest)),
+        new AppCatalogSourceStore.EndpointWriteState(
+            AppCatalogMirror.primary(source, now),
+            List.of(AppCatalogMirror.primary(source, now)),
+            Map.of()));
     return AppCatalogSourceSnapshot.of(
         catalog,
         source,
@@ -65,6 +88,147 @@ final class AppCatalogOperations {
         now,
         AppCatalogSourceRefreshMetadata.success(now, resolvedCatalogUri(fetched, source)),
         fetched);
+  }
+
+  /** Re-verifies one stored source and projects its bounded operator-facing snapshot. */
+  AppCatalogSourceSnapshot snapshot(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+    AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
+    return snapshot(stored, catalog);
+  }
+
+  /** Reads and re-verifies one configured source for bounded operator display. */
+  AppCatalogSourceSnapshot catalogSnapshot(String catalogId, TrustedAppKeys trustedKeys)
+      throws IOException {
+    return snapshot(sourceStore.read(catalogId), trustedKeys);
+  }
+
+  /** Lists routine-authorized federated sources while isolating source-local failures. */
+  List<AppCatalogSourceSnapshot> listFederatedRoutineCatalogs(TrustedAppKeys trustedKeys)
+      throws IOException {
+    List<AppCatalogSourceSnapshot> activeCatalogs = new ArrayList<>();
+    for (String catalogId : sourceStore.configuredCatalogIds()) {
+      try {
+        StoredCatalogSource stored = sourceStore.read(catalogId);
+        activeCatalogs.add(snapshot(stored, verifyRoutine(stored, trustedKeys)));
+      } catch (AppCatalogException | IOException _) {
+        // The affected catalog remains unavailable without changing unrelated trust decisions.
+      }
+    }
+    return List.copyOf(activeCatalogs);
+  }
+
+  /** Reads one stored source and verifies that it remains authorized for routine work. */
+  AppCatalog readRoutineCatalog(String catalogId, TrustedAppKeys trustedKeys) throws IOException {
+    return verifyRoutine(sourceStore.read(catalogId), trustedKeys);
+  }
+
+  /** Selects one app from a source that remains authorized for routine work. */
+  AppCatalogEntry getRoutineApp(
+      StoredCatalogSource stored, String appId, TrustedAppKeys trustedKeys) throws IOException {
+    return requireApp(verifyRoutine(stored, trustedKeys), appId);
+  }
+
+  /** Reads one stored source and verifies it under bounded historical inspection policy. */
+  AppCatalog readVerifiedCatalog(String catalogId, TrustedAppKeys trustedKeys) throws IOException {
+    return verifyStoredCatalog(sourceStore.read(catalogId), trustedKeys);
+  }
+
+  /** Lists entries from one re-verified configured catalog. */
+  List<AppCatalogEntry> listApps(String catalogId) throws IOException {
+    return readVerifiedCatalog(catalogId, trustedKeyProvider.trustedKeys()).entries();
+  }
+
+  /** Selects one app from a re-verified configured catalog. */
+  AppCatalogEntry getApp(String catalogId, String appId) throws IOException {
+    return requireApp(readVerifiedCatalog(catalogId, trustedKeyProvider.trustedKeys()), appId);
+  }
+
+  /** Computes one catalog-local signed security decision. */
+  AppCatalogSecurityDecision securityDecision(String catalogId, String appId) throws IOException {
+    AppCatalog catalog = readVerifiedCatalog(catalogId, trustedKeyProvider.trustedKeys());
+    return catalog.securityPolicy().decisionFor(requireApp(catalog, appId));
+  }
+
+  /** Collects active federated security decisions without allowing one source to disable peers. */
+  List<AppCatalogSecurityDecision> installedFederatedSecurityDecisions(
+      String appId, String version, TrustedAppKeys trustedKeys) throws IOException {
+    List<AppCatalogSecurityDecision> decisions = new ArrayList<>();
+    for (String catalogId : sourceStore.configuredCatalogIds()) {
+      try {
+        AppCatalog catalog = readRoutineCatalog(catalogId, trustedKeys);
+        decisions.add(catalog.securityPolicy().decisionForInstalledVersion(appId, version));
+      } catch (AppCatalogException | IOException _) {
+        // A locally unauthorized source contributes no security decision and cannot disable peers.
+      }
+    }
+    return List.copyOf(decisions);
+  }
+
+  /** Verifies one stored source for active routine work under its exact local trust binding. */
+  AppCatalog verifyRoutine(StoredCatalogSource stored, TrustedAppKeys trustedKeys)
+      throws IOException {
+    AppCatalogTrustVerification.requireStoredBinding(stored, federatedTrustStore);
+    return AppCatalogTrustVerification.verifyRoutine(
+        stored.fetchedCatalog().catalogBytes(),
+        stored.fetchedCatalog().signatureBytes(),
+        trustedKeys,
+        stored.catalogId(),
+        federatedTrustStore);
+  }
+
+  /** Verifies one stored source for bounded historical inspection. */
+  AppCatalog verifyStoredCatalog(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+    try {
+      AppCatalogTrustVerification.requireStoredBinding(stored, federatedTrustStore);
+      return AppCatalogTrustVerification.verifyHistorical(
+          stored.fetchedCatalog().catalogBytes(),
+          stored.fetchedCatalog().signatureBytes(),
+          trustedKeys,
+          stored.catalogId(),
+          federatedTrustStore);
+    } catch (IOException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+          "failed to verify stored catalog trust",
+          exception);
+    }
+  }
+
+  private AppCatalogSourceSnapshot historicalSnapshot(
+      StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+    try {
+      AppCatalogTrustVerification.requireHistoricalStoredBinding(stored, federatedTrustStore);
+      AppCatalog catalog =
+          AppCatalogTrustVerification.verifyHistorical(
+              stored.fetchedCatalog().catalogBytes(),
+              stored.fetchedCatalog().signatureBytes(),
+              trustedKeys,
+              stored.catalogId(),
+              federatedTrustStore);
+      return snapshot(stored, catalog);
+    } catch (IOException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+          "failed to verify stored historical catalog trust",
+          exception);
+    }
+  }
+
+  private static AppCatalogSourceSnapshot snapshot(StoredCatalogSource stored, AppCatalog catalog) {
+    return AppCatalogSourceSnapshot.of(
+        catalog,
+        stored.source(),
+        stored.addedAt(),
+        stored.refreshedAt(),
+        stored.refreshMetadata(),
+        stored.fetchedCatalog());
+  }
+
+  private static AppCatalogEntry requireApp(AppCatalog catalog, String appId) {
+    return catalog
+        .entry(appId)
+        .orElseThrow(
+            () -> new AppCatalogException(AppCatalogSidecars.APP_NOT_FOUND, APP_NOT_FOUND_MESSAGE));
   }
 
   List<AppCatalogMirror> refreshEndpoints(StoredCatalogSource stored, boolean primaryOnly) {
@@ -86,7 +250,7 @@ final class AppCatalogOperations {
     String normalizedCatalogId = AppCatalogManager.normalizeCatalogIdForLookup(catalogId);
     StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
-    AppCatalog catalog = AppCatalogManager.verifyStoredCatalog(stored, trustedKeys);
+    AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
     AppCatalogVerifiedRevision currentRevision =
         currentRevision(
                 normalizedCatalogId, AppCatalogRevisions.catalogDigest(stored.fetchedCatalog()))
@@ -165,7 +329,7 @@ final class AppCatalogOperations {
     String currentDigest = AppCatalogRevisions.catalogDigest(stored.fetchedCatalog());
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     return sourceStore.listRevisions(normalizedCatalogId, currentDigest).stream()
-        .map(revision -> rollbackCandidate(normalizedCatalogId, revision, trustedKeys))
+        .map(revision -> rollbackCandidate(stored, revision, trustedKeys))
         .toList();
   }
 
@@ -174,11 +338,16 @@ final class AppCatalogOperations {
     String rollbackReason = normalizedRollbackReason(reason);
     String normalizedCatalogId = AppCatalogManager.normalizeCatalogIdForLookup(catalogId);
     StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
+    AppCatalogTrustVerification.requireHistoricalStoredBinding(stored, federatedTrustStore);
     FetchedCatalog fetched = sourceStore.readRevision(normalizedCatalogId, revisionDigest);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     AppCatalog catalog =
-        AppCatalogVerifier.verifyHistorical(
-            fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+        AppCatalogTrustVerification.verifyHistorical(
+            fetched.catalogBytes(),
+            fetched.signatureBytes(),
+            trustedKeys,
+            normalizedCatalogId,
+            federatedTrustStore);
     if (!normalizedCatalogId.equals(catalog.catalogId())) {
       throw new AppCatalogException(
           AppCatalogSidecars.CATALOG_ID_MISMATCH, "rollback catalog id does not match source");
@@ -189,14 +358,34 @@ final class AppCatalogOperations {
     String resolvedUri = resolvedUriForRevision(revision, endpoint);
     sourceStore.write(
         new AppCatalogSourceStore.VerifiedCatalogWrite(
-            catalog, stored.source(), fetched, stored.addedAt(), now),
+            catalog,
+            stored.source(),
+            fetched,
+            stored.addedAt(),
+            now,
+            stored.trustBindingId(),
+            stored.trustBindingDigest()),
         new AppCatalogSourceStore.EndpointWriteState(
             endpoint,
             stored.mirrors(),
             rollbackHealth(stored, endpoint, fetched, catalog, now, resolvedUri, rollbackReason),
             resolvedUri,
             rollbackReason));
-    return AppCatalogManager.snapshot(sourceStore.read(normalizedCatalogId), trustedKeys);
+    return historicalSnapshot(sourceStore.read(normalizedCatalogId), trustedKeys);
+  }
+
+  private Optional<FederatedCatalogTrustBinding> trustBinding(String catalogId) throws IOException {
+    if (federatedTrustStore == null) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        federatedTrustStore
+            .findByCatalogId(catalogId)
+            .orElseThrow(
+                () ->
+                    new AppCatalogException(
+                        AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+                        "federated catalog admission requires a local trust binding")));
   }
 
   AppCatalogKeyRotationStatus keyRotationStatus(String catalogId) throws IOException {
@@ -208,7 +397,7 @@ final class AppCatalogOperations {
     boolean trusted =
         trustedKeys.findHistoricalForVerification(currentKeyId, Instant.now()).isPresent();
     if (trusted) {
-      AppCatalogManager.verifyStoredCatalog(stored, trustedKeys);
+      verifyStoredCatalog(stored, trustedKeys);
     }
     Optional<String> previousKeyId = previousKeyId(normalizedCatalogId, stored, currentKeyId);
     List<String> blockers = trusted ? List.of() : List.of("current_key_not_trusted");
@@ -236,7 +425,7 @@ final class AppCatalogOperations {
       // Damaged history must not block a verified fresh fetch from repairing the cache.
     }
     try {
-      return Optional.of(AppCatalogManager.verifyStoredCatalog(stored, trustedKeys).generatedAt());
+      return Optional.of(verifyStoredCatalog(stored, trustedKeys).generatedAt());
     } catch (AppCatalogException _) {
       return Optional.empty();
     }
@@ -253,7 +442,7 @@ final class AppCatalogOperations {
     }
     if (endpoint.role() == AppCatalogSourceRole.PRIMARY) {
       try {
-        AppCatalog catalog = AppCatalogManager.verifyStoredCatalog(stored, trustedKeys);
+        AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
         return AppCatalogMirrorHealth.primary(
             stored.refreshMetadata(), stored.fetchedCatalog(), catalog.generatedAt());
       } catch (AppCatalogException _) {
@@ -510,12 +699,18 @@ final class AppCatalogOperations {
   }
 
   private AppCatalogRollbackCandidate rollbackCandidate(
-      String catalogId, AppCatalogVerifiedRevision revision, TrustedAppKeys trustedKeys) {
+      StoredCatalogSource stored, AppCatalogVerifiedRevision revision, TrustedAppKeys trustedKeys) {
     try {
+      String catalogId = stored.catalogId();
+      AppCatalogTrustVerification.requireHistoricalStoredBinding(stored, federatedTrustStore);
       FetchedCatalog fetched = sourceStore.readRevision(catalogId, revision.revisionDigest());
       AppCatalog catalog =
-          AppCatalogVerifier.verifyHistorical(
-              fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+          AppCatalogTrustVerification.verifyHistorical(
+              fetched.catalogBytes(),
+              fetched.signatureBytes(),
+              trustedKeys,
+              catalogId,
+              federatedTrustStore);
       if (!catalogId.equals(catalog.catalogId())) {
         return new AppCatalogRollbackCandidate(revision, false, Optional.of("catalog_id_mismatch"));
       }

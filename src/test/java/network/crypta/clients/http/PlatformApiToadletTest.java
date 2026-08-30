@@ -1220,6 +1220,44 @@ End
     assertForbiddenBody();
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "http://localhost/api/v1/operator/catalog-federation/alpha/trust",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/suspend",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/revoke",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/remove",
+        "http://localhost/api/v1/operator/catalog-federation/discovery",
+        "http://localhost/api/v1/operator/catalog-federation/discovery/descriptor-alpha/discard",
+      })
+  void handleMethodPOST_whenCatalogFederationMutationPasswordMissing_expectJson403WithoutRouting(
+      String requestUri) throws Exception {
+    URI uri = URI.create(requestUri);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(uri, request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, uri.getPath());
+    assertForbiddenBody();
+  }
+
+  @Test
+  void handleMethodPOST_whenSourceSwitchPreviewPasswordMissing_expectJson403WithoutRouting()
+      throws Exception {
+    URI uri =
+        URI.create("http://localhost/api/v1/operator/apps/alpha/catalog-origin/switch-preview");
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(uri, request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, uri.getPath());
+    assertForbiddenBody();
+  }
+
   @Test
   void handleMethodDELETE_whenFormPasswordMissing_expectJson403WithoutRouting() throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);

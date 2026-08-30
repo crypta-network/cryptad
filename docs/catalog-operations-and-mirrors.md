@@ -252,3 +252,13 @@ guide do not prove that a Stable USK, independent mirror, or rollback was publis
 The job is restricted to the protected Stable catalog-publication runner, whose managed localhost
 daemon and matching form-password secret are provisioning prerequisites. A bounded, secret-free
 readiness and Platform API contract check must pass before publication secrets enter the job.
+
+## Federation boundary
+
+Federation does not change mirror semantics. Every mirror remains transport for one exact signed
+catalog subject and inherits no authority to sign catalogs, approve publishers, select reviewers,
+or endorse another catalog. A federated refresh additionally checks the exact local catalog ID,
+signer fingerprint, binding lifecycle, and allowed app channels. Suspension blocks routine work;
+revocation also blocks historical authorization under the federation policy. A failed or removed
+binding affects only that catalog. Operational procedures and evidence requirements are in
+[stable-1.0-federated-catalog-discovery-and-trust.md](stable-1.0-federated-catalog-discovery-and-trust.md).

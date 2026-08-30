@@ -48,6 +48,23 @@ class AppUpdatesApiHandlerTest {
   }
 
   @Test
+  void stage_whenSourceSwitchTargetProvided_expectDelegatesExactTargetAndConsent() {
+    Map<String, Object> expected = Map.of("status", "staged");
+    when(updateService.stage(APP_ID, false, false, false, "consent-digest", "community"))
+        .thenReturn(expected);
+
+    Map<String, Object> result =
+        handler.stage(
+            APP_ID,
+            Map.of(
+                "sourceSwitchConsent", List.of("consent-digest"),
+                "targetCatalogId", List.of("community")));
+
+    assertSame(expected, result);
+    verify(updateService).stage(APP_ID, false, false, false, "consent-digest", "community");
+  }
+
+  @Test
   void apply_whenQueryOptionsAreProvided_expectDelegatesParsedOptions() {
     Map<String, Object> expected = Map.of("status", "ok");
     when(updateService.apply(eq(APP_ID), any(AppUpdateService.ApplyOptions.class)))

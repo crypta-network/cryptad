@@ -3,8 +3,11 @@ package network.crypta.platform.appdist;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 
@@ -167,7 +170,8 @@ public final class AppBundleVerifier {
    */
   public static AppBundleSignature verify(Path bundleRoot, TrustedAppKeys trustedKeys)
       throws IOException {
-    return verify(bundleRoot, trustedKeys, VerificationPurpose.NEW_BUNDLE, Instant.now());
+    return verifyDetailed(bundleRoot, trustedKeys, VerificationPurpose.NEW_BUNDLE, Instant.now())
+        .signature();
   }
 
   /**
@@ -185,10 +189,12 @@ public final class AppBundleVerifier {
    */
   public static AppBundleSignature verifyHistorical(Path bundleRoot, TrustedAppKeys trustedKeys)
       throws IOException {
-    return verify(bundleRoot, trustedKeys, VerificationPurpose.HISTORICAL_BUNDLE, Instant.now());
+    return verifyDetailed(
+            bundleRoot, trustedKeys, VerificationPurpose.HISTORICAL_BUNDLE, Instant.now())
+        .signature();
   }
 
-  private static AppBundleSignature verify(
+  private static VerifiedBundle verifyDetailed(
       Path bundleRoot,
       TrustedAppKeys trustedKeys,
       VerificationPurpose verificationPurpose,
@@ -218,7 +224,7 @@ public final class AppBundleVerifier {
     verifySignature(digestBytes, signature, trustedKey);
     AppBundleDigest signedDigest = AppBundleDigestVerifier.read(digestBytes);
     AppBundleDigestVerifier.verify(normalizedBundleRoot, signedDigest);
-    return signature;
+    return new VerifiedBundle(signature, trustedKey, sha256(digestBytes));
   }
 
   /**
@@ -237,9 +243,21 @@ public final class AppBundleVerifier {
     if (allowUnsigned && isDistributionSidecarFree(normalizedBundleRoot)) {
       return AppBundleVerification.unsigned();
     }
-    AppBundleSignature signature =
-        verify(normalizedBundleRoot, trustedKeys, verificationPurpose, Instant.now());
-    return AppBundleVerification.signed(signature.keyId(), signature.algorithm());
+    VerifiedBundle verified =
+        verifyDetailed(normalizedBundleRoot, trustedKeys, verificationPurpose, Instant.now());
+    return AppBundleVerification.signed(
+        verified.signature().keyId(),
+        verified.signature().algorithm(),
+        PublicKeyFingerprint.sha256(verified.trustedKey().publicKey()),
+        verified.signedContentDigestSha256());
+  }
+
+  private static String sha256(byte[] value) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is unavailable", exception);
+    }
   }
 
   private static void requireLifecycleAuthorization(
@@ -279,4 +297,7 @@ public final class AppBundleVerifier {
     NEW_BUNDLE,
     HISTORICAL_BUNDLE
   }
+
+  private record VerifiedBundle(
+      AppBundleSignature signature, TrustedAppKey trustedKey, String signedContentDigestSha256) {}
 }

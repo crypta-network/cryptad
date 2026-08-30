@@ -37,6 +37,44 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void requiresFormPassword_whenMutatingFederatedCatalogTrust_expectProtected() throws Exception {
+    for (String action : new String[] {"trust", "suspend", "revoke", "remove"}) {
+      assertTrue(
+          requiresFormPassword(
+              "POST", "/api/v1/operator/catalog-federation/independent/" + action));
+    }
+  }
+
+  @Test
+  void requiresFormPassword_whenResolvingFederatedCatalogConflict_expectProtected()
+      throws Exception {
+    String path = "/api/v1/operator/catalog-federation/conflicts/alpha/resolve";
+
+    assertTrue(requiresFormPassword("POST", path));
+    assertFalse(requiresFormPassword("GET", path));
+  }
+
+  @Test
+  void requiresFormPassword_whenMutatingPendingCatalogDiscovery_expectProtected() throws Exception {
+    String collection = "/api/v1/operator/catalog-federation/discovery";
+    String discard = collection + "/descriptor-independent-beta/discard";
+
+    assertTrue(requiresFormPassword("POST", collection));
+    assertFalse(requiresFormPassword("GET", collection));
+    assertTrue(requiresFormPassword("POST", discard));
+    assertFalse(requiresFormPassword("GET", discard));
+  }
+
+  @Test
+  void requiresFormPassword_whenPreparingSourceSwitchPreview_expectOnlyPostProtected()
+      throws Exception {
+    String path = "/api/v1/operator/apps/alpha/catalog-origin/switch-preview";
+
+    assertTrue(requiresFormPassword("POST", path));
+    assertFalse(requiresFormPassword("GET", path));
+  }
+
+  @Test
   void requiresFormPassword_whenPostingAppServiceGrantBundleActions_expectProtected()
       throws Exception {
     assertTrue(

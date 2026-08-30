@@ -60,6 +60,27 @@ When material consent is required, the host/operator mutation must include the c
 and snapshot digest from an approved preview. A changed candidate, catalog entry, review receipt,
 permission set, service dependency, or migration plan rejects the stale approval.
 
+Federated source switching is an additional exact-subject gate. If the installed origin catalog is
+unavailable, lifecycle staging remains blocked until the operator requests a form-password-guarded
+`POST` source-switch preview for one `targetCatalogId` and submits both that catalog ID and the returned
+`sourceSwitchConsent`. Cryptad reconstructs the selected candidate, verifies the retained plan and
+consent before any migration dry run, and rejects a different catalog, signer, publisher, bundle,
+review receipt, or policy digest.
+
+AppHost coordinates current and rollback bundles with current and rollback catalog-origin records
+through a host-private write-ahead transaction. A daemon restart restores the exact prior slots for
+an uncommitted install, update, rollback, or uninstall before an app can be described, launched, or
+updated; an atomic committed marker makes later cleanup non-authoritative. A generic staged update
+therefore clears current catalog provenance while retaining the prior origin only for the rollback
+bundle, without leaving catalog provenance attached to unrelated bytes.
+
+Rollback dispatch follows the retained rollback slot. A catalog-origin slot uses the authorized
+rollback operation so current catalog, publisher, and reviewer policy is checked inside the host
+lifecycle boundary. An untracked legacy slot uses the original `AppHost.rollback(String)` contract,
+so pre-federation AppHost implementations retain their existing rollback behavior. AppHost
+implementations that do not support coordinated catalog provenance reject catalog install and
+update before changing bundle bytes.
+
 Policy modes are explicit:
 
 | Mode | Behavior |

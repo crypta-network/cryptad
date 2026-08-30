@@ -1,6 +1,8 @@
 package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -14,15 +16,16 @@ import network.crypta.runtime.spi.ContentFetchPort;
  * update flows stop at {@link AppCatalogInstallPlan}; callers still delegate final installation to
  * AppHost so existing staged-directory semantics and verification policies remain intact.
  *
- * <p>All public methods are synchronized because they read and update a shared source store and
- * create scratch directories below the same root. The manager re-reads trusted keys for each
- * operation through {@link TrustedKeyProvider}, which lets deployments rotate catalog and app
- * signing keys independently without recreating the manager. It verifies stored sidecars before
- * listing or selecting entries, and it never weakens the signed-bundle verification performed by
- * {@code platform-appdist}.
+ * <p>Public reads are synchronized because they share a source store and scratch root. Catalog and
+ * trust mutations first acquire the federation write fence and then the manager monitor; retained
+ * install and rollback authorizations acquire the read side in the same order. The manager re-reads
+ * trusted keys for each operation through {@link TrustedKeyProvider}, which lets deployments rotate
+ * catalog and app signing keys independently without recreating the manager. It verifies stored
+ * sidecars before listing or selecting entries, and it never weakens the signed bundle verification
+ * performed by {@code platform-appdist}.
  */
 public final class AppCatalogManager {
-  private static final String APP_NOT_FOUND_MESSAGE = "Catalog app not found.";
+  private static final String FEDERATED_TRUST_STORE_PARAMETER = "federatedTrustStore";
 
   private final AppCatalogSourceStore sourceStore;
   private final TrustedKeyProvider trustedCatalogKeyProvider;
@@ -30,6 +33,39 @@ public final class AppCatalogManager {
   private final AppCatalogOperations operations;
   private final AppCatalogRefreshCoordinator refreshCoordinator;
   private final AppCatalogInstallPlanner installPlanner;
+  private final FileFederatedCatalogTrustStore federatedTrustStore;
+  private final FilePendingCatalogDiscoveryStore pendingDiscoveryStore;
+  private final TrustedKeyProvider discoveryIssuerKeyProvider;
+  private final AppCatalogAuthorizationCoordinator authorizationCoordinator;
+
+  /** Same-thread lease retaining exact catalog trust authorization through host mutation. */
+  @FunctionalInterface
+  public interface CatalogTrustAuthorization extends AutoCloseable {
+    /** Releases the retained catalog trust decision. */
+    @Override
+    void close();
+  }
+
+  /** Exact historical catalog entry plus trust authorization retained through rollback commit. */
+  public record HistoricalAppOriginAuthorization(
+      AppCatalogEntry entry, CatalogTrustAuthorization authorization) {
+    public HistoricalAppOriginAuthorization {
+      Objects.requireNonNull(entry, "entry");
+      Objects.requireNonNull(authorization, "authorization");
+    }
+  }
+
+  /** Current non-authoritative status of one retained pending discovery recommendation. */
+  public record PendingCatalogDiscoveryEvidence(
+      PendingCatalogDiscoveryRecommendation recommendation,
+      boolean descriptorActive,
+      List<CatalogEndorsementVerification> endorsements) {
+    /** Validates and defensively copies current local display evidence. */
+    public PendingCatalogDiscoveryEvidence {
+      Objects.requireNonNull(recommendation, "recommendation");
+      endorsements = List.copyOf(Objects.requireNonNull(endorsements, "endorsements"));
+    }
+  }
 
   /**
    * Creates a manager with default JDK fetch and download helpers.
@@ -186,6 +222,24 @@ public final class AppCatalogManager {
       TrustedKeyProvider trustedCatalogKeyProvider,
       AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
       AppCatalogManagerDependencies dependencies) {
+    this(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        dependencies,
+        null,
+        null,
+        null);
+  }
+
+  private AppCatalogManager(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      AppCatalogManagerDependencies dependencies,
+      FileFederatedCatalogTrustStore federatedTrustStore,
+      FilePendingCatalogDiscoveryStore pendingDiscoveryStore,
+      TrustedKeyProvider discoveryIssuerKeyProvider) {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
     this.trustedCatalogKeyProvider =
         Objects.requireNonNull(trustedCatalogKeyProvider, "trustedCatalogKeyProvider");
@@ -194,21 +248,325 @@ public final class AppCatalogManager {
     AppCatalogManagerDependencies checkedDependencies =
         Objects.requireNonNull(dependencies, "dependencies");
     this.reviewTransparencyLog = checkedDependencies.reviewTransparencyLog();
+    this.federatedTrustStore = federatedTrustStore;
+    this.pendingDiscoveryStore = pendingDiscoveryStore;
+    this.discoveryIssuerKeyProvider = discoveryIssuerKeyProvider;
+    this.authorizationCoordinator =
+        new AppCatalogAuthorizationCoordinator(
+            this.sourceStore, this.trustedCatalogKeyProvider, federatedTrustStore);
     this.operations =
         new AppCatalogOperations(
-            this.sourceStore, this.trustedCatalogKeyProvider, checkedDependencies.fetcher());
+            this.sourceStore,
+            this.trustedCatalogKeyProvider,
+            checkedDependencies.fetcher(),
+            federatedTrustStore);
     this.refreshCoordinator =
         new AppCatalogRefreshCoordinator(
             this.sourceStore,
             this.trustedCatalogKeyProvider,
             checkedDependencies.fetcher(),
-            this.operations);
+            this.operations,
+            federatedTrustStore);
     this.installPlanner =
         new AppCatalogInstallPlanner(
             this.sourceStore,
             checkedBundleVerificationPolicy,
             checkedDependencies.artifactDownloader(),
             checkedDependencies.bundleExtractor());
+  }
+
+  /** Creates a manager whose catalog operations require exact local catalog trust bindings. */
+  public static AppCatalogManager withFederatedTrustPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      FileFederatedCatalogTrustStore federatedTrustStore) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.defaults(sourceStore),
+        Objects.requireNonNull(federatedTrustStore, FEDERATED_TRUST_STORE_PARAMETER),
+        null,
+        null);
+  }
+
+  /**
+   * Creates a federation-scoped manager with local pending-discovery persistence.
+   *
+   * <p>Discovery issuer keys authenticate public recommendation documents only. Import remains
+   * pending and cannot add a catalog source or create a local trust binding.
+   *
+   * @param sourceStore file-backed configured catalog source store
+   * @param trustedCatalogKeyProvider provider for catalog-signing trust
+   * @param bundleVerificationPolicy catalog/app-scoped bundle authorization
+   * @param federatedTrustStore host-owned exact catalog trust bindings
+   * @param pendingDiscoveryStore host-owned pending public discovery evidence
+   * @param discoveryIssuerKeyProvider locally configured public discovery issuer keys
+   * @return manager with federated routine work and non-authoritative discovery import enabled
+   */
+  public static AppCatalogManager withFederatedTrustAndDiscoveryPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      FileFederatedCatalogTrustStore federatedTrustStore,
+      FilePendingCatalogDiscoveryStore pendingDiscoveryStore,
+      TrustedKeyProvider discoveryIssuerKeyProvider) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.defaults(sourceStore),
+        Objects.requireNonNull(federatedTrustStore, FEDERATED_TRUST_STORE_PARAMETER),
+        Objects.requireNonNull(pendingDiscoveryStore, "pendingDiscoveryStore"),
+        Objects.requireNonNull(discoveryIssuerKeyProvider, "discoveryIssuerKeyProvider"));
+  }
+
+  /** Creates a federation-scoped manager with Crypta content transport. */
+  public static AppCatalogManager withFederatedTrustPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      FileFederatedCatalogTrustStore federatedTrustStore,
+      ContentFetchPort contentFetchPort) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.withContentFetchPort(sourceStore, contentFetchPort),
+        Objects.requireNonNull(federatedTrustStore, FEDERATED_TRUST_STORE_PARAMETER),
+        null,
+        null);
+  }
+
+  /** Creates a federation/discovery manager with Crypta content transport. */
+  public static AppCatalogManager withFederatedTrustAndDiscoveryPolicy(
+      AppCatalogSourceStore sourceStore,
+      TrustedKeyProvider trustedCatalogKeyProvider,
+      AppCatalogBundleVerificationPolicy bundleVerificationPolicy,
+      FileFederatedCatalogTrustStore federatedTrustStore,
+      FilePendingCatalogDiscoveryStore pendingDiscoveryStore,
+      TrustedKeyProvider discoveryIssuerKeyProvider,
+      ContentFetchPort contentFetchPort) {
+    return new AppCatalogManager(
+        sourceStore,
+        trustedCatalogKeyProvider,
+        bundleVerificationPolicy,
+        AppCatalogManagerDependencies.withContentFetchPort(sourceStore, contentFetchPort),
+        Objects.requireNonNull(federatedTrustStore, FEDERATED_TRUST_STORE_PARAMETER),
+        Objects.requireNonNull(pendingDiscoveryStore, "pendingDiscoveryStore"),
+        Objects.requireNonNull(discoveryIssuerKeyProvider, "discoveryIssuerKeyProvider"));
+  }
+
+  /** Stores one explicit host-owned catalog trust binding. */
+  public void putFederatedTrustBinding(FederatedCatalogTrustBinding binding) throws IOException {
+    withCatalogMutationLock(
+        () -> {
+          requireFederatedTrustStore().put(binding);
+          return null;
+        });
+  }
+
+  /** Returns whether this manager has the host-owned federated catalog trust authority enabled. */
+  public boolean federationEnabled() {
+    return federatedTrustStore != null;
+  }
+
+  /** Returns whether bounded pending discovery import is configured for this manager. */
+  public boolean catalogDiscoveryEnabled() {
+    return pendingDiscoveryStore != null && discoveryIssuerKeyProvider != null;
+  }
+
+  /**
+   * Authenticates and retains one recommendation as pending local evidence only.
+   *
+   * @param descriptorBytes exact signed descriptor bytes
+   * @param endorsementBytes zero to eight exact direct-endorsement documents
+   * @param now local verification instant
+   * @return retained pending recommendation, which grants no trust and configures no source
+   * @throws IOException if key loading or confined persistence fails
+   */
+  public synchronized PendingCatalogDiscoveryRecommendation importCatalogDiscovery(
+      byte[] descriptorBytes, List<byte[]> endorsementBytes, Instant now) throws IOException {
+    requireFederatedTrustStore();
+    return requirePendingDiscoveryStore()
+        .importRecommendation(
+            descriptorBytes,
+            endorsementBytes,
+            requireDiscoveryIssuerKeyProvider().trustedKeys(),
+            Objects.requireNonNull(now, "now"));
+  }
+
+  /** Lists bounded pending discovery evidence without exposing raw signed documents. */
+  public synchronized List<PendingCatalogDiscoveryRecommendation> pendingCatalogDiscoveries()
+      throws IOException {
+    requireFederatedTrustStore();
+    return requirePendingDiscoveryStore().list();
+  }
+
+  /**
+   * Lists pending recommendations after re-evaluating current issuer lifecycle and freshness.
+   *
+   * <p>A revoked or expired issuer changes only the returned evidence status. It never creates or
+   * removes catalog trust, alters another recommendation, or follows an endorsement chain.
+   *
+   * @param now current local verification instant
+   * @return bounded pending records with current direct evidence status
+   * @throws IOException if local key material or the pending store cannot be read
+   */
+  public synchronized List<PendingCatalogDiscoveryEvidence> currentPendingCatalogDiscoveries(
+      Instant now) throws IOException {
+    requireFederatedTrustStore();
+    Instant checkedNow = Objects.requireNonNull(now, "now");
+    TrustedAppKeys keys = requireDiscoveryIssuerKeyProvider().trustedKeys();
+    List<PendingCatalogDiscoveryEvidence> evidence = new ArrayList<>();
+    for (PendingCatalogDiscoveryRecommendation pending : requirePendingDiscoveryStore().list()) {
+      evidence.add(
+          new PendingCatalogDiscoveryEvidence(
+              pending,
+              descriptorIsActive(pending, keys, checkedNow),
+              pending.currentEndorsementEvidence(keys, checkedNow)));
+    }
+    return List.copyOf(evidence);
+  }
+
+  private static boolean descriptorIsActive(
+      PendingCatalogDiscoveryRecommendation pending, TrustedAppKeys keys, Instant now) {
+    try {
+      pending.reverifyDescriptor(keys, now);
+      return true;
+    } catch (AppCatalogException _) {
+      return false;
+    }
+  }
+
+  /** Discards one pending recommendation without changing catalog trust or configured sources. */
+  public synchronized boolean discardPendingCatalogDiscovery(String descriptorId)
+      throws IOException {
+    requireFederatedTrustStore();
+    return requirePendingDiscoveryStore().discard(descriptorId);
+  }
+
+  /** Lists local catalog trust bindings without exposing key bytes or source URIs. */
+  public synchronized List<FederatedCatalogTrustBinding> federatedTrustBindings()
+      throws IOException {
+    return requireFederatedTrustStore().list();
+  }
+
+  /** Applies one explicit local lifecycle transition without changing signer or scope fields. */
+  public FederatedCatalogTrustBinding transitionFederatedTrustBinding(
+      String catalogId,
+      FederatedCatalogTrustBinding.Status status,
+      String reason,
+      String operatorId,
+      Instant changedAt)
+      throws IOException {
+    return withCatalogMutationLock(
+        () -> {
+          FileFederatedCatalogTrustStore store = requireFederatedTrustStore();
+          String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
+          FederatedCatalogTrustBinding existing =
+              store
+                  .findByCatalogId(normalizedCatalogId)
+                  .orElseThrow(
+                      () ->
+                          new AppCatalogException(
+                              "catalog_trust_binding_not_found",
+                              "No local trust binding exists for catalog " + normalizedCatalogId));
+          FederatedCatalogTrustBinding updated =
+              FederatedCatalogTrustBinding.create(
+                  existing.bindingId(),
+                  existing.catalogId(),
+                  existing.signerFingerprints(),
+                  Objects.requireNonNull(status, "status"),
+                  existing.allowedChannels(),
+                  existing.localPriority(),
+                  existing.discoveryProvenanceDigest().orElse(null),
+                  existing.reviewerPolicyDigest().orElse(null),
+                  existing.publisherPolicyDigest().orElse(null),
+                  existing.createdAt(),
+                  Objects.requireNonNull(changedAt, "changedAt"),
+                  reason,
+                  operatorId);
+          store.put(updated);
+          return updated;
+        });
+  }
+
+  /** Returns exact public authority identities for host-owned installation provenance. */
+  public synchronized AppCatalogOriginContext originContext(String catalogId) throws IOException {
+    return authorizationCoordinator.originContext(normalizeCatalogIdForLookup(catalogId));
+  }
+
+  private AppCatalogOriginContext originContext(
+      StoredCatalogSource stored, TrustedAppKeys trustedKeys) throws IOException {
+    return authorizationCoordinator.originContext(stored, trustedKeys);
+  }
+
+  /**
+   * Reauthorizes one exact retained app origin under current historical catalog policy.
+   *
+   * <p>The lookup examines the current and retained signed revisions for the stored source, but it
+   * accepts only the revision content, catalog signer, stable local binding identity, app version,
+   * and bundle digest captured in the supplied origin. Current historical verification permits an
+   * active or suspended binding and rejects pending, revoked, removed, unknown, or role-mismatched
+   * authority. Publisher and reviewer policy remain caller-owned decisions because their key and
+   * receipt registries are composed above the catalog manager.
+   *
+   * @param captured exact catalog authority retained with installed provenance
+   * @param appId exact app namespace to restore
+   * @param appVersion exact historical version to restore
+   * @param bundleSha256 exact catalog bundle digest to restore
+   * @return authenticated catalog entry matching every retained subject field
+   * @throws IOException if the source or retained revision cannot be read safely
+   */
+  public synchronized AppCatalogEntry authorizeHistoricalAppOrigin(
+      AppCatalogOriginContext captured, String appId, String appVersion, String bundleSha256)
+      throws IOException {
+    return authorizationCoordinator.authorizeHistoricalAppOrigin(
+        captured, appId, appVersion, bundleSha256);
+  }
+
+  /**
+   * Reauthorizes an exact historical app origin and retains catalog trust through host rollback.
+   *
+   * <p>The returned authorization must be closed by the same thread. Local binding and catalog
+   * source mutations wait until the caller releases it after the AppHost rollback transaction has
+   * committed or compensated.
+   *
+   * @param captured exact catalog authority retained with installed provenance
+   * @param appId exact app namespace to restore
+   * @param appVersion exact historical version to restore
+   * @param bundleSha256 exact catalog bundle digest to restore
+   * @return authenticated historical entry and retained catalog trust authorization
+   * @throws IOException if current historical catalog policy does not authorize the origin
+   */
+  public HistoricalAppOriginAuthorization authorizeHistoricalAppOriginForRollback(
+      AppCatalogOriginContext captured, String appId, String appVersion, String bundleSha256)
+      throws IOException {
+    return authorizationCoordinator.authorizeHistoricalAppOriginForRollback(
+        this, captured, appId, appVersion, bundleSha256);
+  }
+
+  private FileFederatedCatalogTrustStore requireFederatedTrustStore() {
+    if (federatedTrustStore == null) {
+      throw new IllegalStateException("federated catalog trust is not configured");
+    }
+    return federatedTrustStore;
+  }
+
+  private FilePendingCatalogDiscoveryStore requirePendingDiscoveryStore() {
+    if (pendingDiscoveryStore == null) {
+      throw new IllegalStateException("pending catalog discovery is not configured");
+    }
+    return pendingDiscoveryStore;
+  }
+
+  private TrustedKeyProvider requireDiscoveryIssuerKeyProvider() {
+    if (discoveryIssuerKeyProvider == null) {
+      throw new IllegalStateException("catalog discovery issuer trust is not configured");
+    }
+    return discoveryIssuerKeyProvider;
   }
 
   /**
@@ -223,19 +581,59 @@ public final class AppCatalogManager {
   /**
    * Lists all configured catalogs after re-verifying stored sidecars.
    *
-   * <p>The returned snapshots are built from authenticated catalog bytes stored on disk. If a
-   * stored signature becomes invalid under the current trusted-key policy, the listing fails rather
-   * than returning stale metadata from a previous verification.
+   * <p>The returned snapshots are built from authenticated catalog bytes stored on disk. Legacy
+   * mode preserves the existing all-or-nothing behavior when stored state cannot be authenticated.
+   * Federation mode verifies each configured source independently and omits sources that are not
+   * currently authorized, so a suspended, revoked, removed, corrupt, or stale catalog cannot
+   * disable unrelated catalogs.
    *
    * @return source snapshots sorted by catalog id
    * @throws IOException if stored catalog state cannot be read
    */
   public synchronized List<AppCatalogSourceSnapshot> listCatalogs() throws IOException {
     TrustedAppKeys trustedKeys = trustedCatalogKeyProvider.trustedKeys();
+    if (federatedTrustStore != null) {
+      return listFederatedRoutineCatalogs(trustedKeys);
+    }
     return sourceStore.list().stream()
-        .map(stored -> snapshot(stored, trustedKeys))
+        .map(stored -> operations.snapshot(stored, trustedKeys))
         .sorted(java.util.Comparator.comparing(AppCatalogSourceSnapshot::catalogId))
         .toList();
+  }
+
+  /**
+   * Lists catalogs authorized for new refresh, install, and update work.
+   *
+   * <p>Legacy mode retains the existing catalog listing. Federation mode independently checks each
+   * configured source with routine (active-only) trust semantics, so one suspended, revoked,
+   * removed, corrupt, or stale binding cannot authorize work or disable unrelated catalogs.
+   *
+   * @return independently verified active catalog snapshots sorted by catalog id
+   * @throws IOException if the catalog store root itself cannot be enumerated
+   */
+  public synchronized List<AppCatalogSourceSnapshot> listRoutineCatalogs() throws IOException {
+    return listCatalogs();
+  }
+
+  /**
+   * Lists the normalized identities of all persisted catalog sources without authorizing them for
+   * routine work.
+   *
+   * <p>This inventory intentionally includes sources whose local trust binding is stale, suspended,
+   * revoked, or otherwise unavailable. Operator recovery surfaces use it to distinguish an unused
+   * trust binding from a configured source that must be removed or re-admitted. Callers must not
+   * interpret membership as catalog authenticity or authorization.
+   *
+   * @return configured catalog IDs sorted deterministically
+   * @throws IOException if the source-store root cannot be enumerated safely
+   */
+  public synchronized List<String> configuredCatalogIds() throws IOException {
+    return sourceStore.configuredCatalogIds();
+  }
+
+  private List<AppCatalogSourceSnapshot> listFederatedRoutineCatalogs(TrustedAppKeys trustedKeys)
+      throws IOException {
+    return operations.listFederatedRoutineCatalogs(trustedKeys);
   }
 
   /**
@@ -250,8 +648,8 @@ public final class AppCatalogManager {
    * @throws IOException if the requested catalog cannot be read or verified
    */
   public synchronized AppCatalogSourceSnapshot catalog(String catalogId) throws IOException {
-    StoredCatalogSource stored = sourceStore.read(normalizeCatalogIdForLookup(catalogId));
-    return snapshot(stored, trustedCatalogKeyProvider.trustedKeys());
+    return operations.catalogSnapshot(
+        normalizeCatalogIdForLookup(catalogId), trustedCatalogKeyProvider.trustedKeys());
   }
 
   /**
@@ -265,7 +663,7 @@ public final class AppCatalogManager {
    * @return stored source snapshot for the new catalog
    * @throws IOException if fetch, signature verification, or persistence fails
    */
-  public synchronized AppCatalogSourceSnapshot addSource(String rawSource) throws IOException {
+  public AppCatalogSourceSnapshot addSource(String rawSource) throws IOException {
     return addSource(rawSource, null);
   }
 
@@ -282,9 +680,9 @@ public final class AppCatalogManager {
    * @return stored source snapshot for the new catalog
    * @throws IOException if fetching, signature verification, id validation, or persistence fails
    */
-  public synchronized AppCatalogSourceSnapshot addSource(String rawSource, String expectedCatalogId)
+  public AppCatalogSourceSnapshot addSource(String rawSource, String expectedCatalogId)
       throws IOException {
-    return operations.addSource(rawSource, expectedCatalogId);
+    return withCatalogMutationLock(() -> operations.addSource(rawSource, expectedCatalogId));
   }
 
   /**
@@ -296,8 +694,12 @@ public final class AppCatalogManager {
    * @param catalogId catalog id to remove
    * @throws IOException if the source is missing or cannot be deleted
    */
-  public synchronized void remove(String catalogId) throws IOException {
-    sourceStore.remove(normalizeCatalogIdForLookup(catalogId));
+  public void remove(String catalogId) throws IOException {
+    withCatalogMutationLock(
+        () -> {
+          sourceStore.remove(normalizeCatalogIdForLookup(catalogId));
+          return null;
+        });
   }
 
   /**
@@ -311,8 +713,8 @@ public final class AppCatalogManager {
    * @return updated source snapshot after successful verification
    * @throws IOException if fetch, verification, or persistence fails
    */
-  public synchronized AppCatalogSourceSnapshot refresh(String catalogId) throws IOException {
-    return refresh(catalogId, false);
+  public AppCatalogSourceSnapshot refresh(String catalogId) throws IOException {
+    return withCatalogMutationLock(() -> refresh(catalogId, false));
   }
 
   /**
@@ -325,9 +727,8 @@ public final class AppCatalogManager {
    * @return updated source snapshot after successful verification
    * @throws IOException if all endpoints fail or only stale candidates are available
    */
-  public synchronized AppCatalogSourceSnapshot emergencyRefresh(String catalogId)
-      throws IOException {
-    return refresh(catalogId, false);
+  public AppCatalogSourceSnapshot emergencyRefresh(String catalogId) throws IOException {
+    return withCatalogMutationLock(() -> refresh(catalogId, false));
   }
 
   /**
@@ -337,9 +738,8 @@ public final class AppCatalogManager {
    * @return updated source snapshot
    * @throws IOException if the primary source fails verification or persistence
    */
-  public synchronized AppCatalogSourceSnapshot refreshPrimaryOnly(String catalogId)
-      throws IOException {
-    return refresh(catalogId, true);
+  public AppCatalogSourceSnapshot refreshPrimaryOnly(String catalogId) throws IOException {
+    return withCatalogMutationLock(() -> refresh(catalogId, true));
   }
 
   private AppCatalogSourceSnapshot refresh(String catalogId, boolean primaryOnly)
@@ -359,22 +759,28 @@ public final class AppCatalogManager {
   }
 
   /** Adds one fallback mirror endpoint. */
-  public synchronized AppCatalogMirror addMirror(
+  public AppCatalogMirror addMirror(
       String catalogId, String rawMirrorId, String rawSource, int priority, boolean enabled)
       throws IOException {
-    return operations.addMirror(catalogId, rawMirrorId, rawSource, priority, enabled);
+    return withCatalogMutationLock(
+        () -> operations.addMirror(catalogId, rawMirrorId, rawSource, priority, enabled));
   }
 
   /** Updates local mirror metadata. */
-  public synchronized AppCatalogMirror updateMirror(
+  public AppCatalogMirror updateMirror(
       String catalogId, String mirrorId, String rawSource, Integer priority, Boolean enabled)
       throws IOException {
-    return operations.updateMirror(catalogId, mirrorId, rawSource, priority, enabled);
+    return withCatalogMutationLock(
+        () -> operations.updateMirror(catalogId, mirrorId, rawSource, priority, enabled));
   }
 
   /** Removes one mirror endpoint. */
-  public synchronized void removeMirror(String catalogId, String mirrorId) throws IOException {
-    operations.removeMirror(catalogId, mirrorId);
+  public void removeMirror(String catalogId, String mirrorId) throws IOException {
+    withCatalogMutationLock(
+        () -> {
+          operations.removeMirror(catalogId, mirrorId);
+          return null;
+        });
   }
 
   /** Lists retained rollback candidates for one catalog. */
@@ -384,9 +790,9 @@ public final class AppCatalogManager {
   }
 
   /** Reactivates a retained verified catalog revision. */
-  public synchronized AppCatalogSourceSnapshot rollback(
-      String catalogId, String revisionDigest, String reason) throws IOException {
-    return operations.rollback(catalogId, revisionDigest, reason);
+  public AppCatalogSourceSnapshot rollback(String catalogId, String revisionDigest, String reason)
+      throws IOException {
+    return withCatalogMutationLock(() -> operations.rollback(catalogId, revisionDigest, reason));
   }
 
   /** Returns signing-key rotation status for one catalog. */
@@ -406,7 +812,7 @@ public final class AppCatalogManager {
    * @throws IOException if the catalog is missing or fails verification
    */
   public synchronized List<AppCatalogEntry> listApps(String catalogId) throws IOException {
-    return readVerifiedCatalog(catalogId).entries();
+    return operations.listApps(normalizeCatalogIdForLookup(catalogId));
   }
 
   /**
@@ -423,7 +829,10 @@ public final class AppCatalogManager {
    * @throws IOException if catalog state cannot be read
    */
   public synchronized AppCatalogSecurityPolicy securityPolicy(String catalogId) throws IOException {
-    return readVerifiedCatalog(catalogId).securityPolicy();
+    return operations
+        .readVerifiedCatalog(
+            normalizeCatalogIdForLookup(catalogId), trustedCatalogKeyProvider.trustedKeys())
+        .securityPolicy();
   }
 
   /**
@@ -439,10 +848,7 @@ public final class AppCatalogManager {
    * @throws IOException if catalog state cannot be read
    */
   public synchronized AppCatalogEntry getApp(String catalogId, String appId) throws IOException {
-    return readVerifiedCatalog(catalogId)
-        .entry(appId)
-        .orElseThrow(
-            () -> new AppCatalogException(AppCatalogSidecars.APP_NOT_FOUND, APP_NOT_FOUND_MESSAGE));
+    return operations.getApp(normalizeCatalogIdForLookup(catalogId), appId);
   }
 
   /**
@@ -458,15 +864,7 @@ public final class AppCatalogManager {
    */
   public synchronized AppCatalogSecurityDecision securityDecision(String catalogId, String appId)
       throws IOException {
-    AppCatalog catalog = readVerifiedCatalog(catalogId);
-    AppCatalogEntry entry =
-        catalog
-            .entry(appId)
-            .orElseThrow(
-                () ->
-                    new AppCatalogException(
-                        AppCatalogSidecars.APP_NOT_FOUND, APP_NOT_FOUND_MESSAGE));
-    return catalog.securityPolicy().decisionFor(entry);
+    return operations.securityDecision(normalizeCatalogIdForLookup(catalogId), appId);
   }
 
   /**
@@ -486,13 +884,22 @@ public final class AppCatalogManager {
     String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
     TrustedAppKeys trustedKeys = trustedCatalogKeyProvider.trustedKeys();
     List<AppCatalogSecurityDecision> decisions =
-        sourceStore.list().stream()
-            .map(stored -> verifyStoredCatalog(stored, trustedKeys))
-            .map(
-                catalog ->
-                    catalog.securityPolicy().decisionForInstalledVersion(normalizedAppId, version))
-            .toList();
+        federatedTrustStore == null
+            ? sourceStore.list().stream()
+                .map(stored -> operations.verifyStoredCatalog(stored, trustedKeys))
+                .map(
+                    catalog ->
+                        catalog
+                            .securityPolicy()
+                            .decisionForInstalledVersion(normalizedAppId, version))
+                .toList()
+            : installedFederatedSecurityDecisions(normalizedAppId, version, trustedKeys);
     return AppCatalogSecurityDecision.combine(decisions);
+  }
+
+  private List<AppCatalogSecurityDecision> installedFederatedSecurityDecisions(
+      String appId, String version, TrustedAppKeys trustedKeys) throws IOException {
+    return operations.installedFederatedSecurityDecisions(appId, version, trustedKeys);
   }
 
   /**
@@ -514,14 +921,11 @@ public final class AppCatalogManager {
   public synchronized AppCatalogInstallPlan prepareInstallPlan(String catalogId, String appId)
       throws IOException {
     String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
-    AppCatalogEntry entry =
-        readRoutineVerifiedCatalog(normalizedCatalogId)
-            .entry(appId)
-            .orElseThrow(
-                () ->
-                    new AppCatalogException(
-                        AppCatalogSidecars.APP_NOT_FOUND, APP_NOT_FOUND_MESSAGE));
-    return installPlanner.prepareInstallPlan(normalizedCatalogId, entry);
+    StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
+    TrustedAppKeys trustedKeys = trustedCatalogKeyProvider.trustedKeys();
+    AppCatalogEntry entry = operations.getRoutineApp(stored, appId, trustedKeys);
+    return installPlanner.prepareInstallPlan(
+        normalizedCatalogId, entry, originContext(stored, trustedKeys));
   }
 
   /**
@@ -538,7 +942,50 @@ public final class AppCatalogManager {
    * @throws IOException if staged bundle verification or filesystem access fails
    */
   public synchronized void verifyInstallPlan(AppCatalogInstallPlan plan) throws IOException {
-    installPlanner.verifyInstallPlan(plan);
+    AppCatalogInstallPlan checkedPlan = Objects.requireNonNull(plan, "plan");
+    AppCatalogOriginContext captured =
+        checkedPlan
+            .originContext()
+            .orElseThrow(
+                () ->
+                    new AppCatalogException(
+                        AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+                        "catalog install plan has no authenticated origin context"));
+    AppCatalogOriginContext current = originContext(checkedPlan.catalogId());
+    if (!captured.equals(current)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+          "catalog authority or revision changed after plan creation");
+    }
+    installPlanner.verifyInstallPlan(checkedPlan);
+  }
+
+  /**
+   * Re-verifies an installation plan and retains its exact catalog trust decision through host
+   * commit.
+   *
+   * <p>The returned lease must be closed by the same thread. Local catalog trust and source
+   * mutations wait until it is closed, preventing suspension, revocation, removal, refresh,
+   * rollback, or trust-root replacement from interleaving between the final plan check and the
+   * coordinated AppHost mutation.
+   *
+   * @param plan retained installation plan selected for mutation
+   * @return same-thread authorization lease
+   * @throws IOException if the retained plan or current catalog trust is no longer valid
+   */
+  public CatalogTrustAuthorization authorizeInstallPlanForMutation(AppCatalogInstallPlan plan)
+      throws IOException {
+    return authorizationCoordinator.retainAuthorization(
+        this,
+        () -> {
+          verifyInstallPlan(plan);
+          return plan;
+        });
+  }
+
+  private <T> T withCatalogMutationLock(AppCatalogAuthorizationCoordinator.IoOperation<T> mutation)
+      throws IOException {
+    return authorizationCoordinator.withMutationLock(this, mutation);
   }
 
   /**
@@ -555,37 +1002,6 @@ public final class AppCatalogManager {
    */
   public synchronized boolean hasTrustedCatalogKey(String keyId) throws IOException {
     return operations.hasTrustedCatalogKey(keyId);
-  }
-
-  private AppCatalog readVerifiedCatalog(String catalogId) throws IOException {
-    StoredCatalogSource stored = sourceStore.read(normalizeCatalogIdForLookup(catalogId));
-    return verifyStoredCatalog(stored, trustedCatalogKeyProvider.trustedKeys());
-  }
-
-  private AppCatalog readRoutineVerifiedCatalog(String catalogId) throws IOException {
-    StoredCatalogSource stored = sourceStore.read(normalizeCatalogIdForLookup(catalogId));
-    return AppCatalogVerifier.verify(
-        stored.fetchedCatalog().catalogBytes(),
-        stored.fetchedCatalog().signatureBytes(),
-        trustedCatalogKeyProvider.trustedKeys());
-  }
-
-  static AppCatalogSourceSnapshot snapshot(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
-    AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
-    return AppCatalogSourceSnapshot.of(
-        catalog,
-        stored.source(),
-        stored.addedAt(),
-        stored.refreshedAt(),
-        stored.refreshMetadata(),
-        stored.fetchedCatalog());
-  }
-
-  static AppCatalog verifyStoredCatalog(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
-    return AppCatalogVerifier.verifyHistorical(
-        stored.fetchedCatalog().catalogBytes(),
-        stored.fetchedCatalog().signatureBytes(),
-        trustedKeys);
   }
 
   static String normalizeCatalogIdForLookup(String catalogId) {

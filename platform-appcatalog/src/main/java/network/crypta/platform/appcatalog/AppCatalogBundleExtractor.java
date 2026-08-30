@@ -72,6 +72,7 @@ public final class AppCatalogBundleExtractor {
       UNIX_OWNER_EXECUTE | UNIX_GROUP_EXECUTE | UNIX_OTHER_EXECUTE;
   private static final String PARENT_DIRECTORY_CONFLICT_MESSAGE =
       "zip artifact parent directory conflicts with a file";
+  private static final String STAGED_BUNDLE_DIRECTORY_PARAMETER = "stagedBundleDirectory";
 
   /**
    * Creates a stateless bundle extractor.
@@ -167,6 +168,38 @@ public final class AppCatalogBundleExtractor {
       Path scratchDirectory,
       AppCatalogBundleVerificationPolicy verificationPolicy)
       throws IOException {
+    return extractBundle(entry, null, artifactZip, scratchDirectory, verificationPolicy)
+        .stagedBundleDirectory();
+  }
+
+  /**
+   * Extracts and contextually authorizes one catalog bundle for an installation plan.
+   *
+   * @param context exact authenticated catalog and app entry identity
+   * @param artifactZip downloaded and digest-verified bundle ZIP
+   * @param scratchDirectory host-owned extraction root
+   * @param verificationPolicy publisher authorization applied to the extracted bundle
+   * @return staged directory and exact publisher-authorization result
+   * @throws IOException if extraction, verification, or manifest binding fails
+   */
+  VerifiedBundle extract(
+      AppCatalogBundleVerificationContext context,
+      Path artifactZip,
+      Path scratchDirectory,
+      AppCatalogBundleVerificationPolicy verificationPolicy)
+      throws IOException {
+    AppCatalogBundleVerificationContext checkedContext = Objects.requireNonNull(context, "context");
+    return extractBundle(
+        checkedContext.entry(), checkedContext, artifactZip, scratchDirectory, verificationPolicy);
+  }
+
+  private static VerifiedBundle extractBundle(
+      AppCatalogEntry entry,
+      AppCatalogBundleVerificationContext context,
+      Path artifactZip,
+      Path scratchDirectory,
+      AppCatalogBundleVerificationPolicy verificationPolicy)
+      throws IOException {
     AppCatalogEntry checkedEntry = Objects.requireNonNull(entry, "entry");
     Path zipPath = Objects.requireNonNull(artifactZip, "artifactZip").toAbsolutePath().normalize();
     Path scratchRoot = Objects.requireNonNull(scratchDirectory, "scratchDirectory");
@@ -174,8 +207,9 @@ public final class AppCatalogBundleExtractor {
     Path stagedRoot = Files.createTempDirectory(scratchRoot, "catalog-bundle-");
     try {
       extractZip(zipPath, stagedRoot);
-      verifyExtractedBundle(checkedEntry, stagedRoot, verificationPolicy);
-      return stagedRoot;
+      AppCatalogBundleVerificationResult verificationResult =
+          verifyExtractedBundle(checkedEntry, context, stagedRoot, verificationPolicy);
+      return new VerifiedBundle(stagedRoot, verificationResult);
     } catch (IOException | RuntimeException exception) {
       deleteRecursively(stagedRoot);
       throw exception;
@@ -183,28 +217,26 @@ public final class AppCatalogBundleExtractor {
   }
 
   /**
-   * Re-verifies an already-extracted staged bundle with an explicit publisher policy.
+   * Re-verifies a retained staged bundle in its original authenticated context.
    *
-   * <p>Catalog install plans retain a scratch directory between staging and apply. Callers must use
-   * this method to repeat publisher authorization and manifest/catalog binding checks before
-   * handing the retained directory to AppHost. This detects scratch tampering before any staged
-   * executable is launched.
-   *
-   * @param entry authenticated catalog entry and expected manifest identity
+   * @param context exact catalog and app entry identity retained by the plan
    * @param stagedBundleDirectory retained private staging directory
    * @param verificationPolicy publisher authorization applied before plan use
+   * @return current exact publisher-authorization result
    * @throws IOException if the staged bundle is no longer exact or authorized
    */
-  public void verifyStagedBundle(
-      AppCatalogEntry entry,
+  AppCatalogBundleVerificationResult verifyStagedBundle(
+      AppCatalogBundleVerificationContext context,
       Path stagedBundleDirectory,
       AppCatalogBundleVerificationPolicy verificationPolicy)
       throws IOException {
+    AppCatalogBundleVerificationContext checkedContext = Objects.requireNonNull(context, "context");
     Path stagedRoot =
-        Objects.requireNonNull(stagedBundleDirectory, "stagedBundleDirectory")
+        Objects.requireNonNull(stagedBundleDirectory, STAGED_BUNDLE_DIRECTORY_PARAMETER)
             .toAbsolutePath()
             .normalize();
-    verifyExtractedBundle(entry, stagedRoot, verificationPolicy);
+    return verifyExtractedBundle(
+        checkedContext.entry(), checkedContext, stagedRoot, verificationPolicy);
   }
 
   private static Path requireReadableArtifactZip(Path artifactZip) {
@@ -613,15 +645,28 @@ public final class AppCatalogBundleExtractor {
         || "cryptad-app.catalog.signature".equals(normalizedName);
   }
 
-  private static void verifyExtractedBundle(
-      AppCatalogEntry entry, Path stagedRoot, AppCatalogBundleVerificationPolicy verificationPolicy)
+  private static AppCatalogBundleVerificationResult verifyExtractedBundle(
+      AppCatalogEntry entry,
+      AppCatalogBundleVerificationContext context,
+      Path stagedRoot,
+      AppCatalogBundleVerificationPolicy verificationPolicy)
       throws IOException {
     Path manifestFile = stagedRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME);
     if (!Files.isRegularFile(manifestFile, LinkOption.NOFOLLOW_LINKS)) {
       throw invalidBundle("zip artifact must contain cryptad-app.properties at the root");
     }
     try {
-      Objects.requireNonNull(verificationPolicy, "verificationPolicy").verify(stagedRoot);
+      AppCatalogBundleVerificationPolicy checkedPolicy =
+          Objects.requireNonNull(verificationPolicy, "verificationPolicy");
+      AppCatalogBundleVerificationResult verificationResult;
+      if (context == null) {
+        checkedPolicy.verify(stagedRoot);
+        verificationResult = AppCatalogBundleVerificationResult.unrecorded();
+      } else {
+        verificationResult =
+            Objects.requireNonNull(
+                checkedPolicy.verify(context, stagedRoot), "bundle verification result");
+      }
       AppBundleManifest manifest = AppBundleManifestParser.parse(manifestFile);
       if (!entry.appId().equals(manifest.appId())) {
         throw invalidBundle("catalog app id does not match extracted bundle manifest");
@@ -629,9 +674,19 @@ public final class AppCatalogBundleExtractor {
       if (!entry.version().equals(manifest.appVersion())) {
         throw invalidBundle("catalog app version does not match extracted bundle manifest");
       }
+      return verificationResult;
     } catch (AppDistributionException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_APP_BUNDLE, exception.getMessage(), exception);
+    }
+  }
+
+  /** Staged bundle plus the exact authorization result produced during extraction. */
+  record VerifiedBundle(
+      Path stagedBundleDirectory, AppCatalogBundleVerificationResult verificationResult) {
+    VerifiedBundle {
+      Objects.requireNonNull(stagedBundleDirectory, STAGED_BUNDLE_DIRECTORY_PARAMETER);
+      Objects.requireNonNull(verificationResult, "verificationResult");
     }
   }
 

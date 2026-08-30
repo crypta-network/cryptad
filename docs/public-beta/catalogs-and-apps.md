@@ -96,3 +96,13 @@ Use rollback when a verified revision is operationally bad, not when signature v
 For signature failures, stop and use troubleshooting or support guidance. Link the incident to
 [known-issues.md](known-issues.md) when maintainers assign a `knownIssueId`, and cite only digest
 and summary fields from [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).
+
+## Independent catalog discovery
+
+An independent catalog is not a global app-store authority. Its descriptor or an endorsement may
+help an operator learn that it exists, but only a separate local binding activates trust. Cryptad
+does not upload the configured catalog list, installed apps, trust anchors, endorsement choices, or
+conflict resolutions during discovery. Removing or revoking one local binding leaves unrelated
+catalogs and already installed apps intact; it blocks new operations from that origin until the
+operator makes another exact local decision. See the
+[federated catalog runbook](../stable-1.0-federated-catalog-discovery-and-trust.md).

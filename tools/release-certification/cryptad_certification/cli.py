@@ -76,6 +76,7 @@ SELF_TEST_SUITES = (
     "stable-protected-release",
     "stable-catalog-authority",
     "stable-third-party-pilot",
+    "stable-federated-catalog",
     "migration",
 )
 
@@ -203,6 +204,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Confined authenticated handoff and protected receipt directory.",
     )
     third_party_pilot.add_argument("--self-test", action="store_true")
+
+    federated_catalog = subparsers.add_parser("stable-federated-catalog")
+    federated_catalog.add_argument(
+        "--mode",
+        choices=(
+            "preflight",
+            "verify-discovery",
+            "verify-local-trust",
+            "verify-conflicts",
+            "verify-runtime",
+            "closeout",
+        ),
+    )
+    federated_catalog.add_argument(
+        "--execution-contract",
+        "--contract",
+        dest="execution_contract",
+        type=Path,
+        help="Closed, non-secret federated catalog execution contract.",
+    )
+    federated_catalog.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    federated_catalog.add_argument("--out-dir", type=Path)
+    federated_catalog.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help="Confined discovery, runtime, and protected authority evidence directory.",
+    )
+    federated_catalog.add_argument("--self-test", action="store_true")
 
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
@@ -1342,6 +1371,20 @@ def _run_command(args: argparse.Namespace) -> int:
                 "stable-third-party-pilot requires --mode and --execution-contract"
             )
         return stable_1_0_third_party_pilot.run(
+            args.workspace_root.resolve(),
+            args.execution_contract,
+            args.mode,
+            args.out_dir,
+            args.evidence_dir,
+        )
+    if command == "stable-federated-catalog":
+        from .engines import stable_1_0_federated_catalog
+
+        if args.mode is None or args.execution_contract is None:
+            raise ValueError(
+                "stable-federated-catalog requires --mode and --execution-contract"
+            )
+        return stable_1_0_federated_catalog.run(
             args.workspace_root.resolve(),
             args.execution_contract,
             args.mode,

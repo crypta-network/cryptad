@@ -61,6 +61,16 @@ public record AppHostLayout(Path dataDir, Path cacheDir, Path runDir) {
     return dataDir.resolve("apps").resolve("rollback");
   }
 
+  /** Returns the host-private root for catalog installation origin records. */
+  public Path appOriginProvenanceDir() {
+    return dataDir.resolve("apps").resolve("catalog-origins");
+  }
+
+  /** Returns the host-private write-ahead transaction root for bundle/provenance mutations. */
+  public Path appMutationTransactionsDir() {
+    return dataDir.resolve("apps").resolve("mutation-transactions");
+  }
+
   /**
    * Returns the root directory that holds persistent app data.
    *

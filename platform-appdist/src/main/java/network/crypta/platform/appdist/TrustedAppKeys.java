@@ -3,15 +3,12 @@ package network.crypta.platform.appdist;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -409,11 +406,32 @@ public final class TrustedAppKeys {
     return new TrustedAppKeys(combined);
   }
 
+  /**
+   * Returns a registry containing the complete lifecycle policies from both local registries.
+   *
+   * <p>This is intended for combining independently authenticated publisher registries assigned to
+   * the same bundle-signing role. Duplicate key IDs and duplicate public-key fingerprints remain
+   * configuration errors; callers must never use this method to combine distinct signing roles.
+   *
+   * @param other additional registry for the same signing role
+   * @return immutable combined registry preserving lifecycle and validity policy
+   */
+  public TrustedAppKeys plus(TrustedAppKeys other) {
+    Objects.requireNonNull(other, "other");
+    Map<String, TrustedAppKeyPolicy> combined = new LinkedHashMap<>(policiesById);
+    for (Map.Entry<String, TrustedAppKeyPolicy> entry : other.policiesById.entrySet()) {
+      if (combined.putIfAbsent(entry.getKey(), entry.getValue()) != null) {
+        throw new IllegalArgumentException("duplicate trusted key id: " + entry.getKey());
+      }
+    }
+    return new TrustedAppKeys(combined);
+  }
+
   private static void requireUniquePublicKeys(Collection<TrustedAppKeyPolicy> policies) {
     Map<String, String> keyIdByFingerprint = new LinkedHashMap<>();
     for (TrustedAppKeyPolicy policy : policies) {
       String keyId = policy.key().keyId();
-      String fingerprint = publicKeyFingerprint(policy.key());
+      String fingerprint = PublicKeyFingerprint.sha256(policy.key().publicKey());
       String previousKeyId = keyIdByFingerprint.putIfAbsent(fingerprint, keyId);
       if (previousKeyId != null && !previousKeyId.equals(keyId)) {
         throw new IllegalArgumentException(
@@ -446,25 +464,13 @@ public final class TrustedAppKeys {
     }
     Set<String> fingerprints = new HashSet<>();
     for (TrustedAppKeyPolicy policy : policiesById.values()) {
-      fingerprints.add(publicKeyFingerprint(policy.key()));
+      fingerprints.add(PublicKeyFingerprint.sha256(policy.key().publicKey()));
     }
     for (TrustedAppKeyPolicy policy : other.policiesById.values()) {
-      if (fingerprints.contains(publicKeyFingerprint(policy.key()))) {
+      if (fingerprints.contains(PublicKeyFingerprint.sha256(policy.key().publicKey()))) {
         throw new IllegalArgumentException(
             "trusted key registries overlap on public-key fingerprint");
       }
-    }
-  }
-
-  private static String publicKeyFingerprint(TrustedAppKey key) {
-    byte[] encoded = key.publicKey().getEncoded();
-    if (encoded == null || encoded.length == 0) {
-      throw new IllegalArgumentException("trusted public key has no canonical encoding");
-    }
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(encoded));
-    } catch (NoSuchAlgorithmException exception) {
-      throw new IllegalStateException("SHA-256 is unavailable", exception);
     }
   }
 

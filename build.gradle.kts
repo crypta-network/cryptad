@@ -92,6 +92,8 @@ val internalLeafJacocoExecFiles =
     leaf.layout.buildDirectory.file("jacoco/test.exec")
   }
 
+configurations.named("testCompileOnly") { extendsFrom(configurations.compileOnly.get()) }
+
 dependencies {
   // implementation
   implementation(project(":foundation-support"))
@@ -124,6 +126,7 @@ dependencies {
   implementation(project(":adapter-http-legacy-browse"))
   implementation(project(":thirdparty-onion"))
   implementation(project(":thirdparty-legacy"))
+  implementation(project(":launcher-desktop"))
   implementation(libs.bcprov)
   implementation(libs.bcpkix)
   implementation(libs.jna)
@@ -134,6 +137,7 @@ dependencies {
   implementation(libs.pebble)
   implementation(libs.unbescape)
   implementation(libs.slf4jApi)
+  implementation(libs.logbackClassic)
   // FlatLaf (modern Swing Look & Feel)
   implementation(libs.flatlaf)
   // OS theme detection + change events (no LAF dependency)
@@ -146,34 +150,23 @@ dependencies {
   implementation(libs.picocli)
 
   // compileOnly
-  // Compile-time access to Logback classes for runtime reconfiguration
-  compileOnly(libs.logbackClassic)
   // Java source annotations used across the codebase
   compileOnly(libs.jetbrainsAnnotations)
 
   // runtimeOnly
-  runtimeOnly(project(":launcher-desktop"))
   runtimeOnly(libs.dbusTransportNativeUnix)
   runtimeOnly(files("libs/db4o-7.4.58.jar"))
-  // SLF4J binding (Logback) for the new Slf4jLoggerHook
-  runtimeOnly(libs.logbackClassic)
 
   // testImplementation
-  testImplementation(project(":launcher-desktop"))
   testImplementation(project(":platform-appdist"))
-  testImplementation(project(":platform-app-ui"))
-  testImplementation(project(":platform-appcatalog"))
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
   testImplementation(libs.junitPlatformSuite)
-  // For tests asserting SLF4J integration
-  testImplementation(libs.logbackClassic)
   testImplementation(libs.mockitoCore)
   testImplementation(libs.mockitoJunitJupiter)
   testImplementation(libs.mockitoInline)
   testImplementation(libs.hamcrest)
   testImplementation(libs.objenesis)
-  testCompileOnly(libs.jetbrainsAnnotations)
 
   // testRuntimeOnly
   testRuntimeOnly(libs.junitJupiterEngine)
@@ -454,6 +447,12 @@ project.wireSelectiveLeafOutputPruning(
 extensions.extraProperties["cryptad.additionalSonarTestSourceDirs"] = internalLeafTestSourceDirs
 
 extensions.extraProperties["cryptad.additionalSonarTestResultDirs"] = internalLeafTestResultDirs
+
+extensions.extraProperties["cryptad.additionalSonarMainSourceDirs"] =
+  internalLeafMainJavaSourceDirs.map { it.asFile }
+
+extensions.extraProperties["cryptad.additionalSonarMainOutputDirs"] =
+  internalLeafMainClassDirs.map { it.get().asFile }
 
 tasks.named<org.gradle.jvm.tasks.Jar>("buildJar") {
   dependsOn(pruneSelectiveLeafOutputs)

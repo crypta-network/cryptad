@@ -88,6 +88,8 @@ public record AppUpdateCandidate(
   private static final String CHANNEL_STABLE = "stable";
   private static final String SUPPORT_STATUS_SUPPORTED = "supported";
   private static final String DEPRECATION_STATUS_NONE = "none";
+  private static final String INSTALLED_ORIGIN_CATALOG_UNAVAILABLE =
+      "installed_origin_catalog_is_not_available";
 
   /**
    * Creates a validated candidate.
@@ -164,6 +166,52 @@ public record AppUpdateCandidate(
    */
   public boolean eligibleByDefault() {
     return status == AppUpdateCandidateStatus.AVAILABLE;
+  }
+
+  /** Returns the same signed candidate metadata in a fail-closed local conflict state. */
+  AppUpdateCandidate blockedByCatalogConflict(String conflictReason) {
+    return blockedByCatalogPolicy(
+        "unresolved_cross_catalog_conflict", "catalogConflictReason", conflictReason);
+  }
+
+  /** Returns the same signed candidate metadata blocked by an installed-origin policy. */
+  AppUpdateCandidate blockedByUnavailableCatalogOrigin() {
+    return blockedByCatalogPolicy(
+        "pinned_catalog_unavailable",
+        "catalogOriginBlockReason",
+        INSTALLED_ORIGIN_CATALOG_UNAVAILABLE);
+  }
+
+  private AppUpdateCandidate blockedByCatalogPolicy(
+      String blockReason, String reviewReasonField, String detail) {
+    LinkedHashMap<String, Object> conflictReview = new LinkedHashMap<>(review);
+    conflictReview.put("catalogConflict", true);
+    conflictReview.put(reviewReasonField, requireText(detail, "detail"));
+    return new AppUpdateCandidate(
+        appId,
+        catalogId,
+        catalogSourceId,
+        installedVersion,
+        targetVersion,
+        AppUpdateCandidateStatus.BLOCKED,
+        versionComparison,
+        channel,
+        supportStatus,
+        deprecation,
+        securityAdvisories,
+        securityDecision,
+        false,
+        blockReason,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        conflictReview,
+        reviewTrust,
+        apiCompatibility,
+        permissionDelta,
+        dataMigration,
+        running,
+        detectedAt);
   }
 
   /**

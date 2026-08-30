@@ -79,6 +79,10 @@ class WebShellResourcesTest {
         "id=\"apps-status\"",
         "id=\"catalog-source-form\"",
         "id=\"catalog-source-input\"",
+        "id=\"catalog-source-trust-binding-field\"",
+        "id=\"catalog-source-trust-binding\"",
+        "id=\"catalog-source-trust-binding-status\"",
+        "name=\"expectedCatalogId\"",
         "id=\"catalog-source-submit\"",
         "peer-create-form\" hidden",
         "name=\"referenceText\"",
@@ -624,6 +628,7 @@ class WebShellResourcesTest {
 
     assertTrue(script.contains("appsSnapshot: null"));
     assertTrue(script.contains("appCatalogsSnapshot: null"));
+    assertTrue(script.contains("catalogFederationSnapshot: null"));
     assertTrue(script.contains("identityVaultSnapshot: null"));
     assertTrue(script.contains("recommendedCatalogsSnapshot: null"));
     assertTrue(script.contains("const vaultCapabilityPrefix = \"vault.\";"));
@@ -635,6 +640,10 @@ class WebShellResourcesTest {
     assertTrue(script.contains("const appsControls = {"));
     assertTrue(
         script.contains("catalogSourceForm: document.getElementById(\"catalog-source-form\")"));
+    assertTrue(
+        script.contains(
+            "catalogSourceTrustBinding:"
+                + " document.getElementById(\"catalog-source-trust-binding\")"));
     assertTrue(script.contains("function normalizeAppUiEntryHref(value, app)"));
     assertTrue(appUiEntryHelper.contains("const url = new URL(value, shellRootUrl);"));
     assertTrue(script.contains("allowedAppUiOrigin(url, app)"));
@@ -726,8 +735,25 @@ class WebShellResourcesTest {
     assertTrue(script.contains("app-log-tail"));
     assertTrue(script.contains("function renderApps(data)"));
     assertTrue(script.contains("function renderRecommendedCatalogs("));
+    assertTrue(script.contains("Known, recommended, and endorsed catalogs are evidence only."));
+    assertTrue(script.contains("function renderCatalogDiscovery(federation)"));
+    assertTrue(script.contains("function buildCatalogDiscoveryImportForm()"));
+    assertTrue(script.contains("function renderPendingCatalogDiscoveryCard(recommendation)"));
+    assertTrue(script.contains("function catalogDiscoveryImportData(form)"));
+    assertTrue(script.contains("async function submitCatalogDiscoveryMutation(form, action)"));
+    assertTrue(script.contains("operator/catalog-federation/discovery"));
+    assertTrue(script.contains("evidence only. Import never trusts a catalog"));
+    assertTrue(script.contains("no source hint is fetched automatically"));
+    assertTrue(script.contains("not locally trusted"));
     assertTrue(script.contains("function renderRecommendedCatalogCard("));
     assertTrue(script.contains("function renderCatalogs(catalogs, catalogError)"));
+    assertTrue(
+        script.contains("function renderUnavailableConfiguredCatalogCard(catalogId, binding)"));
+    assertTrue(script.contains("Configured source unavailable for routine work"));
+    assertTrue(script.contains("Array.isArray(federation.configuredCatalogIds)"));
+    assertTrue(
+        script.contains(
+            "Remove it before re-adding it under an active, exact local trust binding."));
     assertTrue(script.contains("function catalogSourceKind(catalog)"));
     assertTrue(script.contains("function catalogLastSuccessfulRefreshAt(catalog)"));
     assertTrue(script.contains("function catalogFetchFailed(catalog)"));
@@ -783,6 +809,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("installedSnapshot.apps.map(loadAppRuntimeDetails)"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-catalogs/recommended\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"operator/catalog-federation\"))"));
+    assertTrue(script.contains("function updateCatalogSourceTrustBinding()"));
+    assertTrue(script.contains("binding.status === \"active\""));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/identities\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/grants\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services\"))"));

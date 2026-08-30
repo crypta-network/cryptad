@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-federated-catalog-runtime-observation-v1.schema.json",
+  "title": "Stable 1.0 federated catalog runtime observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "executionId", "provenance", "observedAt", "expiresAt", "authorityDigests", "discovery", "catalogs", "publisherPolicyDigest", "reviewerPolicyDigest", "conflictSetDigest", "conflictResolutionDigest", "installedOriginDigest", "catalogCount", "activeCatalogCount", "conflictCounts", "scenarios", "status", "partial", "observerKeyId", "observerPublicKeySpkiBase64", "observerFingerprint", "receiptDigest", "signatureBase64"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-federated-catalog-runtime-observation"},
+    "executionId": {"$ref": "#/$defs/id"},
+    "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "observedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"},
+    "authorityDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "thirdPartyPilot"],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/digest"},
+        "independentReproducibility": {"$ref": "#/$defs/digest"},
+        "catalogAuthority": {"$ref": "#/$defs/digest"},
+        "thirdPartyPilot": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["descriptorDigest", "endorsementDigests", "pendingOnly", "trustCreated", "localStateSent", "stableRemoteIdentifierCreated"],
+      "properties": {
+        "descriptorDigest": {"$ref": "#/$defs/digest"},
+        "endorsementDigests": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+        "pendingOnly": {"const": true},
+        "trustCreated": {"const": false},
+        "localStateSent": {"const": false},
+        "stableRemoteIdentifierCreated": {"const": false}
+      }
+    },
+    "catalogs": {"type": "array", "minItems": 3, "maxItems": 32, "items": {"$ref": "#/$defs/catalog"}},
+    "publisherPolicyDigest": {"$ref": "#/$defs/digest"},
+    "reviewerPolicyDigest": {"$ref": "#/$defs/digest"},
+    "conflictSetDigest": {"$ref": "#/$defs/digest"},
+    "conflictResolutionDigest": {"$ref": "#/$defs/digest"},
+    "installedOriginDigest": {"$ref": "#/$defs/digest"},
+    "catalogCount": {"type": "integer", "minimum": 3, "maximum": 32},
+    "activeCatalogCount": {"type": "integer", "minimum": 2, "maximum": 32},
+    "conflictCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exactDuplicate", "metadataDisagreement", "sameVersionPayload", "publisher", "competingVersions", "securityPolicy", "reviewerPolicy", "unresolvedHard"],
+      "properties": {
+        "exactDuplicate": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "metadataDisagreement": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "sameVersionPayload": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "publisher": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "competingVersions": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "securityPolicy": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "reviewerPolicy": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "unresolvedHard": {"type": "integer", "minimum": 1, "maximum": 1024}
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["multipleCatalogsCoexisted", "scopedCatalogSignersEnforced", "roleSeparationEnforced", "publisherScopeEnforced", "reviewerScopeEnforced", "endorsementsNonTransitive", "unresolvedHardConflictBlocked", "lexicalTieBreakDisabled", "securityBlockStrongest", "pinnedOriginRetained", "unavailableOriginRequiresOperator", "sourceSwitchRequiredConsent", "publisherSwitchRequiredConsent", "rollbackRestoredBytesAndOrigin", "catalogRevocationIsolated", "catalogRemovalLeftAppInstalled", "supportSummaryRedacted", "cleanupComplete"],
+      "properties": {
+        "multipleCatalogsCoexisted": {"const": true},
+        "scopedCatalogSignersEnforced": {"const": true},
+        "roleSeparationEnforced": {"const": true},
+        "publisherScopeEnforced": {"const": true},
+        "reviewerScopeEnforced": {"const": true},
+        "endorsementsNonTransitive": {"const": true},
+        "unresolvedHardConflictBlocked": {"const": true},
+        "lexicalTieBreakDisabled": {"const": true},
+        "securityBlockStrongest": {"const": true},
+        "pinnedOriginRetained": {"const": true},
+        "unavailableOriginRequiresOperator": {"const": true},
+        "sourceSwitchRequiredConsent": {"const": true},
+        "publisherSwitchRequiredConsent": {"const": true},
+        "rollbackRestoredBytesAndOrigin": {"const": true},
+        "catalogRevocationIsolated": {"const": true},
+        "catalogRemovalLeftAppInstalled": {"const": true},
+        "supportSummaryRedacted": {"const": true},
+        "cleanupComplete": {"const": true}
+      }
+    },
+    "status": {"const": "pass"},
+    "partial": {"const": false},
+    "observerKeyId": {"$ref": "#/$defs/id"},
+    "observerPublicKeySpkiBase64": {"type": "string", "pattern": "^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$"},
+    "observerFingerprint": {"$ref": "#/$defs/digest"},
+    "receiptDigest": {"$ref": "#/$defs/digest"},
+    "signatureBase64": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "signerKeyId", "signerFingerprint", "trustBindingId", "trustBindingDigest", "publisherPolicyDigest", "reviewerPolicyDigest", "status"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/id"},
+        "signerKeyId": {"$ref": "#/$defs/id"},
+        "signerFingerprint": {"$ref": "#/$defs/digest"},
+        "trustBindingId": {"$ref": "#/$defs/id"},
+        "trustBindingDigest": {"$ref": "#/$defs/digest"},
+        "publisherPolicyDigest": {"$ref": "#/$defs/digest"},
+        "reviewerPolicyDigest": {"$ref": "#/$defs/digest"},
+        "status": {"enum": ["active", "suspended", "revoked", "removed"]}
+      }
+    }
+  }
+}
