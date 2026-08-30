@@ -179,7 +179,7 @@ final class AppCatalogOperations {
   /** Verifies one stored source for bounded historical inspection. */
   AppCatalog verifyStoredCatalog(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
     try {
-      AppCatalogTrustVerification.requireStoredBinding(stored, federatedTrustStore);
+      AppCatalogTrustVerification.requireHistoricalStoredBinding(stored, federatedTrustStore);
       return AppCatalogTrustVerification.verifyHistorical(
           stored.fetchedCatalog().catalogBytes(),
           stored.fetchedCatalog().signatureBytes(),

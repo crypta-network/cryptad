@@ -107,6 +107,37 @@ jobs:
           jq -e 'all(.authorities[]; .summary != null)' "$contract" >/dev/null
           while IFS=$'\t' read -r authority run_id run_attempt workflow_commit workflow_path \
               artifact_name artifact_digest environment summary_file summary_digest summary_size; do
+            case "$authority" in
+              protectedRelease)
+                expected_workflow=".github/workflows/stable-1.0-protected-release-closeout.yml"
+                expected_job="Authenticate final protected-release evidence"
+                expected_environment="stable-1-0-protected-release-closeout"
+                ;;
+              independentReproducibility)
+                expected_workflow=".github/workflows/stable-1.0-independent-reproducibility.yml"
+                expected_job="Authenticate and compare independent rebuild"
+                expected_environment="stable-1.0-independent-reproducibility-external-receipt"
+                ;;
+              catalogAuthority)
+                expected_workflow=".github/workflows/stable-1.0-catalog-authority.yml"
+                expected_job="Close out only authenticated catalog-authority evidence"
+                expected_environment="stable-1-0-catalog-authority-closeout"
+                ;;
+              thirdPartyPilot)
+                expected_workflow=".github/workflows/stable-1.0-third-party-app-pilot.yml"
+                expected_job="Authenticate operational closeout"
+                expected_environment="stable-1-0-third-party-pilot-closeout"
+                ;;
+              *)
+                echo "::error::Unknown predecessor authority: $authority"
+                exit 2
+                ;;
+            esac
+            if [[ "$workflow_path" != "$expected_workflow" \
+                  || "$environment" != "$expected_environment" ]]; then
+              echo "::error::$authority is not bound to its allowlisted protected producer."
+              exit 2
+            fi
             run_file="$RUNNER_TEMP/$authority-run.json"
             gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt" > "$run_file"
             jq -e --argjson run_id "$run_id" --argjson run_attempt "$run_attempt" \
@@ -119,27 +150,29 @@ jobs:
               and .repository.full_name == env.GITHUB_REPOSITORY
               and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
               "$run_file" >/dev/null
-            run_started_at="$(jq -er '.run_started_at' "$run_file")"
-            run_completed_at="$(jq -er '.updated_at' "$run_file")"
-
             jobs="$(gh api --paginate --method GET \
               "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt/jobs" \
               -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
-            jq -e --arg commit "$workflow_commit" '
-              any(.jobs[]; .head_sha == $commit and .conclusion == "success")' \
-              <<< "$jobs" >/dev/null
+            job_record="$(jq -ce --arg name "$expected_job" --arg commit "$workflow_commit" '
+              [.jobs[] | select(.name == $name and .head_sha == $commit
+                and .conclusion == "success")]
+              | if length == 1 then .[0]
+                else error("predecessor protected producer job is not exact") end' \
+              <<< "$jobs")"
+            job_started_at="$(jq -er '.started_at' <<< "$job_record")"
+            job_completed_at="$(jq -er '.completed_at' <<< "$job_record")"
 
             deployment_verified=false
             deployments="$(gh api --paginate --method GET \
               "repos/$GITHUB_REPOSITORY/deployments" -f sha="$workflow_commit" \
-              -f environment="$environment" -f per_page=100 | jq -s '[.[][]]')"
+              -f environment="$expected_environment" -f per_page=100 | jq -s '[.[][]]')"
             while IFS= read -r deployment_id; do
               [[ -n "$deployment_id" ]] || continue
               statuses="$(gh api --paginate --method GET \
                 "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
                 -f per_page=100 | jq -s '[.[][]]')"
-              if jq -e --arg run_id "$run_id" --arg started "$run_started_at" \
-                --arg completed "$run_completed_at" 'any(.[];
+              if jq -e --arg run_id "$run_id" --arg started "$job_started_at" \
+                --arg completed "$job_completed_at" 'any(.[];
                   .state == "success" and .created_at >= $started
                   and .created_at <= $completed
                   and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
@@ -147,7 +180,7 @@ jobs:
                 deployment_verified=true
                 break
               fi
-            done < <(jq -r --arg environment "$environment" '.[] | select(
+            done < <(jq -r --arg environment "$expected_environment" '.[] | select(
               .environment == $environment and .creator.login == "github-actions[bot]") | .id' \
               <<< "$deployments")
             if [[ "$deployment_verified" != true ]]; then
@@ -159,8 +192,8 @@ jobs:
               "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
               -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
             artifact_id="$(jq -er --arg name "$artifact_name" --arg digest "$artifact_digest" \
-              --argjson run_id "$run_id" --arg started "$run_started_at" \
-              --arg completed "$run_completed_at" '
+              --argjson run_id "$run_id" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" '
               [.artifacts[] | select(.name == $name and .digest == $digest
                 and .workflow_run.id == $run_id and .expired == false
                 and .created_at >= $started and .updated_at <= $completed)]

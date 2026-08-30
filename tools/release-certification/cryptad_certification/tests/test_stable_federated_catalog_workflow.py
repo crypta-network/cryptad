@@ -97,6 +97,57 @@ class StableFederatedCatalogWorkflowTest(unittest.TestCase):
         )
         self.assertLess(authority_authentication, upload)
 
+    def test_producer_whenPredecessorsImported_expectAllowlistedJobsAndEnvironments(self) -> None:
+        authority_authentication = self.producer_workflow.index(
+            "Authenticate exact predecessor authority attempts and summaries"
+        )
+        runtime_authentication = self.producer_workflow.index(
+            "Authenticate exact protected runtime observer and signed receipt"
+        )
+        predecessor_step = self.producer_workflow[
+            authority_authentication:runtime_authentication
+        ]
+        expected_producers = (
+            (
+                "protectedRelease",
+                ".github/workflows/stable-1.0-protected-release-closeout.yml",
+                "Authenticate final protected-release evidence",
+                "stable-1-0-protected-release-closeout",
+            ),
+            (
+                "independentReproducibility",
+                ".github/workflows/stable-1.0-independent-reproducibility.yml",
+                "Authenticate and compare independent rebuild",
+                "stable-1.0-independent-reproducibility-external-receipt",
+            ),
+            (
+                "catalogAuthority",
+                ".github/workflows/stable-1.0-catalog-authority.yml",
+                "Close out only authenticated catalog-authority evidence",
+                "stable-1-0-catalog-authority-closeout",
+            ),
+            (
+                "thirdPartyPilot",
+                ".github/workflows/stable-1.0-third-party-app-pilot.yml",
+                "Authenticate operational closeout",
+                "stable-1-0-third-party-pilot-closeout",
+            ),
+        )
+        for authority, workflow, job, environment in expected_producers:
+            self.assertIn(f"{authority})", predecessor_step)
+            self.assertIn(f'expected_workflow="{workflow}"', predecessor_step)
+            self.assertIn(f'expected_job="{job}"', predecessor_step)
+            self.assertIn(f'expected_environment="{environment}"', predecessor_step)
+        self.assertIn('"$workflow_path" != "$expected_workflow"', predecessor_step)
+        self.assertIn('"$environment" != "$expected_environment"', predecessor_step)
+        self.assertIn('.name == $name and .head_sha == $commit', predecessor_step)
+        self.assertIn('job_started_at="$(jq -er', predecessor_step)
+        self.assertIn('job_completed_at="$(jq -er', predecessor_step)
+        self.assertIn('--arg started "$job_started_at"', predecessor_step)
+        self.assertIn('--arg completed "$job_completed_at"', predecessor_step)
+        self.assertNotIn('run_started_at="$(jq -er', predecessor_step)
+        self.assertNotIn('run_completed_at="$(jq -er', predecessor_step)
+
     def test_producer_whenRuntimeReceiptImported_expectOriginalObserverAuthenticated(self) -> None:
         self.assertIn(
             "Authenticate exact protected runtime observer and signed receipt",

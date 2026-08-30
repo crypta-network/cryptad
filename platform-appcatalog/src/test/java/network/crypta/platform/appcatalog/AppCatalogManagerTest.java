@@ -221,6 +221,44 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void historicalReads_whenFederatedBindingIsSuspended_expectCatalogRemainsInspectable()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path artifact =
+        Files.writeString(tempDir.resolve("suspended-inspection-artifact.zip"), FIXTURE_TEXT);
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, artifact.toUri(), keyPair, KEY_ID, sha256(artifact), Files.size(artifact));
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("suspended-inspection-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("suspended-inspection-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.SUSPENDED,
+        OPERATOR_SUSPENSION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(1));
+
+    assertEquals(CATALOG_ID, manager.catalog(CATALOG_ID).catalogId());
+    assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
+    assertEquals(APP_ID, manager.getApp(CATALOG_ID, APP_ID).appId());
+    assertEquals(AppCatalogSecurityDecision.OK, manager.securityDecision(CATALOG_ID, APP_ID));
+    assertFalse(manager.sourceHealth(CATALOG_ID).isEmpty());
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+  }
+
+  @Test
   void installedSecurityDecision_whenDenylistingBindingIsSuspended_expectDecisionIsIsolated()
       throws Exception {
     KeyPair suspendedKey = keyPair();
