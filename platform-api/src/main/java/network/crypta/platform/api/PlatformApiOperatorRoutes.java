@@ -20,6 +20,7 @@ import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.operator.OperatorBetaDashboardService;
 import network.crypta.platform.api.operator.recovery.OperatorRecoveryService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogManager.PendingCatalogDiscoveryEvidence;
@@ -507,15 +508,16 @@ final class PlatformApiOperatorRoutes {
         optionalDigestParameter(request, FIELD_PUBLISHER_POLICY_DIGEST_SHA256);
     Instant now = Instant.now();
     try {
+      String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
       Optional<FederatedCatalogTrustBinding> existing =
           appCatalogManager.federatedTrustBindings().stream()
-              .filter(binding -> binding.catalogId().equals(catalogId))
+              .filter(binding -> binding.catalogId().equals(normalizedCatalogId))
               .findFirst();
       Instant createdAt = existing.map(FederatedCatalogTrustBinding::createdAt).orElse(now);
       FederatedCatalogTrustBinding binding =
           FederatedCatalogTrustBinding.create(
               bindingId,
-              catalogId,
+              normalizedCatalogId,
               Map.of(signerKeyId, signerFingerprint),
               FederatedCatalogTrustBinding.Status.ACTIVE,
               channels,

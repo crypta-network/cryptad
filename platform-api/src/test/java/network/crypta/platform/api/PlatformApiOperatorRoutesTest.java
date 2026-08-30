@@ -53,6 +53,7 @@ import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -349,6 +350,33 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"bindingId\":\"binding-community\""));
     assertTrue(response.body().contains("\"status\":\"active\""));
     assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenMixedCaseCatalogTrustIsReapproved_expectNormalizedIdentityAndOriginalCreatedAt()
+      throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.federatedTrustBindings()).thenReturn(List.of(catalogTrustBinding()));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "Community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-1"),
+            "signerKeyId", List.of("community-catalog-2026"),
+            "signerFingerprintSha256", List.of("1".repeat(64)),
+            "channels", List.of("stable,beta"),
+            "localPriority", List.of("100"),
+            "reason", List.of("operator reapproval"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    ArgumentCaptor<FederatedCatalogTrustBinding> bindingCaptor =
+        ArgumentCaptor.forClass(FederatedCatalogTrustBinding.class);
+    verify(manager).putFederatedTrustBinding(bindingCaptor.capture());
+    assertEquals(200, response.statusCode());
+    assertEquals("community", bindingCaptor.getValue().catalogId());
+    assertEquals(NOW, bindingCaptor.getValue().createdAt());
   }
 
   @Test

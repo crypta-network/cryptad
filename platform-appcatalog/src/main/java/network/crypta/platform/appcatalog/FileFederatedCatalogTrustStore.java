@@ -267,6 +267,13 @@ public final class FileFederatedCatalogTrustStore {
       if (!sameCatalog) {
         throw invalid("catalog trust binding id cannot move between catalog identities");
       }
+      if (!existing.createdAt().equals(checked.createdAt())) {
+        throw invalid("catalog trust binding creation timestamp cannot change");
+      }
+      if (existing.status() == FederatedCatalogTrustBinding.Status.REVOKED
+          && checked.status() != FederatedCatalogTrustBinding.Status.REVOKED) {
+        throw invalid("revoked catalog trust binding cannot be reactivated");
+      }
       return;
     }
     if (sameCatalog) {

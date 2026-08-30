@@ -132,24 +132,64 @@ class FederatedCatalogTrustStoreTest {
     store.put(catalogB);
 
     store.put(
-        new FederatedCatalogTrustBinding(
-            catalogA.schemaVersion(),
-            catalogA.bindingId(),
-            catalogA.catalogId(),
-            catalogA.signerFingerprints(),
+        replacement(
+            catalogA,
             FederatedCatalogTrustBinding.Status.REVOKED,
-            catalogA.allowedChannels(),
-            catalogA.localPriority(),
-            catalogA.discoveryProvenanceDigest(),
-            catalogA.reviewerPolicyDigest(),
-            catalogA.publisherPolicyDigest(),
-            catalogA.createdAt(),
-            catalogA.updatedAt().plusSeconds(1),
-            "revoked locally",
-            "operator",
-            null));
+            catalogA.updatedAt().plusSeconds(1)));
 
     assertEquals(catalogB, store.find(BINDING_B).orElseThrow());
+  }
+
+  @Test
+  void put_whenRevokedBindingIsReplaced_expectTerminalStatusRetained() throws Exception {
+    FileFederatedCatalogTrustStore store =
+        new FileFederatedCatalogTrustStore(temporaryDirectory.resolve("trust-terminal-revocation"));
+    FederatedCatalogTrustBinding active = binding(BINDING_A, CATALOG_A);
+    FederatedCatalogTrustBinding revoked =
+        replacement(
+            active, FederatedCatalogTrustBinding.Status.REVOKED, active.updatedAt().plusSeconds(1));
+    store.put(active);
+    store.put(revoked);
+    FederatedCatalogTrustBinding reactivated =
+        replacement(
+            revoked,
+            FederatedCatalogTrustBinding.Status.ACTIVE,
+            revoked.updatedAt().plusSeconds(1));
+    FederatedCatalogTrustBinding suspended =
+        replacement(
+            revoked,
+            FederatedCatalogTrustBinding.Status.SUSPENDED,
+            revoked.updatedAt().plusSeconds(1));
+
+    assertThrows(AppCatalogException.class, () -> store.put(reactivated));
+    assertThrows(AppCatalogException.class, () -> store.put(suspended));
+    assertEquals(revoked, store.find(BINDING_A).orElseThrow());
+  }
+
+  @Test
+  void put_whenReplacementChangesCreatedAt_expectAuditHistoryRetained() throws Exception {
+    FileFederatedCatalogTrustStore store =
+        new FileFederatedCatalogTrustStore(temporaryDirectory.resolve("trust-created-at"));
+    FederatedCatalogTrustBinding original = binding(BINDING_A, CATALOG_A);
+    store.put(original);
+    FederatedCatalogTrustBinding rewritten =
+        FederatedCatalogTrustBinding.create(
+            original.bindingId(),
+            original.catalogId(),
+            original.signerFingerprints(),
+            original.status(),
+            original.allowedChannels(),
+            original.localPriority(),
+            original.discoveryProvenanceDigest().orElse(null),
+            original.reviewerPolicyDigest().orElse(null),
+            original.publisherPolicyDigest().orElse(null),
+            original.createdAt().plusSeconds(1),
+            original.updatedAt().plusSeconds(1),
+            "rewritten audit history",
+            "operator");
+
+    assertThrows(AppCatalogException.class, () -> store.put(rewritten));
+    assertEquals(original, store.find(BINDING_A).orElseThrow());
   }
 
   @Test
@@ -208,6 +248,26 @@ class FederatedCatalogTrustStoreTest {
         Instant.EPOCH,
         Instant.EPOCH,
         "operator approval",
+        "operator");
+  }
+
+  private static FederatedCatalogTrustBinding replacement(
+      FederatedCatalogTrustBinding binding,
+      FederatedCatalogTrustBinding.Status status,
+      Instant updatedAt) {
+    return FederatedCatalogTrustBinding.create(
+        binding.bindingId(),
+        binding.catalogId(),
+        binding.signerFingerprints(),
+        status,
+        binding.allowedChannels(),
+        binding.localPriority(),
+        binding.discoveryProvenanceDigest().orElse(null),
+        binding.reviewerPolicyDigest().orElse(null),
+        binding.publisherPolicyDigest().orElse(null),
+        binding.createdAt(),
+        updatedAt,
+        "operator lifecycle update",
         "operator");
   }
 }
