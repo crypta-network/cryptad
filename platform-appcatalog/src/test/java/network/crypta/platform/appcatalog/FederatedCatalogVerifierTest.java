@@ -41,6 +41,22 @@ class FederatedCatalogVerifierTest {
   }
 
   @Test
+  void verifyRoutine_whenCatalogContainsMixedChannels_expectCatalogAuthenticationAccepted()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path catalog = writeAndSignMixedChannelCatalog(keyPair);
+
+    AppCatalog verified =
+        FederatedCatalogVerifier.verifyRoutine(
+            Files.readAllBytes(catalog),
+            Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME)),
+            trustedKeys(keyPair),
+            binding(keyPair, FederatedCatalogTrustBinding.Status.ACTIVE));
+
+    assertEquals(2, verified.entries().size());
+  }
+
+  @Test
   void verifyRoutine_whenSignerForCatalogATriesCatalogB_expectRejected() throws Exception {
     KeyPair keyPair = keyPair();
     Path catalog = writeAndSign("catalog-b", keyPair);
@@ -91,6 +107,42 @@ class FederatedCatalogVerifierTest {
             + catalogId
             + "\ncatalog.name=Federated catalog\n"
             + "catalog.generatedAt=2026-08-25T00:00:00Z\ncatalog.entries=\n",
+        StandardCharsets.UTF_8);
+    AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
+    return catalog;
+  }
+
+  private Path writeAndSignMixedChannelCatalog(KeyPair keyPair) throws IOException {
+    Path catalog = temporaryDirectory.resolve("mixed-channel.properties");
+    Files.writeString(
+        catalog,
+        """
+        catalog.version=3
+        catalog.id=catalog-a
+        catalog.name=Federated catalog
+        catalog.generatedAt=2026-08-25T00:00:00Z
+        catalog.entries=stable-app,beta-app
+        app.stable-app.id=stable-app
+        app.stable-app.name=Stable app
+        app.stable-app.version=1
+        app.stable-app.summary=Stable entry
+        app.stable-app.channel=stable
+        app.stable-app.bundle.uri=https://catalog.example/stable.zip
+        app.stable-app.bundle.sha256=0000000000000000000000000000000000000000000000000000000000000000
+        app.stable-app.bundle.size.bytes=1
+        app.stable-app.bundle.type=zip
+        app.stable-app.permissions=
+        app.beta-app.id=beta-app
+        app.beta-app.name=Beta app
+        app.beta-app.version=1
+        app.beta-app.summary=Beta entry
+        app.beta-app.channel=beta
+        app.beta-app.bundle.uri=https://catalog.example/beta.zip
+        app.beta-app.bundle.sha256=1111111111111111111111111111111111111111111111111111111111111111
+        app.beta-app.bundle.size.bytes=1
+        app.beta-app.bundle.type=zip
+        app.beta-app.permissions=
+        """,
         StandardCharsets.UTF_8);
     AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
     return catalog;

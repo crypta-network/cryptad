@@ -255,7 +255,38 @@ class AppCatalogManagerTest {
     assertEquals(APP_ID, manager.getApp(CATALOG_ID, APP_ID).appId());
     assertEquals(AppCatalogSecurityDecision.OK, manager.securityDecision(CATALOG_ID, APP_ID));
     assertFalse(manager.sourceHealth(CATALOG_ID).isEmpty());
-    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
+  }
+
+  @Test
+  void routineEntries_whenFederatedCatalogHasMixedChannels_expectOnlyAllowedChannelSelectable()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("mixed-channel-artifact.zip"));
+    Path catalog =
+        signedMixedChannelCatalog(
+            artifact.toUri(), keyPair, sha256(artifact), Files.size(artifact));
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("mixed-channel-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("mixed-channel-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    assertEquals(2, manager.listApps(CATALOG_ID).size());
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, "beta-app"));
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertEquals(APP_ID, plan.entry().appId());
+    }
   }
 
   @Test
@@ -633,7 +664,7 @@ class AppCatalogManagerTest {
     manager.addSource(catalog.toString());
 
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
     assertTrue(exception.getMessage().contains("outside approval"));
@@ -657,7 +688,7 @@ class AppCatalogManagerTest {
     manager.addSource(catalog.toString());
 
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
   }
@@ -1786,7 +1817,7 @@ class AppCatalogManagerTest {
 
     assertEquals(GENERATED_AT, rolledBack.generatedAt());
     assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
-    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
   }
 
   @Test
@@ -2021,7 +2052,7 @@ class AppCatalogManagerTest {
 
     List<AppCatalogEntry> inspectedEntries = manager.listApps(CATALOG_ID);
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(APP_ID, inspectedEntries.getFirst().appId());
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
@@ -2706,8 +2737,9 @@ class AppCatalogManagerTest {
   }
 
   @SuppressWarnings("EmptyTryBlock")
-  private static void prepareAndCloseInstallPlan(AppCatalogManager manager) throws IOException {
-    try (var _ = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+  private static void prepareAndCloseInstallPlan(AppCatalogManager manager, String appId)
+      throws IOException {
+    try (var _ = manager.prepareInstallPlan(CATALOG_ID, appId)) {
       // An unexpected successful plan still owns scratch state that must be released.
     }
   }
@@ -2955,6 +2987,37 @@ class AppCatalogManagerTest {
             .replace(
                 "app.%s.bundle.uri=".formatted(APP_ID),
                 "app.%s.channel=stable%napp.%s.bundle.uri=".formatted(APP_ID, APP_ID));
+    Files.writeString(catalog, catalogText, StandardCharsets.UTF_8);
+    AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
+    return catalog;
+  }
+
+  private Path signedMixedChannelCatalog(
+      URI artifactUri, KeyPair keyPair, String artifactSha256, long artifactSize)
+      throws IOException {
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, artifactUri, keyPair, KEY_ID, artifactSha256, artifactSize, GENERATED_AT);
+    String catalogText =
+        Files.readString(catalog, StandardCharsets.UTF_8)
+                .replace("catalog.version=1", "catalog.version=3")
+                .replace("catalog.entries=" + APP_ID, "catalog.entries=" + APP_ID + ",beta-app")
+                .replace(
+                    "app.%s.bundle.uri=".formatted(APP_ID),
+                    "app.%s.channel=stable%napp.%s.bundle.uri=".formatted(APP_ID, APP_ID))
+            + """
+            app.beta-app.id=beta-app
+            app.beta-app.name=Beta app
+            app.beta-app.version=1
+            app.beta-app.summary=Beta entry outside the local channel scope
+            app.beta-app.channel=beta
+            app.beta-app.bundle.uri=%s
+            app.beta-app.bundle.sha256=%s
+            app.beta-app.bundle.size.bytes=%d
+            app.beta-app.bundle.type=zip
+            app.beta-app.permissions=
+            """
+                .formatted(artifactUri, artifactSha256, artifactSize);
     Files.writeString(catalog, catalogText, StandardCharsets.UTF_8);
     AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
     return catalog;

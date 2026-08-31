@@ -353,6 +353,57 @@ class PlatformApiOperatorRoutesTest {
   }
 
   @Test
+  void route_whenCatalogTrustApprovedWithRotatingSigners_expectCompleteSignerSetRetained()
+      throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.federatedTrustBindings()).thenReturn(List.of(catalogTrustBinding()));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-1"),
+            "signerKeyId", List.of("community-catalog-2026", "community-catalog-2027"),
+            "signerFingerprintSha256", List.of("1".repeat(64), "2".repeat(64)),
+            "channels", List.of("stable,beta"),
+            "localPriority", List.of("100"),
+            "reason", List.of("overlapping signer rotation"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    ArgumentCaptor<FederatedCatalogTrustBinding> bindingCaptor =
+        ArgumentCaptor.forClass(FederatedCatalogTrustBinding.class);
+    verify(manager).putFederatedTrustBinding(bindingCaptor.capture());
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        Map.of(
+            "community-catalog-2026", "1".repeat(64),
+            "community-catalog-2027", "2".repeat(64)),
+        bindingCaptor.getValue().signerFingerprints());
+    assertEquals(NOW, bindingCaptor.getValue().createdAt());
+  }
+
+  @Test
+  void route_whenCatalogSignerListsHaveDifferentSizes_expectRejected() {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-community"),
+            "signerKeyId", List.of("community-catalog-2026", "community-catalog-2027"),
+            "signerFingerprintSha256", List.of("1".repeat(64)),
+            "channels", List.of("stable"),
+            "localPriority", List.of("100"),
+            "reason", List.of("invalid rotation"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    assertEquals(400, response.statusCode());
+  }
+
+  @Test
   void route_whenMixedCaseCatalogTrustIsReapproved_expectNormalizedIdentityAndOriginalCreatedAt()
       throws Exception {
     AppCatalogManager manager = mock(AppCatalogManager.class);

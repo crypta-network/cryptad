@@ -496,8 +496,7 @@ final class PlatformApiOperatorRoutes {
 
   private Map<String, Object> approveCatalogTrust(String catalogId, PlatformApiRequest request) {
     String bindingId = requiredSingleParameter(request, "bindingId", 128);
-    String signerKeyId = requiredSingleParameter(request, "signerKeyId", 128);
-    String signerFingerprint = requiredSingleParameter(request, "signerFingerprintSha256", 64);
+    Map<String, String> signerFingerprints = parseCatalogSigners(request);
     Set<AppCatalogChannel> channels = parseCatalogChannels(request);
     int localPriority = parseLocalPriority(request);
     String reason = requiredSingleParameter(request, PARAMETER_REASON, 512);
@@ -518,7 +517,7 @@ final class PlatformApiOperatorRoutes {
           FederatedCatalogTrustBinding.create(
               bindingId,
               normalizedCatalogId,
-              Map.of(signerKeyId, signerFingerprint),
+              signerFingerprints,
               FederatedCatalogTrustBinding.Status.ACTIVE,
               channels,
               localPriority,
@@ -537,6 +536,48 @@ final class PlatformApiOperatorRoutes {
       throw new PlatformApiException(
           500, "catalog_trust_write_failed", "Local catalog trust state could not be updated.");
     }
+  }
+
+  private static Map<String, String> parseCatalogSigners(PlatformApiRequest request) {
+    List<String> keyIds = requiredParameterValues(request, "signerKeyId", 128);
+    List<String> fingerprints = requiredParameterValues(request, "signerFingerprintSha256", 64);
+    if (keyIds.size() != fingerprints.size()) {
+      throw new PlatformApiException(
+          400,
+          "invalid_request",
+          "signerKeyId and signerFingerprintSha256 must contain the same number of values.");
+    }
+    LinkedHashMap<String, String> signers = new LinkedHashMap<>();
+    for (int index = 0; index < keyIds.size(); index++) {
+      String fingerprint = fingerprints.get(index);
+      if (!fingerprint.matches(SHA256_PATTERN)
+          || signers.putIfAbsent(keyIds.get(index), fingerprint) != null) {
+        throw new PlatformApiException(
+            400, "invalid_request", "The catalog signer set is invalid.");
+      }
+    }
+    return Map.copyOf(signers);
+  }
+
+  private static List<String> requiredParameterValues(
+      PlatformApiRequest request, String name, int maxCharacters) {
+    List<String> values = request.queryParameters().get(name);
+    if (values == null || values.isEmpty()) {
+      throw new PlatformApiException(
+          400, "invalid_request", "At least one " + name + " parameter is required.");
+    }
+    return values.stream().map(value -> requireParameterValue(value, name, maxCharacters)).toList();
+  }
+
+  private static String requireParameterValue(String raw, String name, int maxCharacters) {
+    String value = raw.trim();
+    if (value.isEmpty()
+        || value.length() > maxCharacters
+        || value.indexOf('\n') >= 0
+        || value.indexOf('\r') >= 0) {
+      throw new PlatformApiException(400, "invalid_request", name + " is invalid.");
+    }
+    return value;
   }
 
   private static Set<AppCatalogChannel> parseCatalogChannels(PlatformApiRequest request) {

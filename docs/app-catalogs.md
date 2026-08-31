@@ -994,7 +994,11 @@ Federation is explicitly enabled with `cryptad.appCatalogFederationEnabled=true`
 records without a stored local binding ID and digest are not auto-migrated into federated trust;
 they require operator re-approval. Operator-only summaries and source-switch previews live below
 `/operator/catalog-federation` and `/operator/apps/{appId}/catalog-origin`, outside the Stable 1.0
-app-facing contract. `GET /operator/catalog-federation/conflicts/{appId}` exposes the exact local
+app-facing contract. A catalog `trust` mutation treats matching repeated `signerKeyId` and
+`signerFingerprintSha256` values as the complete local signer set. During an overlapping key
+rotation, the operator submits both predecessor and successor so retained predecessor revisions
+remain eligible for exact historical rollback. `GET
+/operator/catalog-federation/conflicts/{appId}` exposes the exact local
 conflict-set identity and public subject digests; guarded `POST
 /operator/catalog-federation/conflicts/{appId}/resolve` records a decision only when the submitted
 conflict ID and subject-set digest still match. An `explicit-source-switch-required` decision never

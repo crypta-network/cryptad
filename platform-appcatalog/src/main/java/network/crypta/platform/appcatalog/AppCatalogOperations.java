@@ -125,7 +125,9 @@ final class AppCatalogOperations {
   /** Selects one app from a source that remains authorized for routine work. */
   AppCatalogEntry getRoutineApp(
       StoredCatalogSource stored, String appId, TrustedAppKeys trustedKeys) throws IOException {
-    return requireApp(verifyRoutine(stored, trustedKeys), appId);
+    AppCatalogEntry entry = requireApp(verifyRoutine(stored, trustedKeys), appId);
+    requireRoutineChannel(stored.catalogId(), entry);
+    return entry;
   }
 
   /** Reads one stored source and verifies it under bounded historical inspection policy. */
@@ -386,6 +388,16 @@ final class AppCatalogOperations {
                     new AppCatalogException(
                         AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
                         "federated catalog admission requires a local trust binding")));
+  }
+
+  private void requireRoutineChannel(String catalogId, AppCatalogEntry entry) throws IOException {
+    Optional<FederatedCatalogTrustBinding> binding = trustBinding(catalogId);
+    if (binding.isPresent()
+        && !binding.get().allowedChannels().contains(entry.productionMetadata().channel())) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+          "catalog app channel is not allowed by the local catalog binding");
+    }
   }
 
   AppCatalogKeyRotationStatus keyRotationStatus(String catalogId) throws IOException {

@@ -6,6 +6,7 @@ import java.security.KeyPair;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -88,7 +89,7 @@ class AppCatalogManagerFederationTest {
   }
 
   @Test
-  void authorizeHistoricalAppOrigin_whenBindingSuspendedThenRevoked_expectBoundedHistoryOnly()
+  void authorizeHistoricalAppOrigin_whenChannelRemovedThenRevoked_expectBoundedHistoryOnly()
       throws Exception {
     KeyPair keyPair = AppCatalogManagerTest.keyPair();
     TrustedAppKeys trustedKeys = AppCatalogManagerTest.trustedKeys(keyPair);
@@ -128,15 +129,34 @@ class AppCatalogManagerFederationTest {
     AppCatalogEntry authorized =
         manager.authorizeHistoricalAppOrigin(
             captured, entry.appId(), entry.version(), entry.bundleSha256());
+    FederatedCatalogTrustBinding suspended = trustStore.findByCatalogId(CATALOG_ID).orElseThrow();
+    trustStore.put(
+        FederatedCatalogTrustBinding.create(
+            suspended.bindingId(),
+            suspended.catalogId(),
+            suspended.signerFingerprints(),
+            suspended.status(),
+            Set.of(AppCatalogChannel.BETA),
+            suspended.localPriority(),
+            suspended.discoveryProvenanceDigest().orElse(null),
+            suspended.reviewerPolicyDigest().orElse(null),
+            suspended.publisherPolicyDigest().orElse(null),
+            suspended.createdAt(),
+            GENERATED_AT.plusSeconds(2),
+            "operator removed stable rollback scope",
+            OPERATOR_ID));
+    String appId = entry.appId();
+    String appVersion = entry.version();
+    String bundleSha256 = entry.bundleSha256();
+    assertThrows(
+        AppCatalogException.class,
+        () -> manager.authorizeHistoricalAppOrigin(captured, appId, appVersion, bundleSha256));
     manager.transitionFederatedTrustBinding(
         CATALOG_ID,
         FederatedCatalogTrustBinding.Status.REVOKED,
         OPERATOR_REVOCATION_REASON,
         OPERATOR_ID,
-        GENERATED_AT.plusSeconds(2));
-    String appId = entry.appId();
-    String appVersion = entry.version();
-    String bundleSha256 = entry.bundleSha256();
+        GENERATED_AT.plusSeconds(3));
 
     assertEquals(entry, authorized);
     assertThrows(

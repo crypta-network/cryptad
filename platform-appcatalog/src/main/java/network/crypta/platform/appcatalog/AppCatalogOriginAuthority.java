@@ -112,12 +112,14 @@ final class AppCatalogOriginAuthority {
     StoredCatalogSource stored = sourceStore.read(catalogId);
     AppCatalogTrustVerification.requireHistoricalStoredBinding(stored, federatedTrustStore);
     requireMatchingBinding(checked, stored);
+    FederatedCatalogTrustBinding binding = historicalBinding(catalogId);
+    HistoricalAppSubject subject =
+        new HistoricalAppSubject(checked, appId, appVersion, bundleSha256);
 
     TrustedAppKeys trustedKeys = trustedCatalogKeyProvider.trustedKeys();
     for (FetchedCatalog fetched : revisions(stored, catalogId)) {
       AppCatalogEntry entry =
-          matchingHistoricalEntry(
-              checked, fetched, trustedKeys, catalogId, appId, appVersion, bundleSha256);
+          matchingHistoricalEntry(subject, fetched, trustedKeys, binding, catalogId);
       if (entry != null) {
         return entry;
       }
@@ -226,27 +228,23 @@ final class AppCatalogOriginAuthority {
   /**
    * Returns the exact matching app entry, or {@code null} when this revision is not the origin.
    *
-   * @param captured exact installed origin being authorized
+   * @param subject exact installed app and origin being authorized
    * @param fetched retained signed catalog revision to inspect
    * @param trustedKeys current catalog-signing key registry
+   * @param binding current local binding containing the historical channel authorization
    * @param catalogId normalized catalog identifier
-   * @param appId exact application identifier to locate
-   * @param appVersion exact retained application version
-   * @param bundleSha256 exact retained bundle digest
    * @return matching authenticated entry, or {@code null} for a different revision
    * @throws IOException if historical local trust policy cannot be read
    */
   private AppCatalogEntry matchingHistoricalEntry(
-      AppCatalogOriginContext captured,
+      HistoricalAppSubject subject,
       FetchedCatalog fetched,
       TrustedAppKeys trustedKeys,
-      String catalogId,
-      String appId,
-      String appVersion,
-      String bundleSha256)
+      FederatedCatalogTrustBinding binding,
+      String catalogId)
       throws IOException {
     AppCatalogSignature signature = AppCatalogVerifier.readSignature(fetched.signatureBytes());
-    if (!matchesCapturedAuthority(captured, fetched, trustedKeys, signature)) {
+    if (!matchesCapturedAuthority(subject.origin(), fetched, trustedKeys, signature)) {
       return null;
     }
     AppCatalog catalog =
@@ -257,10 +255,22 @@ final class AppCatalogOriginAuthority {
             catalogId,
             federatedTrustStore);
     return catalog
-        .entry(appId)
-        .filter(entry -> entry.version().equals(appVersion))
-        .filter(entry -> entry.bundleSha256().equals(bundleSha256))
+        .entry(subject.appId())
+        .filter(entry -> entry.version().equals(subject.appVersion()))
+        .filter(entry -> entry.bundleSha256().equals(subject.bundleSha256()))
+        .filter(entry -> binding.allowedChannels().contains(entry.productionMetadata().channel()))
         .orElse(null);
+  }
+
+  /** Exact installed app subject matched against retained authenticated catalog revisions. */
+  private record HistoricalAppSubject(
+      AppCatalogOriginContext origin, String appId, String appVersion, String bundleSha256) {}
+
+  /** Returns the current local binding whose historical lifecycle was verified for a source. */
+  private FederatedCatalogTrustBinding historicalBinding(String catalogId) throws IOException {
+    return federatedTrustStore
+        .findByCatalogId(catalogId)
+        .orElseThrow(() -> invalidOrigin("historical catalog trust binding is unavailable"));
   }
 
   /**

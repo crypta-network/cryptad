@@ -9,10 +9,11 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * Verifies signed catalog bytes against an exact host-owned catalog trust binding.
  *
  * <p>This utility composes the existing catalog signature verifier with the node's local
- * catalog-ID, signer-fingerprint, lifecycle, and channel constraints. Routine verification accepts
- * only active bindings, while the historical path also permits suspended bindings for bounded
- * inspection and rollback. Neither path changes the trusted-key registry or derives trust from
- * catalog content.
+ * catalog-ID, signer-fingerprint, and lifecycle constraints. Routine verification accepts only
+ * active bindings, while the historical path also permits suspended bindings for bounded inspection
+ * and rollback. Channel authorization is applied later to the exact selected app entry, so a
+ * mixed-channel catalog can remain authenticated without authorizing every entry it contains.
+ * Neither path changes the trusted-key registry or derives trust from catalog content.
  */
 public final class FederatedCatalogVerifier {
   /** Prevents construction of this stateless verification utility. */
@@ -65,7 +66,7 @@ public final class FederatedCatalogVerifier {
   }
 
   /**
-   * Applies signer, catalog identity, signature, lifecycle, and channel authorization.
+   * Applies signer, catalog identity, signature, and lifecycle authorization.
    *
    * @param catalogBytes canonical catalog bytes
    * @param signatureBytes detached catalog signature sidecar
@@ -101,13 +102,6 @@ public final class FederatedCatalogVerifier {
                 catalogBytes, signatureBytes, trustedKeys, signature.keyId());
     if (!catalog.catalogId().equals(binding.catalogId())) {
       throw invalid("authenticated catalog id does not match the local catalog binding");
-    }
-    boolean disallowedChannel =
-        catalog.entries().stream()
-            .map(entry -> entry.productionMetadata().channel())
-            .anyMatch(channel -> !binding.allowedChannels().contains(channel));
-    if (disallowedChannel) {
-      throw invalid("catalog contains an app channel not allowed by the local catalog binding");
     }
     return catalog;
   }
