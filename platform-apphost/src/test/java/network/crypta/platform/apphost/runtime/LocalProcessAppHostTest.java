@@ -25,6 +25,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1189,9 +1190,12 @@ class LocalProcessAppHostTest {
         allowUnsignedHost(
             Duration.ofSeconds(1),
             new AppEnv(),
-            _ -> {
-              cleanupAttempts.incrementAndGet();
-              throw new IOException("simulated backup cleanup failure");
+            root -> {
+              if (root.getFileName().toString().startsWith("app-rollback-backup-")) {
+                cleanupAttempts.incrementAndGet();
+                throw new IOException("simulated backup cleanup failure");
+              }
+              deleteTestTree(root);
             });
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path firstUpdatedStage =
@@ -1804,6 +1808,33 @@ class LocalProcessAppHostTest {
     InstalledAppSnapshot repaired = recoveredHost.updateFromDirectory(SAMPLE_APP_ID, repairedStage);
 
     assertEquals(UPDATED_APP_VERSION, repaired.manifest().appVersion());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenCommittedCleanupFails_expectLaterReadRetriesCleanup()
+      throws IOException {
+    AppHostLayout appHostLayout = layout();
+    AtomicInteger cleanupAttempts = new AtomicInteger();
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            appHostLayout,
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            new AppEnv(),
+            TEST_TIMING,
+            _ -> {
+              cleanupAttempts.incrementAndGet();
+              throw new IOException("simulated committed transaction cleanup failure");
+            },
+            AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+
+    InstalledAppSnapshot installed =
+        host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION));
+
+    assertEquals(1, cleanupAttempts.get());
+    assertTrue(hasCommittedTransaction(appHostLayout));
+    assertEquals(List.of(installed), host.listInstalled());
+    assertFalse(hasCommittedTransaction(appHostLayout));
   }
 
   @Test
@@ -4329,6 +4360,20 @@ class LocalProcessAppHostTest {
           Files.createDirectories(destination.getParent());
           Files.copy(path, destination);
         }
+      }
+    }
+  }
+
+  private static boolean hasCommittedTransaction(AppHostLayout layout) throws IOException {
+    try (var entries = Files.list(layout.appMutationTransactionsDir())) {
+      return entries.anyMatch(path -> path.getFileName().toString().startsWith(".committed-"));
+    }
+  }
+
+  private static void deleteTestTree(Path root) throws IOException {
+    try (var paths = Files.walk(root)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
       }
     }
   }

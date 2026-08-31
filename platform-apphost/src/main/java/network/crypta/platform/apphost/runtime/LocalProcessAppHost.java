@@ -2672,8 +2672,9 @@ public final class LocalProcessAppHost implements AppHost {
                     + generateToken());
     movePersistentMutationCommitIntoPlace(mutation.activeDirectory(), committed);
     try {
-      deleteRecursively(committed);
+      managedTreeDeleter.deleteRecursively(committed);
     } catch (IOException _) {
+      persistentMutationsRecovered = false;
       // The atomic rename is the commit point. A later recovery pass safely finishes cleanup.
     }
   }

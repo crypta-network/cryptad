@@ -2163,7 +2163,7 @@ class PlatformApiRouterTest {
   void route_whenRecommendedCatalogsRequested_expectRecommendedCatalogEnvelope() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.configuredCatalogIds()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
 
     withFirstPartyCatalogProperties(
@@ -2184,7 +2184,7 @@ class PlatformApiRouterTest {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     String source = "https://example.invalid/cryptad-app-catalog.properties";
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.configuredCatalogIds()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
     when(catalogManager.addSource(source, "crypta-first-party-beta"))
         .thenReturn(recommendedCatalogSourceSnapshot(source));
@@ -2222,7 +2222,7 @@ class PlatformApiRouterTest {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     String source = "https://example.invalid/cryptad-app-catalog.properties";
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.configuredCatalogIds()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
     when(catalogManager.addSource(source, catalogId))
         .thenReturn(recommendedCatalogSourceSnapshot(catalogId, source));
