@@ -25,6 +25,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -1511,6 +1512,105 @@ class LocalProcessAppHostTest {
     assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
     assertFalse(host.rollbackRequiresCatalogAuthorization(SAMPLE_APP_ID));
     assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
+  void catalogMutations_whenOriginsRotateAndUninstall_expectRetentionMatchesBothSlots()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    List<List<InstalledAppOrigin>> retainedSnapshots = new ArrayList<>();
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+        });
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-origin-retention-update"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+    List<InstalledAppOrigin> updatedOrigins = retainedSnapshots.getLast();
+    host.uninstall(SAMPLE_APP_ID);
+
+    assertEquals(2, updatedOrigins.size());
+    assertTrue(updatedOrigins.contains(initialOrigin));
+    assertTrue(updatedOrigins.contains(updateOrigin));
+    assertTrue(retainedSnapshots.getLast().isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenRetentionFails_expectPriorPinsReconciled()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    List<List<InstalledAppOrigin>> retainedSnapshots = new ArrayList<>();
+    AtomicBoolean rejectNextNonEmptySnapshot = new AtomicBoolean(true);
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) throws IOException {
+            retainedSnapshots.add(List.copyOf(origins));
+            if (!origins.isEmpty() && rejectNextNonEmptySnapshot.getAndSet(false)) {
+              throw new IOException("simulated catalog revision retention failure");
+            }
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+        });
+
+    assertThrows(
+        IOException.class,
+        () ->
+            host.installCatalogFromDirectory(
+                stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION)));
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertFalse(retainedSnapshots.get(1).isEmpty());
+    assertTrue(retainedSnapshots.getLast().isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenPinCleanupFails_expectLaterReadRetries() throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    AtomicBoolean rejectFirstCommittedSnapshot = new AtomicBoolean(true);
+    AtomicInteger reconciliationAttempts = new AtomicInteger();
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) {
+            // This test injects only a post-commit cleanup failure.
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) throws IOException {
+            reconciliationAttempts.incrementAndGet();
+            if (!origins.isEmpty() && rejectFirstCommittedSnapshot.getAndSet(false)) {
+              throw new IOException("simulated stale catalog pin cleanup failure");
+            }
+          }
+        });
+
+    host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION));
+    int attemptsAfterCommit = reconciliationAttempts.get();
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isPresent());
+    assertEquals(attemptsAfterCommit + 1, reconciliationAttempts.get());
   }
 
   @Test

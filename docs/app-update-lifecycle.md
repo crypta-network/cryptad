@@ -74,6 +74,11 @@ updated; an atomic committed marker makes later cleanup non-authoritative. A gen
 therefore clears current catalog provenance while retaining the prior origin only for the rollback
 bundle, without leaving catalog provenance attached to unrelated bytes.
 
+Catalog history pins are derived from the complete current and rollback origin snapshot inside the
+same mutation boundary. AppHost retains prospective origins before commit, removes obsolete pins
+after commit, and retries safe cleanup after compensation or crash recovery. Uninstall releases a
+pin once neither provenance slot references its revision.
+
 Rollback dispatch follows the retained rollback slot. A catalog-origin slot uses the authorized
 rollback operation so current catalog, publisher, and reviewer policy is checked inside the host
 lifecycle boundary. An untracked legacy slot uses the original `AppHost.rollback(String)` contract,

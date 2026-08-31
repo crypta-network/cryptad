@@ -9,9 +9,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Atomic, path-confined persistence for current and rollback app-origin provenance.
@@ -21,10 +24,18 @@ import java.util.Optional;
  * it. Reads reject links, non-regular files, oversized records, unknown fields, and app identifiers
  * that do not match the confined file name. The store contains no source URI, token, private path,
  * or raw app content, and it is intended to remain inaccessible to app processes.
+ *
+ * <p>Public operations synchronize on the store instance so current and rollback slots cannot be
+ * interleaved by callers sharing that instance. Higher-level AppHost transaction coordination is
+ * still responsible for keeping these provenance records aligned with the corresponding bundle
+ * directories across installation, update, rollback, and recovery.
  */
 public final class FileInstalledAppOriginStore {
   /** Maximum accepted serialized origin-record size. */
   private static final long MAX_BYTES = 64 * 1024L;
+
+  /** File suffix used for each confined serialized provenance record. */
+  private static final String RECORD_SUFFIX = ".properties";
 
   /** Absolute normalized private root for current provenance records. */
   private final Path root;
@@ -97,6 +108,24 @@ public final class FileInstalledAppOriginStore {
    */
   public synchronized State snapshot(String appId) throws IOException {
     return new State(find(appId), readIfPresent(path(rollbackRoot, appId)));
+  }
+
+  /**
+   * Captures every current and rollback provenance record in deterministic app-id order.
+   *
+   * @return immutable map from normalized app id to its exact provenance slots
+   * @throws IOException if a present record or either confined store root is invalid
+   */
+  public synchronized Map<String, State> snapshotAll() throws IOException {
+    requireSafeRoots();
+    Set<String> appIds = new LinkedHashSet<>();
+    collectAppIds(root, appIds);
+    collectAppIds(rollbackRoot, appIds);
+    LinkedHashMap<String, State> states = new LinkedHashMap<>();
+    for (String appId : appIds.stream().sorted().toList()) {
+      states.put(appId, snapshot(appId));
+    }
+    return Collections.unmodifiableMap(states);
   }
 
   /**
@@ -202,6 +231,38 @@ public final class FileInstalledAppOriginStore {
   }
 
   /**
+   * Adds the normalized app identifiers represented by safe records in one provenance directory.
+   *
+   * @param directory current or rollback provenance directory to inspect
+   * @param appIds destination set that receives each validated application identifier
+   * @throws IOException if the directory cannot be listed or contains an invalid record name
+   */
+  private static void collectAppIds(Path directory, Set<String> appIds) throws IOException {
+    if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    try (var records = Files.list(directory)) {
+      for (Path originRecord : records.toList()) {
+        Path recordFileName = originRecord.getFileName();
+        if (recordFileName == null) {
+          throw new AppHostException("installed-origin record has no file name");
+        }
+        String fileName = recordFileName.toString();
+        if (!fileName.endsWith(RECORD_SUFFIX)
+            || !Files.isRegularFile(originRecord, LinkOption.NOFOLLOW_LINKS)
+            || Files.isSymbolicLink(originRecord)) {
+          continue;
+        }
+        String appId = fileName.substring(0, fileName.length() - RECORD_SUFFIX.length());
+        if (!InstalledAppPaths.normalizeAppId(appId).equals(appId)) {
+          throw new AppHostException("installed-origin record has an invalid app id");
+        }
+        appIds.add(appId);
+      }
+    }
+  }
+
+  /**
    * Parses and validates one closed installed-origin record.
    *
    * @param path confined origin-record path
@@ -247,7 +308,7 @@ public final class FileInstalledAppOriginStore {
             "unsupported installed-origin property: " + fields.keySet().iterator().next());
       }
       Path fileName = path.getFileName();
-      if (fileName == null || !fileName.toString().equals(origin.appId() + ".properties")) {
+      if (fileName == null || !fileName.toString().equals(origin.appId() + RECORD_SUFFIX)) {
         throw new AppHostException("installed-origin app id does not match file name");
       }
       return origin;
@@ -281,7 +342,7 @@ public final class FileInstalledAppOriginStore {
    */
   private static Path path(Path directory, String appId) throws AppHostException {
     String normalized = InstalledAppPaths.normalizeAppId(appId);
-    Path path = directory.resolve(normalized + ".properties").normalize();
+    Path path = directory.resolve(normalized + RECORD_SUFFIX).normalize();
     if (!directory.equals(path.getParent())) {
       throw new AppHostException("installed-origin path escapes store root");
     }

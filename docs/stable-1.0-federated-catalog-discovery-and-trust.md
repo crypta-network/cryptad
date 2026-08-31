@@ -137,6 +137,8 @@ unchanged on default nodes.
 - `apps/catalog-discovery-pending` for bounded signed recommendations that remain untrusted and
   unconfigured;
 - `apps/catalog-origins` for current and rollback provenance;
+- `apps/catalogs/<catalogId>/history/<revision>/.origin-pins` for derived, host-private retention
+  markers that protect signed revisions referenced by those provenance slots;
 - `apps/mutation-transactions` for host-private write-ahead recovery of coordinated bundle and
   provenance changes.
 
@@ -146,6 +148,13 @@ and rollback bundles and origins. An interrupted active transaction is restored 
 AppHost reads or mutations proceed. Only an atomic active-to-committed rename preserves the target;
 committed leftovers are cleanup-only. This recovery state is host-private and is never exposed to
 apps or support artifacts.
+
+Before the transaction commits, AppHost retains every revision in the prospective current and
+rollback provenance snapshot without releasing the prior pins. After the durable commit it removes
+markers that no remaining slot references. Failed mutations and recovered active transactions
+reconcile against their restored provenance; failed post-commit cleanup leaves only safe extra pins
+and is retried before later persistent work. Provenance rotation and uninstall therefore cannot
+retain obsolete revisions indefinitely.
 
 The `AppHost` compatibility defaults do not claim federation support. Catalog install, catalog
 update, and standalone origin persistence fail before bundle mutation unless the implementation

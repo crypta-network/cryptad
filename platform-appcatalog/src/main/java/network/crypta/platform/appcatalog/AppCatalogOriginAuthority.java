@@ -262,11 +262,24 @@ final class AppCatalogOriginAuthority {
         .orElse(null);
   }
 
-  /** Exact installed app subject matched against retained authenticated catalog revisions. */
+  /**
+   * Exact installed app subject matched against retained authenticated catalog revisions.
+   *
+   * @param origin captured catalog authority and local trust-policy identity
+   * @param appId normalized application identifier from the retained bundle
+   * @param appVersion exact version declared by the retained bundle
+   * @param bundleSha256 exact digest of the retained bundle bytes
+   */
   private record HistoricalAppSubject(
       AppCatalogOriginContext origin, String appId, String appVersion, String bundleSha256) {}
 
-  /** Returns the current local binding whose historical lifecycle was verified for a source. */
+  /**
+   * Returns the current local binding whose historical lifecycle was verified for a source.
+   *
+   * @param catalogId normalized catalog identifier stored in the captured origin
+   * @return current local trust binding used for historical authorization
+   * @throws IOException if the local trust store cannot be read
+   */
   private FederatedCatalogTrustBinding historicalBinding(String catalogId) throws IOException {
     return federatedTrustStore
         .findByCatalogId(catalogId)

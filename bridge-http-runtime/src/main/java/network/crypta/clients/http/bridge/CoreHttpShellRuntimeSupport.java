@@ -13,6 +13,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -82,6 +83,7 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.PilotPublisherApprovalReader;
 import network.crypta.platform.apphost.PilotPublisherVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -597,10 +599,11 @@ public record CoreHttpShellRuntimeSupport(
     warnWhenCatalogTrustUsesLegacyFallback(trustConfiguration);
     AppInstallVerificationPolicy installVerificationPolicy =
         createInstallVerificationPolicy(trustConfiguration);
-    AppHost appHost = new LocalProcessAppHost(layout, installVerificationPolicy);
+    LocalProcessAppHost appHost = new LocalProcessAppHost(layout, installVerificationPolicy);
     AppCatalogManager appCatalogManager =
         createAppCatalogManager(
             layout, trustConfiguration, installVerificationPolicy, core.getRuntimePorts());
+    configureCatalogOriginRetention(appHost, appCatalogManager);
     AppVaultService appVaultService = createAppVaultService(layout);
     AppDataService appDataService = createAppDataService(layout, appHost);
     AppNetworkBudgetService appNetworkBudgetService = createAppNetworkBudgetService(layout);
@@ -660,6 +663,40 @@ public record CoreHttpShellRuntimeSupport(
         appServiceCoordinator,
         appNetworkBudgetService,
         appVaultService);
+  }
+
+  private static void configureCatalogOriginRetention(
+      LocalProcessAppHost appHost, AppCatalogManager appCatalogManager) {
+    try {
+      appHost.setCatalogOriginRetention(
+          new AppHost.CatalogOriginRetention() {
+            @Override
+            public void retain(List<InstalledAppOrigin> origins) throws IOException {
+              appCatalogManager.retainOriginRevisionPins(originRevisions(origins));
+            }
+
+            @Override
+            public void reconcile(List<InstalledAppOrigin> origins) throws IOException {
+              appCatalogManager.reconcileOriginRevisionPins(originRevisions(origins));
+            }
+          });
+    } catch (IOException exception) {
+      throw new IllegalStateException(
+          "Catalog origin revision retention could not be initialized.", exception);
+    }
+  }
+
+  private static List<AppCatalogManager.OriginRevision> originRevisions(
+      List<InstalledAppOrigin> origins) {
+    return origins.stream()
+        .map(
+            origin ->
+                new AppCatalogManager.OriginRevision(
+                    origin.catalogId(),
+                    origin.catalogRevisionDigestSha256(),
+                    origin.catalogSignerKeyId(),
+                    origin.appId()))
+        .toList();
   }
 
   private static AppVaultService createAppVaultService(AppHostLayout layout) {

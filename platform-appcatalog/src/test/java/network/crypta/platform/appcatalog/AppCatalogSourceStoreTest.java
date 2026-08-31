@@ -88,13 +88,13 @@ class AppCatalogSourceStoreTest {
     String originDigest = AppCatalogRevisions.catalogDigest(originRevision);
     AppCatalogSource catalogSource = source("core");
     store.write(catalog("core"), catalogSource, originRevision, ADDED_AT, REFRESHED_AT);
-    store.retainOriginRevision("core", originDigest, "feed-reader");
+    store.retainOriginRevisions(List.of(originRevision(originRevision)));
     FetchedCatalog currentRevision = originRevision;
     for (int revision = 1; revision <= 7; revision++) {
       currentRevision =
           new FetchedCatalog(
               bytes("catalog.id=core\nrevision=" + revision + "\n"),
-              bytes("catalog.signature.key.id=test-" + revision + "\n"));
+              signatureBytes("test-" + revision));
       store.write(
           catalog("core"),
           catalogSource,
@@ -111,6 +111,50 @@ class AppCatalogSourceStoreTest {
         revisions.stream().anyMatch(revision -> originDigest.equals(revision.revisionDigest())));
     assertArrayEquals(originRevision.catalogBytes(), retained.catalogBytes());
     assertArrayEquals(originRevision.signatureBytes(), retained.signatureBytes());
+  }
+
+  @Test
+  void reconcileOriginRevisions_whenOriginSlotRotates_expectObsoletePinReleased() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog obsoleteRevision = fetchedCatalog("core");
+    String obsoleteDigest = AppCatalogRevisions.catalogDigest(obsoleteRevision);
+    AppCatalogSource catalogSource = source("core");
+    store.write(catalog("core"), catalogSource, obsoleteRevision, ADDED_AT, REFRESHED_AT);
+    store.retainOriginRevisions(List.of(originRevision(obsoleteRevision)));
+    FetchedCatalog currentRevision = obsoleteRevision;
+    for (int revision = 1; revision <= 7; revision++) {
+      currentRevision =
+          new FetchedCatalog(
+              bytes("catalog.id=core\nrevision=" + revision + "\n"),
+              signatureBytes("test-" + revision));
+      store.write(
+          catalog("core"),
+          catalogSource,
+          currentRevision,
+          ADDED_AT,
+          REFRESHED_AT.plusSeconds(revision));
+    }
+    String currentDigest = AppCatalogRevisions.catalogDigest(currentRevision);
+    String currentContentDigest =
+        AppCatalogRevisions.digestDirectoryName(
+            AppCatalogRevisions.catalogContentDigest(currentRevision));
+
+    store.reconcileOriginRevisions(
+        List.of(
+            new AppCatalogManager.OriginRevision(
+                "core", currentContentDigest, "test-7", "feed-reader")));
+    FetchedCatalog nextRevision =
+        new FetchedCatalog(bytes("catalog.id=core\nrevision=8\n"), signatureBytes("test-8"));
+    store.write(
+        catalog("core"), catalogSource, nextRevision, ADDED_AT, REFRESHED_AT.plusSeconds(8));
+
+    List<AppCatalogVerifiedRevision> revisions =
+        store.listRevisions("core", AppCatalogRevisions.catalogDigest(nextRevision));
+
+    assertFalse(
+        revisions.stream().anyMatch(revision -> obsoleteDigest.equals(revision.revisionDigest())));
+    assertTrue(
+        revisions.stream().anyMatch(revision -> currentDigest.equals(revision.revisionDigest())));
   }
 
   @Test
@@ -357,8 +401,27 @@ class AppCatalogSourceStoreTest {
   }
 
   private static FetchedCatalog fetchedCatalog(String catalogId) {
-    return new FetchedCatalog(
-        bytes("catalog.id=" + catalogId + "\n"), bytes("catalog.signature.key.id=test\n"));
+    return new FetchedCatalog(bytes("catalog.id=" + catalogId + "\n"), signatureBytes("test"));
+  }
+
+  private static AppCatalogManager.OriginRevision originRevision(FetchedCatalog revision) {
+    return new AppCatalogManager.OriginRevision(
+        "core",
+        AppCatalogRevisions.digestDirectoryName(AppCatalogRevisions.catalogContentDigest(revision)),
+        "test",
+        "feed-reader");
+  }
+
+  private static byte[] signatureBytes(String keyId) {
+    return bytes(
+        """
+        catalog.signature.version=1
+        catalog.signature.algorithm=Ed25519
+        catalog.signature.key.id=%s
+        catalog.signature.payload=cryptad-app-catalog.properties
+        catalog.signature.value.base64=AA==
+        """
+            .formatted(keyId));
   }
 
   private static String sourceMetadata(String catalogId, String sourceUri) {

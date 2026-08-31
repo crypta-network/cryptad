@@ -82,6 +82,32 @@ public interface AppHost {
     void close();
   }
 
+  /** Coordinates retained catalog revisions with every host-owned provenance slot. */
+  interface CatalogOriginRetention {
+    /**
+     * Ensures that every current or rollback provenance revision is retained before commit.
+     *
+     * <p>This phase may add retention state but must not release revisions absent from the supplied
+     * snapshot: the durable host transaction can still restore its prior provenance.
+     *
+     * @param retainedOrigins complete current-and-rollback origin snapshot
+     * @throws IOException if retention state cannot be reconciled safely
+     */
+    void retain(List<InstalledAppOrigin> retainedOrigins) throws IOException;
+
+    /**
+     * Reconciles retention after provenance reaches its durable commit point.
+     *
+     * <p>Implementations must treat the supplied list as complete and release revisions absent from
+     * it. A failed cleanup remains safe because the retain phase has already protected every live
+     * origin; the host retries reconciliation before later persistent work.
+     *
+     * @param retainedOrigins complete committed current-and-rollback origin snapshot
+     * @throws IOException if retention state cannot be reconciled safely
+     */
+    void reconcile(List<InstalledAppOrigin> retainedOrigins) throws IOException;
+  }
+
   /** Exact current-origin state approved for a coordinated catalog update. */
   final class CatalogOriginExpectation {
     private static final CatalogOriginExpectation ABSENT = new CatalogOriginExpectation(null);

@@ -167,6 +167,19 @@ public final class LocalProcessAppHost implements AppHost {
   private final Map<String, Deque<Instant>> automaticRestartAttempts = new ConcurrentHashMap<>();
   private final Set<String> explicitStopRequests = ConcurrentHashMap.newKeySet();
   private final FileInstalledAppOriginStore originStore;
+  private AppHost.CatalogOriginRetention catalogOriginRetention =
+      new AppHost.CatalogOriginRetention() {
+        @Override
+        public void retain(List<InstalledAppOrigin> ignored) {
+          // Standalone hosts have no catalog store whose revision history needs retention.
+        }
+
+        @Override
+        public void reconcile(List<InstalledAppOrigin> ignored) {
+          // Standalone hosts have no catalog store whose obsolete pins need cleanup.
+        }
+      };
+  private boolean catalogOriginRetentionPending;
 
   /**
    * Creates a host bound to the supplied layout.
@@ -416,6 +429,22 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   /**
+   * Installs the catalog-revision retention coordinator and reconciles existing provenance.
+   *
+   * <p>Production composition calls this before exposing the host. Reconciliation runs inside the
+   * host lifecycle monitor and is retried after interrupted persistent mutations.
+   *
+   * @param retention coordinator for the complete current-and-rollback origin snapshot
+   * @throws IOException if transaction recovery or initial reconciliation fails
+   */
+  public synchronized void setCatalogOriginRetention(AppHost.CatalogOriginRetention retention)
+      throws IOException {
+    catalogOriginRetention = Objects.requireNonNull(retention, "retention");
+    catalogOriginRetentionPending = true;
+    ensurePersistentMutationsRecovered();
+  }
+
+  /**
    * Installs one app from a local staging directory.
    *
    * <p>The staging tree is treated as caller-controlled input. The host validates that tree and
@@ -496,10 +525,12 @@ public final class LocalProcessAppHost implements AppHost {
         originStore.put(checked);
         InstalledAppSnapshot installed = installBundleFromDirectory(stagedAppDirectory, checked);
         requireMatchingCatalogOrigin(installed, checked);
+        retainCatalogOriginRevisions();
         commitPersistentMutation(mutation);
+        finishCatalogOriginRetention();
         return installed;
       } catch (IOException | RuntimeException failure) {
-        abortPersistentMutation(mutation, failure);
+        abortPersistentMutationAndReconcile(mutation, failure);
         throw failure;
       }
     }
@@ -554,10 +585,12 @@ public final class LocalProcessAppHost implements AppHost {
             new FileInstalledAppOriginStore.State(Optional.empty(), previous.current()));
       }
       InstalledAppSnapshot updated = commitPreparedUpdateBundle(prepared);
+      retainCatalogOriginRevisions();
       commitPersistentMutation(mutation);
+      finishCatalogOriginRetention();
       return updated;
     } catch (IOException | RuntimeException failure) {
-      abortPersistentMutation(mutation, failure);
+      abortPersistentMutationAndReconcile(mutation, failure);
       throw failure;
     }
   }
@@ -720,10 +753,12 @@ public final class LocalProcessAppHost implements AppHost {
       originStore.put(origin);
       InstalledAppSnapshot updated = commitPreparedUpdateBundle(prepared);
       requireMatchingCatalogOrigin(updated, origin);
+      retainCatalogOriginRevisions();
       commitPersistentMutation(mutation);
+      finishCatalogOriginRetention();
       return updated;
     } catch (IOException | RuntimeException failure) {
-      abortPersistentMutation(mutation, failure);
+      abortPersistentMutationAndReconcile(mutation, failure);
       throw failure;
     }
   }
@@ -857,9 +892,11 @@ public final class LocalProcessAppHost implements AppHost {
         if (originTracked) {
           originStore.swapRollback(normalizedAppId);
         }
+        retainCatalogOriginRevisions();
         commitPersistentMutation(mutation);
+        finishCatalogOriginRetention();
       } catch (IOException | RuntimeException failure) {
-        abortPersistentMutation(mutation, failure);
+        abortPersistentMutationAndReconcile(mutation, failure);
         throw failure;
       }
     }
@@ -925,9 +962,11 @@ public final class LocalProcessAppHost implements AppHost {
       deleteRecursively(paths.installedRoot());
       deleteRollbackRecordIfPresent(paths.appId());
       originStore.remove(paths.appId());
+      retainCatalogOriginRevisions();
       commitPersistentMutation(mutation);
+      finishCatalogOriginRetention();
     } catch (IOException | RuntimeException failure) {
-      abortPersistentMutation(mutation, failure);
+      abortPersistentMutationAndReconcile(mutation, failure);
       throw failure;
     }
     if (!options.preserveData()) {
@@ -2572,33 +2611,45 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private void ensurePersistentMutationsRecovered() throws IOException {
-    if (persistentMutationsRecovered) {
+    if (persistentMutationsRecovered && !catalogOriginRetentionPending) {
       return;
     }
+    if (!persistentMutationsRecovered) {
+      recoverPersistentMutations();
+      persistentMutationsRecovered = true;
+    }
+    if (catalogOriginRetentionPending) {
+      reconcileCatalogOriginRetention();
+    }
+  }
+
+  private void recoverPersistentMutations() throws IOException {
     Path transactionRoot = layout.appMutationTransactionsDir();
     if (!Files.exists(transactionRoot, LinkOption.NOFOLLOW_LINKS)) {
-      persistentMutationsRecovered = true;
       return;
     }
     validateManagedDirectory(transactionRoot, MUTATION_TRANSACTIONS_DIR_LABEL);
     try (var entries = Files.list(transactionRoot)) {
       for (Path entry :
           entries.sorted(Comparator.comparing(LocalProcessAppHost::fileNameText)).toList()) {
-        String name = fileNameText(entry);
-        if (!Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(entry)) {
-          throw new AppHostException("app mutation transaction entry is unsafe");
-        }
-        if (name.endsWith(ACTIVE_TRANSACTION_SUFFIX)) {
-          recoverActiveMutation(entry);
-        } else if (name.startsWith(COMMITTED_TRANSACTION_PREFIX)
-            || name.startsWith(PREPARING_TRANSACTION_PREFIX)) {
-          deleteRecursively(entry);
-        } else {
-          throw new AppHostException("unknown app mutation transaction entry");
-        }
+        recoverPersistentMutationEntry(entry);
       }
     }
-    persistentMutationsRecovered = true;
+  }
+
+  private void recoverPersistentMutationEntry(Path entry) throws IOException {
+    String name = fileNameText(entry);
+    if (!Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(entry)) {
+      throw new AppHostException("app mutation transaction entry is unsafe");
+    }
+    if (name.endsWith(ACTIVE_TRANSACTION_SUFFIX)) {
+      recoverActiveMutation(entry);
+    } else if (name.startsWith(COMMITTED_TRANSACTION_PREFIX)
+        || name.startsWith(PREPARING_TRANSACTION_PREFIX)) {
+      deleteRecursively(entry);
+    } else {
+      throw new AppHostException("unknown app mutation transaction entry");
+    }
   }
 
   private PersistentMutation beginPersistentMutation(
@@ -2686,6 +2737,46 @@ public final class LocalProcessAppHost implements AppHost {
       persistentMutationsRecovered = false;
       failure.addSuppressed(recoveryFailure);
     }
+  }
+
+  private void abortPersistentMutationAndReconcile(PersistentMutation mutation, Throwable failure) {
+    abortPersistentMutation(mutation, failure);
+    catalogOriginRetentionPending = true;
+    if (Files.exists(mutation.activeDirectory(), LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    try {
+      reconcileCatalogOriginRetention();
+    } catch (IOException | RuntimeException reconciliationFailure) {
+      failure.addSuppressed(reconciliationFailure);
+    }
+  }
+
+  private void retainCatalogOriginRevisions() throws IOException {
+    catalogOriginRetention.retain(retainedCatalogOrigins());
+  }
+
+  private void finishCatalogOriginRetention() {
+    catalogOriginRetentionPending = true;
+    try {
+      reconcileCatalogOriginRetention();
+    } catch (IOException | RuntimeException _) {
+      // Live origins are already retained. Retry stale-pin cleanup before later persistent work.
+    }
+  }
+
+  private void reconcileCatalogOriginRetention() throws IOException {
+    catalogOriginRetentionPending = true;
+    catalogOriginRetention.reconcile(retainedCatalogOrigins());
+    catalogOriginRetentionPending = false;
+  }
+
+  private List<InstalledAppOrigin> retainedCatalogOrigins() throws IOException {
+    return originStore.snapshotAll().values().stream()
+        .flatMap(
+            state ->
+                java.util.stream.Stream.concat(state.current().stream(), state.rollback().stream()))
+        .toList();
   }
 
   private void recoverActiveMutation(Path activeDirectory) throws IOException {

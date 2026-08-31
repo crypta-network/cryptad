@@ -412,6 +412,7 @@ public final class AppUpdateFederationAuthority {
    * Computes a stable digest over the publisher key lineage identifiers.
    *
    * @param binding exact publisher binding selected for the candidate
+   * @param lineageBindings locally authorized bindings that can connect the selected key lineage
    * @return lowercase SHA-256 lineage digest
    */
   private static String publisherLineageDigest(
@@ -433,6 +434,14 @@ public final class AppUpdateFederationAuthority {
     return AppUpdateDigestSupport.sha256(String.join("\n", fingerprints) + "\n");
   }
 
+  /**
+   * Adds one known publisher key and its directly declared lineage neighbors to the traversal.
+   *
+   * @param keyId publisher key identifier currently being visited
+   * @param bindingsByKeyId locally authorized publisher bindings indexed by key identifier
+   * @param pending traversal queue that receives unvisited lineage neighbors
+   * @param fingerprints collected publisher fingerprints that define the connected lineage
+   */
   private static void addPublisherLineage(
       String keyId,
       Map<String, CatalogPublisherBinding> bindingsByKeyId,
