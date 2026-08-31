@@ -82,6 +82,38 @@ class AppCatalogSourceStoreTest {
   }
 
   @Test
+  void write_whenOriginRevisionIsPinned_expectPruningPreservesExactRevision() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog originRevision = fetchedCatalog("core");
+    String originDigest = AppCatalogRevisions.catalogDigest(originRevision);
+    AppCatalogSource catalogSource = source("core");
+    store.write(catalog("core"), catalogSource, originRevision, ADDED_AT, REFRESHED_AT);
+    store.retainOriginRevision("core", originDigest, "feed-reader");
+    FetchedCatalog currentRevision = originRevision;
+    for (int revision = 1; revision <= 7; revision++) {
+      currentRevision =
+          new FetchedCatalog(
+              bytes("catalog.id=core\nrevision=" + revision + "\n"),
+              bytes("catalog.signature.key.id=test-" + revision + "\n"));
+      store.write(
+          catalog("core"),
+          catalogSource,
+          currentRevision,
+          ADDED_AT,
+          REFRESHED_AT.plusSeconds(revision));
+    }
+
+    List<AppCatalogVerifiedRevision> revisions =
+        store.listRevisions("core", AppCatalogRevisions.catalogDigest(currentRevision));
+    FetchedCatalog retained = store.readRevision("core", originDigest);
+
+    assertTrue(
+        revisions.stream().anyMatch(revision -> originDigest.equals(revision.revisionDigest())));
+    assertArrayEquals(originRevision.catalogBytes(), retained.catalogBytes());
+    assertArrayEquals(originRevision.signatureBytes(), retained.signatureBytes());
+  }
+
+  @Test
   void read_whenLegacySingleSourceExists_expectPrimaryOnlyMirrorModel() throws Exception {
     AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
     FetchedCatalog fetchedCatalog = fetchedCatalog("core");

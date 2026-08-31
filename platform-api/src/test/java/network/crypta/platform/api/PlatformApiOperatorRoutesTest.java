@@ -182,7 +182,13 @@ class PlatformApiOperatorRoutesTest {
   void route_whenFederationSummaryRequested_expectLocalNonTransitiveTrustOnly() throws Exception {
     AppCatalogManager manager = mock(AppCatalogManager.class);
     when(manager.configuredCatalogIds()).thenReturn(List.of("community", "stale-source"));
-    when(manager.federatedTrustBindings()).thenReturn(List.of(catalogTrustBinding()));
+    when(manager.federatedTrustBindings())
+        .thenReturn(
+            List.of(
+                catalogTrustBinding(
+                    Map.of(
+                        "catalog-key-a", "f".repeat(64),
+                        "catalog-key-b", "0".repeat(64)))));
     PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
 
     PlatformApiResponse response =
@@ -198,6 +204,12 @@ class PlatformApiOperatorRoutesTest {
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"mode\":\"federated-local-trust\""));
     assertTrue(response.body().contains("\"catalogId\":\"community\""));
+    assertTrue(response.body().contains("\"signerKeyIds\":[\"catalog-key-a\",\"catalog-key-b\"]"));
+    assertTrue(
+        response
+            .body()
+            .contains(
+                "\"signerFingerprints\":[\"" + "f".repeat(64) + "\",\"" + "0".repeat(64) + "\"]"));
     assertTrue(
         response.body().contains("\"configuredCatalogIds\":[\"community\",\"stale-source\"]"));
     assertTrue(response.body().contains("\"configuredCatalogCount\":2"));
@@ -298,8 +310,7 @@ class PlatformApiOperatorRoutesTest {
   void route_whenCatalogTrustSuspended_expectExplicitOperatorMutationOnly() throws Exception {
     AppCatalogManager manager = mock(AppCatalogManager.class);
     when(manager.federationEnabled()).thenReturn(true);
-    FederatedCatalogTrustBinding suspended =
-        bindingWithStatus(FederatedCatalogTrustBinding.Status.SUSPENDED);
+    FederatedCatalogTrustBinding suspended = suspendedCatalogTrustBinding();
     when(manager.transitionFederatedTrustBinding(
             eq("community"),
             eq(FederatedCatalogTrustBinding.Status.SUSPENDED),
@@ -1444,15 +1455,25 @@ class PlatformApiOperatorRoutesTest {
   }
 
   private static FederatedCatalogTrustBinding catalogTrustBinding() {
-    return bindingWithStatus(FederatedCatalogTrustBinding.Status.ACTIVE);
+    return catalogTrustBinding(Map.of("catalog-key", "a".repeat(64)));
+  }
+
+  private static FederatedCatalogTrustBinding catalogTrustBinding(
+      Map<String, String> signerFingerprints) {
+    return bindingWithStatus(FederatedCatalogTrustBinding.Status.ACTIVE, signerFingerprints);
+  }
+
+  private static FederatedCatalogTrustBinding suspendedCatalogTrustBinding() {
+    return bindingWithStatus(
+        FederatedCatalogTrustBinding.Status.SUSPENDED, Map.of("catalog-key", "a".repeat(64)));
   }
 
   private static FederatedCatalogTrustBinding bindingWithStatus(
-      FederatedCatalogTrustBinding.Status status) {
+      FederatedCatalogTrustBinding.Status status, Map<String, String> signerFingerprints) {
     return FederatedCatalogTrustBinding.create(
         "binding-1",
         "community",
-        Map.of("catalog-key", "a".repeat(64)),
+        signerFingerprints,
         status,
         Set.of(AppCatalogChannel.STABLE),
         10,

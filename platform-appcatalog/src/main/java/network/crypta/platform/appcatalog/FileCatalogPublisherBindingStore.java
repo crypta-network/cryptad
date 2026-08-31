@@ -379,6 +379,34 @@ public final class FileCatalogPublisherBindingStore {
   }
 
   /**
+   * Lists current and suspended records that define one catalog-local publisher key lineage.
+   *
+   * <p>The result supplies authenticated key-id-to-fingerprint mappings for conflict comparison.
+   * Pending, revoked, and removed records cannot contribute lineage evidence. Routine publisher
+   * authorization remains the responsibility of {@link #findActiveForScope(String, String,
+   * AppCatalogChannel, Instant)}.
+   *
+   * @param catalogId exact catalog identity
+   * @param appId exact application identity
+   * @param channel requested catalog channel
+   * @return immutable applicable lineage records
+   * @throws IOException if the catalog-local policy set cannot be read
+   */
+  public synchronized List<CatalogPublisherBinding> findLineageForScope(
+      String catalogId, String appId, AppCatalogChannel channel) throws IOException {
+    String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    return listForCatalog(normalizedCatalogId).stream()
+        .filter(binding -> binding.appId().equals(normalizedAppId))
+        .filter(
+            binding ->
+                binding.status() == CatalogPublisherBinding.Status.ACTIVE
+                    || binding.status() == CatalogPublisherBinding.Status.SUSPENDED)
+        .filter(binding -> binding.allowedChannels().contains(channel))
+        .toList();
+  }
+
+  /**
    * Reads and authenticates records routed to one normalized catalog identity.
    *
    * @param catalogId normalized catalog identity

@@ -2,10 +2,15 @@ package network.crypta.platform.api.appupdates;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeSet;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
@@ -219,7 +224,10 @@ public final class AppUpdateFederationAuthority {
               candidate.bundleSha256(),
               candidate.bundleType(),
               publisher.publisherKeyFingerprintSha256(),
-              publisherLineageDigest(publisher),
+              publisherLineageDigest(
+                  publisher,
+                  publisherBindingStore.findLineageForScope(
+                      candidate.catalogId(), candidate.appId(), channel)),
               reviewPolicyDigest,
               securityDecisionDigest,
               metadataDigest);
@@ -347,7 +355,7 @@ public final class AppUpdateFederationAuthority {
    * Retains catalog trust authorization for an exact reverified plan.
    *
    * @param catalogManager manager containing current catalog trust policy
-   * @param plan exact retained install plan being committed
+   * @param plan exact retained installation plan being committed
    * @return lease retaining catalog authorization through commit
    * @throws IOException if catalog trust state cannot be read safely
    */
@@ -406,12 +414,43 @@ public final class AppUpdateFederationAuthority {
    * @param binding exact publisher binding selected for the candidate
    * @return lowercase SHA-256 lineage digest
    */
-  private static String publisherLineageDigest(CatalogPublisherBinding binding) {
-    TreeSet<String> identities = new TreeSet<>();
-    identities.add(binding.publisherKeyId());
-    binding.predecessorKeyId().ifPresent(identities::add);
-    binding.successorKeyId().ifPresent(identities::add);
-    return AppUpdateDigestSupport.sha256(String.join("\n", identities) + "\n");
+  private static String publisherLineageDigest(
+      CatalogPublisherBinding binding, List<CatalogPublisherBinding> lineageBindings) {
+    Map<String, CatalogPublisherBinding> bindingsByKeyId = new HashMap<>();
+    lineageBindings.forEach(
+        candidate -> bindingsByKeyId.put(candidate.publisherKeyId(), candidate));
+    bindingsByKeyId.put(binding.publisherKeyId(), binding);
+    ArrayDeque<String> pending = new ArrayDeque<>();
+    HashSet<String> visited = new HashSet<>();
+    TreeSet<String> fingerprints = new TreeSet<>();
+    pending.add(binding.publisherKeyId());
+    while (!pending.isEmpty()) {
+      String keyId = pending.removeFirst();
+      if (visited.add(keyId)) {
+        addPublisherLineage(keyId, bindingsByKeyId, pending, fingerprints);
+      }
+    }
+    return AppUpdateDigestSupport.sha256(String.join("\n", fingerprints) + "\n");
+  }
+
+  private static void addPublisherLineage(
+      String keyId,
+      Map<String, CatalogPublisherBinding> bindingsByKeyId,
+      Deque<String> pending,
+      Set<String> fingerprints) {
+    CatalogPublisherBinding current = bindingsByKeyId.get(keyId);
+    if (current == null) {
+      return;
+    }
+    fingerprints.add(current.publisherKeyFingerprintSha256());
+    current.predecessorKeyId().filter(bindingsByKeyId::containsKey).ifPresent(pending::addLast);
+    current.successorKeyId().filter(bindingsByKeyId::containsKey).ifPresent(pending::addLast);
+    for (CatalogPublisherBinding candidate : bindingsByKeyId.values()) {
+      if (candidate.predecessorKeyId().filter(keyId::equals).isPresent()
+          || candidate.successorKeyId().filter(keyId::equals).isPresent()) {
+        pending.addLast(candidate.publisherKeyId());
+      }
+    }
   }
 
   /**

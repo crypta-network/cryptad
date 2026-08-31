@@ -38,6 +38,8 @@ public final class AppCatalogSourceStore {
   private static final String ENDPOINTS_FILE_NAME = "catalog-source-endpoints.properties";
   private static final String HEALTH_FILE_NAME = "catalog-source-health.properties";
   private static final String HISTORY_DIRECTORY_NAME = "history";
+  private static final String ORIGIN_PINS_DIRECTORY_NAME = ".origin-pins";
+  private static final String ORIGIN_PIN_SUFFIX = ".pin";
   private static final String REVISION_FILE_NAME = "revision.properties";
   private static final String SOURCE_VERSION_KEY = "catalog.source.version";
   private static final String ENDPOINTS_VERSION_KEY = "catalog.source.endpoints.version";
@@ -76,6 +78,7 @@ public final class AppCatalogSourceStore {
   private static final String HEALTH_LAST_ROLLBACK_REASON_KEY = "lastRollbackReason";
   private static final long MAX_SOURCE_METADATA_BYTES = AppCatalogSidecars.MAX_SIGNATURE_BYTES;
   private static final int REVISION_RETENTION_COUNT = 5;
+  private static final int MAX_ORIGIN_PINNED_REVISIONS = 1024;
 
   private final Path rootDirectory;
   private final SourceMetadataWriter sourceMetadataWriter;
@@ -408,6 +411,49 @@ public final class AppCatalogSourceStore {
           AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog revision not found.");
     }
     return readFetchedCatalog(revisionDirectory);
+  }
+
+  /**
+   * Retains one authenticated revision while an installed or rollback origin can reference it.
+   *
+   * <p>Ordinary catalog history remains capped by {@link #REVISION_RETENTION_COUNT}. A successful
+   * catalog mutation, however, can move the selected revision into either AppHost provenance slot
+   * after many later catalog refreshes. This durable marker prevents ordinary history pruning from
+   * deleting the exact signed catalog needed to reauthorize that origin. The high fixed cap bounds
+   * retained public catalog data without evicting an already authorized rollback subject; once the
+   * cap is reached, a new mutation fails closed.
+   *
+   * @param catalogId exact configured catalog identity
+   * @param revisionDigest authenticated catalog-plus-signature revision digest
+   * @param appId normalized app identity whose provenance can reference the revision
+   * @throws IOException if the revision or pin state cannot be validated or persisted
+   */
+  void retainOriginRevision(String catalogId, String revisionDigest, String appId)
+      throws IOException {
+    String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    Path historyDirectory = catalogDirectory(normalizedCatalogId).resolve(HISTORY_DIRECTORY_NAME);
+    Path revisionDirectory =
+        historyDirectory.resolve(AppCatalogRevisions.digestDirectoryName(revisionDigest));
+    if (!isRevisionMetadataDirectory(revisionDirectory)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.CATALOG_NOT_FOUND,
+          "Authenticated catalog revision is unavailable for origin retention.");
+    }
+    Path pinsDirectory = revisionDirectory.resolve(ORIGIN_PINS_DIRECTORY_NAME);
+    requireOriginPinsDirectory(pinsDirectory);
+    if (!Files.exists(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      if (originPinnedRevisionCount(historyDirectory) >= MAX_ORIGIN_PINNED_REVISIONS) {
+        throw new AppCatalogException(
+            AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+            "Catalog origin revision retention limit is reached.");
+      }
+      Files.createDirectory(pinsDirectory);
+    }
+    writeStringAtomic(
+        pinsDirectory,
+        pinsDirectory.resolve(normalizedAppId + ORIGIN_PIN_SUFFIX),
+        normalizedAppId + System.lineSeparator());
   }
 
   private static boolean isRevisionMetadataDirectory(Path directory) {
@@ -1195,10 +1241,51 @@ public final class AppCatalogSourceStore {
       if (revision.current()) {
         continue;
       }
-      AppCatalogBundleExtractor.deleteRecursively(
+      Path revisionDirectory =
           directory
               .resolve(HISTORY_DIRECTORY_NAME)
-              .resolve(AppCatalogRevisions.digestDirectoryName(revision.revisionDigest())));
+              .resolve(AppCatalogRevisions.digestDirectoryName(revision.revisionDigest()));
+      if (!hasOriginPins(revisionDirectory)) {
+        AppCatalogBundleExtractor.deleteRecursively(revisionDirectory);
+      }
+    }
+  }
+
+  private static int originPinnedRevisionCount(Path historyDirectory) throws IOException {
+    if (!Files.isDirectory(historyDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return 0;
+    }
+    int count = 0;
+    try (var children = Files.list(historyDirectory)) {
+      for (Path child : children.toList()) {
+        if (isRevisionMetadataDirectory(child) && hasOriginPins(child)) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  private static boolean hasOriginPins(Path revisionDirectory) throws IOException {
+    Path pinsDirectory = revisionDirectory.resolve(ORIGIN_PINS_DIRECTORY_NAME);
+    requireOriginPinsDirectory(pinsDirectory);
+    if (!Files.exists(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return false;
+    }
+    try (var pins = Files.list(pinsDirectory)) {
+      return pins.anyMatch(
+          pin ->
+              pin.getFileName().toString().endsWith(ORIGIN_PIN_SUFFIX)
+                  && Files.isRegularFile(pin, LinkOption.NOFOLLOW_LINKS));
+    }
+  }
+
+  private static void requireOriginPinsDirectory(Path pinsDirectory) {
+    if (Files.exists(pinsDirectory, LinkOption.NOFOLLOW_LINKS)
+        && !Files.isDirectory(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "Catalog origin revision pins must be a confined directory.");
     }
   }
 

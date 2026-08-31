@@ -967,12 +967,15 @@ final class PlatformApiOperatorRoutes {
 
   private static Map<String, Object> catalogTrustSummary(FederatedCatalogTrustBinding binding) {
     LinkedHashMap<String, Object> json = new LinkedHashMap<>();
+    List<Map.Entry<String, String>> signers =
+        binding.signerFingerprints().entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .toList();
     json.put("bindingId", binding.bindingId());
     json.put(FIELD_CATALOG_ID, binding.catalogId());
     json.put(FIELD_STATUS, binding.status().name().toLowerCase(java.util.Locale.ROOT));
-    json.put("signerKeyIds", binding.signerFingerprints().keySet().stream().sorted().toList());
-    json.put(
-        "signerFingerprints", binding.signerFingerprints().values().stream().sorted().toList());
+    json.put("signerKeyIds", signers.stream().map(Map.Entry::getKey).toList());
+    json.put("signerFingerprints", signers.stream().map(Map.Entry::getValue).toList());
     json.put(
         FIELD_CHANNELS,
         binding.allowedChannels().stream()

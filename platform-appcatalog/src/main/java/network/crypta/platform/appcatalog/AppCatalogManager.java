@@ -979,8 +979,20 @@ public final class AppCatalogManager {
         this,
         () -> {
           verifyInstallPlan(plan);
+          retainInstallPlanRevision(plan);
           return plan;
         });
+  }
+
+  private void retainInstallPlanRevision(AppCatalogInstallPlan plan) throws IOException {
+    if (plan.originContext().filter(AppCatalogOriginContext::federationScoped).isEmpty()) {
+      return;
+    }
+    StoredCatalogSource stored = sourceStore.read(plan.catalogId());
+    sourceStore.retainOriginRevision(
+        plan.catalogId(),
+        AppCatalogRevisions.catalogDigest(stored.fetchedCatalog()),
+        plan.entry().appId());
   }
 
   private <T> T withCatalogMutationLock(AppCatalogAuthorizationCoordinator.IoOperation<T> mutation)

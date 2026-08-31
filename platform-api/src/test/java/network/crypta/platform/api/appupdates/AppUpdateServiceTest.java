@@ -711,6 +711,78 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void federatedConflict_whenPublishersShareAuthenticatedRotationLineage_expectNoNamespaceConflict()
+      throws Exception {
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    enableFederation(service);
+    AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
+    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
+    FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
+    FileFederatedCatalogConflictResolutionStore resolutionStore =
+        mock(FileFederatedCatalogConflictResolutionStore.class);
+    when(trustStore.findByCatalogId("alpha"))
+        .thenReturn(Optional.of(federatedCatalogBinding("alpha", 20)));
+    when(trustStore.findByCatalogId("beta"))
+        .thenReturn(Optional.of(federatedCatalogBinding("beta", 10)));
+    CatalogPublisherBinding alphaCurrent =
+        federatedPublisherBinding(
+            "alpha",
+            "publisher-a",
+            "a".repeat(64),
+            CatalogPublisherBinding.Status.ACTIVE,
+            "x",
+            "publisher-b");
+    CatalogPublisherBinding alphaSuccessor =
+        federatedPublisherBinding(
+            "alpha",
+            "publisher-b",
+            "b".repeat(64),
+            CatalogPublisherBinding.Status.SUSPENDED,
+            "publisher-a",
+            null);
+    CatalogPublisherBinding betaCurrent =
+        federatedPublisherBinding(
+            "beta",
+            "publisher-b",
+            "b".repeat(64),
+            CatalogPublisherBinding.Status.ACTIVE,
+            "publisher-a",
+            null);
+    CatalogPublisherBinding betaPredecessor =
+        federatedPublisherBinding(
+            "beta",
+            "publisher-a",
+            "a".repeat(64),
+            CatalogPublisherBinding.Status.SUSPENDED,
+            "x",
+            "publisher-b");
+    when(publisherStore.findActiveForScope(eq("alpha"), any(), any(), any()))
+        .thenReturn(List.of(alphaCurrent));
+    when(publisherStore.findActiveForScope(eq("beta"), any(), any(), any()))
+        .thenReturn(List.of(betaCurrent));
+    when(publisherStore.findLineageForScope(eq("alpha"), any(), any()))
+        .thenReturn(List.of(alphaCurrent, alphaSuccessor));
+    when(publisherStore.findLineageForScope(eq("beta"), any(), any()))
+        .thenReturn(List.of(betaCurrent, betaPredecessor));
+    when(resolutionStore.lookup(any()))
+        .thenReturn(
+            new FileFederatedCatalogConflictResolutionStore.Lookup(
+                FileFederatedCatalogConflictResolutionStore.LookupStatus.MISSING,
+                Optional.empty()));
+    service.setFederatedCatalogConflictPolicy(
+        new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
+
+    Map<String, Object> summary = service.federatedConflict(APP_ID);
+
+    assertTrue(((List<String>) summary.get("types")).contains("exact_duplicate"));
+    assertFalse(((List<String>) summary.get("types")).contains("publisher_namespace_conflict"));
+    assertEquals(false, summary.get("hard"));
+  }
+
+  @Test
   void stage_whenPinnedOriginHasHigherPriorityExactDuplicate_expectPinnedCandidateStaged()
       throws Exception {
     AppUpdateService service =
@@ -5310,6 +5382,34 @@ class AppUpdateServiceTest {
         Instant.parse("2030-01-01T00:00:00Z"),
         null,
         null,
+        Set.of(AppCatalogChannel.STABLE),
+        "test approval",
+        DIGEST,
+        now.minusSeconds(3600),
+        now,
+        "test binding",
+        "test-operator");
+  }
+
+  private static CatalogPublisherBinding federatedPublisherBinding(
+      String catalogId,
+      String publisherKeyId,
+      String publisherFingerprint,
+      CatalogPublisherBinding.Status status,
+      String predecessorKeyId,
+      String successorKeyId) {
+    Instant now = Instant.parse("2026-05-03T00:00:00Z");
+    return CatalogPublisherBinding.create(
+        "publisher-binding-" + catalogId + '-' + publisherKeyId,
+        catalogId,
+        APP_ID,
+        publisherKeyId,
+        publisherFingerprint,
+        status,
+        Instant.parse("2025-01-01T00:00:00Z"),
+        Instant.parse("2030-01-01T00:00:00Z"),
+        predecessorKeyId,
+        successorKeyId,
         Set.of(AppCatalogChannel.STABLE),
         "test approval",
         DIGEST,
