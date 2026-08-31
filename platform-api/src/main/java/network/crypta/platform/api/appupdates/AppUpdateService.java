@@ -3309,33 +3309,37 @@ public final class AppUpdateService {
               federatedConflictPolicy.get(), "federated catalog rollback policy is not configured");
       AppCatalogManager.HistoricalAppOriginAuthorization catalogAuthorization =
           policy.authorizeHistoricalCatalog(catalogManager, origin);
-      AppHost.CatalogMutationAuthorizationLease publisherAuthorization =
-          policy.retainHistoricalPublisherAuthorization(origin, catalogAuthorization.entry());
-      boolean publisherTransferred = false;
-      try (var reviewerTransfer =
-          new HistoricalReviewerAuthorizationTransfer(
-              retainHistoricalReviewerAuthorization(origin, catalogAuthorization.entry()))) {
-        AppHost.CatalogMutationAuthorizationLease reviewerAuthorization =
-            reviewerTransfer.transfer();
-        publisherTransferred = true;
-        return () -> {
-          try {
-            reviewerAuthorization.close();
-          } finally {
-            try {
-              publisherAuthorization.close();
-            } finally {
-              catalogAuthorization.authorization().close();
-            }
-          }
-        };
-      } finally {
-        if (!publisherTransferred) {
-          try {
+      boolean authorizationsTransferred = false;
+      try {
+        AppHost.CatalogMutationAuthorizationLease publisherAuthorization =
+            policy.retainHistoricalPublisherAuthorization(origin, catalogAuthorization.entry());
+        try (var reviewerTransfer =
+            new HistoricalReviewerAuthorizationTransfer(
+                retainHistoricalReviewerAuthorization(origin, catalogAuthorization.entry()))) {
+          AppHost.CatalogMutationAuthorizationLease reviewerAuthorization =
+              reviewerTransfer.transfer();
+          AppHost.CatalogMutationAuthorizationLease combinedAuthorization =
+              () -> {
+                try {
+                  reviewerAuthorization.close();
+                } finally {
+                  try {
+                    publisherAuthorization.close();
+                  } finally {
+                    catalogAuthorization.authorization().close();
+                  }
+                }
+              };
+          authorizationsTransferred = true;
+          return combinedAuthorization;
+        } finally {
+          if (!authorizationsTransferred) {
             publisherAuthorization.close();
-          } finally {
-            catalogAuthorization.authorization().close();
           }
+        }
+      } finally {
+        if (!authorizationsTransferred) {
+          catalogAuthorization.authorization().close();
         }
       }
     } catch (IOException | RuntimeException exception) {

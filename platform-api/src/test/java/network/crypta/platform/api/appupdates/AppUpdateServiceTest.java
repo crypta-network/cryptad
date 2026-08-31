@@ -3714,6 +3714,49 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void rollback_whenHistoricalPublisherRejects_expectCatalogAuthorizationReleased()
+      throws Exception {
+    AppCatalogEntry retainedEntry = entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED);
+    InstalledAppOrigin rollbackOrigin = installedOrigin(CATALOG_ID);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppCatalogManager.CatalogTrustAuthorization catalogAuthorization = mock();
+    when(catalogManager.authorizeHistoricalAppOriginForRollback(any(), any(), any(), any()))
+        .thenReturn(
+            new AppCatalogManager.HistoricalAppOriginAuthorization(
+                retainedEntry, catalogAuthorization));
+    FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
+    FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
+    FileFederatedCatalogConflictResolutionStore resolutionStore =
+        mock(FileFederatedCatalogConflictResolutionStore.class);
+    FederatedCatalogTrustBinding catalogBinding = mock(FederatedCatalogTrustBinding.class);
+    when(catalogBinding.publisherPolicyDigest()).thenReturn(Optional.of(DIGEST));
+    when(trustStore.findByCatalogId(CATALOG_ID)).thenReturn(Optional.of(catalogBinding));
+    when(publisherStore.retainHistoricalAuthorization(
+            any(), any(), any(), any(), any(), any(), any()))
+        .thenThrow(new IOException("historical publisher is revoked"));
+    when(appHost.rollbackRequiresCatalogAuthorization(APP_ID)).thenReturn(true);
+    when(appHost.rollback(eq(APP_ID), any(AppHost.CatalogRollbackAuthorization.class)))
+        .thenAnswer(
+            invocation -> {
+              AppHost.CatalogRollbackAuthorization authorization = invocation.getArgument(1);
+              try (AppHost.CatalogMutationAuthorizationLease ignored =
+                  authorization.authorize(rollbackOrigin)) {
+                return installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+              }
+            });
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    service.setFederatedCatalogConflictPolicy(
+        new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("catalog_rollback_trust_blocked", exception.errorCode());
+    verify(catalogAuthorization).close();
+  }
+
+  @Test
   void rollback_whenScopedPoliciesAuthorize_expectAllLeasesRetainedThroughHostCommit()
       throws Exception {
     KeyPair reviewerKeyPair = reviewerKeyPair();
