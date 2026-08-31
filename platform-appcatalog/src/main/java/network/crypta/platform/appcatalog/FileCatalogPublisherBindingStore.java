@@ -74,6 +74,11 @@ public final class FileCatalogPublisherBindingStore {
             throw FederatedPolicyRecordSupport.invalid(
                 "publisher binding id cannot move to another authorization subject");
           }
+          if (existing.status() == CatalogPublisherBinding.Status.REVOKED
+              && checked.status() != CatalogPublisherBinding.Status.REVOKED) {
+            throw FederatedPolicyRecordSupport.invalid(
+                "revoked publisher binding cannot be reactivated");
+          }
           continue;
         }
         if (sameScopeAndKey(existing, checked)) {

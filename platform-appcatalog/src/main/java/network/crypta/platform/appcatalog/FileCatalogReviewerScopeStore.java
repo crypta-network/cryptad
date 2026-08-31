@@ -101,6 +101,11 @@ public final class FileCatalogReviewerScopeStore {
             throw FederatedPolicyRecordSupport.invalid(
                 "reviewer scope id cannot move to another catalog or app scope");
           }
+          if (existing.status() == CatalogReviewerScope.Status.REVOKED
+              && checked.status() != CatalogReviewerScope.Status.REVOKED) {
+            throw FederatedPolicyRecordSupport.invalid(
+                "revoked reviewer scope cannot be reactivated");
+          }
           continue;
         }
         if (sameScope(existing, checked)) {

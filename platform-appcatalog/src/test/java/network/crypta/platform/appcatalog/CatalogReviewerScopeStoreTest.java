@@ -108,6 +108,35 @@ class CatalogReviewerScopeStoreTest {
   }
 
   @Test
+  void put_whenRevokedScopeMovesToNonRevokedState_expectRejected() throws Exception {
+    KeyPair reviewer = keyPair();
+    CatalogReviewerScope revoked =
+        scope(
+            CATALOG_APP_REVIEWERS_SCOPE_ID,
+            APP_ID,
+            reviewer,
+            CATALOG_ID,
+            CatalogReviewerScope.Status.REVOKED);
+    FileCatalogReviewerScopeStore store =
+        new FileCatalogReviewerScopeStore(tempDir.resolve(REVIEWER_SCOPES));
+    store.put(revoked);
+    List<CatalogReviewerScope.Status> replacements =
+        List.of(
+            CatalogReviewerScope.Status.PENDING,
+            CatalogReviewerScope.Status.ACTIVE,
+            CatalogReviewerScope.Status.SUSPENDED,
+            CatalogReviewerScope.Status.REMOVED);
+
+    for (CatalogReviewerScope.Status status : replacements) {
+      CatalogReviewerScope replacement =
+          scope(CATALOG_APP_REVIEWERS_SCOPE_ID, APP_ID, reviewer, CATALOG_ID, status);
+      assertThrows(AppCatalogException.class, () -> store.put(replacement));
+    }
+
+    assertEquals(revoked, store.find(revoked.scopeId()).orElseThrow());
+  }
+
+  @Test
   void retainAuthorization_whenScopeSuspensionStarts_expectUpdateWaitsForLease() throws Exception {
     KeyPair reviewer = keyPair();
     CatalogReviewerScope active = scope(CATALOG_APP_REVIEWERS_SCOPE_ID, APP_ID, reviewer);

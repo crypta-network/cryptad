@@ -123,6 +123,28 @@ class CatalogPublisherBindingStoreTest {
   }
 
   @Test
+  void put_whenRevokedBindingMovesToNonRevokedState_expectRejected() throws Exception {
+    KeyPair publisher = keyPair();
+    CatalogPublisherBinding revoked = binding(publisher, CatalogPublisherBinding.Status.REVOKED);
+    FileCatalogPublisherBindingStore store =
+        new FileCatalogPublisherBindingStore(tempDir.resolve(PUBLISHER_POLICY_ROOT));
+    store.put(revoked);
+    List<CatalogPublisherBinding.Status> replacements =
+        List.of(
+            CatalogPublisherBinding.Status.PENDING,
+            CatalogPublisherBinding.Status.ACTIVE,
+            CatalogPublisherBinding.Status.SUSPENDED,
+            CatalogPublisherBinding.Status.REMOVED);
+
+    for (CatalogPublisherBinding.Status status : replacements) {
+      CatalogPublisherBinding replacement = binding(publisher, status);
+      assertThrows(AppCatalogException.class, () -> store.put(replacement));
+    }
+
+    assertEquals(revoked, store.find(revoked.bindingId()).orElseThrow());
+  }
+
+  @Test
   void retainHistoricalAuthorization_whenLifecycleUpdateStarts_expectUpdateWaitsForLease()
       throws Exception {
     KeyPair publisher = keyPair();
