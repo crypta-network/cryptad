@@ -159,7 +159,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -181,7 +181,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
 
@@ -201,7 +201,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
 
@@ -219,7 +219,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
         .thenReturn(denylistedSecurityDecision());
@@ -239,7 +239,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
         .thenReturn(AppCatalogSecurityDecision.OK);
@@ -271,7 +271,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
         .thenReturn(AppCatalogSecurityDecision.OK);
     when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
@@ -295,7 +295,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
         .thenReturn(blockUpdateAndWarningSecurityDecision());
@@ -319,7 +319,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
         .thenReturn(blockUpdateAndWarningSecurityDecision());
@@ -346,7 +346,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -363,7 +363,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(
                 entry(
@@ -389,7 +389,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract)));
 
@@ -411,7 +411,7 @@ class AppUpdateServiceTest {
             new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
             TrustedReviewerKeys::empty);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -426,7 +426,7 @@ class AppUpdateServiceTest {
   void check_whenCatalogVersionIsLower_expectNoOperatorActionRequired() throws Exception {
     AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -442,7 +442,7 @@ class AppUpdateServiceTest {
       throws Exception {
     AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(
                 entry(
@@ -467,7 +467,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = serviceWithInstalled(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract)));
 
@@ -484,7 +484,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry("1.0-beta", AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -502,9 +502,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     enableFederation(service);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry("2.0.0", AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -522,9 +522,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     enableFederation(service);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenThrow(new IOException("catalog trust changed after routine listing"));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -543,7 +543,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     when(catalogManager.federationEnabled()).thenReturn(true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     PlatformApiException exception =
@@ -565,8 +565,8 @@ class AppUpdateServiceTest {
             List.of(catalog("alpha"), catalog("beta")),
             List.of(catalog("alpha"), catalog("beta")));
     AppCatalogEntry original = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(original));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(original));
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(withBundleDigest(original, "1".repeat(64))));
     Map<String, Object> checked = (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
 
@@ -586,8 +586,8 @@ class AppUpdateServiceTest {
     AppCatalogEntry selected = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppCatalogEntry conflicting = withBundleDigest(selected, "1".repeat(64));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(selected));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(conflicting));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(conflicting));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -624,8 +624,8 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("alpha")));
     AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(duplicate));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -655,8 +655,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(duplicate));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -683,8 +683,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(duplicate));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -717,8 +717,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(duplicate));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -791,8 +791,8 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("alpha")));
     AppCatalogEntry duplicate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(duplicate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(duplicate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(duplicate));
     when(catalogManager.prepareInstallPlan("alpha", APP_ID))
         .thenReturn(federatedPlan("alpha", duplicate));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
@@ -826,8 +826,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry selected = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(selected));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(withBundleDigest(selected, "1".repeat(64))));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
@@ -865,8 +865,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry selected = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(selected));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(selected));
     when(catalogManager.securityDecision("alpha", APP_ID))
         .thenReturn(AppCatalogSecurityDecision.OK);
     when(catalogManager.securityDecision("beta", APP_ID)).thenReturn(warningSecurityDecision());
@@ -907,8 +907,8 @@ class AppUpdateServiceTest {
     enableFederation(service);
     AppCatalogEntry selected = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(selected));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(withBundleDigest(selected, "1".repeat(64))));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
@@ -970,8 +970,8 @@ class AppUpdateServiceTest {
     AppCatalogEntry selected = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppCatalogEntry conflicting = withBundleDigest(selected, "1".repeat(64));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(selected));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(conflicting));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(selected));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(conflicting));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -1020,9 +1020,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     enableFederation(service);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry("2.0.0", AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -1044,9 +1044,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     enableFederation(service);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry("2.0.0", AppCatalogReviewStatus.REVIEWED)));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
@@ -1098,8 +1098,8 @@ class AppUpdateServiceTest {
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
     AppCatalogEntry alpha = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppCatalogEntry beta = entry("2.0.0", AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(alpha));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(beta));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(alpha));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(beta));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -1165,9 +1165,9 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     enableFederation(service);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED)));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
@@ -1210,8 +1210,8 @@ class AppUpdateServiceTest {
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
     AppCatalogEntry pinned = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     AppCatalogEntry conflicting = withBundleDigest(pinned, "1".repeat(64));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(pinned));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(conflicting));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(pinned));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(conflicting));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
     FileFederatedCatalogConflictResolutionStore resolutionStore =
@@ -1244,7 +1244,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("beta")));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -1261,9 +1261,9 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha"))
+    when(catalogManager.listRoutineApps("alpha"))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry("2.0.0", AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -1281,8 +1281,8 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
     AppCatalogEntry equalCandidate = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(equalCandidate));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(equalCandidate));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(equalCandidate));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(equalCandidate));
 
     Map<String, Object> candidate =
         (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
@@ -1301,7 +1301,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("alpha")));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(update));
     AppCatalogInstallPlan plan =
         plan(
             "alpha",
@@ -1333,7 +1333,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(update));
     AppCatalogInstallPlan plan =
         plan(
             "alpha",
@@ -1369,7 +1369,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(update));
     AppCatalogInstallPlan plan =
         plan(
             "alpha",
@@ -1409,7 +1409,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("beta")));
     AppCatalogEntry target = entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("beta")).thenReturn(List.of(target));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(target));
     AppCatalogInstallPlan plan = federatedPlan("beta", target);
     when(catalogManager.prepareInstallPlan("beta", APP_ID)).thenReturn(plan);
     String consent = CatalogSourceSwitchConsent.evaluate(plan, current).consentDigestSha256();
@@ -1431,7 +1431,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("alpha")));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha")));
     AppCatalogEntry target = entry(INSTALLED_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(target));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(target));
     when(catalogManager.prepareInstallPlan("alpha", APP_ID))
         .thenReturn(federatedPlan("alpha", target));
 
@@ -1452,7 +1452,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(approvedCurrent));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(update));
     AppCatalogInstallPlan plan =
         plan(
             "alpha",
@@ -1505,8 +1505,8 @@ class AppUpdateServiceTest {
             List.of(catalog("alpha")),
             List.of(catalog("alpha"), catalog("beta")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(update));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(withBundleDigest(update, "1".repeat(64))));
     FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
     FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
@@ -1638,8 +1638,8 @@ class AppUpdateServiceTest {
     service.setCatalogScopedReviewerPolicy(reviewerPolicy);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(entry));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(entry));
     when(publisherStore.findActiveForScope(any(), any(), any(), any()))
         .thenAnswer(invocation -> List.of(federatedPublisherBinding(invocation.getArgument(0))));
     FederatedCatalogConflictEngine.Resolution conflictResolution = mock();
@@ -1713,7 +1713,7 @@ class AppUpdateServiceTest {
     enableFederation(service);
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("removed")));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("beta")));
-    when(catalogManager.listApps("beta"))
+    when(catalogManager.listRoutineApps("beta"))
         .thenReturn(List.of(entry("2.0.0", AppCatalogReviewStatus.REVIEWED)));
 
     Map<String, Object> candidate =
@@ -1731,7 +1731,7 @@ class AppUpdateServiceTest {
     when(catalogManager.federationEnabled()).thenReturn(true);
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin("removed")));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("beta")));
-    when(catalogManager.listApps("beta")).thenReturn(List.of());
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of());
 
     Map<String, Object> candidate =
         (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
@@ -1751,7 +1751,7 @@ class AppUpdateServiceTest {
     when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("beta")));
     AppCatalogEntry update = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
-    when(catalogManager.listApps("beta")).thenReturn(List.of(update));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(update));
     try (AppCatalogInstallPlan base = plan("beta", update);
         AppCatalogInstallPlan plan =
             planWithCatalogSigner(base, "beta-catalog-key", "1".repeat(64))) {
@@ -1786,8 +1786,8 @@ class AppUpdateServiceTest {
     AppCatalogEntry publisherOnlyEntry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(publisherOnlyEntry));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(publisherOnlyEntry));
 
     Map<String, Object> candidate =
         (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
@@ -1817,8 +1817,8 @@ class AppUpdateServiceTest {
     AppCatalogEntry blockedNewerEntry =
         entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(blockedNewerEntry));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(blockedNewerEntry));
 
     Map<String, Object> candidate =
         (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
@@ -1850,8 +1850,8 @@ class AppUpdateServiceTest {
     AppCatalogEntry acknowledgementEntry =
         entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog("alpha"), catalog("beta")));
-    when(catalogManager.listApps("alpha")).thenReturn(List.of(trustedEntry));
-    when(catalogManager.listApps("beta")).thenReturn(List.of(acknowledgementEntry));
+    when(catalogManager.listRoutineApps("alpha")).thenReturn(List.of(trustedEntry));
+    when(catalogManager.listRoutineApps("beta")).thenReturn(List.of(acknowledgementEntry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -1897,7 +1897,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenThrow(new IOException("stage failed"));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -1920,7 +1920,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppApiCompatibilityMetadata futureContract = futureApiMetadata();
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract)));
     service.check(APP_ID, false);
@@ -1942,7 +1942,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry changedEntry = entry(UPDATE_VERSION, AppCatalogReviewStatus.CAUTION);
     AppCatalogInstallPlan changedPlan = plan(changedEntry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(reviewedEntry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(reviewedEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(changedPlan);
     service.check(APP_ID, false);
 
@@ -1965,7 +1965,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, futureContract);
     AppCatalogInstallPlan plan = plan(compatibleEntry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(compatibleEntry), List.of(incompatibleEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -1988,7 +1988,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry newerEntry =
         entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(stagedEntry))
         .thenReturn(List.of(newerEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(stagedEntry));
@@ -2017,7 +2017,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
@@ -2048,7 +2048,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, false, true));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -2093,7 +2093,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, false, true));
 
@@ -2119,7 +2119,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
         .thenReturn(blockUpdateAndWarningSecurityDecision());
@@ -2157,7 +2157,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, true, false));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -2198,7 +2198,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, true, true));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -2240,7 +2240,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, true, true));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -2282,7 +2282,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, true, true));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
@@ -2313,7 +2313,7 @@ class AppUpdateServiceTest {
             compatibleApiMetadata(),
             productionMetadata(AppCatalogChannel.BETA));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -2356,7 +2356,7 @@ class AppUpdateServiceTest {
                 List.of(QUEUE_READ_PERMISSION, "content.fetch")),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -2400,7 +2400,7 @@ class AppUpdateServiceTest {
                 productionMetadataWithSecurityAdvisory()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -2448,7 +2448,7 @@ class AppUpdateServiceTest {
                 productionMetadata(AppCatalogChannel.BETA)),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(stableEntry, betaEntry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(stableEntry, betaEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(stableEntry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
 
@@ -2481,7 +2481,7 @@ class AppUpdateServiceTest {
                 productionMetadata(AppCatalogChannel.BETA)),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(
         APP_ID,
         AppUpdatePolicyMode.STAGE,
@@ -2527,7 +2527,7 @@ class AppUpdateServiceTest {
                 productionMetadata(AppCatalogChannel.BETA)),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry), List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry), List.of(entry));
     service.setPolicy(
         APP_ID,
         AppUpdatePolicyMode.STAGE,
@@ -2556,7 +2556,7 @@ class AppUpdateServiceTest {
             compatibleApiMetadata(),
             productionMetadata(AppCatalogChannel.BETA));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
 
     Map<String, Object> summary = service.stage(APP_ID);
@@ -2579,7 +2579,7 @@ class AppUpdateServiceTest {
     AppCatalogInstallPlan plan = plan(entry);
     InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     service.stage(APP_ID);
@@ -2604,7 +2604,7 @@ class AppUpdateServiceTest {
             compatibleApiMetadata(),
             productionMetadata(AppCatalogChannel.DEPRECATED));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(
         APP_ID,
         AppUpdatePolicyMode.STAGE,
@@ -2641,7 +2641,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         reviewedUpdateEntryWithTrustedReceipt(compatibleApiMetadata(), reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -2666,7 +2666,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -2708,7 +2708,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -2731,7 +2731,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
         .thenReturn(AppCatalogSecurityDecision.OK);
     when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
@@ -2764,7 +2764,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
     when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
         .thenReturn(AppCatalogSecurityDecision.OK);
@@ -2828,7 +2828,7 @@ class AppUpdateServiceTest {
             vaultService);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -2858,7 +2858,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -2885,7 +2885,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -2910,7 +2910,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -2935,7 +2935,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     try (AppCatalogInstallPlan plan = plan(entry)) {
       when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
       service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
@@ -2976,7 +2976,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -3001,7 +3001,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.stage(APP_ID);
@@ -3028,7 +3028,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     try (AppCatalogInstallPlan plan = plan(entry)) {
       when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
       when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
@@ -3059,7 +3059,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3121,7 +3121,7 @@ class AppUpdateServiceTest {
             vaultService);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3156,7 +3156,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3190,7 +3190,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3226,7 +3226,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3266,7 +3266,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -3291,7 +3291,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
@@ -3314,7 +3314,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
@@ -3339,7 +3339,7 @@ class AppUpdateServiceTest {
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
@@ -3364,7 +3364,7 @@ class AppUpdateServiceTest {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(
                 entry(UPDATE_VERSION, AppCatalogReviewStatus.CAUTION, compatibleApiMetadata())));
@@ -3390,7 +3390,7 @@ class AppUpdateServiceTest {
             new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED),
             TrustedReviewerKeys::empty);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(
                 entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata())));
@@ -3436,7 +3436,7 @@ class AppUpdateServiceTest {
     AppApiCompatibilityMetadata newerThanTested =
         new AppApiCompatibilityMetadata(1, 1, List.of(), TargetStability.STABLE, false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(reviewedUpdateEntryWithTrustedReceipt(newerThanTested, reviewerKeyPair)));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
@@ -3468,7 +3468,7 @@ class AppUpdateServiceTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID))
+    when(catalogManager.listRoutineApps(CATALOG_ID))
         .thenReturn(
             List.of(
                 entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata())));
@@ -3578,7 +3578,7 @@ class AppUpdateServiceTest {
     AppUpdateService service = new AppUpdateService(appHost, catalogManager);
     AppCatalogEntry entry = entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     AppCatalogInstallPlan plan = plan(entry);
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.rollback(APP_ID)).thenReturn(rolledBack);
@@ -3970,7 +3970,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, true, false));
 
@@ -4004,7 +4004,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4038,7 +4038,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4067,7 +4067,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4107,7 +4107,7 @@ class AppUpdateServiceTest {
             reviewerKeyPair);
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     Map<String, Object> summary = service.check(APP_ID, false);
@@ -4135,7 +4135,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4179,7 +4179,7 @@ class AppUpdateServiceTest {
     AppCatalogInstallPlan plan =
         planWithAppDataMigration(entry, true, true, "quota.data.bytes=65536\n");
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4219,7 +4219,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4301,7 +4301,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4360,7 +4360,7 @@ class AppUpdateServiceTest {
     service.setCatalogScopedReviewerPolicy(scopedPolicy);
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4392,7 +4392,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4425,7 +4425,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     doNothing()
         .doNothing()
@@ -4460,7 +4460,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.check(APP_ID, false);
     doThrow(new AppCatalogException("invalid_app_bundle", "staged bundle tampered"))
@@ -4489,7 +4489,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithDeadEndBranchAppDataMigration(entry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4514,7 +4514,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithCompatibleAlternativeAppDataMigration(entry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4542,7 +4542,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4577,7 +4577,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     when(appHost.rollback(APP_ID)).thenReturn(installed);
@@ -4615,7 +4615,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     when(appHost.rollback(APP_ID)).thenReturn(installed);
@@ -4672,7 +4672,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     when(appHost.rollback(APP_ID)).thenThrow(new IOException(ROLLBACK_MANIFEST_BROKEN));
@@ -4711,7 +4711,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithChainedAppDataMigration(entry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4748,7 +4748,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
 
@@ -4782,7 +4782,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithRollbackIncompatibleTwoNamespaceAppDataMigration(entry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.check(APP_ID, false);
@@ -4817,7 +4817,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
         .thenAnswer(
@@ -4864,7 +4864,7 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
 
     service.stage(APP_ID);
@@ -4894,7 +4894,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(
             planWithAppDataMigration(
@@ -4935,7 +4935,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(
             planWithAppDataMigration(
@@ -4981,7 +4981,7 @@ class AppUpdateServiceTest {
             entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
             reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(
             planWithAppDataMigration(
@@ -5021,7 +5021,7 @@ class AppUpdateServiceTest {
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
         .thenReturn(planWithAppDataMigration(entry, false, true));
 

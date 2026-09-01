@@ -172,6 +172,21 @@ abstract class AppCatalogOperationsManager extends AppCatalogSourceManager {
   }
 
   /**
+   * Lists app entries currently authorized for routine install and update selection.
+   *
+   * <p>Historical inspection may expose signed entries outside a federated binding's channel scope.
+   * This projection instead requires current routine catalog authorization and omits those entries
+   * without treating unrelated allowed entries as untrusted.
+   *
+   * @param catalogId configured catalog identity
+   * @return entries authorized by the current catalog binding and its allowed channels
+   * @throws IOException if catalog or trust state cannot be read or verified
+   */
+  public synchronized List<AppCatalogEntry> listRoutineApps(String catalogId) throws IOException {
+    return operations.listRoutineApps(AppCatalogManager.normalizeCatalogIdForLookup(catalogId));
+  }
+
+  /**
    * Returns the authenticated signed security policy for one catalog.
    *
    * @param catalogId configured catalog identity

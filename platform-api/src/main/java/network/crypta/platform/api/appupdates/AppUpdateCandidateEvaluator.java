@@ -236,7 +236,7 @@ final class AppUpdateCandidateEvaluator {
       if (!targetCatalogId.equals(catalog.catalogId())) {
         continue;
       }
-      for (AppCatalogEntry entry : listCatalogApps(catalog.catalogId())) {
+      for (AppCatalogEntry entry : listCatalogAppsForCandidateScan(catalog.catalogId())) {
         if (appId.equals(entry.appId())) {
           return candidate(catalog.catalogId(), entry, installed, policy);
         }
@@ -411,22 +411,6 @@ final class AppUpdateCandidateEvaluator {
   }
 
   /**
-   * Lists authenticated entries from one exact catalog.
-   *
-   * @param catalogId normalized catalog identifier
-   * @return immutable authenticated entries from the catalog
-   */
-  private List<AppCatalogEntry> listCatalogApps(String catalogId) {
-    try {
-      return catalogManager.listApps(catalogId);
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw catalogListFailure();
-    }
-  }
-
-  /**
    * Lists one catalog for a scan, isolating source-local failures in federation mode.
    *
    * @param catalogId normalized catalog identifier
@@ -434,10 +418,15 @@ final class AppUpdateCandidateEvaluator {
    */
   private List<AppCatalogEntry> listCatalogAppsForCandidateScan(String catalogId) {
     try {
-      return listCatalogApps(catalogId);
-    } catch (PlatformApiException exception) {
+      return catalogManager.listRoutineApps(catalogId);
+    } catch (AppCatalogException exception) {
       if (!catalogManager.federationEnabled()) {
-        throw exception;
+        throw catalogFailure(exception);
+      }
+      return List.of();
+    } catch (IOException _) {
+      if (!catalogManager.federationEnabled()) {
+        throw catalogListFailure();
       }
       return List.of();
     }

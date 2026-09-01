@@ -693,6 +693,36 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenDiscoveryImportUsesRepeatedEndorsements_routesEveryValue()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getHeader("content-type")).thenReturn("application/x-www-form-urlencoded");
+    when(request.getRawData())
+        .thenReturn(
+            new SimpleReadOnlyArrayBucket(
+                ("descriptorBase64=descriptor"
+                        + "&endorsementBase64=endorsement-one"
+                        + "&endorsementBase64=endorsement-two")
+                    .getBytes(StandardCharsets.US_ASCII)));
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/operator/catalog-federation/discovery"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("operator", "catalog-federation", "discovery"),
+                Map.of(
+                    "descriptorBase64", List.of("descriptor"),
+                    "endorsementBase64", List.of("endorsement-one", "endorsement-two"))));
+    verify(request, never()).getParts();
+  }
+
+  @Test
   void handleMethodPOST_whenUrlEncodedBodyOverlapsQuery_expectQueryValuesPreserved()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);

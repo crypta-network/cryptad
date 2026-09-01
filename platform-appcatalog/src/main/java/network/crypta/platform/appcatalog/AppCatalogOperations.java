@@ -140,6 +140,19 @@ final class AppCatalogOperations {
     return readVerifiedCatalog(catalogId, trustedKeyProvider.trustedKeys()).entries();
   }
 
+  /** Lists entries that the current catalog binding authorizes for routine work. */
+  List<AppCatalogEntry> listRoutineApps(String catalogId) throws IOException {
+    AppCatalog catalog = readRoutineCatalog(catalogId, trustedKeyProvider.trustedKeys());
+    Optional<FederatedCatalogTrustBinding> binding = trustBinding(catalogId);
+    if (binding.isEmpty()) {
+      return catalog.entries();
+    }
+    return catalog.entries().stream()
+        .filter(
+            entry -> binding.get().allowedChannels().contains(entry.productionMetadata().channel()))
+        .toList();
+  }
+
   /** Selects one app from a re-verified configured catalog. */
   AppCatalogEntry getApp(String catalogId, String appId) throws IOException {
     return requireApp(readVerifiedCatalog(catalogId, trustedKeyProvider.trustedKeys()), appId);

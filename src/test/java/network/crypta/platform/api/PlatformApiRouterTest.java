@@ -2461,7 +2461,7 @@ class PlatformApiRouterTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan("core", APP_ID))
         .thenReturn(previewPlan, verificationPlan, plan);
     Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
@@ -2486,7 +2486,7 @@ class PlatformApiRouterTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-    when(catalogManager.listApps("core")).thenReturn(List.of());
+    when(catalogManager.listRoutineApps("core")).thenReturn(List.of());
 
     PlatformApiResponse response =
         updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
@@ -2527,7 +2527,7 @@ class PlatformApiRouterTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan("core", APP_ID))
         .thenReturn(previewPlan, verificationPlan, stagePlan);
     PlatformApiResponse preview =
@@ -2563,7 +2563,7 @@ class PlatformApiRouterTest {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
       when(catalogManager.prepareInstallPlan("core", APP_ID))
           .thenReturn(previewPlan, verificationPlan, plan);
       Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
@@ -2655,7 +2655,7 @@ class PlatformApiRouterTest {
           .thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
       when(catalogManager.prepareInstallPlan("core", APP_ID))
           .thenReturn(previewPlan, verificationPlan, plan);
       Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
@@ -2713,7 +2713,7 @@ class PlatformApiRouterTest {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-      when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+      when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
       when(catalogManager.prepareInstallPlan("core", APP_ID))
           .thenReturn(previewPlan, verificationPlan, plan);
       Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
@@ -2758,7 +2758,7 @@ class PlatformApiRouterTest {
         .thenReturn(Optional.empty())
         .thenReturn(Optional.of(runningSnapshot()));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
-    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.listRoutineApps("core")).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan("core", APP_ID))
         .thenReturn(previewPlan, verificationPlan, plan);
     Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);

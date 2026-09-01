@@ -283,6 +283,9 @@ class AppCatalogManagerTest {
     manager.addSource(catalog.toString(), CATALOG_ID);
 
     assertEquals(2, manager.listApps(CATALOG_ID).size());
+    assertEquals(
+        List.of(APP_ID),
+        manager.listRoutineApps(CATALOG_ID).stream().map(AppCatalogEntry::appId).toList());
     assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, "beta-app"));
     try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
       assertEquals(APP_ID, plan.entry().appId());
