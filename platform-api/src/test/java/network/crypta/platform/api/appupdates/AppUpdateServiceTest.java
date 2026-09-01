@@ -555,6 +555,68 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenOneFederatedCatalogHasNoActivePublisherBinding_expectSelectionBlocked()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    enableFederation(service);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
+    FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
+    FileFederatedCatalogConflictResolutionStore resolutionStore =
+        mock(FileFederatedCatalogConflictResolutionStore.class);
+    when(trustStore.findByCatalogId(CATALOG_ID))
+        .thenReturn(Optional.of(federatedCatalogBinding(CATALOG_ID, 10)));
+    service.setFederatedCatalogConflictPolicy(
+        new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals("blocked", candidate.get(STATUS));
+    assertEquals("unresolved_cross_catalog_conflict", candidate.get("policyBlockReason"));
+    Map<?, ?> review = (Map<?, ?>) candidate.get("review");
+    assertEquals(
+        "catalog_conflict_policy_could_not_be_authenticated", review.get("catalogConflictReason"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertInstallPlanNotPrepared();
+  }
+
+  @Test
+  void check_whenOneFederatedCatalogHasActivePublisherBinding_expectUpdateAvailable()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    enableFederation(service);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    FileFederatedCatalogTrustStore trustStore = mock(FileFederatedCatalogTrustStore.class);
+    FileCatalogPublisherBindingStore publisherStore = mock(FileCatalogPublisherBindingStore.class);
+    FileFederatedCatalogConflictResolutionStore resolutionStore =
+        mock(FileFederatedCatalogConflictResolutionStore.class);
+    when(trustStore.findByCatalogId(CATALOG_ID))
+        .thenReturn(Optional.of(federatedCatalogBinding(CATALOG_ID, 10)));
+    CatalogPublisherBinding publisher = federatedPublisherBinding(CATALOG_ID);
+    when(publisherStore.findActiveForScope(eq(CATALOG_ID), eq(APP_ID), any(), any()))
+        .thenReturn(List.of(publisher));
+    when(publisherStore.findLineageForScope(eq(CATALOG_ID), eq(APP_ID), any()))
+        .thenReturn(List.of(publisher));
+    service.setFederatedCatalogConflictPolicy(
+        new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
+
+    Map<String, Object> candidate =
+        (Map<String, Object>) service.check(APP_ID, false).get(CANDIDATE);
+
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(CATALOG_ID, candidate.get("catalogId"));
+    assertNull(candidate.get("policyBlockReason"));
+    assertInstallPlanNotPrepared();
+  }
+
+  @Test
   void stage_whenNewCatalogIntroducesHardConflict_expectCachedCandidateRejected() throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));

@@ -2606,14 +2606,18 @@ public final class AppUpdateService {
   }
 
   private AppUpdateCandidate unresolvedCrossCatalogConflict(List<AppUpdateCandidate> matches) {
-    if (matches.stream().map(AppUpdateCandidate::catalogId).distinct().count() < 2) {
+    if (matches.isEmpty()) {
       return null;
     }
     AppUpdateFederationAuthority policy = federatedConflictPolicy.get();
     if (policy == null) {
-      return blockedCatalogConflict(matches);
+      return hasMultipleCatalogs(matches) ? blockedCatalogConflict(matches) : null;
     }
     return policy.conflicts().decision(matches, this::conflictSecurityDigest);
+  }
+
+  private static boolean hasMultipleCatalogs(List<AppUpdateCandidate> matches) {
+    return matches.stream().map(AppUpdateCandidate::catalogId).distinct().count() > 1;
   }
 
   private List<AppUpdateCandidate> currentFederatedConflictCandidates(String appId) {

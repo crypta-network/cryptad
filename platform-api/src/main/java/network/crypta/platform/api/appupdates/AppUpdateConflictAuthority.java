@@ -63,15 +63,17 @@ final class AppUpdateConflictAuthority {
    *
    * @param candidates authenticated candidates for one application
    * @param securityDigests provider of catalog-local security decision digests
-   * @return authorized candidate, blocked candidate, or {@code null} for one catalog
+   * @return authorized candidate, blocked candidate, or {@code null} when one catalog's local
+   *     scopes authorize it
    */
   AppUpdateCandidate decision(
       List<AppUpdateCandidate> candidates, SecurityDigestProvider securityDigests) {
     List<AppUpdateCandidate> sorted = sorted(candidates);
-    if (hasFewerThanTwoCatalogs(sorted)) {
-      return null;
-    }
     try {
+      if (hasFewerThanTwoCatalogs(sorted)) {
+        subjects(sorted, securityDigests);
+        return null;
+      }
       CurrentConflict current = current(sorted, securityDigests);
       return applyPolicy(sorted, current.subjects(), current.conflictSet(), current.lookup());
     } catch (IOException | AppCatalogException _) {
