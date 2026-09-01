@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +55,106 @@ class AppCatalogSourceStoreTest {
         source.resolvedCatalogFetchUri(), stored.refreshMetadata().lastResolvedUri().orElseThrow());
     assertArrayEquals(fetchedCatalog.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(fetchedCatalog.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
+  void writeAndRead_whenFederatedBindingProvided_expectExactBindingIdentityPersists()
+      throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog fetchedCatalog = fetchedCatalog("core");
+    AppCatalogSource source = source("core");
+    AppCatalogMirror primary = AppCatalogMirror.primary(source, ADDED_AT);
+
+    store.write(
+        new AppCatalogSourceStore.VerifiedCatalogWrite(
+            catalog("core"),
+            source,
+            fetchedCatalog,
+            ADDED_AT,
+            REFRESHED_AT,
+            Optional.of("binding-1"),
+            Optional.of("a".repeat(64))),
+        new AppCatalogSourceStore.EndpointWriteState(primary, List.of(primary), Map.of()));
+    StoredCatalogSource stored = store.read("core");
+
+    assertEquals(Optional.of("binding-1"), stored.trustBindingId());
+    assertEquals(Optional.of("a".repeat(64)), stored.trustBindingDigest());
+  }
+
+  @Test
+  void write_whenOriginRevisionIsPinned_expectPruningPreservesExactRevision() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog originRevision = fetchedCatalog("core");
+    String originDigest = AppCatalogRevisions.catalogDigest(originRevision);
+    AppCatalogSource catalogSource = source("core");
+    store.write(catalog("core"), catalogSource, originRevision, ADDED_AT, REFRESHED_AT);
+    store.retainOriginRevisions(List.of(originRevision(originRevision)));
+    FetchedCatalog currentRevision = originRevision;
+    for (int revision = 1; revision <= 7; revision++) {
+      currentRevision =
+          new FetchedCatalog(
+              bytes("catalog.id=core\nrevision=" + revision + "\n"),
+              signatureBytes("test-" + revision));
+      store.write(
+          catalog("core"),
+          catalogSource,
+          currentRevision,
+          ADDED_AT,
+          REFRESHED_AT.plusSeconds(revision));
+    }
+
+    List<AppCatalogVerifiedRevision> revisions =
+        store.listRevisions("core", AppCatalogRevisions.catalogDigest(currentRevision));
+    FetchedCatalog retained = store.readRevision("core", originDigest);
+
+    assertTrue(
+        revisions.stream().anyMatch(revision -> originDigest.equals(revision.revisionDigest())));
+    assertArrayEquals(originRevision.catalogBytes(), retained.catalogBytes());
+    assertArrayEquals(originRevision.signatureBytes(), retained.signatureBytes());
+  }
+
+  @Test
+  void reconcileOriginRevisions_whenOriginSlotRotates_expectObsoletePinReleased() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog obsoleteRevision = fetchedCatalog("core");
+    String obsoleteDigest = AppCatalogRevisions.catalogDigest(obsoleteRevision);
+    AppCatalogSource catalogSource = source("core");
+    store.write(catalog("core"), catalogSource, obsoleteRevision, ADDED_AT, REFRESHED_AT);
+    store.retainOriginRevisions(List.of(originRevision(obsoleteRevision)));
+    FetchedCatalog currentRevision = obsoleteRevision;
+    for (int revision = 1; revision <= 7; revision++) {
+      currentRevision =
+          new FetchedCatalog(
+              bytes("catalog.id=core\nrevision=" + revision + "\n"),
+              signatureBytes("test-" + revision));
+      store.write(
+          catalog("core"),
+          catalogSource,
+          currentRevision,
+          ADDED_AT,
+          REFRESHED_AT.plusSeconds(revision));
+    }
+    String currentDigest = AppCatalogRevisions.catalogDigest(currentRevision);
+    String currentContentDigest =
+        AppCatalogRevisions.digestDirectoryName(
+            AppCatalogRevisions.catalogContentDigest(currentRevision));
+
+    store.reconcileOriginRevisions(
+        List.of(
+            new AppCatalogManager.OriginRevision(
+                "core", currentContentDigest, "test-7", "feed-reader")));
+    FetchedCatalog nextRevision =
+        new FetchedCatalog(bytes("catalog.id=core\nrevision=8\n"), signatureBytes("test-8"));
+    store.write(
+        catalog("core"), catalogSource, nextRevision, ADDED_AT, REFRESHED_AT.plusSeconds(8));
+
+    List<AppCatalogVerifiedRevision> revisions =
+        store.listRevisions("core", AppCatalogRevisions.catalogDigest(nextRevision));
+
+    assertFalse(
+        revisions.stream().anyMatch(revision -> obsoleteDigest.equals(revision.revisionDigest())));
+    assertTrue(
+        revisions.stream().anyMatch(revision -> currentDigest.equals(revision.revisionDigest())));
   }
 
   @Test
@@ -300,8 +401,27 @@ class AppCatalogSourceStoreTest {
   }
 
   private static FetchedCatalog fetchedCatalog(String catalogId) {
-    return new FetchedCatalog(
-        bytes("catalog.id=" + catalogId + "\n"), bytes("catalog.signature.key.id=test\n"));
+    return new FetchedCatalog(bytes("catalog.id=" + catalogId + "\n"), signatureBytes("test"));
+  }
+
+  private static AppCatalogManager.OriginRevision originRevision(FetchedCatalog revision) {
+    return new AppCatalogManager.OriginRevision(
+        "core",
+        AppCatalogRevisions.digestDirectoryName(AppCatalogRevisions.catalogContentDigest(revision)),
+        "test",
+        "feed-reader");
+  }
+
+  private static byte[] signatureBytes(String keyId) {
+    return bytes(
+        """
+        catalog.signature.version=1
+        catalog.signature.algorithm=Ed25519
+        catalog.signature.key.id=%s
+        catalog.signature.payload=cryptad-app-catalog.properties
+        catalog.signature.value.base64=AA==
+        """
+            .formatted(keyId));
   }
 
   private static String sourceMetadata(String catalogId, String sourceUri) {

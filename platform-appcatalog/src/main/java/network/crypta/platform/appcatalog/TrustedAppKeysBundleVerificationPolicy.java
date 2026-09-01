@@ -3,7 +3,9 @@ package network.crypta.platform.appcatalog;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
+import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppBundleVerifier;
+import network.crypta.platform.appdist.TrustedAppKeys;
 
 /**
  * Verifies catalog bundles against the current ordinary app-publisher trust registry.
@@ -41,5 +43,15 @@ final class TrustedAppKeysBundleVerificationPolicy implements AppCatalogBundleVe
   @Override
   public void verify(Path stagedBundleDirectory) throws IOException {
     AppBundleVerifier.verify(stagedBundleDirectory, trustedKeyProvider.trustedKeys());
+  }
+
+  @Override
+  public AppCatalogBundleVerificationResult verify(
+      AppCatalogBundleVerificationContext context, Path stagedBundleDirectory) throws IOException {
+    Objects.requireNonNull(context, "context");
+    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
+    AppBundleVerification verification =
+        AppBundleVerifier.requireSigned(trustedKeys).verify(stagedBundleDirectory);
+    return AppCatalogBundleVerificationResult.trustedAppKeys(verification);
   }
 }

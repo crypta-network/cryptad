@@ -32,6 +32,121 @@ public interface AppHost {
   int MAX_PROCESS_LOG_TAIL_BYTES = 1024 * 1024;
 
   /**
+   * Authorizes the exact catalog origin that a rollback would restore.
+   *
+   * <p>Implementations invoke this callback while holding their lifecycle mutation boundary, after
+   * validating the retained bundle and matching its manifest to the rollback-origin slot, but
+   * before swapping either bundle or provenance. The returned lease remains held through commit or
+   * compensation. While it is held, callers can re-read current local catalog, publisher, and
+   * reviewer policy for the exact origin selected by the host. The authorization cannot then be
+   * revoked between the check and the durable swap.
+   */
+  @FunctionalInterface
+  interface CatalogRollbackAuthorization {
+    /**
+     * Authorizes one exact retained catalog origin.
+     *
+     * @param rollbackOrigin host-owned provenance paired with the retained rollback bundle
+     * @return lease retaining the authorization through the coordinated rollback commit
+     * @throws IOException if current local policy cannot authenticate or authorize the origin
+     */
+    CatalogMutationAuthorizationLease authorize(InstalledAppOrigin rollbackOrigin)
+        throws IOException;
+  }
+
+  /**
+   * Authorizes an exact catalog mutation and keeps its local trust decision stable until commit.
+   *
+   * <p>Implementations invoke this callback while holding their lifecycle mutation boundary and
+   * close the returned lease only after bundle and provenance state have either committed together
+   * or been compensated. The authorization provider must prevent catalog trust mutations relevant
+   * to the approved plan while the lease remains open.
+   */
+  @FunctionalInterface
+  interface CatalogMutationAuthorization {
+    /**
+     * Authorizes one exact target origin.
+     *
+     * @param targetOrigin host-owned provenance that will accompany the replacement bundle
+     * @return lease retaining the authorization through the coordinated host commit
+     * @throws IOException if current local policy cannot authenticate or authorize the target
+     */
+    CatalogMutationAuthorizationLease authorize(InstalledAppOrigin targetOrigin) throws IOException;
+  }
+
+  /** A same-thread lease retaining catalog mutation authorization through an AppHost commit. */
+  @FunctionalInterface
+  interface CatalogMutationAuthorizationLease extends AutoCloseable {
+    /** Releases the retained local trust decision. */
+    @Override
+    void close();
+  }
+
+  /** Coordinates retained catalog revisions with every host-owned provenance slot. */
+  interface CatalogOriginRetention {
+    /**
+     * Ensures that every current or rollback provenance revision is retained before commit.
+     *
+     * <p>This phase may add retention state but must not release revisions absent from the supplied
+     * snapshot: the durable host transaction can still restore its prior provenance.
+     *
+     * @param retainedOrigins complete current-and-rollback origin snapshot
+     * @throws IOException if retention state cannot be reconciled safely
+     */
+    void retain(List<InstalledAppOrigin> retainedOrigins) throws IOException;
+
+    /**
+     * Reconciles retention after provenance reaches its durable commit point.
+     *
+     * <p>Implementations must treat the supplied list as complete and release revisions absent from
+     * it. A failed cleanup remains safe because the retain phase has already protected every live
+     * origin; the host retries reconciliation before later persistent work.
+     *
+     * @param retainedOrigins complete committed current-and-rollback origin snapshot
+     * @throws IOException if retention state cannot be reconciled safely
+     */
+    void reconcile(List<InstalledAppOrigin> retainedOrigins) throws IOException;
+  }
+
+  /** Exact current-origin state approved for a coordinated catalog update. */
+  final class CatalogOriginExpectation {
+    private static final CatalogOriginExpectation ABSENT = new CatalogOriginExpectation(null);
+
+    private final String digestSha256;
+
+    private CatalogOriginExpectation(String digestSha256) {
+      this.digestSha256 = digestSha256;
+    }
+
+    /** Returns an expectation that no current catalog origin is recorded. */
+    public static CatalogOriginExpectation absent() {
+      return ABSENT;
+    }
+
+    /** Returns an expectation for one exact current catalog-origin digest. */
+    public static CatalogOriginExpectation matching(String digestSha256) {
+      return new CatalogOriginExpectation(Objects.requireNonNull(digestSha256, "digestSha256"));
+    }
+
+    /** Returns the expected digest, or an empty value when absence was approved. */
+    public Optional<String> digestSha256() {
+      return Optional.ofNullable(digestSha256);
+    }
+
+    @Override
+    public boolean equals(Object object) {
+      return this == object
+          || (object instanceof CatalogOriginExpectation other
+              && Objects.equals(digestSha256, other.digestSha256));
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hashCode(digestSha256);
+    }
+  }
+
+  /**
    * Default display limit for each managed app {@code process.log} file.
    *
    * <p>Implementations may retain a small additional redaction overlap on disk so bounded log-tail
@@ -56,6 +171,49 @@ public interface AppHost {
   InstalledAppSnapshot installFromDirectory(Path stagedAppDirectory) throws IOException;
 
   /**
+   * Installs a catalog bundle and its host-owned origin as one coordinated mutation.
+   *
+   * <p>The default fails before bundle mutation because a compatibility host cannot promise that
+   * bundle and provenance commits are coordinated. Hosts that support catalog installs must
+   * override this method and coordinate their native bundle and provenance stores directly.
+   *
+   * @param stagedAppDirectory verified bundle directory supplied by the catalog planner
+   * @param origin exact host-owned provenance for the bundle being installed
+   * @return installed snapshot after both bundle and provenance commits succeed
+   * @throws IOException if either commit or the required compensation cannot complete safely
+   */
+  default InstalledAppSnapshot installCatalogFromDirectory(
+      Path stagedAppDirectory, InstalledAppOrigin origin) throws IOException {
+    Objects.requireNonNull(stagedAppDirectory, "stagedAppDirectory");
+    Objects.requireNonNull(origin, "origin");
+    throw new AppHostException.CatalogOriginPersistenceUnsupportedException();
+  }
+
+  /**
+   * Installs a catalog bundle under mutation-scoped current trust authorization.
+   *
+   * <p>The compatibility default fails closed. Supporting hosts must invoke {@code authorization}
+   * inside their lifecycle mutation boundary and retain its returned lease through the coordinated
+   * bundle/provenance commit.
+   *
+   * @param stagedAppDirectory verified bundle directory supplied by the catalog planner
+   * @param origin exact host-owned provenance for the bundle being installed
+   * @param authorization current local catalog authorization provider
+   * @return installed snapshot after both bundle and provenance commits succeed
+   * @throws IOException if authorization or either coordinated commit fails
+   */
+  default InstalledAppSnapshot installCatalogFromDirectory(
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      CatalogMutationAuthorization authorization)
+      throws IOException {
+    Objects.requireNonNull(stagedAppDirectory, "stagedAppDirectory");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(authorization, "authorization");
+    throw new AppHostException.CatalogOriginPersistenceUnsupportedException();
+  }
+
+  /**
    * Replaces one installed app bundle from a local staging directory.
    *
    * <p>The supplied staging directory is validated using the same caller-owned input rules as
@@ -67,6 +225,9 @@ public interface AppHost {
    * <p>AppHost v1 keeps update semantics intentionally narrow and explicit: the target app must
    * already be installed and must not be running. Implementations should therefore reject updates
    * for missing or live apps rather than attempting implicit stop/start choreography.
+   * Implementations that retain catalog origin provenance must also rotate that provenance with the
+   * bundle or reject generic updates while either the current or rollback bundle is origin-tracked;
+   * they must never leave catalog provenance attached to unrelated replacement bytes.
    *
    * @param appId stable application identifier
    * @param stagedAppDirectory staging directory containing {@code cryptad-app.properties} and the
@@ -77,6 +238,89 @@ public interface AppHost {
    */
   InstalledAppSnapshot updateFromDirectory(String appId, Path stagedAppDirectory)
       throws IOException;
+
+  /**
+   * Replaces a catalog bundle and rotates its exact origin provenance as one host mutation.
+   *
+   * <p>The default delegates to the conditional overload, which fails before bundle mutation unless
+   * the host explicitly implements coordinated catalog provenance. Production hosts with separate
+   * bundle and provenance stores should override the conditional overload so both slots are
+   * prepared and compensated under the host's lifecycle lock.
+   *
+   * @param appId stable identifier of the installed app being replaced
+   * @param stagedAppDirectory verified replacement bundle supplied by the catalog planner
+   * @param origin exact host-owned provenance for the replacement bundle
+   * @return installed snapshot after bundle and provenance reach the same committed revision
+   * @throws IOException if replacement, provenance persistence, or compensation fails
+   */
+  default InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId, Path stagedAppDirectory, InstalledAppOrigin origin) throws IOException {
+    Optional<String> currentOriginDigest =
+        catalogOrigin(appId).map(InstalledAppOrigin::selfDigestSha256);
+    CatalogOriginExpectation expectedCurrentOrigin =
+        currentOriginDigest
+            .map(CatalogOriginExpectation::matching)
+            .orElseGet(CatalogOriginExpectation::absent);
+    return updateCatalogFromDirectory(appId, stagedAppDirectory, origin, expectedCurrentOrigin);
+  }
+
+  /**
+   * Conditionally replaces a catalog bundle and its provenance under an exact current-origin
+   * expectation.
+   *
+   * <p>The default fails before bundle mutation because a compatibility host cannot make the
+   * expectation check and both commits atomic. Hosts that support catalog updates must override
+   * this method and perform all three operations under one lifecycle lock.
+   *
+   * @param appId stable identifier of the installed app being replaced
+   * @param stagedAppDirectory verified replacement bundle supplied by the catalog planner
+   * @param origin exact host-owned provenance for the replacement bundle
+   * @param expectedCurrentOrigin exact current provenance state approved by the caller
+   * @return installed snapshot after bundle and provenance reach the same committed revision
+   * @throws IOException if the origin changed, replacement failed, or compensation failed
+   */
+  default InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId,
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      CatalogOriginExpectation expectedCurrentOrigin)
+      throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    Objects.requireNonNull(stagedAppDirectory, "stagedAppDirectory");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(expectedCurrentOrigin, "expectedCurrentOrigin");
+    throw new AppHostException.CatalogOriginPersistenceUnsupportedException();
+  }
+
+  /**
+   * Conditionally replaces a catalog bundle under mutation-scoped current trust authorization.
+   *
+   * <p>The compatibility default fails closed. Supporting hosts must hold the returned
+   * authorization lease until the exact bundle and provenance mutation commits or is compensated.
+   *
+   * @param appId stable identifier of the installed app being replaced
+   * @param stagedAppDirectory verified replacement bundle supplied by the catalog planner
+   * @param origin exact host-owned provenance for the replacement bundle
+   * @param expectedCurrentOrigin exact current provenance state approved by the caller
+   * @param authorization current local catalog authorization provider
+   * @return installed snapshot after bundle and provenance reach the same committed revision
+   * @throws IOException if authorization, replacement, provenance persistence, or compensation
+   *     fails
+   */
+  default InstalledAppSnapshot updateCatalogFromDirectory(
+      String appId,
+      Path stagedAppDirectory,
+      InstalledAppOrigin origin,
+      CatalogOriginExpectation expectedCurrentOrigin,
+      CatalogMutationAuthorization authorization)
+      throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    Objects.requireNonNull(stagedAppDirectory, "stagedAppDirectory");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(expectedCurrentOrigin, "expectedCurrentOrigin");
+    Objects.requireNonNull(authorization, "authorization");
+    throw new AppHostException.CatalogOriginPersistenceUnsupportedException();
+  }
 
   /**
    * Returns path-free metadata for the previous bundle available for rollback.
@@ -111,6 +355,65 @@ public interface AppHost {
   default InstalledAppSnapshot rollback(String appId) throws IOException {
     Objects.requireNonNull(appId, "appId");
     throw new UnsupportedOperationException("rollback is not supported by this AppHost");
+  }
+
+  /**
+   * Restores a retained bundle only after authorizing its exact catalog provenance.
+   *
+   * <p>The default fails closed because a compatibility host cannot promise that provenance
+   * selection and authorization occur inside one lifecycle lock. Hosts that persist catalog origins
+   * should override this method. Legacy callers may continue to use {@link #rollback(String)} only
+   * when the retained rollback bundle has no persisted catalog provenance.
+   *
+   * @param appId stable application identifier
+   * @param authorization callback that revalidates the host-selected rollback origin
+   * @return installed application snapshot after rollback
+   * @throws IOException if authorization, validation, or rollback fails
+   */
+  default InstalledAppSnapshot rollback(String appId, CatalogRollbackAuthorization authorization)
+      throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    Objects.requireNonNull(authorization, "authorization");
+    throw new UnsupportedOperationException(
+        "authorized catalog rollback is not supported by this AppHost");
+  }
+
+  /**
+   * Persists host-owned catalog origin provenance after a catalog install or update commits.
+   *
+   * <p>The default fails closed. Implementations must not accept a federated catalog bundle unless
+   * they can persist its origin, and callers should prefer the coordinated catalog install/update
+   * methods instead of committing these states separately.
+   */
+  default void recordCatalogOrigin(InstalledAppOrigin origin) throws IOException {
+    Objects.requireNonNull(origin, "origin");
+    throw new AppHostException.CatalogOriginPersistenceUnsupportedException();
+  }
+
+  /** Returns path-free catalog origin provenance for an installed app, when recorded. */
+  default Optional<InstalledAppOrigin> catalogOrigin(String appId) throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    return Optional.empty();
+  }
+
+  /**
+   * Reports whether the retained rollback bundle carries catalog provenance requiring current local
+   * authorization.
+   *
+   * <p>The compatibility default is conservative for hosts that expose only a current catalog
+   * origin: a present current origin requires the authorized rollback overload. Hosts that maintain
+   * distinct current and rollback provenance slots should override this method and inspect the
+   * exact rollback slot. A pre-federation host whose default {@link #catalogOrigin(String)} is
+   * empty continues to use {@link #rollback(String)}.
+   *
+   * @param appId stable application identifier
+   * @return {@code true} when rollback must use {@link #rollback(String,
+   *     CatalogRollbackAuthorization)}
+   * @throws IOException if provenance state cannot be inspected safely
+   */
+  default boolean rollbackRequiresCatalogAuthorization(String appId) throws IOException {
+    Objects.requireNonNull(appId, "appId");
+    return catalogOrigin(appId).isPresent();
   }
 
   /**

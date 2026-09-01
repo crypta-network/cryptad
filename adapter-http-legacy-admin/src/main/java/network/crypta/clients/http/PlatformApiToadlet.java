@@ -103,6 +103,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String UPDATES_SEGMENT = "updates";
   private static final String WIZARD_SEGMENT = "wizard";
   private static final String APPROVE_ACTION = "approve";
+  private static final String REMOVE_ACTION = "remove";
 
   /**
    * Transport-neutral router that owns endpoint selection, validation, and JSON payload creation.
@@ -710,21 +711,60 @@ public final class PlatformApiToadlet extends Toadlet {
         || !OPERATOR_SEGMENT.equals(pathSegments.getFirst())) {
       return false;
     }
-    if ("app-data".equals(pathSegments.get(1))) {
-      if ("backups".equals(pathSegments.get(2))) {
-        return pathSegments.size() == 3;
-      }
-      if ("restore".equals(pathSegments.get(2))) {
-        return pathSegments.size() == 3
-            || (pathSegments.size() == 4 && "plan".equals(pathSegments.get(3)));
-      }
-    }
-    if ("recovery".equals(pathSegments.get(1))) {
-      return pathSegments.size() == 3
-          && ("plan".equals(pathSegments.get(2)) || "execute".equals(pathSegments.get(2)));
-    }
+    return switch (pathSegments.get(1)) {
+      case "app-data" -> requiresOperatorAppDataFormPassword(pathSegments);
+      case "recovery" -> requiresOperatorRecoveryFormPassword(pathSegments);
+      case "catalog-federation" -> requiresCatalogFederationFormPassword(pathSegments);
+      case "apps" -> requiresOperatorAppsFormPassword(pathSegments);
+      case "subscriptions" -> requiresOperatorSubscriptionsFormPassword(pathSegments);
+      default -> false;
+    };
+  }
+
+  private static boolean requiresOperatorAppDataFormPassword(List<String> pathSegments) {
+    return switch (pathSegments.get(2)) {
+      case "backups" -> pathSegments.size() == 3;
+      case "restore" ->
+          pathSegments.size() == 3
+              || (pathSegments.size() == 4 && "plan".equals(pathSegments.get(3)));
+      default -> false;
+    };
+  }
+
+  private static boolean requiresOperatorRecoveryFormPassword(List<String> pathSegments) {
+    return pathSegments.size() == 3
+        && ("plan".equals(pathSegments.get(2)) || "execute".equals(pathSegments.get(2)));
+  }
+
+  private static boolean requiresCatalogFederationFormPassword(List<String> pathSegments) {
+    return switch (pathSegments.size()) {
+      case 3 -> "discovery".equals(pathSegments.get(2));
+      case 4 -> requiresCatalogTrustLifecycleFormPassword(pathSegments.get(3));
+      case 5 -> requiresCatalogFederationActionFormPassword(pathSegments);
+      default -> false;
+    };
+  }
+
+  private static boolean requiresCatalogTrustLifecycleFormPassword(String action) {
+    return switch (action) {
+      case "trust", "suspend", "revoke", REMOVE_ACTION -> true;
+      default -> false;
+    };
+  }
+
+  private static boolean requiresCatalogFederationActionFormPassword(List<String> pathSegments) {
+    return ("discovery".equals(pathSegments.get(2)) && "discard".equals(pathSegments.get(4)))
+        || ("conflicts".equals(pathSegments.get(2)) && "resolve".equals(pathSegments.get(4)));
+  }
+
+  private static boolean requiresOperatorAppsFormPassword(List<String> pathSegments) {
     return pathSegments.size() == 5
-        && "subscriptions".equals(pathSegments.get(1))
+        && "catalog-origin".equals(pathSegments.get(3))
+        && "switch-preview".equals(pathSegments.get(4));
+  }
+
+  private static boolean requiresOperatorSubscriptionsFormPassword(List<String> pathSegments) {
+    return pathSegments.size() == 5
         && ("refresh".equals(pathSegments.get(4))
             || "reset-backoff".equals(pathSegments.get(4))
             || "reschedule-now".equals(pathSegments.get(4))
@@ -817,7 +857,7 @@ public final class PlatformApiToadlet extends Toadlet {
       return false;
     }
     if ("requests".equals(pathSegments.get(1))) {
-      return "remove".equals(pathSegments.get(2))
+      return REMOVE_ACTION.equals(pathSegments.get(2))
           || "restart".equals(pathSegments.get(2))
           || "priority".equals(pathSegments.get(2));
     }
@@ -847,7 +887,7 @@ public final class PlatformApiToadlet extends Toadlet {
     return pathSegments.size() == 3
         && ("settings".equals(pathSegments.get(2))
             || "note".equals(pathSegments.get(2))
-            || "remove".equals(pathSegments.get(2)));
+            || REMOVE_ACTION.equals(pathSegments.get(2)));
   }
 
   /**

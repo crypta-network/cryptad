@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.appupdates.CatalogSourceSwitchConsent;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationResult;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogChannel;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
@@ -28,6 +30,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogMirror;
 import network.crypta.platform.appcatalog.AppCatalogMirrorHealth;
 import network.crypta.platform.appcatalog.AppCatalogMirrorId;
+import network.crypta.platform.appcatalog.AppCatalogOriginContext;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
@@ -52,14 +55,17 @@ import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
 import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
+import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeyLifecycle;
 import network.crypta.platform.appcatalog.TrustedReviewerKeyStatus;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppDataSchemaContract;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
@@ -83,6 +89,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -119,6 +127,8 @@ class AppCatalogsApiHandlerTest {
   private static final String MISSING_CONFIGURATION_FIELD = "missingConfiguration";
   private static final String UNKNOWN_STATUS = "unknown";
   private static final String APP_ID_FIELD = "appId";
+  private static final String REPLACEMENT_APP_ID_FIELD = "replacementAppId";
+  private static final String ACTIVE_ADVISORIES_FIELD = "activeAdvisories";
   private static final String VERSION_FIELD = "version";
   private static final String CATALOG_VERSION = "1.2.0";
   private static final String INSTALLED_VERSION_FIELD = "installedVersion";
@@ -160,6 +170,11 @@ class AppCatalogsApiHandlerTest {
   private static final String TRUSTED_REVIEWED_STATUS = "trusted_reviewed";
   private static final String APP_REVIEW_MISSING_ERROR = "app_review_missing";
   private static final String APP_SECURITY_DENYLISTED_ERROR = "app_security_denylisted";
+  private static final String SOURCE_SWITCH_CONSENT_PARAMETER = "sourceSwitchConsent";
+  private static final String BUNDLE_DIRECTORY = "bundle";
+  private static final String EXPORT_BEFORE_REMOVAL_GUIDANCE = "Export app data before removal.";
+  private static final String KNOWN_VULNERABLE_RELEASE = "Known vulnerable release.";
+  private static final String SECURITY_POLICY_UPDATED_AT_TEXT = "2026-06-12T00:00:00Z";
   private static final String VAULT_DIRECTORY = "vault";
   private static final String QUEUE_MANAGER_NAME = "Queue Manager";
   private static final String QUEUE_MANAGER_SUMMARY = "Manage local Crypta transfer queues.";
@@ -532,7 +547,7 @@ class AppCatalogsApiHandlerTest {
             SECURITY_ADVISORY_ID_0001,
             "New vulnerable release.",
             Optional.of(APP_ID),
-            Optional.of("Export app data before removal."));
+            Optional.of(EXPORT_BEFORE_REMOVAL_GUIDANCE));
     AppCatalogSecurityPolicy afterPolicy =
         new AppCatalogSecurityPolicy(beforePolicy.advisories(), List.of(replacementDenylist));
     when(catalogManager.securityPolicy("core")).thenReturn(beforePolicy).thenReturn(afterPolicy);
@@ -545,10 +560,8 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
-  void listRecommendedCatalogs_whenSourceAndTrustedKeyAreMissing_expectNotConfiguredStatus()
-      throws Exception {
+  void listRecommendedCatalogs_whenSourceAndTrustedKeyAreMissing_expectNotConfiguredStatus() {
     AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
@@ -571,7 +584,6 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler =
         handlerWithRecommended(
             List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
@@ -591,7 +603,6 @@ class AppCatalogsApiHandlerTest {
         "https://example.invalid/cryptad-app-catalog.properties?token=secret-value";
     AppCatalogsApiHandler handler =
         handlerWithRecommended(List.of(recommended(sourceWithToken, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
@@ -607,7 +618,6 @@ class AppCatalogsApiHandlerTest {
     String source = tempDir.resolve("private/catalog.properties").toUri().toString();
     AppCatalogsApiHandler handler =
         handlerWithRecommended(List.of(recommended(source, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
@@ -623,7 +633,6 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler =
         handlerWithRecommended(
             List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID))
         .thenThrow(new IOException("trusted key store unavailable"));
 
@@ -642,7 +651,6 @@ class AppCatalogsApiHandlerTest {
         handlerWithRecommended(
             List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
     AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
     when(catalogManager.addSource(
             FIRST_PARTY_SOURCE, RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID))
@@ -675,7 +683,6 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler =
         handlerWithRecommended(
             List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of());
     when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(false);
 
     PlatformApiException exception =
@@ -693,7 +700,8 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler =
         handlerWithRecommended(
             List.of(recommended(FIRST_PARTY_SOURCE, FIRST_PARTY_TRUSTED_KEY_ID)));
-    when(catalogManager.listCatalogs()).thenReturn(List.of(firstPartyCatalogSnapshot()));
+    when(catalogManager.configuredCatalogIds())
+        .thenReturn(List.of(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID));
 
     PlatformApiException exception =
         assertThrows(
@@ -807,7 +815,7 @@ class AppCatalogsApiHandlerTest {
             "deprecated",
             "message",
             "Use Queue Manager stable.",
-            "replacementAppId",
+            REPLACEMENT_APP_ID_FIELD,
             "queue-manager-stable"),
         deprecation);
     List<Map<String, Object>> advisories =
@@ -1185,7 +1193,7 @@ class AppCatalogsApiHandlerTest {
     assertEquals(7, securityDrills.get("requiredScenarioCount"));
     assertEquals(false, securityDrills.get("summaryAvailable"));
     Map<String, Object> advisory =
-        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
+        ((List<Map<String, Object>>) response.get(ACTIVE_ADVISORIES_FIELD)).getFirst();
     assertEquals(SECURITY_ADVISORY_ID_0001, advisory.get("id"));
     assertEquals("published", advisory.get(STATUS_FIELD));
     Map<String, Object> denylist =
@@ -1222,11 +1230,11 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
     assertEquals(true, summary.get("emergencyReplacementGuidanceAvailable"));
     Map<String, Object> advisory =
-        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
-    assertNull(advisory.get("replacementAppId"));
+        ((List<Map<String, Object>>) response.get(ACTIVE_ADVISORIES_FIELD)).getFirst();
+    assertNull(advisory.get(REPLACEMENT_APP_ID_FIELD));
     Map<String, Object> denylist =
         ((List<Map<String, Object>>) response.get("denylistedVersions")).getFirst();
-    assertEquals(APP_ID, denylist.get("replacementAppId"));
+    assertEquals(APP_ID, denylist.get(REPLACEMENT_APP_ID_FIELD));
   }
 
   @Test
@@ -1279,7 +1287,7 @@ class AppCatalogsApiHandlerTest {
     assertEquals(0, summary.get(REVOKED_REVIEWER_KEY_COUNT_FIELD));
     assertEquals(UNKNOWN_STATUS, summary.get("catalogKeyRotationStatus"));
     Map<String, Object> advisory =
-        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
+        ((List<Map<String, Object>>) response.get(ACTIVE_ADVISORIES_FIELD)).getFirst();
     assertEquals(SECURITY_ADVISORY_ID_0002, advisory.get("id"));
     assertEquals("published", advisory.get(STATUS_FIELD));
     Map<String, Object> catalogKey =
@@ -1410,6 +1418,177 @@ class AppCatalogsApiHandlerTest {
     assertEquals(409, exception.statusCode());
     assertEquals(APP_REVIEW_MISSING_ERROR, exception.errorCode());
     assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void install_whenFederatedConflictVerifierRejects_expectMutationBlockedInsideAuthorization()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    handler.setPreparedPlanConflictVerifier(
+        (_, _, _) -> {
+          throw new PlatformApiException(
+              409, "catalog_conflict_unresolved", "Exact conflict resolution is required.");
+        });
+    AppCatalogEntry entry = richCatalogEntry();
+    AppCatalogInstallPlan plan = federatedPlan(entry);
+    AppCatalogManager.CatalogTrustAuthorization catalogAuthorization = mock();
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.authorizeInstallPlanForMutation(plan)).thenReturn(catalogAuthorization);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.installCatalogFromDirectory(any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(2);
+              InstalledAppOrigin origin = invocation.getArgument(1);
+              try (var _ = authorization.authorize(origin)) {
+                return installedSnapshot();
+              }
+            });
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals("catalog_conflict_unresolved", exception.errorCode());
+    verify(catalogAuthorization).close();
+  }
+
+  @Test
+  void update_whenFederatedConflictVerifierRejects_expectMutationBlockedInsideAuthorization()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    handler.setPreparedPlanConflictVerifier(
+        (_, _, _) -> {
+          throw new PlatformApiException(
+              409, "catalog_conflict_unresolved", "Exact conflict resolution is required.");
+        });
+    AppCatalogEntry entry = richCatalogEntry();
+    AppCatalogInstallPlan plan = federatedPlan(entry);
+    InstalledAppOrigin current =
+        InstalledAppOrigin.create(
+            APP_ID,
+            INSTALLED_VERSION,
+            "4".repeat(64),
+            "core",
+            "catalog-key",
+            "b".repeat(64),
+            "5".repeat(64),
+            "publisher-key",
+            "2".repeat(64),
+            "6".repeat(64),
+            "",
+            TRUSTED_REVIEWED_STATUS,
+            "catalog-binding",
+            "d".repeat(64),
+            "3".repeat(64),
+            "f".repeat(64),
+            Instant.parse(GENERATED_AT_TEXT),
+            null);
+    AppCatalogManager.CatalogTrustAuthorization catalogAuthorization = mock();
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.authorizeInstallPlanForMutation(plan)).thenReturn(catalogAuthorization);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
+    when(appHost.updateCatalogFromDirectory(any(), any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(4);
+              InstalledAppOrigin target = invocation.getArgument(2);
+              try (var _ = authorization.authorize(target)) {
+                return installedSnapshot();
+              }
+            });
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID));
+
+    assertEquals("catalog_conflict_unresolved", exception.errorCode());
+    verify(catalogAuthorization).close();
+  }
+
+  @Test
+  void install_whenFederatedPoliciesAuthorize_expectAllLeasesHeldThroughHostCommit()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    handler.setPreparedPlanConflictVerifier((_, _, _) -> {});
+    AppHost.CatalogMutationAuthorizationLease scopedPolicyAuthorization = mock();
+    handler.setPreparedPlanPolicyAuthorizer((_, _, _, _) -> scopedPolicyAuthorization);
+    AppCatalogEntry entry = richCatalogEntry();
+    AppCatalogInstallPlan plan = federatedPlan(entry);
+    AppCatalogManager.CatalogTrustAuthorization catalogAuthorization = mock();
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.authorizeInstallPlanForMutation(plan)).thenReturn(catalogAuthorization);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.installCatalogFromDirectory(any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(2);
+              InstalledAppOrigin origin = invocation.getArgument(1);
+              AppHost.CatalogMutationAuthorizationLease lease = authorization.authorize(origin);
+              verify(catalogAuthorization, never()).close();
+              verify(scopedPolicyAuthorization, never()).close();
+              lease.close();
+              return installedSnapshot();
+            });
+
+    Map<String, Object> summary = handler.install("core", APP_ID);
+
+    assertEquals(APP_ID, summary.get(APP_ID_FIELD));
+    verify(scopedPolicyAuthorization).close();
+    verify(catalogAuthorization).close();
+  }
+
+  @Test
+  void install_whenReviewerIsGlobalButLocalCatalogScopeRejects_expectMutationBlocked()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    CatalogScopedReviewerPolicy scopedPolicy = mock(CatalogScopedReviewerPolicy.class);
+    CatalogScopedReviewerPolicy.Verification verification =
+        mock(CatalogScopedReviewerPolicy.Verification.class);
+    when(verification.authorized()).thenReturn(false);
+    when(scopedPolicy.evaluate(any(), any(), any(), any(), any())).thenReturn(verification);
+    handler.setCatalogScopedReviewerPolicy(scopedPolicy);
+    AppCatalogEntry entry = richCatalogEntry();
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals("catalog_reviewer_scope_required", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void install_whenFederationHasNoScopedReviewerPolicy_expectFederationUnavailable()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(richCatalogEntry());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(503, exception.statusCode());
+    assertEquals("catalog_federation_unavailable", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
   }
 
   @Test
@@ -1717,6 +1896,187 @@ class AppCatalogsApiHandlerTest {
         summary.get("warnings"));
   }
 
+  @Test
+  void update_whenCatalogOriginWouldSwitchWithoutBoundConsent_expectRejected() throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    AppCatalogEntry entry = richCatalogEntry();
+    Path scratch = tempDir.resolve("source-switch-scratch");
+    Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    AppCatalogInstallPlan plan = sourceSwitchPlan(entry, staged, scratch);
+    InstalledAppOrigin current = sourceSwitchCurrentOrigin();
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(current));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID));
+
+    assertEquals("catalog_source_switch_consent_required", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void update_whenOriginChangesInsideHostCommit_expectFreshSourceSwitchPreview() throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    AppCatalogEntry entry = richCatalogEntry();
+    Path scratch = tempDir.resolve("source-switch-race-scratch");
+    Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    writeStagedManifest(staged, null);
+    AppCatalogInstallPlan plan = sourceSwitchPlan(entry, staged, scratch);
+    InstalledAppOrigin approvedCurrent = sourceSwitchCurrentOrigin();
+    String consent =
+        CatalogSourceSwitchConsent.evaluate(plan, approvedCurrent).consentDigestSha256();
+    Map<String, List<String>> query = Map.of(SOURCE_SWITCH_CONSENT_PARAMETER, List.of(consent));
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(approvedCurrent));
+    when(appHost.updateCatalogFromDirectory(
+            eq(APP_ID),
+            eq(staged),
+            any(),
+            eq(AppHost.CatalogOriginExpectation.matching(approvedCurrent.selfDigestSha256())),
+            any()))
+        .thenThrow(
+            new network.crypta.platform.apphost.AppHostException.CatalogOriginChangedException());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID, query));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("catalog_source_switch_consent_required", exception.errorCode());
+    verify(appHost)
+        .updateCatalogFromDirectory(
+            eq(APP_ID),
+            eq(staged),
+            any(),
+            eq(AppHost.CatalogOriginExpectation.matching(approvedCurrent.selfDigestSha256())),
+            any());
+  }
+
+  @Test
+  void update_whenSourceSwitchChangesAppDataSchema_expectLifecycleRequired() throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    AppCatalogEntry entry = richCatalogEntry();
+    Path scratch = tempDir.resolve("source-switch-migration-scratch");
+    Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    writeStagedManifest(staged, 2);
+    AppCatalogInstallPlan plan = sourceSwitchPlan(entry, staged, scratch);
+    InstalledAppOrigin approvedCurrent = sourceSwitchCurrentOrigin();
+    String consent =
+        CatalogSourceSwitchConsent.evaluate(plan, approvedCurrent).consentDigestSha256();
+    Map<String, List<String>> query = Map.of(SOURCE_SWITCH_CONSENT_PARAMETER, List.of(consent));
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshotWithSchema()));
+    when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(approvedCurrent));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID, query));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_data_migration_lifecycle_required", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void update_whenSourceSwitchCurrentSchemaIsUnreadable_expectLifecycleRequired() throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    authorizeFederatedReviewerScope(handler);
+    AppCatalogEntry entry = richCatalogEntry();
+    Path scratch = tempDir.resolve("source-switch-unreadable-schema-scratch");
+    Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    writeStagedManifest(staged, null);
+    AppCatalogInstallPlan plan = sourceSwitchPlan(entry, staged, scratch);
+    InstalledAppOrigin approvedCurrent = sourceSwitchCurrentOrigin();
+    String consent =
+        CatalogSourceSwitchConsent.evaluate(plan, approvedCurrent).consentDigestSha256();
+    Map<String, List<String>> query = Map.of(SOURCE_SWITCH_CONSENT_PARAMETER, List.of(consent));
+    when(catalogManager.federationEnabled()).thenReturn(true);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenThrow(new IOException("installed manifest unreadable"));
+    when(appHost.catalogOrigin(APP_ID)).thenReturn(Optional.of(approvedCurrent));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID, query));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_data_migration_lifecycle_required", exception.errorCode());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void update_whenLegacyPlanHasTransientOriginContext_expectFederationPinningNotApplied()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    AppCatalogEntry entry = richCatalogEntry();
+    Path scratch = tempDir.resolve("legacy-origin-context-scratch");
+    Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    AppCatalogInstallPlan plan =
+        new AppCatalogInstallPlan(
+            "core",
+            entry,
+            staged,
+            scratch,
+            new AppCatalogBundleVerificationResult(
+                "publisher-legacy", "", "legacy-global-app-trust", "", false),
+            Optional.of(
+                new AppCatalogOriginContext(
+                    "core",
+                    "catalog-legacy",
+                    "b".repeat(64),
+                    "c".repeat(64),
+                    "legacy-global-catalog-trust",
+                    "",
+                    "",
+                    "",
+                    false)));
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.updateFromDirectory(APP_ID, staged)).thenReturn(installedSnapshot());
+
+    handler.update("core", APP_ID);
+
+    verify(appHost).updateFromDirectory(APP_ID, staged);
+    verify(appHost, never()).catalogOrigin(APP_ID);
+    verify(appHost, never()).updateCatalogFromDirectory(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void sourceSwitchPreview_whenFederationIsDisabled_expectRejectedBeforePreparation()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.sourceSwitchPreview("core", APP_ID));
+
+    assertEquals(503, exception.statusCode());
+    assertEquals("catalog_federation_unavailable", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+  }
+
   private Map<String, Object> listRichInstalledCatalogApp() throws Exception {
     AppCatalogsApiHandler handler =
         new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
@@ -1958,7 +2318,7 @@ class AppCatalogsApiHandlerTest {
                 TrustedReviewerKeyStatus.REVOKED,
                 null,
                 null,
-                Instant.parse("2026-06-12T00:00:00Z"),
+                Instant.parse(SECURITY_POLICY_UPDATED_AT_TEXT),
                 "Reviewer key compromise drill.",
                 null,
                 null)));
@@ -1975,18 +2335,18 @@ class AppCatalogsApiHandlerTest {
             AppCatalogSecurityAction.DENYLIST,
             "Upgrade to the reviewed replacement version.",
             Instant.parse("2026-06-11T00:00:00Z"),
-            Instant.parse("2026-06-12T00:00:00Z"),
+            Instant.parse(SECURITY_POLICY_UPDATED_AT_TEXT),
             Optional.of(APP_ID),
-            Optional.of("Export app data before removal."));
+            Optional.of(EXPORT_BEFORE_REMOVAL_GUIDANCE));
     AppCatalogVersionDenylistEntry denylist =
         new AppCatalogVersionDenylistEntry(
             "deny-queue-1-2-0",
             APP_ID,
             CATALOG_VERSION,
             advisory.id(),
-            "Known vulnerable release.",
+            KNOWN_VULNERABLE_RELEASE,
             Optional.of(APP_ID),
-            Optional.of("Export app data before removal."));
+            Optional.of(EXPORT_BEFORE_REMOVAL_GUIDANCE));
     return new AppCatalogSecurityPolicy(List.of(advisory), List.of(denylist));
   }
 
@@ -2018,18 +2378,18 @@ class AppCatalogsApiHandlerTest {
             AppCatalogSecurityAction.DENYLIST,
             "Upgrade to the reviewed replacement version.",
             Instant.parse("2026-06-11T00:00:00Z"),
-            Instant.parse("2026-06-12T00:00:00Z"),
+            Instant.parse(SECURITY_POLICY_UPDATED_AT_TEXT),
             Optional.empty(),
-            Optional.of("Export app data before removal."));
+            Optional.of(EXPORT_BEFORE_REMOVAL_GUIDANCE));
     AppCatalogVersionDenylistEntry denylist =
         new AppCatalogVersionDenylistEntry(
             "deny-queue-1-2-0",
             APP_ID,
             CATALOG_VERSION,
             advisory.id(),
-            "Known vulnerable release.",
+            KNOWN_VULNERABLE_RELEASE,
             Optional.of(APP_ID),
-            Optional.of("Export app data before removal."));
+            Optional.of(EXPORT_BEFORE_REMOVAL_GUIDANCE));
     return new AppCatalogSecurityPolicy(List.of(advisory), List.of(denylist));
   }
 
@@ -2045,7 +2405,7 @@ class AppCatalogsApiHandlerTest {
         true,
         "Export app data before uninstalling.",
         APP_ID,
-        List.of("Known vulnerable release."));
+        List.of(KNOWN_VULNERABLE_RELEASE));
   }
 
   private static AppCatalogSecurityDecision warningSecurityDecision() {
@@ -2105,9 +2465,111 @@ class AppCatalogsApiHandlerTest {
 
   private AppCatalogInstallPlan plan(AppCatalogEntry entry) throws IOException {
     Path scratch = tempDir.resolve("scratch-" + entry.version());
-    Path staged = scratch.resolve("bundle");
+    Path staged = scratch.resolve(BUNDLE_DIRECTORY);
     Files.createDirectories(staged);
     return new AppCatalogInstallPlan("core", entry, staged, scratch);
+  }
+
+  private AppCatalogInstallPlan federatedPlan(AppCatalogEntry entry) throws IOException {
+    AppCatalogInstallPlan legacy = plan(entry);
+    return new AppCatalogInstallPlan(
+        "core",
+        entry,
+        legacy.stagedBundleDirectory(),
+        legacy.scratchDirectory(),
+        new AppCatalogBundleVerificationResult(
+            "publisher-key",
+            "2".repeat(64),
+            "publisher-binding",
+            "3".repeat(64),
+            true,
+            "1".repeat(64)),
+        Optional.of(
+            new AppCatalogOriginContext(
+                "core",
+                "catalog-key",
+                "b".repeat(64),
+                "c".repeat(64),
+                "catalog-binding",
+                "d".repeat(64),
+                "e".repeat(64),
+                "f".repeat(64),
+                true)));
+  }
+
+  private static AppCatalogInstallPlan sourceSwitchPlan(
+      AppCatalogEntry entry, Path staged, Path scratch) {
+    return new AppCatalogInstallPlan(
+        "core",
+        entry,
+        staged,
+        scratch,
+        new AppCatalogBundleVerificationResult(
+            "publisher-new",
+            "2".repeat(64),
+            "publisher-binding-new",
+            "3".repeat(64),
+            true,
+            "1".repeat(64)),
+        Optional.of(
+            new AppCatalogOriginContext(
+                "core",
+                "catalog-new",
+                "b".repeat(64),
+                "c".repeat(64),
+                "catalog-binding-new",
+                "d".repeat(64),
+                "e".repeat(64),
+                "f".repeat(64),
+                true)));
+  }
+
+  private static InstalledAppOrigin sourceSwitchCurrentOrigin() {
+    return InstalledAppOrigin.create(
+        APP_ID,
+        INSTALLED_VERSION,
+        "4".repeat(64),
+        "other-catalog",
+        "catalog-old",
+        "5".repeat(64),
+        "6".repeat(64),
+        "publisher-old",
+        "7".repeat(64),
+        "0".repeat(64),
+        "",
+        TRUSTED_REVIEWED_STATUS,
+        "catalog-binding-old",
+        "8".repeat(64),
+        "9".repeat(64),
+        "a".repeat(64),
+        Instant.parse(GENERATED_AT_TEXT),
+        null);
+  }
+
+  private static void authorizeFederatedReviewerScope(AppCatalogsApiHandler handler)
+      throws IOException {
+    CatalogScopedReviewerPolicy policy = mock(CatalogScopedReviewerPolicy.class);
+    CatalogScopedReviewerPolicy.Verification verification =
+        mock(CatalogScopedReviewerPolicy.Verification.class);
+    when(verification.authorized()).thenReturn(true);
+    when(policy.evaluate(any(), any(), any(), any(), any())).thenReturn(verification);
+    handler.setCatalogScopedReviewerPolicy(policy);
+  }
+
+  private void writeStagedManifest(Path staged, Integer schemaVersion) throws IOException {
+    String schema = schemaVersion == null ? "" : "app.data.schema.current=" + schemaVersion + '\n';
+    Files.writeString(
+        staged.resolve("cryptad-app.properties"),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s
+        %s\
+        """
+            .formatted(APP_ID, QUEUE_MANAGER_NAME, CATALOG_VERSION, QUEUE_READ_PERMISSION, schema));
   }
 
   private AppCatalogEntry minimalCatalogEntry() {
@@ -2174,5 +2636,29 @@ class AppCatalogsApiHandlerTest {
             tempDir.resolve("cache").resolve(APP_ID),
             tempDir.resolve("run").resolve(APP_ID));
     return new InstalledAppSnapshot(manifest, paths);
+  }
+
+  private InstalledAppSnapshot installedSnapshotWithSchema() {
+    InstalledAppSnapshot base = installedSnapshot();
+    AppManifest manifest = base.manifest();
+    AppManifest withSchema =
+        new AppManifest(
+            manifest.manifestVersion(),
+            manifest.appId(),
+            manifest.appName(),
+            manifest.appVersion(),
+            manifest.execPathText(),
+            manifest.uiMode(),
+            manifest.uiEntry(),
+            manifest.permissions(),
+            manifest.apiCompatibility(),
+            new AppDataSchemaContract(1, List.of(), List.of()),
+            manifest.dataQuotaBytes(),
+            manifest.cacheQuotaBytes(),
+            manifest.sandboxPolicy(),
+            manifest.restartPolicy(),
+            manifest.restartMaxAttempts(),
+            manifest.restartBackoffMillis());
+    return new InstalledAppSnapshot(withSchema, base.paths());
   }
 }

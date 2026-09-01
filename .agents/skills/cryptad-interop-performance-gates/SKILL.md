@@ -416,6 +416,24 @@ python3 tools/release-certification/certify.py stable-ga \
   At pilot closeout, derive PR-293's expected catalog subject from the mutually bound PR-291
   selected RC, PR-292 subject inventory, and exact selected-RC freeze. Never learn revision,
   edition, catalog/signature digest, or signer expectations from the PR-293 result being verified.
+- PR-295 federated-catalog evidence is another prospective operational class. Use
+  `docs/stable-1.0-federated-catalog-discovery-and-trust.md` and the single
+  `stable-federated-catalog` command. Keep descriptor/endorsement verification, local trust,
+  conflicts, protected runtime observation, and closeout as distinct stages. Endorsements remain
+  non-transitive hints; they cannot create trust or reputation. Operational closeout must
+  authenticate the exact original PR-291, PR-292, PR-293, and PR-294 coordinates and one signed,
+  fresh, non-partial runtime observation. Fixture, sample, self-test, checked-in manifest,
+  workflow source, reupload, upload success, digest-only binding, or partial cleanup cannot produce
+  operational federation completion. A protected node-side runtime producer must select its
+  adapter digest and observer identity from its protected environment, authenticate the exact
+  confined source attempt, and publish distinct immutable observation and signed-receipt artifacts.
+  The evidence producer must authenticate that runtime producer's exact attempt, protected job and
+  environment deployment, artifact names and digests, and independently bound observer identity
+  before upload. The coordinator may import only the canonical artifact from the allowlisted
+  `stable-1.0-federated-catalog-evidence.yml` producer: authenticate its exact attempt, protected ref
+  and commit, dispatch actors, successful producer job, protected environment deployment, artifact
+  ID/name, and archive digest before extraction. Do not make historical Stable GA or earlier
+  PR-293/PR-294 evidence depend retroactively on PR-295.
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
   branches and `v*` tags. When the manual extended gate produces

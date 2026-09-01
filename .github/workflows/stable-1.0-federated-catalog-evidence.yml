@@ -1,0 +1,412 @@
+name: Stable 1.0 federated catalog evidence producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      federation_id:
+        description: Closed federation identity bound by execution.json
+        required: true
+        type: string
+      source_commit:
+        description: Exact protected Cryptad source commit
+        required: true
+        type: string
+      evidence_url:
+        description: Canonical public HTTPS URL for the exact aggregate ZIP
+        required: true
+        type: string
+      evidence_digest:
+        description: Exact sha256 digest of the aggregate ZIP
+        required: true
+        type: string
+      evidence_size:
+        description: Exact byte size of the aggregate ZIP
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-1-0-federated-catalog-evidence-${{ inputs.federation_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  produce-evidence:
+    name: Authenticate and confine exact federation evidence
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-federated-catalog-evidence-import
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate exact protected evidence request
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          EVIDENCE_DIGEST: ${{ inputs.evidence_digest }}
+          EVIDENCE_SIZE: ${{ inputs.evidence_size }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || "$GITHUB_ACTOR" != "leumor" \
+                || "$GITHUB_TRIGGERING_ACTOR" != "leumor" \
+                || ! "$FEDERATION_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$SOURCE_COMMIT" != "$GITHUB_SHA" \
+                || "$WORKFLOW_SHA" != "$GITHUB_SHA" \
+                || "$(git rev-parse HEAD)" != "$GITHUB_SHA" \
+                || ! "$EVIDENCE_URL" =~ ^https://[^/?#]+/[^?#]+$ \
+                || ! "$EVIDENCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$EVIDENCE_SIZE" =~ ^[1-9][0-9]{0,9}$ ]]; then
+            echo "::error::Federation evidence request is not bound to exact protected coordinates."
+            exit 2
+          fi
+      - name: Fetch and confine authenticated public evidence
+        env:
+          CRYPTAD_FEDERATED_CATALOG_EVIDENCE_URL: ${{ inputs.evidence_url }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/protected/stable_federated_catalog_evidence_producer.py \
+            --expected-digest "${{ inputs.evidence_digest }}" \
+            --expected-size "${{ inputs.evidence_size }}" \
+            --archive "$RUNNER_TEMP/federated-catalog-evidence.zip" \
+            --output-dir build/federated-catalog-evidence
+      - name: Reject fixtures and verify the exact operational subject
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          jq -e '.executionId == env.FEDERATION_ID
+            and .repository.identity == "github.com/crypta-network/cryptad"
+            and .repository.sourceCommit == env.SOURCE_COMMIT
+            and .fixtureOnly == false and .selfTest == false' \
+            build/federated-catalog-evidence/execution.json >/dev/null
+          python3 tools/release-certification/certify.py stable-federated-catalog \
+            --mode preflight \
+            --execution-contract build/federated-catalog-evidence/execution.json \
+            --evidence-dir build/federated-catalog-evidence \
+            --out-dir build/federated-catalog-preflight
+      - name: Authenticate exact predecessor authority attempts and summaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          contract=build/federated-catalog-evidence/execution.json
+          jq -e 'all(.authorities[]; .summary != null)' "$contract" >/dev/null
+          while IFS=$'\t' read -r authority run_id run_attempt workflow_commit workflow_path \
+              artifact_name artifact_digest environment summary_file summary_digest summary_size; do
+            case "$authority" in
+              protectedRelease)
+                expected_workflow=".github/workflows/stable-1.0-protected-release-closeout.yml"
+                expected_job="Authenticate final protected-release evidence"
+                expected_environment="stable-1-0-protected-release-closeout"
+                ;;
+              independentReproducibility)
+                expected_workflow=".github/workflows/stable-1.0-independent-reproducibility.yml"
+                expected_job="Authenticate and compare independent rebuild"
+                expected_environment="stable-1.0-independent-reproducibility-external-receipt"
+                ;;
+              catalogAuthority)
+                expected_workflow=".github/workflows/stable-1.0-catalog-authority.yml"
+                expected_job="Close out only authenticated catalog-authority evidence"
+                expected_environment="stable-1-0-catalog-authority-closeout"
+                ;;
+              thirdPartyPilot)
+                expected_workflow=".github/workflows/stable-1.0-third-party-app-pilot.yml"
+                expected_job="Authenticate operational closeout"
+                expected_environment="stable-1-0-third-party-pilot-closeout"
+                ;;
+              *)
+                echo "::error::Unknown predecessor authority: $authority"
+                exit 2
+                ;;
+            esac
+            if [[ "$workflow_path" != "$expected_workflow" \
+                  || "$environment" != "$expected_environment" ]]; then
+              echo "::error::$authority is not bound to its allowlisted protected producer."
+              exit 2
+            fi
+            run_file="$RUNNER_TEMP/$authority-run.json"
+            gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt" > "$run_file"
+            jq -e --argjson run_id "$run_id" --argjson run_attempt "$run_attempt" \
+              --arg commit "$workflow_commit" --arg workflow "$workflow_path" '
+              .id == $run_id and .run_attempt == $run_attempt
+              and .head_sha == $commit and .path == $workflow
+              and .head_branch == env.GITHUB_REF_NAME
+              and .event == "workflow_dispatch" and .status == "completed"
+              and .conclusion == "success"
+              and .repository.full_name == env.GITHUB_REPOSITORY
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
+              "$run_file" >/dev/null
+            jobs="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt/jobs" \
+              -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+            job_record="$(jq -ce --arg name "$expected_job" --arg commit "$workflow_commit" '
+              [.jobs[] | select(.name == $name and .head_sha == $commit
+                and .conclusion == "success")]
+              | if length == 1 then .[0]
+                else error("predecessor protected producer job is not exact") end' \
+              <<< "$jobs")"
+            job_started_at="$(jq -er '.started_at' <<< "$job_record")"
+            job_completed_at="$(jq -er '.completed_at' <<< "$job_record")"
+
+            deployment_verified=false
+            deployments="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments" -f sha="$workflow_commit" \
+              -f environment="$expected_environment" -f per_page=100 | jq -s '[.[][]]')"
+            while IFS= read -r deployment_id; do
+              [[ -n "$deployment_id" ]] || continue
+              statuses="$(gh api --paginate --method GET \
+                "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+                -f per_page=100 | jq -s '[.[][]]')"
+              if jq -e --arg run_id "$run_id" --arg started "$job_started_at" \
+                --arg completed "$job_completed_at" 'any(.[];
+                  .state == "success" and .created_at >= $started
+                  and .created_at <= $completed
+                  and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+                <<< "$statuses" >/dev/null; then
+                deployment_verified=true
+                break
+              fi
+            done < <(jq -r --arg environment "$expected_environment" '.[] | select(
+              .environment == $environment and .creator.login == "github-actions[bot]") | .id' \
+              <<< "$deployments")
+            if [[ "$deployment_verified" != true ]]; then
+              echo "::error::$authority is not bound to its protected environment deployment."
+              exit 2
+            fi
+
+            artifacts="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+              -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+            artifact_id="$(jq -er --arg name "$artifact_name" --arg digest "$artifact_digest" \
+              --argjson run_id "$run_id" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" '
+              [.artifacts[] | select(.name == $name and .digest == $digest
+                and .workflow_run.id == $run_id and .expired == false
+                and .created_at >= $started and .updated_at <= $completed)]
+              | if length == 1 then .[0].id else error("authority artifact is not exact") end' \
+              <<< "$artifacts")"
+            archive="$RUNNER_TEMP/$authority-artifact.zip"
+            gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$archive"
+            python3 - "$archive" "$summary_file" "$summary_digest" "$summary_size" <<'PY'
+          import hashlib
+          from pathlib import PurePosixPath
+          import sys
+          import zipfile
+
+          archive, file_name, expected_digest, expected_size = sys.argv[1:]
+          expected_size = int(expected_size)
+          with zipfile.ZipFile(archive) as source:
+              matches = [
+                  item for item in source.infolist()
+                  if not item.is_dir() and PurePosixPath(item.filename).name == file_name
+              ]
+              if len(matches) != 1:
+                  raise SystemExit("authority summary is absent or ambiguous")
+              member = matches[0]
+              if member.file_size != expected_size or member.file_size > 1024 * 1024:
+                  raise SystemExit("authority summary size differs")
+              value = source.read(member)
+          if "sha256:" + hashlib.sha256(value).hexdigest() != expected_digest:
+              raise SystemExit("authority summary digest differs")
+          PY
+          done < <(jq -r '.authorities | to_entries[] | [
+            .key,
+            (.value.provenance.runId | tostring),
+            (.value.provenance.runAttempt | tostring),
+            .value.provenance.workflowCommit,
+            .value.provenance.workflowPath,
+            .value.provenance.artifactName,
+            .value.provenance.artifactDigest,
+            .value.provenance.environment,
+            .value.summary.fileName,
+            .value.summary.digest,
+            (.value.summary.size | tostring)
+          ] | @tsv' "$contract")
+      - name: Authenticate exact protected runtime observer and signed receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          contract=build/federated-catalog-evidence/execution.json
+          if jq -e '.evidence.runtimeObservation == null' "$contract" >/dev/null; then
+            if jq -e '.requestedState == "runtime-federation-verified"
+              or .requestedState == "operational-federation-complete"' "$contract" >/dev/null; then
+              echo "::error::Operational federation evidence has no protected runtime receipt."
+              exit 2
+            fi
+            exit 0
+          fi
+          IFS=$'\t' read -r run_id run_attempt workflow_commit workflow_path artifact_name \
+              artifact_digest environment runtime_file runtime_digest runtime_size observer_key_id \
+              observer_fingerprint observer_spki < <(jq -r '[
+                .evidence.runtimeObservation.receiptProvenance.runId,
+                .evidence.runtimeObservation.receiptProvenance.runAttempt,
+                .evidence.runtimeObservation.receiptProvenance.workflowCommit,
+                .evidence.runtimeObservation.receiptProvenance.workflowPath,
+                .evidence.runtimeObservation.receiptProvenance.artifactName,
+                .evidence.runtimeObservation.receiptProvenance.artifactDigest,
+                .evidence.runtimeObservation.receiptProvenance.environment,
+                .evidence.runtimeObservation.fileName,
+                .evidence.runtimeObservation.digest,
+                .evidence.runtimeObservation.size,
+                .evidence.runtimeObservation.observerKeyId,
+                .evidence.runtimeObservation.observerFingerprint,
+                .evidence.runtimeObservation.observerPublicKeySpkiBase64
+              ] | @tsv' "$contract")
+          run_file="$RUNNER_TEMP/runtime-observer-run.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt" > "$run_file"
+          jq -e --argjson run_id "$run_id" --argjson run_attempt "$run_attempt" \
+            --arg commit "$workflow_commit" --arg workflow "$workflow_path" '
+            .id == $run_id and .run_attempt == $run_attempt
+            and .head_sha == $commit and .path == $workflow
+            and .head_branch == env.GITHUB_REF_NAME
+            and .event == "workflow_dispatch" and .status == "completed"
+            and .conclusion == "success"
+            and .repository.full_name == env.GITHUB_REPOSITORY
+            and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
+            "$run_file" >/dev/null
+          if [[ "$workflow_path" != ".github/workflows/stable-1.0-federated-catalog-runtime.yml" \
+                || "$environment" != "stable-1-0-federated-catalog-runtime-observation" ]]; then
+            echo "::error::Runtime receipt is not bound to the allowlisted observer authority."
+            exit 2
+          fi
+
+          jobs="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt/jobs" \
+            -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+          jq -e --arg commit "$workflow_commit" '[.jobs[] | select(
+            .name == "Collect and sign exact federation runtime observation"
+            and .head_sha == $commit and .conclusion == "success")] | length == 1' \
+            <<< "$jobs" >/dev/null
+          job_started_at="$(jq -er '.jobs[] | select(
+            .name == "Collect and sign exact federation runtime observation"
+            and .conclusion == "success") | .started_at' <<< "$jobs")"
+          job_completed_at="$(jq -er '.jobs[] | select(
+            .name == "Collect and sign exact federation runtime observation"
+            and .conclusion == "success") | .completed_at' <<< "$jobs")"
+          deployment_verified=false
+          deployments="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/deployments" -f sha="$workflow_commit" \
+            -f environment="$environment" -f per_page=100 | jq -s '[.[][]]')"
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            statuses="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+              -f per_page=100 | jq -s '[.[][]]')"
+            if jq -e --arg run_id "$run_id" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" 'any(.[];
+                .state == "success" and .created_at >= $started and .created_at <= $completed
+                and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              <<< "$statuses" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r --arg environment "$environment" '.[] | select(
+            .environment == $environment and .creator.login == "github-actions[bot]") | .id' \
+            <<< "$deployments")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "::error::Runtime receipt lacks its protected environment deployment."
+            exit 2
+          fi
+
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          receipt_artifact_id="$(jq -er --arg name "$artifact_name" --arg digest "$artifact_digest" \
+            --argjson run_id "$run_id" '[.artifacts[] | select(
+              .name == $name and .digest == $digest and .workflow_run.id == $run_id
+              and .expired == false)]
+              | if length == 1 then .[0].id else error("runtime receipt artifact is not exact") end' \
+            <<< "$artifacts")"
+          expected_receipt_name="stable-1-0-federated-catalog-runtime-receipt-$(jq -er '.executionId' "$contract")-$run_id-$run_attempt"
+          [[ "$artifact_name" == "$expected_receipt_name" ]]
+          receipt_archive="$RUNNER_TEMP/federated-runtime-receipt.zip"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$receipt_artifact_id/zip" \
+            > "$receipt_archive"
+          python3 - "$receipt_archive" "$runtime_file" "$runtime_digest" "$runtime_size" \
+              "$observer_key_id" "$observer_fingerprint" "$observer_spki" "$run_id" \
+              "$run_attempt" "$workflow_commit" "$workflow_path" "$environment" \
+              "$artifact_name" "$artifact_digest" "$artifacts" <<'PY'
+          import hashlib
+          import json
+          from pathlib import PurePosixPath
+          import sys
+          import zipfile
+
+          (
+              archive, file_name, expected_digest, expected_size, key_id, fingerprint, spki,
+              run_id, run_attempt, commit, workflow, environment, receipt_name, receipt_digest,
+              artifacts_json,
+          ) = sys.argv[1:]
+          expected_size = int(expected_size)
+          with zipfile.ZipFile(archive) as source:
+              matches = [
+                  item for item in source.infolist()
+                  if not item.is_dir() and PurePosixPath(item.filename).name == file_name
+              ]
+              if len(matches) != 1:
+                  raise SystemExit("signed runtime receipt is absent or ambiguous")
+              member = matches[0]
+              if member.file_size != expected_size or member.file_size > 1024 * 1024:
+                  raise SystemExit("signed runtime receipt size differs")
+              encoded = source.read(member)
+          if "sha256:" + hashlib.sha256(encoded).hexdigest() != expected_digest:
+              raise SystemExit("signed runtime receipt digest differs")
+          value = json.loads(encoded)
+          if (
+              value.get("observerKeyId") != key_id
+              or value.get("observerFingerprint") != fingerprint
+              or value.get("observerPublicKeySpkiBase64") != spki
+          ):
+              raise SystemExit("signed runtime observer identity differs")
+          provenance = value.get("provenance", {})
+          if (
+              provenance.get("repositoryIdentity") != "github.com/crypta-network/cryptad"
+              or provenance.get("workflowPath") != workflow
+              or provenance.get("workflowCommit") != commit
+              or provenance.get("runId") != int(run_id)
+              or provenance.get("runAttempt") != int(run_attempt)
+              or provenance.get("environment") != environment
+              or provenance.get("conclusion") != "success"
+              or provenance.get("artifactName") == receipt_name
+              or provenance.get("artifactDigest") == receipt_digest
+          ):
+              raise SystemExit("runtime observation provenance differs")
+          artifacts = json.loads(artifacts_json)["artifacts"]
+          unsigned = [
+              item for item in artifacts
+              if item.get("name") == provenance.get("artifactName")
+              and item.get("digest") == provenance.get("artifactDigest")
+              and item.get("workflow_run", {}).get("id") == int(run_id)
+              and item.get("expired") is False
+          ]
+          if len(unsigned) != 1:
+              raise SystemExit("unsigned runtime observation artifact is not exact")
+          PY
+      - name: Select canonical consumer artifact name
+        id: names
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: echo "artifact_name=stable-1-0-federated-catalog-$FEDERATION_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - name: Upload exact authenticated federation evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.artifact_name }}
+          path: build/federated-catalog-evidence
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7

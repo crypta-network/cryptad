@@ -693,6 +693,36 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenDiscoveryImportUsesRepeatedEndorsements_routesEveryValue()
+      throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(request.getHeader("content-type")).thenReturn("application/x-www-form-urlencoded");
+    when(request.getRawData())
+        .thenReturn(
+            new SimpleReadOnlyArrayBucket(
+                ("descriptorBase64=descriptor"
+                        + "&endorsementBase64=endorsement-one"
+                        + "&endorsementBase64=endorsement-two")
+                    .getBytes(StandardCharsets.US_ASCII)));
+    when(router.route(any(PlatformApiRequest.class))).thenReturn(PlatformApiResponse.ok(Map.of()));
+
+    toadlet.handleMethodPOST(
+        URI.create("http://localhost/api/v1/operator/catalog-federation/discovery"), request, ctx);
+
+    verify(router)
+        .route(
+            new PlatformApiRequest(
+                "POST",
+                List.of("operator", "catalog-federation", "discovery"),
+                Map.of(
+                    "descriptorBase64", List.of("descriptor"),
+                    "endorsementBase64", List.of("endorsement-one", "endorsement-two"))));
+    verify(request, never()).getParts();
+  }
+
+  @Test
   void handleMethodPOST_whenUrlEncodedBodyOverlapsQuery_expectQueryValuesPreserved()
       throws Exception {
     when(ctx.isAllowedFullAccess()).thenReturn(true);
@@ -1210,6 +1240,44 @@ End
       String requestUri) throws Exception {
     URI uri = URI.create(requestUri);
     assertTrue(uri.getPath().contains("/apps/alpha/updates/"));
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(uri, request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, uri.getPath());
+    assertForbiddenBody();
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "http://localhost/api/v1/operator/catalog-federation/alpha/trust",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/suspend",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/revoke",
+        "http://localhost/api/v1/operator/catalog-federation/alpha/remove",
+        "http://localhost/api/v1/operator/catalog-federation/discovery",
+        "http://localhost/api/v1/operator/catalog-federation/discovery/descriptor-alpha/discard",
+      })
+  void handleMethodPOST_whenCatalogFederationMutationPasswordMissing_expectJson403WithoutRouting(
+      String requestUri) throws Exception {
+    URI uri = URI.create(requestUri);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(ctx.hasFormPassword(request)).thenReturn(false);
+
+    toadlet.handleMethodPOST(uri, request, ctx);
+
+    verifyNoInteractions(router);
+    verify(ctx, never()).checkFormPassword(request, uri.getPath());
+    assertForbiddenBody();
+  }
+
+  @Test
+  void handleMethodPOST_whenSourceSwitchPreviewPasswordMissing_expectJson403WithoutRouting()
+      throws Exception {
+    URI uri =
+        URI.create("http://localhost/api/v1/operator/apps/alpha/catalog-origin/switch-preview");
     when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(ctx.hasFormPassword(request)).thenReturn(false);
 

@@ -12,12 +12,15 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * File-backed store for configured app catalog sources and their verified sidecars.
@@ -38,6 +41,8 @@ public final class AppCatalogSourceStore {
   private static final String ENDPOINTS_FILE_NAME = "catalog-source-endpoints.properties";
   private static final String HEALTH_FILE_NAME = "catalog-source-health.properties";
   private static final String HISTORY_DIRECTORY_NAME = "history";
+  private static final String ORIGIN_PINS_DIRECTORY_NAME = ".origin-pins";
+  private static final String ORIGIN_PIN_SUFFIX = ".pin";
   private static final String REVISION_FILE_NAME = "revision.properties";
   private static final String SOURCE_VERSION_KEY = "catalog.source.version";
   private static final String ENDPOINTS_VERSION_KEY = "catalog.source.endpoints.version";
@@ -56,6 +61,8 @@ public final class AppCatalogSourceStore {
   private static final String LAST_FETCH_ERROR_CODE_KEY = "source.lastFetchErrorCode";
   private static final String LAST_FETCH_ERROR_MESSAGE_KEY = "source.lastFetchErrorMessage";
   private static final String LAST_RESOLVED_URI_KEY = "source.lastResolvedUri";
+  private static final String TRUST_BINDING_ID_KEY = "source.trustBindingId";
+  private static final String TRUST_BINDING_DIGEST_KEY = "source.trustBindingDigest";
   private static final String REVISION_DIGEST_KEY = "revision.digest";
   private static final String REVISION_SIGNATURE_DIGEST_KEY = "revision.signatureDigest";
   private static final String REVISION_GENERATED_AT_KEY = "revision.generatedAt";
@@ -74,6 +81,7 @@ public final class AppCatalogSourceStore {
   private static final String HEALTH_LAST_ROLLBACK_REASON_KEY = "lastRollbackReason";
   private static final long MAX_SOURCE_METADATA_BYTES = AppCatalogSidecars.MAX_SIGNATURE_BYTES;
   private static final int REVISION_RETENTION_COUNT = 5;
+  private static final int MAX_ORIGIN_PINNED_REVISIONS = 1024;
 
   private final Path rootDirectory;
   private final SourceMetadataWriter sourceMetadataWriter;
@@ -180,6 +188,33 @@ public final class AppCatalogSourceStore {
     return List.copyOf(sources);
   }
 
+  /** Lists normalized configured IDs without parsing another catalog's persisted record. */
+  List<String> configuredCatalogIds() throws IOException {
+    if (!Files.isDirectory(rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return List.of();
+    }
+    List<String> catalogIds = new ArrayList<>();
+    try (var children = Files.list(rootDirectory)) {
+      for (Path child :
+          children.sorted(Comparator.comparing(path -> path.getFileName().toString())).toList()) {
+        if (!Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)
+            || child.equals(stagingDirectory())
+            || !Files.isRegularFile(child.resolve(SOURCE_FILE_NAME), LinkOption.NOFOLLOW_LINKS)) {
+          continue;
+        }
+        String catalogId = child.getFileName().toString();
+        try {
+          if (catalogId.equals(AppCatalog.normalizeCatalogId(catalogId))) {
+            catalogIds.add(catalogId);
+          }
+        } catch (AppCatalogException _) {
+          // One malformed local directory cannot become an identity or disable unrelated catalogs.
+        }
+      }
+    }
+    return List.copyOf(catalogIds);
+  }
+
   /**
    * Reads one stored catalog source.
    *
@@ -273,7 +308,9 @@ public final class AppCatalogSourceStore {
               source,
               addedAt,
               refreshedAt,
-              AppCatalogSourceRefreshMetadata.success(refreshedAt, resolvedUri)));
+              AppCatalogSourceRefreshMetadata.success(refreshedAt, resolvedUri),
+              catalogWrite.trustBindingId().orElse(null),
+              catalogWrite.trustBindingDigest().orElse(null)));
     } catch (IOException | AppCatalogException exception) {
       if (previousSnapshot == null) {
         cleanupIncompleteAdd(directory, exception);
@@ -312,7 +349,9 @@ public final class AppCatalogSourceStore {
             stored.source(),
             stored.addedAt(),
             stored.refreshedAt(),
-            metadata));
+            metadata,
+            stored.trustBindingId().orElse(null),
+            stored.trustBindingDigest().orElse(null)));
     Map<AppCatalogMirrorId, AppCatalogMirrorHealth> health =
         new LinkedHashMap<>(stored.mirrorHealth());
     AppCatalogMirror primary = AppCatalogMirror.primary(stored.source(), stored.addedAt());
@@ -377,6 +416,247 @@ public final class AppCatalogSourceStore {
     return readFetchedCatalog(revisionDirectory);
   }
 
+  void reconcileOriginRevisions(List<AppCatalogManager.OriginRevision> retainedOrigins)
+      throws IOException {
+    OriginPinSnapshot snapshot = resolveOriginPinSnapshot(retainedOrigins);
+    retainOriginPins(snapshot.desired());
+    removeStaleOriginPins(snapshot.desired(), snapshot.preservedCatalogs());
+  }
+
+  void retainOriginRevisions(List<AppCatalogManager.OriginRevision> retainedOrigins)
+      throws IOException {
+    retainOriginPins(resolveOriginPinSnapshot(retainedOrigins).desired());
+  }
+
+  private OriginPinSnapshot resolveOriginPinSnapshot(
+      List<AppCatalogManager.OriginRevision> retainedOrigins) throws IOException {
+    Set<OriginPin> desired = new LinkedHashSet<>();
+    Set<String> preservedCatalogs = new HashSet<>();
+    for (AppCatalogManager.OriginRevision origin : retainedOrigins) {
+      ResolvedOriginPins resolved = resolveOriginPins(origin);
+      desired.addAll(resolved.pins());
+      if (!resolved.complete()) {
+        preservedCatalogs.add(origin.catalogId());
+      }
+    }
+    requireBoundedDesiredPins(desired);
+    return new OriginPinSnapshot(Set.copyOf(desired), Set.copyOf(preservedCatalogs));
+  }
+
+  private void retainOriginPins(Set<OriginPin> desired) throws IOException {
+    for (OriginPin pin : desired) {
+      retainOriginRevisionIfAvailable(pin);
+    }
+  }
+
+  private ResolvedOriginPins resolveOriginPins(AppCatalogManager.OriginRevision origin)
+      throws IOException {
+    Path historyDirectory = catalogDirectory(origin.catalogId()).resolve(HISTORY_DIRECTORY_NAME);
+    if (!Files.isDirectory(historyDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return new ResolvedOriginPins(List.of(), true);
+    }
+    List<OriginPin> resolved = new ArrayList<>();
+    boolean complete = true;
+    try (var revisions = Files.list(historyDirectory)) {
+      for (Path revisionDirectory : revisions.toList()) {
+        if (isRevisionMetadataDirectory(revisionDirectory)) {
+          OriginPinResolution resolution = resolveOriginPin(origin, revisionDirectory);
+          resolution.pin().ifPresent(resolved::add);
+          complete &= resolution.complete();
+        }
+      }
+    }
+    return new ResolvedOriginPins(List.copyOf(resolved), complete);
+  }
+
+  private OriginPinResolution resolveOriginPin(
+      AppCatalogManager.OriginRevision origin, Path revisionDirectory) {
+    try {
+      FetchedCatalog fetched = readFetchedCatalog(revisionDirectory);
+      String contentDigest =
+          AppCatalogRevisions.digestDirectoryName(
+              AppCatalogRevisions.catalogContentDigest(fetched));
+      String signerKeyId = AppCatalogVerifier.readSignature(fetched.signatureBytes()).keyId();
+      if (!origin.catalogContentDigestSha256().equals(contentDigest)
+          || !origin.catalogSignerKeyId().equals(signerKeyId)) {
+        return OriginPinResolution.unmatched();
+      }
+      String revisionDigest = AppCatalogRevisions.catalogDigest(fetched);
+      boolean digestMatchesDirectory =
+          requiredFileName(revisionDirectory)
+              .equals(AppCatalogRevisions.digestDirectoryName(revisionDigest));
+      return digestMatchesDirectory
+          ? OriginPinResolution.resolved(
+              new OriginPin(origin.catalogId(), revisionDigest, origin.appId()))
+          : OriginPinResolution.incomplete();
+    } catch (AppCatalogException | IOException _) {
+      return OriginPinResolution.incomplete();
+    }
+  }
+
+  private static void requireBoundedDesiredPins(Set<OriginPin> desired) {
+    Map<String, Set<String>> revisionsByCatalog = new HashMap<>();
+    for (OriginPin pin : desired) {
+      revisionsByCatalog
+          .computeIfAbsent(pin.catalogId(), ignored -> new HashSet<>())
+          .add(pin.revisionDigest());
+    }
+    if (revisionsByCatalog.values().stream()
+        .anyMatch(revisions -> revisions.size() > MAX_ORIGIN_PINNED_REVISIONS)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "Catalog origin revision retention limit is reached.");
+    }
+  }
+
+  private void retainOriginRevisionIfAvailable(OriginPin pin) throws IOException {
+    Path revisionDirectory = revisionDirectory(pin.catalogId(), pin.revisionDigest());
+    if (!isRevisionMetadataDirectory(revisionDirectory)) {
+      return;
+    }
+    Path pinsDirectory = revisionDirectory.resolve(ORIGIN_PINS_DIRECTORY_NAME);
+    requireOriginPinsDirectory(pinsDirectory);
+    Files.createDirectories(pinsDirectory);
+    writeStringAtomic(
+        pinsDirectory,
+        pinsDirectory.resolve(pin.appId() + ORIGIN_PIN_SUFFIX),
+        pin.appId() + System.lineSeparator());
+  }
+
+  private void removeStaleOriginPins(Set<OriginPin> desired, Set<String> preservedCatalogs)
+      throws IOException {
+    if (!Files.isDirectory(rootDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    try (var catalogs = Files.list(rootDirectory)) {
+      for (Path catalogDirectory : catalogs.toList()) {
+        removeStaleOriginPins(catalogDirectory, desired, preservedCatalogs);
+      }
+    }
+  }
+
+  private void removeStaleOriginPins(
+      Path catalogDirectory, Set<OriginPin> desired, Set<String> preservedCatalogs)
+      throws IOException {
+    String catalogId = requiredFileName(catalogDirectory);
+    if (!Files.isDirectory(catalogDirectory, LinkOption.NOFOLLOW_LINKS)
+        || catalogDirectory.equals(stagingDirectory())
+        || !isNormalizedCatalogId(catalogId)
+        || preservedCatalogs.contains(catalogId)) {
+      return;
+    }
+    Path historyDirectory = catalogDirectory.resolve(HISTORY_DIRECTORY_NAME);
+    if (!Files.isDirectory(historyDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    try (var revisions = Files.list(historyDirectory)) {
+      for (Path revisionDirectory : revisions.toList()) {
+        removeStaleOriginPins(catalogId, revisionDirectory, desired);
+      }
+    }
+  }
+
+  private static void removeStaleOriginPins(
+      String catalogId, Path revisionDirectory, Set<OriginPin> desired) throws IOException {
+    if (!isRevisionMetadataDirectory(revisionDirectory)) {
+      return;
+    }
+    String digestDirectoryName = requiredFileName(revisionDirectory);
+    String revisionDigest = "sha256:" + digestDirectoryName;
+    if (!digestDirectoryName.equals(AppCatalogRevisions.digestDirectoryName(revisionDigest))) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "Catalog revision digest does not match its confined directory.");
+    }
+    Path pinsDirectory = revisionDirectory.resolve(ORIGIN_PINS_DIRECTORY_NAME);
+    requireOriginPinsDirectory(pinsDirectory);
+    if (!Files.isDirectory(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    try (var pins = Files.list(pinsDirectory)) {
+      for (Path pin : pins.toList()) {
+        removeStaleOriginPin(catalogId, revisionDigest, pin, desired);
+      }
+    }
+    try (var remaining = Files.list(pinsDirectory)) {
+      if (remaining.findAny().isEmpty()) {
+        Files.delete(pinsDirectory);
+      }
+    }
+  }
+
+  private static void removeStaleOriginPin(
+      String catalogId, String revisionDigest, Path pin, Set<OriginPin> desired)
+      throws IOException {
+    String fileName = requiredFileName(pin);
+    if (!fileName.endsWith(ORIGIN_PIN_SUFFIX)
+        || !Files.isRegularFile(pin, LinkOption.NOFOLLOW_LINKS)
+        || Files.isSymbolicLink(pin)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "Catalog origin revision pin is not a confined regular file.");
+    }
+    String appId = fileName.substring(0, fileName.length() - ORIGIN_PIN_SUFFIX.length());
+    OriginPin retained = new OriginPin(catalogId, revisionDigest, appId);
+    if (!desired.contains(retained)) {
+      Files.delete(pin);
+    }
+  }
+
+  private static boolean isNormalizedCatalogId(String catalogId) {
+    try {
+      return catalogId.equals(AppCatalog.normalizeCatalogId(catalogId));
+    } catch (AppCatalogException _) {
+      return false;
+    }
+  }
+
+  private static String requiredFileName(Path path) {
+    Path fileName = path.getFileName();
+    if (fileName == null) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE, "Catalog store path has no file name.");
+    }
+    return fileName.toString();
+  }
+
+  private Path revisionDirectory(String catalogId, String revisionDigest) {
+    return catalogDirectory(catalogId)
+        .resolve(HISTORY_DIRECTORY_NAME)
+        .resolve(AppCatalogRevisions.digestDirectoryName(revisionDigest));
+  }
+
+  private record OriginPin(String catalogId, String revisionDigest, String appId) {
+    private OriginPin {
+      catalogId = AppCatalog.normalizeCatalogId(catalogId);
+      Objects.requireNonNull(revisionDigest, "revisionDigest");
+      AppCatalogRevisions.digestDirectoryName(revisionDigest);
+      appId = AppCatalogEntry.normalizeAppId(appId);
+    }
+  }
+
+  private record ResolvedOriginPins(List<OriginPin> pins, boolean complete) {
+    private ResolvedOriginPins {
+      pins = List.copyOf(pins);
+    }
+  }
+
+  private record OriginPinSnapshot(Set<OriginPin> desired, Set<String> preservedCatalogs) {}
+
+  private record OriginPinResolution(Optional<OriginPin> pin, boolean complete) {
+    private static OriginPinResolution unmatched() {
+      return new OriginPinResolution(Optional.empty(), true);
+    }
+
+    private static OriginPinResolution incomplete() {
+      return new OriginPinResolution(Optional.empty(), false);
+    }
+
+    private static OriginPinResolution resolved(OriginPin pin) {
+      return new OriginPinResolution(Optional.of(pin), true);
+    }
+  }
+
   private static boolean isRevisionMetadataDirectory(Path directory) {
     return Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
         && Files.isRegularFile(directory.resolve(REVISION_FILE_NAME), LinkOption.NOFOLLOW_LINKS);
@@ -416,6 +696,13 @@ public final class AppCatalogSourceStore {
         parseInstant(removeRequired(properties, REFRESHED_AT_KEY), REFRESHED_AT_KEY);
     AppCatalogSourceRefreshMetadata refreshMetadata =
         parseRefreshMetadata(properties, refreshedAt, source);
+    Optional<String> trustBindingId = removeOptional(properties, TRUST_BINDING_ID_KEY);
+    Optional<String> trustBindingDigest = removeOptional(properties, TRUST_BINDING_DIGEST_KEY);
+    if (trustBindingId.isPresent() != trustBindingDigest.isPresent()) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "catalog source trust binding metadata is incomplete");
+    }
     if (!properties.isEmpty()) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_SOURCE,
@@ -430,7 +717,9 @@ public final class AppCatalogSourceStore {
         refreshMetadata,
         fetchedCatalog,
         readMirrors(directory, source, addedAt),
-        readHealth(directory));
+        readHealth(directory),
+        trustBindingId,
+        trustBindingDigest);
   }
 
   private static List<AppCatalogMirror> readMirrors(
@@ -642,7 +931,33 @@ public final class AppCatalogSourceStore {
       AppCatalogSource source,
       FetchedCatalog fetchedCatalog,
       Instant addedAt,
-      Instant refreshedAt) {}
+      Instant refreshedAt,
+      Optional<String> trustBindingId,
+      Optional<String> trustBindingDigest) {
+    VerifiedCatalogWrite {
+      Objects.requireNonNull(trustBindingId, "trustBindingId");
+      Objects.requireNonNull(trustBindingDigest, "trustBindingDigest");
+      if (trustBindingId.isPresent() != trustBindingDigest.isPresent()) {
+        throw new IllegalArgumentException("catalog trust binding metadata is incomplete");
+      }
+    }
+
+    VerifiedCatalogWrite(
+        AppCatalog catalog,
+        AppCatalogSource source,
+        FetchedCatalog fetchedCatalog,
+        Instant addedAt,
+        Instant refreshedAt) {
+      this(
+          catalog,
+          source,
+          fetchedCatalog,
+          addedAt,
+          refreshedAt,
+          Optional.empty(),
+          Optional.empty());
+    }
+  }
 
   record EndpointWriteState(
       AppCatalogMirror selectedEndpoint,
@@ -655,14 +970,6 @@ public final class AppCatalogSourceStore {
         List<AppCatalogMirror> mirrors,
         Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
       this(selectedEndpoint, mirrors, mirrorHealth, null, null);
-    }
-
-    EndpointWriteState(
-        AppCatalogMirror selectedEndpoint,
-        List<AppCatalogMirror> mirrors,
-        Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
-        String selectedResolvedUri) {
-      this(selectedEndpoint, mirrors, mirrorHealth, selectedResolvedUri, null);
     }
 
     String resolvedCatalogUri(FetchedCatalog fetchedCatalog) {
@@ -910,7 +1217,9 @@ public final class AppCatalogSourceStore {
       AppCatalogSource source,
       Instant addedAt,
       Instant refreshedAt,
-      AppCatalogSourceRefreshMetadata refreshMetadata) {
+      AppCatalogSourceRefreshMetadata refreshMetadata,
+      String trustBindingId,
+      String trustBindingDigest) {
     StringBuilder builder =
         new StringBuilder()
             .append(SOURCE_VERSION_KEY)
@@ -946,6 +1255,12 @@ public final class AppCatalogSourceStore {
     refreshMetadata
         .lastFetchErrorCode()
         .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_CODE_KEY, value));
+    if (trustBindingId != null) {
+      appendProperty(builder, TRUST_BINDING_ID_KEY, trustBindingId);
+    }
+    if (trustBindingDigest != null) {
+      appendProperty(builder, TRUST_BINDING_DIGEST_KEY, trustBindingDigest);
+    }
     refreshMetadata
         .lastFetchErrorMessage()
         .ifPresent(value -> appendProperty(builder, LAST_FETCH_ERROR_MESSAGE_KEY, value));
@@ -1127,10 +1442,36 @@ public final class AppCatalogSourceStore {
       if (revision.current()) {
         continue;
       }
-      AppCatalogBundleExtractor.deleteRecursively(
+      Path revisionDirectory =
           directory
               .resolve(HISTORY_DIRECTORY_NAME)
-              .resolve(AppCatalogRevisions.digestDirectoryName(revision.revisionDigest())));
+              .resolve(AppCatalogRevisions.digestDirectoryName(revision.revisionDigest()));
+      if (!hasOriginPins(revisionDirectory)) {
+        AppCatalogBundleExtractor.deleteRecursively(revisionDirectory);
+      }
+    }
+  }
+
+  private static boolean hasOriginPins(Path revisionDirectory) throws IOException {
+    Path pinsDirectory = revisionDirectory.resolve(ORIGIN_PINS_DIRECTORY_NAME);
+    requireOriginPinsDirectory(pinsDirectory);
+    if (!Files.exists(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      return false;
+    }
+    try (var pins = Files.list(pinsDirectory)) {
+      return pins.anyMatch(
+          pin ->
+              pin.getFileName().toString().endsWith(ORIGIN_PIN_SUFFIX)
+                  && Files.isRegularFile(pin, LinkOption.NOFOLLOW_LINKS));
+    }
+  }
+
+  private static void requireOriginPinsDirectory(Path pinsDirectory) {
+    if (Files.exists(pinsDirectory, LinkOption.NOFOLLOW_LINKS)
+        && !Files.isDirectory(pinsDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "Catalog origin revision pins must be a confined directory.");
     }
   }
 

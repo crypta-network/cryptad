@@ -25,6 +25,8 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ import java.util.concurrent.locks.LockSupport;
 import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.TrustedAppKey;
@@ -59,6 +62,8 @@ import network.crypta.platform.apphost.AppRuntimeState;
 import network.crypta.platform.apphost.AppRuntimeStatusSnapshot;
 import network.crypta.platform.apphost.AppTokenPrincipal;
 import network.crypta.platform.apphost.AppUninstallOptions;
+import network.crypta.platform.apphost.FileInstalledAppOriginStore;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
@@ -99,6 +104,20 @@ class LocalProcessAppHostTest {
   private static final String PYTHON_DAEMON_APP_ID = "python-daemon-app";
   private static final String APP_VERSION = "2.0.0";
   private static final String UPDATED_APP_VERSION = "3.0.0";
+  private static final String SECOND_UPDATED_APP_VERSION = "4.0.0";
+  private static final String EXIT_ZERO_SCRIPT = "#!/bin/sh\nexit 0\n";
+  private static final String UPDATED_BUNDLE_SCRIPT =
+      """
+      #!/bin/sh
+      printf 'new\\n'
+      """;
+  private static final String PRESERVED_DATA_CONTENT = "keep-data";
+  private static final String PRESERVED_CACHE_CONTENT = "keep-cache";
+  private static final String PRESERVED_RUN_CONTENT = "keep-run";
+  private static final String APPROVED_PUBLISHER_KEY_ID = "publisher-approved";
+  private static final String SUBSTITUTED_PUBLISHER_KEY_ID = "publisher-substituted";
+  private static final String RESTART_COUNT_FILE_NAME = "restart-count.txt";
+  private static final String BUBBLEWRAP_PROVIDER_NAME = "bubblewrap";
   private static final String DEFAULT_TOKEN = "token";
   private static final String APP_TOKEN_ENV_NAME = "CRYPTAD_APP_TOKEN";
   private static final String APP_TOKEN_ENV_ASSIGNMENT_PREFIX = APP_TOKEN_ENV_NAME + "=";
@@ -587,17 +606,17 @@ class LocalProcessAppHostTest {
     Path dataSentinel =
         Files.writeString(
             installation.paths().dataDir().resolve("preserve-data.txt"),
-            "keep-data",
+            PRESERVED_DATA_CONTENT,
             StandardCharsets.UTF_8);
     Path cacheSentinel =
         Files.writeString(
             installation.paths().cacheDir().resolve("preserve-cache.txt"),
-            "keep-cache",
+            PRESERVED_CACHE_CONTENT,
             StandardCharsets.UTF_8);
     Path runSentinel =
         Files.writeString(
             installation.paths().runDir().resolve("preserve-run.txt"),
-            "keep-run",
+            PRESERVED_RUN_CONTENT,
             StandardCharsets.UTF_8);
     Path updatedStage =
         signBundle(
@@ -605,10 +624,7 @@ class LocalProcessAppHostTest {
                 tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve(SAMPLE_APP_ID),
                 SAMPLE_APP_ID,
                 UPDATED_APP_VERSION,
-                """
-                #!/bin/sh
-                printf 'new\\n'
-                """,
+                UPDATED_BUNDLE_SCRIPT,
                 Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT)),
             keyPair);
 
@@ -616,19 +632,16 @@ class LocalProcessAppHostTest {
 
     assertEquals(UPDATED_APP_VERSION, updated.manifest().appVersion());
     assertEquals(installation.paths(), updated.paths());
-    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
-    assertEquals("keep-cache", Files.readString(cacheSentinel, StandardCharsets.UTF_8));
-    assertEquals("keep-run", Files.readString(runSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_DATA_CONTENT, Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_CACHE_CONTENT, Files.readString(cacheSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_RUN_CONTENT, Files.readString(runSentinel, StandardCharsets.UTF_8));
     assertFalse(Files.exists(updated.paths().installedRoot().resolve("bundle-only.txt")));
     assertEquals(
         NEW_BUNDLE_CONTENT,
         Files.readString(
             updated.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME), StandardCharsets.UTF_8));
     assertEquals(
-        """
-        #!/bin/sh
-        printf 'new\\n'
-        """,
+        UPDATED_BUNDLE_SCRIPT,
         Files.readString(
             updated.paths().executablePath(updated.manifest()), StandardCharsets.UTF_8));
     assertEquals(
@@ -673,7 +686,7 @@ class LocalProcessAppHostTest {
         stageInstalledAppAt(
             tempDir.resolve("stage-retention-second-update").resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
-            "4.0.0",
+            SECOND_UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
             Map.of("v4-marker.txt", "version-4\n")));
 
@@ -707,26 +720,23 @@ class LocalProcessAppHostTest {
             tempDir.resolve("stage-rollback-update").resolve(SAMPLE_APP_ID),
             SAMPLE_APP_ID,
             UPDATED_APP_VERSION,
-            """
-            #!/bin/sh
-            printf 'new\\n'
-            """,
+            UPDATED_BUNDLE_SCRIPT,
             Map.of(NEW_BUNDLE_FILE_NAME, NEW_BUNDLE_CONTENT));
     host.updateFromDirectory(SAMPLE_APP_ID, updatedStage);
     Path dataSentinel =
         Files.writeString(
             installation.paths().dataDir().resolve("rollback-data.txt"),
-            "keep-data",
+            PRESERVED_DATA_CONTENT,
             StandardCharsets.UTF_8);
     Path cacheSentinel =
         Files.writeString(
             installation.paths().cacheDir().resolve("rollback-cache.txt"),
-            "keep-cache",
+            PRESERVED_CACHE_CONTENT,
             StandardCharsets.UTF_8);
     Path runSentinel =
         Files.writeString(
             installation.paths().runDir().resolve("rollback-run.txt"),
-            "keep-run",
+            PRESERVED_RUN_CONTENT,
             StandardCharsets.UTF_8);
 
     InstalledAppSnapshot rolledBack = host.rollback(SAMPLE_APP_ID);
@@ -734,9 +744,9 @@ class LocalProcessAppHostTest {
     assertEquals(APP_VERSION, rolledBack.manifest().appVersion());
     assertTrue(Files.exists(rolledBack.paths().installedRoot().resolve("old-bundle.txt")));
     assertFalse(Files.exists(rolledBack.paths().installedRoot().resolve(NEW_BUNDLE_FILE_NAME)));
-    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
-    assertEquals("keep-cache", Files.readString(cacheSentinel, StandardCharsets.UTF_8));
-    assertEquals("keep-run", Files.readString(runSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_DATA_CONTENT, Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_CACHE_CONTENT, Files.readString(cacheSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_RUN_CONTENT, Files.readString(runSentinel, StandardCharsets.UTF_8));
     assertEquals(
         UPDATED_APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
   }
@@ -903,7 +913,7 @@ class LocalProcessAppHostTest {
     Path dataSentinel =
         Files.writeString(
             installation.paths().dataDir().resolve("durable-state.txt"),
-            "keep-data",
+            PRESERVED_DATA_CONTENT,
             StandardCharsets.UTF_8);
     Files.writeString(
         installation.paths().cacheDir().resolve("cache-state.txt"),
@@ -918,7 +928,7 @@ class LocalProcessAppHostTest {
 
     assertFalse(Files.exists(installation.paths().installedRoot()));
     assertTrue(Files.isDirectory(installation.paths().dataDir()));
-    assertEquals("keep-data", Files.readString(dataSentinel, StandardCharsets.UTF_8));
+    assertEquals(PRESERVED_DATA_CONTENT, Files.readString(dataSentinel, StandardCharsets.UTF_8));
     assertFalse(Files.exists(installation.paths().cacheDir()));
     assertFalse(Files.exists(installation.paths().runDir()));
     assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
@@ -942,7 +952,7 @@ class LocalProcessAppHostTest {
         stageInstalledAppAt(
             tempDir.resolve("stage-failed-update-mismatch").resolve(DUPLICATE_APP_ID),
             DUPLICATE_APP_ID,
-            "4.0.0",
+            SECOND_UPDATED_APP_VERSION,
             scriptContent(new AppEnv()),
             Map.of("mismatched.txt", "mismatched\n"));
 
@@ -1131,14 +1141,19 @@ class LocalProcessAppHostTest {
 
   @Test
   void updateFromDirectory_whenAppNotInstalled_expectFailure() throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHostLayout appHostLayout = layout();
+    AppHost host = developmentHost(appHostLayout);
     Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
 
-    AppHostException exception =
-        assertThrows(
-            AppHostException.class, () -> host.updateFromDirectory(SAMPLE_APP_ID, stagedApp));
+    try (WatchService watchService = watchForCreatedEntries(transactionRoot)) {
+      AppHostException exception =
+          assertThrows(
+              AppHostException.class, () -> host.updateFromDirectory(SAMPLE_APP_ID, stagedApp));
 
-    assertEquals("app is not installed: " + SAMPLE_APP_ID, exception.getMessage());
+      assertEquals("app is not installed: " + SAMPLE_APP_ID, exception.getMessage());
+      assertNoCreatedEntry(watchService, transactionRoot);
+    }
   }
 
   @Test
@@ -1176,9 +1191,12 @@ class LocalProcessAppHostTest {
         allowUnsignedHost(
             Duration.ofSeconds(1),
             new AppEnv(),
-            _ -> {
-              cleanupAttempts.incrementAndGet();
-              throw new IOException("simulated backup cleanup failure");
+            root -> {
+              if (root.getFileName().toString().startsWith("app-rollback-backup-")) {
+                cleanupAttempts.incrementAndGet();
+                throw new IOException("simulated backup cleanup failure");
+              }
+              deleteTestTree(root);
             });
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
     Path firstUpdatedStage =
@@ -1191,7 +1209,7 @@ class LocalProcessAppHostTest {
     InstalledAppSnapshot firstUpdate = host.updateFromDirectory(SAMPLE_APP_ID, firstUpdatedStage);
     assertEquals(APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
     assertEquals(0, cleanupAttempts.get());
-    String secondUpdatedVersion = "4.0.0";
+    String secondUpdatedVersion = SECOND_UPDATED_APP_VERSION;
     Path secondUpdatedStage =
         stageInstalledAppAt(
             tempDir.resolve(STAGE_UPDATE_DIR_NAME).resolve("second").resolve(SAMPLE_APP_ID),
@@ -1213,12 +1231,720 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void updateCatalogFromDirectory_whenOriginStoreIsUnsafe_expectBundleRemainsUnchanged()
+      throws IOException {
+    AppHostLayout layout = layout();
+    LocalProcessAppHost host = developmentHost(layout);
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path originRoot = layout.appOriginProvenanceDir();
+    Path savedOriginRoot = originRoot.resolveSibling("catalog-origin-saved");
+    Files.move(originRoot, savedOriginRoot);
+    Files.writeString(originRoot, "unsafe");
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-update"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+
+    assertThrows(
+        IOException.class,
+        () -> host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin));
+
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
+  void updateCatalogFromDirectory_whenStagedTargetIsInvalid_expectNoTransactionStarted()
+      throws IOException {
+    AppHostLayout appHostLayout = layout();
+    LocalProcessAppHost host = developmentHost(appHostLayout);
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path mismatchedUpdate =
+        stageInstalledAppAt(
+            tempDir.resolve("mismatched-catalog-update"),
+            DUPLICATE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
+
+    try (WatchService watchService = watchForCreatedEntries(transactionRoot)) {
+      assertThrows(
+          AppManifestException.class,
+          () -> host.updateCatalogFromDirectory(SAMPLE_APP_ID, mismatchedUpdate, updateOrigin));
+
+      assertNoCreatedEntry(watchService, transactionRoot);
+      assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+      assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+    }
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenOriginNamesAnotherApp_expectNoBundleCommitted()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path staged = stageInstalledApp(DUPLICATE_APP_ID);
+    InstalledAppOrigin mismatchedOrigin = origin(APP_VERSION);
+
+    assertThrows(
+        AppHostException.class, () -> host.installCatalogFromDirectory(staged, mismatchedOrigin));
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertTrue(host.describe(DUPLICATE_APP_ID).isEmpty());
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenAuthorized_expectLeaseHeldThroughCommit()
+      throws IOException {
+    AppHostLayout layout = layout();
+    LocalProcessAppHost host = developmentHost(layout);
+    Path staged = stageInstalledApp(SAMPLE_APP_ID);
+    InstalledAppOrigin origin = origin(APP_VERSION);
+    AtomicBoolean authorized = new AtomicBoolean();
+    AtomicBoolean committedBeforeLeaseClosed = new AtomicBoolean();
+
+    InstalledAppSnapshot installed =
+        host.installCatalogFromDirectory(
+            staged,
+            origin,
+            targetOrigin -> {
+              assertEquals(origin, targetOrigin);
+              authorized.set(true);
+              return () ->
+                  committedBeforeLeaseClosed.set(
+                      Files.isDirectory(layout.pathsFor(SAMPLE_APP_ID).installedRoot())
+                          && Files.isRegularFile(
+                              layout
+                                  .appOriginProvenanceDir()
+                                  .resolve(SAMPLE_APP_ID + ".properties")));
+            });
+
+    assertTrue(authorized.get());
+    assertTrue(committedBeforeLeaseClosed.get());
+    assertEquals(SAMPLE_APP_ID, installed.manifest().appId());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenCopiedSignerDiffersFromOrigin_expectNoBundleCommitted()
+      throws Exception {
+    KeyPair approvedPublisher = generateEd25519KeyPair();
+    KeyPair substitutedPublisher = generateEd25519KeyPair();
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+                new TrustedAppKey(
+                    APPROVED_PUBLISHER_KEY_ID,
+                    AppBundleSignature.SIGNATURE_ALGORITHM,
+                    approvedPublisher.getPublic()))
+            .plus(
+                TrustedAppKeys.of(
+                    new TrustedAppKey(
+                        SUBSTITUTED_PUBLISHER_KEY_ID,
+                        AppBundleSignature.SIGNATURE_ALGORITHM,
+                        substitutedPublisher.getPublic())));
+    AppBundleVerifier verifier = AppBundleVerifier.requireSigned(trustedKeys);
+    LocalProcessAppHost host = exactIdentityHost(layout(), verifier, trustedKeys);
+    Path approved =
+        stageInstalledAppAt(
+            tempDir.resolve("approved-catalog-bundle"),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    AppBundleSigner.sign(approved, APPROVED_PUBLISHER_KEY_ID, approvedPublisher.getPrivate());
+    AppBundleVerification approvedVerification = verifier.verify(approved);
+    Path substituted =
+        stageInstalledAppAt(
+            tempDir.resolve("substituted-catalog-bundle"),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            "#!/bin/sh\nexit 1\n",
+            Map.of());
+    AppBundleSigner.sign(
+        substituted, SUBSTITUTED_PUBLISHER_KEY_ID, substitutedPublisher.getPrivate());
+    InstalledAppOrigin approvedOrigin = signedOrigin(approvedVerification);
+
+    assertThrows(
+        AppHostException.class,
+        () -> host.installCatalogFromDirectory(substituted, approvedOrigin));
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenSignedContentDiffersFromOrigin_expectNoBundleCommitted()
+      throws Exception {
+    KeyPair publisher = generateEd25519KeyPair();
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+            new TrustedAppKey(
+                APPROVED_PUBLISHER_KEY_ID,
+                AppBundleSignature.SIGNATURE_ALGORITHM,
+                publisher.getPublic()));
+    AppBundleVerifier verifier = AppBundleVerifier.requireSigned(trustedKeys);
+    LocalProcessAppHost host = exactIdentityHost(layout(), verifier, trustedKeys);
+    Path approved =
+        stageInstalledAppAt(
+            tempDir.resolve("approved-signed-content"),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    AppBundleSigner.sign(approved, APPROVED_PUBLISHER_KEY_ID, publisher.getPrivate());
+    InstalledAppOrigin approvedOrigin = signedOrigin(verifier.verify(approved));
+    Path substituted =
+        stageInstalledAppAt(
+            tempDir.resolve("substituted-signed-content"),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            "#!/bin/sh\nexit 1\n",
+            Map.of());
+    AppBundleSigner.sign(substituted, APPROVED_PUBLISHER_KEY_ID, publisher.getPrivate());
+
+    assertThrows(
+        AppHostException.class,
+        () -> host.installCatalogFromDirectory(substituted, approvedOrigin));
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void rollback_whenRetainedSignerAndContentDifferFromOrigin_expectNoMutation() throws Exception {
+    KeyPair approvedPublisher = generateEd25519KeyPair();
+    KeyPair substitutedPublisher = generateEd25519KeyPair();
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+                new TrustedAppKey(
+                    APPROVED_PUBLISHER_KEY_ID,
+                    AppBundleSignature.SIGNATURE_ALGORITHM,
+                    approvedPublisher.getPublic()))
+            .plus(
+                TrustedAppKeys.of(
+                    new TrustedAppKey(
+                        SUBSTITUTED_PUBLISHER_KEY_ID,
+                        AppBundleSignature.SIGNATURE_ALGORITHM,
+                        substitutedPublisher.getPublic())));
+    AppBundleVerifier verifier = AppBundleVerifier.requireSigned(trustedKeys);
+    AppHostLayout appHostLayout = layout();
+    LocalProcessAppHost host = exactIdentityHost(appHostLayout, verifier, trustedKeys);
+    Path initial =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-rollback-approved"),
+            SAMPLE_APP_ID,
+            APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    AppBundleSigner.sign(initial, APPROVED_PUBLISHER_KEY_ID, approvedPublisher.getPrivate());
+    InstalledAppOrigin initialOrigin = signedOrigin(verifier.verify(initial));
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-rollback-current"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    AppBundleSigner.sign(update, APPROVED_PUBLISHER_KEY_ID, approvedPublisher.getPrivate());
+    InstalledAppOrigin updateOrigin =
+        signedOrigin(
+            UPDATED_APP_VERSION, verifier.verify(update), initialOrigin.selfDigestSha256());
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+    Path rollbackRoot = appHostLayout.rollbackAppsDir().resolve(SAMPLE_APP_ID);
+    Files.writeString(
+        rollbackRoot.resolve("substituted-content.txt"),
+        "different retained bytes\n",
+        StandardCharsets.UTF_8);
+    AppBundleSigner.sign(
+        rollbackRoot, SUBSTITUTED_PUBLISHER_KEY_ID, substitutedPublisher.getPrivate());
+    AtomicBoolean authorizationInvoked = new AtomicBoolean();
+
+    assertThrows(
+        AppHostException.class,
+        () ->
+            host.rollback(
+                SAMPLE_APP_ID,
+                _ -> {
+                  authorizationInvoked.set(true);
+                  return () -> {};
+                }));
+
+    assertFalse(authorizationInvoked.get());
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(updateOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+  }
+
+  @Test
+  void updateFromDirectory_whenCatalogOriginTracked_expectOriginRotatesWithBundle()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    assertFalse(host.rollbackRequiresCatalogAuthorization(SAMPLE_APP_ID));
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("generic-update-over-catalog"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+
+    host.updateFromDirectory(SAMPLE_APP_ID, update);
+
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+    assertTrue(host.rollbackRequiresCatalogAuthorization(SAMPLE_APP_ID));
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+
+    host.rollback(SAMPLE_APP_ID, _ -> () -> {});
+
+    assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+    assertFalse(host.rollbackRequiresCatalogAuthorization(SAMPLE_APP_ID));
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
+  void catalogMutations_whenOriginsRotateAndUninstall_expectRetentionMatchesBothSlots()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    List<List<InstalledAppOrigin>> retainedSnapshots = new ArrayList<>();
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+        });
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-origin-retention-update"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+    List<InstalledAppOrigin> updatedOrigins = retainedSnapshots.getLast();
+    host.uninstall(SAMPLE_APP_ID);
+
+    assertEquals(2, updatedOrigins.size());
+    assertTrue(updatedOrigins.contains(initialOrigin));
+    assertTrue(updatedOrigins.contains(updateOrigin));
+    assertTrue(retainedSnapshots.getLast().isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenRetentionFails_expectPriorPinsReconciled()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    List<List<InstalledAppOrigin>> retainedSnapshots = new ArrayList<>();
+    AtomicBoolean rejectNextNonEmptySnapshot = new AtomicBoolean(true);
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) throws IOException {
+            retainedSnapshots.add(List.copyOf(origins));
+            if (!origins.isEmpty() && rejectNextNonEmptySnapshot.getAndSet(false)) {
+              throw new IOException("simulated catalog revision retention failure");
+            }
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) {
+            retainedSnapshots.add(List.copyOf(origins));
+          }
+        });
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    InstalledAppOrigin installedOrigin = origin(APP_VERSION);
+
+    assertThrows(
+        IOException.class, () -> host.installCatalogFromDirectory(stagedApp, installedOrigin));
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
+    assertFalse(retainedSnapshots.get(1).isEmpty());
+    assertTrue(retainedSnapshots.getLast().isEmpty());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenPinCleanupFails_expectLaterReadRetries() throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    AtomicBoolean rejectFirstCommittedSnapshot = new AtomicBoolean(true);
+    AtomicInteger reconciliationAttempts = new AtomicInteger();
+    host.setCatalogOriginRetention(
+        new AppHost.CatalogOriginRetention() {
+          @Override
+          public void retain(List<InstalledAppOrigin> origins) {
+            // This test injects only a post-commit cleanup failure.
+          }
+
+          @Override
+          public void reconcile(List<InstalledAppOrigin> origins) throws IOException {
+            reconciliationAttempts.incrementAndGet();
+            if (!origins.isEmpty() && rejectFirstCommittedSnapshot.getAndSet(false)) {
+              throw new IOException("simulated stale catalog pin cleanup failure");
+            }
+          }
+        });
+
+    host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION));
+    int attemptsAfterCommit = reconciliationAttempts.get();
+
+    assertTrue(host.describe(SAMPLE_APP_ID).isPresent());
+    assertEquals(attemptsAfterCommit + 1, reconciliationAttempts.get());
+  }
+
+  @Test
+  void updateFromDirectory_whenOnlyDiscardedRollbackHasOrigin_expectOriginRemainsAbsent()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of()));
+    Path catalogUpdate =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-update-from-legacy"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin catalogOrigin = origin(UPDATED_APP_VERSION);
+    host.updateCatalogFromDirectory(
+        SAMPLE_APP_ID, catalogUpdate, catalogOrigin, AppHost.CatalogOriginExpectation.absent());
+    assertFalse(host.rollbackRequiresCatalogAuthorization(SAMPLE_APP_ID));
+    host.rollback(SAMPLE_APP_ID);
+    Path genericUpdate =
+        stageInstalledAppAt(
+            tempDir.resolve("generic-update-discarding-catalog-rollback"),
+            SAMPLE_APP_ID,
+            SECOND_UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+
+    host.updateFromDirectory(SAMPLE_APP_ID, genericUpdate);
+    host.rollback(SAMPLE_APP_ID);
+
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+  }
+
+  @Test
+  void updateCatalogFromDirectory_whenExpectedOriginIsStale_expectNoMutation() throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("stale-origin-update"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+
+    assertThrows(
+        AppHostException.CatalogOriginChangedException.class,
+        () ->
+            host.updateCatalogFromDirectory(
+                SAMPLE_APP_ID,
+                update,
+                updateOrigin,
+                AppHost.CatalogOriginExpectation.matching("2".repeat(64))));
+
+    assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertTrue(host.rollbackStatus(SAMPLE_APP_ID).isEmpty());
+  }
+
+  @Test
+  void rollback_whenCatalogUpdateCommitted_expectBundleAndOriginRestoreTogether()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-update-rollback"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+
+    InstalledAppSnapshot restored = host.rollback(SAMPLE_APP_ID, _ -> () -> {});
+
+    assertEquals(APP_VERSION, restored.manifest().appVersion());
+    assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+  }
+
+  @Test
+  void rollback_whenCatalogAuthorizationAccepts_expectExactRollbackOriginPassedInsideMutation()
+      throws IOException {
+    AppHostLayout layout = layout();
+    LocalProcessAppHost host = developmentHost(layout);
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("authorized-catalog-rollback"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+    AtomicReference<InstalledAppOrigin> authorized = new AtomicReference<>();
+    AtomicBoolean committedBeforeLeaseClosed = new AtomicBoolean();
+
+    InstalledAppSnapshot restored =
+        host.rollback(
+            SAMPLE_APP_ID,
+            rollbackOrigin -> {
+              authorized.set(rollbackOrigin);
+              return () -> {
+                try {
+                  String committedOrigin =
+                      Files.readString(
+                          layout.appOriginProvenanceDir().resolve(SAMPLE_APP_ID + ".properties"));
+                  committedBeforeLeaseClosed.set(
+                      committedOrigin.contains("appVersion=" + APP_VERSION + "\n"));
+                } catch (IOException _) {
+                  throw new AssertionError("catalog origin was unreadable while closing the lease");
+                }
+              };
+            });
+
+    assertEquals(initialOrigin, authorized.get());
+    assertTrue(committedBeforeLeaseClosed.get());
+    assertEquals(APP_VERSION, restored.manifest().appVersion());
+    assertEquals(initialOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+  }
+
+  @Test
+  void rollback_whenCatalogOriginExistsAndAuthorizationIsMissing_expectNoMutation()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("unauthorized-catalog-rollback"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+
+    assertThrows(
+        AppHostException.CatalogRollbackAuthorizationException.class,
+        () -> host.rollback(SAMPLE_APP_ID));
+
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(updateOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+  }
+
+  @Test
+  void rollback_whenPriorBundlePredatesOriginTracking_expectUntrackedSlotRestoredAndSwapped()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of()));
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("catalog-update-over-untracked-bundle"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION);
+    host.updateCatalogFromDirectory(
+        SAMPLE_APP_ID, update, updateOrigin, AppHost.CatalogOriginExpectation.absent());
+    AtomicReference<InstalledAppOrigin> firstAuthorizedOrigin = new AtomicReference<>();
+
+    InstalledAppSnapshot legacy =
+        host.rollback(
+            SAMPLE_APP_ID,
+            rollbackOrigin -> {
+              firstAuthorizedOrigin.set(rollbackOrigin);
+              return () -> {};
+            });
+
+    assertEquals(APP_VERSION, legacy.manifest().appVersion());
+    assertTrue(host.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+    assertNull(firstAuthorizedOrigin.get());
+
+    AtomicReference<InstalledAppOrigin> secondAuthorizedOrigin = new AtomicReference<>();
+    InstalledAppSnapshot catalog =
+        host.rollback(
+            SAMPLE_APP_ID,
+            rollbackOrigin -> {
+              secondAuthorizedOrigin.set(rollbackOrigin);
+              return () -> {};
+            });
+
+    assertEquals(UPDATED_APP_VERSION, catalog.manifest().appVersion());
+    assertEquals(updateOrigin, secondAuthorizedOrigin.get());
+    assertEquals(updateOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+  }
+
+  @Test
+  void rollback_whenCatalogAuthorizationRejects_expectBundleAndOriginsRemainUnchanged()
+      throws IOException {
+    LocalProcessAppHost host = developmentHost(layout());
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    host.installCatalogFromDirectory(initial, initialOrigin);
+    Path update =
+        stageInstalledAppAt(
+            tempDir.resolve("rejected-catalog-rollback"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+    InstalledAppOrigin updateOrigin = origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    host.updateCatalogFromDirectory(SAMPLE_APP_ID, update, updateOrigin);
+
+    assertThrows(
+        AppHostException.CatalogRollbackAuthorizationException.class,
+        () ->
+            host.rollback(
+                SAMPLE_APP_ID,
+                _ -> {
+                  throw new AppHostException.CatalogRollbackAuthorizationException();
+                }));
+
+    assertEquals(
+        UPDATED_APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertEquals(updateOrigin, host.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+    assertEquals(APP_VERSION, host.rollbackStatus(SAMPLE_APP_ID).orElseThrow().appVersion());
+  }
+
+  @Test
+  void catalogOrigin_whenCatalogUpdateTransactionWasInterrupted_expectPriorStateRecovered()
+      throws IOException {
+    AppHostLayout layout = layout();
+    LocalProcessAppHost firstHost = developmentHost(layout);
+    Path initial = stageInstalledApp(SAMPLE_APP_ID, EXIT_ZERO_SCRIPT, Map.of());
+    InstalledAppOrigin initialOrigin = origin(APP_VERSION);
+    firstHost.installCatalogFromDirectory(initial, initialOrigin);
+    Path active = createActiveTransaction(layout, initialOrigin, true);
+    InstalledAppOrigin attemptedOrigin =
+        origin(UPDATED_APP_VERSION, initialOrigin.selfDigestSha256());
+    new FileInstalledAppOriginStore(layout.appOriginProvenanceDir()).put(attemptedOrigin);
+
+    LocalProcessAppHost recoveredHost = developmentHost(layout);
+
+    assertEquals(initialOrigin, recoveredHost.catalogOrigin(SAMPLE_APP_ID).orElseThrow());
+    assertEquals(
+        APP_VERSION, recoveredHost.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+    assertFalse(Files.exists(active));
+  }
+
+  @Test
+  void catalogOrigin_whenCatalogInstallTransactionWasInterrupted_expectStaleOriginRemoved()
+      throws IOException {
+    AppHostLayout layout = layout();
+    Path active = createActiveTransaction(layout, null, false);
+    InstalledAppOrigin attemptedOrigin = origin(APP_VERSION);
+    new FileInstalledAppOriginStore(layout.appOriginProvenanceDir()).put(attemptedOrigin);
+
+    LocalProcessAppHost recoveredHost = developmentHost(layout);
+
+    assertTrue(recoveredHost.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+    assertTrue(recoveredHost.describe(SAMPLE_APP_ID).isEmpty());
+    assertFalse(Files.exists(active));
+  }
+
+  @Test
+  void catalogOrigin_whenRepairTransactionCapturedUnreadableBundle_expectExactBytesRecovered()
+      throws IOException {
+    AppHostLayout layout = layout();
+    LocalProcessAppHost firstHost = developmentHost(layout);
+    InstalledAppSnapshot installation =
+        firstHost.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Files.writeString(
+        installation.paths().manifestFile(), "damaged manifest\n", StandardCharsets.UTF_8);
+    Path marker = installation.paths().installedRoot().resolve("repair-marker.txt");
+    Files.writeString(marker, "before repair\n", StandardCharsets.UTF_8);
+    Path active = createActiveTransaction(layout, null, true);
+    Files.writeString(marker, "attempted repair\n", StandardCharsets.UTF_8);
+    LocalProcessAppHost recoveredHost = developmentHost(layout);
+
+    assertTrue(recoveredHost.catalogOrigin(SAMPLE_APP_ID).isEmpty());
+
+    assertEquals("before repair\n", Files.readString(marker, StandardCharsets.UTF_8));
+    assertFalse(Files.exists(active));
+    Path repairedStage =
+        stageInstalledAppAt(
+            tempDir.resolve("recovered-repair-stage"),
+            SAMPLE_APP_ID,
+            UPDATED_APP_VERSION,
+            EXIT_ZERO_SCRIPT,
+            Map.of());
+
+    InstalledAppSnapshot repaired = recoveredHost.updateFromDirectory(SAMPLE_APP_ID, repairedStage);
+
+    assertEquals(UPDATED_APP_VERSION, repaired.manifest().appVersion());
+  }
+
+  @Test
+  void installCatalogFromDirectory_whenCommittedCleanupFails_expectLaterReadRetriesCleanup()
+      throws IOException {
+    AppHostLayout appHostLayout = layout();
+    AtomicInteger cleanupAttempts = new AtomicInteger();
+    LocalProcessAppHost host =
+        new LocalProcessAppHost(
+            appHostLayout,
+            Duration.ofSeconds(1),
+            new java.security.SecureRandom(),
+            new AppEnv(),
+            TEST_TIMING,
+            _ -> {
+              cleanupAttempts.incrementAndGet();
+              throw new IOException("simulated committed transaction cleanup failure");
+            },
+            AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+
+    InstalledAppSnapshot installed =
+        host.installCatalogFromDirectory(stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION));
+
+    assertEquals(1, cleanupAttempts.get());
+    assertTrue(hasCommittedTransaction(appHostLayout));
+    assertEquals(List.of(installed), host.listInstalled());
+    assertFalse(hasCommittedTransaction(appHostLayout));
+  }
+
+  @Test
   void updateFromDirectory_whenAppIsRunning_expectFailure() throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHostLayout appHostLayout = layout();
+    AppHost host = developmentHost(appHostLayout);
     host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
     host.start(RUNNER_APP_ID);
+    Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
 
-    try {
+    try (WatchService watchService = watchForCreatedEntries(transactionRoot)) {
       AppHostException exception =
           assertThrows(
               AppHostException.class,
@@ -1228,6 +1954,7 @@ class LocalProcessAppHostTest {
 
       assertEquals("cannot update a running app: " + RUNNER_APP_ID, exception.getMessage());
       assertEquals(APP_VERSION, host.describe(RUNNER_APP_ID).orElseThrow().manifest().appVersion());
+      assertNoCreatedEntry(watchService, transactionRoot);
     } finally {
       host.stop(RUNNER_APP_ID);
     }
@@ -1269,16 +1996,22 @@ class LocalProcessAppHostTest {
 
   @Test
   void updateFromDirectory_whenStagedDirectoryInvalid_expectFailure() throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHostLayout appHostLayout = layout();
+    AppHost host = developmentHost(appHostLayout);
     host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
 
-    AppHostException exception =
-        assertThrows(
-            AppHostException.class,
-            () -> host.updateFromDirectory(SAMPLE_APP_ID, tempDir.resolve("missing-stage")));
+    try (WatchService watchService = watchForCreatedEntries(transactionRoot)) {
+      AppHostException exception =
+          assertThrows(
+              AppHostException.class,
+              () -> host.updateFromDirectory(SAMPLE_APP_ID, tempDir.resolve("missing-stage")));
 
-    assertTrue(exception.getMessage().contains("stagedAppDirectory must be an existing directory"));
-    assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+      assertTrue(
+          exception.getMessage().contains("stagedAppDirectory must be an existing directory"));
+      assertEquals(APP_VERSION, host.describe(SAMPLE_APP_ID).orElseThrow().manifest().appVersion());
+      assertNoCreatedEntry(watchService, transactionRoot);
+    }
   }
 
   @Test
@@ -1910,7 +2643,7 @@ class LocalProcessAppHostTest {
 
     host.start(RUNNER_APP_ID);
 
-    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    Path runCountFile = installation.paths().runDir().resolve(RESTART_COUNT_FILE_NAME);
     waitForFileContent(runCountFile, "2\n");
     AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.RUNNING);
     assertEquals(1, status.currentRestartAttempt());
@@ -1950,7 +2683,7 @@ class LocalProcessAppHostTest {
 
     host.start(RUNNER_APP_ID);
 
-    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    Path runCountFile = installation.paths().runDir().resolve(RESTART_COUNT_FILE_NAME);
     waitForFileContent(runCountFile, "1\n");
     AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.CRASHED);
     assertEquals(2, historicalVerifications.get());
@@ -2131,7 +2864,7 @@ class LocalProcessAppHostTest {
 
     host.start(RUNNER_APP_ID);
 
-    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    Path runCountFile = installation.paths().runDir().resolve(RESTART_COUNT_FILE_NAME);
     waitForFileContent(runCountFile, "1\n");
     AppRuntimeStatusSnapshot status = waitForRuntimeState(host, AppRuntimeState.CRASHED);
     assertEquals(7, status.lastExitCode());
@@ -2189,7 +2922,7 @@ class LocalProcessAppHostTest {
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
 
     host.start(RUNNER_APP_ID);
-    Path runCountFile = installation.paths().runDir().resolve("restart-count.txt");
+    Path runCountFile = installation.paths().runDir().resolve(RESTART_COUNT_FILE_NAME);
     waitForFileContent(runCountFile, "1\n");
     assertTrue(host.stop(RUNNER_APP_ID));
     LockSupport.parkNanos(Duration.ofMillis(150).toNanos());
@@ -3360,7 +4093,7 @@ class LocalProcessAppHostTest {
 
     assertFalse(status.running());
     assertEquals(AppSandboxSupportLevel.ENFORCED, status.sandboxStatus().supportLevel());
-    assertEquals("bubblewrap", status.sandboxStatus().providerName());
+    assertEquals(BUBBLEWRAP_PROVIDER_NAME, status.sandboxStatus().providerName());
     assertFalse(status.sandboxStatus().active());
     assertTrue(status.sandboxStatus().reason().contains("will be used on start"));
     assertFalse(status.sandboxStatus().toString().contains(DEFAULT_TOKEN));
@@ -3380,12 +4113,12 @@ class LocalProcessAppHostTest {
     RunningAppSnapshot running = host.start(RUNNER_APP_ID);
 
     assertEquals(AppSandboxSupportLevel.ENFORCED, running.sandboxStatus().supportLevel());
-    assertEquals("bubblewrap", running.sandboxStatus().providerName());
+    assertEquals(BUBBLEWRAP_PROVIDER_NAME, running.sandboxStatus().providerName());
     assertTrue(host.stop(RUNNER_APP_ID));
     AppRuntimeStatusSnapshot stopped = host.runtimeStatus(RUNNER_APP_ID);
     assertFalse(stopped.running());
     assertEquals(AppSandboxSupportLevel.ENFORCED, stopped.sandboxStatus().supportLevel());
-    assertEquals("bubblewrap", stopped.sandboxStatus().providerName());
+    assertEquals(BUBBLEWRAP_PROVIDER_NAME, stopped.sandboxStatus().providerName());
     assertFalse(stopped.sandboxStatus().active());
     assertTrue(stopped.sandboxStatus().reason().contains("not running"));
     assertFalse(stopped.sandboxStatus().reason().contains("sandbox active"));
@@ -3419,7 +4152,7 @@ class LocalProcessAppHostTest {
     AppRuntimeStatusSnapshot crashed = waitForCrashedInactiveSandboxStatus(host);
     assertFalse(crashed.running());
     assertEquals(AppSandboxSupportLevel.ENFORCED, crashed.sandboxStatus().supportLevel());
-    assertEquals("bubblewrap", crashed.sandboxStatus().providerName());
+    assertEquals(BUBBLEWRAP_PROVIDER_NAME, crashed.sandboxStatus().providerName());
     assertFalse(crashed.sandboxStatus().active());
     assertTrue(crashed.sandboxStatus().reason().contains("not running"));
   }
@@ -3626,6 +4359,124 @@ class LocalProcessAppHostTest {
         AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
   }
 
+  private static LocalProcessAppHost developmentHost(AppHostLayout layout) {
+    return new LocalProcessAppHost(
+        layout, AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
+  }
+
+  private static InstalledAppOrigin origin(String version) {
+    return origin(version, null);
+  }
+
+  private static InstalledAppOrigin origin(String version, @Nullable String previousDigest) {
+    String digest = "1".repeat(64);
+    return InstalledAppOrigin.create(
+        SAMPLE_APP_ID,
+        version,
+        digest,
+        "catalog-a",
+        "catalog-key",
+        digest,
+        digest,
+        "publisher-key",
+        "",
+        "",
+        "",
+        "trusted_reviewed",
+        "binding-a",
+        digest,
+        digest,
+        digest,
+        Instant.parse("2026-08-26T00:00:00Z"),
+        previousDigest);
+  }
+
+  private static InstalledAppOrigin signedOrigin(AppBundleVerification verification) {
+    return signedOrigin(APP_VERSION, verification, null);
+  }
+
+  private static InstalledAppOrigin signedOrigin(
+      String version, AppBundleVerification verification, @Nullable String previousDigest) {
+    String digest = "1".repeat(64);
+    return InstalledAppOrigin.create(
+        SAMPLE_APP_ID,
+        version,
+        digest,
+        "catalog-a",
+        "catalog-key",
+        digest,
+        digest,
+        verification.keyId(),
+        verification.keyFingerprintSha256(),
+        verification.signedContentDigestSha256(),
+        "",
+        "trusted_reviewed",
+        "binding-a",
+        digest,
+        digest,
+        digest,
+        Instant.parse("2026-08-26T00:00:00Z"),
+        previousDigest);
+  }
+
+  private static Path createActiveTransaction(
+      AppHostLayout layout, InstalledAppOrigin priorOrigin, boolean currentBundlePresent)
+      throws IOException {
+    Path active = layout.appMutationTransactionsDir().resolve(SAMPLE_APP_ID + ".active");
+    Files.createDirectories(active);
+    if (currentBundlePresent) {
+      copyTree(layout.pathsFor(SAMPLE_APP_ID).installedRoot(), active.resolve("current-bundle"));
+    }
+    FileInstalledAppOriginStore.State before =
+        new FileInstalledAppOriginStore.State(Optional.ofNullable(priorOrigin), Optional.empty());
+    new FileInstalledAppOriginStore(active.resolve("origins")).restore(SAMPLE_APP_ID, before);
+    Files.writeString(
+        active.resolve("transaction.properties"),
+        """
+        schemaVersion=1
+        appId=%s
+        operation=%s
+        currentBundlePresent=%s
+        rollbackBundlePresent=false
+        currentOriginPresent=%s
+        rollbackOriginPresent=false
+        """
+            .formatted(
+                SAMPLE_APP_ID,
+                currentBundlePresent ? "catalog_update" : "catalog_install",
+                currentBundlePresent,
+                priorOrigin != null));
+    return active;
+  }
+
+  private static void copyTree(Path source, Path target) throws IOException {
+    try (var paths = Files.walk(source)) {
+      for (Path path : paths.toList()) {
+        Path destination = target.resolve(source.relativize(path));
+        if (Files.isDirectory(path)) {
+          Files.createDirectories(destination);
+        } else {
+          Files.createDirectories(destination.getParent());
+          Files.copy(path, destination);
+        }
+      }
+    }
+  }
+
+  private static boolean hasCommittedTransaction(AppHostLayout layout) throws IOException {
+    try (var entries = Files.list(layout.appMutationTransactionsDir())) {
+      return entries.anyMatch(path -> path.getFileName().toString().startsWith(".committed-"));
+    }
+  }
+
+  private static void deleteTestTree(Path root) throws IOException {
+    try (var paths = Files.walk(root)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    }
+  }
+
   private LocalProcessAppHost allowUnsignedHost(
       Duration stopTimeout, AppEnv appEnv, AppSandboxProviders sandboxProviders) {
     return new LocalProcessAppHost(
@@ -3672,6 +4523,16 @@ class LocalProcessAppHostTest {
         new AppEnv(),
         TEST_TIMING,
         AppInstallVerificationPolicy.requireSigned(verifier));
+  }
+
+  private static LocalProcessAppHost exactIdentityHost(
+      AppHostLayout layout, AppBundleVerifier newBundleVerifier, TrustedAppKeys trustedKeys) {
+    AppBundleVerifier historicalVerifier =
+        AppBundleVerifier.requireSignedForHistoricalVerification(trustedKeys);
+    return new LocalProcessAppHost(
+        layout,
+        AppInstallVerificationPolicy.requireSignedWithIdentity(
+            newBundleVerifier::verify, historicalVerifier::verify));
   }
 
   private LocalProcessAppHost signedHost(KeyPair keyPair) {
@@ -4062,7 +4923,7 @@ class LocalProcessAppHostTest {
   private static final class EnforcedRestrictedProcessProvider implements AppSandboxProvider {
     @Override
     public String providerName() {
-      return "bubblewrap";
+      return BUBBLEWRAP_PROVIDER_NAME;
     }
 
     @Override
@@ -4091,7 +4952,7 @@ class LocalProcessAppHostTest {
 
     @Override
     public String providerName() {
-      return "bubblewrap";
+      return BUBBLEWRAP_PROVIDER_NAME;
     }
 
     @Override
@@ -4126,7 +4987,7 @@ class LocalProcessAppHostTest {
         policy.mode(),
         policy.required(),
         AppSandboxSupportLevel.ENFORCED,
-        "bubblewrap",
+        BUBBLEWRAP_PROVIDER_NAME,
         active,
         active
             ? "Linux bubblewrap sandbox active"
@@ -4147,10 +5008,7 @@ class LocalProcessAppHostTest {
       exit /b 0
       """;
     }
-    return """
-    #!/bin/sh
-    exit 0
-    """;
+    return EXIT_ZERO_SCRIPT;
   }
 
   private static void assertCapturedEnvironment(
@@ -4470,6 +5328,28 @@ class LocalProcessAppHostTest {
             + (observedPid.contents() == null
                 ? ""
                 : "; last observed contents: '" + observedPid.contents() + "'"));
+  }
+
+  private static WatchService watchForCreatedEntries(Path directory) throws IOException {
+    WatchService watchService = directory.getFileSystem().newWatchService();
+    try {
+      directory.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
+      return watchService;
+    } catch (IOException | RuntimeException failure) {
+      try {
+        watchService.close();
+      } catch (IOException cleanupFailure) {
+        failure.addSuppressed(cleanupFailure);
+      }
+      throw failure;
+    }
+  }
+
+  private static void assertNoCreatedEntry(WatchService watchService, Path directory)
+      throws IOException {
+    long deadline = System.nanoTime() + Duration.ofMillis(250).toNanos();
+    WatchKey key = pollWatchKey(watchService, deadline, directory);
+    assertNull(key, "update precondition rejection must not open a persistent mutation");
   }
 
   private static ObservedPid tryReadPidFileValue(Path file) throws IOException {

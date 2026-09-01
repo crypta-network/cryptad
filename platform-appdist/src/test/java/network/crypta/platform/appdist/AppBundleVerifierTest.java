@@ -105,6 +105,9 @@ class AppBundleVerifierTest {
         "trusted key is not authorized for new bundle verification: " + TEST_KEY_ID,
         newBundleFailure.getMessage());
     assertEquals(TEST_KEY_ID, verification.keyId());
+    assertEquals(
+        PublicKeyFingerprint.sha256(keyPair.getPublic()), verification.keyFingerprintSha256());
+    assertEquals(64, verification.signedContentDigestSha256().length());
   }
 
   @Test
@@ -299,6 +302,8 @@ class AppBundleVerifierTest {
     assertFalse(verification.signed());
     assertNull(verification.keyId());
     assertNull(verification.algorithm());
+    assertNull(verification.keyFingerprintSha256());
+    assertNull(verification.signedContentDigestSha256());
   }
 
   @Test

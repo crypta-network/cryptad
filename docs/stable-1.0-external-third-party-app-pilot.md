@@ -507,3 +507,10 @@ third-party updates, weaken consent, change sandbox policy, modify Stable trust 
 Stable entry, create a tag or release, or make Crypta rebuild or re-sign the external app. Completion
 means only that the exact protected pilot lifecycle was authenticated. It is not Stable-catalog
 promotion and is not a general endorsement of the developer or future app versions.
+
+PR-295 federation may use the authenticated publisher identity, review receipts, beta-catalog
+subject, and closeout from this pilot as explicit local evidence. It does not copy the handoff,
+review, signing, or publication authority, and it does not automatically turn the pilot publisher
+or reviewer cohort into global trust. Long-lived authorization remains scoped to an exact local
+catalog/app policy. See
+[stable-1.0-federated-catalog-discovery-and-trust.md](stable-1.0-federated-catalog-discovery-and-trust.md).

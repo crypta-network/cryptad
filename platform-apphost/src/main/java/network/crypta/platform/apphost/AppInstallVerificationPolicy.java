@@ -3,6 +3,8 @@ package network.crypta.platform.apphost;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
+import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -28,16 +30,17 @@ public final class AppInstallVerificationPolicy {
       AppBundleVerifier.allowUnsignedForDevelopmentOnly(TrustedAppKeys.empty());
 
   private static final AppInstallVerificationPolicy ALLOW_UNSIGNED_FOR_DEVELOPMENT =
-      allowUnsignedForDevelopmentOnly(DEFAULT_DEVELOPMENT_BUNDLE_VERIFIER::verify);
+      allowUnsignedForDevelopmentOnly(
+          DEFAULT_DEVELOPMENT_BUNDLE_VERIFIER::verify, DEFAULT_DEVELOPMENT_BUNDLE_VERIFIER::verify);
 
   private final boolean allowUnsignedForDevelopment;
-  private final CopiedBundleVerifier verifier;
-  private final CopiedBundleVerifier historicalVerifier;
+  private final CopiedBundleIdentityVerifier verifier;
+  private final CopiedBundleIdentityVerifier historicalVerifier;
 
   private AppInstallVerificationPolicy(
       boolean allowUnsignedForDevelopment,
-      CopiedBundleVerifier verifier,
-      CopiedBundleVerifier historicalVerifier) {
+      CopiedBundleIdentityVerifier verifier,
+      CopiedBundleIdentityVerifier historicalVerifier) {
     this.allowUnsignedForDevelopment = allowUnsignedForDevelopment;
     this.verifier = Objects.requireNonNull(verifier, "verifier");
     this.historicalVerifier = Objects.requireNonNull(historicalVerifier, "historicalVerifier");
@@ -71,6 +74,23 @@ public final class AppInstallVerificationPolicy {
    */
   public static AppInstallVerificationPolicy requireSigned(
       CopiedBundleVerifier verifier, CopiedBundleVerifier historicalVerifier) {
+    return new AppInstallVerificationPolicy(
+        false, legacyIdentity(verifier), legacyIdentity(historicalVerifier));
+  }
+
+  /**
+   * Creates a signed policy whose callbacks expose the exact verified copied-bundle identity.
+   *
+   * <p>Federation-aware AppHost operations use this form so installed provenance can be compared
+   * with the actual publisher key and signed content in the AppHost-owned copied tree. The older
+   * void callback factories remain source-compatible, but cannot satisfy exact catalog provenance.
+   *
+   * @param verifier identity-returning verifier for new bundles
+   * @param historicalVerifier identity-returning verifier for retained historical bundles
+   * @return signed policy with exact identity reporting
+   */
+  public static AppInstallVerificationPolicy requireSignedWithIdentity(
+      CopiedBundleIdentityVerifier verifier, CopiedBundleIdentityVerifier historicalVerifier) {
     return new AppInstallVerificationPolicy(false, verifier, historicalVerifier);
   }
 
@@ -105,27 +125,11 @@ public final class AppInstallVerificationPolicy {
   }
 
   /**
-   * Creates a development-only policy that still runs a caller-supplied verifier.
-   *
-   * <p>Use this when local or test flows may accept fully unsigned bundles but any present sidecars
-   * must still pass a concrete signed-distribution verifier. Runtime integration uses this shape so
-   * optional unsigned development mode can share the same trusted-key loading path as production
-   * signed installations.
-   *
-   * @param verifier verification callback that runs against the copied managed bundle tree
-   * @return development-only policy that may allow fully unsigned bundles
-   */
-  public static AppInstallVerificationPolicy allowUnsignedForDevelopmentOnly(
-      CopiedBundleVerifier verifier) {
-    return allowUnsignedForDevelopmentOnly(verifier, verifier);
-  }
-
-  /**
    * Creates a development-only policy with distinct new and historical verification callbacks.
    *
    * <p>The callbacks still decide whether a copied bundle is acceptable. Runtime integration uses
-   * this overload to preserve an explicit unsigned-development bypass while applying lifecycle-
-   * aware verification to every signed install, update, rollback, or launch bundle.
+   * this overload to preserve an explicit unsigned-development bypass while applying
+   * lifecycle-aware verification to every signed install, update, rollback, or launch bundle.
    *
    * @param verifier verification callback for newly copied install and update bundles
    * @param historicalVerifier verification callback for exact retained installed or rollback
@@ -134,6 +138,13 @@ public final class AppInstallVerificationPolicy {
    */
   public static AppInstallVerificationPolicy allowUnsignedForDevelopmentOnly(
       CopiedBundleVerifier verifier, CopiedBundleVerifier historicalVerifier) {
+    return new AppInstallVerificationPolicy(
+        true, legacyIdentity(verifier), legacyIdentity(historicalVerifier));
+  }
+
+  /** Creates a development policy whose callbacks expose exact signed-bundle identities. */
+  public static AppInstallVerificationPolicy allowUnsignedForDevelopmentOnlyWithIdentity(
+      CopiedBundleIdentityVerifier verifier, CopiedBundleIdentityVerifier historicalVerifier) {
     return new AppInstallVerificationPolicy(true, verifier, historicalVerifier);
   }
 
@@ -159,11 +170,12 @@ public final class AppInstallVerificationPolicy {
    * node-configuration and managed-filesystem problems are not misreported as bad client input.
    *
    * @param copiedBundleDirectory copied managed bundle directory that is about to be installed
+   * @return verified signer and signed-content identity for the copied tree
    * @throws IOException if verification fails, configuration is invalid, or the copied tree cannot
    *     be inspected
    */
-  public void verifyCopiedBundle(Path copiedBundleDirectory) throws IOException {
-    verifyCopiedBundle(copiedBundleDirectory, verifier);
+  public AppBundleVerification verifyCopiedBundle(Path copiedBundleDirectory) throws IOException {
+    return verifyCopiedBundle(copiedBundleDirectory, verifier);
   }
 
   /**
@@ -174,26 +186,44 @@ public final class AppInstallVerificationPolicy {
    * permit callers to use historical lifecycle authority for install or update admission.
    *
    * @param copiedBundleDirectory retained managed installed or rollback bundle directory
+   * @return verified historical signer and signed-content identity for the retained tree
    * @throws IOException if verification fails, configuration is invalid, or the retained tree
    *     cannot be inspected
    */
-  public void verifyHistoricalCopiedBundle(Path copiedBundleDirectory) throws IOException {
-    verifyCopiedBundle(copiedBundleDirectory, historicalVerifier);
+  public AppBundleVerification verifyHistoricalCopiedBundle(Path copiedBundleDirectory)
+      throws IOException {
+    return verifyCopiedBundle(copiedBundleDirectory, historicalVerifier);
   }
 
-  private static void verifyCopiedBundle(
-      Path copiedBundleDirectory, CopiedBundleVerifier copiedBundleVerifier) throws IOException {
+  private static AppBundleVerification verifyCopiedBundle(
+      Path copiedBundleDirectory, CopiedBundleIdentityVerifier copiedBundleVerifier)
+      throws IOException {
     Path normalized =
         Objects.requireNonNull(copiedBundleDirectory, "copiedBundleDirectory")
             .toAbsolutePath()
             .normalize();
     try {
-      copiedBundleVerifier.verifyCopiedBundle(normalized);
+      return Objects.requireNonNull(
+          copiedBundleVerifier.verifyCopiedBundle(normalized), "copied bundle verification");
     } catch (AppBundleVerificationException | AppHostConfigurationException e) {
       throw e;
     } catch (AppDistributionException | AppHostException e) {
       throw new AppBundleVerificationException(messageOrDefault(e), e);
     }
+  }
+
+  private static CopiedBundleIdentityVerifier legacyIdentity(CopiedBundleVerifier verifier) {
+    CopiedBundleVerifier checked = Objects.requireNonNull(verifier, "verifier");
+    return copiedBundleDirectory -> {
+      checked.verifyCopiedBundle(copiedBundleDirectory);
+      if (AppBundleVerifier.isDistributionSidecarFree(copiedBundleDirectory)) {
+        return AppBundleVerification.unsigned();
+      }
+      AppBundleSignature signature =
+          AppBundleVerifier.read(
+              copiedBundleDirectory.resolve(AppBundleSignature.SIGNATURE_FILE_NAME));
+      return AppBundleVerification.signed(signature.keyId(), signature.algorithm());
+    };
   }
 
   private static String messageOrDefault(Throwable failure) {
@@ -217,5 +247,18 @@ public final class AppInstallVerificationPolicy {
      * @throws IOException if verification fails or the copied bundle cannot be inspected
      */
     void verifyCopiedBundle(Path copiedBundleDirectory) throws IOException;
+  }
+
+  /** Verifies a copied bundle and returns its exact cryptographic identity. */
+  @FunctionalInterface
+  public interface CopiedBundleIdentityVerifier {
+    /**
+     * Verifies one copied bundle directory.
+     *
+     * @param copiedBundleDirectory copied AppHost-owned bundle tree
+     * @return exact verified signer and signed-content identity
+     * @throws IOException if verification fails
+     */
+    AppBundleVerification verifyCopiedBundle(Path copiedBundleDirectory) throws IOException;
   }
 }

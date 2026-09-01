@@ -34,6 +34,8 @@ public final class AppUpdatesApiHandler {
   private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
   private static final String PARAM_ROLLBACK_ON_HEALTH_FAILURE = "rollbackOnHealthFailure";
   private static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
+  private static final String PARAM_SOURCE_SWITCH_CONSENT = "sourceSwitchConsent";
+  private static final String PARAM_TARGET_CATALOG_ID = "targetCatalogId";
 
   private final AppUpdateService updateService;
 
@@ -103,7 +105,9 @@ public final class AppUpdatesApiHandler {
         appId,
         optionalBoolean(queryParameters, PARAM_REVIEW_ACKNOWLEDGED),
         optionalBoolean(queryParameters, PARAM_SECURITY_ACKNOWLEDGED),
-        optionalBoolean(queryParameters, PARAM_MIGRATION_ACKNOWLEDGED));
+        optionalBoolean(queryParameters, PARAM_MIGRATION_ACKNOWLEDGED),
+        PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_SWITCH_CONSENT),
+        PlatformApiParameters.readOptionalString(queryParameters, PARAM_TARGET_CATALOG_ID));
   }
 
   /**

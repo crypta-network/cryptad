@@ -3,6 +3,7 @@ package network.crypta.platform.appcatalog;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Source-store record containing configured source metadata and cached sidecar bytes.
@@ -20,6 +21,8 @@ import java.util.Map;
  * @param fetchedCatalog exact catalog and signature bytes cached by the source store
  * @param mirrors primary plus configured mirror endpoints
  * @param mirrorHealth latest endpoint health keyed by endpoint id
+ * @param trustBindingId exact host-owned binding used when this source revision was accepted
+ * @param trustBindingDigest exact binding digest used when this source revision was accepted
  */
 record StoredCatalogSource(
     String catalogId,
@@ -29,7 +32,9 @@ record StoredCatalogSource(
     AppCatalogSourceRefreshMetadata refreshMetadata,
     FetchedCatalog fetchedCatalog,
     List<AppCatalogMirror> mirrors,
-    Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
+    Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
+    Optional<String> trustBindingId,
+    Optional<String> trustBindingDigest) {
   @SuppressWarnings("unused")
   StoredCatalogSource(
       String catalogId,
@@ -46,6 +51,8 @@ record StoredCatalogSource(
         refreshMetadata,
         fetchedCatalog,
         List.of(AppCatalogMirror.primary(source, addedAt)),
-        Map.of());
+        Map.of(),
+        Optional.empty(),
+        Optional.empty());
   }
 }

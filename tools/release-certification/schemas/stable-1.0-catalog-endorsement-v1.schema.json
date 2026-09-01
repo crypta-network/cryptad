@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stable-1.0-catalog-endorsement-v1.schema.json",
+  "title": "Stable 1.0 non-transitive catalog endorsement runtime wire format",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "endorsementId", "subject", "evidence", "validity", "issuer", "selfDigestSha256", "signature"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "endorsementId": {"$ref": "#/$defs/id"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "signerFingerprintSha256", "descriptorDigestSha256"],
+      "properties": {
+        "catalogId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"},
+        "signerFingerprintSha256": {"$ref": "#/$defs/runtimeDigest"},
+        "descriptorDigestSha256": {"$ref": "#/$defs/runtimeDigest"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["labels"],
+      "properties": {
+        "reviewerSetDigestSha256": {"$ref": "#/$defs/runtimeDigest"},
+        "publisherPolicyDigestSha256": {"$ref": "#/$defs/runtimeDigest"},
+        "labels": {"type": "array", "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[^\\r\\n]+$"}},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\r\\n]+$"}
+      }
+    },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuedAt", "expiresAt"],
+      "properties": {
+        "issuedAt": {"type": "string", "format": "date-time"},
+        "expiresAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "issuer": {"$ref": "#/$defs/issuer"},
+    "selfDigestSha256": {"$ref": "#/$defs/runtimeDigest"},
+    "signature": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "runtimeDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuerId", "keyId", "keyFingerprintSha256"],
+      "properties": {
+        "issuerId": {"$ref": "#/$defs/id"},
+        "keyId": {"$ref": "#/$defs/id"},
+        "keyFingerprintSha256": {"$ref": "#/$defs/runtimeDigest"}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "valueBase64"],
+      "properties": {
+        "algorithm": {"const": "Ed25519"},
+        "valueBase64": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+      }
+    }
+  }
+}

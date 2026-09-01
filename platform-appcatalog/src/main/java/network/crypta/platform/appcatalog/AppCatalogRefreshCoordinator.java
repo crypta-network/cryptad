@@ -24,21 +24,25 @@ final class AppCatalogRefreshCoordinator {
   private final AppCatalogManager.TrustedKeyProvider trustedKeyProvider;
   private final AppCatalogFetcher fetcher;
   private final AppCatalogOperations operations;
+  private final FileFederatedCatalogTrustStore federatedTrustStore;
 
   AppCatalogRefreshCoordinator(
       AppCatalogSourceStore sourceStore,
       AppCatalogManager.TrustedKeyProvider trustedKeyProvider,
       AppCatalogFetcher fetcher,
-      AppCatalogOperations operations) {
+      AppCatalogOperations operations,
+      FileFederatedCatalogTrustStore federatedTrustStore) {
     this.sourceStore = sourceStore;
     this.trustedKeyProvider = trustedKeyProvider;
     this.fetcher = fetcher;
     this.operations = operations;
+    this.federatedTrustStore = federatedTrustStore;
   }
 
   AppCatalogSourceSnapshot refresh(String catalogId, boolean primaryOnly) throws IOException {
     String normalizedCatalogId = AppCatalogManager.normalizeCatalogIdForLookup(catalogId);
     StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
+    AppCatalogTrustVerification.requireStoredBinding(stored, federatedTrustStore);
     TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
     RefreshContext context = refreshContext(normalizedCatalogId, stored, trustedKeys);
     AppCatalogException lastFailure = null;
@@ -129,10 +133,16 @@ final class AppCatalogRefreshCoordinator {
     StoredCatalogSource stored = context.stored();
     sourceStore.write(
         new AppCatalogSourceStore.VerifiedCatalogWrite(
-            candidate, stored.source(), fetched, stored.addedAt(), context.attemptedAt()),
+            candidate,
+            stored.source(),
+            fetched,
+            stored.addedAt(),
+            context.attemptedAt(),
+            stored.trustBindingId(),
+            stored.trustBindingDigest()),
         new AppCatalogSourceStore.EndpointWriteState(endpoint, stored.mirrors(), context.health()));
     return Optional.of(
-        AppCatalogManager.snapshot(
+        operations.snapshot(
             sourceStore.read(context.normalizedCatalogId()), context.trustedKeys()));
   }
 
@@ -178,7 +188,12 @@ final class AppCatalogRefreshCoordinator {
     }
     try {
       AppCatalog catalog =
-          AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
+          AppCatalogTrustVerification.verifyRoutine(
+              fetched.catalogBytes(),
+              fetched.signatureBytes(),
+              trustedKeys,
+              normalizedCatalogId,
+              federatedTrustStore);
       if (!normalizedCatalogId.equals(catalog.catalogId())) {
         throw new AppCatalogException(
             AppCatalogSidecars.CATALOG_ID_MISMATCH,
@@ -187,6 +202,13 @@ final class AppCatalogRefreshCoordinator {
       return FetchAttempt.success(fetched, catalog);
     } catch (AppCatalogException exception) {
       return FetchAttempt.failed(exception, fetched);
+    } catch (IOException exception) {
+      return FetchAttempt.failed(
+          new AppCatalogException(
+              AppCatalogSidecars.INVALID_CATALOG_SIGNATURE,
+              "failed to read local catalog trust policy",
+              exception),
+          fetched);
     }
   }
 

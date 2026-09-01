@@ -42,6 +42,8 @@ final class PlatformApiAppRoutes {
   private static final String METHOD_GET = "GET";
   private static final String METHOD_POST = "POST";
   private static final String METHODS_GET_POST = "GET, POST";
+  private static final String MIRROR_ENVELOPE_KEY = "mirror";
+  private static final String MIRRORS_ROUTE_SEGMENT = "mirrors";
   private static final String POLICY_ROUTE_SEGMENT = "policy";
   private static final String POST_ONLY_MESSAGE = "Platform API v1 supports POST requests only.";
   private static final String UPDATES_ROUTE_SEGMENT = "updates";
@@ -124,6 +126,15 @@ final class PlatformApiAppRoutes {
             ? null
             : new AppCatalogsApiHandler(
                 appCatalogManager, appHost, dependencies.currentCryptaVersion(), appVaultService);
+    if (appCatalogsApiHandler != null) {
+      appUpdateService
+          .catalogScopedReviewerPolicy()
+          .ifPresent(appCatalogsApiHandler::setCatalogScopedReviewerPolicy);
+      appCatalogsApiHandler.setPreparedPlanConflictVerifier(
+          appUpdateService::requireDirectCatalogMutationAllowed);
+      appCatalogsApiHandler.setPreparedPlanPolicyAuthorizer(
+          appUpdateService::retainDirectCatalogPolicyAuthorization);
+    }
     consentService =
         appCatalogsApiHandler == null && appUpdateService == null && appServiceCoordinator == null
             ? null
@@ -553,15 +564,16 @@ final class PlatformApiAppRoutes {
       return PlatformApiResponse.ok(
           envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.refresh(catalogId)));
     }
-    if ("mirrors".equals(action)) {
+    if (MIRRORS_ROUTE_SEGMENT.equals(action)) {
       if (METHOD_GET.equals(request.method())) {
         return PlatformApiResponse.ok(
-            envelope("mirrors", appCatalogsApiHandler.mirrors(catalogId)));
+            envelope(MIRRORS_ROUTE_SEGMENT, appCatalogsApiHandler.mirrors(catalogId)));
       }
       if (METHOD_POST.equals(request.method())) {
         return PlatformApiResponse.created(
             envelope(
-                "mirror", appCatalogsApiHandler.addMirror(catalogId, request.queryParameters())));
+                MIRROR_ENVELOPE_KEY,
+                appCatalogsApiHandler.addMirror(catalogId, request.queryParameters())));
       }
       return methodNotAllowed(METHODS_GET_POST, GET_POST_ONLY_MESSAGE);
     }
@@ -588,7 +600,7 @@ final class PlatformApiAppRoutes {
     if ("operations".equals(secondSegment)) {
       return routeAppCatalogOperation(firstSegment, thirdSegment, request);
     }
-    if ("mirrors".equals(secondSegment)) {
+    if (MIRRORS_ROUTE_SEGMENT.equals(secondSegment)) {
       return routeAppCatalogMirror(firstSegment, thirdSegment, request);
     }
     return routeAppCatalogApp(firstSegment, secondSegment, thirdSegment, request);
@@ -649,12 +661,12 @@ final class PlatformApiAppRoutes {
     if (METHOD_POST.equals(request.method())) {
       return PlatformApiResponse.ok(
           envelope(
-              "mirror",
+              MIRROR_ENVELOPE_KEY,
               appCatalogsApiHandler.updateMirror(catalogId, mirrorId, request.queryParameters())));
     }
     if (METHOD_DELETE.equals(request.method())) {
       return PlatformApiResponse.ok(
-          envelope("mirror", appCatalogsApiHandler.removeMirror(catalogId, mirrorId)));
+          envelope(MIRROR_ENVELOPE_KEY, appCatalogsApiHandler.removeMirror(catalogId, mirrorId)));
     }
     return methodNotAllowed(
         "POST, DELETE", "Platform API v1 supports POST and DELETE requests only.");

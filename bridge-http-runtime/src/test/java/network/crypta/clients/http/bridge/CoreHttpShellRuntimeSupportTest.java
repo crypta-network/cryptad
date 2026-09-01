@@ -44,6 +44,9 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationContext;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationPolicy;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationResult;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.apphost.AppBundleVerificationException;
@@ -103,6 +106,52 @@ class CoreHttpShellRuntimeSupportTest {
   @Test
   void constructor_whenCoreIsNull_throwsNullPointerException() {
     assertThrows(NullPointerException.class, () -> new CoreHttpShellRuntimeSupport(null));
+  }
+
+  @Test
+  void composeCatalogBundlePolicies_whenInstallPolicyRejects_expectScopedPolicyNotReached()
+      throws Exception {
+    AppCatalogBundleVerificationPolicy installPolicy =
+        mock(AppCatalogBundleVerificationPolicy.class);
+    AppCatalogBundleVerificationPolicy scopedPolicy =
+        mock(AppCatalogBundleVerificationPolicy.class);
+    AppCatalogBundleVerificationContext context = mock(AppCatalogBundleVerificationContext.class);
+    Path stagedBundle = Path.of("staged-bundle");
+    doThrow(new IOException("pilot approval rejected"))
+        .when(installPolicy)
+        .verify(context, stagedBundle);
+    AppCatalogBundleVerificationPolicy composed =
+        CoreHttpShellRuntimeSupport.composeCatalogBundleVerificationPolicies(
+            installPolicy, scopedPolicy);
+
+    IOException exception =
+        assertThrows(IOException.class, () -> composed.verify(context, stagedBundle));
+
+    assertEquals("pilot approval rejected", exception.getMessage());
+    verifyNoInteractions(scopedPolicy);
+  }
+
+  @Test
+  void composeCatalogBundlePolicies_whenBothAuthorize_expectScopedIdentityRetained()
+      throws Exception {
+    AppCatalogBundleVerificationPolicy installPolicy =
+        mock(AppCatalogBundleVerificationPolicy.class);
+    AppCatalogBundleVerificationPolicy scopedPolicy =
+        mock(AppCatalogBundleVerificationPolicy.class);
+    AppCatalogBundleVerificationContext context = mock(AppCatalogBundleVerificationContext.class);
+    AppCatalogBundleVerificationResult scopedResult =
+        mock(AppCatalogBundleVerificationResult.class);
+    Path stagedBundle = Path.of("staged-bundle");
+    when(scopedPolicy.verify(context, stagedBundle)).thenReturn(scopedResult);
+    AppCatalogBundleVerificationPolicy composed =
+        CoreHttpShellRuntimeSupport.composeCatalogBundleVerificationPolicies(
+            installPolicy, scopedPolicy);
+
+    AppCatalogBundleVerificationResult result = composed.verify(context, stagedBundle);
+
+    assertSame(scopedResult, result);
+    verify(installPolicy).verify(context, stagedBundle);
+    verify(scopedPolicy).verify(context, stagedBundle);
   }
 
   @Test

@@ -284,7 +284,7 @@ class AppUpdateSchedulerTest {
     AppUpdateService service = realServiceWithInstalled(List.of(QUEUE_READ_PERMISSION));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(updateEntry()));
     when(appHost.listInstalled())
         .thenReturn(List.of(installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION))));
 
@@ -310,7 +310,7 @@ class AppUpdateSchedulerTest {
     AppCatalogInstallPlan plan = plan(updateEntry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.listInstalled())
         .thenReturn(List.of(installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION))));
@@ -347,7 +347,7 @@ class AppUpdateSchedulerTest {
     AppCatalogInstallPlan plan = plan(updateEntry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     when(appHost.listInstalled()).thenReturn(List.of(installed));
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
@@ -386,7 +386,7 @@ class AppUpdateSchedulerTest {
     AppCatalogEntry updateEntry = reviewedEntryWithTrustedReceipt(reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
     when(appHost.listInstalled()).thenReturn(List.of(installed));
 
     scheduler(enabledConfig(), new InMemoryAppUpdateSchedulerStore(), service).tick(DUE_AT);

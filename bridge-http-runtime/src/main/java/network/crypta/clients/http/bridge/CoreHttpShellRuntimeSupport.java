@@ -10,8 +10,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -40,6 +42,7 @@ import network.crypta.platform.api.appdata.FileAppDataStore;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appservices.FileAppServiceGrantStore;
 import network.crypta.platform.api.appservices.TrustGraphScoreAppServiceAdapter;
+import network.crypta.platform.api.appupdates.AppUpdateFederationAuthority;
 import network.crypta.platform.api.appupdates.AppUpdateScheduler;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerConfig;
 import network.crypta.platform.api.appupdates.AppUpdateSchedulerStore;
@@ -55,11 +58,22 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.FileAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationContext;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationPolicy;
+import network.crypta.platform.appcatalog.AppCatalogBundleVerificationResult;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogSourceStore;
+import network.crypta.platform.appcatalog.CatalogScopedPublisherVerificationPolicy;
+import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
+import network.crypta.platform.appcatalog.FileCatalogPublisherBindingStore;
+import network.crypta.platform.appcatalog.FileCatalogReviewerScopeStore;
+import network.crypta.platform.appcatalog.FileFederatedCatalogConflictResolutionStore;
+import network.crypta.platform.appcatalog.FileFederatedCatalogTrustStore;
+import network.crypta.platform.appcatalog.FilePendingCatalogDiscoveryStore;
+import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.appdist.AppBundleSignature;
+import network.crypta.platform.appdist.AppBundleVerification;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.TrustedAppKey;
@@ -69,6 +83,7 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostConfigurationException;
 import network.crypta.platform.apphost.AppHostLayout;
 import network.crypta.platform.apphost.AppInstallVerificationPolicy;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.PilotPublisherApprovalReader;
 import network.crypta.platform.apphost.PilotPublisherVerificationPolicy;
 import network.crypta.platform.apphost.RunningAppSnapshot;
@@ -584,15 +599,34 @@ public record CoreHttpShellRuntimeSupport(
     warnWhenCatalogTrustUsesLegacyFallback(trustConfiguration);
     AppInstallVerificationPolicy installVerificationPolicy =
         createInstallVerificationPolicy(trustConfiguration);
-    AppHost appHost = new LocalProcessAppHost(layout, installVerificationPolicy);
+    LocalProcessAppHost appHost = new LocalProcessAppHost(layout, installVerificationPolicy);
     AppCatalogManager appCatalogManager =
         createAppCatalogManager(
             layout, trustConfiguration, installVerificationPolicy, core.getRuntimePorts());
+    configureCatalogOriginRetention(appHost, appCatalogManager);
     AppVaultService appVaultService = createAppVaultService(layout);
     AppDataService appDataService = createAppDataService(layout, appHost);
     AppNetworkBudgetService appNetworkBudgetService = createAppNetworkBudgetService(layout);
     AppUpdateService appUpdateService =
         new AppUpdateService(appHost, appCatalogManager, appVaultService, appDataService);
+    if (Boolean.getBoolean("cryptad.appCatalogFederationEnabled")) {
+      Path federationRoot = layout.dataDir().resolve("apps");
+      FileFederatedCatalogTrustStore catalogTrustStore =
+          new FileFederatedCatalogTrustStore(federationRoot.resolve("catalog-trust"));
+      FileCatalogPublisherBindingStore publisherBindingStore =
+          new FileCatalogPublisherBindingStore(
+              federationRoot.resolve("catalog-publisher-bindings"));
+      appUpdateService.setCatalogScopedReviewerPolicy(
+          new CatalogScopedReviewerPolicy(
+              new FileCatalogReviewerScopeStore(federationRoot.resolve("catalog-reviewer-scopes")),
+              catalogTrustStore));
+      appUpdateService.setFederatedCatalogConflictPolicy(
+          new AppUpdateFederationAuthority(
+              catalogTrustStore,
+              publisherBindingStore,
+              new FileFederatedCatalogConflictResolutionStore(
+                  federationRoot.resolve("catalog-conflict-resolutions"))));
+    }
     AppUpdateSchedulerConfig schedulerConfig = AppUpdateSchedulerConfig.loadFromSystem();
     AppUpdateScheduler appUpdateScheduler =
         createAppUpdateScheduler(
@@ -631,6 +665,40 @@ public record CoreHttpShellRuntimeSupport(
         appVaultService);
   }
 
+  private static void configureCatalogOriginRetention(
+      LocalProcessAppHost appHost, AppCatalogManager appCatalogManager) {
+    try {
+      appHost.setCatalogOriginRetention(
+          new AppHost.CatalogOriginRetention() {
+            @Override
+            public void retain(List<InstalledAppOrigin> origins) throws IOException {
+              appCatalogManager.retainOriginRevisionPins(originRevisions(origins));
+            }
+
+            @Override
+            public void reconcile(List<InstalledAppOrigin> origins) throws IOException {
+              appCatalogManager.reconcileOriginRevisionPins(originRevisions(origins));
+            }
+          });
+    } catch (IOException exception) {
+      throw new IllegalStateException(
+          "Catalog origin revision retention could not be initialized.", exception);
+    }
+  }
+
+  private static List<AppCatalogManager.OriginRevision> originRevisions(
+      List<InstalledAppOrigin> origins) {
+    return origins.stream()
+        .map(
+            origin ->
+                new AppCatalogManager.OriginRevision(
+                    origin.catalogId(),
+                    origin.catalogRevisionDigestSha256(),
+                    origin.catalogSignerKeyId(),
+                    origin.appId()))
+        .toList();
+  }
+
   private static AppVaultService createAppVaultService(AppHostLayout layout) {
     try {
       return AppVaultService.open(layout.dataDir().resolve("apps").resolve("vault"));
@@ -663,6 +731,44 @@ public record CoreHttpShellRuntimeSupport(
     TrustedKeyProvider trustedCatalogKeys = () -> loadTrustedCatalogKeys(trustConfiguration);
     AppCatalogBundleVerificationPolicy bundlePolicy =
         stagedBundle -> verifyCatalogBundle(installVerificationPolicy, stagedBundle);
+    if (Boolean.getBoolean("cryptad.appCatalogFederationEnabled")) {
+      FileFederatedCatalogTrustStore trustStore =
+          new FileFederatedCatalogTrustStore(
+              layout.dataDir().resolve("apps").resolve("catalog-trust"));
+      AppCatalogBundleVerificationPolicy scopedPublisherPolicy =
+          new CatalogScopedPublisherVerificationPolicy(
+              new FileCatalogPublisherBindingStore(
+                  layout.dataDir().resolve("apps").resolve("catalog-publisher-bindings")),
+              () -> loadFederatedPublisherKeys(trustConfiguration),
+              trustedCatalogKeys,
+              TrustedReviewerKeysLoader::loadFromSystem,
+              Clock.systemUTC(),
+              trustStore,
+              usesLegacyCatalogTrustFallback(trustConfiguration)
+                  ? CatalogScopedPublisherVerificationPolicy.CatalogSignerTrustMode
+                      .LEGACY_SHARED_APPHOST_REGISTRY
+                  : CatalogScopedPublisherVerificationPolicy.CatalogSignerTrustMode.ROLE_SEPARATED);
+      bundlePolicy = composeCatalogBundleVerificationPolicies(bundlePolicy, scopedPublisherPolicy);
+      FilePendingCatalogDiscoveryStore pendingDiscoveryStore =
+          new FilePendingCatalogDiscoveryStore(
+              layout.dataDir().resolve("apps").resolve("catalog-discovery-pending"));
+      return runtimePorts == null
+          ? AppCatalogManager.withFederatedTrustAndDiscoveryPolicy(
+              catalogSourceStore,
+              trustedCatalogKeys,
+              bundlePolicy,
+              trustStore,
+              pendingDiscoveryStore,
+              trustedCatalogKeys)
+          : AppCatalogManager.withFederatedTrustAndDiscoveryPolicy(
+              catalogSourceStore,
+              trustedCatalogKeys,
+              bundlePolicy,
+              trustStore,
+              pendingDiscoveryStore,
+              trustedCatalogKeys,
+              runtimePorts.contentFetch());
+    }
     return runtimePorts == null
         ? AppCatalogManager.withBundleVerificationPolicy(
             catalogSourceStore, trustedCatalogKeys, bundlePolicy)
@@ -678,6 +784,30 @@ public record CoreHttpShellRuntimeSupport(
     } catch (AppBundleVerificationException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
+  }
+
+  static AppCatalogBundleVerificationPolicy composeCatalogBundleVerificationPolicies(
+      AppCatalogBundleVerificationPolicy installPolicy,
+      AppCatalogBundleVerificationPolicy scopedPublisherPolicy) {
+    AppCatalogBundleVerificationPolicy checkedInstallPolicy =
+        Objects.requireNonNull(installPolicy, "installPolicy");
+    AppCatalogBundleVerificationPolicy checkedScopedPolicy =
+        Objects.requireNonNull(scopedPublisherPolicy, "scopedPublisherPolicy");
+    return new AppCatalogBundleVerificationPolicy() {
+      @Override
+      public void verify(Path stagedBundleDirectory) throws IOException {
+        checkedInstallPolicy.verify(stagedBundleDirectory);
+        checkedScopedPolicy.verify(stagedBundleDirectory);
+      }
+
+      @Override
+      public AppCatalogBundleVerificationResult verify(
+          AppCatalogBundleVerificationContext context, Path stagedBundleDirectory)
+          throws IOException {
+        checkedInstallPolicy.verify(context, stagedBundleDirectory);
+        return checkedScopedPolicy.verify(context, stagedBundleDirectory);
+      }
+    };
   }
 
   private static AppUpdateScheduler createAppUpdateScheduler(
@@ -772,16 +902,17 @@ public record CoreHttpShellRuntimeSupport(
     if (trustConfiguration.pilot().configured()) {
       return createPilotInstallVerificationPolicy(trustConfiguration);
     }
-    AppInstallVerificationPolicy.CopiedBundleVerifier newBundleVerifier =
+    AppInstallVerificationPolicy.CopiedBundleIdentityVerifier newBundleVerifier =
         copiedBundleDirectory ->
             verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration, false);
-    AppInstallVerificationPolicy.CopiedBundleVerifier historicalBundleVerifier =
+    AppInstallVerificationPolicy.CopiedBundleIdentityVerifier historicalBundleVerifier =
         copiedBundleDirectory ->
             verifyBundleAgainstConfiguredTrust(copiedBundleDirectory, trustConfiguration, true);
     return trustConfiguration.allowUnsigned()
-        ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly(
+        ? AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnlyWithIdentity(
             newBundleVerifier, historicalBundleVerifier)
-        : AppInstallVerificationPolicy.requireSigned(newBundleVerifier, historicalBundleVerifier);
+        : AppInstallVerificationPolicy.requireSignedWithIdentity(
+            newBundleVerifier, historicalBundleVerifier);
   }
 
   private static AppInstallVerificationPolicy createPilotInstallVerificationPolicy(
@@ -796,7 +927,7 @@ public record CoreHttpShellRuntimeSupport(
       throw new IllegalStateException(
           "Failed to authenticate persistent pilot trust configuration.", exception);
     }
-    return AppInstallVerificationPolicy.requireSigned(
+    return AppInstallVerificationPolicy.requireSignedWithIdentity(
         copiedBundle ->
             verifyBundleAgainstPilotOrStableTrust(
                 copiedBundle, trustConfiguration, pilot, approval, false),
@@ -819,7 +950,7 @@ public record CoreHttpShellRuntimeSupport(
     return approval;
   }
 
-  private static void verifyBundleAgainstPilotOrStableTrust(
+  private static AppBundleVerification verifyBundleAgainstPilotOrStableTrust(
       Path copiedBundle,
       AppHostTrustConfiguration trustConfiguration,
       PilotTrustConfiguration pilot,
@@ -832,11 +963,9 @@ public record CoreHttpShellRuntimeSupport(
       AppInstallVerificationPolicy pilotPolicy =
           loadPilotInstallVerificationPolicy(trustConfiguration, pilot);
       if (historicalVerification) {
-        pilotPolicy.verifyHistoricalCopiedBundle(copiedBundle);
-      } else {
-        pilotPolicy.verifyCopiedBundle(copiedBundle);
+        return pilotPolicy.verifyHistoricalCopiedBundle(copiedBundle);
       }
-      return;
+      return pilotPolicy.verifyCopiedBundle(copiedBundle);
     }
     TrustedRegistrySnapshot normalRegistry =
         loadExactTrustedRegistry(
@@ -850,7 +979,7 @@ public record CoreHttpShellRuntimeSupport(
         historicalVerification
             ? AppBundleVerifier.requireSignedForHistoricalVerification(normalRegistry.keys())
             : AppBundleVerifier.requireSigned(normalRegistry.keys());
-    verifier.verify(copiedBundle);
+    return verifier.verify(copiedBundle);
   }
 
   private static void requireCompletePilotConfiguration(
@@ -1014,14 +1143,14 @@ public record CoreHttpShellRuntimeSupport(
     }
   }
 
-  private static void verifyBundleAgainstConfiguredTrust(
+  private static AppBundleVerification verifyBundleAgainstConfiguredTrust(
       Path copiedBundleDirectory,
       AppHostTrustConfiguration trustConfiguration,
       boolean historicalVerification)
       throws IOException {
     if (trustConfiguration.allowUnsigned()
         && AppBundleVerifier.isDistributionSidecarFree(copiedBundleDirectory)) {
-      return;
+      return AppBundleVerification.unsigned();
     }
     AppBundleVerifier verifier;
     try {
@@ -1030,7 +1159,7 @@ public record CoreHttpShellRuntimeSupport(
       throw new AppHostConfigurationException(
           messageOrTrustConfigurationDefault(exception), exception);
     }
-    verifier.verify(copiedBundleDirectory);
+    return verifier.verify(copiedBundleDirectory);
   }
 
   private static AppBundleVerifier createBundleVerifier(
@@ -1068,6 +1197,21 @@ public record CoreHttpShellRuntimeSupport(
 
   private static TrustedAppKeys loadTrustedAppKeys(AppHostTrustConfiguration trustConfiguration) {
     return loadRoleSpecificTrustedKeys(trustConfiguration).bundleKeys();
+  }
+
+  private static TrustedAppKeys loadFederatedPublisherKeys(
+      AppHostTrustConfiguration trustConfiguration) {
+    if (!trustConfiguration.pilot().configured()) {
+      return loadTrustedAppKeys(trustConfiguration);
+    }
+    try {
+      requireCompletePilotConfiguration(trustConfiguration);
+      PilotRegistrySnapshots registries = loadPilotRegistrySnapshots(trustConfiguration);
+      return registries.normalStable().keys().plus(registries.pilot().keys());
+    } catch (IOException | RuntimeException exception) {
+      throw new IllegalStateException(
+          "Failed to load role-separated Stable and PR-294 publisher trust.", exception);
+    }
   }
 
   private static TrustedAppKeys loadConfiguredAppKeys(
@@ -1126,12 +1270,18 @@ public record CoreHttpShellRuntimeSupport(
 
   private static void warnWhenCatalogTrustUsesLegacyFallback(
       AppHostTrustConfiguration trustConfiguration) {
-    if (trustConfiguration.catalogTrustedKeysFile() == null
+    if (usesLegacyCatalogTrustFallback(trustConfiguration)
         && LEGACY_CATALOG_TRUST_WARNING_EMITTED.compareAndSet(false, true)) {
       LOG.warn(
           "Catalog signature verification is using the deprecated AppHost trusted-key fallback;"
               + " configure cryptad.appcatalog.trustedKeysFile.");
     }
+  }
+
+  private static boolean usesLegacyCatalogTrustFallback(
+      AppHostTrustConfiguration trustConfiguration) {
+    return !trustConfiguration.pilot().configured()
+        && trustConfiguration.catalogTrustedKeysFile() == null;
   }
 
   private static void rejectPartialDirectTrustedKeyConfiguration(

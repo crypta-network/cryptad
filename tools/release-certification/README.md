@@ -31,6 +31,7 @@ python3 tools/release-certification/certify.py stable-protected-release --self-t
 python3 tools/release-certification/certify.py stable-independent-reproducibility --self-test
 python3 tools/release-certification/certify.py stable-catalog-authority --self-test
 python3 tools/release-certification/certify.py stable-third-party-pilot --self-test
+python3 tools/release-certification/certify.py stable-federated-catalog --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -116,6 +117,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-independent-reproducibility` | Prepare a candidate-byte-free verifier kit, authenticate a provider-distinct external build, reuse the Stable comparison authority, and produce protected closeout without publication. |
 | `stable-catalog-authority` | Prepare and verify the role-separated Stable key ceremony, exact catalog publication, rotation and rollback drills, transparency artifact, and authenticated closeout without remote mutation. |
 | `stable-third-party-pilot` | Authenticate one external developer handoff, reviewed/rejected/corrected/caution cohort, bounded publisher approval, PR-293 beta publication, exact live-collector bytes, isolated-node runtime drill, and read-only Actions-authenticated operational closeout without remote mutation. |
+| `stable-federated-catalog` | Authenticate bounded signed discovery and non-transitive endorsements, local scoped trust and conflicts, pinned origin/runtime observations, and exact digest-bound PR-291–294 predecessor summaries and closeout coordinates without fetching or mutating local or remote state. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -1153,6 +1155,46 @@ checked-in operational external-adapter allowlist is empty; changing a policy fl
 self-asserted transcript cannot complete the gate. See
 [Stable 1.0 independent reproducible-build
 verification](../../docs/stable-1.0-independent-reproducible-build-verification.md).
+
+## Stable 1.0 federated catalog trust
+
+Run the focused offline contract suite with:
+
+```bash
+python3 tools/release-certification/certify.py stable-federated-catalog --self-test
+python3 tools/release-certification/certify.py stable-federated-catalog --help
+```
+
+The command has six closed modes: `preflight`, `verify-discovery`, `verify-local-trust`,
+`verify-conflicts`, `verify-runtime`, and `closeout`. It verifies exact bounded evidence already
+present beneath the workspace. It does not fetch descriptors, alter node trust, contact a runtime
+node, install or update an app, publish a catalog, or mutate GitHub.
+
+Discovery descriptors and endorsements are separate signed public formats. Descriptor import is
+pending evidence only. Their certification schemas are the exact nested runtime wire formats, and
+the execution contract separately binds the locally approved issuer SPKI used for verification.
+The closed endorsement format has no transitive-trust or trust-creation field; neither format
+installs a key, adds a source, authorizes a publisher/reviewer, or selects an app. The
+signed runtime observation proves the bounded local properties: at least three catalog identities,
+distinct local bindings, scoped catalog/publisher/reviewer policy digests, deliberate duplicate
+and hard conflicts, disabled lexical tie-breaking, strongest security blocks, pinned origin,
+explicit source/publisher switch consent, exact rollback origin restoration, isolated catalog
+revocation, privacy-safe discovery, redacted support output, and complete cleanup.
+
+`closeout` additionally requires exact successful PR-291, PR-292, PR-293, and PR-294 protected
+artifact coordinates. Its runtime receipt must come from the exact successful attempt of
+`stable-1.0-federated-catalog-runtime.yml`: the protected runtime-observation environment selects
+the reviewed adapter digest and observer identity, the workflow publishes distinct immutable
+observation and signed-receipt artifacts, and the evidence producer authenticates both before it
+uploads the confined aggregate. A public key embedded only in a caller-authored receipt is not an
+observer authority. Fixtures and self-tests can reach only `fixture-verification-complete`.
+Fixture-, sample-, template-, and test-shaped identities cannot become operational merely by
+changing classification flags. Missing, stale, substituted, partial, or unredacted evidence emits
+bounded blockers and never reports operational completion.
+
+See [Federated catalog discovery and local
+trust](../../docs/stable-1.0-federated-catalog-discovery-and-trust.md) for the trust model,
+certification contract, privacy boundary, state machine, and operational prerequisites.
 
 ## Stable 1.0 catalog authority
 

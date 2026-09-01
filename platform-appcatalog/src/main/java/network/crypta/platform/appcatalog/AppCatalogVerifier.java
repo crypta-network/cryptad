@@ -115,6 +115,14 @@ public final class AppCatalogVerifier {
     return verify(catalogBytes, signatureBytes, trustedKeys, null, VerificationPurpose.HISTORICAL);
   }
 
+  /** Verifies retained catalog bytes under an exact historical signer identity. */
+  public static AppCatalog verifyHistorical(
+      byte[] catalogBytes, byte[] signatureBytes, TrustedAppKeys trustedKeys, String expectedKeyId)
+      throws AppCatalogException {
+    return verify(
+        catalogBytes, signatureBytes, trustedKeys, expectedKeyId, VerificationPurpose.HISTORICAL);
+  }
+
   /**
    * Verifies a catalog under one explicitly declared trusted signing-key identity.
    *

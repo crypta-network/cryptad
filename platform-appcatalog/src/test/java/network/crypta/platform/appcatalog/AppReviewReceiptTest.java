@@ -12,6 +12,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,6 +39,57 @@ class AppReviewReceiptTest {
   private static final Instant FUTURE = Instant.parse("2026-06-01T00:00:00Z");
 
   @TempDir private Path tempDir;
+
+  @Test
+  void of_whenReviewerPublicKeyIsAliasedUnderAnotherId_expectRegistryRejected() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    TrustedReviewerKey first = reviewerKey("reviewer-one", keyPair);
+    TrustedReviewerKey alias = reviewerKey("reviewer-two", keyPair);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> TrustedReviewerKeys.of(first, alias));
+
+    assertTrue(
+        exception.getMessage().contains("duplicate trusted reviewer public-key fingerprint"));
+  }
+
+  @Test
+  void requireDisjointFrom_whenReviewerAndPublisherReuseKeyId_expectRejected() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    KeyPair publisherKeyPair = reviewerKeyPair();
+    TrustedReviewerKeys reviewers =
+        TrustedReviewerKeys.of(reviewerKey("shared-role-id", reviewerKeyPair));
+    TrustedAppKeys publishers =
+        TrustedAppKeys.of(
+            new TrustedAppKey("shared-role-id", "Ed25519", publisherKeyPair.getPublic()));
+
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class, () -> reviewers.requireDisjointFrom(publishers));
+
+    assertEquals(
+        "reviewer and app-publisher registries overlap on key id: shared-role-id",
+        exception.getMessage());
+  }
+
+  @Test
+  void requireDisjointFrom_whenReviewerAndPublisherAliasPublicKey_expectRejected()
+      throws Exception {
+    KeyPair sharedKeyPair = reviewerKeyPair();
+    TrustedReviewerKeys reviewers =
+        TrustedReviewerKeys.of(reviewerKey("reviewer-role", sharedKeyPair));
+    TrustedAppKeys publishers =
+        TrustedAppKeys.of(
+            new TrustedAppKey("publisher-role", "Ed25519", sharedKeyPair.getPublic()));
+
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class, () -> reviewers.requireDisjointFrom(publishers));
+
+    assertEquals(
+        "reviewer and app-publisher registries overlap on public-key fingerprint",
+        exception.getMessage());
+  }
 
   @Test
   void canonicalPayloadText_whenCalledRepeatedly_expectDeterministicSignatureFreeProperties() {
@@ -558,25 +611,27 @@ class AppReviewReceiptTest {
 
   @Test
   void trustedReviewerKeysLoad_whenV2LifecycleConfigured_expectParsesStatuses() throws Exception {
-    KeyPair keyPair = reviewerKeyPair();
+    KeyPair activeKeyPair = reviewerKeyPair();
+    KeyPair retiredKeyPair = reviewerKeyPair();
+    KeyPair revokedKeyPair = reviewerKeyPair();
     Path trustedReviewers = tempDir.resolve("trusted-reviewers-v2.properties");
     Files.writeString(
         trustedReviewers,
         lines(
             "trusted.reviewers.version=2",
-            reviewerProperties("reviewer.1", keyPair, "active-reviewer"),
+            reviewerProperties("reviewer.1", activeKeyPair, "active-reviewer"),
             "reviewer.1.policy.version=1",
             "reviewer.1.status=active",
             "reviewer.1.valid.from=2026-04-01T00:00:00Z",
             "reviewer.1.valid.until=2026-07-01T00:00:00Z",
             "reviewer.1.rotates.from=retired-reviewer",
-            reviewerProperties("reviewer.2", keyPair, "retired-reviewer"),
+            reviewerProperties("reviewer.2", retiredKeyPair, "retired-reviewer"),
             "reviewer.2.policy.version=1",
             "reviewer.2.status=retired",
             "reviewer.2.valid.from=2026-01-01T00:00:00Z",
             "reviewer.2.valid.until=2026-04-01T00:00:00Z",
             "reviewer.2.rotates.to=active-reviewer",
-            reviewerProperties("reviewer.3", keyPair, "revoked-reviewer"),
+            reviewerProperties("reviewer.3", revokedKeyPair, "revoked-reviewer"),
             "reviewer.3.policy.version=1",
             "reviewer.3.status=revoked",
             "reviewer.3.revoked.at=2026-05-01T00:00:00Z",
@@ -1239,6 +1294,16 @@ class AppReviewReceiptTest {
             POLICY_ID,
             policyVersion,
             lifecycle));
+  }
+
+  private static TrustedReviewerKey reviewerKey(String keyId, KeyPair keyPair) {
+    return TrustedReviewerKey.ed25519(
+        keyId,
+        keyPair.getPublic().getEncoded(),
+        "Local Reviewer",
+        POLICY_ID,
+        POLICY_VERSION,
+        TrustedReviewerKeyLifecycle.ACTIVE);
   }
 
   private TrustedReviewerKeys trustedKeysWithRevokedReceipt(

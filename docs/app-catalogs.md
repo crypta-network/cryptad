@@ -967,3 +967,47 @@ Manifest permissions are enforced for app-process Platform API calls as describe
 security-advisory denylist enforcement, app-data migration, backup/restore, and remote screenshot
 proxying remain future work. Catalog-backed candidate detection, explicit apply, and stable-only
 default automation are implemented; silent broad-channel auto-update is not the default.
+
+## Federated catalogs and local trust
+
+Multiple independently signed catalogs can coexist when the operator enables federation and
+creates an exact local catalog-ID/signer binding. A catalog signature authenticates bytes; it does
+not authorize an app publisher or reviewer. Publisher authorization is evaluated with the exact
+catalog/app context, reviewer acceptance remains local, and mirrors never become trust roots.
+
+Discovery descriptors and endorsements are bounded signed hints. Import leaves a descriptor
+pending and does not add a source, install a key, or create trust. Endorsements are non-transitive
+and do not produce a reputation score. Unresolved cross-catalog payload, publisher, security, and
+reviewer disagreements block automatic selection instead of using catalog-ID ordering. Catalog
+installs retain host-owned origin provenance, updates remain pinned, and AppHost rollback swaps the
+prior provenance with the prior bundle. See
+[stable-1.0-federated-catalog-discovery-and-trust.md](stable-1.0-federated-catalog-discovery-and-trust.md).
+
+Federation-enabled nodes expose pending discovery evidence through the host/operator-only `GET`
+and form-password-guarded `POST /operator/catalog-federation/discovery` routes. The Web Shell can
+paste one signed descriptor and optional direct endorsements into that pending store. It does not
+fetch advertised source hints or call the catalog trust/source-add routes. A guarded `POST
+/operator/catalog-federation/discovery/{descriptorId}/discard` removes only the retained pending
+record.
+
+Federation is explicitly enabled with `cryptad.appCatalogFederationEnabled=true`. Existing source
+records without a stored local binding ID and digest are not auto-migrated into federated trust;
+they require operator re-approval. Operator-only summaries and source-switch previews live below
+`/operator/catalog-federation` and `/operator/apps/{appId}/catalog-origin`, outside the Stable 1.0
+app-facing contract. A catalog `trust` mutation treats matching repeated `signerKeyId` and
+`signerFingerprintSha256` values as the complete local signer set. During an overlapping key
+rotation, the operator submits both predecessor and successor so retained predecessor revisions
+remain eligible for exact historical rollback. `GET
+/operator/catalog-federation/conflicts/{appId}` exposes the exact local
+conflict-set identity and public subject digests; guarded `POST
+/operator/catalog-federation/conflicts/{appId}/resolve` records a decision only when the submitted
+conflict ID and subject-set digest still match. An `explicit-source-switch-required` decision never
+selects a catalog automatically; it enables the exact preview-and-consent path for an operator's
+chosen target. Because preview preparation downloads, extracts, and verifies a bundle, the
+source-switch preview is a form-password-guarded `POST`, never a resource-consuming `GET`. The catalog update mutation accepts a preview's exact
+`sourceSwitchConsent` digest when the catalog or publisher identity changes. A general catalog-add
+request supplies `expectedCatalogId` in federation mode so the fetched authenticated identity is
+bound to the operator's selected local trust record. The Web Shell populates that field from the
+host/operator-only federation summary and offers only unused `active` bindings. It disables source
+addition when local trust state cannot be read or no active binding is available; it never derives
+the expected identity from unauthenticated fetched catalog bytes.

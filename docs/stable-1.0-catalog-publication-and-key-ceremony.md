@@ -538,3 +538,12 @@ Before any operational closeout, protected operators must still:
 
 Until those receipts are supplied and verified, the highest truthful result is implementation or
 fixture-verification complete, with protected operational states pending.
+
+## Relationship to federated local trust
+
+The PR-293 catalog keyset and transparency artifacts remain the public-key material and lifecycle
+authority for the Stable catalog. Federation adds a host-owned catalog-ID/signer authorization
+layer; it does not let another catalog, descriptor, endorsement, mirror, publisher, or reviewer
+modify this ceremony or delegate its key. The federation coordinator consumes sanitized PR-293
+receipts and has no publication or signing authority. See
+[stable-1.0-federated-catalog-discovery-and-trust.md](stable-1.0-federated-catalog-discovery-and-trust.md).

@@ -1,0 +1,292 @@
+name: Stable 1.0 Federated Catalog Trust
+run-name: Federated catalog trust ${{ inputs.federation_id }} (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Closed verification stage; this workflow never signs or publishes.
+        required: true
+        type: choice
+        options: [import, observe, runtime, closeout]
+      federation_id:
+        description: Path-safe local federation operation identity.
+        required: true
+        type: string
+      source_commit:
+        description: Exact lowercase Cryptad source commit.
+        required: true
+        type: string
+      evidence_run_id:
+        description: Completed protected evidence-producing workflow run.
+        required: true
+        type: string
+      evidence_run_attempt:
+        description: Exact protected evidence workflow attempt.
+        required: true
+        type: string
+      evidence_artifact_id:
+        description: Immutable evidence artifact id containing sanitized PR-291/292/293/294 receipts.
+        required: true
+        type: string
+      evidence_artifact_name:
+        description: Immutable sanitized federation evidence artifact name.
+        required: true
+        type: string
+      evidence_artifact_digest:
+        description: GitHub artifact archive digest, including sha256 prefix.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-federated-catalog-${{ inputs.federation_id }}-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  import:
+    name: Authenticate and confine federation evidence
+    if: github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-federated-catalog-import
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      artifact_name: ${{ steps.names.outputs.artifact_name }}
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Validate repository, source, operator, and coordinates
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          FEDERATION_ID: ${{ inputs.federation_id }}
+          RUN_ID: ${{ inputs.evidence_run_id }}
+          RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
+          ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
+          ARTIFACT_NAME: ${{ inputs.evidence_artifact_name }}
+          ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || "$GITHUB_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || ! "$FEDERATION_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$SOURCE_COMMIT" != "$GITHUB_SHA" \
+                || "$WORKFLOW_SHA" != "$GITHUB_SHA" \
+                || "$(git rev-parse HEAD)" != "$GITHUB_SHA" \
+                || ! "$RUN_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$ \
+                || ! "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Federation dispatch is not bound to exact protected coordinates."
+            exit 2
+          fi
+      - name: Authenticate immutable artifact before extraction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.evidence_run_id }}
+          RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
+          ARTIFACT_ID: ${{ inputs.evidence_artifact_id }}
+          ARTIFACT_NAME: ${{ inputs.evidence_artifact_name }}
+          ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/federated-catalog-import
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT" > "$RUNNER_TEMP/run.json"
+          jq -e '.id == (env.RUN_ID | tonumber) and .run_attempt == (env.RUN_ATTEMPT | tonumber)
+            and .head_sha == env.GITHUB_SHA and .status == "completed" and .conclusion == "success"
+            and .repository.full_name == env.GITHUB_REPOSITORY
+            and .path == ".github/workflows/stable-1.0-federated-catalog-evidence.yml"
+            and .event == "workflow_dispatch" and .head_branch == env.GITHUB_REF_NAME
+            and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
+            "$RUNNER_TEMP/run.json" >/dev/null
+          expected_artifact_name="stable-1-0-federated-catalog-$FEDERATION_ID-$RUN_ID-$RUN_ATTEMPT"
+          if [[ "$ARTIFACT_NAME" != "$expected_artifact_name" ]]; then
+            echo "::error::Federation artifact name does not match its protected producer."
+            exit 2
+          fi
+          jobs="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+          jq -e '[.jobs[] | select(
+              .name == "Authenticate and confine exact federation evidence"
+              and .conclusion == "success" and .head_sha == env.GITHUB_SHA)] | length == 1' \
+            <<< "$jobs" >/dev/null
+          job_started_at="$(jq -er '.jobs[] | select(
+            .name == "Authenticate and confine exact federation evidence"
+            and .conclusion == "success" and .head_sha == env.GITHUB_SHA) | .started_at' \
+            <<< "$jobs")"
+          job_completed_at="$(jq -er '.jobs[] | select(
+            .name == "Authenticate and confine exact federation evidence"
+            and .conclusion == "success" and .head_sha == env.GITHUB_SHA) | .completed_at' \
+            <<< "$jobs")"
+          deployment_verified=false
+          deployments="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/deployments" -f sha="$GITHUB_SHA" \
+            -f environment=stable-1-0-federated-catalog-evidence-import -f per_page=100 \
+            | jq -s '[.[][]]')"
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            statuses="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+              -f per_page=100 | jq -s '[.[][]]')"
+            if jq -e --arg run_id "$RUN_ID" --arg started_at "$job_started_at" \
+              --arg completed_at "$job_completed_at" 'any(.[];
+                .state == "success" and .created_at >= $started_at
+                and .created_at <= $completed_at
+                and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              <<< "$statuses" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r '.[] | select(
+            .environment == "stable-1-0-federated-catalog-evidence-import"
+            and .creator.login == "github-actions[bot]") | .id' <<< "$deployments")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "::error::Federation evidence is not bound to the protected producer environment."
+            exit 2
+          fi
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" > "$RUNNER_TEMP/artifact.json"
+          jq -e '.id == (env.ARTIFACT_ID | tonumber) and .name == env.ARTIFACT_NAME
+            and .workflow_run.id == (env.RUN_ID | tonumber) and .expired == false
+            and .digest == env.ARTIFACT_DIGEST' "$RUNNER_TEMP/artifact.json" >/dev/null
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/evidence.zip"
+          printf '%s  %s\n' "${ARTIFACT_DIGEST#sha256:}" "$RUNNER_TEMP/evidence.zip" | sha256sum --check --status
+          python3 - "$RUNNER_TEMP/evidence.zip" build/federated-catalog-import <<'PY'
+          import pathlib, sys, zipfile
+          archive, destination = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve()
+          with zipfile.ZipFile(archive) as source:
+              members = source.infolist()
+              if len(members) > 256 or sum(item.file_size for item in members) > 64 * 1024 * 1024:
+                  raise SystemExit("evidence archive exceeds closed bounds")
+              for item in members:
+                  target = (destination / item.filename).resolve()
+                  if destination not in target.parents and target != destination:
+                      raise SystemExit("evidence archive path escapes destination")
+              source.extractall(destination)
+          PY
+      - name: Run closed preflight
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-federated-catalog \
+            --mode preflight \
+            --execution-contract build/federated-catalog-import/execution.json \
+            --evidence-dir build/federated-catalog-import \
+            --out-dir build/federated-catalog-result
+      - name: Select immutable normalized artifact name
+        id: names
+        env:
+          FEDERATION_ID: ${{ inputs.federation_id }}
+        run: echo "artifact_name=stable-federated-catalog-$FEDERATION_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - name: Upload confined authenticated evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.artifact_name }}
+          path: build/federated-catalog-import
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
+
+  observation:
+    name: Verify discovery, local trust, and conflicts
+    needs: import
+    if: contains(fromJSON('["observe","runtime","closeout"]'), inputs.operation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-federated-catalog-observation
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import.outputs.artifact_name }}
+          path: build/federated-catalog-evidence
+      - name: Verify non-authoritative discovery and local policy
+        run: |
+          set -euo pipefail
+          for mode in verify-discovery verify-local-trust verify-conflicts; do
+            python3 tools/release-certification/certify.py stable-federated-catalog \
+              --mode "$mode" --execution-contract build/federated-catalog-evidence/execution.json \
+              --evidence-dir build/federated-catalog-evidence --out-dir "build/result-$mode"
+          done
+
+  runtime:
+    name: Observe pinned runtime and bounded revocation
+    if: contains(fromJSON('["runtime","closeout"]'), inputs.operation)
+    needs: [import, observation]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-federated-catalog-runtime
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import.outputs.artifact_name }}
+          path: build/federated-catalog-evidence
+      - name: Verify authenticated runtime observations
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-federated-catalog \
+            --mode verify-runtime --execution-contract build/federated-catalog-evidence/execution.json \
+            --evidence-dir build/federated-catalog-evidence --out-dir build/federated-runtime-result
+
+  closeout:
+    name: Close out authenticated federation evidence
+    if: inputs.operation == 'closeout'
+    needs: [import, observation, runtime]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1-0-federated-catalog-closeout
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.import.outputs.artifact_name }}
+          path: build/federated-catalog-evidence
+      - name: Produce redacted closeout only from authenticated receipts
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-federated-catalog \
+            --mode closeout --execution-contract build/federated-catalog-evidence/execution.json \
+            --evidence-dir build/federated-catalog-evidence --out-dir build/federated-closeout
+      - name: Upload redacted closeout
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-federated-catalog-closeout-${{ inputs.federation_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/federated-closeout
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30

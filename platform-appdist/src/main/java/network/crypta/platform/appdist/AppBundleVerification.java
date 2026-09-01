@@ -15,8 +15,17 @@ package network.crypta.platform.appdist;
  * @param signed whether the bundle carried verified signature sidecars
  * @param keyId trusted key id that verified the signature, or {@code null} for unsigned
  * @param algorithm signature algorithm that verified the bundle, or {@code null} for unsigned
+ * @param keyFingerprintSha256 canonical verified public-key fingerprint, or {@code null} when a
+ *     legacy adapter cannot expose it
+ * @param signedContentDigestSha256 SHA-256 of the exact signed digest-sidecar bytes, or {@code
+ *     null} when a legacy adapter cannot expose it
  */
-public record AppBundleVerification(boolean signed, String keyId, String algorithm) {
+public record AppBundleVerification(
+    boolean signed,
+    String keyId,
+    String algorithm,
+    String keyFingerprintSha256,
+    String signedContentDigestSha256) {
   /**
    * Returns an unsigned verification result accepted only under an explicit development policy.
    *
@@ -27,7 +36,7 @@ public record AppBundleVerification(boolean signed, String keyId, String algorit
    * @return unsigned verification result
    */
   public static AppBundleVerification unsigned() {
-    return new AppBundleVerification(false, null, null);
+    return new AppBundleVerification(false, null, null, null, null);
   }
 
   /**
@@ -41,6 +50,28 @@ public record AppBundleVerification(boolean signed, String keyId, String algorit
    * @return signed verification result
    */
   public static AppBundleVerification signed(String keyId, String algorithm) {
-    return new AppBundleVerification(true, keyId, algorithm);
+    return new AppBundleVerification(true, keyId, algorithm, null, null);
+  }
+
+  /**
+   * Returns the complete identity of a cryptographically verified signed bundle.
+   *
+   * <p>The signed-content digest hashes the exact digest-sidecar bytes authenticated by the bundle
+   * signature. Combined with the verified public-key fingerprint, it lets downstream AppHost code
+   * bind provenance to the exact copied subject instead of merely accepting any trusted signer.
+   *
+   * @param keyId trusted key id that verified the bundle
+   * @param algorithm signature algorithm that verified the bundle
+   * @param keyFingerprintSha256 canonical SHA-256 public-key fingerprint
+   * @param signedContentDigestSha256 SHA-256 of the exact signed digest-sidecar bytes
+   * @return complete signed-bundle verification identity
+   */
+  public static AppBundleVerification signed(
+      String keyId,
+      String algorithm,
+      String keyFingerprintSha256,
+      String signedContentDigestSha256) {
+    return new AppBundleVerification(
+        true, keyId, algorithm, keyFingerprintSha256, signedContentDigestSha256);
   }
 }

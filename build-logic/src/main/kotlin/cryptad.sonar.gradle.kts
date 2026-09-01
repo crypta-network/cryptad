@@ -86,6 +86,16 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
+val additionalSonarMainSourceDirs: Provider<List<File>> =
+  providers.provider {
+    (project.findProperty("cryptad.additionalSonarMainSourceDirs") as? Iterable<*>)
+      ?.filterIsInstance<File>() ?: emptyList()
+  }
+val additionalSonarMainOutputDirs: Provider<List<File>> =
+  providers.provider {
+    (project.findProperty("cryptad.additionalSonarMainOutputDirs") as? Iterable<*>)
+      ?.filterIsInstance<File>() ?: emptyList()
+  }
 val kotlinTestReportDir: Provider<Directory> =
   layout.buildDirectory.dir("sonar-test-results/kotlin")
 val testExecutionReportFile: Provider<RegularFile> =
@@ -372,6 +382,12 @@ tasks.register("sonarlintFile", SonarLint::class.java) {
 // Do not run SonarLint as part of a regular `build`.
 // Keep the task available when explicitly requested (any task name containing "sonarlint").
 tasks.named("sonarlintMain", SonarLint::class.java).configure {
+  val mainSourceSet = sourceSets.named("main").get()
+  setSource(files(mainSourceSet.allSource, additionalSonarMainSourceDirs))
+  java {
+    mainOutputDirectories.from(mainSourceSet.output.classesDirs, additionalSonarMainOutputDirs)
+    mainClasspath.from(mainSourceSet.runtimeClasspath)
+  }
   onlyIf {
     val explicitlyRequested =
       gradle.startParameter.taskNames.any { it.contains("sonarlint", ignoreCase = true) }

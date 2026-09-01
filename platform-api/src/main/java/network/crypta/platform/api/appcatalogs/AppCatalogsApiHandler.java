@@ -19,6 +19,7 @@ import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.api.appupdates.CatalogSourceSwitchConsent;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
@@ -37,6 +38,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogMirror;
 import network.crypta.platform.appcatalog.AppCatalogMirrorHealth;
 import network.crypta.platform.appcatalog.AppCatalogMirrorId;
+import network.crypta.platform.appcatalog.AppCatalogOriginContext;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogRollbackCandidate;
@@ -48,12 +50,14 @@ import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogVerifiedRevision;
 import network.crypta.platform.appcatalog.AppCatalogVersionDenylistEntry;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.AppReviewReceipt;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
 import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTransparencyQuery;
 import network.crypta.platform.appcatalog.AppReviewTransparencyVerificationResult;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKeySummary;
@@ -61,12 +65,16 @@ import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
 import network.crypta.platform.appcatalog.TrustedReviewerRegistrySummary;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
+import network.crypta.platform.appdist.AppDataNamespaceSchema;
+import network.crypta.platform.appdist.AppDataSchemaContract;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.appui.AppUiPaths;
 import network.crypta.platform.appvault.AppVaultException;
 import network.crypta.platform.appvault.AppVaultService;
@@ -96,6 +104,7 @@ public final class AppCatalogsApiHandler {
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
   private static final String INSTALL_FAILED_MESSAGE = "Failed to install catalog app.";
   private static final String UPDATE_FAILED_MESSAGE = "Failed to update catalog app.";
+  private static final String SOURCE_SWITCH_CONSENT_PARAMETER = "sourceSwitchConsent";
   private static final String INVALID_APP_BUNDLE_ERROR_CODE = "invalid_app_bundle";
   private static final String APPHOST_BUNDLE_VALIDATION_MESSAGE =
       "Catalog app bundle failed AppHost validation.";
@@ -141,6 +150,8 @@ public final class AppCatalogsApiHandler {
   private static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
   private static final String SECURITY_DECISION_FIELD = "securityDecision";
+  private static final String BLOCKS_INSTALL_FIELD = "blocksInstall";
+  private static final String BLOCKS_UPDATE_FIELD = "blocksUpdate";
   private static final String REVIEWER_KEY_ID_FIELD = "reviewerKeyId";
   private static final String STATUS_FIELD = "status";
   private static final String SUMMARY_FIELD = "summary";
@@ -158,6 +169,8 @@ public final class AppCatalogsApiHandler {
       "app_security_acknowledgement_required";
   private static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
   private static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
+  private static final String ERROR_APP_DATA_MIGRATION_LIFECYCLE_REQUIRED =
+      "app_data_migration_lifecycle_required";
   private static final String ERROR_RECOMMENDED_CATALOG_NOT_FOUND = "recommended_catalog_not_found";
   private static final String ERROR_RECOMMENDED_CATALOG_ALREADY_CONFIGURED =
       "recommended_catalog_already_configured";
@@ -177,6 +190,9 @@ public final class AppCatalogsApiHandler {
   private final ReviewerKeysProvider reviewerKeysProvider;
   private final AppVaultService appVaultService;
   private final Supplier<List<RecommendedAppCatalog>> recommendedCatalogsSupplier;
+  private CatalogScopedReviewerPolicy catalogScopedReviewerPolicy;
+  private PreparedPlanConflictVerifier preparedPlanConflictVerifier;
+  private PreparedPlanPolicyAuthorizer preparedPlanPolicyAuthorizer;
 
   /**
    * Creates a handler backed by a catalog manager and shared AppHost.
@@ -351,6 +367,58 @@ public final class AppCatalogsApiHandler {
     void verify(String catalogId, AppCatalogEntry entry);
   }
 
+  /** Applies the shared exact-subject federation conflict authority to a prepared plan. */
+  @FunctionalInterface
+  public interface PreparedPlanConflictVerifier {
+    /**
+     * Rejects a prepared plan unless the current complete catalog subject set permits it.
+     *
+     * @param plan exact retained catalog plan proposed for mutation
+     * @param installed current installed snapshot, or {@code null} when it could not be inspected
+     * @param explicitSourceSwitchAuthorized whether exact source-switch consent was verified
+     */
+    void verify(
+        AppCatalogInstallPlan plan,
+        InstalledAppSnapshot installed,
+        boolean explicitSourceSwitchAuthorized);
+  }
+
+  /** Retains conflict, publisher, and reviewer policy through a prepared AppHost mutation. */
+  @FunctionalInterface
+  public interface PreparedPlanPolicyAuthorizer {
+    /**
+     * Revalidates and retains all non-catalog policy for the exact target origin.
+     *
+     * @param plan exact retained catalog plan proposed for mutation
+     * @param installed current installed snapshot, or {@code null} for a new installation
+     * @param targetOrigin exact provenance AppHost will commit with the bundle
+     * @param explicitSourceSwitchAuthorized whether exact source-switch consent was verified
+     * @return composite lease retained through durable host commit or compensation
+     * @throws IOException if the local policy cannot be read or retained
+     */
+    AppHost.CatalogMutationAuthorizationLease authorize(
+        AppCatalogInstallPlan plan,
+        InstalledAppSnapshot installed,
+        InstalledAppOrigin targetOrigin,
+        boolean explicitSourceSwitchAuthorized)
+        throws IOException;
+  }
+
+  /** Applies the same host-owned reviewer-scope policy used by lifecycle updates. */
+  public void setCatalogScopedReviewerPolicy(CatalogScopedReviewerPolicy policy) {
+    this.catalogScopedReviewerPolicy = Objects.requireNonNull(policy, "policy");
+  }
+
+  /** Supplies the same digest-bound conflict authority used by lifecycle catalog updates. */
+  public void setPreparedPlanConflictVerifier(PreparedPlanConflictVerifier verifier) {
+    this.preparedPlanConflictVerifier = Objects.requireNonNull(verifier, "verifier");
+  }
+
+  /** Supplies conflict, publisher, and reviewer authorization retained through direct commits. */
+  public void setPreparedPlanPolicyAuthorizer(PreparedPlanPolicyAuthorizer authorizer) {
+    this.preparedPlanPolicyAuthorizer = Objects.requireNonNull(authorizer, "authorizer");
+  }
+
   /**
    * Lists configured catalog sources.
    *
@@ -451,8 +519,13 @@ public final class AppCatalogsApiHandler {
    */
   public Map<String, Object> add(Map<String, List<String>> queryParameters) {
     String source = PlatformApiParameters.requireString(queryParameters, SOURCE_FIELD);
+    String expectedCatalogId =
+        PlatformApiParameters.readOptionalString(queryParameters, "expectedCatalogId");
     try {
-      return summarizeCatalog(catalogManager.addSource(source));
+      return summarizeCatalog(
+          expectedCatalogId == null
+              ? catalogManager.addSource(source)
+              : catalogManager.addSource(source, expectedCatalogId));
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -491,11 +564,7 @@ public final class AppCatalogsApiHandler {
   }
 
   private Set<String> configuredCatalogIds() throws IOException {
-    LinkedHashSet<String> configuredIds = new LinkedHashSet<>();
-    for (AppCatalogSourceSnapshot snapshot : catalogManager.listCatalogs()) {
-      configuredIds.add(snapshot.catalogId());
-    }
-    return Set.copyOf(configuredIds);
+    return Set.copyOf(catalogManager.configuredCatalogIds());
   }
 
   private Map<String, Object> summarizeRecommendedCatalog(
@@ -1203,7 +1272,7 @@ public final class AppCatalogsApiHandler {
       json.put("catalogVersion", entry.version());
       json.put(INSTALLED_VERSION_FIELD, installedVersion(entry.appId()));
       json.put("review", summarizeReview(entry.review()));
-      json.put(REVIEW_TRUST_FIELD, decision.toJsonValue());
+      json.put(REVIEW_TRUST_FIELD, reviewTrustSummary(catalogId, entry, decision));
       json.put("reviewerKey", reviewerKeySummary(decision.reviewerKeyId()));
       json.put("transparencyLog", reviewTransparencyLog().page(query).toJsonValue());
       json.put("trustDelta", reviewTrustDelta(entry, decision));
@@ -1263,6 +1332,7 @@ public final class AppCatalogsApiHandler {
       if (appHost.describe(entry.appId()).isPresent()) {
         throw conflict(APP_ALREADY_INSTALLED_PREFIX + entry.appId());
       }
+      requireScopedReviewerAuthorization(catalogId, entry);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -1299,6 +1369,7 @@ public final class AppCatalogsApiHandler {
       initialSecurityDecision = targetSecurityDecision(catalogId, entry);
       requireSecurityGate(initialSecurityDecision, securityAcknowledged, true);
       initialReviewTrust = reviewTrust(entry);
+      requireScopedReviewerAuthorization(catalogId, entry);
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
           catalogId,
@@ -1324,6 +1395,7 @@ public final class AppCatalogsApiHandler {
               initialSecurityDecision, preparedSecurityDecision, securityAcknowledged),
           true);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireScopedReviewerAuthorization(plan.catalogId(), plan.entry());
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
           catalogId,
@@ -1336,7 +1408,15 @@ public final class AppCatalogsApiHandler {
           reviewAcknowledgementStillApplies(
               initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
           true);
-      InstalledAppSnapshot installed = appHost.installFromDirectory(plan.stagedBundleDirectory());
+      catalogManager.verifyInstallPlan(plan);
+      InstalledAppOrigin origin = catalogOrigin(plan, preparedReviewTrust);
+      InstalledAppSnapshot installed =
+          origin == null
+              ? appHost.installFromDirectory(plan.stagedBundleDirectory())
+              : appHost.installCatalogFromDirectory(
+                  plan.stagedBundleDirectory(),
+                  origin,
+                  catalogMutationAuthorization(plan, null, false));
       return summarizeInstalledApp(installed.manifest());
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
@@ -1346,6 +1426,108 @@ public final class AppCatalogsApiHandler {
       throw internalError(INSTALL_FAILED_MESSAGE);
     } finally {
       cleanUpPlan(plan);
+    }
+  }
+
+  /**
+   * Builds a path-free, digest-bound preview for switching an installed app's catalog or publisher.
+   *
+   * <p>The preview performs the normal catalog download and publisher verification but does not
+   * mutate AppHost, local trust, or catalog state. The returned consent digest commits the exact
+   * current origin and target catalog revision, bundle, publisher, and trust policy. A later change
+   * invalidates it deterministically.
+   *
+   * @param catalogId proposed target catalog
+   * @param appId installed app to inspect
+   * @return operator-safe source-switch preview
+   */
+  public Map<String, Object> sourceSwitchPreview(String catalogId, String appId) {
+    if (!catalogManager.federationEnabled()) {
+      throw new PlatformApiException(
+          503,
+          "catalog_federation_unavailable",
+          "Federated catalog trust is not enabled on this node.");
+    }
+    AppCatalogInstallPlan plan = null;
+    try {
+      plan = catalogManager.prepareInstallPlan(catalogId, appId);
+      CatalogSourceSwitchConsent.Decision decision = sourceSwitchDecision(plan);
+      LinkedHashMap<String, Object> preview = new LinkedHashMap<>();
+      preview.put(APP_ID_FIELD, plan.entry().appId());
+      preview.put("currentCatalogId", decision.currentOrigin().catalogId());
+      preview.put("targetCatalogId", plan.catalogId());
+      preview.put("targetVersion", plan.entry().version());
+      preview.put("targetBundleSha256", plan.entry().bundleSha256());
+      preview.put("targetPublisherKeyId", plan.bundleVerification().publisherKeyId());
+      preview.put(
+          "targetPublisherFingerprintSha256",
+          plan.bundleVerification().publisherKeyFingerprintSha256());
+      preview.put("catalogSwitch", decision.catalogSwitch());
+      preview.put("publisherSwitch", decision.publisherSwitch());
+      preview.put("requiresExplicitConsent", decision.requiresExplicitConsent());
+      preview.put("currentOriginDigestSha256", decision.currentOrigin().selfDigestSha256());
+      preview.put("targetCatalogTrustDigestSha256", decision.target().trustBindingDigestSha256());
+      preview.put("targetPublisherPolicyDigestSha256", decision.targetPublisherPolicyDigest());
+      preview.put("consentDigestSha256", decision.consentDigestSha256());
+      preview.put("backupAndMigrationChecksRequired", decision.requiresExplicitConsent());
+      return preview;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Source-switch preview could not be prepared.");
+    } finally {
+      cleanUpPlan(plan);
+    }
+  }
+
+  private SourceSwitchAuthorization requireSourceSwitchConsent(
+      AppCatalogInstallPlan plan, Map<String, List<String>> queryParameters) throws IOException {
+    if (!isFederationScoped(plan)) {
+      return SourceSwitchAuthorization.withoutCurrentOrigin();
+    }
+    Optional<InstalledAppOrigin> current = appHost.catalogOrigin(plan.entry().appId());
+    if (current.isEmpty()) {
+      return SourceSwitchAuthorization.withoutCurrentOrigin();
+    }
+    CatalogSourceSwitchConsent.Decision decision =
+        sourceSwitchDecision(plan, current.orElseThrow());
+    if (!decision.requiresExplicitConsent()) {
+      return SourceSwitchAuthorization.forCurrentOrigin(current.orElseThrow());
+    }
+    String supplied =
+        PlatformApiParameters.readOptionalString(queryParameters, SOURCE_SWITCH_CONSENT_PARAMETER);
+    if (!decision.consentDigestSha256().equals(supplied)) {
+      throw new PlatformApiException(
+          409,
+          "catalog_source_switch_consent_required",
+          "Catalog or publisher source switching requires an exact operator preview and consent.");
+    }
+    return SourceSwitchAuthorization.forCurrentOrigin(current.orElseThrow(), true);
+  }
+
+  private CatalogSourceSwitchConsent.Decision sourceSwitchDecision(AppCatalogInstallPlan plan)
+      throws IOException {
+    InstalledAppOrigin current =
+        appHost
+            .catalogOrigin(plan.entry().appId())
+            .orElseThrow(
+                () ->
+                    new PlatformApiException(
+                        409,
+                        "catalog_origin_not_found",
+                        "Installed catalog origin is required for source-switch preview."));
+    return sourceSwitchDecision(plan, current);
+  }
+
+  private CatalogSourceSwitchConsent.Decision sourceSwitchDecision(
+      AppCatalogInstallPlan plan, InstalledAppOrigin current) {
+    try {
+      return CatalogSourceSwitchConsent.evaluate(plan, current);
+    } catch (IllegalArgumentException _) {
+      throw new PlatformApiException(
+          409,
+          "catalog_origin_context_missing",
+          "Prepared catalog plan has no authenticated origin context.");
     }
   }
 
@@ -1395,6 +1577,7 @@ public final class AppCatalogsApiHandler {
     try {
       AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
       normalizedAppId = entry.appId();
+      requireScopedReviewerAuthorization(catalogId, entry);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -1440,14 +1623,18 @@ public final class AppCatalogsApiHandler {
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + normalizedAppId);
     }
+    InstalledAppSnapshot installed = null;
     try {
-      if (appHost.describe(normalizedAppId).isEmpty()) {
+      Optional<InstalledAppSnapshot> described = appHost.describe(normalizedAppId);
+      if (described.isEmpty()) {
         throw new PlatformApiException(404, "app_not_found", "App not found.");
       }
+      installed = described.orElseThrow();
     } catch (IOException _) {
       // Allow AppHost to repair installs whose manifest is unreadable.
     }
     AppReviewTrustDecision initialReviewTrust = reviewTrust(entry);
+    requireScopedReviewerAuthorization(catalogId, entry);
     boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
     AppCatalogSecurityDecision initialSecurityDecision = targetSecurityDecision(catalogId, entry);
     boolean securityAcknowledged = securityAcknowledged(queryParameters);
@@ -1464,6 +1651,8 @@ public final class AppCatalogsApiHandler {
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
       preparedPlanConsentVerifier.verify(plan.catalogId(), plan.entry());
+      SourceSwitchAuthorization sourceSwitchAuthorization =
+          requireSourceSwitchConsent(plan, queryParameters);
       AppCatalogSecurityDecision preparedSecurityDecision =
           targetSecurityDecision(plan.catalogId(), plan.entry());
       requireSecurityGate(
@@ -1472,6 +1661,7 @@ public final class AppCatalogsApiHandler {
               initialSecurityDecision, preparedSecurityDecision, securityAcknowledged),
           false);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
+      requireScopedReviewerAuthorization(plan.catalogId(), plan.entry());
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
           catalogId,
@@ -1484,8 +1674,24 @@ public final class AppCatalogsApiHandler {
           reviewAcknowledgementStillApplies(
               initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
           false);
+      catalogManager.verifyInstallPlan(plan);
+      requireLifecycleForSchemaChangingSourceSwitch(
+          installed, plan, sourceSwitchAuthorization.explicitSwitch());
+      InstalledAppOrigin origin =
+          catalogOrigin(
+              plan,
+              preparedReviewTrust,
+              sourceSwitchAuthorization.expectedCurrentOrigin().orElse(null));
       InstalledAppSnapshot updated =
-          appHost.updateFromDirectory(normalizedAppId, plan.stagedBundleDirectory());
+          origin == null
+              ? appHost.updateFromDirectory(normalizedAppId, plan.stagedBundleDirectory())
+              : appHost.updateCatalogFromDirectory(
+                  normalizedAppId,
+                  plan.stagedBundleDirectory(),
+                  origin,
+                  sourceSwitchAuthorization.expectedCurrentOriginExpectation(),
+                  catalogMutationAuthorization(
+                      plan, installed, sourceSwitchAuthorization.explicitSwitch()));
       boolean vaultCleanupSucceeded = disableVaultGrantsRemovedByUpdate(updated);
       Map<String, Object> summary = summarizeInstalledApp(updated.manifest());
       if (!vaultCleanupSucceeded) {
@@ -1501,6 +1707,159 @@ public final class AppCatalogsApiHandler {
     } finally {
       cleanUpPlan(plan);
     }
+  }
+
+  private InstalledAppOrigin catalogOrigin(
+      AppCatalogInstallPlan plan, AppReviewTrustDecision reviewTrust) {
+    return catalogOrigin(plan, reviewTrust, null);
+  }
+
+  private AppHost.CatalogMutationAuthorization catalogMutationAuthorization(
+      AppCatalogInstallPlan plan,
+      InstalledAppSnapshot installed,
+      boolean explicitSourceSwitchAuthorized) {
+    return targetOrigin -> {
+      AppCatalogManager.CatalogTrustAuthorization authorization =
+          catalogManager.authorizeInstallPlanForMutation(plan);
+      boolean transferred = false;
+      try {
+        requirePreparedPlanConflictAuthorization(plan, installed, explicitSourceSwitchAuthorized);
+        AppHost.CatalogMutationAuthorizationLease scopedPolicyAuthorization =
+            retainPreparedPlanPolicyAuthorization(
+                plan, installed, targetOrigin, explicitSourceSwitchAuthorized);
+        transferred = true;
+        return () -> {
+          try {
+            scopedPolicyAuthorization.close();
+          } finally {
+            authorization.close();
+          }
+        };
+      } finally {
+        if (!transferred) {
+          authorization.close();
+        }
+      }
+    };
+  }
+
+  private AppHost.CatalogMutationAuthorizationLease retainPreparedPlanPolicyAuthorization(
+      AppCatalogInstallPlan plan,
+      InstalledAppSnapshot installed,
+      InstalledAppOrigin targetOrigin,
+      boolean explicitSourceSwitchAuthorized)
+      throws IOException {
+    if (!catalogManager.federationEnabled()) {
+      return () -> {};
+    }
+    if (preparedPlanPolicyAuthorizer == null) {
+      throw new PlatformApiException(
+          503,
+          "catalog_federation_unavailable",
+          "Federated catalog publisher and reviewer policy is unavailable.");
+    }
+    return preparedPlanPolicyAuthorizer.authorize(
+        plan, installed, targetOrigin, explicitSourceSwitchAuthorized);
+  }
+
+  private void requirePreparedPlanConflictAuthorization(
+      AppCatalogInstallPlan plan,
+      InstalledAppSnapshot installed,
+      boolean explicitSourceSwitchAuthorized) {
+    if (!catalogManager.federationEnabled()) {
+      return;
+    }
+    if (preparedPlanConflictVerifier == null) {
+      throw new PlatformApiException(
+          503,
+          "catalog_federation_conflict_policy_unavailable",
+          "Federated catalog conflict policy is unavailable.");
+    }
+    preparedPlanConflictVerifier.verify(plan, installed, explicitSourceSwitchAuthorized);
+  }
+
+  private static void requireLifecycleForSchemaChangingSourceSwitch(
+      InstalledAppSnapshot installed, AppCatalogInstallPlan plan, boolean explicitSwitch) {
+    if (!explicitSwitch) {
+      return;
+    }
+    AppManifest target;
+    try {
+      target =
+          AppManifestParser.parse(
+              plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          400, INVALID_APP_BUNDLE_ERROR_CODE, "Catalog app bundle manifest is invalid.");
+    }
+    if (installed == null) {
+      throw migrationLifecycleRequired();
+    }
+    if (schemaTargetsDiffer(
+        installed.manifest().dataSchemaContract(), target.dataSchemaContract())) {
+      throw migrationLifecycleRequired();
+    }
+  }
+
+  private static boolean schemaTargetsDiffer(
+      AppDataSchemaContract installed, AppDataSchemaContract target) {
+    return !Objects.equals(installed.currentSchemaVersion(), target.currentSchemaVersion())
+        || !schemaTargets(installed).equals(schemaTargets(target));
+  }
+
+  private static Map<String, Integer> schemaTargets(AppDataSchemaContract contract) {
+    LinkedHashMap<String, Integer> targets = new LinkedHashMap<>();
+    for (AppDataNamespaceSchema namespace : contract.namespaces()) {
+      targets.put(namespace.namespace(), namespace.currentSchemaVersion());
+    }
+    return Map.copyOf(targets);
+  }
+
+  private static PlatformApiException migrationLifecycleRequired() {
+    return new PlatformApiException(
+        409,
+        ERROR_APP_DATA_MIGRATION_LIFECYCLE_REQUIRED,
+        "Catalog source switches with changed or unreadable schema state require the app-update "
+            + "stage/apply lifecycle.");
+  }
+
+  private InstalledAppOrigin catalogOrigin(
+      AppCatalogInstallPlan plan,
+      AppReviewTrustDecision reviewTrust,
+      InstalledAppOrigin expectedCurrentOrigin) {
+    AppCatalogOriginContext catalog = plan.originContext().orElse(null);
+    if (catalog == null || !catalog.federationScoped() || !catalogManager.federationEnabled()) {
+      return null;
+    }
+    String previousOriginDigest =
+        expectedCurrentOrigin == null ? null : expectedCurrentOrigin.selfDigestSha256();
+    String receiptFingerprint =
+        plan.entry().reviewReceipt().map(AppReviewReceipt::fingerprintSha256).orElse("");
+    var publisher = plan.bundleVerification();
+    return InstalledAppOrigin.create(
+        plan.entry().appId(),
+        plan.entry().version(),
+        plan.entry().bundleSha256(),
+        catalog.catalogId(),
+        catalog.catalogSignerKeyId(),
+        catalog.catalogSignerFingerprintSha256(),
+        catalog.catalogRevisionDigestSha256(),
+        publisher.publisherKeyId(),
+        publisher.publisherKeyFingerprintSha256(),
+        publisher.signedContentDigestSha256(),
+        receiptFingerprint,
+        reviewTrust.status().jsonValue(),
+        catalog.trustBindingId(),
+        catalog.trustBindingDigestSha256(),
+        publisher.authorizationPolicyDigestSha256(),
+        catalog.reviewerPolicyDigestSha256(),
+        Instant.now(),
+        previousOriginDigest);
+  }
+
+  private boolean isFederationScoped(AppCatalogInstallPlan plan) {
+    return catalogManager.federationEnabled()
+        && plan.originContext().filter(AppCatalogOriginContext::federationScoped).isPresent();
   }
 
   private static void cleanUpPlan(AppCatalogInstallPlan plan) {
@@ -1534,6 +1893,77 @@ public final class AppCatalogsApiHandler {
   private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
     return AppReviewReceiptVerifier.evaluate(
         entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  }
+
+  private Map<String, Object> reviewTrustSummary(String catalogId, AppCatalogEntry entry) {
+    return reviewTrustSummary(catalogId, entry, reviewTrust(entry));
+  }
+
+  private Map<String, Object> reviewTrustSummary(
+      String catalogId, AppCatalogEntry entry, AppReviewTrustDecision decision) {
+    if (catalogScopedReviewerPolicy == null) {
+      if (!catalogManager.federationEnabled()) {
+        return decision.toJsonValue();
+      }
+      LinkedHashMap<String, Object> unavailable = new LinkedHashMap<>(decision.toJsonValue());
+      unavailable.put("federationScopeAuthorized", false);
+      unavailable.put("federationScopeStatus", "reviewer_scope_policy_unavailable");
+      unavailable.put("reviewerScopeId", null);
+      unavailable.put("reviewerScopeDigestSha256", null);
+      unavailable.put("trusted", false);
+      unavailable.put("positive", false);
+      unavailable.put(BLOCKS_INSTALL_FIELD, true);
+      unavailable.put(BLOCKS_UPDATE_FIELD, true);
+      unavailable.put("blocksPolicyApply", true);
+      return java.util.Collections.unmodifiableMap(unavailable);
+    }
+    try {
+      CatalogScopedReviewerPolicy.Verification scoped =
+          catalogScopedReviewerPolicy.evaluate(
+              catalogId, entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+      LinkedHashMap<String, Object> json = new LinkedHashMap<>(decision.toJsonValue());
+      json.put("federationScopeAuthorized", scoped.authorized());
+      json.put("federationScopeStatus", scoped.status());
+      json.put("reviewerScopeId", scoped.scopeId().isBlank() ? null : scoped.scopeId());
+      json.put(
+          "reviewerScopeDigestSha256",
+          scoped.scopeDigestSha256().isBlank() ? null : scoped.scopeDigestSha256());
+      if (!scoped.authorized()) {
+        json.put("trusted", false);
+        json.put("positive", false);
+        json.put(BLOCKS_INSTALL_FIELD, true);
+        json.put(BLOCKS_UPDATE_FIELD, true);
+        json.put("blocksPolicyApply", true);
+      }
+      return java.util.Collections.unmodifiableMap(json);
+    } catch (IOException _) {
+      throw internalError("Local catalog reviewer scope could not be read.");
+    }
+  }
+
+  private void requireScopedReviewerAuthorization(String catalogId, AppCatalogEntry entry) {
+    if (catalogScopedReviewerPolicy == null) {
+      if (catalogManager.federationEnabled()) {
+        throw new PlatformApiException(
+            503,
+            "catalog_federation_unavailable",
+            "Federated catalog reviewer policy is unavailable.");
+      }
+      return;
+    }
+    try {
+      CatalogScopedReviewerPolicy.Verification verification =
+          catalogScopedReviewerPolicy.evaluate(
+              catalogId, entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+      if (!verification.authorized()) {
+        throw new PlatformApiException(
+            409,
+            "catalog_reviewer_scope_required",
+            "The review receipt is not authorized by the local catalog reviewer scope.");
+      }
+    } catch (IOException _) {
+      throw internalError("Local catalog reviewer scope could not be read.");
+    }
   }
 
   private AppCatalogSecurityDecision securityDecision(String catalogId, AppCatalogEntry entry) {
@@ -1667,7 +2097,7 @@ public final class AppCatalogsApiHandler {
   private static void requireReviewGate(
       AppReviewTrustDecision decision, boolean reviewAcknowledged, boolean install) {
     Map<String, Object> reviewTrust = decision.toJsonValue();
-    String blockField = install ? "blocksInstall" : "blocksUpdate";
+    String blockField = install ? BLOCKS_INSTALL_FIELD : BLOCKS_UPDATE_FIELD;
     String action = install ? "Install" : "Update";
     if (Boolean.TRUE.equals(reviewTrust.get(blockField))) {
       throw new PlatformApiException(
@@ -1689,7 +2119,7 @@ public final class AppCatalogsApiHandler {
       throw new PlatformApiException(
           409, ERROR_APP_SECURITY_DENYLISTED, action + " blocked by app security denylist.");
     }
-    String blockField = install ? "blocksInstall" : "blocksUpdate";
+    String blockField = install ? BLOCKS_INSTALL_FIELD : BLOCKS_UPDATE_FIELD;
     if (Boolean.TRUE.equals(securityDecision.get(blockField))) {
       throw new PlatformApiException(
           409, ERROR_APP_SECURITY_BLOCKED, action + " blocked by app security policy.");
@@ -2072,7 +2502,7 @@ public final class AppCatalogsApiHandler {
             : installedSecurityDecision(entry.appId(), installedVersion).toJsonValue());
     json.put("review", summarizeReview(entry.review()));
     json.put("thirdPartyReview", summarizeThirdPartyReview(entry.review()));
-    json.put(REVIEW_TRUST_FIELD, reviewTrust(entry).toJsonValue());
+    json.put(REVIEW_TRUST_FIELD, reviewTrustSummary(catalogId, entry));
     json.put("permissions", entry.permissions());
     json.put("permissionRationales", entry.permissionRationales());
     json.put("compatibility", summarizeCompatibility(entry.compatibility()));
@@ -2451,6 +2881,12 @@ public final class AppCatalogsApiHandler {
   }
 
   private PlatformApiException updateFailure(String appId, AppHostException exception) {
+    if (exception instanceof AppHostException.CatalogOriginChangedException) {
+      return new PlatformApiException(
+          409,
+          "catalog_source_switch_consent_required",
+          "Installed catalog origin changed; prepare and approve a new source-switch preview.");
+    }
     if (isRunningUpdateFailure(exception) || appHost.status(appId).isPresent()) {
       return conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + appId);
     }
@@ -2511,6 +2947,34 @@ public final class AppCatalogsApiHandler {
   private static String alreadyInstalledMessage(Throwable failure) {
     String message = failure.getMessage();
     return message == null || message.isBlank() ? "App already installed." : message;
+  }
+
+  private record SourceSwitchAuthorization(
+      Optional<InstalledAppOrigin> expectedCurrentOrigin, boolean explicitSwitch) {
+    private SourceSwitchAuthorization {
+      Objects.requireNonNull(expectedCurrentOrigin, "expectedCurrentOrigin");
+    }
+
+    private static SourceSwitchAuthorization withoutCurrentOrigin() {
+      return new SourceSwitchAuthorization(Optional.empty(), false);
+    }
+
+    private static SourceSwitchAuthorization forCurrentOrigin(InstalledAppOrigin current) {
+      return forCurrentOrigin(current, false);
+    }
+
+    private static SourceSwitchAuthorization forCurrentOrigin(
+        InstalledAppOrigin current, boolean explicitSwitch) {
+      return new SourceSwitchAuthorization(
+          Optional.of(Objects.requireNonNull(current, VERSION_STATUS_CURRENT)), explicitSwitch);
+    }
+
+    private AppHost.CatalogOriginExpectation expectedCurrentOriginExpectation() {
+      return expectedCurrentOrigin
+          .map(InstalledAppOrigin::selfDigestSha256)
+          .map(AppHost.CatalogOriginExpectation::matching)
+          .orElseGet(AppHost.CatalogOriginExpectation::absent);
+    }
   }
 
   private record CompatibilityResult(Boolean satisfied, String status) {}

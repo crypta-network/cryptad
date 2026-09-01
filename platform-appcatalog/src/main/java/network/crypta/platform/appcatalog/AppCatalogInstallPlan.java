@@ -3,6 +3,7 @@ package network.crypta.platform.appcatalog;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Verified temporary staged bundle prepared from a catalog entry.
@@ -22,9 +23,16 @@ import java.util.Objects;
  * @param entry catalog entry selected by the caller
  * @param stagedBundleDirectory extracted signed-bundle root ready for AppHost
  * @param scratchDirectory scratch directory removed when the plan is closed
+ * @param bundleVerification exact publisher authorization captured during extraction
+ * @param originContext exact authenticated catalog authority captured with the selected revision
  */
 public record AppCatalogInstallPlan(
-    String catalogId, AppCatalogEntry entry, Path stagedBundleDirectory, Path scratchDirectory)
+    String catalogId,
+    AppCatalogEntry entry,
+    Path stagedBundleDirectory,
+    Path scratchDirectory,
+    AppCatalogBundleVerificationResult bundleVerification,
+    Optional<AppCatalogOriginContext> originContext)
     implements AutoCloseable {
   /**
    * Creates a verified installation plan.
@@ -37,6 +45,8 @@ public record AppCatalogInstallPlan(
    * @param entry catalog entry selected by the caller
    * @param stagedBundleDirectory extracted signed-bundle root ready for AppHost
    * @param scratchDirectory scratch directory removed when the plan is closed
+   * @param bundleVerification exact publisher authorization captured during extraction
+   * @param originContext exact catalog authority captured with the selected catalog revision
    */
   public AppCatalogInstallPlan {
     catalogId = AppCatalog.normalizeCatalogId(catalogId);
@@ -47,6 +57,49 @@ public record AppCatalogInstallPlan(
             .normalize();
     scratchDirectory =
         Objects.requireNonNull(scratchDirectory, "scratchDirectory").toAbsolutePath().normalize();
+    Objects.requireNonNull(bundleVerification, "bundleVerification");
+    Objects.requireNonNull(originContext, "originContext");
+  }
+
+  /**
+   * Creates a compatibility plan without a captured catalog-origin context.
+   *
+   * <p>This constructor preserves callers that assemble plan fixtures or adapters directly. Plans
+   * produced by {@link AppCatalogManager} always use the contextual constructor above; attempting
+   * to re-verify a compatibility plan fails the exact-result comparison rather than silently
+   * treating missing provenance as current authorization.
+   *
+   * @param catalogId catalog that supplied the entry
+   * @param entry catalog entry selected by the caller
+   * @param stagedBundleDirectory extracted signed-bundle root ready for AppHost
+   * @param scratchDirectory scratch directory removed when the plan is closed
+   * @param bundleVerification exact publisher authorization captured during extraction
+   */
+  public AppCatalogInstallPlan(
+      String catalogId,
+      AppCatalogEntry entry,
+      Path stagedBundleDirectory,
+      Path scratchDirectory,
+      AppCatalogBundleVerificationResult bundleVerification) {
+    this(
+        catalogId,
+        entry,
+        stagedBundleDirectory,
+        scratchDirectory,
+        bundleVerification,
+        Optional.empty());
+  }
+
+  /** Creates a compatibility plan without captured publisher or catalog-origin authorization. */
+  public AppCatalogInstallPlan(
+      String catalogId, AppCatalogEntry entry, Path stagedBundleDirectory, Path scratchDirectory) {
+    this(
+        catalogId,
+        entry,
+        stagedBundleDirectory,
+        scratchDirectory,
+        AppCatalogBundleVerificationResult.unrecorded(),
+        Optional.empty());
   }
 
   /**

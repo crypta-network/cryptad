@@ -10,14 +10,18 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import network.crypta.platform.api.appdata.AppDataRecord;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.InMemoryAppDataStore;
+import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
@@ -26,7 +30,16 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
+import network.crypta.platform.appcatalog.AppCatalogChannel;
+import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogManager.PendingCatalogDiscoveryEvidence;
+import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.FederatedCatalogConflictEngine;
+import network.crypta.platform.appcatalog.FederatedCatalogTrustBinding;
+import network.crypta.platform.appcatalog.PendingCatalogDiscoveryRecommendation;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
+import network.crypta.platform.apphost.AppHost;
+import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
@@ -40,12 +53,18 @@ import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -157,6 +176,428 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"operatorRcRecovery\""));
     assertTrue(response.body().contains("\"closedActionDispatch\":true"));
     assertTrue(response.body().contains("\"operatorRoutesInAppContract\":false"));
+  }
+
+  @Test
+  void route_whenFederationSummaryRequested_expectLocalNonTransitiveTrustOnly() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.configuredCatalogIds()).thenReturn(List.of("community", "stale-source"));
+    when(manager.federatedTrustBindings())
+        .thenReturn(
+            List.of(
+                catalogTrustBinding(
+                    Map.of(
+                        "catalog-key-a", "f".repeat(64),
+                        "catalog-key-b", "0".repeat(64)))));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of(OPERATOR_SEGMENT, "catalog-federation"), Map.of()));
+    PlatformApiResponse appResponse =
+        router.route(
+            request(
+                "GET",
+                List.of(OPERATOR_SEGMENT, "catalog-federation"),
+                Map.of(),
+                PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"mode\":\"federated-local-trust\""));
+    assertTrue(response.body().contains("\"catalogId\":\"community\""));
+    assertTrue(response.body().contains("\"signerKeyIds\":[\"catalog-key-a\",\"catalog-key-b\"]"));
+    assertTrue(
+        response
+            .body()
+            .contains(
+                "\"signerFingerprints\":[\"" + "f".repeat(64) + "\",\"" + "0".repeat(64) + "\"]"));
+    assertTrue(
+        response.body().contains("\"configuredCatalogIds\":[\"community\",\"stale-source\"]"));
+    assertTrue(response.body().contains("\"configuredCatalogCount\":2"));
+    assertTrue(response.body().contains("\"endorsementsAuthoritative\":false"));
+    assertTrue(response.body().contains("\"transitiveTrust\":false"));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenCatalogDiscoveryImported_expectPendingEvidenceOnly() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    PendingCatalogDiscoveryRecommendation pending = pendingCatalogDiscovery();
+    List<PendingCatalogDiscoveryEvidence> currentEvidence =
+        List.of(
+            new PendingCatalogDiscoveryEvidence(pending, true, pending.endorsementVerifications()));
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.catalogDiscoveryEnabled()).thenReturn(true);
+    when(manager.importCatalogDiscovery(any(byte[].class), eq(List.of()), any(Instant.class)))
+        .thenReturn(pending);
+    when(manager.currentPendingCatalogDiscoveries(any(Instant.class))).thenReturn(currentEvidence);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "discovery");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "descriptorBase64",
+            List.of(
+                Base64.getUrlEncoder()
+                    .withoutPadding()
+                    .encodeToString("{}".getBytes(StandardCharsets.UTF_8))));
+
+    PlatformApiResponse imported = router.route(request("POST", route, parameters));
+    PlatformApiResponse listed = router.route(request("GET", route, Map.of()));
+    PlatformApiResponse appResponse =
+        router.route(
+            request("GET", route, Map.of(), PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, imported.statusCode());
+    assertTrue(imported.body().contains("\"status\":\"pending\""));
+    assertTrue(imported.body().contains("\"trustGranted\":false"));
+    assertTrue(imported.body().contains("\"sourceConfigured\":false"));
+    assertTrue(imported.body().contains("\"transitive\":false"));
+    assertEquals(200, listed.statusCode());
+    assertTrue(listed.body().contains("\"pendingCount\":1"));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenCatalogDiscoveryUnavailableOrMalformed_expectClosedFailure() {
+    AppCatalogManager unavailableManager = mock(AppCatalogManager.class);
+    when(unavailableManager.federationEnabled()).thenReturn(true);
+    PlatformApiRouter unavailableRouter =
+        new PlatformApiRouter(runtimePorts(), null, unavailableManager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "discovery");
+    AppCatalogManager availableManager = mock(AppCatalogManager.class);
+    when(availableManager.federationEnabled()).thenReturn(true);
+    when(availableManager.catalogDiscoveryEnabled()).thenReturn(true);
+    PlatformApiRouter availableRouter =
+        new PlatformApiRouter(runtimePorts(), null, availableManager);
+
+    PlatformApiResponse unavailable = unavailableRouter.route(request("GET", route, Map.of()));
+    PlatformApiResponse malformed =
+        availableRouter.route(
+            request("POST", route, Map.of("descriptorBase64", List.of("not base64!"))));
+
+    assertEquals(503, unavailable.statusCode());
+    assertTrue(unavailable.body().contains("\"code\":\"catalog_discovery_unavailable\""));
+    assertEquals(400, malformed.statusCode());
+    assertTrue(malformed.body().contains("\"code\":\"invalid_request\""));
+  }
+
+  @Test
+  void route_whenPendingCatalogDiscoveryDiscarded_expectNoTrustMutation() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.catalogDiscoveryEnabled()).thenReturn(true);
+    when(manager.discardPendingCatalogDiscovery("descriptor-independent-beta")).thenReturn(true);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of(
+                    OPERATOR_SEGMENT,
+                    "catalog-federation",
+                    "discovery",
+                    "descriptor-independent-beta",
+                    "discard"),
+                Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"status\":\"discarded\""));
+    assertTrue(response.body().contains("\"trustChanged\":false"));
+    verify(manager, never()).putFederatedTrustBinding(any());
+  }
+
+  @Test
+  void route_whenCatalogTrustSuspended_expectExplicitOperatorMutationOnly() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    FederatedCatalogTrustBinding suspended = suspendedCatalogTrustBinding();
+    when(manager.transitionFederatedTrustBinding(
+            eq("community"),
+            eq(FederatedCatalogTrustBinding.Status.SUSPENDED),
+            eq("incident review"),
+            eq("host-operator"),
+            any(Instant.class)))
+        .thenReturn(suspended);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "suspend");
+
+    PlatformApiResponse response =
+        router.route(request("POST", route, Map.of("reason", List.of("incident review"))));
+    PlatformApiResponse appResponse =
+        router.route(
+            request(
+                "POST",
+                route,
+                Map.of("reason", List.of("incident review")),
+                PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"status\":\"suspended\""));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenCatalogTrustApproved_expectExplicitBoundedLocalBinding() throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.federatedTrustBindings()).thenReturn(List.of());
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-community"),
+            "signerKeyId", List.of("community-catalog-2026"),
+            "signerFingerprintSha256", List.of("1".repeat(64)),
+            "channels", List.of("stable,beta"),
+            "localPriority", List.of("100"),
+            "reason", List.of("operator approval"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+    PlatformApiResponse appResponse =
+        router.route(
+            request("POST", route, parameters, PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"bindingId\":\"binding-community\""));
+    assertTrue(response.body().contains("\"status\":\"active\""));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenCatalogTrustApprovedWithRotatingSigners_expectCompleteSignerSetRetained()
+      throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.federatedTrustBindings()).thenReturn(List.of(catalogTrustBinding()));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-1"),
+            "signerKeyId", List.of("community-catalog-2026", "community-catalog-2027"),
+            "signerFingerprintSha256", List.of("1".repeat(64), "2".repeat(64)),
+            "channels", List.of("stable,beta"),
+            "localPriority", List.of("100"),
+            "reason", List.of("overlapping signer rotation"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    ArgumentCaptor<FederatedCatalogTrustBinding> bindingCaptor =
+        ArgumentCaptor.forClass(FederatedCatalogTrustBinding.class);
+    verify(manager).putFederatedTrustBinding(bindingCaptor.capture());
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        Map.of(
+            "community-catalog-2026", "1".repeat(64),
+            "community-catalog-2027", "2".repeat(64)),
+        bindingCaptor.getValue().signerFingerprints());
+    assertEquals(NOW, bindingCaptor.getValue().createdAt());
+  }
+
+  @Test
+  void route_whenCatalogSignerListsHaveDifferentSizes_expectRejected() {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-community"),
+            "signerKeyId", List.of("community-catalog-2026", "community-catalog-2027"),
+            "signerFingerprintSha256", List.of("1".repeat(64)),
+            "channels", List.of("stable"),
+            "localPriority", List.of("100"),
+            "reason", List.of("invalid rotation"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    assertEquals(400, response.statusCode());
+  }
+
+  @Test
+  void route_whenMixedCaseCatalogTrustIsReapproved_expectNormalizedIdentityAndOriginalCreatedAt()
+      throws Exception {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.federatedTrustBindings()).thenReturn(List.of(catalogTrustBinding()));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "Community", "trust");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "bindingId", List.of("binding-1"),
+            "signerKeyId", List.of("community-catalog-2026"),
+            "signerFingerprintSha256", List.of("1".repeat(64)),
+            "channels", List.of("stable,beta"),
+            "localPriority", List.of("100"),
+            "reason", List.of("operator reapproval"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    ArgumentCaptor<FederatedCatalogTrustBinding> bindingCaptor =
+        ArgumentCaptor.forClass(FederatedCatalogTrustBinding.class);
+    verify(manager).putFederatedTrustBinding(bindingCaptor.capture());
+    assertEquals(200, response.statusCode());
+    assertEquals("community", bindingCaptor.getValue().catalogId());
+    assertEquals(NOW, bindingCaptor.getValue().createdAt());
+  }
+
+  @Test
+  void route_whenFederationDisabledAndTrustMutationRequested_expectUnavailable() {
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), null, manager);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "community", "suspend");
+
+    PlatformApiResponse response =
+        router.route(request("POST", route, Map.of("reason", List.of("operator request"))));
+
+    assertEquals(503, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"catalog_federation_unavailable\""));
+  }
+
+  @Test
+  void route_whenCatalogConflictRequested_expectExactOperatorOnlySummary() {
+    AppHost host = mock(AppHost.class);
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(updateService.federatedConflict(APP_ID))
+        .thenReturn(
+            Map.of(
+                "appId",
+                APP_ID,
+                "conflictId",
+                "catalog-conflict-1234",
+                "subjectSetDigestSha256",
+                "1".repeat(64),
+                "hard",
+                true));
+    PlatformApiRouter router = routerWithUpdateService(host, manager, updateService);
+    List<String> route = List.of(OPERATOR_SEGMENT, "catalog-federation", "conflicts", APP_ID);
+
+    PlatformApiResponse response = router.route(request("GET", route, Map.of()));
+    PlatformApiResponse appResponse =
+        router.route(
+            request("GET", route, Map.of(), PlatformApiPrincipal.appToken(APP_ID, List.of())));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"conflictId\":\"catalog-conflict-1234\""));
+    assertTrue(response.body().contains("\"subjectSetDigestSha256\":\"" + "1".repeat(64)));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenExactCatalogConflictResolved_expectDigestBoundOperatorDecision() {
+    AppHost host = mock(AppHost.class);
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(updateService.resolveFederatedConflict(
+            eq(APP_ID),
+            eq("catalog-conflict-1234"),
+            eq("1".repeat(64)),
+            eq(
+                FederatedCatalogConflictEngine.ResolutionKind.EXPLICIT_SOURCE_SWITCH_REQUIRED
+                    .name()),
+            isNull(),
+            isNull(),
+            eq("require exact switch consent")))
+        .thenReturn(
+            Map.of(
+                "appId", APP_ID,
+                "conflictId", "catalog-conflict-1234",
+                "resolutionStatus", "applicable"));
+    PlatformApiRouter router = routerWithUpdateService(host, manager, updateService);
+    List<String> route =
+        List.of(OPERATOR_SEGMENT, "catalog-federation", "conflicts", APP_ID, "resolve");
+    Map<String, List<String>> parameters =
+        Map.of(
+            "conflictId", List.of("catalog-conflict-1234"),
+            "subjectSetDigestSha256", List.of("1".repeat(64)),
+            "kind", List.of("explicit-source-switch-required"),
+            "reason", List.of("require exact switch consent"));
+
+    PlatformApiResponse response = router.route(request("POST", route, parameters));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"resolutionStatus\":\"applicable\""));
+  }
+
+  @Test
+  void route_whenCatalogOriginRequested_expectPathFreeOperatorOnlyProvenance() throws Exception {
+    AppHost host = mock(AppHost.class);
+    when(host.catalogOrigin(APP_ID)).thenReturn(Optional.of(installedOrigin()));
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), host);
+    List<String> route = List.of(OPERATOR_SEGMENT, "apps", APP_ID, "catalog-origin");
+
+    PlatformApiResponse response = router.route(request("GET", route, Map.of()));
+    PlatformApiResponse appResponse =
+        router.route(
+            request(
+                "GET", route, Map.of(), PlatformApiPrincipal.appBrowserSession(APP_ID, List.of())));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"catalogId\":\"community\""));
+    assertTrue(response.body().contains("\"catalogTrustBindingId\":\"binding-1\""));
+    assertTrue(
+        response.body().contains("\"signedContentDigestSha256\":\"" + "d".repeat(64) + "\""));
+    assertFalse(response.body().contains("/tmp/"));
+    assertEquals(403, appResponse.statusCode());
+  }
+
+  @Test
+  void route_whenAppPrincipalRequestsSourceSwitchPreview_expectDeniedBeforePreparation() {
+    AppHost host = mock(AppHost.class);
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), host, manager);
+    List<String> route =
+        List.of(OPERATOR_SEGMENT, "apps", APP_ID, "catalog-origin", "switch-preview");
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                route,
+                Map.of("targetCatalogId", List.of("community")),
+                PlatformApiPrincipal.appBrowserSession(APP_ID, List.of())));
+
+    assertEquals(403, response.statusCode());
+  }
+
+  @Test
+  void route_whenGetSourceSwitchPreview_expectPostOnlyWithoutPreparation() {
+    AppHost host = mock(AppHost.class);
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), host, manager);
+    List<String> route =
+        List.of(OPERATOR_SEGMENT, "apps", APP_ID, "catalog-origin", "switch-preview");
+
+    PlatformApiResponse response =
+        router.route(request("GET", route, Map.of("targetCatalogId", List.of("community"))));
+
+    assertEquals(405, response.statusCode());
+    assertEquals("POST", response.headers().get("Allow"));
+  }
+
+  @Test
+  void route_whenFederatedFallbackHasNoScopedReviewerPolicy_expectUnavailableBeforePreparation()
+      throws Exception {
+    AppHost host = mock(AppHost.class);
+    AppCatalogManager manager = mock(AppCatalogManager.class);
+    AppCatalogEntry entry = mock(AppCatalogEntry.class);
+    when(entry.appId()).thenReturn(APP_ID);
+    when(manager.federationEnabled()).thenReturn(true);
+    when(manager.getApp("core", APP_ID)).thenReturn(entry);
+    when(host.describe(APP_ID)).thenReturn(Optional.empty());
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts(), host, manager);
+
+    PlatformApiResponse response =
+        router.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+
+    try (var _ = verify(manager, never()).prepareInstallPlan(any(), any())) {
+      assertEquals(503, response.statusCode());
+      assertTrue(response.body().contains("catalog_federation_unavailable"));
+    }
   }
 
   @Test
@@ -822,6 +1263,17 @@ class PlatformApiOperatorRoutesTest {
     return request(method, segments, params, PlatformApiPrincipal.hostOperator());
   }
 
+  private static PlatformApiRouter routerWithUpdateService(
+      AppHost host, AppCatalogManager manager, AppUpdateService updateService) {
+    return new PlatformApiRouter(
+        runtimePorts(),
+        host,
+        manager,
+        null,
+        AppUiOriginRegistry.sameOriginOnly(),
+        PlatformApiSharedAppServices.of(null, updateService, null));
+  }
+
   @SuppressWarnings("unchecked")
   private static Map<String, Object> mapValue(Object value) {
     return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
@@ -1000,6 +1452,94 @@ class PlatformApiOperatorRoutesTest {
         new CoreSupportLifecycleSnapshot.DescriptorVerification(
             2L, "sha256:" + "a".repeat(64), "2026-06-01T00:05:00Z"),
         List.of("build_revoked"));
+  }
+
+  private static FederatedCatalogTrustBinding catalogTrustBinding() {
+    return catalogTrustBinding(Map.of("catalog-key", "a".repeat(64)));
+  }
+
+  private static FederatedCatalogTrustBinding catalogTrustBinding(
+      Map<String, String> signerFingerprints) {
+    return bindingWithStatus(FederatedCatalogTrustBinding.Status.ACTIVE, signerFingerprints);
+  }
+
+  private static FederatedCatalogTrustBinding suspendedCatalogTrustBinding() {
+    return bindingWithStatus(
+        FederatedCatalogTrustBinding.Status.SUSPENDED, Map.of("catalog-key", "a".repeat(64)));
+  }
+
+  private static FederatedCatalogTrustBinding bindingWithStatus(
+      FederatedCatalogTrustBinding.Status status, Map<String, String> signerFingerprints) {
+    return FederatedCatalogTrustBinding.create(
+        "binding-1",
+        "community",
+        signerFingerprints,
+        status,
+        Set.of(AppCatalogChannel.STABLE),
+        10,
+        null,
+        "b".repeat(64),
+        "c".repeat(64),
+        NOW,
+        NOW,
+        "operator approval",
+        "local-operator");
+  }
+
+  private static PendingCatalogDiscoveryRecommendation pendingCatalogDiscovery() {
+    PendingCatalogDiscoveryRecommendation pending =
+        mock(PendingCatalogDiscoveryRecommendation.class, Answers.RETURNS_DEEP_STUBS);
+    var verification = pending.descriptorVerification();
+    var descriptor = verification.descriptor();
+    var content = descriptor.content();
+    var display = content.display();
+    var subject = content.subject();
+    var transparency = content.transparency();
+    var validity = content.validity();
+    var issuer = content.issuer();
+    when(pending.descriptorId()).thenReturn("descriptor-independent-beta");
+    when(pending.catalogId()).thenReturn("independent-beta");
+    when(display.name()).thenReturn("Independent beta");
+    when(display.summary()).thenReturn("Public discovery metadata only");
+    when(display.providerId()).thenReturn("independent-operator");
+    when(subject.signerKeyId()).thenReturn("independent-catalog-signer");
+    when(subject.signerFingerprintSha256()).thenReturn("0".repeat(64));
+    when(subject.channels()).thenReturn(List.of("beta"));
+    when(descriptor.authentication().selfDigestSha256()).thenReturn("1".repeat(64));
+    when(issuer.issuerId()).thenReturn("independent-operator");
+    when(issuer.keyId()).thenReturn("independent-catalog-operator");
+    when(verification.issuerKeyFingerprintSha256()).thenReturn("2".repeat(64));
+    when(validity.issuedAt()).thenReturn(NOW.minusSeconds(60));
+    when(validity.expiresAt()).thenReturn(NOW.plusSeconds(3600));
+    when(pending.importedAt()).thenReturn(NOW);
+    when(transparency.reviewerSetDigestSha256()).thenReturn(Optional.empty());
+    when(transparency.publisherPolicyDigestSha256()).thenReturn(Optional.empty());
+    when(pending.endorsementVerifications()).thenReturn(List.of());
+    when(pending.selfDigestSha256()).thenReturn("3".repeat(64));
+    return pending;
+  }
+
+  private static InstalledAppOrigin installedOrigin() {
+    String digest = "d".repeat(64);
+    return InstalledAppOrigin.create(
+        APP_ID,
+        "1.0.0",
+        digest,
+        "community",
+        "catalog-key",
+        digest,
+        digest,
+        "publisher-key",
+        digest,
+        digest,
+        "",
+        "reviewed",
+        "binding-1",
+        digest,
+        digest,
+        digest,
+        NOW,
+        null);
   }
 
   private static final class RecordingFetchPort implements ContentFetchPort {

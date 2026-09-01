@@ -1,17 +1,8 @@
 package network.crypta.platform.appcatalog;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.Authenticator;
-import java.net.CookieHandler;
-import java.net.ProxySelector;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -24,26 +15,29 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
-import javax.net.ssl.SSLSession;
+import network.crypta.platform.appcatalog.AppCatalogManagerHttpTestSupport.CloseRecordingInputStream;
+import network.crypta.platform.appcatalog.AppCatalogManagerHttpTestSupport.FixedResponseHttpClient;
+import network.crypta.platform.appcatalog.AppCatalogManagerHttpTestSupport.InputStreamResponse;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppDistributionException;
+import network.crypta.platform.appdist.PublicKeyFingerprint;
 import network.crypta.platform.appdist.TrustedAppKey;
 import network.crypta.platform.appdist.TrustedAppKeyLifecycle;
 import network.crypta.platform.appdist.TrustedAppKeyPolicy;
@@ -81,13 +75,33 @@ class AppCatalogManagerTest {
   private static final String EXECUTABLE_PATH = "bin/tool";
   private static final String QUEUE_READ_PERMISSION = "queue.read";
   private static final String QUEUE_WRITE_PERMISSION = "queue.write";
+  private static final String CRYPTA_URI_PREFIX = "crypta:";
+  private static final String FIXTURE_TEXT = "fixture";
+  private static final String CORE_BINDING_ID = "binding-core";
+  private static final String STAGING_BINDING_ID = "binding-staging";
+  private static final String OPERATOR_SUSPENSION_REASON = "operator suspension";
+  private static final String OPERATOR_REVOCATION_REASON = "operator revocation";
+  private static final String OPERATOR_ID = "operator";
+  private static final String MACOS_METADATA_FILE = ".DS_Store";
+  private static final String RESOLVED_SIGNATURE_KEY =
+      "USK@example/catalog/42/cryptad-app-catalog.signature";
+  private static final String LATEST_CATALOG_KEY =
+      "USK@example/catalog/latest/cryptad-app-catalog.properties";
+  private static final String CATALOG_SIGNATURE_PURPOSE = "catalog signature";
+  private static final String PRIMARY_MIRROR_ID = "primary";
+  private static final String BACKUP_MIRROR_ID = "backup";
+  private static final String PRIMARY_UNAVAILABLE_MESSAGE = "primary unavailable";
+  private static final String MIRROR_SOURCE_URI =
+      "https://mirror.example.invalid/cryptad-app-catalog.properties";
   private static final String CRYPTA_CATALOG_KEY =
       "USK@example/catalog/cryptad-app-catalog.properties";
+
   private static final String CRYPTA_SIGNATURE_KEY =
       "USK@example/catalog/cryptad-app-catalog.signature";
-  private static final String CRYPTA_CATALOG_SOURCE = "crypta:" + CRYPTA_CATALOG_KEY;
+  private static final String CRYPTA_CATALOG_SOURCE = CRYPTA_URI_PREFIX + CRYPTA_CATALOG_KEY;
   private static final String CRYPTA_ARTIFACT_KEY = "CHK@artifact-key";
-  private static final URI CRYPTA_ARTIFACT_URI = URI.create("crypta:" + CRYPTA_ARTIFACT_KEY);
+  private static final URI CRYPTA_ARTIFACT_URI =
+      URI.create(CRYPTA_URI_PREFIX + CRYPTA_ARTIFACT_KEY);
   private static final String BASIC_CATALOG_PROPERTIES = "catalog.version=1\n";
   private static final String BASIC_CATALOG_SIGNATURE = "catalog.signature.version=1\n";
   private static final String MALFORMED_KEY_VALUE_LINE = "not-a-key-value-line\n";
@@ -102,7 +116,7 @@ class AppCatalogManagerTest {
   private static final int UNIX_EXECUTABLE_FILE_MODE = UNIX_REGULAR_FILE_MODE | 448;
   private static final Instant GENERATED_AT = Instant.parse("2026-04-21T18:22:40Z");
 
-  @TempDir private Path tempDir;
+  @TempDir Path tempDir;
 
   @Test
   void addSource_whenLocalSignedCatalogIsValid_expectListAndInstallPlan() throws Exception {
@@ -125,6 +139,314 @@ class AppCatalogManagerTest {
       assertTrue(
           Files.isRegularFile(
               plan.stagedBundleDirectory().resolve(AppBundleManifestParser.MANIFEST_FILE_NAME)));
+      assertFalse(plan.originContext().orElseThrow().federationScoped());
+    }
+  }
+
+  @Test
+  void prepareInstallPlan_whenDevelopmentPolicyAcceptsUnsignedBundle_expectUnscopedPlan()
+      throws Exception {
+    KeyPair catalogKey = keyPair();
+    Path bundle = unsignedBundle();
+    Path artifact = zipDirectory(bundle, tempDir.resolve("unsigned-development.zip"));
+    Path catalog = signedCatalog(artifact, catalogKey, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager =
+        AppCatalogManager.withBundleVerificationPolicy(
+            new AppCatalogSourceStore(tempDir.resolve("unsigned-development-catalogs")),
+            () -> trustedKeys(catalogKey),
+            stagedRoot -> {
+              if (!AppBundleVerifier.isDistributionSidecarFree(stagedRoot)) {
+                throw new IOException("expected a sidecar-free development bundle");
+              }
+            });
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertEquals("unsigned-development", plan.bundleVerification().publisherKeyId());
+      assertFalse(plan.bundleVerification().catalogScoped());
+      assertTrue(plan.bundleVerification().publisherKeyFingerprintSha256().isEmpty());
+      manager.verifyInstallPlan(plan);
+    }
+  }
+
+  @Test
+  void listRoutineCatalogs_whenOneBindingIsSuspended_expectUnrelatedCatalogRemainsAvailable()
+      throws Exception {
+    KeyPair firstKey = keyPair();
+    KeyPair secondKey = keyPair();
+    String secondKeyId = "catalog-second";
+    Path artifact = Files.writeString(tempDir.resolve("catalog-artifact.zip"), FIXTURE_TEXT);
+    Path firstCatalog =
+        signedCatalog(
+            CATALOG_ID, artifact.toUri(), firstKey, KEY_ID, sha256(artifact), Files.size(artifact));
+    Path secondCatalog =
+        signedCatalog(
+            STAGING_CATALOG_ID,
+            artifact.toUri(),
+            secondKey,
+            secondKeyId,
+            sha256(artifact),
+            Files.size(artifact));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(trustedKey(KEY_ID, firstKey))
+            .plus(TrustedAppKeys.of(trustedKey(secondKeyId, secondKey)));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("catalog-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, firstKey));
+    trustStore.put(
+        federatedBinding(STAGING_BINDING_ID, STAGING_CATALOG_ID, secondKeyId, secondKey));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(firstCatalog.toString(), CATALOG_ID);
+    manager.addSource(secondCatalog.toString(), STAGING_CATALOG_ID);
+
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.SUSPENDED,
+        OPERATOR_SUSPENSION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(1));
+    List<AppCatalogSourceSnapshot> available = manager.listRoutineCatalogs();
+
+    assertEquals(
+        List.of(STAGING_CATALOG_ID),
+        available.stream().map(AppCatalogSourceSnapshot::catalogId).toList());
+    assertEquals(List.of(CATALOG_ID, STAGING_CATALOG_ID), manager.configuredCatalogIds());
+  }
+
+  @Test
+  void historicalReads_whenFederatedBindingIsSuspended_expectCatalogRemainsInspectable()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path artifact =
+        Files.writeString(tempDir.resolve("suspended-inspection-artifact.zip"), FIXTURE_TEXT);
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, artifact.toUri(), keyPair, KEY_ID, sha256(artifact), Files.size(artifact));
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("suspended-inspection-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("suspended-inspection-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.SUSPENDED,
+        OPERATOR_SUSPENSION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(1));
+
+    assertEquals(CATALOG_ID, manager.catalog(CATALOG_ID).catalogId());
+    assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
+    assertEquals(APP_ID, manager.getApp(CATALOG_ID, APP_ID).appId());
+    assertEquals(AppCatalogSecurityDecision.OK, manager.securityDecision(CATALOG_ID, APP_ID));
+    assertFalse(manager.sourceHealth(CATALOG_ID).isEmpty());
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
+  }
+
+  @Test
+  void routineEntries_whenFederatedCatalogHasMixedChannels_expectOnlyAllowedChannelSelectable()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("mixed-channel-artifact.zip"));
+    Path catalog =
+        signedMixedChannelCatalog(
+            artifact.toUri(), keyPair, sha256(artifact), Files.size(artifact));
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("mixed-channel-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("mixed-channel-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    assertEquals(2, manager.listApps(CATALOG_ID).size());
+    assertEquals(
+        List.of(APP_ID),
+        manager.listRoutineApps(CATALOG_ID).stream().map(AppCatalogEntry::appId).toList());
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, "beta-app"));
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      assertEquals(APP_ID, plan.entry().appId());
+    }
+  }
+
+  @Test
+  void installedSecurityDecision_whenDenylistingBindingIsSuspended_expectDecisionIsIsolated()
+      throws Exception {
+    KeyPair suspendedKey = keyPair();
+    KeyPair activeKey = keyPair();
+    String activeKeyId = "catalog-active";
+    Path artifact =
+        Files.writeString(tempDir.resolve("suspended-security-artifact.zip"), FIXTURE_TEXT);
+    Path suspendedCatalog =
+        signedDenylistingCatalog(
+            artifact.toUri(), suspendedKey, sha256(artifact), Files.size(artifact));
+    Path activeCatalog =
+        signedCatalog(
+            STAGING_CATALOG_ID,
+            artifact.toUri(),
+            activeKey,
+            activeKeyId,
+            sha256(artifact),
+            Files.size(artifact));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(trustedKey(KEY_ID, suspendedKey))
+            .plus(TrustedAppKeys.of(trustedKey(activeKeyId, activeKey)));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("suspended-security-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("suspended-security-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, suspendedKey));
+    trustStore.put(
+        federatedBinding(STAGING_BINDING_ID, STAGING_CATALOG_ID, activeKeyId, activeKey));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(suspendedCatalog.toString(), CATALOG_ID);
+    manager.addSource(activeCatalog.toString(), STAGING_CATALOG_ID);
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.SUSPENDED,
+        OPERATOR_SUSPENSION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(1));
+
+    AppCatalogSecurityDecision decision = manager.installedSecurityDecision(APP_ID, APP_VERSION);
+
+    assertEquals(AppCatalogSecurityDecision.OK, decision);
+    assertEquals(
+        List.of(STAGING_CATALOG_ID),
+        manager.listRoutineCatalogs().stream().map(AppCatalogSourceSnapshot::catalogId).toList());
+  }
+
+  @Test
+  void installedSecurityDecision_whenOneBindingIsRevoked_expectUnrelatedCatalogStillEvaluated()
+      throws Exception {
+    KeyPair firstKey = keyPair();
+    KeyPair secondKey = keyPair();
+    String secondKeyId = "catalog-second";
+    Path artifact = Files.writeString(tempDir.resolve("security-artifact.zip"), FIXTURE_TEXT);
+    Path firstCatalog =
+        signedCatalog(
+            CATALOG_ID, artifact.toUri(), firstKey, KEY_ID, sha256(artifact), Files.size(artifact));
+    Path secondCatalog =
+        signedCatalog(
+            STAGING_CATALOG_ID,
+            artifact.toUri(),
+            secondKey,
+            secondKeyId,
+            sha256(artifact),
+            Files.size(artifact));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(trustedKey(KEY_ID, firstKey))
+            .plus(TrustedAppKeys.of(trustedKey(secondKeyId, secondKey)));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("security-catalog-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, firstKey));
+    trustStore.put(
+        federatedBinding(STAGING_BINDING_ID, STAGING_CATALOG_ID, secondKeyId, secondKey));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(firstCatalog.toString(), CATALOG_ID);
+    manager.addSource(secondCatalog.toString(), STAGING_CATALOG_ID);
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.REVOKED,
+        OPERATOR_REVOCATION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(1));
+
+    AppCatalogSecurityDecision decision = manager.installedSecurityDecision(APP_ID, APP_VERSION);
+
+    assertEquals(AppCatalogSecurityDecision.OK, decision);
+    assertEquals(
+        List.of(STAGING_CATALOG_ID),
+        manager.listCatalogs().stream().map(AppCatalogSourceSnapshot::catalogId).toList());
+  }
+
+  @Test
+  void listRoutineCatalogs_whenOneSourceHasLocalIoFailure_expectHealthyCatalogRemainsAvailable()
+      throws Exception {
+    Assumptions.assumeTrue(
+        Files.getFileStore(tempDir).supportsFileAttributeView("posix"),
+        "requires POSIX permissions to induce a source-local read failure");
+    KeyPair firstKey = keyPair();
+    KeyPair secondKey = keyPair();
+    String secondKeyId = "catalog-io-healthy";
+    Path artifact = Files.writeString(tempDir.resolve("catalog-io-artifact.zip"), FIXTURE_TEXT);
+    Path firstCatalog =
+        signedCatalog(
+            CATALOG_ID, artifact.toUri(), firstKey, KEY_ID, sha256(artifact), Files.size(artifact));
+    Path secondCatalog =
+        signedCatalog(
+            STAGING_CATALOG_ID,
+            artifact.toUri(),
+            secondKey,
+            secondKeyId,
+            sha256(artifact),
+            Files.size(artifact));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(trustedKey(KEY_ID, firstKey))
+            .plus(TrustedAppKeys.of(trustedKey(secondKeyId, secondKey)));
+    Path sourceRoot = tempDir.resolve("catalog-source-io-isolation");
+    AppCatalogSourceStore sourceStore = new AppCatalogSourceStore(sourceRoot);
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("catalog-trust-io-isolation"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, firstKey));
+    trustStore.put(
+        federatedBinding(STAGING_BINDING_ID, STAGING_CATALOG_ID, secondKeyId, secondKey));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(firstCatalog.toString(), CATALOG_ID);
+    manager.addSource(secondCatalog.toString(), STAGING_CATALOG_ID);
+    Path unreadableCatalog =
+        sourceRoot.resolve(CATALOG_ID).resolve(AppCatalogSignature.CATALOG_FILE_NAME);
+    Set<java.nio.file.attribute.PosixFilePermission> originalPermissions =
+        Files.getPosixFilePermissions(unreadableCatalog);
+    Files.setPosixFilePermissions(unreadableCatalog, Set.of());
+    try {
+      List<AppCatalogSourceSnapshot> available = manager.listRoutineCatalogs();
+
+      assertEquals(
+          List.of(STAGING_CATALOG_ID),
+          available.stream().map(AppCatalogSourceSnapshot::catalogId).toList());
+    } finally {
+      Files.setPosixFilePermissions(unreadableCatalog, originalPermissions);
     }
   }
 
@@ -146,6 +468,11 @@ class AppCatalogManagerTest {
 
     try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
       assertTrue(Files.isDirectory(plan.stagedBundleDirectory()));
+      assertEquals(APP_SIGNING_KEY_ID, plan.bundleVerification().publisherKeyId());
+      assertEquals(
+          PublicKeyFingerprint.sha256(appKeyPair.getPublic()),
+          plan.bundleVerification().publisherKeyFingerprintSha256());
+      assertFalse(plan.bundleVerification().catalogScoped());
     }
   }
 
@@ -177,6 +504,152 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void verifyInstallPlan_whenCatalogRefreshChangesOriginSubject_expectPlanRejected()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("origin-race-artifact.zip"));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys);
+    manager.addSource(catalog.toString());
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      signedCatalog(
+          CATALOG_ID,
+          artifact.toUri(),
+          keyPair,
+          KEY_ID,
+          sha256(artifact),
+          Files.size(artifact),
+          GENERATED_AT.plusSeconds(1));
+      manager.refresh(CATALOG_ID);
+
+      AppCatalogException exception =
+          assertThrows(AppCatalogException.class, () -> manager.verifyInstallPlan(plan));
+
+      assertTrue(exception.getMessage().contains("changed after plan creation"));
+    }
+  }
+
+  @Test
+  void authorizeInstallPlanForMutation_whenTrustTransitionRuns_expectLeaseDefersTransition()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("mutation-lease-artifact.zip"));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("mutation-lease-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            new AppCatalogSourceStore(tempDir.resolve("mutation-lease-catalogs")),
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      AppCatalogManager.CatalogTrustAuthorization authorization =
+          manager.authorizeInstallPlanForMutation(plan);
+      CountDownLatch transitionStarted = new CountDownLatch(1);
+      CompletableFuture<FederatedCatalogTrustBinding> transition =
+          CompletableFuture.supplyAsync(
+              () -> {
+                transitionStarted.countDown();
+                try {
+                  return manager.transitionFederatedTrustBinding(
+                      CATALOG_ID,
+                      FederatedCatalogTrustBinding.Status.SUSPENDED,
+                      OPERATOR_SUSPENSION_REASON,
+                      OPERATOR_ID,
+                      GENERATED_AT.plusSeconds(1));
+                } catch (IOException exception) {
+                  throw new AssertionError(exception);
+                }
+              });
+      try {
+        assertTrue(transitionStarted.await(5, TimeUnit.SECONDS));
+        assertThrows(TimeoutException.class, () -> transition.get(100, TimeUnit.MILLISECONDS));
+        CompletableFuture<List<AppCatalogSourceSnapshot>> listing =
+            CompletableFuture.supplyAsync(
+                () -> {
+                  try {
+                    return manager.listCatalogs();
+                  } catch (IOException exception) {
+                    throw new AssertionError(exception);
+                  }
+                });
+        assertEquals(1, listing.get(5, TimeUnit.SECONDS).size());
+        assertEquals(
+            FederatedCatalogTrustBinding.Status.ACTIVE,
+            trustStore.findByCatalogId(CATALOG_ID).orElseThrow().status());
+      } finally {
+        authorization.close();
+      }
+
+      assertEquals(
+          FederatedCatalogTrustBinding.Status.SUSPENDED,
+          transition.get(5, TimeUnit.SECONDS).status());
+    }
+  }
+
+  @Test
+  void authorizeInstallPlanForMutation_whenRefreshRuns_expectLeaseDefersSourceReplacement()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("refresh-lease-artifact.zip"));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("refresh-lease-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            new AppCatalogSourceStore(tempDir.resolve("refresh-lease-catalogs")),
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore);
+    manager.addSource(catalog.toString(), CATALOG_ID);
+
+    try (AppCatalogInstallPlan plan = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+      AppCatalogManager.CatalogTrustAuthorization authorization =
+          manager.authorizeInstallPlanForMutation(plan);
+      signedCatalog(
+          CATALOG_ID,
+          artifact.toUri(),
+          keyPair,
+          KEY_ID,
+          sha256(artifact),
+          Files.size(artifact),
+          GENERATED_AT.plusSeconds(1));
+      CountDownLatch refreshStarted = new CountDownLatch(1);
+      CompletableFuture<AppCatalogSourceSnapshot> refresh =
+          CompletableFuture.supplyAsync(
+              () -> {
+                refreshStarted.countDown();
+                try {
+                  return manager.refresh(CATALOG_ID);
+                } catch (IOException exception) {
+                  throw new AssertionError(exception);
+                }
+              });
+      try {
+        assertTrue(refreshStarted.await(5, TimeUnit.SECONDS));
+        assertThrows(TimeoutException.class, () -> refresh.get(100, TimeUnit.MILLISECONDS));
+        manager.verifyInstallPlan(plan);
+      } finally {
+        authorization.close();
+      }
+
+      assertEquals(GENERATED_AT.plusSeconds(1), refresh.get(5, TimeUnit.SECONDS).generatedAt());
+    }
+  }
+
+  @Test
   void prepareInstallPlan_whenExplicitBundlePolicyRejectsSubject_expectInvalidBundle()
       throws Exception {
     KeyPair catalogKeyPair = keyPair();
@@ -194,7 +667,7 @@ class AppCatalogManagerTest {
     manager.addSource(catalog.toString());
 
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
     assertTrue(exception.getMessage().contains("outside approval"));
@@ -218,7 +691,7 @@ class AppCatalogManagerTest {
     manager.addSource(catalog.toString());
 
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
   }
@@ -363,8 +836,9 @@ class AppCatalogManagerTest {
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("._cryptad-app.properties")));
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("__MACOSX")));
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve("._launch.sh")));
-      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve(".DS_Store")));
-      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve(".DS_Store")));
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve(MACOS_METADATA_FILE)));
+      assertFalse(
+          Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve(MACOS_METADATA_FILE)));
     }
   }
 
@@ -601,7 +1075,7 @@ class AppCatalogManagerTest {
     byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
     String requestedCatalogKey = "USK@example/catalog/41/cryptad-app-catalog.properties";
     String resolvedCatalogKey = "USK@example/catalog/42/cryptad-app-catalog.properties";
-    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
+    String resolvedSignatureKey = RESOLVED_SIGNATURE_KEY;
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(requestedCatalogKey, catalogBytes, resolvedSignatureKey, signatureBytes),
@@ -609,7 +1083,7 @@ class AppCatalogManagerTest {
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
             new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
-    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_URI_PREFIX + requestedCatalogKey);
 
     FetchedCatalog fetched = fetcher.fetch(source);
 
@@ -625,9 +1099,9 @@ class AppCatalogManagerTest {
       throws Exception {
     byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
     byte[] signatureBytes = BASIC_CATALOG_SIGNATURE.getBytes(StandardCharsets.UTF_8);
-    String requestedCatalogKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
+    String requestedCatalogKey = LATEST_CATALOG_KEY;
     String resolvedCatalogKey = "crypta:USK@example/catalog/42/cryptad-app-catalog.properties";
-    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
+    String resolvedSignatureKey = RESOLVED_SIGNATURE_KEY;
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(requestedCatalogKey, catalogBytes, resolvedSignatureKey, signatureBytes),
@@ -635,7 +1109,7 @@ class AppCatalogManagerTest {
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
             new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
-    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_URI_PREFIX + requestedCatalogKey);
 
     FetchedCatalog fetched = fetcher.fetch(source);
 
@@ -649,7 +1123,7 @@ class AppCatalogManagerTest {
   @Test
   void fetch_whenCryptaResolvedCatalogChangesKeyKind_expectInvalidCatalogSource() {
     byte[] catalogBytes = BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
-    String requestedCatalogKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
+    String requestedCatalogKey = LATEST_CATALOG_KEY;
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(requestedCatalogKey, catalogBytes),
@@ -657,7 +1131,7 @@ class AppCatalogManagerTest {
     AppCatalogFetcher fetcher =
         new AppCatalogFetcher(
             new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort);
-    AppCatalogSource source = AppCatalogSource.parse("crypta:" + requestedCatalogKey);
+    AppCatalogSource source = AppCatalogSource.parse(CRYPTA_URI_PREFIX + requestedCatalogKey);
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> fetcher.fetch(source));
@@ -685,7 +1159,7 @@ class AppCatalogManagerTest {
     assertEquals("catalog properties", requests.getFirst().purpose());
     assertEquals(AppCatalogSidecars.MAX_CATALOG_BYTES, requests.get(0).maxBytes());
     assertTrue(requests.get(0).timeout().compareTo(Duration.ZERO) > 0);
-    assertEquals("catalog signature", requests.get(1).purpose());
+    assertEquals(CATALOG_SIGNATURE_PURPOSE, requests.get(1).purpose());
     assertEquals(AppCatalogSidecars.MAX_SIGNATURE_BYTES, requests.get(1).maxBytes());
     assertTrue(requests.get(1).timeout().compareTo(Duration.ZERO) > 0);
   }
@@ -726,7 +1200,7 @@ class AppCatalogManagerTest {
     ContentFetchPort contentFetchPort =
         request -> {
           byte[] bytes =
-              "catalog signature".equals(request.purpose())
+              CATALOG_SIGNATURE_PURPOSE.equals(request.purpose())
                   ? new byte[(int) AppCatalogSidecars.MAX_SIGNATURE_BYTES + 1]
                   : BASIC_CATALOG_PROPERTIES.getBytes(StandardCharsets.UTF_8);
           return new BoundedContentFetchResult(bytes, request.uri(), null, null);
@@ -786,15 +1260,14 @@ class AppCatalogManagerTest {
     Path bundle = signedBundle(keyPair);
     Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
     Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
-    String sourceKey = "USK@example/catalog/latest/cryptad-app-catalog.properties";
+    String sourceKey = LATEST_CATALOG_KEY;
     String resolvedUri = "USK@example/catalog/42/cryptad-app-catalog.properties";
-    String resolvedSignatureKey = "USK@example/catalog/42/cryptad-app-catalog.signature";
     FakeContentFetchPort contentFetchPort =
         new FakeContentFetchPort(
             Map.of(
                 sourceKey,
                 Files.readAllBytes(catalog),
-                resolvedSignatureKey,
+                RESOLVED_SIGNATURE_KEY,
                 Files.readAllBytes(
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
             Map.of(sourceKey, resolvedUri));
@@ -830,7 +1303,8 @@ class AppCatalogManagerTest {
         assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
     List<AppCatalogEntry> entries = manager.listApps(CATALOG_ID);
     AppCatalogSourceSnapshot snapshot = manager.listCatalogs().getFirst();
-    AppCatalogMirrorHealth primaryHealth = healthFor(manager.sourceHealth(CATALOG_ID), "primary");
+    AppCatalogMirrorHealth primaryHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), PRIMARY_MIRROR_ID);
 
     assertEquals(AppCatalogSidecars.CATALOG_FETCH_FAILED, exception.errorCode());
     assertEquals(APP_ID, entries.getFirst().appId());
@@ -861,16 +1335,18 @@ class AppCatalogManagerTest {
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
     manager.addSource(CRYPTA_CATALOG_SOURCE);
-    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
 
     AppCatalogSourceSnapshot refreshed = manager.refresh(CATALOG_ID);
     List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
 
     assertEquals(AppCatalogFetchStatus.SUCCESS, refreshed.lastFetchStatus());
-    assertEquals(AppCatalogFetchStatus.FAILED, healthFor(health, "primary").lastFetchStatus());
-    assertEquals(AppCatalogFetchStatus.SUCCESS, healthFor(health, "backup").lastFetchStatus());
-    assertEquals(Optional.of(KEY_ID), healthFor(health, "backup").lastSignatureKeyId());
+    assertEquals(
+        AppCatalogFetchStatus.FAILED, healthFor(health, PRIMARY_MIRROR_ID).lastFetchStatus());
+    assertEquals(
+        AppCatalogFetchStatus.SUCCESS, healthFor(health, BACKUP_MIRROR_ID).lastFetchStatus());
+    assertEquals(Optional.of(KEY_ID), healthFor(health, BACKUP_MIRROR_ID).lastSignatureKeyId());
   }
 
   @Test
@@ -891,20 +1367,16 @@ class AppCatalogManagerTest {
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
     manager.addSource(CRYPTA_CATALOG_SOURCE);
-    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     manager.refresh(CATALOG_ID);
     assertEquals(
         AppCatalogFetchStatus.SUCCESS,
-        healthFor(manager.sourceHealth(CATALOG_ID), "backup").lastFetchStatus());
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID).lastFetchStatus());
 
-    manager.updateMirror(
-        CATALOG_ID,
-        "backup",
-        "https://mirror.example.invalid/cryptad-app-catalog.properties",
-        null,
-        null);
-    AppCatalogMirrorHealth updatedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    manager.updateMirror(CATALOG_ID, BACKUP_MIRROR_ID, MIRROR_SOURCE_URI, null, null);
+    AppCatalogMirrorHealth updatedHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
 
     assertEquals(AppCatalogFetchStatus.SUCCESS, updatedHealth.lastFetchStatus());
     assertTrue(updatedHealth.lastSuccessfulRefreshAt().isPresent());
@@ -933,34 +1405,36 @@ class AppCatalogManagerTest {
         new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
     AppCatalogManager manager = manager(sourceStore, trustedKeys(keyPair), contentFetchPort);
     manager.addSource(CRYPTA_CATALOG_SOURCE);
-    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     manager.refresh(CATALOG_ID);
     assertEquals(
         AppCatalogFetchStatus.SUCCESS,
-        healthFor(manager.sourceHealth(CATALOG_ID), "backup").lastFetchStatus());
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID).lastFetchStatus());
 
-    manager.removeMirror(CATALOG_ID, "backup");
-    AppCatalogMirrorHealth removedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    manager.removeMirror(CATALOG_ID, BACKUP_MIRROR_ID);
+    AppCatalogMirrorHealth removedHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
     assertEquals(AppCatalogFetchStatus.SUCCESS, removedHealth.lastFetchStatus());
     assertEquals(Optional.of(originalMirrorUri), removedHealth.lastResolvedUri());
     assertTrue(
         manager.listMirrors(CATALOG_ID).stream()
-            .noneMatch(mirror -> "backup".equals(mirror.id().value())));
+            .noneMatch(mirror -> BACKUP_MIRROR_ID.equals(mirror.id().value())));
     manager.addMirror(
         CATALOG_ID,
-        "backup",
+        BACKUP_MIRROR_ID,
         "https://replacement.example.invalid/cryptad-app-catalog.properties",
         1,
         true);
     AppCatalogMirror reusedMirror =
         manager.listMirrors(CATALOG_ID).stream()
-            .filter(mirror -> "backup".equals(mirror.id().value()))
+            .filter(mirror -> BACKUP_MIRROR_ID.equals(mirror.id().value()))
             .findFirst()
             .orElseThrow();
     sourceStore.writeMirrorHealth(
         CATALOG_ID, Map.of(reusedMirror.id(), AppCatalogMirrorHealth.skipped(reusedMirror)));
-    AppCatalogMirrorHealth reusedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    AppCatalogMirrorHealth reusedHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
 
     assertEquals(AppCatalogFetchStatus.SUCCESS, reusedHealth.lastFetchStatus());
     assertTrue(reusedHealth.lastSuccessfulRefreshAt().isPresent());
@@ -984,23 +1458,19 @@ class AppCatalogManagerTest {
             Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes));
     AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
     manager.addSource(CRYPTA_CATALOG_SOURCE);
-    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     manager.refresh(CATALOG_ID);
     contentFetchPort.replaceContent(
         Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes), Map.of());
     manager.refresh(CATALOG_ID);
     assertEquals(
         AppCatalogFetchStatus.SUCCESS,
-        healthFor(manager.sourceHealth(CATALOG_ID), "primary").lastFetchStatus());
+        healthFor(manager.sourceHealth(CATALOG_ID), PRIMARY_MIRROR_ID).lastFetchStatus());
 
-    manager.updateMirror(
-        CATALOG_ID,
-        "backup",
-        "https://mirror.example.invalid/cryptad-app-catalog.properties",
-        null,
-        null);
-    AppCatalogMirrorHealth updatedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    manager.updateMirror(CATALOG_ID, BACKUP_MIRROR_ID, MIRROR_SOURCE_URI, null, null);
+    AppCatalogMirrorHealth updatedHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
 
     assertEquals(AppCatalogFetchStatus.SKIPPED, updatedHealth.lastFetchStatus());
     assertTrue(updatedHealth.lastSuccessfulRefreshAt().isEmpty());
@@ -1038,19 +1508,19 @@ class AppCatalogManagerTest {
     Path bundle = signedBundle(keyPair);
     Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
     Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
-    String originalSource = "https://mirror.example.invalid/cryptad-app-catalog.properties";
+    String originalSource = MIRROR_SOURCE_URI;
     AppCatalogManager manager = manager(trustedKeys(keyPair));
 
     manager.addSource(catalog.toString());
-    manager.addMirror(CATALOG_ID, "backup", originalSource, 1, true);
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, originalSource, 1, true);
     String oversizedSource = oversizedMirrorSource();
     AppCatalogException exception =
         assertThrows(
             AppCatalogException.class,
-            () -> manager.updateMirror(CATALOG_ID, "backup", oversizedSource, null, null));
+            () -> manager.updateMirror(CATALOG_ID, BACKUP_MIRROR_ID, oversizedSource, null, null));
     AppCatalogMirror retained =
         manager.listMirrors(CATALOG_ID).stream()
-            .filter(mirror -> "backup".equals(mirror.id().value()))
+            .filter(mirror -> BACKUP_MIRROR_ID.equals(mirror.id().value()))
             .findFirst()
             .orElseThrow();
 
@@ -1070,8 +1540,7 @@ class AppCatalogManagerTest {
     AppCatalogSourceStore sourceStore =
         new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
     AppCatalogManager manager = new AppCatalogManager(sourceStore, () -> trustedKeys(keyPair));
-    AppCatalogMirrorHealth retainedHealth =
-        failedPrimaryHealth("https://mirror.example.invalid/cryptad-app-catalog.properties");
+    AppCatalogMirrorHealth retainedHealth = failedPrimaryHealth(MIRROR_SOURCE_URI);
 
     manager.addSource(catalog.toString());
     sourceStore.writeMirrorHealth(CATALOG_ID, Map.of(AppCatalogMirrorId.PRIMARY, retainedHealth));
@@ -1118,7 +1587,7 @@ class AppCatalogManagerTest {
             Files.size(artifact),
             GENERATED_AT.minusSeconds(3600));
     manager.addMirror(CATALOG_ID, "stale", staleCatalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
@@ -1158,7 +1627,7 @@ class AppCatalogManagerTest {
             Files.size(alternateArtifact),
             GENERATED_AT);
     manager.addMirror(CATALOG_ID, "ambiguous", ambiguousCatalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
 
     AppCatalogException exception =
         assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
@@ -1201,10 +1670,11 @@ class AppCatalogManagerTest {
             sha256(artifact),
             Files.size(artifact),
             successfulMirrorGeneratedAt);
-    manager.addMirror(CATALOG_ID, "backup", mirrorCatalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, mirrorCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     manager.refresh(CATALOG_ID);
-    AppCatalogMirrorHealth successfulHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    AppCatalogMirrorHealth successfulHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
     Optional<Instant> previousSuccessAt = successfulHealth.lastSuccessfulRefreshAt();
     Optional<String> previousDigest = successfulHealth.lastCatalogDigest();
 
@@ -1217,7 +1687,8 @@ class AppCatalogManagerTest {
         Files.size(artifact),
         GENERATED_AT.minusSeconds(3600));
     assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
-    AppCatalogMirrorHealth staleHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    AppCatalogMirrorHealth staleHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), BACKUP_MIRROR_ID);
 
     assertEquals(AppCatalogFetchStatus.SUCCESS, successfulHealth.lastFetchStatus());
     assertTrue(previousSuccessAt.isPresent());
@@ -1256,7 +1727,7 @@ class AppCatalogManagerTest {
             Files.size(artifact),
             GENERATED_AT.plusSeconds(3600));
     manager.addMirror(CATALOG_ID, "mirror-1", newerCatalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     AppCatalogSourceSnapshot refreshed = manager.refresh(CATALOG_ID);
 
     AppCatalogRollbackCandidate candidate =
@@ -1272,7 +1743,8 @@ class AppCatalogManagerTest {
             .filter(current -> current.revision().current())
             .findFirst()
             .orElseThrow();
-    AppCatalogMirrorHealth primaryHealth = healthFor(manager.sourceHealth(CATALOG_ID), "primary");
+    AppCatalogMirrorHealth primaryHealth =
+        healthFor(manager.sourceHealth(CATALOG_ID), PRIMARY_MIRROR_ID);
 
     assertEquals(GENERATED_AT.plusSeconds(3600), refreshed.generatedAt());
     assertEquals(GENERATED_AT, rolledBack.generatedAt());
@@ -1282,6 +1754,73 @@ class AppCatalogManagerTest {
         currentRevision.revision().rollbackReason());
     assertEquals(
         Optional.of("operator rollback after bad publication"), primaryHealth.lastRollbackReason());
+  }
+
+  @Test
+  void rollback_whenFederatedBindingIsSuspended_expectHistoricalRevisionRestoredOnly()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    TrustedAppKeys trustedKeys = trustedKeys(keyPair);
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve("suspended-rollback-artifact.zip"));
+    Path initialCatalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(initialCatalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    initialCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve("suspended-rollback-catalogs"));
+    FileFederatedCatalogTrustStore trustStore =
+        new FileFederatedCatalogTrustStore(tempDir.resolve("suspended-rollback-trust"));
+    trustStore.put(federatedBinding(CORE_BINDING_ID, CATALOG_ID, KEY_ID, keyPair));
+    AppCatalogManager manager =
+        AppCatalogManager.withFederatedTrustPolicy(
+            sourceStore,
+            () -> trustedKeys,
+            AppCatalogBundleVerificationPolicy.fromTrustedKeys(() -> trustedKeys),
+            trustStore,
+            contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE, CATALOG_ID);
+    Path newerCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(3600));
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            Files.readAllBytes(newerCatalog),
+            CRYPTA_SIGNATURE_KEY,
+            Files.readAllBytes(
+                newerCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
+        Map.of());
+    manager.refresh(CATALOG_ID);
+    manager.transitionFederatedTrustBinding(
+        CATALOG_ID,
+        FederatedCatalogTrustBinding.Status.SUSPENDED,
+        OPERATOR_SUSPENSION_REASON,
+        OPERATOR_ID,
+        GENERATED_AT.plusSeconds(7200));
+
+    AppCatalogRollbackCandidate candidate =
+        manager.rollbackCandidates(CATALOG_ID).stream()
+            .filter(AppCatalogRollbackCandidate::eligible)
+            .findFirst()
+            .orElseThrow();
+    AppCatalogSourceSnapshot rolledBack =
+        manager.rollback(CATALOG_ID, candidate.revision().revisionDigest(), "suspended rollback");
+
+    assertEquals(GENERATED_AT, rolledBack.generatedAt());
+    assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
   }
 
   @Test
@@ -1320,8 +1859,8 @@ class AppCatalogManagerTest {
             GENERATED_AT.plusSeconds(3600));
     String mirrorResolvedUri =
         AppCatalogSource.parse(mirrorCatalog.toString()).resolvedCatalogFetchUri();
-    manager.addMirror(CATALOG_ID, "backup", mirrorCatalog.toString(), 1, true);
-    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.addMirror(CATALOG_ID, BACKUP_MIRROR_ID, mirrorCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException(PRIMARY_UNAVAILABLE_MESSAGE));
     AppCatalogSourceSnapshot mirrorRefresh = manager.refresh(CATALOG_ID);
     Path primaryCatalog =
         signedCatalog(
@@ -1341,18 +1880,18 @@ class AppCatalogManagerTest {
                 primaryCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
         Map.of());
     AppCatalogSourceSnapshot primaryRefresh = manager.refresh(CATALOG_ID);
-    manager.removeMirror(CATALOG_ID, "backup");
+    manager.removeMirror(CATALOG_ID, BACKUP_MIRROR_ID);
 
     AppCatalogRollbackCandidate mirrorCandidate =
         manager.rollbackCandidates(CATALOG_ID).stream()
-            .filter(candidate -> "backup".equals(candidate.revision().sourceId().value()))
+            .filter(candidate -> BACKUP_MIRROR_ID.equals(candidate.revision().sourceId().value()))
             .findFirst()
             .orElseThrow();
     AppCatalogSourceSnapshot rolledBack =
         manager.rollback(
             CATALOG_ID, mirrorCandidate.revision().revisionDigest(), "bad publication");
     List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
-    AppCatalogMirrorHealth mirrorHealth = healthFor(health, "backup");
+    AppCatalogMirrorHealth mirrorHealth = healthFor(health, BACKUP_MIRROR_ID);
 
     assertEquals(GENERATED_AT.plusSeconds(3600), mirrorRefresh.generatedAt());
     assertEquals(GENERATED_AT.plusSeconds(7200), primaryRefresh.generatedAt());
@@ -1366,7 +1905,7 @@ class AppCatalogManagerTest {
         Optional.of(mirrorCandidate.revision().revisionDigest()), mirrorHealth.lastCatalogDigest());
     assertTrue(
         manager.listMirrors(CATALOG_ID).stream()
-            .noneMatch(mirror -> "backup".equals(mirror.id().value())));
+            .noneMatch(mirror -> BACKUP_MIRROR_ID.equals(mirror.id().value())));
   }
 
   @Test
@@ -1516,7 +2055,7 @@ class AppCatalogManagerTest {
 
     List<AppCatalogEntry> inspectedEntries = manager.listApps(CATALOG_ID);
     AppCatalogException exception =
-        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager));
+        assertThrows(AppCatalogException.class, () -> prepareAndCloseInstallPlan(manager, APP_ID));
 
     assertEquals(APP_ID, inspectedEntries.getFirst().appId());
     assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
@@ -2101,7 +2640,7 @@ class AppCatalogManagerTest {
     CloseRecordingInputStream body = new CloseRecordingInputStream();
     AppCatalogArtifactDownloader downloader =
         new AppCatalogArtifactDownloader(
-            new FixedResponseHttpClient(new InputStreamResponse(200, body, contentLength("2"))));
+            new FixedResponseHttpClient(InputStreamResponse.withContentLength(body, "2")));
     AppCatalogEntry entry = remoteEntry();
     Path scratchDirectory = tempDir.resolve("scratch-length");
 
@@ -2118,7 +2657,7 @@ class AppCatalogManagerTest {
     IOException cleanupFailure = new IOException("delete failed");
     AppCatalogArtifactDownloader downloader =
         new AppCatalogArtifactDownloader(
-            new FixedResponseHttpClient(new InputStreamResponse(200, body, contentLength("2"))),
+            new FixedResponseHttpClient(InputStreamResponse.withContentLength(body, "2")),
             (AppCatalogArtifactDownloader.ArtifactCleaner)
                 _ -> {
                   throw cleanupFailure;
@@ -2141,7 +2680,7 @@ class AppCatalogManagerTest {
     AppCatalogArtifactDownloader downloader =
         new AppCatalogArtifactDownloader(
             new FixedResponseHttpClient(
-                new InputStreamResponse(200, body, contentLength("not-a-number"))));
+                InputStreamResponse.withContentLength(body, "not-a-number")));
     AppCatalogEntry entry = remoteEntry();
     Path scratchDirectory = tempDir.resolve("scratch-bad-length");
 
@@ -2182,9 +2721,28 @@ class AppCatalogManagerTest {
         () -> trustedKeys);
   }
 
+  static FederatedCatalogTrustBinding federatedBinding(
+      String bindingId, String catalogId, String keyId, KeyPair keyPair) {
+    return FederatedCatalogTrustBinding.create(
+        bindingId,
+        catalogId,
+        Map.of(keyId, PublicKeyFingerprint.sha256(keyPair.getPublic())),
+        FederatedCatalogTrustBinding.Status.ACTIVE,
+        Set.of(AppCatalogChannel.STABLE),
+        100,
+        null,
+        null,
+        null,
+        GENERATED_AT,
+        GENERATED_AT,
+        "operator approval",
+        OPERATOR_ID);
+  }
+
   @SuppressWarnings("EmptyTryBlock")
-  private static void prepareAndCloseInstallPlan(AppCatalogManager manager) throws IOException {
-    try (var _ = manager.prepareInstallPlan(CATALOG_ID, APP_ID)) {
+  private static void prepareAndCloseInstallPlan(AppCatalogManager manager, String appId)
+      throws IOException {
+    try (var _ = manager.prepareInstallPlan(CATALOG_ID, appId)) {
       // An unexpected successful plan still owns scratch state that must be released.
     }
   }
@@ -2242,11 +2800,11 @@ class AppCatalogManagerTest {
         Optional.empty());
   }
 
-  private Path signedBundle(KeyPair keyPair) throws IOException {
+  Path signedBundle(KeyPair keyPair) throws IOException {
     return signedBundle(keyPair, KEY_ID);
   }
 
-  private Path signedBundle(KeyPair keyPair, String keyId) throws IOException {
+  Path signedBundle(KeyPair keyPair, String keyId) throws IOException {
     Path root = Files.createDirectories(tempDir.resolve("bundle").resolve(APP_ID));
     Path bin = Files.createDirectories(root.resolve("bin"));
     Files.writeString(bin.resolve("launch.sh"), "#!/bin/sh\nexit 0\n", StandardCharsets.UTF_8);
@@ -2264,6 +2822,26 @@ class AppCatalogManagerTest {
                 APP_ID, APP_NAME, APP_VERSION, QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION),
         StandardCharsets.UTF_8);
     AppBundleSigner.sign(root, keyId, keyPair.getPrivate());
+    return root;
+  }
+
+  private Path unsignedBundle() throws IOException {
+    Path root = Files.createDirectories(tempDir.resolve("unsigned-bundle").resolve(APP_ID));
+    Path bin = Files.createDirectories(root.resolve("bin"));
+    Files.writeString(bin.resolve("launch.sh"), "#!/bin/sh\nexit 0\n", StandardCharsets.UTF_8);
+    Files.writeString(
+        root.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME),
+        """
+        manifest.version=1
+        app.id=%s
+        app.name=%s
+        app.version=%s
+        app.exec=bin/launch.sh
+        app.permissions=%s,%s
+        """
+            .formatted(
+                APP_ID, APP_NAME, APP_VERSION, QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION),
+        StandardCharsets.UTF_8);
     return root;
   }
 
@@ -2295,8 +2873,8 @@ class AppCatalogManagerTest {
     return root;
   }
 
-  private Path signedCatalog(
-      Path artifact, KeyPair keyPair, String artifactSha256, long artifactSize) throws IOException {
+  Path signedCatalog(Path artifact, KeyPair keyPair, String artifactSha256, long artifactSize)
+      throws IOException {
     return signedCatalog(CATALOG_ID, artifact, keyPair, artifactSha256, artifactSize);
   }
 
@@ -2312,7 +2890,7 @@ class AppCatalogManagerTest {
     return signedCatalog(catalogId, artifactUri, keyPair, KEY_ID, artifactSha256, artifactSize);
   }
 
-  private Path signedCatalog(
+  Path signedCatalog(
       String catalogId,
       URI artifactUri,
       KeyPair keyPair,
@@ -2324,7 +2902,7 @@ class AppCatalogManagerTest {
         catalogId, artifactUri, keyPair, keyId, artifactSha256, artifactSize, GENERATED_AT);
   }
 
-  private Path signedCatalog(
+  Path signedCatalog(
       String catalogId,
       URI artifactUri,
       KeyPair keyPair,
@@ -2380,7 +2958,75 @@ class AppCatalogManagerTest {
     return catalog;
   }
 
-  private static Path zipDirectory(Path sourceRoot, Path targetZip) throws IOException {
+  private Path signedDenylistingCatalog(
+      URI artifactUri, KeyPair keyPair, String artifactSha256, long artifactSize)
+      throws IOException {
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, artifactUri, keyPair, KEY_ID, artifactSha256, artifactSize, GENERATED_AT);
+    String catalogText =
+        Files.readString(catalog, StandardCharsets.UTF_8)
+            .replace("catalog.version=1", "catalog.version=4")
+            .replace(
+                "catalog.entries=%s%n".formatted(APP_ID),
+                """
+                catalog.entries=%s
+                catalog.securityAdvisories=ADV-1
+                catalog.securityAdvisory.ADV-1.uri=https://example.invalid/advisories/ADV-1
+                catalog.securityAdvisory.ADV-1.title=Suspended catalog advisory
+                catalog.securityAdvisory.ADV-1.severity=critical
+                catalog.securityAdvisory.ADV-1.status=active
+                catalog.securityAdvisory.ADV-1.action=denylist
+                catalog.securityAdvisory.ADV-1.summary=This source must not affect active catalogs.
+                catalog.securityAdvisory.ADV-1.publishedAt=2026-04-21T18:22:40Z
+                catalog.securityAdvisory.ADV-1.updatedAt=2026-04-21T18:22:40Z
+                catalog.securityDenylist=deny-app
+                catalog.securityDenylist.deny-app.appId=%s
+                catalog.securityDenylist.deny-app.version=%s
+                catalog.securityDenylist.deny-app.advisoryId=ADV-1
+                catalog.securityDenylist.deny-app.reason=Suspended source fixture.
+                """
+                    .formatted(APP_ID, APP_ID, APP_VERSION))
+            .replace(
+                "app.%s.bundle.uri=".formatted(APP_ID),
+                "app.%s.channel=stable%napp.%s.bundle.uri=".formatted(APP_ID, APP_ID));
+    Files.writeString(catalog, catalogText, StandardCharsets.UTF_8);
+    AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
+    return catalog;
+  }
+
+  private Path signedMixedChannelCatalog(
+      URI artifactUri, KeyPair keyPair, String artifactSha256, long artifactSize)
+      throws IOException {
+    Path catalog =
+        signedCatalog(
+            CATALOG_ID, artifactUri, keyPair, KEY_ID, artifactSha256, artifactSize, GENERATED_AT);
+    String catalogText =
+        Files.readString(catalog, StandardCharsets.UTF_8)
+                .replace("catalog.version=1", "catalog.version=3")
+                .replace("catalog.entries=" + APP_ID, "catalog.entries=" + APP_ID + ",beta-app")
+                .replace(
+                    "app.%s.bundle.uri=".formatted(APP_ID),
+                    "app.%s.channel=stable%napp.%s.bundle.uri=".formatted(APP_ID, APP_ID))
+            + """
+            app.beta-app.id=beta-app
+            app.beta-app.name=Beta app
+            app.beta-app.version=1
+            app.beta-app.summary=Beta entry outside the local channel scope
+            app.beta-app.channel=beta
+            app.beta-app.bundle.uri=%s
+            app.beta-app.bundle.sha256=%s
+            app.beta-app.bundle.size.bytes=%d
+            app.beta-app.bundle.type=zip
+            app.beta-app.permissions=
+            """
+                .formatted(artifactUri, artifactSha256, artifactSize);
+    Files.writeString(catalog, catalogText, StandardCharsets.UTF_8);
+    AppCatalogSigner.sign(catalog, KEY_ID, keyPair.getPrivate());
+    return catalog;
+  }
+
+  static Path zipDirectory(Path sourceRoot, Path targetZip) throws IOException {
     try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(targetZip));
         var paths = Files.walk(sourceRoot)) {
       for (Path path : paths.sorted(Comparator.naturalOrder()).toList()) {
@@ -2420,7 +3066,7 @@ class AppCatalogManagerTest {
       zip.putNextEntry(new ZipEntry("bin/._launch.sh"));
       zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
-      zip.putNextEntry(new ZipEntry(".DS_Store"));
+      zip.putNextEntry(new ZipEntry(MACOS_METADATA_FILE));
       zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
       zip.putNextEntry(new ZipEntry("bin/.DS_Store"));
@@ -2591,11 +3237,7 @@ class AppCatalogManagerTest {
         List.of(QUEUE_READ_PERMISSION));
   }
 
-  private static HttpHeaders contentLength(String value) {
-    return HttpHeaders.of(Map.of("content-length", List.of(value)), (_, _) -> true);
-  }
-
-  private static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
+  static String sha256(Path path) throws IOException, NoSuchAlgorithmException {
     MessageDigest digest = MessageDigest.getInstance("SHA-256");
     digest.update(Files.readAllBytes(path));
     return HexFormat.of().formatHex(digest.digest());
@@ -2607,11 +3249,11 @@ class AppCatalogManagerTest {
     return HexFormat.of().formatHex(digest.digest());
   }
 
-  private static KeyPair keyPair() throws NoSuchAlgorithmException {
+  static KeyPair keyPair() throws NoSuchAlgorithmException {
     return KeyPairGenerator.getInstance(AppBundleSignature.SIGNATURE_ALGORITHM).generateKeyPair();
   }
 
-  private static TrustedAppKeys trustedKeys(KeyPair keyPair) {
+  static TrustedAppKeys trustedKeys(KeyPair keyPair) {
     return TrustedAppKeys.of(trustedKey(KEY_ID, keyPair));
   }
 
@@ -2624,7 +3266,7 @@ class AppCatalogManagerTest {
             Instant.parse("2100-01-01T00:00:00Z")));
   }
 
-  private static TrustedAppKey trustedKey(String keyId, KeyPair keyPair) {
+  static TrustedAppKey trustedKey(String keyId, KeyPair keyPair) {
     return new TrustedAppKey(keyId, AppBundleSignature.SIGNATURE_ALGORITHM, keyPair.getPublic());
   }
 
@@ -2655,7 +3297,7 @@ class AppCatalogManagerTest {
       byte[] bytes = content.get(request.uri());
       if (bytes == null) {
         throw new ContentFetchException(
-            "catalog signature".equals(request.purpose())
+            CATALOG_SIGNATURE_PURPOSE.equals(request.purpose())
                 ? AppCatalogSidecars.CATALOG_SIGNATURE_MISSING
                 : ContentFetchException.CATALOG_FETCH_FAILED,
             "content is unavailable");
@@ -2690,143 +3332,6 @@ class AppCatalogManagerTest {
 
     private List<BoundedContentFetchRequest> requests() {
       return List.copyOf(requests);
-    }
-  }
-
-  private static final class CloseRecordingInputStream extends ByteArrayInputStream {
-    private boolean closed;
-
-    private CloseRecordingInputStream() {
-      super(new byte[0]);
-    }
-
-    @Override
-    public void close() {
-      closed = true;
-    }
-
-    boolean closed() {
-      return closed;
-    }
-  }
-
-  private static final class FixedResponseHttpClient extends HttpClient {
-    private final HttpResponse<InputStream> response;
-    private final IOException sendFailure;
-
-    private FixedResponseHttpClient(HttpResponse<InputStream> response) {
-      this.response = response;
-      sendFailure = null;
-    }
-
-    private FixedResponseHttpClient(IOException sendFailure) {
-      response = null;
-      this.sendFailure = sendFailure;
-    }
-
-    @Override
-    public Optional<CookieHandler> cookieHandler() {
-      return Optional.empty();
-    }
-
-    @Override
-    public Optional<Duration> connectTimeout() {
-      return Optional.empty();
-    }
-
-    @Override
-    public Redirect followRedirects() {
-      return Redirect.NEVER;
-    }
-
-    @Override
-    public Optional<ProxySelector> proxy() {
-      return Optional.empty();
-    }
-
-    @Override
-    public SSLContext sslContext() {
-      try {
-        return SSLContext.getDefault();
-      } catch (NoSuchAlgorithmException exception) {
-        throw new IllegalStateException(exception);
-      }
-    }
-
-    @Override
-    public SSLParameters sslParameters() {
-      return new SSLParameters();
-    }
-
-    @Override
-    public Optional<Authenticator> authenticator() {
-      return Optional.empty();
-    }
-
-    @Override
-    public Version version() {
-      return Version.HTTP_1_1;
-    }
-
-    @Override
-    public Optional<Executor> executor() {
-      return Optional.empty();
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public <T> HttpResponse<T> send(
-        HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) throws IOException {
-      if (sendFailure != null) {
-        throw sendFailure;
-      }
-      return (HttpResponse<T>) response;
-    }
-
-    @Override
-    public <T> CompletableFuture<HttpResponse<T>> sendAsync(
-        HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) {
-      return CompletableFuture.failedFuture(new UnsupportedOperationException());
-    }
-
-    @Override
-    public <T> CompletableFuture<HttpResponse<T>> sendAsync(
-        HttpRequest request,
-        HttpResponse.BodyHandler<T> responseBodyHandler,
-        HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
-      return CompletableFuture.failedFuture(new UnsupportedOperationException());
-    }
-  }
-
-  private record InputStreamResponse(int statusCode, InputStream body, HttpHeaders headers)
-      implements HttpResponse<InputStream> {
-    private InputStreamResponse(int statusCode, InputStream body) {
-      this(statusCode, body, HttpHeaders.of(Collections.emptyMap(), (_, _) -> true));
-    }
-
-    @Override
-    public HttpRequest request() {
-      return HttpRequest.newBuilder(uri()).GET().build();
-    }
-
-    @Override
-    public Optional<HttpResponse<InputStream>> previousResponse() {
-      return Optional.empty();
-    }
-
-    @Override
-    public Optional<SSLSession> sslSession() {
-      return Optional.empty();
-    }
-
-    @Override
-    public URI uri() {
-      return URI.create("http://localhost/test");
-    }
-
-    @Override
-    public HttpClient.Version version() {
-      return HttpClient.Version.HTTP_1_1;
     }
   }
 }
