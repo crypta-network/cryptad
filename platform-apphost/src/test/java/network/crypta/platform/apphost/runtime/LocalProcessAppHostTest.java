@@ -1573,12 +1573,11 @@ class LocalProcessAppHostTest {
             retainedSnapshots.add(List.copyOf(origins));
           }
         });
+    Path stagedApp = stageInstalledApp(SAMPLE_APP_ID);
+    InstalledAppOrigin installedOrigin = origin(APP_VERSION);
 
     assertThrows(
-        IOException.class,
-        () ->
-            host.installCatalogFromDirectory(
-                stageInstalledApp(SAMPLE_APP_ID), origin(APP_VERSION)));
+        IOException.class, () -> host.installCatalogFromDirectory(stagedApp, installedOrigin));
 
     assertTrue(host.describe(SAMPLE_APP_ID).isEmpty());
     assertFalse(retainedSnapshots.get(1).isEmpty());

@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Atomic, closed storage for catalog/app-scoped publisher authorizations.
@@ -27,17 +26,17 @@ public final class FileCatalogPublisherBindingStore {
   /** Filename suffix for serialized publisher bindings. */
   private static final String SUFFIX = ".properties";
 
-  /** Fair mutation locks shared by store instances addressing the same normalized root. */
-  private static final ConcurrentMap<Path, ReentrantReadWriteLock> MUTATION_LOCKS =
+  /** Fair mutation fences shared by store instances addressing the same normalized root. */
+  private static final ConcurrentMap<Path, CatalogMutationFence> MUTATION_FENCES =
       new ConcurrentHashMap<>();
 
   /** Absolute normalized private policy-store root. */
   private final Path root;
 
-  /** Store-wide lock coordinating policy writes with retained authorization leases. */
-  private final ReentrantReadWriteLock mutationLock;
+  /** Store-wide fence coordinating policy writes with retained authorization leases. */
+  private final CatalogMutationFence mutationFence;
 
-  /** Same-thread lease retaining one exact publisher-policy authorization. */
+  /** Single-use lease retaining one exact publisher-policy authorization. */
   @FunctionalInterface
   public interface AuthorizationLease extends AutoCloseable {
     /** Releases the retained publisher policy. */
@@ -52,8 +51,8 @@ public final class FileCatalogPublisherBindingStore {
    */
   public FileCatalogPublisherBindingStore(Path root) {
     this.root = root.toAbsolutePath().normalize();
-    mutationLock =
-        MUTATION_LOCKS.computeIfAbsent(this.root, ignored -> new ReentrantReadWriteLock(true));
+    mutationFence =
+        MUTATION_FENCES.computeIfAbsent(this.root, ignored -> new CatalogMutationFence());
   }
 
   /**
@@ -63,42 +62,41 @@ public final class FileCatalogPublisherBindingStore {
    * @throws IOException if existing records cannot be read or the replacement cannot be written
    */
   public synchronized void put(CatalogPublisherBinding binding) throws IOException {
-    var writeLock = mutationLock.writeLock();
-    writeLock.lock();
-    try {
-      CatalogPublisherBinding checked = java.util.Objects.requireNonNull(binding, "binding");
-      List<CatalogPublisherBinding> existingBindings = list();
-      for (CatalogPublisherBinding existing : existingBindings) {
-        if (existing.bindingId().equals(checked.bindingId())) {
-          if (!sameScopeAndKey(existing, checked)) {
-            throw FederatedPolicyRecordSupport.invalid(
-                "publisher binding id cannot move to another authorization subject");
-          }
-          if (existing.status() == CatalogPublisherBinding.Status.REVOKED
-              && checked.status() != CatalogPublisherBinding.Status.REVOKED) {
-            throw FederatedPolicyRecordSupport.invalid(
-                "revoked publisher binding cannot be reactivated");
-          }
-          continue;
-        }
-        if (sameScopeAndKey(existing, checked)) {
+    mutationFence.withWriteLock(() -> putUnderFence(binding));
+  }
+
+  /** Validates and persists one publisher binding while the mutation fence is exclusive. */
+  private void putUnderFence(CatalogPublisherBinding binding) throws IOException {
+    CatalogPublisherBinding checked = java.util.Objects.requireNonNull(binding, "binding");
+    List<CatalogPublisherBinding> existingBindings = list();
+    for (CatalogPublisherBinding existing : existingBindings) {
+      if (existing.bindingId().equals(checked.bindingId())) {
+        if (!sameScopeAndKey(existing, checked)) {
           throw FederatedPolicyRecordSupport.invalid(
-              "publisher scope already contains this publisher identity");
+              "publisher binding id cannot move to another authorization subject");
         }
-        if (existing.publisherKeyId().equals(checked.publisherKeyId())
-            != existing
-                .publisherKeyFingerprintSha256()
-                .equals(checked.publisherKeyFingerprintSha256())) {
+        if (existing.status() == CatalogPublisherBinding.Status.REVOKED
+            && checked.status() != CatalogPublisherBinding.Status.REVOKED) {
           throw FederatedPolicyRecordSupport.invalid(
-              "publisher key id and fingerprint identities are inconsistent");
+              "revoked publisher binding cannot be reactivated");
         }
+        continue;
       }
-      Path target = recordPath(checked.bindingId());
-      FederatedPolicyRecordSupport.atomicWrite(
-          root, target, checked.canonicalText(), ".publisher-binding-");
-    } finally {
-      writeLock.unlock();
+      if (sameScopeAndKey(existing, checked)) {
+        throw FederatedPolicyRecordSupport.invalid(
+            "publisher scope already contains this publisher identity");
+      }
+      if (existing.publisherKeyId().equals(checked.publisherKeyId())
+          != existing
+              .publisherKeyFingerprintSha256()
+              .equals(checked.publisherKeyFingerprintSha256())) {
+        throw FederatedPolicyRecordSupport.invalid(
+            "publisher key id and fingerprint identities are inconsistent");
+      }
     }
+    Path target = recordPath(checked.bindingId());
+    FederatedPolicyRecordSupport.atomicWrite(
+        root, target, checked.canonicalText(), ".publisher-binding-");
   }
 
   /**
@@ -213,7 +211,7 @@ public final class FileCatalogPublisherBindingStore {
    * @param publisher contextual publisher verification result
    * @param channel requested catalog channel
    * @param now time used for validity evaluation
-   * @return same-thread lease retaining the exact authorization until closed
+   * @return single-use lease retaining the exact authorization until closed
    * @throws IOException if the policy set cannot be read
    */
   public synchronized AuthorizationLease retainAuthorization(
@@ -224,41 +222,42 @@ public final class FileCatalogPublisherBindingStore {
       AppCatalogChannel channel,
       Instant now)
       throws IOException {
-    var readLock = mutationLock.readLock();
-    readLock.lock();
-    boolean retained = false;
-    try {
-      String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
-      String checkedDigest =
-          FederatedPolicyRecordSupport.requireDigest(
-              expectedPolicyDigest, "publisher policy digest");
-      if (!checkedDigest.equals(policyDigest(normalizedCatalogId))) {
-        throw FederatedPolicyRecordSupport.invalid("catalog publisher policy digest changed");
-      }
-      AppCatalogBundleVerificationResult checkedPublisher =
-          java.util.Objects.requireNonNull(publisher, "publisher");
-      CatalogPublisherBinding binding =
-          findAuthorization(
-                  normalizedCatalogId,
-                  appId,
-                  checkedPublisher.publisherKeyId(),
-                  checkedPublisher.publisherKeyFingerprintSha256(),
-                  channel,
-                  now)
-              .orElseThrow(
-                  () ->
-                      FederatedPolicyRecordSupport.invalid("catalog publisher is not authorized"));
-      if (!checkedPublisher.catalogScoped()
-          || !binding.bindingId().equals(checkedPublisher.authorizationPolicyId())
-          || !binding.selfDigest().equals(checkedPublisher.authorizationPolicyDigestSha256())) {
-        throw FederatedPolicyRecordSupport.invalid("catalog publisher is not authorized");
-      }
-      retained = true;
-      return readLock::unlock;
-    } finally {
-      if (!retained) {
-        readLock.unlock();
-      }
+    CatalogMutationFence.Authorized<Boolean> authorized =
+        mutationFence.authorizeRead(
+            () -> {
+              String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+              String checkedDigest =
+                  FederatedPolicyRecordSupport.requireDigest(
+                      expectedPolicyDigest, "publisher policy digest");
+              if (!checkedDigest.equals(policyDigest(normalizedCatalogId))) {
+                throw FederatedPolicyRecordSupport.invalid(
+                    "catalog publisher policy digest changed");
+              }
+              AppCatalogBundleVerificationResult checkedPublisher =
+                  java.util.Objects.requireNonNull(publisher, "publisher");
+              CatalogPublisherBinding binding =
+                  findAuthorization(
+                          normalizedCatalogId,
+                          appId,
+                          checkedPublisher.publisherKeyId(),
+                          checkedPublisher.publisherKeyFingerprintSha256(),
+                          channel,
+                          now)
+                      .orElseThrow(
+                          () ->
+                              FederatedPolicyRecordSupport.invalid(
+                                  "catalog publisher is not authorized"));
+              if (!checkedPublisher.catalogScoped()
+                  || !binding.bindingId().equals(checkedPublisher.authorizationPolicyId())
+                  || !binding
+                      .selfDigest()
+                      .equals(checkedPublisher.authorizationPolicyDigestSha256())) {
+                throw FederatedPolicyRecordSupport.invalid("catalog publisher is not authorized");
+              }
+              return Boolean.TRUE;
+            });
+    try (var leaseTransfer = new AuthorizationLeaseTransfer(authorized.authorization())) {
+      return leaseTransfer.transfer();
     }
   }
 
@@ -316,7 +315,7 @@ public final class FileCatalogPublisherBindingStore {
    * @param fingerprint retained publisher-key fingerprint
    * @param channel retained catalog channel
    * @param verifiedAt timestamp of the original verification
-   * @return same-thread lease retaining the historical authorization until closed
+   * @return single-use lease retaining the historical authorization until closed
    * @throws IOException if the policy set cannot be read
    */
   public synchronized AuthorizationLease retainHistoricalAuthorization(
@@ -328,28 +327,48 @@ public final class FileCatalogPublisherBindingStore {
       AppCatalogChannel channel,
       Instant verifiedAt)
       throws IOException {
-    var readLock = mutationLock.readLock();
-    readLock.lock();
-    boolean retained = false;
-    try {
-      String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
-      String checkedDigest =
-          FederatedPolicyRecordSupport.requireDigest(
-              expectedPolicyDigest, "publisher policy digest");
-      if (!checkedDigest.equals(policyDigest(normalizedCatalogId))) {
-        throw FederatedPolicyRecordSupport.invalid("catalog publisher policy digest changed");
-      }
-      if (findHistoricalAuthorization(
-              normalizedCatalogId, appId, publisherKeyId, fingerprint, channel, verifiedAt)
-          .isEmpty()) {
-        throw FederatedPolicyRecordSupport.invalid(
-            "historical catalog publisher is not authorized");
-      }
-      retained = true;
-      return readLock::unlock;
-    } finally {
-      if (!retained) {
-        readLock.unlock();
+    CatalogMutationFence.Authorized<Boolean> authorized =
+        mutationFence.authorizeRead(
+            () -> {
+              String normalizedCatalogId = AppCatalog.normalizeCatalogId(catalogId);
+              String checkedDigest =
+                  FederatedPolicyRecordSupport.requireDigest(
+                      expectedPolicyDigest, "publisher policy digest");
+              if (!checkedDigest.equals(policyDigest(normalizedCatalogId))) {
+                throw FederatedPolicyRecordSupport.invalid(
+                    "catalog publisher policy digest changed");
+              }
+              if (findHistoricalAuthorization(
+                      normalizedCatalogId, appId, publisherKeyId, fingerprint, channel, verifiedAt)
+                  .isEmpty()) {
+                throw FederatedPolicyRecordSupport.invalid(
+                    "historical catalog publisher is not authorized");
+              }
+              return Boolean.TRUE;
+            });
+    try (var leaseTransfer = new AuthorizationLeaseTransfer(authorized.authorization())) {
+      return leaseTransfer.transfer();
+    }
+  }
+
+  /** Closes a retained fence authorization unless ownership transfers to the caller. */
+  private static final class AuthorizationLeaseTransfer implements AutoCloseable {
+    private AppCatalogManager.CatalogTrustAuthorization authorization;
+
+    private AuthorizationLeaseTransfer(AppCatalogManager.CatalogTrustAuthorization authorization) {
+      this.authorization = java.util.Objects.requireNonNull(authorization, "authorization");
+    }
+
+    private AuthorizationLease transfer() {
+      AppCatalogManager.CatalogTrustAuthorization transferred = authorization;
+      authorization = null;
+      return transferred::close;
+    }
+
+    @Override
+    public void close() {
+      if (authorization != null) {
+        authorization.close();
       }
     }
   }

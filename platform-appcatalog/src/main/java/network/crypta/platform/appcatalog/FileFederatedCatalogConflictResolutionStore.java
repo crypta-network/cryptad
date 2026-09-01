@@ -17,7 +17,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Atomic host-owned persistence for digest-bound local catalog conflict resolutions.
@@ -37,17 +36,17 @@ public final class FileFederatedCatalogConflictResolutionStore {
   /** Maximum accepted serialized resolution size. */
   private static final long MAX_RECORD_BYTES = 16 * 1024L;
 
-  /** Fair mutation locks shared by stores addressing the same normalized root. */
-  private static final ConcurrentMap<Path, ReentrantReadWriteLock> MUTATION_LOCKS =
+  /** Fair mutation fences shared by stores addressing the same normalized root. */
+  private static final ConcurrentMap<Path, CatalogMutationFence> MUTATION_FENCES =
       new ConcurrentHashMap<>();
 
   /** Absolute normalized private resolution-store root. */
   private final Path root;
 
-  /** Store-wide lock coordinating decisions with retained lookups. */
-  private final ReentrantReadWriteLock mutationLock;
+  /** Store-wide fence coordinating decisions with retained lookups. */
+  private final CatalogMutationFence mutationFence;
 
-  /** Same-thread lease fencing conflict-resolution replacement through a host mutation. */
+  /** Single-use lease fencing conflict-resolution replacement through a host mutation. */
   @FunctionalInterface
   public interface AuthorizationLease extends AutoCloseable {
     /** Releases the retained local conflict policy. */
@@ -120,7 +119,7 @@ public final class FileFederatedCatalogConflictResolutionStore {
    */
   public FileFederatedCatalogConflictResolutionStore(Path root) {
     this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
-    mutationLock = MUTATION_LOCKS.computeIfAbsent(this.root, _ -> new ReentrantReadWriteLock(true));
+    mutationFence = MUTATION_FENCES.computeIfAbsent(this.root, _ -> new CatalogMutationFence());
   }
 
   /**
@@ -136,43 +135,34 @@ public final class FileFederatedCatalogConflictResolutionStore {
    */
   public synchronized RetainedLookup retainLookup(
       FederatedCatalogConflictEngine.ConflictSet current) throws IOException {
-    var readLock = mutationLock.readLock();
-    readLock.lock();
-    try (var leaseTransfer = new AuthorizationLeaseTransfer(readLock::unlock)) {
-      Lookup lookup = lookup(Objects.requireNonNull(current, "current"));
-      return new RetainedLookup(lookup, leaseTransfer.transfer());
+    CatalogMutationFence.Authorized<Lookup> authorized =
+        mutationFence.authorizeRead(() -> lookup(Objects.requireNonNull(current, "current")));
+    try (var leaseTransfer = new AuthorizationLeaseTransfer(authorized.authorization())) {
+      return new RetainedLookup(authorized.value(), leaseTransfer.transfer());
     }
   }
 
-  /** Closes a newly acquired lease unless ownership is transferred to a retained lookup. */
+  /** Closes a retained fence authorization unless ownership transfers to a returned lookup. */
   private static final class AuthorizationLeaseTransfer implements AutoCloseable {
-    /** Newly acquired lease, cleared after ownership transfer. */
-    private AuthorizationLease lease;
+    /** Authorization still owned by this guard, or {@code null} after transfer. */
+    private AppCatalogManager.CatalogTrustAuthorization authorization;
 
-    /**
-     * Wraps one newly acquired lease until a retained lookup owns it.
-     *
-     * @param lease authorization lease to guard against early failures
-     */
-    private AuthorizationLeaseTransfer(AuthorizationLease lease) {
-      this.lease = Objects.requireNonNull(lease, "lease");
+    /** Creates a guard that initially owns the supplied fence authorization. */
+    private AuthorizationLeaseTransfer(AppCatalogManager.CatalogTrustAuthorization authorization) {
+      this.authorization = Objects.requireNonNull(authorization, "authorization");
     }
 
-    /**
-     * Transfers ownership to the caller and disables automatic release.
-     *
-     * @return transferred authorization lease
-     */
+    /** Transfers authorization ownership to the returned retained lookup. */
     private AuthorizationLease transfer() {
-      AuthorizationLease transferred = lease;
-      lease = null;
-      return transferred;
+      AppCatalogManager.CatalogTrustAuthorization transferred = authorization;
+      authorization = null;
+      return transferred::close;
     }
 
     @Override
     public void close() {
-      if (lease != null) {
-        lease.close();
+      if (authorization != null) {
+        authorization.close();
       }
     }
   }
@@ -191,40 +181,39 @@ public final class FileFederatedCatalogConflictResolutionStore {
       FederatedCatalogConflictEngine.ConflictSet conflictSet,
       FederatedCatalogConflictEngine.Resolution resolution)
       throws IOException {
-    var writeLock = mutationLock.writeLock();
-    writeLock.lock();
+    mutationFence.withWriteLock(() -> putUnderFence(conflictSet, resolution));
+  }
+
+  /** Validates and persists one resolution while the mutation fence is exclusive. */
+  private void putUnderFence(
+      FederatedCatalogConflictEngine.ConflictSet conflictSet,
+      FederatedCatalogConflictEngine.Resolution resolution)
+      throws IOException {
+    FederatedCatalogConflictEngine.ConflictSet checkedConflict =
+        Objects.requireNonNull(conflictSet, "conflictSet");
+    FederatedCatalogConflictEngine.Resolution checkedResolution =
+        Objects.requireNonNull(resolution, "resolution");
+    if (!checkedResolution.appliesTo(checkedConflict)) {
+      throw invalid("conflict resolution does not bind the exact conflict set");
+    }
+    requireRecordText(checkedResolution.conflictId(), "conflictId");
+    requireRecordText(checkedResolution.reason(), "reason");
+    validateSelectedSubject(checkedConflict, checkedResolution);
+    Files.createDirectories(root);
+    requireSafeRoot();
+    Path target = recordPath(checkedConflict.appId());
+    String text = canonicalText(checkedConflict.appId(), checkedResolution);
+    Path temporary = Files.createTempFile(root, ".catalog-conflict-resolution-", ".tmp");
     try {
-      FederatedCatalogConflictEngine.ConflictSet checkedConflict =
-          Objects.requireNonNull(conflictSet, "conflictSet");
-      FederatedCatalogConflictEngine.Resolution checkedResolution =
-          Objects.requireNonNull(resolution, "resolution");
-      if (!checkedResolution.appliesTo(checkedConflict)) {
-        throw invalid("conflict resolution does not bind the exact conflict set");
-      }
-      requireRecordText(checkedResolution.conflictId(), "conflictId");
-      requireRecordText(checkedResolution.reason(), "reason");
-      validateSelectedSubject(checkedConflict, checkedResolution);
-      Files.createDirectories(root);
-      requireSafeRoot();
-      Path target = recordPath(checkedConflict.appId());
-      String text = canonicalText(checkedConflict.appId(), checkedResolution);
-      Path temporary = Files.createTempFile(root, ".catalog-conflict-resolution-", ".tmp");
+      Files.writeString(temporary, text, StandardCharsets.UTF_8);
       try {
-        Files.writeString(temporary, text, StandardCharsets.UTF_8);
-        try {
-          Files.move(
-              temporary,
-              target,
-              StandardCopyOption.ATOMIC_MOVE,
-              StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException _) {
-          Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-      } finally {
-        Files.deleteIfExists(temporary);
+        Files.move(
+            temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      } catch (AtomicMoveNotSupportedException _) {
+        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
       }
     } finally {
-      writeLock.unlock();
+      Files.deleteIfExists(temporary);
     }
   }
 
