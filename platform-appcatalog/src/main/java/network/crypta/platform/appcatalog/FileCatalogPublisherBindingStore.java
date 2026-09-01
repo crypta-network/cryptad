@@ -61,12 +61,12 @@ public final class FileCatalogPublisherBindingStore {
    * @param binding validated publisher binding to persist
    * @throws IOException if existing records cannot be read or the replacement cannot be written
    */
-  public synchronized void put(CatalogPublisherBinding binding) throws IOException {
+  public void put(CatalogPublisherBinding binding) throws IOException {
     mutationFence.withWriteLock(() -> putUnderFence(binding));
   }
 
   /** Validates and persists one publisher binding while the mutation fence is exclusive. */
-  private void putUnderFence(CatalogPublisherBinding binding) throws IOException {
+  private synchronized void putUnderFence(CatalogPublisherBinding binding) throws IOException {
     CatalogPublisherBinding checked = java.util.Objects.requireNonNull(binding, "binding");
     List<CatalogPublisherBinding> existingBindings = list();
     for (CatalogPublisherBinding existing : existingBindings) {
@@ -214,7 +214,7 @@ public final class FileCatalogPublisherBindingStore {
    * @return single-use lease retaining the exact authorization until closed
    * @throws IOException if the policy set cannot be read
    */
-  public synchronized AuthorizationLease retainAuthorization(
+  public AuthorizationLease retainAuthorization(
       String catalogId,
       String expectedPolicyDigest,
       String appId,
@@ -318,7 +318,7 @@ public final class FileCatalogPublisherBindingStore {
    * @return single-use lease retaining the historical authorization until closed
    * @throws IOException if the policy set cannot be read
    */
-  public synchronized AuthorizationLease retainHistoricalAuthorization(
+  public AuthorizationLease retainHistoricalAuthorization(
       String catalogId,
       String expectedPolicyDigest,
       String appId,

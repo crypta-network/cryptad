@@ -91,33 +91,38 @@ public final class FileCatalogReviewerScopeStore {
    * @param scope validated reviewer scope to persist
    * @throws IOException if existing records cannot be read or replacement cannot be written
    */
-  public synchronized void put(CatalogReviewerScope scope) throws IOException {
+  public void put(CatalogReviewerScope scope) throws IOException {
     mutationFence.acquireUninterruptibly(MUTATION_PERMITS);
     try {
-      CatalogReviewerScope checked = java.util.Objects.requireNonNull(scope, "scope");
-      for (CatalogReviewerScope existing : list()) {
-        if (existing.scopeId().equals(checked.scopeId())) {
-          if (!sameScope(existing, checked)) {
-            throw FederatedPolicyRecordSupport.invalid(
-                "reviewer scope id cannot move to another catalog or app scope");
-          }
-          if (existing.status() == CatalogReviewerScope.Status.REVOKED
-              && checked.status() != CatalogReviewerScope.Status.REVOKED) {
-            throw FederatedPolicyRecordSupport.invalid(
-                "revoked reviewer scope cannot be reactivated");
-          }
-          continue;
-        }
-        if (sameScope(existing, checked)) {
-          throw FederatedPolicyRecordSupport.invalid(
-              "catalog reviewer scope already has a local policy");
-        }
-      }
-      FederatedPolicyRecordSupport.atomicWrite(
-          root, recordPath(checked.scopeId()), checked.canonicalText(), ".reviewer-scope-");
+      putUnderFence(scope);
     } finally {
       mutationFence.release(MUTATION_PERMITS);
     }
+  }
+
+  /** Validates and persists one reviewer scope while the mutation fence is exclusive. */
+  private synchronized void putUnderFence(CatalogReviewerScope scope) throws IOException {
+    CatalogReviewerScope checked = java.util.Objects.requireNonNull(scope, "scope");
+    for (CatalogReviewerScope existing : list()) {
+      if (existing.scopeId().equals(checked.scopeId())) {
+        if (!sameScope(existing, checked)) {
+          throw FederatedPolicyRecordSupport.invalid(
+              "reviewer scope id cannot move to another catalog or app scope");
+        }
+        if (existing.status() == CatalogReviewerScope.Status.REVOKED
+            && checked.status() != CatalogReviewerScope.Status.REVOKED) {
+          throw FederatedPolicyRecordSupport.invalid(
+              "revoked reviewer scope cannot be reactivated");
+        }
+        continue;
+      }
+      if (sameScope(existing, checked)) {
+        throw FederatedPolicyRecordSupport.invalid(
+            "catalog reviewer scope already has a local policy");
+      }
+    }
+    FederatedPolicyRecordSupport.atomicWrite(
+        root, recordPath(checked.scopeId()), checked.canonicalText(), ".reviewer-scope-");
   }
 
   /**
@@ -129,7 +134,7 @@ public final class FileCatalogReviewerScopeStore {
    *
    * @return single-use lease retaining the complete reviewer policy until closed
    */
-  public synchronized AuthorizationLease retainAuthorization() {
+  public AuthorizationLease retainAuthorization() {
     AuthorizationLease authorization = new PermitAuthorizationLease(mutationFence);
     mutationFence.acquireUninterruptibly();
     return authorization;

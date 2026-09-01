@@ -133,8 +133,8 @@ public final class FileFederatedCatalogConflictResolutionStore {
    * @return lookup result with a retained read authorization
    * @throws IOException if the stored decision cannot be read
    */
-  public synchronized RetainedLookup retainLookup(
-      FederatedCatalogConflictEngine.ConflictSet current) throws IOException {
+  public RetainedLookup retainLookup(FederatedCatalogConflictEngine.ConflictSet current)
+      throws IOException {
     CatalogMutationFence.Authorized<Lookup> authorized =
         mutationFence.authorizeRead(() -> lookup(Objects.requireNonNull(current, "current")));
     try (var leaseTransfer = new AuthorizationLeaseTransfer(authorized.authorization())) {
@@ -177,7 +177,7 @@ public final class FileFederatedCatalogConflictResolutionStore {
    * @param resolution exact digest-bound local decision
    * @throws IOException if the record cannot be written atomically
    */
-  public synchronized void put(
+  public void put(
       FederatedCatalogConflictEngine.ConflictSet conflictSet,
       FederatedCatalogConflictEngine.Resolution resolution)
       throws IOException {
@@ -185,7 +185,7 @@ public final class FileFederatedCatalogConflictResolutionStore {
   }
 
   /** Validates and persists one resolution while the mutation fence is exclusive. */
-  private void putUnderFence(
+  private synchronized void putUnderFence(
       FederatedCatalogConflictEngine.ConflictSet conflictSet,
       FederatedCatalogConflictEngine.Resolution resolution)
       throws IOException {

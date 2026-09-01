@@ -144,13 +144,11 @@ class CatalogReviewerScopeStoreTest {
         new FileCatalogReviewerScopeStore(tempDir.resolve(REVIEWER_SCOPES));
     store.put(active);
     FileCatalogReviewerScopeStore.AuthorizationLease authorization = store.retainAuthorization();
-    FileCatalogReviewerScopeStore independentWriter =
-        new FileCatalogReviewerScopeStore(tempDir.resolve(REVIEWER_SCOPES));
     CompletableFuture<Void> suspension =
         CompletableFuture.runAsync(
             () -> {
               try {
-                independentWriter.put(
+                store.put(
                     scope(
                         active.scopeId(),
                         active.appId().orElse(null),
@@ -163,6 +161,16 @@ class CatalogReviewerScopeStoreTest {
             });
     try {
       assertThrows(TimeoutException.class, () -> suspension.get(100, TimeUnit.MILLISECONDS));
+      CompletableFuture<Optional<CatalogReviewerScope>> lookup =
+          CompletableFuture.supplyAsync(
+              () -> {
+                try {
+                  return store.find(active.scopeId());
+                } catch (java.io.IOException exception) {
+                  throw new AssertionError(exception);
+                }
+              });
+      assertEquals(active, lookup.get(5, TimeUnit.SECONDS).orElseThrow());
     } finally {
       authorization.close();
     }
