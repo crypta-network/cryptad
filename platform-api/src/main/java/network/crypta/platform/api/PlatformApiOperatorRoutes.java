@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.apps.AppsApiHandler;
@@ -109,7 +110,7 @@ final class PlatformApiOperatorRoutes {
   private static final String FIELD_TRUST_GRANTED = "trustGranted";
   private static final String PARAMETER_DESCRIPTOR_BASE64 = "descriptorBase64";
   private static final String PARAMETER_REASON = "reason";
-  private static final String SHA256_PATTERN = "[0-9a-f]{64}";
+  private static final Pattern SHA256_PATTERN = Pattern.compile("[0-9a-f]{64}");
   private static final String WARNING_PENDING_CATALOG_DISCOVERY_UNAVAILABLE =
       "pending_catalog_discovery_unavailable";
 
@@ -443,7 +444,7 @@ final class PlatformApiOperatorRoutes {
   private Map<String, Object> resolveCatalogConflict(String appId, PlatformApiRequest request) {
     String conflictId = requiredSingleParameter(request, "conflictId", 128);
     String subjectSetDigest = requiredSingleParameter(request, "subjectSetDigestSha256", 64);
-    if (!subjectSetDigest.matches(SHA256_PATTERN)) {
+    if (!SHA256_PATTERN.matcher(subjectSetDigest).matches()) {
       throw new PlatformApiException(400, "invalid_request", "subjectSetDigestSha256 is invalid.");
     }
     FederatedCatalogConflictEngine.ResolutionKind kind = conflictResolutionKind(request);
@@ -452,7 +453,7 @@ final class PlatformApiOperatorRoutes {
         optionalSingleParameter(request, "publisherFingerprintSha256", 64);
     publisherFingerprint.ifPresent(
         value -> {
-          if (!value.matches(SHA256_PATTERN)) {
+          if (!SHA256_PATTERN.matcher(value).matches()) {
             throw new PlatformApiException(
                 400, "invalid_request", "publisherFingerprintSha256 is invalid.");
           }
@@ -550,7 +551,7 @@ final class PlatformApiOperatorRoutes {
     LinkedHashMap<String, String> signers = new LinkedHashMap<>();
     for (int index = 0; index < keyIds.size(); index++) {
       String fingerprint = fingerprints.get(index);
-      if (!fingerprint.matches(SHA256_PATTERN)
+      if (!SHA256_PATTERN.matcher(fingerprint).matches()
           || signers.putIfAbsent(keyIds.get(index), fingerprint) != null) {
         throw new PlatformApiException(
             400, "invalid_request", "The catalog signer set is invalid.");
@@ -615,7 +616,7 @@ final class PlatformApiOperatorRoutes {
     if (values == null || values.isEmpty()) {
       return Optional.empty();
     }
-    if (values.size() != 1 || !values.getFirst().matches(SHA256_PATTERN)) {
+    if (values.size() != 1 || !SHA256_PATTERN.matcher(values.getFirst()).matches()) {
       throw new PlatformApiException(400, "invalid_request", name + " is invalid.");
     }
     return Optional.of(values.getFirst());

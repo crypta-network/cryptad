@@ -85,6 +85,7 @@ import org.mockito.Mock;
 import org.mockito.invocation.Invocation;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -706,8 +707,10 @@ class AppUpdateServiceTest {
     service.setFederatedCatalogConflictPolicy(
         new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
 
-    service.requireDirectCatalogMutationAllowed(
-        federatedPlan("alpha", duplicate), installed(INSTALLED_VERSION, List.of()));
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of());
+    try (AppCatalogInstallPlan plan = federatedPlan("alpha", duplicate)) {
+      assertDoesNotThrow(() -> service.requireDirectCatalogMutationAllowed(plan, installed));
+    }
   }
 
   @Test
@@ -734,7 +737,9 @@ class AppUpdateServiceTest {
     service.setFederatedCatalogConflictPolicy(
         new AppUpdateFederationAuthority(trustStore, publisherStore, resolutionStore));
 
-    service.requireDirectCatalogMutationAllowed(federatedPlan("beta", duplicate), null);
+    try (AppCatalogInstallPlan plan = federatedPlan("beta", duplicate)) {
+      assertDoesNotThrow(() -> service.requireDirectCatalogMutationAllowed(plan, null));
+    }
   }
 
   @Test
@@ -1615,8 +1620,7 @@ class AppUpdateServiceTest {
             invocation -> {
               AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(4);
               InstalledAppOrigin target = invocation.getArgument(2);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(target)) {
+              try (var _ = authorization.authorize(target)) {
                 return installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
               }
             });
@@ -3749,8 +3753,7 @@ class AppUpdateServiceTest {
         .thenAnswer(
             invocation -> {
               AppHost.CatalogRollbackAuthorization authorization = invocation.getArgument(1);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(rollbackOrigin)) {
+              try (var _ = authorization.authorize(rollbackOrigin)) {
                 return installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
               }
             });
@@ -3827,8 +3830,7 @@ class AppUpdateServiceTest {
         .thenAnswer(
             invocation -> {
               AppHost.CatalogRollbackAuthorization authorization = invocation.getArgument(1);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(rollbackOrigin)) {
+              try (var _ = authorization.authorize(rollbackOrigin)) {
                 return installed(retainedEntry.version(), List.of(QUEUE_READ_PERMISSION));
               }
             });
@@ -3873,8 +3875,7 @@ class AppUpdateServiceTest {
         .thenAnswer(
             invocation -> {
               AppHost.CatalogRollbackAuthorization authorization = invocation.getArgument(1);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(rollbackOrigin)) {
+              try (var _ = authorization.authorize(rollbackOrigin)) {
                 return installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
               }
             });

@@ -1444,8 +1444,7 @@ class AppCatalogsApiHandlerTest {
             invocation -> {
               AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(2);
               InstalledAppOrigin origin = invocation.getArgument(1);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(origin)) {
+              try (var _ = authorization.authorize(origin)) {
                 return installedSnapshot();
               }
             });
@@ -1503,8 +1502,7 @@ class AppCatalogsApiHandlerTest {
             invocation -> {
               AppHost.CatalogMutationAuthorization authorization = invocation.getArgument(4);
               InstalledAppOrigin target = invocation.getArgument(2);
-              try (AppHost.CatalogMutationAuthorizationLease ignored =
-                  authorization.authorize(target)) {
+              try (var _ = authorization.authorize(target)) {
                 return installedSnapshot();
               }
             });

@@ -11,6 +11,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -198,8 +199,9 @@ class FederatedCatalogTrustStoreTest {
         new FileFederatedCatalogTrustStore(temporaryDirectory.resolve(TRUST_DIRECTORY));
     FederatedCatalogTrustBinding binding = binding(BINDING_A, CATALOG_A);
     store.put(binding);
+    StoredCatalogSource storedSource = stored(binding.selfDigest());
 
-    AppCatalogTrustVerification.requireStoredBinding(stored(binding.selfDigest()), store);
+    assertDoesNotThrow(() -> AppCatalogTrustVerification.requireStoredBinding(storedSource, store));
   }
 
   @Test
