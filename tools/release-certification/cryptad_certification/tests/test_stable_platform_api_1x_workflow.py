@@ -42,8 +42,11 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
             self.assertRegex(action, r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
 
     def test_workflow_whenSourceRuns_expectProtectedExactCommitAndJava25(self) -> None:
-        self.assertIn("if: github.ref_protected", self.workflow)
-        self.assertIn("github.triggering_actor == 'leumor'", self.workflow)
+        self.assertIn(
+            "if: github.ref_protected && github.actor == 'leumor' && "
+            "github.triggering_actor == 'leumor'",
+            self.workflow,
+        )
         self.assertIn("persist-credentials: false", self.workflow)
         self.assertIn("ref: ${{ github.sha }}", self.workflow)
         self.assertIn("SOURCE_COMMIT: ${{ inputs.source_commit }}", self.workflow)

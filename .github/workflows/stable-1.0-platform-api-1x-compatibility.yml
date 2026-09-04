@@ -49,7 +49,7 @@ concurrency:
 jobs:
   verify-platform-api-1x:
     name: Authenticate and verify Platform API 1.x compatibility evidence
-    if: github.ref_protected && github.triggering_actor == 'leumor'
+    if: github.ref_protected && github.actor == 'leumor' && github.triggering_actor == 'leumor'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: stable-1-0-platform-api-1x-compatibility
