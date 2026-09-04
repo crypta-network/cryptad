@@ -330,14 +330,7 @@ final class AppUpdateCandidateEvaluator {
    * @return stable JSON-compatible security-decision map
    */
   Map<String, Object> catalogSecurityDecision(String catalogId, String appId) {
-    try {
-      AppCatalogSecurityDecision decision = catalogManager.securityDecision(catalogId, appId);
-      return (decision == null ? AppCatalogSecurityDecision.OK : decision).toJsonValue();
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw securityPolicyFailure();
-    }
+    return securityDecision(catalogId, appId).toJsonValue();
   }
 
   /**
@@ -348,15 +341,7 @@ final class AppUpdateCandidateEvaluator {
    * @return stable JSON-compatible aggregate security-decision map
    */
   Map<String, Object> installedSecurityDecision(String appId, String version) {
-    try {
-      AppCatalogSecurityDecision decision =
-          catalogManager.installedSecurityDecision(appId, version);
-      return (decision == null ? AppCatalogSecurityDecision.OK : decision).toJsonValue();
-    } catch (AppCatalogException exception) {
-      throw catalogFailure(exception);
-    } catch (IOException _) {
-      throw securityPolicyFailure();
-    }
+    return installedDecision(appId, version).toJsonValue();
   }
 
   /**
@@ -439,7 +424,7 @@ final class AppUpdateCandidateEvaluator {
   private AppCatalogSecurityDecision securityDecision(String catalogId, String appId) {
     try {
       AppCatalogSecurityDecision decision = catalogManager.securityDecision(catalogId, appId);
-      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+      return Objects.requireNonNullElse(decision, AppCatalogSecurityDecision.OK);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -458,7 +443,7 @@ final class AppUpdateCandidateEvaluator {
     try {
       AppCatalogSecurityDecision decision =
           catalogManager.installedSecurityDecision(appId, version);
-      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+      return Objects.requireNonNullElse(decision, AppCatalogSecurityDecision.OK);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {

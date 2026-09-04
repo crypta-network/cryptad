@@ -50,6 +50,8 @@ import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
 import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
+import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
 import network.crypta.platform.appcatalog.CatalogPublisherBinding;
 import network.crypta.platform.appcatalog.CatalogScopedReviewerPolicy;
@@ -84,6 +86,8 @@ import network.crypta.platform.appvault.AppVaultService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.invocation.Invocation;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -124,6 +128,7 @@ class AppUpdateServiceTest {
   private static final String ROLLBACK = "rollback";
   private static final String AVAILABLE = "available";
   private static final String STATUS = "status";
+  private static final String SECURITY_DECISION = "securityDecision";
   private static final String VERSION_COMPARISON = "versionComparison";
   private static final String TARGET_VERSION = "targetVersion";
   private static final String INSTALLED_VERSION_FIELD = "installedVersion";
@@ -175,6 +180,51 @@ class AppUpdateServiceTest {
     assertEquals("newer", candidate.get(VERSION_COMPARISON));
     assertEquals(UPDATE_VERSION, candidate.get(TARGET_VERSION));
     assertEquals(false, staged.get(AVAILABLE));
+    assertEquals(AppCatalogSecurityDecision.OK.toJsonValue(), candidate.get(SECURITY_DECISION));
+    assertEquals(
+        AppCatalogSecurityDecision.OK.toJsonValue(), summary.get("installedSecurityDecision"));
+    verifyNoInstallPlanPreparation();
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void summary_whenInstalledVersionIsDenylisted_expectExactSecurityDecision() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogSecurityDecision decision = denylistedSecurityDecision();
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION)).thenReturn(decision);
+
+    Map<String, Object> summary = service.summary(APP_ID);
+
+    assertEquals(decision.toJsonValue(), summary.get("installedSecurityDecision"));
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = AppUpdatePolicyMode.class,
+      names = {"STAGE", "APPLY_WHEN_STOPPED"})
+  void check_whenAutomaticPolicyRequiresReview_expectMatchingTransparencyEvent(
+      AppUpdatePolicyMode mode) throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            new AppReviewPolicy(AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW),
+            TrustedReviewerKeys::empty);
+    AppReviewTransparencyLog transparencyLog = mock(AppReviewTransparencyLog.class);
+    when(catalogManager.reviewTransparencyLog()).thenReturn(transparencyLog);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    service.setPolicy(APP_ID, mode);
+    AppReviewTransparencyEventKind expectedKind =
+        mode == AppUpdatePolicyMode.STAGE
+            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
+            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY;
+
+    service.check(APP_ID, false);
+
+    verify(transparencyLog).recordReviewTrustMap(eq(expectedKind), any(), any(), any());
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
@@ -192,7 +242,7 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.check(APP_ID, false);
 
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
-    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get(SECURITY_DECISION);
     assertEquals("warning", securityDecision.get(STATUS));
     assertEquals("warn", securityDecision.get("action"));
     assertEquals(true, securityDecision.get("requiresAcknowledgement"));
@@ -253,7 +303,7 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.check(APP_ID, false);
 
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
-    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get(SECURITY_DECISION);
     assertEquals("denylisted", securityDecision.get(STATUS));
     assertEquals("denylist", securityDecision.get("action"));
     assertEquals(true, securityDecision.get("blocksUpdate"));
@@ -2225,7 +2275,7 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.previewForConsent(APP_ID, false);
 
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
-    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get(SECURITY_DECISION);
     Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
     assertEquals(AVAILABLE, candidate.get(STATUS));
     assertEquals("blocked", securityDecision.get(STATUS));

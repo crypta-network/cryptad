@@ -152,11 +152,6 @@ public final class AppUpdateService {
   private static final String JSON_MESSAGE = "message";
   private static final String JSON_CATALOG_ID = "catalogId";
 
-  private enum ReviewGate {
-    UPDATE,
-    POLICY_APPLY
-  }
-
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
   private final AppUpdateCatalogAuthority catalogAuthority;
@@ -921,10 +916,10 @@ public final class AppUpdateService {
     try {
       requireStageableCandidate(
           candidate, reviewAcknowledged, securityAcknowledged, targetCatalogId != null);
-      recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "explicit_stage_allowed");
+      catalogAuthority.recordUpdateGate(candidate, "explicit_stage_allowed");
     } catch (PlatformApiException exception) {
-      recordUpdateReviewGate(
-          ReviewGate.UPDATE, candidate, "explicit_stage_blocked:" + exception.errorCode());
+      catalogAuthority.recordUpdateGate(
+          candidate, "explicit_stage_blocked:" + exception.errorCode());
       throw exception;
     }
     stageCandidate(
@@ -1057,7 +1052,7 @@ public final class AppUpdateService {
           staged.candidate().targetVersion(),
           null,
           vaultCleanupFailed ? MESSAGE_APPLY_VAULT_CLEANUP_FAILED : "Staged update applied.");
-      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_applied");
+      catalogAuthority.recordPolicyApplyGate(staged.candidate(), "explicit_apply_applied");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
       handlePlatformApplyFailure(
@@ -1109,13 +1104,11 @@ public final class AppUpdateService {
       String appId, StagedUpdate staged, InstalledAppSnapshot installed, ApplyOptions options) {
     try {
       boolean wasRunning = validateApplyRequest(appId, staged, installed, options);
-      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_allowed");
+      catalogAuthority.recordPolicyApplyGate(staged.candidate(), "explicit_apply_allowed");
       return wasRunning;
     } catch (PlatformApiException exception) {
-      recordUpdateReviewGate(
-          ReviewGate.POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_blocked:" + exception.errorCode());
+      catalogAuthority.recordPolicyApplyGate(
+          staged.candidate(), "explicit_apply_blocked:" + exception.errorCode());
       throw exception;
     }
   }
@@ -1510,7 +1503,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_APPLY_FAILED);
-    recordUpdateReviewGate(ReviewGate.POLICY_APPLY, candidate, "apply_failed:" + errorCode);
+    catalogAuthority.recordPolicyApplyGate(candidate, "apply_failed:" + errorCode);
   }
 
   private PlatformApiException appHostApplyFailure(
@@ -1889,8 +1882,8 @@ public final class AppUpdateService {
     }
     if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
       appendCompatibilityGateHistory(appId, candidate);
-      recordUpdateReviewGate(
-          ReviewGate.POLICY_APPLY, candidate, "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
+      catalogAuthority.recordPolicyApplyGate(
+          candidate, "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
       return;
     }
     if (!stageCandidateForAutomaticPolicy(appId, installed, candidate, ACTION_APPLY)) {
@@ -1908,8 +1901,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_APP_RUNNING,
         "Policy skipped apply because the app is running.");
-    recordUpdateReviewGate(
-        ReviewGate.POLICY_APPLY, candidate, "policy_apply_skipped:" + ERROR_APP_RUNNING);
+    catalogAuthority.recordPolicyApplyGate(candidate, "policy_apply_skipped:" + ERROR_APP_RUNNING);
   }
 
   private boolean stageCandidateForAutomaticPolicy(
@@ -1965,8 +1957,8 @@ public final class AppUpdateService {
           candidate.targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Candidate no longer matches the installed app version.");
-      recordUpdateReviewGate(
-          ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+      catalogAuthority.recordUpdateGate(
+          candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -2033,7 +2025,7 @@ public final class AppUpdateService {
           stagedCandidate.targetVersion(),
           null,
           "Verified update candidate staged.");
-      recordUpdateReviewGate(ReviewGate.UPDATE, stagedCandidate, "stage_staged");
+      catalogAuthority.recordUpdateGate(stagedCandidate, "stage_staged");
     }
   }
 
@@ -2175,8 +2167,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_UPDATE_CANDIDATE_CHANGED,
         "Prepared catalog plan no longer matches the reviewed candidate.");
-    recordUpdateReviewGate(
-        ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+    catalogAuthority.recordUpdateGate(candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
     throw lifecycleFailure(
         409,
         ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -2651,7 +2642,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_STAGE_FAILED);
-    recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "stage_failed:" + errorCode);
+    catalogAuthority.recordUpdateGate(candidate, "stage_failed:" + errorCode);
   }
 
   private AppUpdateCandidate detectCandidate(
@@ -2920,10 +2911,11 @@ public final class AppUpdateService {
     return catalogAuthority.targetSecurityDecision(catalogId, entry);
   }
 
-  private void recordUpdateReviewGate(ReviewGate kind, AppUpdateCandidate candidate, String phase) {
-    switch (kind) {
-      case UPDATE -> catalogAuthority.recordUpdateGate(candidate, phase);
-      case POLICY_APPLY -> catalogAuthority.recordPolicyApplyGate(candidate, phase);
+  private void recordPolicyReviewGate(String action, AppUpdateCandidate candidate, String phase) {
+    if (ACTION_STAGE.equals(action)) {
+      catalogAuthority.recordUpdateGate(candidate, phase);
+    } else {
+      catalogAuthority.recordPolicyApplyGate(candidate, phase);
     }
   }
 
@@ -3069,8 +3061,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         reviewGateFailureCode(candidate.reviewTrust()),
         "Policy skipped update because no trusted positive review receipt verified.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
+    recordPolicyReviewGate(
+        action,
         candidate,
         policyBlockedEventStatus(action, reviewGateFailureCode(candidate.reviewTrust())));
   }
@@ -3086,10 +3078,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_CHANNEL_POLICY_BLOCKED,
         "Policy skipped update because the catalog channel is not allowed.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
-        candidate,
-        policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
+    recordPolicyReviewGate(
+        action, candidate, policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
   }
 
   private void appendMaterialConsentHistory(
@@ -3102,10 +3092,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_CONSENT_REQUIRED,
         "Policy skipped update because material consent is required.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
-        candidate,
-        policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
+    recordPolicyReviewGate(
+        action, candidate, policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
   }
 
   private static String policyBlockedEventStatus(String action, String errorCode) {
