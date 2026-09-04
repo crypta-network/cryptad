@@ -37,7 +37,7 @@ concurrency:
 jobs:
   runtime-observation:
     name: Observe bounded Platform API 1.x runtime compatibility
-    if: github.ref_protected && github.triggering_actor == 'leumor'
+    if: github.ref_protected && github.actor == 'leumor' && github.triggering_actor == 'leumor'
     runs-on:
       - self-hosted
       - linux

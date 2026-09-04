@@ -287,8 +287,11 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
         self.assertIn(
             "name: Observe bounded Platform API 1.x runtime compatibility", self.runtime
         )
-        self.assertIn("if: github.ref_protected", self.runtime)
-        self.assertIn("github.triggering_actor == 'leumor'", self.runtime)
+        self.assertIn(
+            "if: github.ref_protected && github.actor == 'leumor' && "
+            "github.triggering_actor == 'leumor'",
+            self.runtime,
+        )
         for label in ("self-hosted", "linux", "x64"):
             self.assertIn(f"- {label}", self.runtime)
         self.assertIn("cryptad-platform-api-1x-runtime", self.runtime)
