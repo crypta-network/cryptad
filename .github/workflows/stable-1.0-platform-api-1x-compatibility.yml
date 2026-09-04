@@ -1,0 +1,285 @@
+name: Stable 1.0 Platform API 1.x compatibility operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact protected source commit
+        required: true
+        type: string
+      source_ref:
+        description: Exact protected refs/heads or refs/tags source
+        required: true
+        type: string
+      release_id:
+        description: Public release identity bound by the execution contract
+        required: true
+        type: string
+      build_version:
+        description: Integer daemon build bound by the execution contract
+        required: true
+        type: string
+      contract_version:
+        description: Integer Platform API contract version
+        required: true
+        type: string
+      evidence_run_id:
+        description: Immutable protected evidence producer run ID
+        required: true
+        type: string
+      evidence_run_attempt:
+        description: Immutable protected evidence producer attempt
+        required: true
+        type: string
+      evidence_artifact_name:
+        description: Exact evidence artifact name
+        required: true
+        type: string
+      evidence_artifact_digest:
+        description: Exact sha256 artifact digest reported by GitHub
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-platform-api-1x-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.contract_version }}
+  cancel-in-progress: false
+
+jobs:
+  verify-platform-api-1x:
+    name: Authenticate and verify Platform API 1.x compatibility evidence
+    if: github.ref_protected && github.triggering_actor == 'leumor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: stable-1-0-platform-api-1x-compatibility
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+    steps:
+      - name: Check out the exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify protected repository and source identity
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" ]]; then
+            echo "unexpected repository identity" >&2
+            exit 1
+          fi
+          if [[ "$SOURCE_COMMIT" != "$GITHUB_SHA" ]]; then
+            echo "requested source commit differs from protected dispatch SHA" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo "checked-out source differs from protected dispatch SHA" >&2
+            exit 1
+          fi
+          if [[ ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source commit is malformed" >&2
+            exit 1
+          fi
+          if [[ "$SOURCE_REF" != "$GITHUB_REF" ]]; then
+            echo "protected dispatch ref differs from requested source ref" >&2
+            exit 1
+          fi
+
+      - name: Set up Java 25
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Verify the pinned Gradle wrapper distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sed -n 's/^distributionSha256Sum=//p' gradle/wrapper/gradle-wrapper.properties)" = "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb"
+          test "$(sed -n 's/^validateDistributionUrl=//p' gradle/wrapper/gradle-wrapper.properties)" = "true"
+          ./gradlew --version
+
+      - name: Authenticate immutable evidence artifact before extraction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.evidence_run_id }}
+          RUN_ATTEMPT: ${{ inputs.evidence_run_attempt }}
+          ARTIFACT_NAME: ${{ inputs.evidence_artifact_name }}
+          ARTIFACT_DIGEST: ${{ inputs.evidence_artifact_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          EXPECTED_WORKFLOW: .github/workflows/stable-1.0-platform-api-1x-evidence.yml
+          EXPECTED_JOB: Prepare exact Platform API 1.x evidence
+          EXPECTED_ENVIRONMENT: stable-1-0-platform-api-1x-evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUN_ID" -gt 0
+          test "$RUN_ATTEMPT" -gt 0
+          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT" > "$RUNNER_TEMP/run.json"
+          jq -e --arg commit "$SOURCE_COMMIT" '
+            .id == (env.RUN_ID | tonumber) and
+            .run_attempt == (env.RUN_ATTEMPT | tonumber) and
+            .repository.full_name == env.GITHUB_REPOSITORY and
+            .head_sha == $commit and .head_branch == env.GITHUB_REF_NAME and
+            .event == "workflow_dispatch" and .path == env.EXPECTED_WORKFLOW and
+            .status == "completed" and .conclusion == "success" and
+            .actor.login == "leumor" and .triggering_actor.login == "leumor"
+          ' "$RUNNER_TEMP/run.json" >/dev/null
+          curl --fail --silent --show-error "${auth[@]}" \
+            "$api/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            > "$RUNNER_TEMP/jobs.json"
+          jq -e '[.jobs[] | select(
+            .name == env.EXPECTED_JOB and .conclusion == "success" and
+            .head_sha == env.SOURCE_COMMIT)] | length == 1' "$RUNNER_TEMP/jobs.json" >/dev/null
+          job_started_at="$(jq -er '.jobs[] | select(
+            .name == env.EXPECTED_JOB and .conclusion == "success" and
+            .head_sha == env.SOURCE_COMMIT) | .started_at' "$RUNNER_TEMP/jobs.json")"
+          job_completed_at="$(jq -er '.jobs[] | select(
+            .name == env.EXPECTED_JOB and .conclusion == "success" and
+            .head_sha == env.SOURCE_COMMIT) | .completed_at' "$RUNNER_TEMP/jobs.json")"
+          curl --fail --silent --show-error "${auth[@]}" \
+            "$api/deployments?sha=$SOURCE_COMMIT&environment=$EXPECTED_ENVIRONMENT&per_page=100" \
+            > "$RUNNER_TEMP/deployments.json"
+          deployment_verified=false
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            curl --fail --silent --show-error "${auth[@]}" \
+              "$api/deployments/$deployment_id/statuses?per_page=100" \
+              > "$RUNNER_TEMP/deployment-statuses.json"
+            if jq -e --arg run_id "$RUN_ID" --arg started_at "$job_started_at" \
+              --arg completed_at "$job_completed_at" 'any(.[];
+                .state == "success" and .created_at >= $started_at and
+                .created_at <= $completed_at and
+                ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              "$RUNNER_TEMP/deployment-statuses.json" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r '.[] | select(
+            .environment == env.EXPECTED_ENVIRONMENT and
+            .creator.login == "github-actions[bot]") | .id' "$RUNNER_TEMP/deployments.json")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "protected evidence producer deployment is not authenticated" >&2
+            exit 1
+          fi
+          expected_artifact_name="stable-platform-api-1x-evidence-$RELEASE_ID-$RUN_ID-$RUN_ATTEMPT"
+          test "$ARTIFACT_NAME" = "$expected_artifact_name"
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/runs/$RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/artifacts.json"
+          artifact_id="$(jq -er --arg name "$ARTIFACT_NAME" --arg digest "$ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .digest == $digest and .expired == false)] |
+            if length == 1 then .[0].id else error("artifact identity is not exact") end
+          ' "$RUNNER_TEMP/artifacts.json")"
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/artifacts/$artifact_id" \
+            > "$RUNNER_TEMP/artifact.json"
+          jq -e --arg started_at "$job_started_at" --arg completed_at "$job_completed_at" '
+            .workflow_run.id == (env.RUN_ID | tonumber) and
+            .name == env.ARTIFACT_NAME and .digest == env.ARTIFACT_DIGEST and
+            .expired == false and .created_at >= $started_at and .updated_at <= $completed_at
+          ' "$RUNNER_TEMP/artifact.json" >/dev/null
+          curl --fail --location --silent --show-error "${auth[@]}" "$api/actions/artifacts/$artifact_id/zip" --output "$RUNNER_TEMP/evidence.zip"
+          actual="sha256:$(sha256sum "$RUNNER_TEMP/evidence.zip" | cut -d' ' -f1)"
+          test "$actual" = "$ARTIFACT_DIGEST"
+
+      - name: Confine exact evidence archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/platform-api-1x-input
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import stat
+          import sys
+          import zipfile
+          sys.path.insert(0, "tools/release-certification")
+          from cryptad_certification.engines.stable_1_0_supply_chain_archive import inspect_archive_safety
+
+          source = Path(__import__("os").environ["RUNNER_TEMP"]) / "evidence.zip"
+          destination = Path("build/platform-api-1x-input")
+          inspect_archive_safety(
+              source,
+              maximum_entries=512,
+              maximum_expanded_bytes=64 * 1024 * 1024,
+              reject_links=True,
+              reject_nested_archives=True,
+          )
+          with zipfile.ZipFile(source) as archive:
+              names = set()
+              folded = set()
+              total = 0
+              for member in archive.infolist():
+                  path = PurePosixPath(member.filename)
+                  if path.is_absolute() or ".." in path.parts or "\\" in member.filename:
+                      raise SystemExit("unsafe archive path")
+                  if any(part == "__MACOSX" or part == ".DS_Store" or part.startswith("._") for part in path.parts):
+                      raise SystemExit("archive sidecar is prohibited")
+                  mode = member.external_attr >> 16
+                  if stat.S_ISLNK(mode) or (mode and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))):
+                      raise SystemExit("archive link or special member is prohibited")
+                  key = member.filename.casefold()
+                  if member.filename in names or key in folded:
+                      raise SystemExit("archive member collision")
+                  names.add(member.filename)
+                  folded.add(key)
+                  total += member.file_size
+                  if len(names) > 512 or total > 64 * 1024 * 1024:
+                      raise SystemExit("archive bounds exceeded")
+              archive.extractall(destination)
+          PY
+          test -f build/platform-api-1x-input/platform-api-1.x-execution.json
+
+      - name: Run focused fixture and negative verification suite
+        run: python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
+
+      - name: Verify exact release contract and close out
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+          CONTRACT_VERSION: ${{ inputs.contract_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract=build/platform-api-1x-input/platform-api-1.x-execution.json
+          jq -e --arg commit "$SOURCE_COMMIT" --arg ref "$SOURCE_REF" --arg release "$RELEASE_ID" --argjson build "$BUILD_VERSION" --argjson contractVersion "$CONTRACT_VERSION" '
+            .repository.sourceCommit == $commit and .repository.sourceRef == $ref and .release.releaseId == $release and
+            .release.buildVersion == $build and .contractVersion == $contractVersion and
+            .activeStableBaselines == ["1.0"] and
+            .fixtureOnly == false and .selfTest == false
+          ' "$contract" >/dev/null
+          python3 tools/release-certification/certify.py stable-platform-api-1x \
+            --mode closeout \
+            --execution-contract "$contract" \
+            --evidence-dir build/platform-api-1x-input \
+            --out-dir build/platform-api-1x-output
+
+      - name: Retain truthful pass, partial, or failure evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-platform-api-1x-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/platform-api-1x-output/
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 90
+
+      - name: Retain certified exact contract-history inputs
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-platform-api-1x-history-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/platform-api-1x-input/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90

@@ -161,7 +161,53 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"trustGraph\""));
     assertTrue(response.body().contains("\"supportWarningCount\""));
     assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"platformApiCompatibility\""));
+    assertTrue(response.body().contains("\"activeStableBaselines\":[\"1.0\"]"));
+    assertTrue(response.body().contains("\"baselineRegistrySummary\""));
+    assertTrue(response.body().contains("\"supportedBaselines\":[{\"id\":\"1.0\""));
+    assertTrue(response.body().contains("\"status\":\"active\""));
+    assertTrue(
+        response
+            .body()
+            .contains("\"historyChainHealth\":\"bootstrap-only-not-release-authenticated\""));
+    assertTrue(response.body().contains("no runtime compatibility observation is claimed"));
     assertTrue(response.body().contains("\"known\":false"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void platformApiCompatibilitySnapshot_whenBaselineDeprecated_expectNotReportedAsActive() {
+    PlatformApiBaselineRegistry current = PlatformApiBaselineRegistry.current();
+    PlatformApiBaselineDefinition stable10 = current.definitions().getFirst();
+    PlatformApiBaselineLineage previous = current.lineage().getLast();
+    PlatformApiBaselineLineage deprecated =
+        PlatformApiBaselineLineage.create(
+            stable10.id(),
+            stable10.definitionDigest(),
+            PlatformApiBaselineStatus.DEPRECATED,
+            PlatformApiBaselineEvidenceKind.PROTECTED_RELEASE,
+            "f".repeat(64),
+            previous.activationRelease(),
+            previous.activationBuild(),
+            previous.supportStartedRelease(),
+            null,
+            previous.lineageDigest());
+    List<PlatformApiBaselineLineage> lineage = new java.util.ArrayList<>(current.lineage());
+    lineage.add(deprecated);
+    PlatformApiBaselineRegistry registry =
+        PlatformApiBaselineRegistry.create(current.definitions(), lineage);
+
+    Map<String, Object> snapshot =
+        PlatformApiOperatorRoutes.platformApiCompatibilitySnapshot(
+            PlatformApiContract.current(), registry);
+
+    assertEquals(List.of(), snapshot.get("activeStableBaselines"));
+    Map<String, Object> registrySummary =
+        (Map<String, Object>) snapshot.get("baselineRegistrySummary");
+    List<Map<String, Object>> supported =
+        (List<Map<String, Object>>) registrySummary.get("supportedBaselines");
+    assertEquals("1.0", supported.getFirst().get("id"));
+    assertEquals("deprecated", supported.getFirst().get("status"));
   }
 
   @Test
@@ -780,6 +826,10 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"redactedLineCount\":3"));
     assertTrue(response.body().contains("\"redaction\":{\"status\":\"pass\""));
     assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"platformApiCompatibility\""));
+    assertTrue(response.body().contains("\"activeStableBaselines\":[\"1.0\"]"));
+    assertTrue(response.body().contains("\"baselineRegistrySummary\""));
+    assertTrue(response.body().contains("\"protectedOperationState\":\"not-observed\""));
     assertTrue(response.body().contains("\"lifecycle_runtime_snapshot_unavailable\""));
   }
 

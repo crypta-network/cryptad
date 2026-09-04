@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-graduation-record-v1.schema.json",
+  "title": "Platform API 1.x descriptor graduation record",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "recordId", "descriptorKind", "descriptorIdentity", "descriptorAudience", "sourceContractVersion", "sourceCommit", "descriptorDigest", "targetBaselineId", "requiredCapabilities", "allowedPrincipals", "auditAction", "behaviorContractDigest", "securityReviewDigest", "compatibilityReviewDigest", "documentationDigest", "testEvidenceDigest", "appEvidenceDigest", "observationWindow", "reviewerId", "reviewProvenance", "decision", "fixtureOnly", "recordDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "platform-api-1.x-graduation-record"},
+    "recordId": {"$ref": "#/$defs/id"},
+    "descriptorKind": {"enum": ["capability", "endpoint"]},
+    "descriptorIdentity": {"type": "string", "pattern": "^(?:capability|endpoint):[A-Za-z0-9._:/{}-]{1,255}$"},
+    "descriptorAudience": {"enum": ["app", "operator", "internal"]},
+    "sourceContractVersion": {"type": "integer", "minimum": 19},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "descriptorDigest": {"$ref": "#/$defs/digest"},
+    "targetBaselineId": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"},
+    "requiredCapabilities": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,127}$"}},
+    "allowedPrincipals": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["app-browser", "app-process", "host-operator"]}},
+    "auditAction": {"$ref": "#/$defs/id"},
+    "behaviorContractDigest": {"$ref": "#/$defs/digest"},
+    "securityReviewDigest": {"$ref": "#/$defs/digest"},
+    "compatibilityReviewDigest": {"$ref": "#/$defs/digest"},
+    "documentationDigest": {"$ref": "#/$defs/digest"},
+    "testEvidenceDigest": {"$ref": "#/$defs/digest"},
+    "appEvidenceDigest": {"$ref": "#/$defs/digest"},
+    "observationWindow": {"type": "object", "additionalProperties": false, "required": ["firstObservedAt", "lastObservedAt", "contractVersions"], "properties": {"firstObservedAt": {"type": "string", "format": "date-time"}, "lastObservedAt": {"type": "string", "format": "date-time"}, "contractVersions": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "integer", "minimum": 19}}}},
+    "reviewerId": {"$ref": "#/$defs/id"},
+    "reviewProvenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "decision": {"enum": ["pending", "approved", "rejected"]},
+    "fixtureOnly": {"type": "boolean"},
+    "recordDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

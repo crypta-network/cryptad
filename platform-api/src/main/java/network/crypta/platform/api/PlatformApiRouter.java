@@ -466,7 +466,8 @@ public final class PlatformApiRouter {
         return methodNotAllowed("GET", GET_ONLY_MESSAGE);
       }
       return PlatformApiResponse.ok(
-          PlatformApiContractJson.envelope(PlatformApiContract.current()));
+          PlatformApiContractJson.envelope(
+              PlatformApiContract.current(), PlatformApiBaselineRegistry.current()));
     }
     throw new PlatformApiException(404, "not_found", "Platform API route not found.");
   }

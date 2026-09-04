@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-summary-v1.schema.json",
+  "title": "Platform API 1.x compatibility operations summary",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "executionId", "releaseId", "buildVersion", "sourceCommit", "mode", "status", "state", "fixtureOnly", "selfTest", "operational", "urlApiVersion", "contractVersion", "activeStableBaselines", "policyDigest", "historyLedgerDigest", "historyLedgerHeadDigest", "baselineProposalDigest", "graduationRecordDigests", "deprecationLedgerDigest", "appSubjectInventoryDigest", "appMatrixDigest", "runtimeObservationDigest", "authorityRoots", "checks", "blockers", "summaryDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "platform-api-1.x-compatibility-summary"},
+    "executionId": {"$ref": "#/$defs/id"},
+    "releaseId": {"$ref": "#/$defs/id"},
+    "buildVersion": {"type": "integer", "minimum": 1},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "mode": {"enum": ["preflight", "verify-history", "verify-baseline-proposal", "verify-graduation", "verify-app-matrix", "verify-runtime", "closeout"]},
+    "status": {"enum": ["pass", "partial", "fail"]},
+    "state": {"enum": ["implementation-complete", "fixture-verification-complete", "history-authenticated", "app-matrix-verified", "baseline-proposal-reviewed", "runtime-compatibility-verified", "operational-1x-compatibility-complete", "blocked", "partial"]},
+    "fixtureOnly": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "operational": {"type": "boolean"},
+    "urlApiVersion": {"const": "v1"},
+    "contractVersion": {"type": "integer", "minimum": 19},
+    "activeStableBaselines": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"}},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "historyLedgerDigest": {"$ref": "#/$defs/nullableDigest"},
+    "historyLedgerHeadDigest": {"$ref": "#/$defs/nullableDigest"},
+    "baselineProposalDigest": {"$ref": "#/$defs/nullableDigest"},
+    "graduationRecordDigests": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+    "deprecationLedgerDigest": {"$ref": "#/$defs/nullableDigest"},
+    "appSubjectInventoryDigest": {"$ref": "#/$defs/nullableDigest"},
+    "appMatrixDigest": {"$ref": "#/$defs/nullableDigest"},
+    "runtimeObservationDigest": {"$ref": "#/$defs/nullableDigest"},
+    "authorityRoots": {"type": "object", "additionalProperties": false, "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "thirdPartyPilot", "federatedCatalog"], "properties": {"protectedRelease": {"$ref": "#/$defs/digest"}, "independentReproducibility": {"$ref": "#/$defs/digest"}, "catalogAuthority": {"$ref": "#/$defs/digest"}, "thirdPartyPilot": {"$ref": "#/$defs/digest"}, "federatedCatalog": {"$ref": "#/$defs/digest"}}},
+    "checks": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status"], "properties": {"id": {"type": "string", "pattern": "^platform-api-1x\\.[a-z-]+$"}, "status": {"enum": ["pass", "fail", "pending", "fixture-only"]}}}},
+    "blockers": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "summaryDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]}
+  }
+}

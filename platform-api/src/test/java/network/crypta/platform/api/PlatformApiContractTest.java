@@ -69,6 +69,11 @@ class PlatformApiContractTest {
           new RouteVersionPrefix("/apps/{appId}/updates", 2));
 
   @Test
+  void current_whenNamedBaselineMetadataIsPublished_expectContractVersion24() {
+    assertEquals(24, PlatformApiContract.CURRENT_CONTRACT_VERSION);
+  }
+
+  @Test
   void writeEnvelope_whenCalledRepeatedly_expectDeterministicContractJson() {
     String first = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());

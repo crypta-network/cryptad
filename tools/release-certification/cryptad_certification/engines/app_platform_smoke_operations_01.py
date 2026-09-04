@@ -2681,7 +2681,7 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
         "contractConsentDescriptorsPresent": all(
             marker in contract_text
             for marker in (
-                "CURRENT_CONTRACT_VERSION = 23",
+                "CURRENT_CONTRACT_VERSION = 24",
                 "CONSENT_CONTRACT_VERSION = 21",
                 "ROUTE_FAMILY_CONSENT",
                 "consentEndpoints",

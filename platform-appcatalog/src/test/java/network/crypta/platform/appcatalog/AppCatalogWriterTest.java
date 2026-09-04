@@ -52,7 +52,12 @@ class AppCatalogWriterTest {
   void write_whenDescriptorUsesManifestAndDisplayOverrides_expectDeterministicCatalogProperties()
       throws Exception {
     Path artifact =
-        appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, "queue.read,queue.write");
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            "queue.read,queue.write",
+            lines("api.targetStability=experimental", "api.experimentalCapabilitiesAccepted=true"));
     String bundleUri = QUEUE_BUNDLE_URI;
     Path descriptor =
         descriptor(
@@ -274,6 +279,24 @@ class AppCatalogWriterTest {
   }
 
   @Test
+  void serialize_whenVersionSixCatalogHasTargetBaseline_expectInvalidCatalogEntry() {
+    AppCatalogEntry entry = directEntryWithTargetBaseline();
+
+    AppCatalogException exception =
+        captureInvalidEntry(
+            () ->
+                AppCatalogWriter.serialize(
+                    new AppCatalog(
+                        AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW,
+                        CATALOG_ID,
+                        CATALOG_NAME,
+                        GENERATED_AT,
+                        List.of(entry))));
+
+    assertTrue(exception.getMessage().contains("catalog.version 7 is required"));
+  }
+
+  @Test
   void serialize_whenVersionFourCatalogHasMaintenanceMetadata_expectInvalidCatalogEntry() {
     AppCatalogEntry entry = directEntryWithMaintenanceMetadata();
 
@@ -400,6 +423,7 @@ class AppCatalogWriterTest {
                 "api.minimumVersion=1",
                 "api.maximumTestedVersion=19",
                 "api.targetStability=stable",
+                "api.targetBaseline=1.0",
                 "api.experimentalCapabilitiesAccepted=false"));
     Path descriptor =
         descriptor(
@@ -416,10 +440,142 @@ class AppCatalogWriterTest {
     String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
     assertEquals(AppApiCompatibilityMetadata.TargetStability.STABLE, api.targetStability());
     assertTrue(api.targetStabilityDeclared());
+    assertEquals("1.0", api.targetBaseline());
+    assertTrue(api.targetBaselineDeclared());
     assertEquals(1, api.minimumVersion());
     assertEquals(19, api.maximumTestedVersion());
+    assertEquals(AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE, result.catalog().version());
+    assertTrue(catalog.contains("catalog.version=7\n"));
     assertTrue(catalog.contains("app.queue-manager.api.targetStability=stable\n"));
+    assertTrue(catalog.contains("app.queue-manager.api.targetBaseline=1.0\n"));
     assertTrue(catalog.contains("app.queue-manager.api.experimentalCapabilitiesAccepted=false\n"));
+  }
+
+  @Test
+  void write_whenDescriptorAndManifestDeclareDifferentTargetBaselines_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            lines(
+                "api.targetStability=experimental",
+                "api.targetBaseline=1.1",
+                "api.experimentalCapabilitiesAccepted=true"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            lines("api.targetStability=experimental", "api.targetBaseline=1.0"));
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(exception.getMessage().contains("api.targetBaseline must match"));
+  }
+
+  @Test
+  void write_whenLegacyStableDescriptorDisagreesWithManifestBaseline_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            lines("api.targetStability=stable", "api.targetBaseline=1.1"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "api.targetStability=stable");
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(exception.getMessage().contains("effective api.targetBaseline must match"));
+    assertTrue(exception.getMessage().contains("1.0 != 1.1"));
+  }
+
+  @Test
+  void write_whenLegacyStableDescriptorMatchesLegacyManifest_expectVersionTwoPreserved()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            "api.targetStability=stable");
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "api.targetStability=stable");
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+
+    AppApiCompatibilityMetadata api =
+        result.catalog().entries().getFirst().compatibility().apiCompatibility();
+    assertEquals(AppCatalog.VERSION_STORE_METADATA, result.catalog().version());
+    assertEquals("1.0", api.targetBaseline());
+    assertFalse(api.targetBaselineDeclared());
+  }
+
+  @Test
+  void write_whenDescriptorAndManifestDeclareDifferentTargetStabilities_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            lines("api.targetStability=stable", "api.targetBaseline=1.0"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            lines("api.targetStability=experimental", "api.targetBaseline=1.0"));
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(exception.getMessage().contains("api.targetStability must match"));
+  }
+
+  @Test
+  void write_whenOnlyDescriptorDeclaresTargetStability_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            "api.minimumVersion=1");
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "api.targetStability=stable");
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(exception.getMessage().contains("api.targetStability must match"));
   }
 
   @Test
@@ -853,6 +1009,39 @@ class AppCatalogWriterTest {
             java.util.Optional.empty(),
             List.of(),
             true),
+        URI.create(QUEUE_BUNDLE_URI),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION),
+        Map.of());
+  }
+
+  private static AppCatalogEntry directEntryWithTargetBaseline() {
+    AppApiCompatibilityMetadata api =
+        new AppApiCompatibilityMetadata(
+            19,
+            23,
+            List.of(),
+            AppApiCompatibilityMetadata.TargetStability.STABLE,
+            true,
+            "1.0",
+            true,
+            false,
+            true);
+    return new AppCatalogEntry(
+        QUEUE_APP_ID,
+        QUEUE_APP_NAME,
+        QUEUE_APP_VERSION,
+        LOCAL_QUEUE_SUMMARY,
+        null,
+        null,
+        null,
+        List.of(),
+        new AppCatalogCompatibilityMetadata(null, api),
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
         URI.create(QUEUE_BUNDLE_URI),
         "0".repeat(64),
         0L,

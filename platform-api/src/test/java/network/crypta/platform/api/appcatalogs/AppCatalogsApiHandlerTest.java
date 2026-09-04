@@ -62,6 +62,8 @@ import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeyLifecycle;
 import network.crypta.platform.appcatalog.TrustedReviewerKeyStatus;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppDataSchemaContract;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -69,6 +71,7 @@ import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.appvault.AppIdentityGrant;
 import network.crypta.platform.appvault.AppIdentityGrantScope;
 import network.crypta.platform.appvault.AppIdentityGrantStatus;
@@ -959,6 +962,24 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void listApps_whenStableBaselineRootFallsOutsideDeclaredRange_expectIncompatibleSummary()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            23, 23, List.of(), TargetStability.STABLE, true, false, false);
+    when(catalogManager.listApps("core"))
+        .thenReturn(List.of(catalogEntryWithApiCompatibility(metadata)));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    Map<?, ?> compatibility = (Map<?, ?>) app.get("apiCompatibility");
+    assertEquals("incompatible", compatibility.get(STATUS_FIELD));
+  }
+
+  @Test
   void listApps_whenCatalogSecurityDecisionExists_expectRedactedDecisionIncluded()
       throws Exception {
     AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
@@ -1418,6 +1439,51 @@ class AppCatalogsApiHandlerTest {
     assertEquals(409, exception.statusCode());
     assertEquals(APP_REVIEW_MISSING_ERROR, exception.errorCode());
     assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void install_whenSignedManifestTargetsUnsupportedBaseline_expectMutationBlocked()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    AppCatalogEntry entry = minimalCatalogEntry();
+    AppCatalogInstallPlan plan = plan(entry);
+    Path manifest = plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME);
+    Files.writeString(
+        manifest,
+        Files.readString(manifest) + "api.targetStability=stable\n" + "api.targetBaseline=1.1\n");
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals("unsupported_platform_api_baseline", exception.errorCode());
+    verify(appHost, never()).installFromDirectory(any());
+    verify(appHost, never()).installCatalogFromDirectory(any(), any(), any());
+  }
+
+  @Test
+  void install_whenLegacyCatalogStableTargetDiffersFromManifest_expectMutationBlocked()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
+    AppApiCompatibilityMetadata catalogMetadata =
+        new AppApiCompatibilityMetadata(
+            19, 23, List.of(), TargetStability.STABLE, true, false, false);
+    AppCatalogEntry entry = catalogEntryWithApiCompatibility(catalogMetadata);
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals("invalid_app_bundle", exception.errorCode());
+    verify(appHost, never()).installFromDirectory(any());
+    verify(appHost, never()).installCatalogFromDirectory(any(), any(), any());
   }
 
   @Test
@@ -2031,6 +2097,7 @@ class AppCatalogsApiHandlerTest {
     AppCatalogEntry entry = richCatalogEntry();
     Path scratch = tempDir.resolve("legacy-origin-context-scratch");
     Path staged = Files.createDirectories(scratch.resolve(BUNDLE_DIRECTORY));
+    writeStagedManifest(staged, entry, null);
     AppCatalogInstallPlan plan =
         new AppCatalogInstallPlan(
             "core",
@@ -2467,6 +2534,7 @@ class AppCatalogsApiHandlerTest {
     Path scratch = tempDir.resolve("scratch-" + entry.version());
     Path staged = scratch.resolve(BUNDLE_DIRECTORY);
     Files.createDirectories(staged);
+    writeStagedManifest(staged, entry, null);
     return new AppCatalogInstallPlan("core", entry, staged, scratch);
   }
 
@@ -2557,6 +2625,11 @@ class AppCatalogsApiHandlerTest {
   }
 
   private void writeStagedManifest(Path staged, Integer schemaVersion) throws IOException {
+    writeStagedManifest(staged, minimalCatalogEntry(), schemaVersion);
+  }
+
+  private void writeStagedManifest(Path staged, AppCatalogEntry entry, Integer schemaVersion)
+      throws IOException {
     String schema = schemaVersion == null ? "" : "app.data.schema.current=" + schemaVersion + '\n';
     Files.writeString(
         staged.resolve("cryptad-app.properties"),
@@ -2569,11 +2642,39 @@ class AppCatalogsApiHandlerTest {
         app.permissions=%s
         %s\
         """
-            .formatted(APP_ID, QUEUE_MANAGER_NAME, CATALOG_VERSION, QUEUE_READ_PERMISSION, schema));
+            .formatted(
+                entry.appId(),
+                QUEUE_MANAGER_NAME,
+                entry.version(),
+                String.join(",", entry.permissions()),
+                schema));
   }
 
   private AppCatalogEntry minimalCatalogEntry() {
     return catalogEntryWithVersion(CATALOG_VERSION);
+  }
+
+  private AppCatalogEntry catalogEntryWithApiCompatibility(
+      AppApiCompatibilityMetadata apiCompatibility) {
+    return new AppCatalogEntry(
+        APP_ID,
+        QUEUE_MANAGER_NAME,
+        CATALOG_VERSION,
+        QUEUE_MANAGER_SUMMARY,
+        null,
+        null,
+        null,
+        List.of(),
+        new AppCatalogCompatibilityMetadata(null, null, apiCompatibility),
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
+        URI.create(QUEUE_MANAGER_BUNDLE_URI),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION),
+        Map.of());
   }
 
   private AppCatalogEntry catalogEntryWithVersion(String version) {

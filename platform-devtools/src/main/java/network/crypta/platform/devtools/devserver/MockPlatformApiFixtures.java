@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.platform.api.PlatformApiBaselineRegistry;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiEndpointDescriptor;
@@ -36,7 +37,8 @@ final class MockPlatformApiFixtures {
 
   /** Built-in Platform API contract fixture derived from the same source as the live route. */
   private static final String DEFAULT_PLATFORM_CONTRACT =
-      PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+      PlatformApiContractJson.writeEnvelope(
+          PlatformApiContract.current(), PlatformApiBaselineRegistry.current());
 
   /**
    * Route templates that may appear as quoted Unix-style strings in custom contract fixtures.

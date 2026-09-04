@@ -270,6 +270,9 @@ final class CatalogEntryDescriptorGenerator {
           "api.targetStability",
           manifest.apiCompatibility().targetStability().manifestValue());
     }
+    if (manifest.apiCompatibility().targetBaselineDeclared()) {
+      append(builder, "api.targetBaseline", manifest.apiCompatibility().targetBaseline());
+    }
     if (manifest.apiCompatibility().declared()) {
       append(
           builder,

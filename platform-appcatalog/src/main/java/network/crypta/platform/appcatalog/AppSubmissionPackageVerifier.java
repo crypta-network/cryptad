@@ -736,6 +736,13 @@ public final class AppSubmissionPackageVerifier {
         !metadata.apiTargetStability().equals(api.targetStability().manifestValue()),
         "metadata.api-stability-mismatch",
         "Submission API target stability does not match bundle manifest");
+    Optional<String> declaredTargetBaseline =
+        api.targetBaselineDeclared() ? Optional.of(api.targetBaseline()) : Optional.empty();
+    addIf(
+        findings,
+        !metadata.apiTargetBaseline().equals(declaredTargetBaseline),
+        "metadata.api-target-baseline-mismatch",
+        "Submission API target baseline declaration does not match bundle manifest");
     addIf(
         findings,
         metadata.experimentalCapabilitiesAccepted() != api.experimentalCapabilitiesAccepted(),
@@ -1418,13 +1425,7 @@ public final class AppSubmissionPackageVerifier {
       AppBundleManifest artifactManifest =
           AppBundleManifestParser.parseContent(
               new String(artifactManifestBytes, StandardCharsets.UTF_8));
-      Set<String> mismatches = new java.util.LinkedHashSet<>();
-      if (!artifactManifest.appId().equals(reviewedManifest.appId())) {
-        mismatches.add("appId");
-      }
-      if (!artifactManifest.appVersion().equals(reviewedManifest.appVersion())) {
-        mismatches.add("appVersion");
-      }
+      Set<String> mismatches = artifactManifestMismatches(artifactManifest, reviewedManifest);
       if (!mismatches.isEmpty()) {
         findings.add(
             new AppSubmissionFinding(
@@ -1436,6 +1437,29 @@ public final class AppSubmissionPackageVerifier {
     } catch (IOException | RuntimeException _) {
       findings.add(blocker("artifact.manifest-invalid", "app-bundle.zip manifest is invalid"));
     }
+  }
+
+  private static Set<String> artifactManifestMismatches(
+      AppBundleManifest artifactManifest, AppBundleManifest reviewedManifest) {
+    Set<String> mismatches = new LinkedHashSet<>();
+    if (!artifactManifest.appId().equals(reviewedManifest.appId())) {
+      mismatches.add("appId");
+    }
+    if (!artifactManifest.appVersion().equals(reviewedManifest.appVersion())) {
+      mismatches.add("appVersion");
+    }
+    Optional<String> artifactTargetBaseline =
+        artifactManifest.apiCompatibility().targetBaselineDeclared()
+            ? Optional.of(artifactManifest.apiCompatibility().targetBaseline())
+            : Optional.empty();
+    Optional<String> reviewedTargetBaseline =
+        reviewedManifest.apiCompatibility().targetBaselineDeclared()
+            ? Optional.of(reviewedManifest.apiCompatibility().targetBaseline())
+            : Optional.empty();
+    if (!artifactTargetBaseline.equals(reviewedTargetBaseline)) {
+      mismatches.add("apiTargetBaseline");
+    }
+    return mismatches;
   }
 
   // Required entries are safe to read here because callers provide explicit per-entry caps and this

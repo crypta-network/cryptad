@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiCapabilityDescriptor;
 import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppDistributionException;
@@ -985,64 +986,6 @@ final class AppTemplateScaffolder {
   }
 
   /**
-   * Normalizes permission spellings to the manifest parser's canonical comparison form.
-   *
-   * <p>The parser accepts case-insensitive permission identifiers and stores them lower-case.
-   * Rendering the same normalized values into both {@code app.permissions} and the static
-   * disclosure keeps a freshly scaffolded app strict-lint clean even when the CLI input used mixed
-   * case. Invalid or blank values are intentionally preserved after trimming/lower-casing so the
-   * production manifest parser still reports the canonical validation error for the generated
-   * manifest.
-   *
-   * @param permissions CLI-supplied permission strings in request order
-   * @return immutable normalized permission strings with duplicates removed in first-seen order
-   */
-  private static List<String> normalizePermissions(List<String> permissions) {
-    LinkedHashSet<String> normalized = new LinkedHashSet<>();
-    for (String permission : permissions) {
-      normalized.add(permission.trim().toLowerCase(Locale.ROOT));
-    }
-    return List.copyOf(normalized);
-  }
-
-  private static ApiMetadataDefaults apiMetadataDefaults(List<String> permissions)
-      throws AppDistributionException {
-    PlatformApiContract contract = DevtoolsCapabilityVocabulary.currentValidationContract();
-    Set<String> stableBaselineCapabilities = Set.copyOf(contract.stableBaseline().capabilities());
-    Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName = capabilitiesByName(contract);
-    boolean usesNonBaselineAppFacingApi = false;
-    for (String permission : permissions) {
-      PlatformApiCapabilityDescriptor descriptor = capabilitiesByName.get(permission);
-      if (descriptor == null) {
-        continue;
-      }
-      if (descriptor.stability().isRestrictedAudience()) {
-        throw new AppDistributionException(
-            "permission "
-                + permission
-                + " is "
-                + descriptor.stability().jsonValue()
-                + " and cannot be used by third-party app scaffolds");
-      }
-      if (!stableBaselineCapabilities.contains(descriptor.name())) {
-        usesNonBaselineAppFacingApi = true;
-      }
-    }
-    return usesNonBaselineAppFacingApi
-        ? new ApiMetadataDefaults("experimental", true)
-        : new ApiMetadataDefaults("stable", false);
-  }
-
-  private static Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName(
-      PlatformApiContract contract) {
-    LinkedHashMap<String, PlatformApiCapabilityDescriptor> byName = new LinkedHashMap<>();
-    for (PlatformApiCapabilityDescriptor descriptor : contract.capabilities()) {
-      byName.put(descriptor.name(), descriptor);
-    }
-    return Map.copyOf(byName);
-  }
-
-  /**
    * Renders the README that explains the local developer workflow.
    *
    * @param request normalized scaffold request that supplies app name, id, and version
@@ -1217,6 +1160,65 @@ final class AppTemplateScaffolder {
     }
 
     /**
+     * Normalizes permission spellings to the manifest parser's canonical comparison form.
+     *
+     * <p>The parser accepts case-insensitive permission identifiers and stores them lower-case.
+     * Rendering the same normalized values into both {@code app.permissions} and the static
+     * disclosure keeps a freshly scaffolded app strict-lint clean even when the CLI input used
+     * mixed case. Invalid or blank values are intentionally preserved after trimming/lower-casing
+     * so the production manifest parser still reports the canonical validation error for the
+     * generated manifest.
+     *
+     * @param permissions CLI-supplied permission strings in request order
+     * @return immutable normalized permission strings with duplicates removed in first-seen order
+     */
+    private static List<String> normalizePermissions(List<String> permissions) {
+      LinkedHashSet<String> normalized = new LinkedHashSet<>();
+      for (String permission : permissions) {
+        normalized.add(permission.trim().toLowerCase(Locale.ROOT));
+      }
+      return List.copyOf(normalized);
+    }
+
+    private static ApiMetadataDefaults apiMetadataDefaults(List<String> permissions)
+        throws AppDistributionException {
+      PlatformApiContract contract = DevtoolsCapabilityVocabulary.currentValidationContract();
+      Set<String> stableBaselineCapabilities = Set.copyOf(contract.stableBaseline().capabilities());
+      Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName =
+          capabilitiesByName(contract);
+      boolean usesNonBaselineAppFacingApi = false;
+      for (String permission : permissions) {
+        PlatformApiCapabilityDescriptor descriptor = capabilitiesByName.get(permission);
+        if (descriptor == null) {
+          continue;
+        }
+        if (descriptor.stability().isRestrictedAudience()) {
+          throw new AppDistributionException(
+              "permission "
+                  + permission
+                  + " is "
+                  + descriptor.stability().jsonValue()
+                  + " and cannot be used by third-party app scaffolds");
+        }
+        if (!stableBaselineCapabilities.contains(descriptor.name())) {
+          usesNonBaselineAppFacingApi = true;
+        }
+      }
+      return usesNonBaselineAppFacingApi
+          ? new ApiMetadataDefaults("experimental", true)
+          : new ApiMetadataDefaults("stable", false);
+    }
+
+    private static Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName(
+        PlatformApiContract contract) {
+      LinkedHashMap<String, PlatformApiCapabilityDescriptor> byName = new LinkedHashMap<>();
+      for (PlatformApiCapabilityDescriptor descriptor : contract.capabilities()) {
+        byName.put(descriptor.name(), descriptor);
+      }
+      return Map.copyOf(byName);
+    }
+
+    /**
      * Renders the staged bundle manifest properties for this request.
      *
      * <p>The output contains conservative sandbox, quota, and restart defaults. The {@code
@@ -1232,7 +1234,7 @@ final class AppTemplateScaffolder {
       int minimumContractVersion =
           apiMetadataDefaults.experimentalCapabilitiesAccepted()
               ? currentContractVersion
-              : templateKind.minimumContractVersion();
+              : PlatformApiContract.current().stableBaseline().contractVersion();
       builder
           .append("manifest.version=1\n")
           .append("app.id=")
@@ -1252,7 +1254,14 @@ final class AppTemplateScaffolder {
           .append('\n')
           .append("api.targetStability=")
           .append(apiMetadataDefaults.targetStability())
-          .append('\n')
+          .append('\n');
+      if ("stable".equals(apiMetadataDefaults.targetStability())) {
+        builder
+            .append("api.targetBaseline=")
+            .append(AppApiCompatibilityMetadata.DEFAULT_STABLE_TARGET_BASELINE)
+            .append('\n');
+      }
+      builder
           .append("api.experimentalCapabilitiesAccepted=")
           .append(apiMetadataDefaults.experimentalCapabilitiesAccepted())
           .append('\n')

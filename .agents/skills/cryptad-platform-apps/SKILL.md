@@ -26,6 +26,7 @@ Load only the docs needed for the change:
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
 - Platform API 1.0 stable baseline reference: `docs/platform-api-1.0-stable-reference.md`
+- Platform API 1.x release-to-release operations: `docs/platform-api-1.x-compatibility-operations.md`
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
@@ -466,6 +467,44 @@ Load only the docs needed for the change:
   still match; revocation, removal, and pending state remain blocked. Fixtures and self-tests can
   reach only
   `fixture-verification-complete`.
+- `tools/release-certification/certify.py stable-platform-api-1x` is the side-effect-free PR-296
+  operations authority. Keep URL API `v1`, integer contract versions, daemon releases, and named
+  stable baselines distinct. Its append-only history, proposal/graduation records, monotonic
+  deprecation ledger, static app matrix, and bounded runtime observation never activate a future
+  baseline or grant permissions. Fixture/self-test evidence can reach only
+  `fixture-verification-complete`; operational closeout requires exact authenticated PR-291 through
+  PR-295 roots. Platform API 1.0 membership and semantics remain immutable, and PR-300 owns the
+  long-duration cross-version network soak.
+  Before admitting a stable app, validate the selected `active` or `deprecated` baseline as a
+  complete exact projection of the target contract, including the first-complete contract version
+  and every endpoint authorization semantic. No member descriptor may have an introduction version
+  later than the definition's claimed first-complete version; checking only the app's requested
+  capabilities is not sufficient. Keep custom baseline-registry JSON closed at every registry,
+  definition, endpoint, and lineage object so ignored or duplicate evidence fields cannot survive
+  inspection.
+  Bind current and predecessor deprecation ledgers to their exact history heads, derive removal
+  blockers from the accepted baseline registry and app matrix, and select the oldest-supported
+  matrix snapshot through an authenticated Stable lifecycle receipt and descriptor rather than
+  ledger position or a caller-selected ledger field. Anchor every newly introduced deprecation row
+  to its first authenticated history snapshot. The version-1 authority must reject future baseline
+  activation until a dedicated protected activation receipt exists. Production runtime status must
+  come from `.github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml`, whose protected
+  environment selects a digest-pinned managed-node adapter; the evidence producer must
+  independently authenticate that run and construct its authority binding rather than accepting a
+  self-sealed observation. Require the exact proposal and app-matrix binding whenever the registry
+  carries a nonterminal future definition, and reject graduation observations later than the
+  execution evaluation time.
+  Never derive required app coverage from the matrix itself. Require a separate closed,
+  authority-root-bound app-subject inventory, compare every matrix compatibility input against it,
+  and derive required IDs from that inventory plus the policy-fixed first-party set. Existing
+  PR-292/294/295 summaries that omit a complete compatibility projection are not substitutes for
+  fresh authenticated subject evidence.
+  Catalog install, update, staged apply, and source-switch preview must admit the exact signed
+  staged manifest, never only advisory catalog compatibility metadata. If a catalog explicitly
+  names a target baseline, its baseline/stability declaration must match the signed manifest;
+  wholly undeclared legacy catalogs remain readable and the manifest remains authoritative.
+  Explicit catalog target-baseline metadata requires the cumulative signed-catalog v7 format;
+  preserve the closed v1-v6 formats without interpreting that field in older schema versions.
 - `tools/release-certification/certify.py app-platform-docs` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.

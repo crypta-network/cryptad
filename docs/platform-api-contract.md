@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=23
+contractVersion=24
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 23,
+    "contractVersion": 24,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "stableBaseline": {
@@ -52,13 +52,20 @@ The response shape is:
       "schemaVersion": 1,
       "baselineName": "1.0",
       "baselineContractVersion": 19,
-      "currentContractVersion": 23,
+      "currentContractVersion": 24,
       "supportPhase": "beta",
       "minimumDeprecationWindowContractVersions": 2,
       "minimumScheduledRemovalWindowContractVersions": 2,
       "criticalStableRemovalWaiverAllowed": false,
       "previousSnapshotRequiredInProductionBeta": true,
       "policyDocument": "docs/platform-api-compatibility-support-window.md"
+    },
+    "baselineRegistrySummary": {
+      "schemaVersion": 1,
+      "registryDigest": "...",
+      "supportedBaselines": [
+        {"id": "1.0", "status": "active", "definitionDigest": "..."}
+      ]
     },
     "capabilities": [],
     "endpoints": []
@@ -70,12 +77,20 @@ The snapshot is deterministic and excludes raw app process tokens, browser sessi
 bootstrap nonces, form passwords, request bodies, query strings, filesystem paths, sandbox command
 lines, environment variables, private keys, and private insert URIs.
 
+Contract version 24 adds the bounded named-baseline registry summary shown above. This is an
+app-visible compatibility-metadata change, so it advances the integer contract version even though
+it adds no route, capability, or permission. The URL API version remains `v1`, and the immutable
+Platform API 1.0 membership remains rooted at contract version 19.
+
 The developer beta toolkit uses the same contract metadata in `crypta-app test` and
-`crypta-app compat verify`. `crypta-app api policy` prints the stable support-window policy from a
-snapshot, and `crypta-app api diff` compares two snapshots for Platform API 1.0 stable breaking
-changes. Scaffolded beta templates declare conservative `api.minimumVersion` and
-`api.maximumTestedVersion` values, and catalog entry generation copies the manifest compatibility
-metadata into descriptor output. See [developer-beta-toolkit.md](developer-beta-toolkit.md).
+`crypta-app compat verify`. When either command consumes a custom version-24-or-later snapshot, it
+verifies the snapshot's `baselineRegistrySummary` against the selected registry; use
+`--baseline-registry` to supply the registry paired with a candidate snapshot. `crypta-app api
+policy` prints the stable support-window policy from a snapshot, and `crypta-app api diff` compares
+two snapshots for Platform API 1.0 stable breaking changes. Scaffolded beta templates declare
+conservative `api.minimumVersion` and `api.maximumTestedVersion` values, and catalog entry
+generation copies the manifest compatibility metadata into descriptor output. See
+[developer-beta-toolkit.md](developer-beta-toolkit.md).
 
 ## Descriptor fields
 
@@ -557,6 +572,7 @@ App manifests may declare optional API compatibility metadata:
 api.minimumVersion=1
 api.maximumTestedVersion=1
 api.targetStability=stable
+api.targetBaseline=1.0
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -570,13 +586,20 @@ verifier evaluates optional capability metadata too.
 the minimum is incompatible. A local node above the maximum-tested version is a warning by default
 and a failure in strict verification.
 
-`api.targetStability=stable` means the app expects only Platform API 1.0 stable-baseline
-capabilities. `api.targetStability=experimental` means the app knowingly uses non-stable
-app-facing API. Legacy manifests that omit `api.targetStability` are treated as effective
-`experimental` metadata and the missing declaration is reported when API compatibility metadata is
-otherwise present. `api.experimentalCapabilitiesAccepted=true` is still required whenever an app
-declares experimental capabilities. Neither target accepts `internal` or `operator-only`
-capabilities.
+`api.targetStability=stable` means the app expects only capabilities in its named stable baseline.
+`api.targetBaseline` is a canonical 1.x identity such as `1.0`; it is not a URL suffix or a
+permission grant. An explicit stable target that omits the new field has the backward-compatible
+effective target `1.0`, while the declaration remains recorded as omitted. Legacy manifests that
+omit `api.targetStability` remain effective experimental metadata with no baseline and are not
+silently reclassified as stable 1.0. `api.targetStability=experimental` means the app knowingly
+uses non-stable app-facing API, and the missing stability declaration is reported when legacy API
+compatibility metadata is otherwise present. `api.experimentalCapabilitiesAccepted=true` is still
+required whenever an app declares experimental capabilities. Neither target accepts `internal` or
+`operator-only` capabilities.
+
+The integer minimum/maximum range and named baseline are verified together. A range that excludes
+the baseline's complete candidate contract is incompatible. A candidate baseline named by an
+experimental app remains preview-only until authenticated lifecycle evidence makes it active.
 
 ## Catalog metadata
 
@@ -586,13 +609,16 @@ Signed catalogs can mirror or summarize app API compatibility with optional entr
 app.<id>.api.minimumVersion=1
 app.<id>.api.maximumTestedVersion=1
 app.<id>.api.targetStability=stable
+app.<id>.api.targetBaseline=1.0
 app.<id>.api.experimentalCapabilitiesAccepted=false
 ```
 
-Bundle manifest metadata remains authoritative for the app artifact. Catalog metadata is display
-and review input. Developer tooling flags catalog-vs-bundle API metadata mismatches and permission
-mismatches so catalog authors can fix them before signing. Old catalogs without API metadata still
-parse and display an `unknown` advisory API compatibility status.
+Bundle manifest metadata remains authoritative for the app artifact. Catalog metadata preserves
+the exact target-baseline declaration, and an explicit catalog/bundle baseline disagreement is a
+hard verification failure. Old v1-v6 catalogs and catalogs without API metadata remain readable.
+Catalogs that carry the explicit target-baseline field use the cumulative signed-catalog v7 format;
+the field is not added to the closed v1-v6 formats. Target-baseline metadata never grants an
+optional capability or manifest permission.
 
 ## Developer tooling
 
@@ -608,12 +634,30 @@ Verify a staged bundle against the built-in current contract:
 crypta-app compat verify --bundle-dir path/to/staged-app
 ```
 
+Inspect a digest-verified registry, or produce a non-authorizing preview:
+
+```bash
+crypta-app api baseline inspect --output build/platform-api-baselines.json
+crypta-app api preview \
+  --proposal build/candidate-baseline-registry.json \
+  --contract build/candidate-contract.json \
+  --bundle-dir path/to/staged-app \
+  --output build/platform-api-preview.json
+```
+
+Preview output is explicitly `preview` and `nonProduction`. It cannot activate a baseline,
+graduate a descriptor, change runtime authorization, or stand in for protected release history.
+The command hashes the exact supplied contract bytes and rejects a version-24 contract whose
+`baselineRegistrySummary` does not match the candidate registry proposal.
+See [Platform API 1.x compatibility operations](platform-api-1.x-compatibility-operations.md).
+
 Verify against an explicit target snapshot:
 
 ```bash
 crypta-app compat verify \
   --bundle-dir path/to/staged-app \
-  --contract build/platform-api-contract.json
+  --contract build/platform-api-contract.json \
+  --baseline-registry build/platform-api-baselines.json
 ```
 
 Verify a catalog entry descriptor and referenced bundle:
@@ -621,8 +665,13 @@ Verify a catalog entry descriptor and referenced bundle:
 ```bash
 crypta-app compat verify \
   --catalog-entry descriptor.properties \
-  --contract build/platform-api-contract.json
+  --contract build/platform-api-contract.json \
+  --baseline-registry build/platform-api-baselines.json
 ```
+
+For version 24 and later, the command rejects a contract whose embedded registry digest, supported
+baseline set, lifecycle statuses, or definition digests differ from the selected registry.
+Historical snapshots that predate the registry summary remain readable.
 
 `crypta-app validate --strict` also runs compatibility checks against the current contract.
 Malformed `api.*` metadata is always a hard failure. Unknown future capability names, deprecated

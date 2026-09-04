@@ -54,6 +54,9 @@ public record AppCatalog(
   /** Signed-catalog schema that can carry third-party submission review workflow metadata. */
   public static final int VERSION_THIRD_PARTY_SUBMISSION_REVIEW = 6;
 
+  /** Signed-catalog schema that can carry an explicit named Platform API target baseline. */
+  public static final int VERSION_PLATFORM_API_TARGET_BASELINE = 7;
+
   /**
    * Creates a catalog without root security policy.
    *
@@ -107,6 +110,10 @@ public record AppCatalog(
     }
     entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
     for (AppCatalogEntry entry : entries) {
+      if (entry.hasNamedApiBaselineMetadata() && version < VERSION_PLATFORM_API_TARGET_BASELINE) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 7 is required when api.targetBaseline metadata is present");
+      }
       if (entry.hasMaintenanceMetadata() && version < VERSION_FIRST_PARTY_MAINTENANCE) {
         throw AppCatalogSidecars.invalidEntry(
             "catalog.version 5 is required when maintenance metadata is present");
@@ -125,7 +132,8 @@ public record AppCatalog(
         && version != VERSION_PRODUCTION_CHANNELS
         && version != VERSION_SECURITY_POLICY
         && version != VERSION_FIRST_PARTY_MAINTENANCE
-        && version != VERSION_THIRD_PARTY_SUBMISSION_REVIEW;
+        && version != VERSION_THIRD_PARTY_SUBMISSION_REVIEW
+        && version != VERSION_PLATFORM_API_TARGET_BASELINE;
   }
 
   /**

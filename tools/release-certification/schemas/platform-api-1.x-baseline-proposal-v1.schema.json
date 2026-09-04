@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-baseline-proposal-v1.schema.json",
+  "title": "Platform API 1.x baseline proposal",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "proposalId", "targetBaselineId", "predecessorBaselineId", "sourceCommit", "releaseId", "targetContractVersion", "predecessorMembers", "candidateMembers", "additions", "claimedRemovals", "compatibilityAnalysisDigest", "rationaleDigest", "securityReviewDigest", "documentationDigest", "testEvidenceDigest", "appMatrixDigest", "reviewerId", "reviewProvenance", "decision", "lifecycleState", "fixtureOnly", "proposalDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "platform-api-1.x-baseline-proposal"},
+    "proposalId": {"$ref": "#/$defs/id"},
+    "targetBaselineId": {"$ref": "#/$defs/baseline"},
+    "predecessorBaselineId": {"$ref": "#/$defs/baseline"},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "releaseId": {"$ref": "#/$defs/id"},
+    "targetContractVersion": {"type": "integer", "minimum": 20},
+    "predecessorMembers": {"$ref": "#/$defs/members"},
+    "candidateMembers": {"$ref": "#/$defs/members"},
+    "additions": {"$ref": "#/$defs/members"},
+    "claimedRemovals": {"$ref": "#/$defs/members"},
+    "compatibilityAnalysisDigest": {"$ref": "#/$defs/digest"},
+    "rationaleDigest": {"$ref": "#/$defs/digest"},
+    "securityReviewDigest": {"$ref": "#/$defs/digest"},
+    "documentationDigest": {"$ref": "#/$defs/digest"},
+    "testEvidenceDigest": {"$ref": "#/$defs/digest"},
+    "appMatrixDigest": {"$ref": "#/$defs/digest"},
+    "reviewerId": {"$ref": "#/$defs/id"},
+    "reviewProvenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+    "decision": {"enum": ["pending", "approved", "rejected"]},
+    "lifecycleState": {"enum": ["proposed", "candidate", "reviewed", "documented", "rejected"]},
+    "fixtureOnly": {"type": "boolean"},
+    "proposalDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "baseline": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "members": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "pattern": "^(?:capability|endpoint):[A-Za-z0-9._:/{}-]{1,255}$"}}
+  }
+}

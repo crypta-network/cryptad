@@ -90,6 +90,7 @@ public final class ConsentService {
   private static final String VALUE_SUPPORTED = "supported";
   private static final String VALUE_UNCHANGED = "unchanged";
   private static final String VALUE_UNKNOWN = "unknown";
+  private static final String VALUE_UNSUPPORTED_BASELINE = "unsupported-baseline";
 
   private final AppCatalogsApiHandler catalogHandler;
   private final AppUpdateService updateService;
@@ -1493,7 +1494,9 @@ public final class ConsentService {
   private static ConsentRiskLevel apiRisk(Map<String, Object> api) {
     String status = ConsentJson.string(api, FIELD_STATUS);
     String stability = ConsentJson.string(api, FIELD_TARGET_STABILITY);
-    if ("below_minimum".equals(status) || "incompatible".equals(status)) {
+    if ("below_minimum".equals(status)
+        || "incompatible".equals(status)
+        || VALUE_UNSUPPORTED_BASELINE.equals(status)) {
       return ConsentRiskLevel.BLOCKING;
     }
     if (status != null && !"compatible".equals(status) && !"satisfied".equals(status)) {

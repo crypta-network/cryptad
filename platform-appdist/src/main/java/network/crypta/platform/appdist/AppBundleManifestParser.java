@@ -476,6 +476,7 @@ public final class AppBundleManifestParser {
     List<String> optionalCapabilities =
         parseOptionalCapabilities(optional(properties, "api.optionalCapabilities"));
     AppApiCompatibilityMetadata.TargetStability targetStability = parseTargetStability(properties);
+    String targetBaseline = optional(properties, "api.targetBaseline");
     String experimentalCapabilitiesAcceptedValue =
         optional(properties, "api.experimentalCapabilitiesAccepted");
     boolean experimentalCapabilitiesAccepted =
@@ -487,6 +488,8 @@ public final class AppBundleManifestParser {
           optionalCapabilities,
           targetStability,
           targetStability != null,
+          targetBaseline,
+          targetBaseline != null,
           experimentalCapabilitiesAccepted,
           experimentalCapabilitiesAcceptedValue != null);
     } catch (IllegalArgumentException exception) {

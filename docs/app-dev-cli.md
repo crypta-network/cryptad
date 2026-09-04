@@ -242,6 +242,10 @@ Generate the current offline Platform API compatibility snapshot:
 crypta-app api snapshot --output build/platform-api-contract.json
 ```
 
+For contract version 24 and later, this command writes the same bounded
+`baselineRegistrySummary` carried by `GET /api/v1/platform/contract`. Historical version 19–23
+snapshots without that optional field remain readable.
+
 Print the Platform API 1.0 compatibility-window policy embedded in a snapshot:
 
 ```bash
@@ -277,8 +281,23 @@ Verify against an explicit target contract, such as a release-candidate snapshot
 ```bash
 crypta-app compat verify \
   --bundle-dir build/dev-apps/hello-queue \
-  --contract build/platform-api-contract.json
+  --contract build/platform-api-contract.json \
+  --baseline-registry build/platform-api-baselines.json
 ```
+
+The same paired inputs are accepted by the composite developer suite:
+
+```bash
+crypta-app test \
+  --bundle-dir build/dev-apps/hello-queue \
+  --contract build/platform-api-contract.json \
+  --baseline-registry build/platform-api-baselines.json
+```
+
+For contract version 24 and later, both commands require the snapshot's bounded
+`baselineRegistrySummary` to match the selected registry exactly. If `--baseline-registry` is
+omitted, the built-in current registry is selected. Historical contract snapshots without this
+summary remain supported.
 
 For stable third-party apps, pin the verifier target explicitly and write a path-free JSON report:
 
@@ -286,6 +305,7 @@ For stable third-party apps, pin the verifier target explicitly and write a path
 crypta-app compat verify \
   --bundle-dir build/dev-apps/hello-stable \
   --contract build/platform-api-contract.json \
+  --baseline-registry build/platform-api-baselines.json \
   --target-stability stable \
   --strict \
   --json build/hello-stable-api-compatibility.json
@@ -421,7 +441,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -453,7 +473,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -489,7 +509,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -535,7 +555,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 changelog.summary=Adds the Social Inbox RC threaded reference app.
 api.minimumVersion=16
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -582,6 +602,7 @@ Descriptors can also author optional app-store metadata:
 | `api.maximumTestedVersion` | `app.<id>.api.maximumTestedVersion` |
 | `api.optionalCapabilities` | `app.<id>.api.optionalCapabilities` |
 | `api.targetStability` | `app.<id>.api.targetStability` |
+| `api.targetBaseline` | `app.<id>.api.targetBaseline` |
 | `api.experimentalCapabilitiesAccepted` | `app.<id>.api.experimentalCapabilitiesAccepted` |
 
 These fields are optional. A descriptor and artifact with no app-store metadata and no API
@@ -594,6 +615,9 @@ references generate `catalog.version=3`.
 Descriptors that declare first-party maintenance policy metadata generate `catalog.version=5`.
 Descriptors produced by `crypta-app submission catalog-candidate` that include third-party
 submission review metadata generate `catalog.version=6`.
+Descriptors or bundle manifests that explicitly declare `api.targetBaseline` generate
+`catalog.version=7`, including when they also contain v6 review metadata. Unchanged v1-v6 catalogs
+remain readable; the writer never inserts the new field into those closed formats.
 `homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
 `review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
@@ -851,7 +875,7 @@ review keys outside the repository.
    deprecation.status=none
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
-   api.maximumTestedVersion=23
+   api.maximumTestedVersion=24
    api.targetStability=stable
    review.status=reviewed
    changelog.summary=First public beta catalog entry.

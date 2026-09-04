@@ -66,6 +66,7 @@ class AppCatalogEntryDescriptorTest {
                 "api.maximumTestedVersion=2",
                 "api.optionalCapabilities=alerts.read,diagnostics.read",
                 "api.targetStability=experimental",
+                "api.targetBaseline=1.1",
                 "api.experimentalCapabilitiesAccepted=true",
                 "review.status= reviewed ",
                 "review.note= Reviewed for local operator safety. ",
@@ -156,6 +157,8 @@ class AppCatalogEntryDescriptorTest {
         network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL,
         parsed.compatibility().apiCompatibility().targetStability());
     assertTrue(parsed.compatibility().apiCompatibility().targetStabilityDeclared());
+    assertEquals("1.1", parsed.compatibility().apiCompatibility().targetBaseline());
+    assertTrue(parsed.compatibility().apiCompatibility().targetBaselineDeclared());
     assertTrue(parsed.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
     assertTrue(
         parsed.compatibility().apiCompatibility().experimentalCapabilitiesAcceptedDeclared());
@@ -336,6 +339,7 @@ class AppCatalogEntryDescriptorTest {
     return Stream.of(
         invalidDescriptorCase("metadata URI uses file scheme", "homepage=file:///tmp/sample-app"),
         invalidDescriptorCase("channel is unsupported", "channel=preview"),
+        invalidDescriptorCase("target baseline is aliased", "api.targetBaseline=1.01"),
         invalidDescriptorCase(
             "maintenance support level is unsupported",
             "maintenance.owner=crypta-core",

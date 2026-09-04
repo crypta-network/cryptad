@@ -31,6 +31,7 @@ public record AppSubmissionIntakeRecord(
     String bundleDigest,
     String manifestDigest,
     String apiTargetStability,
+    Optional<String> apiTargetBaseline,
     List<String> requestedPermissions,
     String maintainerName,
     String maintainerContactPublic,
@@ -62,6 +63,7 @@ public record AppSubmissionIntakeRecord(
   private static final String BUNDLE_DIGEST_FIELD = "bundleDigest";
   private static final String MANIFEST_DIGEST_FIELD = "manifestDigest";
   private static final String API_TARGET_STABILITY_FIELD = "apiTargetStability";
+  private static final String API_TARGET_BASELINE_FIELD = "apiTargetBaseline";
   private static final String REQUESTED_PERMISSIONS_FIELD = "requestedPermissions";
   private static final String MAINTAINER_NAME_FIELD = "maintainerName";
   private static final String MAINTAINER_CONTACT_PUBLIC_FIELD = "maintainerContactPublic";
@@ -97,10 +99,26 @@ public record AppSubmissionIntakeRecord(
     bundleDigest = AppCatalogSidecars.requireLowercaseSha256(bundleDigest, BUNDLE_DIGEST_FIELD);
     manifestDigest =
         AppCatalogSidecars.requireLowercaseSha256(manifestDigest, MANIFEST_DIGEST_FIELD);
-    apiTargetStability =
-        network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.parse(
-                apiTargetStability)
-            .manifestValue();
+    network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability
+        normalizedTargetStability =
+            network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.parse(
+                apiTargetStability);
+    apiTargetStability = normalizedTargetStability.manifestValue();
+    Objects.requireNonNull(apiTargetBaseline, API_TARGET_BASELINE_FIELD);
+    apiTargetBaseline =
+        apiTargetBaseline.map(
+            value ->
+                new network.crypta.platform.appdist.AppApiCompatibilityMetadata(
+                        null,
+                        null,
+                        List.of(),
+                        normalizedTargetStability,
+                        true,
+                        value,
+                        true,
+                        false,
+                        false)
+                    .targetBaseline());
     requestedPermissions =
         List.copyOf(Objects.requireNonNull(requestedPermissions, REQUESTED_PERMISSIONS_FIELD))
             .stream()
@@ -167,6 +185,7 @@ public record AppSubmissionIntakeRecord(
             metadata.bundleDigest(),
             submission.manifestDigest(),
             metadata.apiTargetStability(),
+            metadata.apiTargetBaseline(),
             metadata.requestedPermissions(),
             metadata.maintainer().name(),
             metadata.maintainer().contact(),
@@ -213,6 +232,8 @@ public record AppSubmissionIntakeRecord(
         submissionId,
         appId,
         appVersion,
+        apiTargetStability,
+        apiTargetBaseline.orElse(null),
         status,
         assignment == null ? null : assignment.reviewerKeyId(),
         assignment == null ? null : assignment.reviewerDisplayName(),
@@ -249,6 +270,7 @@ public record AppSubmissionIntakeRecord(
             bundleDigest,
             manifestDigest,
             apiTargetStability,
+            apiTargetBaseline,
             requestedPermissions,
             maintainerName,
             maintainerContactPublic,
@@ -272,9 +294,8 @@ public record AppSubmissionIntakeRecord(
         assignedAt,
         assignment.reviewerKeyId(),
         assignment.assignmentReasonDigest(),
-        assignment.previousReviewerKeyId().isPresent()
-            ? List.of("reassigned=true")
-            : List.of("assigned=true"));
+        List.of(
+            assignment.previousReviewerKeyId().isPresent() ? "reassigned=true" : "assigned=true"));
   }
 
   /** Returns a copy that records pre-review as running. */
@@ -334,6 +355,7 @@ public record AppSubmissionIntakeRecord(
             bundleDigest,
             manifestDigest,
             apiTargetStability,
+            apiTargetBaseline,
             requestedPermissions,
             maintainerName,
             maintainerContactPublic,
@@ -385,6 +407,7 @@ public record AppSubmissionIntakeRecord(
             bundleDigest,
             manifestDigest,
             apiTargetStability,
+            apiTargetBaseline,
             requestedPermissions,
             maintainerName,
             maintainerContactPublic,
@@ -458,6 +481,7 @@ public record AppSubmissionIntakeRecord(
             bundleDigest,
             manifestDigest,
             apiTargetStability,
+            apiTargetBaseline,
             requestedPermissions,
             maintainerName,
             maintainerContactPublic,
@@ -510,6 +534,7 @@ public record AppSubmissionIntakeRecord(
             bundleDigest,
             manifestDigest,
             apiTargetStability,
+            apiTargetBaseline,
             requestedPermissions,
             maintainerName,
             maintainerContactPublic,
@@ -561,6 +586,7 @@ public record AppSubmissionIntakeRecord(
     json.put(BUNDLE_DIGEST_FIELD, bundleDigest);
     json.put(MANIFEST_DIGEST_FIELD, manifestDigest);
     json.put(API_TARGET_STABILITY_FIELD, apiTargetStability);
+    apiTargetBaseline.ifPresent(value -> json.put(API_TARGET_BASELINE_FIELD, value));
     json.put(REQUESTED_PERMISSIONS_FIELD, requestedPermissions);
     json.put(MAINTAINER_NAME_FIELD, maintainerName);
     json.put(MAINTAINER_CONTACT_PUBLIC_FIELD, maintainerContactPublic);
@@ -598,6 +624,8 @@ public record AppSubmissionIntakeRecord(
         AppSubmissionJson.requireString(object, MANIFEST_DIGEST_FIELD, MANIFEST_DIGEST_FIELD),
         AppSubmissionJson.requireString(
             object, API_TARGET_STABILITY_FIELD, API_TARGET_STABILITY_FIELD),
+        AppSubmissionJson.optionalString(
+            object, API_TARGET_BASELINE_FIELD, API_TARGET_BASELINE_FIELD),
         stringList(object.get(REQUESTED_PERMISSIONS_FIELD), REQUESTED_PERMISSIONS_FIELD),
         AppSubmissionJson.requireString(object, MAINTAINER_NAME_FIELD, MAINTAINER_NAME_FIELD),
         AppSubmissionJson.requireString(
@@ -639,6 +667,7 @@ public record AppSubmissionIntakeRecord(
         bundleDigest,
         manifestDigest,
         apiTargetStability,
+        apiTargetBaseline,
         requestedPermissions,
         maintainerName,
         maintainerContactPublic,
@@ -687,6 +716,7 @@ public record AppSubmissionIntakeRecord(
         bundleDigest,
         manifestDigest,
         apiTargetStability,
+        apiTargetBaseline,
         requestedPermissions,
         maintainerName,
         maintainerContactPublic,

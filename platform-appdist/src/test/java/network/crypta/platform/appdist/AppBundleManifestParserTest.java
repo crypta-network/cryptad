@@ -307,6 +307,7 @@ class AppBundleManifestParserTest {
                 api.maximumTestedVersion=2
                 api.optionalCapabilities=ALERTS.READ, diagnostics.read,alerts.read
                 api.targetStability=stable
+                api.targetBaseline=1.0
                 api.experimentalCapabilitiesAccepted=true
                 """));
 
@@ -317,7 +318,21 @@ class AppBundleManifestParserTest {
     assertEquals(
         AppApiCompatibilityMetadata.TargetStability.STABLE, compatibility.targetStability());
     assertTrue(compatibility.targetStabilityDeclared());
+    assertEquals("1.0", compatibility.targetBaseline());
+    assertTrue(compatibility.targetBaselineDeclared());
     assertTrue(compatibility.experimentalCapabilitiesAccepted());
+  }
+
+  @Test
+  void parseContent_whenStableTargetBaselineOmitted_expectEffectiveOneDotZeroDefault()
+      throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(minimalManifest("api.targetStability=stable\n"));
+
+    AppApiCompatibilityMetadata compatibility = manifest.apiCompatibility();
+
+    assertEquals("1.0", compatibility.targetBaseline());
+    assertFalse(compatibility.targetBaselineDeclared());
   }
 
   @Test
@@ -331,6 +346,19 @@ class AppBundleManifestParserTest {
     assertEquals(
         AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL, compatibility.targetStability());
     assertFalse(compatibility.targetStabilityDeclared());
+    assertNull(compatibility.targetBaseline());
+    assertFalse(compatibility.targetBaselineDeclared());
+  }
+
+  @Test
+  void parseContent_whenApiTargetBaselineIsAliased_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(minimalManifest("api.targetBaseline=1.01\n")));
+
+    assertEquals("unsupported api.targetBaseline: 1.01", exception.getMessage());
   }
 
   @Test

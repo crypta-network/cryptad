@@ -374,6 +374,12 @@ Stable removal, reclassification, access regression, or critical-removal waiver 
 blocker. Compatible additions remain outside the frozen 1.0 membership unless a separately
 governed future baseline includes them. Experimental additions stay explicitly experimental.
 
+For releases carrying PR-296, the separate Platform API 1.x history record binds the exact daemon
+release/build, contract snapshot bytes, baseline-registry digest, deprecation ledger, app matrix,
+protected workflow coordinates, and predecessor record. Maintenance and hotfix publication must
+consume authenticated history rather than replacing the record with a mutable `previous` file.
+Fixture verification cannot satisfy that gate.
+
 ### Stable catalog and first-party apps
 
 The seven Stable 1.0 first-party app ids remain present on the stable channel with their support

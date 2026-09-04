@@ -1,0 +1,623 @@
+name: Stable 1.0 Platform API 1.x evidence producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact protected source commit
+        required: true
+        type: string
+      source_ref:
+        description: Exact protected refs/heads or refs/tags source
+        required: true
+        type: string
+      release_id:
+        description: Public release identity bound by the execution contract
+        required: true
+        type: string
+      build_version:
+        description: Integer daemon build bound by the execution contract
+        required: true
+        type: string
+      contract_version:
+        description: Integer Platform API contract version
+        required: true
+        type: string
+      evidence_directory:
+        description: Repository-relative protected static evidence template directory
+        required: true
+        type: string
+      runtime_run_id:
+        description: Exact protected runtime-observation run
+        required: true
+        type: string
+      runtime_run_attempt:
+        description: Immutable protected runtime-observation attempt
+        required: true
+        type: string
+      runtime_artifact_id:
+        description: Exact immutable runtime-observation artifact ID
+        required: true
+        type: string
+      runtime_artifact_name:
+        description: Canonical runtime-observation artifact name
+        required: true
+        type: string
+      runtime_artifact_digest:
+        description: Exact runtime-observation artifact archive digest
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-platform-api-1x-evidence-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.contract_version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-evidence:
+    name: Prepare exact Platform API 1.x evidence
+    if: github.ref_protected && github.triggering_actor == 'leumor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: stable-1-0-platform-api-1x-evidence
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - name: Check out the exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Confine the protected evidence subject
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+          CONTRACT_VERSION: ${{ inputs.contract_version }}
+          EVIDENCE_DIRECTORY: ${{ inputs.evidence_directory }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "crypta-network/cryptad"
+          test "$SOURCE_COMMIT" = "$GITHUB_SHA"
+          test "$SOURCE_REF" = "$GITHUB_REF"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]
+          [[ "$BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CONTRACT_VERSION" =~ ^[1-9][0-9]*$ ]]
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+          requested = Path(os.environ["EVIDENCE_DIRECTORY"])
+          if (
+              requested.is_absolute()
+              or not requested.parts
+              or any(part in {"", ".", ".."} for part in requested.parts)
+          ):
+              raise SystemExit("evidence directory must be a confined repository-relative path")
+          unresolved_source = workspace
+          for part in requested.parts:
+              unresolved_source /= part
+              if unresolved_source.is_symlink():
+                  raise SystemExit("evidence directory contains a linked path component")
+          try:
+              source = unresolved_source.resolve(strict=True)
+              source.relative_to(workspace)
+          except (OSError, RuntimeError, ValueError) as error:
+              raise SystemExit("evidence directory is missing or escapes the workspace") from error
+          if source == workspace or not source.is_dir():
+              raise SystemExit("evidence directory is missing or is a link")
+          destination = workspace / "build/platform-api-1x-evidence"
+          destination.mkdir(parents=True, exist_ok=False)
+          names: set[str] = set()
+          folded: set[str] = set()
+          total = 0
+          for member in sorted(source.iterdir(), key=lambda path: path.name):
+              if member.is_symlink() or not member.is_file():
+                  raise SystemExit("evidence directory contains a link or non-file member")
+              if member.stat().st_nlink != 1:
+                  raise SystemExit("evidence directory contains a hard-linked member")
+              if member.name == "__MACOSX" or member.name == ".DS_Store" or member.name.startswith("._"):
+                  raise SystemExit("evidence directory contains a prohibited archive sidecar")
+              if member.name == "platform-api-1.x-runtime-observation.json":
+                  raise SystemExit("static evidence template already carries runtime evidence")
+              folded_name = member.name.casefold()
+              if member.name in names or folded_name in folded:
+                  raise SystemExit("evidence directory contains a case-colliding member")
+              names.add(member.name)
+              folded.add(folded_name)
+              total += member.stat().st_size
+              if len(names) > 512 or total > 64 * 1024 * 1024:
+                  raise SystemExit("evidence directory exceeds closed bounds")
+              shutil.copyfile(member, destination / member.name)
+          if not (destination / "platform-api-1.x-execution.json").is_file():
+              raise SystemExit("execution contract is missing")
+          PY
+          contract=build/platform-api-1x-evidence/platform-api-1.x-execution.json
+          jq -e --arg commit "$SOURCE_COMMIT" --arg ref "$SOURCE_REF" \
+            --arg release "$RELEASE_ID" --argjson build "$BUILD_VERSION" \
+            --argjson contractVersion "$CONTRACT_VERSION" '
+            .repository.sourceCommit == $commit and .repository.sourceRef == $ref and
+            .release.releaseId == $release and .release.buildVersion == $build and
+            .contractVersion == $contractVersion and
+            .activeStableBaselines == ["1.0"] and
+            .fixtureOnly == false and .selfTest == false and
+            .evidence.selectedRcFreeze != null and
+            .evidence.appSubjectInventory != null and
+            .runtimeObservationAuthority == null and .evidence.runtimeObservation == null
+          ' "$contract" >/dev/null
+
+      - name: Authenticate and bind the exact protected runtime observation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          RUNTIME_RUN_ID: ${{ inputs.runtime_run_id }}
+          RUNTIME_RUN_ATTEMPT: ${{ inputs.runtime_run_attempt }}
+          RUNTIME_ARTIFACT_ID: ${{ inputs.runtime_artifact_id }}
+          RUNTIME_ARTIFACT_NAME: ${{ inputs.runtime_artifact_name }}
+          RUNTIME_ARTIFACT_DIGEST: ${{ inputs.runtime_artifact_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RUNTIME_RUN_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$RUNTIME_RUN_ATTEMPT" =~ ^[1-9][0-9]{0,9}$ \
+                || ! "$RUNTIME_ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ \
+                || ! "$RUNTIME_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Runtime coordinates are malformed."
+            exit 2
+          fi
+          expected_workflow=".github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml"
+          expected_job="Observe bounded Platform API 1.x runtime compatibility"
+          expected_environment="stable-1-0-platform-api-1x-runtime"
+          expected_summary="platform-api-1.x-runtime-observation.json"
+          expected_name="stable-platform-api-1x-runtime-$RELEASE_ID-$RUNTIME_RUN_ID-$RUNTIME_RUN_ATTEMPT"
+          if [[ "$RUNTIME_ARTIFACT_NAME" != "$expected_name" ]]; then
+            echo "::error::Runtime artifact name is not canonical."
+            exit 2
+          fi
+
+          run_file="$RUNNER_TEMP/runtime-run.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUNTIME_RUN_ID/attempts/$RUNTIME_RUN_ATTEMPT" \
+            > "$run_file"
+          jq -e --argjson run_id "$RUNTIME_RUN_ID" \
+            --argjson run_attempt "$RUNTIME_RUN_ATTEMPT" \
+            --arg workflow "$expected_workflow" '
+            .id == $run_id and .run_attempt == $run_attempt
+            and .head_sha == env.GITHUB_SHA and .head_branch == env.GITHUB_REF_NAME
+            and .path == $workflow and .event == "workflow_dispatch"
+            and .status == "completed" and .conclusion == "success"
+            and .repository.full_name == env.GITHUB_REPOSITORY
+            and .actor.login == "leumor" and .triggering_actor.login == "leumor"
+          ' "$run_file" >/dev/null
+
+          jobs="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUNTIME_RUN_ID/attempts/$RUNTIME_RUN_ATTEMPT/jobs" \
+            -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+          job_record="$(jq -ce --arg name "$expected_job" '
+            [.jobs[] | select(.name == $name and .head_sha == env.GITHUB_SHA
+              and .conclusion == "success")]
+            | if length == 1 then .[0]
+              else error("runtime protected producer job is not exact") end
+          ' <<< "$jobs")"
+          job_started_at="$(jq -er '.started_at' <<< "$job_record")"
+          job_completed_at="$(jq -er '.completed_at' <<< "$job_record")"
+
+          deployment_verified=false
+          deployments="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/deployments" -f sha="$GITHUB_SHA" \
+            -f environment="$expected_environment" -f per_page=100 | jq -s '[.[][]]')"
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            statuses="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+              -f per_page=100 | jq -s '[.[][]]')"
+            if jq -e --arg run_id "$RUNTIME_RUN_ID" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" 'any(.[];
+                .state == "success" and .created_at >= $started
+                and .created_at <= $completed
+                and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              <<< "$statuses" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r --arg environment "$expected_environment" '.[] | select(
+            .environment == $environment and .creator.login == "github-actions[bot]") | .id' \
+            <<< "$deployments")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "::error::Runtime observation lacks its protected environment deployment."
+            exit 2
+          fi
+
+          artifact_file="$RUNNER_TEMP/runtime-artifact.json"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID" \
+            > "$artifact_file"
+          jq -e --argjson artifact_id "$RUNTIME_ARTIFACT_ID" \
+            --argjson run_id "$RUNTIME_RUN_ID" --arg name "$RUNTIME_ARTIFACT_NAME" \
+            --arg digest "$RUNTIME_ARTIFACT_DIGEST" --arg started "$job_started_at" \
+            --arg completed "$job_completed_at" '
+            .id == $artifact_id and .name == $name and .digest == $digest
+            and .workflow_run.id == $run_id and .expired == false
+            and .created_at >= $started and .updated_at <= $completed
+          ' "$artifact_file" >/dev/null
+          archive="$RUNNER_TEMP/platform-api-runtime-observation.zip"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip" \
+            > "$archive"
+          test "sha256:$(sha256sum "$archive" | cut -d' ' -f1)" = "$RUNTIME_ARTIFACT_DIGEST"
+          python3 - "$archive" "$expected_summary" \
+            build/platform-api-1x-evidence <<'PY'
+          import hashlib
+          from pathlib import Path, PurePosixPath
+          import stat
+          import sys
+          import zipfile
+
+          archive, expected_name, output_text = sys.argv[1:]
+          output = Path(output_text)
+          with zipfile.ZipFile(archive) as source:
+              files = []
+              folded = set()
+              for item in source.infolist():
+                  path = PurePosixPath(item.filename)
+                  if path.is_absolute() or ".." in path.parts or len(path.parts) != 1:
+                      raise SystemExit("runtime archive contains an unsafe path")
+                  mode = item.external_attr >> 16
+                  if stat.S_ISLNK(mode) or item.is_dir():
+                      raise SystemExit("runtime archive contains a link or directory")
+                  if path.name == ".DS_Store" or path.name.startswith("._"):
+                      raise SystemExit("runtime archive contains a prohibited sidecar")
+                  if path.name.casefold() in folded:
+                      raise SystemExit("runtime archive contains a case collision")
+                  folded.add(path.name.casefold())
+                  files.append(item)
+              if len(files) != 1 or files[0].filename != expected_name:
+                  raise SystemExit("runtime archive member set is not canonical")
+              member = files[0]
+              if member.file_size < 2 or member.file_size > 8 * 1024 * 1024:
+                  raise SystemExit("runtime observation violates size bounds")
+              value = source.read(member)
+          destination = output / expected_name
+          if destination.exists() or destination.is_symlink():
+              raise SystemExit("runtime observation would replace an existing member")
+          destination.write_bytes(value)
+          print("sha256:" + hashlib.sha256(value).hexdigest())
+          print(len(value))
+          PY
+
+          observation=build/platform-api-1x-evidence/platform-api-1.x-runtime-observation.json
+          observation_digest="sha256:$(sha256sum "$observation" | cut -d' ' -f1)"
+          observation_size="$(stat -c %s "$observation")"
+          observation_semantic_digest="$(jq -er '.observationDigest' "$observation")"
+          evaluation_time="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          contract=build/platform-api-1x-evidence/platform-api-1.x-execution.json
+          jq --arg evaluation "$evaluation_time" \
+            --arg file "$expected_summary" --arg digest "$observation_digest" \
+            --argjson size "$observation_size" --arg semantic "$observation_semantic_digest" \
+            --arg archive_digest "$RUNTIME_ARTIFACT_DIGEST" \
+            --arg workflow "$expected_workflow" --arg artifact "$RUNTIME_ARTIFACT_NAME" \
+            --arg environment "$expected_environment" --argjson run_id "$RUNTIME_RUN_ID" \
+            --argjson run_attempt "$RUNTIME_RUN_ATTEMPT" '
+            .evaluationTime = $evaluation |
+            .evidence.runtimeObservation = {fileName: $file, digest: $digest, size: $size} |
+            .runtimeObservationAuthority = {
+              summaryDigest: $semantic,
+              artifactDigest: $archive_digest,
+              operational: true,
+              provenance: {
+                repositoryIdentity: "github.com/crypta-network/cryptad",
+                workflowPath: $workflow,
+                workflowCommit: env.GITHUB_SHA,
+                runId: $run_id,
+                runAttempt: $run_attempt,
+                artifactName: $artifact,
+                artifactDigest: $archive_digest,
+                environment: $environment,
+                conclusion: "success"
+              },
+              summary: {fileName: $file, digest: $digest, size: $size}
+            }
+          ' "$contract" > "$RUNNER_TEMP/platform-api-1.x-execution.json"
+          mv "$RUNNER_TEMP/platform-api-1.x-execution.json" "$contract"
+
+      - name: Authenticate exact predecessor authority attempts and summaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract=build/platform-api-1x-evidence/platform-api-1.x-execution.json
+          jq -e 'all(.authorities[]; .summary != null)' "$contract" >/dev/null
+          jq -e '.supportLifecycleAuthority != null and
+            .supportLifecycleAuthority.summary != null and
+            .runtimeObservationAuthority != null and
+            .runtimeObservationAuthority.summary != null' "$contract" >/dev/null
+          jq -e '(.evidence.previousHistoryLedger == null) or
+            (.previousHistoryAuthority != null and .previousHistoryAuthority.summary != null)' \
+            "$contract" >/dev/null
+          current_source_ref="$(jq -er '.repository.sourceRef' "$contract")"
+          previous_history_source_ref=""
+          previous_history_file="$(jq -r '.evidence.previousHistoryLedger.fileName // empty' \
+            "$contract")"
+          if [[ -n "$previous_history_file" ]]; then
+            if [[ "$previous_history_file" == */* || "$previous_history_file" == *\\* \
+                  || "$previous_history_file" == "." || "$previous_history_file" == ".." ]]; then
+              echo "::error::Previous history ledger file name is not confined."
+              exit 2
+            fi
+            previous_history_source_ref="$(jq -er '.records[-1].sourceRef' \
+              "build/platform-api-1x-evidence/$previous_history_file")"
+          fi
+          while IFS=$'\t' read -r authority run_id run_attempt workflow_commit workflow_path \
+              artifact_name artifact_digest environment summary_file summary_digest summary_size; do
+            expected_source_ref="$current_source_ref"
+            case "$authority" in
+              protectedRelease)
+                expected_workflow=".github/workflows/stable-1.0-protected-release-closeout.yml"
+                expected_job="Authenticate final protected-release evidence"
+                expected_environment="stable-1-0-protected-release-closeout"
+                expected_summary="stable-1.0-protected-release-execution-summary.json"
+                ;;
+              independentReproducibility)
+                expected_workflow=".github/workflows/stable-1.0-independent-reproducibility.yml"
+                expected_job="Authenticate and compare independent rebuild"
+                expected_environment="stable-1.0-independent-reproducibility-external-receipt"
+                expected_summary="stable-1.0-independent-reproducibility-summary.json"
+                ;;
+              catalogAuthority)
+                expected_workflow=".github/workflows/stable-1.0-catalog-authority.yml"
+                expected_job="Close out only authenticated catalog-authority evidence"
+                expected_environment="stable-1-0-catalog-authority-closeout"
+                expected_summary="stable-1.0-catalog-authority-summary.json"
+                ;;
+              thirdPartyPilot)
+                expected_workflow=".github/workflows/stable-1.0-third-party-app-pilot.yml"
+                expected_job="Authenticate operational closeout"
+                expected_environment="stable-1-0-third-party-pilot-closeout"
+                expected_summary="stable-1.0-third-party-app-pilot-summary.json"
+                ;;
+              federatedCatalog)
+                expected_workflow=".github/workflows/stable-1.0-federated-catalog-trust.yml"
+                expected_job="Close out authenticated federation evidence"
+                expected_environment="stable-1-0-federated-catalog-closeout"
+                expected_summary="stable-1.0-federated-catalog-summary.json"
+                ;;
+              previousHistory)
+                expected_workflow=".github/workflows/stable-1.0-platform-api-1x-compatibility.yml"
+                expected_job="Authenticate and verify Platform API 1.x compatibility evidence"
+                expected_environment="stable-1-0-platform-api-1x-compatibility"
+                expected_summary="platform-api-1.x-compatibility-summary.json"
+                expected_source_ref="$previous_history_source_ref"
+                ;;
+              supportLifecycle)
+                expected_workflow=".github/workflows/stable-1.0-support-lifecycle.yml"
+                expected_job="Independently re-fetch exact lifecycle descriptor"
+                expected_environment="stable-1.0-lifecycle-evidence"
+                expected_summary="stable-1.0-support-lifecycle-independent-verification-receipt.json"
+                ;;
+              runtimeObservation)
+                expected_workflow=".github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml"
+                expected_job="Observe bounded Platform API 1.x runtime compatibility"
+                expected_environment="stable-1-0-platform-api-1x-runtime"
+                expected_summary="platform-api-1.x-runtime-observation.json"
+                ;;
+              *)
+                echo "::error::Unknown predecessor authority: $authority"
+                exit 2
+                ;;
+            esac
+            case "$expected_source_ref" in
+              refs/heads/*)
+                expected_head_branch="${expected_source_ref#refs/heads/}"
+                ;;
+              refs/tags/*)
+                expected_head_branch="${expected_source_ref#refs/tags/}"
+                ;;
+              *)
+                echo "::error::$authority source ref is not a canonical branch or tag ref."
+                exit 2
+                ;;
+            esac
+            if [[ -z "$expected_head_branch" ]]; then
+              echo "::error::$authority source ref has an empty branch or tag name."
+              exit 2
+            fi
+            if [[ "$workflow_path" != "$expected_workflow" \
+                  || "$environment" != "$expected_environment" \
+                  || "$summary_file" != "$expected_summary" ]]; then
+              echo "::error::$authority is not bound to its allowlisted protected producer."
+              exit 2
+            fi
+            run_file="$RUNNER_TEMP/$authority-run.json"
+            gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt" > "$run_file"
+            jq -e --argjson run_id "$run_id" --argjson run_attempt "$run_attempt" \
+              --arg commit "$workflow_commit" --arg workflow "$workflow_path" \
+              --arg head_branch "$expected_head_branch" '
+              .id == $run_id and .run_attempt == $run_attempt
+              and .head_sha == $commit and .path == $workflow
+              and .head_branch == $head_branch
+              and .event == "workflow_dispatch" and .status == "completed"
+              and .conclusion == "success"
+              and .repository.full_name == env.GITHUB_REPOSITORY
+              and .actor.login == "leumor" and .triggering_actor.login == "leumor"' \
+              "$run_file" >/dev/null
+            jobs="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/attempts/$run_attempt/jobs" \
+              -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+            job_record="$(jq -ce --arg name "$expected_job" --arg commit "$workflow_commit" '
+              [.jobs[] | select(.name == $name and .head_sha == $commit
+                and .conclusion == "success")]
+              | if length == 1 then .[0]
+                else error("predecessor protected producer job is not exact") end' \
+              <<< "$jobs")"
+            job_started_at="$(jq -er '.started_at' <<< "$job_record")"
+            job_completed_at="$(jq -er '.completed_at' <<< "$job_record")"
+
+            deployment_verified=false
+            deployments="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments" -f sha="$workflow_commit" \
+              -f environment="$expected_environment" -f per_page=100 | jq -s '[.[][]]')"
+            while IFS= read -r deployment_id; do
+              [[ -n "$deployment_id" ]] || continue
+              statuses="$(gh api --paginate --method GET \
+                "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+                -f per_page=100 | jq -s '[.[][]]')"
+              if jq -e --arg run_id "$run_id" --arg started "$job_started_at" \
+                --arg completed "$job_completed_at" 'any(.[];
+                  .state == "success" and .created_at >= $started
+                  and .created_at <= $completed
+                  and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+                <<< "$statuses" >/dev/null; then
+                deployment_verified=true
+                break
+              fi
+            done < <(jq -r --arg environment "$expected_environment" '.[] | select(
+              .environment == $environment and .creator.login == "github-actions[bot]") | .id' \
+              <<< "$deployments")
+            if [[ "$deployment_verified" != true ]]; then
+              echo "::error::$authority is not bound to its protected environment deployment."
+              exit 2
+            fi
+
+            artifacts="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts" \
+              -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+            artifact_id="$(jq -er --arg name "$artifact_name" --arg digest "$artifact_digest" \
+              --argjson run_id "$run_id" --arg started "$job_started_at" \
+              --arg completed "$job_completed_at" '
+              [.artifacts[] | select(.name == $name and .digest == $digest
+                and .workflow_run.id == $run_id and .expired == false
+                and .created_at >= $started and .updated_at <= $completed)]
+              | if length == 1 then .[0].id else error("authority artifact is not exact") end' \
+              <<< "$artifacts")"
+            archive="$RUNNER_TEMP/$authority-artifact.zip"
+            gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$archive"
+            python3 - "$archive" "$artifact_digest" "$summary_file" "$summary_digest" \
+              "$summary_size" <<'PY'
+          import hashlib
+          from pathlib import PurePosixPath
+          import stat
+          import sys
+          import zipfile
+
+          archive, expected_archive_digest, file_name, expected_digest, expected_size = sys.argv[1:]
+          expected_size = int(expected_size)
+          with open(archive, "rb") as archive_stream:
+              archive_hasher = hashlib.sha256()
+              for chunk in iter(lambda: archive_stream.read(1024 * 1024), b""):
+                  archive_hasher.update(chunk)
+              if "sha256:" + archive_hasher.hexdigest() != expected_archive_digest:
+                  raise SystemExit("authority archive digest differs")
+              archive_stream.seek(0)
+              with zipfile.ZipFile(archive_stream) as source:
+                  matches = []
+                  for item in source.infolist():
+                      path = PurePosixPath(item.filename)
+                      if path.is_absolute() or ".." in path.parts:
+                          raise SystemExit("authority archive contains an unsafe path")
+                      mode = item.external_attr >> 16
+                      if stat.S_ISLNK(mode):
+                          raise SystemExit("authority archive contains a symbolic link")
+                      if not item.is_dir() and path.name == file_name:
+                          matches.append(item)
+                  if len(matches) != 1:
+                      raise SystemExit("authority summary is absent or ambiguous")
+                  member = matches[0]
+                  if member.file_size != expected_size or member.file_size > 1024 * 1024:
+                      raise SystemExit("authority summary size differs")
+                  value = source.read(member)
+          if "sha256:" + hashlib.sha256(value).hexdigest() != expected_digest:
+              raise SystemExit("authority summary digest differs")
+          PY
+          done < <(jq -r '(
+            (.authorities | to_entries[]),
+            (if .previousHistoryAuthority == null then empty
+             else {key: "previousHistory", value: .previousHistoryAuthority} end),
+            {key: "supportLifecycle", value: .supportLifecycleAuthority},
+            {key: "runtimeObservation", value: .runtimeObservationAuthority}
+          ) | [
+            .key,
+            (.value.provenance.runId | tostring),
+            (.value.provenance.runAttempt | tostring),
+            .value.provenance.workflowCommit,
+            .value.provenance.workflowPath,
+            .value.provenance.artifactName,
+            .value.provenance.artifactDigest,
+            .value.provenance.environment,
+            .value.summary.fileName,
+            .value.summary.digest,
+            (.value.summary.size | tostring)
+          ] | @tsv' "$contract")
+
+      - name: Bind history head to the authenticated selected RC freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract=build/platform-api-1x-evidence/platform-api-1.x-execution.json
+          freeze_name="$(jq -er '.evidence.selectedRcFreeze.fileName' "$contract")"
+          protected_name="$(jq -er '.authorities.protectedRelease.summary.fileName' "$contract")"
+          independent_name="$(jq -er '.authorities.independentReproducibility.summary.fileName' "$contract")"
+          for name in "$freeze_name" "$protected_name" "$independent_name"; do
+            if [[ "$name" == */* || "$name" == *\\* || "$name" == "." || "$name" == ".." ]]; then
+              echo "::error::Selected RC authority file name is not confined."
+              exit 2
+            fi
+          done
+          freeze="build/platform-api-1x-evidence/$freeze_name"
+          protected="build/platform-api-1x-evidence/$protected_name"
+          independent="build/platform-api-1x-evidence/$independent_name"
+          freeze_digest="sha256:$(sha256sum "$freeze" | cut -d' ' -f1)"
+          jq -e --arg digest "$freeze_digest" '
+            .evidence.selectedRcFreeze.digest == $digest
+          ' "$contract" >/dev/null
+          jq -e --slurpfile protected "$protected" --slurpfile independent "$independent" \
+            --slurpfile freeze "$freeze" '
+            ($protected[0].dispatchPackage.gaValidation.selectedRc) as $validated |
+            ($protected[0].dispatchPackage.gaPublication.selectedRc) as $published |
+            ($independent[0].selectedRc) as $reproduced |
+            $validated == $published and
+            all(["runId", "runAttempt", "artifactName", "artifactDigest", "freezeDigest",
+                 "productDigest"][];
+              ($validated[.] | tostring) == ($reproduced[.] | tostring)) and
+            $reproduced.workflowPath == ".github/workflows/stable-1.0-rc-release.yml" and
+            $reproduced.workflowCommit == .repository.sourceCommit and
+            .evidence.selectedRcFreeze.digest == $reproduced.freezeFileDigest and
+            $freeze[0].contentDigest == $reproduced.freezeDigest and
+            .release.releaseRootDigest == $reproduced.productDigest and
+            .release.releaseId == $freeze[0].candidate.releaseId and
+            (.release.buildVersion | tostring) == $freeze[0].candidate.buildVersion and
+            .repository.sourceCommit == $freeze[0].candidate.sourceCommit and
+            .repository.sourceRef == $freeze[0].candidate.sourceRef
+          ' "$contract" >/dev/null
+
+      - name: Verify the complete side-effect-free evidence set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
+          python3 tools/release-certification/certify.py stable-platform-api-1x \
+            --mode closeout \
+            --execution-contract build/platform-api-1x-evidence/platform-api-1.x-execution.json \
+            --evidence-dir build/platform-api-1x-evidence \
+            --out-dir build/platform-api-1x-producer-output
+
+      - name: Upload the exact protected evidence aggregate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-platform-api-1x-evidence-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/platform-api-1x-evidence/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30

@@ -41,6 +41,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param bundleSignatureKeyId optional signing-key id from the bundle signature sidecar
  * @param catalogEntryDigest optional lowercase SHA-256 digest of generated catalog metadata
  * @param apiTargetStability manifest-declared API target stability
+ * @param apiTargetBaseline explicitly declared target baseline, or empty when omitted
  * @param experimentalCapabilitiesAccepted whether manifest experimental API use is acknowledged
  * @param requestedPermissions permission capabilities requested by the submitted manifest
  * @param permissionRationaleDigest optional lowercase SHA-256 digest of permission rationale text
@@ -65,6 +66,7 @@ public record AppSubmissionMetadata(
     Optional<String> bundleSignatureKeyId,
     Optional<String> catalogEntryDigest,
     String apiTargetStability,
+    Optional<String> apiTargetBaseline,
     boolean experimentalCapabilitiesAccepted,
     List<String> requestedPermissions,
     Optional<String> permissionRationaleDigest,
@@ -89,6 +91,7 @@ public record AppSubmissionMetadata(
   private static final int MAX_KEY_ID_CHARS = 128;
   private static final int MAX_SANDBOX_REQUIREMENT_CHARS = 64;
   private static final String API_TARGET_STABILITY_FIELD = "apiTargetStability";
+  private static final String API_TARGET_BASELINE_FIELD = "apiTargetBaseline";
   private static final String APP_DATA_MIGRATION_DECLARED_FIELD = "appDataMigrationDeclared";
   private static final String APP_DATA_SCHEMA_DECLARED_FIELD = "appDataSchemaDeclared";
   private static final String APP_ID_FIELD = "appId";
@@ -173,6 +176,21 @@ public record AppSubmissionMetadata(
             value -> AppCatalogSidecars.requireLowercaseSha256(value, CATALOG_ENTRY_DIGEST_FIELD));
     apiTargetStability =
         AppApiCompatibilityMetadata.TargetStability.parse(apiTargetStability).manifestValue();
+    Objects.requireNonNull(apiTargetBaseline, API_TARGET_BASELINE_FIELD);
+    apiTargetBaseline =
+        apiTargetBaseline.map(
+            targetBaseline ->
+                new AppApiCompatibilityMetadata(
+                        null,
+                        null,
+                        List.of(),
+                        AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL,
+                        true,
+                        targetBaseline,
+                        true,
+                        false,
+                        false)
+                    .targetBaseline());
     requestedPermissions = normalizePermissions(requestedPermissions);
     Objects.requireNonNull(permissionRationaleDigest, PERMISSION_RATIONALE_DIGEST_FIELD);
     permissionRationaleDigest =
@@ -246,6 +264,7 @@ public record AppSubmissionMetadata(
         Optional.ofNullable(bundleSignatureKeyId),
         Optional.ofNullable(catalogEntryDigest),
         api.targetStability().manifestValue(),
+        api.targetBaselineDeclared() ? Optional.of(api.targetBaseline()) : Optional.empty(),
         api.experimentalCapabilitiesAccepted(),
         manifest.permissions(),
         Optional.ofNullable(permissionRationaleDigest),
@@ -301,6 +320,7 @@ public record AppSubmissionMetadata(
     bundleSignatureKeyId.ifPresent(text -> value.put(BUNDLE_SIGNATURE_KEY_ID_FIELD, text));
     catalogEntryDigest.ifPresent(text -> value.put(CATALOG_ENTRY_DIGEST_FIELD, text));
     value.put(API_TARGET_STABILITY_FIELD, apiTargetStability);
+    apiTargetBaseline.ifPresent(text -> value.put(API_TARGET_BASELINE_FIELD, text));
     value.put(EXPERIMENTAL_CAPABILITIES_ACCEPTED_FIELD, experimentalCapabilitiesAccepted);
     value.put(REQUESTED_PERMISSIONS_FIELD, requestedPermissions);
     permissionRationaleDigest.ifPresent(text -> value.put(PERMISSION_RATIONALE_DIGEST_FIELD, text));
@@ -334,6 +354,8 @@ public record AppSubmissionMetadata(
             object, CATALOG_ENTRY_DIGEST_FIELD, CATALOG_ENTRY_DIGEST_FIELD),
         AppSubmissionJson.requireString(
             object, API_TARGET_STABILITY_FIELD, API_TARGET_STABILITY_FIELD),
+        AppSubmissionJson.optionalString(
+            object, API_TARGET_BASELINE_FIELD, API_TARGET_BASELINE_FIELD),
         AppSubmissionJson.requireBoolean(
             object,
             EXPERIMENTAL_CAPABILITIES_ACCEPTED_FIELD,

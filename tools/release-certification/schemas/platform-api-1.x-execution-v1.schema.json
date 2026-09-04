@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-execution-v1.schema.json",
+  "title": "Platform API 1.x compatibility execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "executionId", "repository", "release", "evaluationTime", "requestedState", "fixtureOnly", "selfTest", "policyDigest", "urlApiVersion", "contractVersion", "activeStableBaselines", "previousHistoryAuthority", "supportLifecycleAuthority", "runtimeObservationAuthority", "authorityRoots", "authorities", "evidence"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "platform-api-1.x-compatibility-execution"},
+    "executionId": {"$ref": "#/$defs/id"},
+    "repository": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity", "sourceCommit", "sourceRef"],
+      "properties": {
+        "identity": {"const": "github.com/crypta-network/cryptad"},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "sourceRef": {"type": "string", "pattern": "^refs/(?:heads|tags)/[A-Za-z0-9._/-]{1,200}$"}
+      }
+    },
+    "release": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "releaseRootDigest"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/id"},
+        "buildVersion": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "releaseRootDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "evaluationTime": {"type": "string", "format": "date-time"},
+    "requestedState": {"enum": ["implementation-complete", "fixture-verification-complete", "history-authenticated", "app-matrix-verified", "baseline-proposal-reviewed", "runtime-compatibility-verified", "operational-1x-compatibility-complete", "blocked", "partial"]},
+    "fixtureOnly": {"type": "boolean"},
+    "selfTest": {"type": "boolean"},
+    "policyDigest": {"$ref": "#/$defs/digest"},
+    "urlApiVersion": {"const": "v1"},
+    "contractVersion": {"type": "integer", "minimum": 19},
+    "activeStableBaselines": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/baseline"}},
+    "previousHistoryAuthority": {"$ref": "#/$defs/nullableAuthority"},
+    "supportLifecycleAuthority": {"$ref": "#/$defs/nullableAuthority"},
+    "runtimeObservationAuthority": {"$ref": "#/$defs/nullableAuthority"},
+    "authorityRoots": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "thirdPartyPilot", "federatedCatalog"],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/digest"},
+        "independentReproducibility": {"$ref": "#/$defs/digest"},
+        "catalogAuthority": {"$ref": "#/$defs/digest"},
+        "thirdPartyPilot": {"$ref": "#/$defs/digest"},
+        "federatedCatalog": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authorities": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protectedRelease", "independentReproducibility", "catalogAuthority", "thirdPartyPilot", "federatedCatalog"],
+      "properties": {
+        "protectedRelease": {"$ref": "#/$defs/authority"},
+        "independentReproducibility": {"$ref": "#/$defs/authority"},
+        "catalogAuthority": {"$ref": "#/$defs/authority"},
+        "thirdPartyPilot": {"$ref": "#/$defs/authority"},
+        "federatedCatalog": {"$ref": "#/$defs/authority"}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["historyLedger", "previousHistoryLedger", "selectedRcFreeze", "baselineRegistry", "baselineProposal", "graduationRecords", "deprecationLedger", "previousDeprecationLedger", "appSubjectInventory", "appMatrix", "runtimeObservation", "supportLifecycleDescriptor"],
+      "properties": {
+        "historyLedger": {"$ref": "#/$defs/nullableBinding"},
+        "previousHistoryLedger": {"$ref": "#/$defs/nullableBinding"},
+        "selectedRcFreeze": {"$ref": "#/$defs/nullableBinding"},
+        "baselineRegistry": {"$ref": "#/$defs/nullableBinding"},
+        "baselineProposal": {"$ref": "#/$defs/nullableBinding"},
+        "graduationRecords": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/binding"}},
+        "deprecationLedger": {"$ref": "#/$defs/nullableBinding"},
+        "previousDeprecationLedger": {"$ref": "#/$defs/nullableBinding"},
+        "appSubjectInventory": {"$ref": "#/$defs/nullableBinding"},
+        "appMatrix": {"$ref": "#/$defs/nullableBinding"},
+        "runtimeObservation": {"$ref": "#/$defs/nullableBinding"},
+        "supportLifecycleDescriptor": {"$ref": "#/$defs/nullableBinding"}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "baseline": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"},
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fileName", "digest", "size"],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}\\.json$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "size": {"type": "integer", "minimum": 2, "maximum": 8388608}
+      }
+    },
+    "nullableBinding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/binding"}]},
+    "nullableAuthority": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/authority"}]},
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["summaryDigest", "artifactDigest", "operational", "provenance", "summary"],
+      "properties": {
+        "summaryDigest": {"$ref": "#/$defs/digest"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "operational": {"type": "boolean"},
+        "provenance": {"$ref": "stable-1.0-protected-artifact-provenance-v1.schema.json#/$defs/provenance"},
+        "summary": {"$ref": "#/$defs/nullableBinding"}
+      }
+    }
+  }
+}

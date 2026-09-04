@@ -689,11 +689,33 @@ class AppUpdateSchedulerTest {
         app.exec=bin/launch.sh
         app.permissions=%s
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions())));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()))
+            + apiCompatibilityManifestFields(entry));
     return new AppCatalogInstallPlan(CATALOG_ID, entry, staged, scratch);
+  }
+
+  private static String apiCompatibilityManifestFields(AppCatalogEntry entry) {
+    AppApiCompatibilityMetadata api = entry.compatibility().apiCompatibility();
+    StringBuilder fields = new StringBuilder();
+    if (api.minimumVersion() != null) {
+      fields.append("api.minimumVersion=").append(api.minimumVersion()).append('\n');
+    }
+    if (api.maximumTestedVersion() != null) {
+      fields.append("api.maximumTestedVersion=").append(api.maximumTestedVersion()).append('\n');
+    }
+    if (api.targetStabilityDeclared()) {
+      fields
+          .append("api.targetStability=")
+          .append(api.targetStability().manifestValue())
+          .append('\n');
+    }
+    if (api.targetBaselineDeclared()) {
+      fields.append("api.targetBaseline=").append(api.targetBaseline()).append('\n');
+    }
+    return fields.toString();
   }
 }

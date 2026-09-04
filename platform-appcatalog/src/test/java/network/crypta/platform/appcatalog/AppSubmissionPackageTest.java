@@ -57,6 +57,7 @@ class AppSubmissionPackageTest {
         AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, secondOutput));
 
     assertEquals(first.metadata(), second.metadata());
+    assertEquals(Optional.of("1.0"), first.metadata().apiTargetBaseline());
     assertEquals(sha256(firstOutput), sha256(secondOutput));
     assertEquals(
         first.metadata().submissionId(),
@@ -75,6 +76,21 @@ class AppSubmissionPackageTest {
     assertArrayEquals(
         readZipBytes(firstOutput, AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY),
         artifact.bytes());
+  }
+
+  @Test
+  void metadataParse_whenTargetBaselineIsAbsent_expectLegacySchemaRemainsReadable()
+      throws Exception {
+    Path bundle = createBundle();
+    Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
+    Path output = tempDir.resolve("submission.zip");
+    AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, output));
+    String metadataJson = readSubmissionMetadataText(output);
+
+    AppSubmissionMetadata parsed =
+        AppSubmissionMetadata.parse(metadataJson.replace("\"apiTargetBaseline\":\"1.0\",", ""));
+
+    assertTrue(parsed.apiTargetBaseline().isEmpty());
   }
 
   @Test
@@ -434,6 +450,29 @@ class AppSubmissionPackageTest {
             AppCatalogException.class, () -> AppSubmissionPackageVerifier.verify(tampered));
 
     assertTrue(exception.getMessage().contains("metadata.backup-restore-mismatch"));
+  }
+
+  @Test
+  void verify_whenSubmissionTargetBaselineIsForged_expectBlocker() throws Exception {
+    Path bundle = createBundle();
+    Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
+    Path submission = tempDir.resolve("submission.zip");
+    AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, submission));
+    Path tampered = tempDir.resolve("tampered-target-baseline.zip");
+    writeSubmissionWithReplacements(
+        submission,
+        tampered,
+        Map.of(
+            AppSubmissionPackageVerifier.SUBMISSION_METADATA_ENTRY,
+            readSubmissionMetadataText(submission)
+                .replace("\"apiTargetBaseline\":\"1.0\"", "\"apiTargetBaseline\":\"1.1\"")
+                .getBytes(StandardCharsets.UTF_8)));
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class, () -> AppSubmissionPackageVerifier.verify(tampered));
+
+    assertTrue(exception.getMessage().contains("metadata.api-target-baseline-mismatch"));
   }
 
   @Test
@@ -1289,6 +1328,7 @@ class AppSubmissionPackageTest {
         api.minimumVersion=1
         api.maximumTestedVersion=1
         api.targetStability=stable
+        api.targetBaseline=1.0
         api.experimentalCapabilitiesAccepted=false
         """
             .formatted(execPath, permissionsLine, additionalManifestLines),

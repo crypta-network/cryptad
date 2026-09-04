@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +17,12 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
+import network.crypta.platform.api.PlatformApiBaselineDefinition;
+import network.crypta.platform.api.PlatformApiBaselineEvidenceKind;
+import network.crypta.platform.api.PlatformApiBaselineId;
+import network.crypta.platform.api.PlatformApiBaselineLineage;
+import network.crypta.platform.api.PlatformApiBaselineRegistry;
+import network.crypta.platform.api.PlatformApiBaselineStatus;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
@@ -96,9 +103,14 @@ class CryptaAppCliTest {
         Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
 
     assertFalse(manifest.contains("app.permissions="));
-    assertTrue(manifest.contains("api.minimumVersion=" + currentContractVersion() + "\n"));
+    assertTrue(
+        manifest.contains(
+            "api.minimumVersion="
+                + PlatformApiContract.current().stableBaseline().contractVersion()
+                + "\n"));
     assertTrue(manifest.contains("api.maximumTestedVersion=" + currentContractVersion() + "\n"));
     assertTrue(manifest.contains("api.targetStability=stable\n"));
+    assertTrue(manifest.contains("api.targetBaseline=1.0\n"));
     assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
   }
 
@@ -277,6 +289,32 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
     assertEquals("", result.err());
+  }
+
+  @Test
+  void validate_whenStableBundleTargetsUnknownBaseline_expectFailure() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("api.targetBaseline=1.0", "api.targetBaseline=1.1"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("validate", "--bundle-dir", appDir.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("unknown Platform API baseline: 1.1"));
   }
 
   @Test
@@ -1692,6 +1730,11 @@ class CryptaAppCliTest {
     String json = Files.readString(contractFile, StandardCharsets.UTF_8);
     assertTrue(json.contains("\"contractVersion\":" + currentContractVersion()));
     assertTrue(json.contains("\"platform.contract.read\""));
+    assertTrue(json.contains("\"baselineRegistrySummary\""));
+    assertEquals(
+        PlatformApiContractJson.writeEnvelope(
+            PlatformApiContract.current(), PlatformApiBaselineRegistry.current()),
+        json);
   }
 
   @Test
@@ -1860,6 +1903,201 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void apiBaselineInspect_whenCurrentRegistryRequested_expectCanonical10OnlyArtifact()
+      throws Exception {
+    Path registry = tempDir.resolve("baseline-registry.json");
+
+    CliResult result = runCli("api", "baseline", "inspect", "--output", registry.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("supported=[1.0]"));
+    String json = Files.readString(registry, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"id\":\"1.0\""));
+    assertTrue(json.contains("\"status\":\"active\""));
+    assertFalse(json.contains("\"id\":\"1.1\""));
+  }
+
+  @Test
+  void apiPreview_whenRegistryProposalVerified_expectNonProductionBoundary() throws Exception {
+    Path proposal = tempDir.resolve("baseline-proposal.json");
+    Path preview = tempDir.resolve("baseline-preview.json");
+    Files.writeString(
+        proposal,
+        PlatformApiContractJson.writeBaselineRegistry(
+            network.crypta.platform.api.PlatformApiBaselineRegistry.current()),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli("api", "preview", "--proposal", proposal.toString(), "--output", preview.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    String json = Files.readString(preview, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"kind\":\"platform-api-1.x-preview\""));
+    assertTrue(json.contains("\"preview\":true"));
+    assertTrue(json.contains("\"nonProduction\":true"));
+    assertTrue(json.contains("\"activatesBaseline\":false"));
+    assertTrue(json.contains("\"evidenceBoundary\":"));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void apiPreview_whenExactContractBytesSupplied_expectDigestBindsInputBytes() throws Exception {
+    PlatformApiBaselineRegistry registry = PlatformApiBaselineRegistry.current();
+    Path proposal = tempDir.resolve("baseline-proposal.json");
+    Path contract = tempDir.resolve("candidate-contract.json");
+    Path preview = tempDir.resolve("baseline-preview.json");
+    Files.writeString(
+        proposal, PlatformApiContractJson.writeBaselineRegistry(registry), StandardCharsets.UTF_8);
+    Files.writeString(
+        contract,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current(), registry) + "\n",
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "api",
+            "preview",
+            "--proposal",
+            proposal.toString(),
+            "--contract",
+            contract.toString(),
+            "--output",
+            preview.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    assertTrue(
+        Files.readString(preview, StandardCharsets.UTF_8)
+            .contains("\"contractDigest\":\"sha256:" + sha256Hex(contract) + "\""));
+  }
+
+  @Test
+  void apiPreview_whenContractSummaryDoesNotMatchProposal_expectRejected() throws Exception {
+    PlatformApiBaselineRegistry registry = PlatformApiBaselineRegistry.current();
+    Path proposal = tempDir.resolve("baseline-proposal.json");
+    Path contract = tempDir.resolve("candidate-contract.json");
+    Path preview = tempDir.resolve("baseline-preview.json");
+    Files.writeString(
+        proposal, PlatformApiContractJson.writeBaselineRegistry(registry), StandardCharsets.UTF_8);
+    Files.writeString(
+        contract,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current(), registry)
+            .replace(registry.registryDigest(), "f".repeat(64)),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "api",
+            "preview",
+            "--proposal",
+            proposal.toString(),
+            "--contract",
+            contract.toString(),
+            "--output",
+            preview.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("does not match the candidate baseline registry"));
+    assertFalse(Files.exists(preview));
+  }
+
+  @Test
+  void apiPreview_whenRejectedDefinitionIsRetained_expectTerminalHistoryNotProjected()
+      throws Exception {
+    PlatformApiBaselineRegistry current = PlatformApiBaselineRegistry.current();
+    PlatformApiBaselineDefinition stable10 = current.definitions().getFirst();
+    List<String> capabilities = new ArrayList<>(stable10.capabilities());
+    capabilities.add("future.rejected.read");
+    PlatformApiBaselineDefinition rejectedDefinition =
+        PlatformApiBaselineDefinition.create(
+            PlatformApiBaselineId.parse("1.1"),
+            stable10.id(),
+            capabilities,
+            stable10.endpoints(),
+            "a".repeat(64),
+            "b".repeat(64),
+            null,
+            null,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION + 1);
+    PlatformApiBaselineLineage proposed =
+        PlatformApiBaselineLineage.create(
+            rejectedDefinition.id(),
+            rejectedDefinition.definitionDigest(),
+            PlatformApiBaselineStatus.PROPOSED,
+            PlatformApiBaselineEvidenceKind.FIXTURE,
+            "c".repeat(64),
+            null,
+            null,
+            null,
+            null,
+            null);
+    PlatformApiBaselineLineage rejected =
+        PlatformApiBaselineLineage.create(
+            rejectedDefinition.id(),
+            rejectedDefinition.definitionDigest(),
+            PlatformApiBaselineStatus.REJECTED,
+            PlatformApiBaselineEvidenceKind.FIXTURE,
+            "d".repeat(64),
+            null,
+            null,
+            null,
+            null,
+            proposed.lineageDigest());
+    List<PlatformApiBaselineDefinition> definitions = new ArrayList<>(current.definitions());
+    definitions.add(rejectedDefinition);
+    List<PlatformApiBaselineLineage> lineage = new ArrayList<>(current.lineage());
+    lineage.add(proposed);
+    lineage.add(rejected);
+    PlatformApiBaselineRegistry candidate =
+        PlatformApiBaselineRegistry.create(definitions, lineage);
+    Path proposal = tempDir.resolve("rejected-baseline-proposal.json");
+    Path preview = tempDir.resolve("rejected-baseline-preview.json");
+    Files.writeString(
+        proposal, PlatformApiContractJson.writeBaselineRegistry(candidate), StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli("api", "preview", "--proposal", proposal.toString(), "--output", preview.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    String json = Files.readString(preview, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"lifecycleStatus\":\"rejected\""));
+    assertTrue(json.contains("\"ok\":true"));
+  }
+
+  @Test
+  void apiPreview_whenDeprecationVersionIsAbsent_expectNullableMetadataWritten() throws Exception {
+    Path proposal = tempDir.resolve("baseline-proposal.json");
+    Path contract = tempDir.resolve("nullable-deprecation-contract.json");
+    Path preview = tempDir.resolve("nullable-deprecation-preview.json");
+    Files.writeString(
+        proposal,
+        PlatformApiContractJson.writeBaselineRegistry(PlatformApiBaselineRegistry.current()),
+        StandardCharsets.UTF_8);
+    String contractJson =
+        PlatformApiContractJson.writeEnvelope(
+                PlatformApiContract.current(), PlatformApiBaselineRegistry.current())
+            .replaceFirst(
+                "\"deprecation\":null",
+                "\"deprecation\":{\"deprecatedSinceContractVersion\":null,"
+                    + "\"removalContractVersion\":null,\"note\":\"preview only\"}");
+    Files.writeString(contract, contractJson, StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "api",
+            "preview",
+            "--proposal",
+            proposal.toString(),
+            "--contract",
+            contract.toString(),
+            "--output",
+            preview.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    String json = Files.readString(preview, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"deprecatedSinceContractVersion\":null"));
+  }
+
+  @Test
   void compatVerify_whenJsonRequested_expectPathFreeCompatibilityReport() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path report = tempDir.resolve("compat-report.json");
@@ -1884,6 +2122,152 @@ class CryptaAppCliTest {
     assertTrue(json.contains("\"ok\":true"));
     assertTrue(json.contains("\"targetKind\":\"bundle\""));
     assertTrue(json.contains("\"findings\":[]"));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void compatVerify_whenContractSummaryDoesNotMatchSelectedRegistry_expectFailure()
+      throws Exception {
+    PlatformApiBaselineRegistry registry = PlatformApiBaselineRegistry.current();
+    Path appDir = tempDir.resolve("mismatched-registry-app");
+    Path registryFile = tempDir.resolve("baseline-registry.json");
+    Path contractFile = tempDir.resolve("platform-api-contract.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "mismatched-registry-app",
+        "--name",
+        "Mismatched Registry App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        registryFile,
+        PlatformApiContractJson.writeBaselineRegistry(registry),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        contractFile,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current(), registry)
+            .replace(registry.registryDigest(), "f".repeat(64)),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "compat",
+            "verify",
+            "--bundle-dir",
+            appDir.toString(),
+            "--contract",
+            contractFile.toString(),
+            "--baseline-registry",
+            registryFile.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("does not match the candidate baseline registry"));
+  }
+
+  @Test
+  void test_whenCandidateContractUsesPairedRegistry_expectPreviewCompatibilityEvaluated()
+      throws Exception {
+    PlatformApiBaselineRegistry candidateRegistry = proposed11Registry();
+    Path appDir = tempDir.resolve("candidate-baseline-app");
+    Path registryFile = tempDir.resolve("candidate-baseline-registry.json");
+    Path contractFile = tempDir.resolve("candidate-contract.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "candidate-baseline-app",
+        "--name",
+        "Candidate Baseline App",
+        "--version",
+        "0.1.0");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("api.targetStability=stable", "api.targetStability=experimental")
+            .replace("api.targetBaseline=1.0", "api.targetBaseline=1.1")
+            .replace(
+                "api.experimentalCapabilitiesAccepted=false",
+                "api.experimentalCapabilitiesAccepted=true"),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        registryFile,
+        PlatformApiContractJson.writeBaselineRegistry(candidateRegistry),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        contractFile,
+        PlatformApiContractJson.writeEnvelope(
+            PlatformApiContract.current(), PlatformApiBaselineRegistry.current()),
+        StandardCharsets.UTF_8);
+
+    CliResult mismatched =
+        runCli(
+            "test",
+            "--bundle-dir",
+            appDir.toString(),
+            "--contract",
+            contractFile.toString(),
+            "--baseline-registry",
+            registryFile.toString());
+    Files.writeString(
+        contractFile,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current(), candidateRegistry),
+        StandardCharsets.UTF_8);
+    CliResult matched =
+        runCli(
+            "test",
+            "--bundle-dir",
+            appDir.toString(),
+            "--contract",
+            contractFile.toString(),
+            "--baseline-registry",
+            registryFile.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, mismatched.exitCode());
+    assertTrue(mismatched.out().contains("api.compat fail"));
+    assertEquals(CommandLine.ExitCode.OK, matched.exitCode(), matched.err());
+    assertTrue(matched.out().contains("api.compat warn"));
+    assertTrue(matched.out().contains("App test suite warn: candidate-baseline-app 0.1.0"));
+  }
+
+  @Test
+  void compatVerify_whenTargetBaselineOverridden_expectOverrideBoundInReport() throws Exception {
+    Path appDir = tempDir.resolve("baseline-app");
+    Path report = tempDir.resolve("baseline-compat-report.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "baseline-app",
+        "--name",
+        "Baseline App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+
+    CliResult result =
+        runCli(
+            "compat",
+            "verify",
+            "--bundle-dir",
+            appDir.toString(),
+            "--target-stability",
+            "stable",
+            "--target-baseline",
+            "1.0",
+            "--json",
+            report.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    String json = Files.readString(report, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"targetStabilityOverride\":\"stable\""));
+    assertTrue(json.contains("\"targetBaselineOverride\":\"1.0\""));
     assertFalse(json.contains(tempDir.toString()));
   }
 
@@ -1962,8 +2346,7 @@ class CryptaAppCliTest {
   }
 
   @Test
-  void compatVerify_whenCatalogEntryApiRangeOmitsTargetStability_expectManifestTargetIsUsed()
-      throws Exception {
+  void compatVerify_whenCatalogRangeExcludesManifestBaselineRoot_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");
     Path descriptor = tempDir.resolve("entry.properties");
@@ -1993,9 +2376,8 @@ class CryptaAppCliTest {
     CliResult result =
         runCli("compat", "verify", "--catalog-entry", descriptor.toString(), "--strict");
 
-    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
-    assertTrue(result.out().contains("Compatibility verified."));
-    assertEquals("", result.err());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("does not include target baseline 1.0 contract 19"));
   }
 
   @Test
@@ -2094,7 +2476,8 @@ class CryptaAppCliTest {
         manifest,
         Files.readString(manifest, StandardCharsets.UTF_8)
             .replace(
-                "api.minimumVersion=" + currentContractVersion(),
+                "api.minimumVersion="
+                    + PlatformApiContract.current().stableBaseline().contractVersion(),
                 "api.minimumVersion=" + futureContractVersion)
             .replace(
                 "api.maximumTestedVersion=" + currentContractVersion(),
@@ -2372,7 +2755,7 @@ class CryptaAppCliTest {
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
     List<String> expectedCatalogFragments =
         List.of(
-            "catalog.version=5\n",
+            "catalog.version=7\n",
             "catalog.generatedAt=2026-04-29T00:00:00Z\n",
             "app.sample-app.id=sample-app\n",
             "app.sample-app.homepage=https://example.invalid/sample-app\n",
@@ -2395,9 +2778,12 @@ class CryptaAppCliTest {
             "app.sample-app.maintenance.securityPolicy=catalog-advisories\n",
             "app.sample-app.maintenance.deprecationPolicy=none\n",
             "app.sample-app.maintenance.supportUri=https://example.invalid/crypta/apps/sample-app/support\n",
-            "app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n",
+            "app.sample-app.api.minimumVersion="
+                + PlatformApiContract.current().stableBaseline().contractVersion()
+                + "\n",
             "app.sample-app.api.maximumTestedVersion=" + currentContractVersion() + "\n",
             "app.sample-app.api.targetStability=stable\n",
+            "app.sample-app.api.targetBaseline=1.0\n",
             "app.sample-app.api.experimentalCapabilitiesAccepted=false\n",
             "app.sample-app.review.status=reviewed\n",
             "app.sample-app.review.note=Reviewed for local operator safety.\n",
@@ -2417,7 +2803,7 @@ class CryptaAppCliTest {
   }
 
   @Test
-  void catalogCreate_whenSecurityPolicyFlagsProvided_expectVersionFourPolicyWritten()
+  void catalogCreate_whenSecurityPolicyFlagsProvided_expectVersionSevenPolicyWritten()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     Path outputZip = tempDir.resolve("sample-app.zip");
@@ -2482,7 +2868,7 @@ class CryptaAppCliTest {
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
-    assertTrue(catalog.contains("catalog.version=4\n"));
+    assertTrue(catalog.contains("catalog.version=7\n"));
     assertTrue(catalog.contains("catalog.securityAdvisories=CRYPTA-2026-0001\n"));
     assertTrue(catalog.contains("catalog.securityAdvisory.CRYPTA-2026-0001.action=denylist\n"));
     assertTrue(
@@ -2799,10 +3185,14 @@ class CryptaAppCliTest {
         descriptor.toString());
     String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
 
-    assertTrue(catalog.contains("catalog.version=2\n"));
+    assertTrue(catalog.contains("catalog.version=7\n"));
     assertTrue(
-        catalog.contains("app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n"));
+        catalog.contains(
+            "app.sample-app.api.minimumVersion="
+                + PlatformApiContract.current().stableBaseline().contractVersion()
+                + "\n"));
     assertTrue(catalog.contains("app.sample-app.api.targetStability=stable\n"));
+    assertTrue(catalog.contains("app.sample-app.api.targetBaseline=1.0\n"));
     assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     CliResult signResult =
         runCli(
@@ -3120,7 +3510,7 @@ class CryptaAppCliTest {
             descriptor.toString());
     assertEquals(CommandLine.ExitCode.OK, catalogCreate.exitCode(), catalogCreate.err());
     String catalogText = Files.readString(catalog, StandardCharsets.UTF_8);
-    assertTrue(catalogText.contains("catalog.version=6\n"));
+    assertTrue(catalogText.contains("catalog.version=7\n"));
     assertTrue(
         catalogText.contains("app.resubmitted-app.review.preReview.sha256=" + preReviewDigest));
     assertTrue(
@@ -4128,7 +4518,8 @@ class CryptaAppCliTest {
                 .resolve("catalog-candidate.properties")));
   }
 
-  private static Path assertCandidateArtifactsCreated(CliResult stage, Path betaCandidates) {
+  private static Path assertCandidateArtifactsCreated(CliResult stage, Path betaCandidates)
+      throws IOException {
     assertEquals(CommandLine.ExitCode.OK, stage.exitCode(), stage.err());
     assertTrue(stage.out().contains("installSmoke=pending"));
     Path candidateDir = betaCandidates.resolve("sub.intake-reviewed");
@@ -4136,6 +4527,13 @@ class CryptaAppCliTest {
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-manifest.json")));
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-review-receipt.properties")));
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-transparency-log.jsonl")));
+    assertTrue(
+        Files.readString(
+                candidateDir.resolve("catalog-candidate.properties"), StandardCharsets.UTF_8)
+            .contains("api.targetBaseline=1.0\n"));
+    assertTrue(
+        Files.readString(candidateDir.resolve("candidate-manifest.json"), StandardCharsets.UTF_8)
+            .contains("\"apiTargetBaseline\":\"1.0\""));
     return candidateDir;
   }
 
@@ -4259,9 +4657,11 @@ class CryptaAppCliTest {
             "app.name=" + name,
             "app.version=" + version,
             "app.exec=bin/start.sh",
-            "api.minimumVersion=" + currentContractVersion(),
+            "api.minimumVersion="
+                + PlatformApiContract.current().stableBaseline().contractVersion(),
             "api.maximumTestedVersion=" + currentContractVersion(),
             "api.targetStability=stable",
+            "api.targetBaseline=1.0",
             "api.experimentalCapabilitiesAccepted=false"),
         StandardCharsets.UTF_8);
     Files.writeString(
@@ -4399,5 +4799,38 @@ class CryptaAppCliTest {
         current.stableBaseline(),
         current.capabilities(),
         current.endpoints());
+  }
+
+  private static PlatformApiBaselineRegistry proposed11Registry() {
+    PlatformApiBaselineRegistry current = PlatformApiBaselineRegistry.current();
+    PlatformApiBaselineDefinition stable10 = current.definitions().getFirst();
+    PlatformApiBaselineDefinition candidate =
+        PlatformApiBaselineDefinition.create(
+            PlatformApiBaselineId.parse("1.1"),
+            stable10.id(),
+            stable10.capabilities(),
+            stable10.endpoints(),
+            "a".repeat(64),
+            "b".repeat(64),
+            null,
+            null,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION);
+    PlatformApiBaselineLineage proposed =
+        PlatformApiBaselineLineage.create(
+            candidate.id(),
+            candidate.definitionDigest(),
+            PlatformApiBaselineStatus.PROPOSED,
+            PlatformApiBaselineEvidenceKind.FIXTURE,
+            "c".repeat(64),
+            null,
+            null,
+            null,
+            null,
+            null);
+    List<PlatformApiBaselineDefinition> definitions = new ArrayList<>(current.definitions());
+    definitions.add(candidate);
+    List<PlatformApiBaselineLineage> lineage = new ArrayList<>(current.lineage());
+    lineage.add(proposed);
+    return PlatformApiBaselineRegistry.create(definitions, lineage);
   }
 }

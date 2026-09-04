@@ -125,8 +125,10 @@ when a metadata-capable catalog entry provides it:
 - `compatibility.minimumCryptaVersion`, the current comparable Cryptad build/version string,
   advisory status, and whether the comparison is satisfied when it can be evaluated.
 - `apiCompatibility`, including the current Platform API contract version, the app's optional
-  minimum and maximum-tested contract versions, status, optional capabilities, and verifier
-  warnings.
+  minimum and maximum-tested contract versions, target stability, effective named target baseline,
+  exact baseline-declaration state, supported baseline set, status, optional capabilities, and
+  verifier warnings. These fields are static compatibility analysis, not runtime-observation
+  evidence, and do not grant a permission.
 - `screenshots` as URI strings.
 - `changelog.summary` and `changelog.uri`.
 - Installed-vs-catalog version-difference fields and an advisory `updateAvailable` summary. A

@@ -13,6 +13,8 @@ import java.util.Map;
  * @param submissionId submission id
  * @param appId app id
  * @param appVersion app version
+ * @param apiTargetStability manifest-declared API target stability
+ * @param apiTargetBaseline explicitly declared target baseline, or {@code null} when omitted
  * @param status current intake status
  * @param reviewerKeyId assigned reviewer key id when available
  * @param reviewerDisplayName assigned reviewer display name when available
@@ -30,6 +32,8 @@ public record AppSubmissionIntakeSummary(
     String submissionId,
     String appId,
     String appVersion,
+    String apiTargetStability,
+    String apiTargetBaseline,
     AppSubmissionIntakeStatus status,
     String reviewerKeyId,
     String reviewerDisplayName,
@@ -43,10 +47,14 @@ public record AppSubmissionIntakeSummary(
     String redactionStatus,
     List<String> warnings) {
   public Map<String, Object> toJsonValue() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(17);
     json.put("submissionId", submissionId);
     json.put("appId", appId);
     json.put("appVersion", appVersion);
+    json.put("apiTargetStability", apiTargetStability);
+    if (apiTargetBaseline != null) {
+      json.put("apiTargetBaseline", apiTargetBaseline);
+    }
     json.put("status", status.jsonValue());
     json.put("reviewerKeyId", reviewerKeyId);
     json.put("reviewerDisplayName", reviewerDisplayName);

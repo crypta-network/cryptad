@@ -34,6 +34,8 @@ import java.util.regex.Pattern;
  * @param targetStability effective target stability for the app; missing legacy declarations become
  *     {@code experimental}
  * @param targetStabilityDeclared whether {@code api.targetStability} was explicitly present
+ * @param targetBaseline effective named stable baseline targeted by the app, or {@code null}
+ * @param targetBaselineDeclared whether {@code api.targetBaseline} was explicitly present
  * @param experimentalCapabilitiesAccepted whether the author explicitly accepts experimental
  *     Platform API capabilities
  * @param experimentalCapabilitiesAcceptedDeclared whether {@code
@@ -45,10 +47,16 @@ public record AppApiCompatibilityMetadata(
     List<String> optionalCapabilities,
     TargetStability targetStability,
     boolean targetStabilityDeclared,
+    String targetBaseline,
+    boolean targetBaselineDeclared,
     boolean experimentalCapabilitiesAccepted,
     boolean experimentalCapabilitiesAcceptedDeclared) {
   private static final Pattern CAPABILITY_PATTERN =
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
+  private static final Pattern TARGET_BASELINE_PATTERN = Pattern.compile("1\\.(?:0|[1-9]\\d*)");
+
+  /** Immutable Platform API baseline selected by legacy explicit stable declarations. */
+  public static final String DEFAULT_STABLE_TARGET_BASELINE = "1.0";
 
   /**
    * Empty metadata used for manifests and catalogs that do not declare any {@code api.*} keys.
@@ -58,7 +66,8 @@ public record AppApiCompatibilityMetadata(
    * opt-in.
    */
   public static final AppApiCompatibilityMetadata EMPTY =
-      new AppApiCompatibilityMetadata(null, null, List.of(), null, false, false, false);
+      new AppApiCompatibilityMetadata(
+          null, null, List.of(), null, false, null, false, false, false);
 
   /**
    * Creates normalized advisory API compatibility metadata.
@@ -91,6 +100,17 @@ public record AppApiCompatibilityMetadata(
       targetStability = TargetStability.EXPERIMENTAL;
       targetStabilityDeclared = false;
     }
+    if (targetBaseline == null) {
+      if (targetBaselineDeclared) {
+        throw new IllegalArgumentException(
+            "api.targetBaseline cannot be declared without a baseline value");
+      }
+      if (targetStability == TargetStability.STABLE) {
+        targetBaseline = DEFAULT_STABLE_TARGET_BASELINE;
+      }
+    } else {
+      validateTargetBaseline(targetBaseline);
+    }
     if (experimentalCapabilitiesAccepted) {
       experimentalCapabilitiesAcceptedDeclared = true;
     }
@@ -122,6 +142,8 @@ public record AppApiCompatibilityMetadata(
         optionalCapabilities,
         null,
         false,
+        null,
+        false,
         experimentalCapabilitiesAccepted,
         experimentalCapabilitiesAccepted);
   }
@@ -150,6 +172,8 @@ public record AppApiCompatibilityMetadata(
         optionalCapabilities,
         targetStability,
         true,
+        null,
+        false,
         experimentalCapabilitiesAccepted,
         true);
   }
@@ -186,8 +210,46 @@ public record AppApiCompatibilityMetadata(
         optionalCapabilities,
         targetStability,
         targetStabilityDeclared,
+        null,
+        false,
         experimentalCapabilitiesAccepted,
         experimentalCapabilitiesAccepted);
+  }
+
+  /**
+   * Creates metadata using the pre-target-baseline canonical constructor shape.
+   *
+   * <p>An explicit stable target without a named baseline keeps the Platform API 1.0 compatibility
+   * default. Undeclared legacy metadata remains experimental and has no effective target baseline.
+   *
+   * @param minimumVersion minimum Platform API contract version required by the app, or {@code
+   *     null}
+   * @param maximumTestedVersion highest Platform API contract version tested by the app, or {@code
+   *     null}
+   * @param optionalCapabilities normalized advisory capability names the app can use when present
+   * @param targetStability effective target stability for the app
+   * @param targetStabilityDeclared whether {@code api.targetStability} was explicitly present
+   * @param experimentalCapabilitiesAccepted whether experimental capabilities are accepted
+   * @param experimentalCapabilitiesAcceptedDeclared whether the acceptance field was declared
+   */
+  public AppApiCompatibilityMetadata(
+      Integer minimumVersion,
+      Integer maximumTestedVersion,
+      List<String> optionalCapabilities,
+      TargetStability targetStability,
+      boolean targetStabilityDeclared,
+      boolean experimentalCapabilitiesAccepted,
+      boolean experimentalCapabilitiesAcceptedDeclared) {
+    this(
+        minimumVersion,
+        maximumTestedVersion,
+        optionalCapabilities,
+        targetStability,
+        targetStabilityDeclared,
+        null,
+        false,
+        experimentalCapabilitiesAccepted,
+        experimentalCapabilitiesAcceptedDeclared);
   }
 
   /**
@@ -205,6 +267,7 @@ public record AppApiCompatibilityMetadata(
         || maximumTestedVersion != null
         || !optionalCapabilities.isEmpty()
         || targetStabilityDeclared
+        || targetBaselineDeclared
         || experimentalCapabilitiesAcceptedDeclared;
   }
 
@@ -249,6 +312,13 @@ public record AppApiCompatibilityMetadata(
       normalized.add(value);
     }
     return List.copyOf(normalized);
+  }
+
+  private static void validateTargetBaseline(String targetBaseline) {
+    String value = Objects.requireNonNull(targetBaseline, "api.targetBaseline");
+    if (!TARGET_BASELINE_PATTERN.matcher(value).matches()) {
+      throw new IllegalArgumentException("unsupported api.targetBaseline: " + targetBaseline);
+    }
   }
 
   /**

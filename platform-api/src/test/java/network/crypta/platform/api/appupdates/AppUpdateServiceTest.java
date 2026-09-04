@@ -2,6 +2,7 @@ package network.crypta.platform.api.appupdates;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
@@ -61,6 +62,7 @@ import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
+import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
@@ -72,6 +74,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.appvault.AppIdentityGrant;
 import network.crypta.platform.appvault.AppIdentityGrantScope;
 import network.crypta.platform.appvault.AppIdentityGrantStatus;
@@ -2000,6 +2003,35 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void stage_whenCatalogTargetsUnsupportedBaseline_expectBlockedBeforePlanPreparation()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppApiCompatibilityMetadata unsupportedBaseline =
+        new AppApiCompatibilityMetadata(
+            1,
+            PlatformApiContract.current().contractVersion(),
+            List.of(),
+            TargetStability.STABLE,
+            true,
+            "1.1",
+            true,
+            false,
+            false);
+    AppCatalogEntry catalogEntry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, unsupportedBaseline);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(catalogEntry));
+    service.check(APP_ID, false);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals("update_incompatible", exception.errorCode());
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
   void stage_whenPreparedPlanNoLongerMatchesReviewedCandidate_expectCandidateChangedFailure()
       throws Exception {
     AppUpdateService service =
@@ -2200,6 +2232,63 @@ class AppUpdateServiceTest {
     assertEquals(true, securityDecision.get("blocksUpdate"));
     assertEquals("not_checked", migration.get(STATUS));
     verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void previewForConsent_whenCatalogAndStagedBaselineDiffer_expectInvalidBundle() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppApiCompatibilityMetadata catalogCompatibility = declaredBaselineApiMetadata("1.0");
+    AppCatalogEntry entry =
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, catalogCompatibility);
+    AppCatalogInstallPlan plan = plan(entry);
+    Path manifest = plan.stagedBundleDirectory().resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("api.targetBaseline=1.0", "api.targetBaseline=1.1"),
+        StandardCharsets.UTF_8);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.previewForConsent(APP_ID, false));
+
+    assertEquals(400, exception.statusCode());
+    assertEquals("invalid_app_bundle", exception.errorCode());
+    assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void previewForConsent_whenLegacyCatalogOmitsApiTarget_expectStagedManifestSummary()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogInstallPlan plan = plan(entry);
+    Path manifest = plan.stagedBundleDirectory().resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            + "api.minimumVersion=1\n"
+            + "api.maximumTestedVersion="
+            + PlatformApiContract.current().contractVersion()
+            + "\napi.targetStability=stable\n"
+            + "api.targetBaseline=1.1\n",
+        StandardCharsets.UTF_8);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+
+    Map<String, Object> summary = service.previewForConsent(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> apiCompatibility = (Map<String, Object>) candidate.get("apiCompatibility");
+    assertEquals("incompatible", candidate.get(STATUS));
+    assertEquals("unsupported-baseline", apiCompatibility.get(STATUS));
+    assertEquals("1.1", apiCompatibility.get("targetBaseline"));
+    assertFalse(Files.exists(plan.scratchDirectory()));
   }
 
   @Test
@@ -3114,6 +3203,36 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void apply_whenOriginalBaselineBecomesUnsupported_expectFailureRecoveryLeavesItStopped()
+      throws Exception {
+    InstalledAppSnapshot installed =
+        installedWithApiMetadata(List.of(QUEUE_READ_PERMISSION), unsupportedBaselineApiMetadata());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(), Optional.empty(), Optional.of(running(installed)), Optional.empty());
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    try (AppCatalogInstallPlan plan = plan(entry)) {
+      when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+      when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
+          .thenThrow(new IOException("staged directory disappeared"));
+      service.stage(APP_ID);
+
+      PlatformApiException exception =
+          assertThrows(
+              PlatformApiException.class, () -> service.apply(APP_ID, APPLY_RESTART_NO_HEALTH));
+
+      assertEquals(500, exception.statusCode());
+      assertEquals("update_failed", exception.errorCode());
+      verify(appHost).stop(APP_ID);
+      verify(appHost, never()).start(APP_ID);
+    }
+  }
+
+  @Test
   void apply_whenRestartProcessHealthLaunchFails_expectRollbackAttempted() throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
@@ -3149,6 +3268,44 @@ class AppUpdateServiceTest {
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
     assertFalse(Files.exists(plan.scratchDirectory()));
+  }
+
+  @Test
+  void apply_whenHealthRollbackRestoresUnsupportedBaseline_expectRecoveryRestartBlocked()
+      throws Exception {
+    InstalledAppSnapshot installed =
+        installedWithApiMetadata(List.of(QUEUE_READ_PERMISSION), unsupportedBaselineApiMetadata());
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID))
+        .thenReturn(Optional.of(installed), Optional.of(installed), Optional.of(installed));
+    when(appHost.status(APP_ID))
+        .thenReturn(
+            Optional.empty(), Optional.empty(), Optional.of(running(installed)), Optional.empty());
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(entry));
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    when(appHost.start(APP_ID)).thenThrow(new IOException("updated bundle launch failed"));
+    when(appHost.rollbackStatus(APP_ID))
+        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
+    when(appHost.rollback(APP_ID)).thenReturn(installed);
+    service.stage(APP_ID);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.apply(APP_ID, APPLY_RESTART_PROCESS_HEALTH_ROLLBACK));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("health_check_failed", exception.errorCode());
+    verify(appHost).rollback(APP_ID);
+    verify(appHost, times(1)).start(APP_ID);
+    Map<String, Object> summary = service.summary(APP_ID);
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals("none", ((Map<?, ?>) summary.get(CANDIDATE)).get(STATUS));
   }
 
   @Test
@@ -3487,8 +3644,7 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void check_whenPolicyApplyWhenStoppedAndApiNewerThanTested_expectAutoApplyBlocked()
-      throws Exception {
+  void check_whenStableAppRangeExcludes10Baseline_expectCandidateIncompatible() throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
@@ -3510,19 +3666,10 @@ class AppUpdateServiceTest {
     Map<String, Object> summary = service.check(APP_ID, false);
 
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
-    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("incompatible", candidate.get(STATUS));
     assertEquals(false, candidate.get("autoApplyAllowed"));
-    assertEquals("newer_than_tested", ((Map<?, ?>) candidate.get("apiCompatibility")).get(STATUS));
+    assertEquals("incompatible", ((Map<?, ?>) candidate.get("apiCompatibility")).get(STATUS));
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
-    Map<String, Object> historyEntry =
-        ((List<Map<String, Object>>) summary.get("history"))
-            .stream()
-                .filter(entry -> "apply".equals(entry.get("action")))
-                .findFirst()
-                .orElseThrow();
-    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
-    assertEquals(
-        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
@@ -3662,6 +3809,27 @@ class AppUpdateServiceTest {
     assertFalse(Files.exists(plan.scratchDirectory()));
     verify(appHost).stop(APP_ID);
     verify(appHost).start(APP_ID);
+  }
+
+  @Test
+  void rollback_whenRestoredBaselineIsUnsupported_expectBundleRemainsStopped() throws Exception {
+    InstalledAppSnapshot installed = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    InstalledAppSnapshot rolledBack =
+        installedWithApiMetadata(List.of(QUEUE_READ_PERMISSION), unsupportedBaselineApiMetadata());
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    when(appHost.rollbackStatus(APP_ID))
+        .thenReturn(Optional.of(new AppRollbackRecord(APP_ID, APP_NAME, INSTALLED_VERSION)));
+    when(appHost.rollback(APP_ID)).thenReturn(rolledBack);
+    AppUpdateService service = new AppUpdateService(appHost, catalogManager);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.rollback(APP_ID, true));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("unsupported_platform_api_baseline", exception.errorCode());
+    verify(appHost).stop(APP_ID);
+    verify(appHost).rollback(APP_ID);
+    verify(appHost, never()).start(APP_ID);
   }
 
   @Test
@@ -5376,6 +5544,35 @@ class AppUpdateServiceTest {
     return new InstalledAppSnapshot(manifest, paths);
   }
 
+  private InstalledAppSnapshot installedWithApiMetadata(
+      List<String> permissions, AppApiCompatibilityMetadata apiCompatibility) {
+    AppManifest manifest =
+        new AppManifest(
+            1,
+            APP_ID,
+            APP_NAME,
+            INSTALLED_VERSION,
+            "bin/launch.sh",
+            AppUiMode.NONE,
+            null,
+            permissions,
+            apiCompatibility,
+            null,
+            null,
+            AppSandboxPolicy.defaults(),
+            AppRestartPolicy.NEVER,
+            0,
+            0L);
+    InstalledAppPaths paths =
+        new InstalledAppPaths(
+            APP_ID,
+            tempDir.resolve("installed").resolve(APP_ID),
+            tempDir.resolve("data").resolve(APP_ID),
+            tempDir.resolve("cache").resolve(APP_ID),
+            tempDir.resolve("run").resolve(APP_ID));
+    return new InstalledAppSnapshot(manifest, paths);
+  }
+
   private RunningAppSnapshot running(InstalledAppSnapshot installed) {
     return new RunningAppSnapshot(
         installed.manifest(),
@@ -5564,6 +5761,23 @@ class AppUpdateServiceTest {
     int futureContractVersion = PlatformApiContract.current().contractVersion() + 1;
     return new AppApiCompatibilityMetadata(
         futureContractVersion, futureContractVersion, List.of(), TargetStability.STABLE, false);
+  }
+
+  private static AppApiCompatibilityMetadata unsupportedBaselineApiMetadata() {
+    return declaredBaselineApiMetadata("1.1");
+  }
+
+  private static AppApiCompatibilityMetadata declaredBaselineApiMetadata(String baseline) {
+    return new AppApiCompatibilityMetadata(
+        1,
+        PlatformApiContract.current().contractVersion(),
+        List.of(),
+        TargetStability.STABLE,
+        true,
+        baseline,
+        true,
+        false,
+        true);
   }
 
   private static AppCatalogEntry entry(
@@ -5857,11 +6071,12 @@ class AppUpdateServiceTest {
         app.exec=bin/launch.sh
         app.permissions=%s
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions())));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()))
+            + apiCompatibilityManifestFields(entry));
     return new PlanDirectories(staged, scratch);
   }
 
@@ -5928,13 +6143,14 @@ class AppUpdateServiceTest {
         app.data.schema.namespace.feeds.current=2
         %s
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions()),
-                extraManifestFields,
-                migrationFields));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()),
+                    extraManifestFields,
+                    migrationFields)
+            + apiCompatibilityManifestFields(entry));
     return plan;
   }
 
@@ -5970,11 +6186,12 @@ class AppUpdateServiceTest {
         app.data.migration.archive-v1-v2.requiresStopped=true
         app.data.migration.archive-v1-v2.description=Upgrade archived feed records to schema v2.
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions())));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()))
+            + apiCompatibilityManifestFields(entry));
     return plan;
   }
 
@@ -6009,11 +6226,12 @@ class AppUpdateServiceTest {
         app.data.migration.feeds-v2-v3.requiresStopped=true
         app.data.migration.feeds-v2-v3.description=Upgrade feed records to schema v3.
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions())));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()))
+            + apiCompatibilityManifestFields(entry));
     return plan;
   }
 
@@ -6094,12 +6312,46 @@ class AppUpdateServiceTest {
         app.data.schema.namespace.feeds.current=4
         %s
         """
-            .formatted(
-                entry.appId(),
-                entry.name(),
-                entry.version(),
-                String.join(",", entry.permissions()),
-                migrationFields));
+                .formatted(
+                    entry.appId(),
+                    entry.name(),
+                    entry.version(),
+                    String.join(",", entry.permissions()),
+                    migrationFields)
+            + apiCompatibilityManifestFields(entry));
     return plan;
+  }
+
+  private static String apiCompatibilityManifestFields(AppCatalogEntry entry) {
+    AppApiCompatibilityMetadata api = entry.compatibility().apiCompatibility();
+    StringBuilder fields = new StringBuilder();
+    if (api.minimumVersion() != null) {
+      fields.append("api.minimumVersion=").append(api.minimumVersion()).append('\n');
+    }
+    if (api.maximumTestedVersion() != null) {
+      fields.append("api.maximumTestedVersion=").append(api.maximumTestedVersion()).append('\n');
+    }
+    if (!api.optionalCapabilities().isEmpty()) {
+      fields
+          .append("api.optionalCapabilities=")
+          .append(String.join(",", api.optionalCapabilities()))
+          .append('\n');
+    }
+    if (api.targetStabilityDeclared()) {
+      fields
+          .append("api.targetStability=")
+          .append(api.targetStability().manifestValue())
+          .append('\n');
+    }
+    if (api.targetBaselineDeclared()) {
+      fields.append("api.targetBaseline=").append(api.targetBaseline()).append('\n');
+    }
+    if (api.experimentalCapabilitiesAcceptedDeclared()) {
+      fields
+          .append("api.experimentalCapabilitiesAccepted=")
+          .append(api.experimentalCapabilitiesAccepted())
+          .append('\n');
+    }
+    return fields.toString();
   }
 }

@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import network.crypta.platform.api.PlatformApiBaselineRegistry;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.appdist.AppDistributionException;
@@ -58,11 +59,17 @@ class MockPlatformApiFixturesTest {
     String body = contractRequest.responseBody();
 
     assertEquals(200, contractRequest.responseCode());
-    assertEquals(PlatformApiContractJson.writeEnvelope(PlatformApiContract.current()), body);
+    assertEquals(
+        PlatformApiContractJson.writeEnvelope(
+            PlatformApiContract.current(), PlatformApiBaselineRegistry.current()),
+        body);
     assertTrue(body.contains("\"generatedBy\""));
     assertTrue(body.contains("\"stabilityPolicy\""));
     assertTrue(body.contains("\"capabilities\""));
     assertTrue(body.contains("\"endpoints\""));
+    assertTrue(body.contains("\"baselineRegistrySummary\""));
+    assertTrue(body.contains("\"supportedBaselines\""));
+    assertTrue(body.contains("\"id\":\"1.0\""));
     assertFalse(body.contains("browserSessionToken"));
     assertFalse(body.contains("privateKey"));
     assertFalse(body.contains("/work/"));

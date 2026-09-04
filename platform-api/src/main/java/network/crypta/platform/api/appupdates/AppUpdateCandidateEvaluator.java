@@ -7,8 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import network.crypta.platform.api.PlatformApiContract;
-import network.crypta.platform.api.PlatformApiContractVerifier;
+import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
@@ -274,10 +273,8 @@ final class AppUpdateCandidateEvaluator {
         "not_applicable",
         AppUpdateCandidate.reviewSummary(reviewAuthority.unreviewedStatus(), null),
         reviewAuthority.missingReviewTrust(),
-        PlatformApiContractVerifier.summarize(
-            installed.manifest().apiCompatibility(),
-            installed.manifest().permissions(),
-            PlatformApiContract.current()),
+        PlatformApiAppAdmission.summarizeAdmission(
+            installed.manifest().apiCompatibility(), installed.manifest().permissions()),
         AppUpdateCandidate.permissionDelta(
             installed.manifest().permissions(), installed.manifest().permissions()),
         AppDataMigrationPlan.notRequired(
@@ -476,10 +473,8 @@ final class AppUpdateCandidateEvaluator {
    * @return stable JSON-compatible compatibility summary
    */
   private static Map<String, Object> apiCompatibility(AppCatalogEntry entry) {
-    return PlatformApiContractVerifier.summarize(
-        entry.compatibility().apiCompatibility(),
-        entry.permissions(),
-        PlatformApiContract.current());
+    return PlatformApiAppAdmission.summarizeAdmission(
+        entry.compatibility().apiCompatibility(), entry.permissions());
   }
 
   /**
@@ -567,7 +562,9 @@ final class AppUpdateCandidateEvaluator {
    */
   private static boolean apiCompatibilityBlocksUpdate(Map<String, Object> apiCompatibility) {
     String apiStatus = String.valueOf(apiCompatibility.get(JSON_STATUS));
-    return "below_minimum".equals(apiStatus) || "incompatible".equals(apiStatus);
+    return "below_minimum".equals(apiStatus)
+        || "incompatible".equals(apiStatus)
+        || "unsupported-baseline".equals(apiStatus);
   }
 
   /**

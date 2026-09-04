@@ -15,8 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
-import network.crypta.platform.api.PlatformApiContract;
-import network.crypta.platform.api.PlatformApiContractVerifier;
+import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.appupdates.CatalogSourceSwitchConsent;
@@ -124,6 +123,7 @@ public final class AppCatalogsApiHandler {
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String CATALOG_ID_FIELD = "catalogId";
   private static final String APP_ID_FIELD = "appId";
+  private static final String API_COMPATIBILITY_FIELD = "apiCompatibility";
   private static final String REDACTED_FIELD = "redacted";
   private static final String REDACTED_VALUE = "<redacted>";
   private static final String REMOVED_FIELD = "removed";
@@ -1409,6 +1409,7 @@ public final class AppCatalogsApiHandler {
               initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
           true);
       catalogManager.verifyInstallPlan(plan);
+      requirePlatformApiAdmission(plan);
       InstalledAppOrigin origin = catalogOrigin(plan, preparedReviewTrust);
       InstalledAppSnapshot installed =
           origin == null
@@ -1451,6 +1452,8 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, appId);
+      catalogManager.verifyInstallPlan(plan);
+      AppManifest targetManifest = requirePlatformApiAdmission(plan);
       CatalogSourceSwitchConsent.Decision decision = sourceSwitchDecision(plan);
       LinkedHashMap<String, Object> preview = new LinkedHashMap<>();
       preview.put(APP_ID_FIELD, plan.entry().appId());
@@ -1470,6 +1473,10 @@ public final class AppCatalogsApiHandler {
       preview.put("targetPublisherPolicyDigestSha256", decision.targetPublisherPolicyDigest());
       preview.put("consentDigestSha256", decision.consentDigestSha256());
       preview.put("backupAndMigrationChecksRequired", decision.requiresExplicitConsent());
+      preview.put(
+          API_COMPATIBILITY_FIELD,
+          PlatformApiAppAdmission.summarizeAdmission(
+              targetManifest.apiCompatibility(), targetManifest.permissions()));
       return preview;
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
@@ -1675,6 +1682,7 @@ public final class AppCatalogsApiHandler {
               initialReviewTrust, preparedReviewTrust, reviewAcknowledged),
           false);
       catalogManager.verifyInstallPlan(plan);
+      requirePlatformApiAdmission(plan);
       requireLifecycleForSchemaChangingSourceSwitch(
           installed, plan, sourceSwitchAuthorization.explicitSwitch());
       InstalledAppOrigin origin =
@@ -1799,6 +1807,23 @@ public final class AppCatalogsApiHandler {
         installed.manifest().dataSchemaContract(), target.dataSchemaContract())) {
       throw migrationLifecycleRequired();
     }
+  }
+
+  private static AppManifest requirePlatformApiAdmission(AppCatalogInstallPlan plan) {
+    AppManifest manifest;
+    try {
+      manifest =
+          AppManifestParser.parse(
+              plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+    } catch (IOException _) {
+      throw new PlatformApiException(
+          400, INVALID_APP_BUNDLE_ERROR_CODE, "Catalog app bundle manifest is invalid.");
+    }
+    PlatformApiAppAdmission.requireCatalogDeclarationMatchesManifest(
+        plan.entry().compatibility().apiCompatibility(), manifest.apiCompatibility());
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        manifest.apiCompatibility(), manifest.permissions());
+    return manifest;
   }
 
   private static boolean schemaTargetsDiffer(
@@ -2507,7 +2532,7 @@ public final class AppCatalogsApiHandler {
     json.put("permissionRationales", entry.permissionRationales());
     json.put("compatibility", summarizeCompatibility(entry.compatibility()));
     json.put(
-        "apiCompatibility",
+        API_COMPATIBILITY_FIELD,
         apiCompatibility(entry.compatibility().apiCompatibility(), entry.permissions()));
     json.put("changelog", summarizeChangelog(entry.changelog()));
     json.put("screenshots", entry.screenshots().stream().map(URI::toString).toList());
@@ -2795,8 +2820,7 @@ public final class AppCatalogsApiHandler {
 
   private static Map<String, Object> apiCompatibility(
       AppApiCompatibilityMetadata metadata, List<String> permissions) {
-    return PlatformApiContractVerifier.summarize(
-        metadata, permissions, PlatformApiContract.current());
+    return PlatformApiAppAdmission.summarizeAdmission(metadata, permissions);
   }
 
   private static boolean reviewAcknowledged(Map<String, List<String>> queryParameters) {
@@ -2843,7 +2867,8 @@ public final class AppCatalogsApiHandler {
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));
     json.put("permissions", manifest.permissions());
     json.put(
-        "apiCompatibility", apiCompatibility(manifest.apiCompatibility(), manifest.permissions()));
+        API_COMPATIBILITY_FIELD,
+        apiCompatibility(manifest.apiCompatibility(), manifest.permissions()));
     json.put(INSTALLED_FIELD, true);
     json.put("running", false);
     json.put("pid", null);

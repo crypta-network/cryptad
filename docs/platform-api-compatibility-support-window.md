@@ -51,7 +51,7 @@ Current snapshots publish:
     "schemaVersion": 1,
     "baselineName": "1.0",
     "baselineContractVersion": 19,
-    "currentContractVersion": 23,
+    "currentContractVersion": 24,
     "supportPhase": "beta",
     "supportWindowStartedRelease": "production-beta",
     "minimumDeprecationWindowContractVersions": 2,
@@ -104,12 +104,12 @@ publishes `removalContractVersion`, even if its stability label is still `deprec
 
 Concrete examples:
 
-- Current contract `23`, deprecated since `23`, removal `25`: acceptable scheduled-removal runway.
+- Current contract `24`, deprecated since `24`, removal `26`: acceptable scheduled-removal runway.
 - Deprecated since `23`, removal `24`: blocked because the deprecation window is one contract
   version.
-- Current contract `23`, deprecated since `22`, removal `23`: blocked because there is no future
+- Current contract `24`, deprecated since `23`, removal `24`: blocked because there is no future
   removal runway.
-- Current contract `23`, deprecated since `24`: blocked because the deprecation window has not
+- Current contract `24`, deprecated since `25`: blocked because the deprecation window has not
   started.
 - Scheduled for removal with no deprecation object: blocked.
 
@@ -273,6 +273,7 @@ Stable apps should declare:
 
 ```properties
 api.targetStability=stable
+api.targetBaseline=1.0
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -286,6 +287,13 @@ api.experimentalCapabilitiesAccepted=true
 Keep compatibility reports and digests in submission records. Do not attach raw private data,
 local paths, raw fetched content, raw app data, submission ZIP contents, keys, tokens, or private
 insert URIs.
+
+Future 1.x definitions are governed by the separate append-only baseline registry and protected
+release ledger. A successor must be a monotonic extension of every supported predecessor, and a
+proposal or fixture remains inactive. Historical deprecation clocks carry into every successor;
+changing the baseline name cannot reset notice time or permit a removal required by a supported
+predecessor or authenticated app. See
+[Platform API 1.x compatibility operations](platform-api-1.x-compatibility-operations.md).
 
 ## Maintenance-release enforcement
 
