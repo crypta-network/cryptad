@@ -57,7 +57,7 @@ concurrency:
 jobs:
   prepare-evidence:
     name: Prepare exact Platform API 1.x evidence
-    if: github.ref_protected && github.triggering_actor == 'leumor'
+    if: github.ref_protected && github.actor == 'leumor' && github.triggering_actor == 'leumor'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: stable-1-0-platform-api-1x-evidence

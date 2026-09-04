@@ -162,8 +162,11 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
 
     def test_producer_whenExamined_expectProtectedReadOnlyExactSubject(self) -> None:
         self.assertIn("\npermissions: {}\n", self.producer)
-        self.assertIn("if: github.ref_protected", self.producer)
-        self.assertIn("github.triggering_actor == 'leumor'", self.producer)
+        self.assertIn(
+            "if: github.ref_protected && github.actor == 'leumor' && "
+            "github.triggering_actor == 'leumor'",
+            self.producer,
+        )
         self.assertIn("environment: stable-1-0-platform-api-1x-evidence", self.producer)
         self.assertIn("persist-credentials: false", self.producer)
         self.assertIn('test "$SOURCE_COMMIT" = "$GITHUB_SHA"', self.producer)
