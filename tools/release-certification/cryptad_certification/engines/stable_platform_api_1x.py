@@ -283,6 +283,14 @@ def _baseline_lineage_evidence_errors(item: dict[str, Any], index: int) -> list[
         errors.append(
             f"baseline registry lineage {index} fixture evidence establishes an operational state"
         )
+    if (
+        status not in SUPPORTED_BASELINE_STATES
+        and status != "end-of-support"
+        and any(item[field] is not None for field in ACTIVATION_COORDINATE_FIELDS)
+    ):
+        errors.append(
+            f"baseline registry lineage {index} carries activation coordinates before activation"
+        )
     if evidence_kind == "imported-frozen-baseline" and not (
         item["id"] == "1.0"
         and status == "active"
@@ -489,6 +497,34 @@ def _baseline_registry_errors(
                 f"supported baseline {baseline_id} is newer than the execution contract"
             )
     return errors
+
+
+def _historical_baseline_registry_errors(
+    envelope: dict[str, Any],
+    contract_version: int,
+    fixture: bool,
+    policy: dict[str, Any],
+) -> list[str]:
+    """Validate a predecessor registry without binding it to the current release subject."""
+
+    latest_status: dict[str, str] = {}
+    for lineage in envelope["baselineRegistry"]["lineage"]:
+        latest_status[lineage["id"]] = lineage["status"]
+    supported = sorted(
+        (
+            baseline_id
+            for baseline_id, status in latest_status.items()
+            if status in SUPPORTED_BASELINE_STATES
+        ),
+        key=_baseline_id_key,
+    )
+    historical_contract = {
+        "activeStableBaselines": supported,
+        "contractVersion": contract_version,
+    }
+    return _baseline_registry_errors(
+        envelope, historical_contract, fixture, policy
+    )
 
 
 def _timestamp(value: Any, label: str) -> datetime:
@@ -1026,6 +1062,44 @@ def _history_extension_errors(
     return errors
 
 
+def _baseline_registry_extension_errors(
+    registry: dict[str, Any],
+    previous_registry: dict[str, Any] | None,
+    previous_ledger: dict[str, Any] | None,
+) -> list[str]:
+    """Verify that the current registry exactly extends its authenticated predecessor."""
+
+    if previous_ledger is None:
+        if previous_registry is not None:
+            return ["genesis history cannot bind a predecessor baseline registry"]
+        return []
+    if previous_registry is None:
+        return ["history successor requires the authenticated predecessor baseline registry"]
+
+    current = registry["baselineRegistry"]
+    previous = previous_registry["baselineRegistry"]
+    errors: list[str] = []
+    previous_definitions = previous["definitions"]
+    previous_lineage = previous["lineage"]
+    if len(current["definitions"]) < len(previous_definitions):
+        errors.append("baseline registry drops an authenticated definition")
+    elif current["definitions"][: len(previous_definitions)] != previous_definitions:
+        errors.append("baseline registry rewrites the authenticated definition prefix")
+    if len(current["lineage"]) < len(previous_lineage):
+        errors.append("baseline registry drops authenticated lifecycle history")
+    elif current["lineage"][: len(previous_lineage)] != previous_lineage:
+        errors.append("baseline registry rewrites the authenticated lifecycle prefix")
+
+    previous_head = previous_ledger["records"][-1]
+    if previous_head["baselineRegistryDigest"] != _record_baseline_registry_digest(
+        previous_registry
+    ):
+        errors.append(
+            "previous history head differs from the authenticated predecessor baseline registry"
+        )
+    return errors
+
+
 def _protected_selected_rc(
     protected_summary: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -1133,6 +1207,8 @@ def _previous_history_authority_errors(
     fixture: bool,
     policy: dict[str, Any],
     previous_deprecation: dict[str, Any] | None = None,
+    previous_baseline_registry: dict[str, Any] | None = None,
+    previous_baseline_registry_binding: dict[str, Any] | None = None,
 ) -> list[str]:
     authority = contract["previousHistoryAuthority"]
     if fixture:
@@ -1145,7 +1221,12 @@ def _previous_history_authority_errors(
         and records[0]["predecessorRecordDigest"] is None
     ):
         return []
-    if previous_ledger is None or authority is None:
+    if (
+        previous_ledger is None
+        or previous_baseline_registry is None
+        or previous_baseline_registry_binding is None
+        or authority is None
+    ):
         return ["production history requires a protected previous Platform API 1.x authority"]
     summary, errors = _bound_json(
         evidence_dir,
@@ -1203,6 +1284,15 @@ def _previous_history_authority_errors(
         or summary["historyLedgerHeadDigest"] != previous_ledger["headRecordDigest"]
     ):
         errors.append("previous Platform API 1.x summary does not authenticate the ledger head")
+    if (
+        summary.get("baselineRegistryDigest")
+        != _record_baseline_registry_digest(previous_baseline_registry)
+        or summary.get("baselineRegistryArtifactDigest")
+        != previous_baseline_registry_binding["digest"]
+    ):
+        errors.append(
+            "previous Platform API 1.x summary does not authenticate the baseline registry"
+        )
     if (
         previous_deprecation is None
         or summary["deprecationLedgerDigest"] != previous_deprecation["ledgerDigest"]
@@ -2856,6 +2946,7 @@ def run(
     stage_ok = {stage: False for stage in STAGES}
     stage_ok["preflight"] = not errors
     ledger = previous_ledger = baseline_registry = proposal = deprecation = matrix = runtime = None
+    previous_baseline_registry = None
     selected_rc_freeze = None
     app_subject_inventory = None
     app_subject_inventory_errors: list[str] = []
@@ -2889,6 +2980,13 @@ def run(
             "previous history ledger",
         )
         stage_errors.extend(previous_history_errors)
+        previous_baseline_registry, previous_registry_errors = _optional_bound_json(
+            resolved_evidence,
+            contract["evidence"]["previousBaselineRegistry"],
+            BASELINE_REGISTRY_SCHEMA,
+            "previous baseline registry",
+        )
+        stage_errors.extend(previous_registry_errors)
         selected_rc_freeze, selected_rc_freeze_errors = _optional_bound_json(
             resolved_evidence,
             contract["evidence"]["selectedRcFreeze"],
@@ -2937,12 +3035,21 @@ def run(
             )
             stage_errors.extend(snapshot_errors)
         if previous_ledger is not None and not previous_history_errors:
+            if previous_baseline_registry is not None and not previous_registry_errors:
+                stage_errors.extend(
+                    _historical_baseline_registry_errors(
+                        previous_baseline_registry,
+                        previous_ledger["records"][-1]["contractVersion"],
+                        fixture,
+                        policy,
+                    )
+                )
             stage_errors.extend(
                 _history_errors(
                     previous_ledger,
                     resolved_evidence,
                     contract,
-                    baseline_registry,
+                    previous_baseline_registry,
                     None,
                     fixture,
                     evaluation,
@@ -2964,6 +3071,14 @@ def run(
                 )
             )
             stage_errors.extend(_history_extension_errors(ledger, previous_ledger, fixture))
+            if baseline_registry is not None:
+                stage_errors.extend(
+                    _baseline_registry_extension_errors(
+                        baseline_registry,
+                        previous_baseline_registry,
+                        previous_ledger,
+                    )
+                )
             if not fixture:
                 stage_errors.extend(
                     _current_history_authority_errors(
@@ -2997,6 +3112,8 @@ def run(
                     fixture,
                     policy,
                     prior_deprecation,
+                    previous_baseline_registry,
+                    contract["evidence"]["previousBaselineRegistry"],
                 )
             )
             oldest_supported_record, lifecycle_errors = _support_lifecycle_errors(
@@ -3189,6 +3306,14 @@ def run(
         "policyDigest": policy_digest,
         "historyLedgerDigest": ledger.get("ledgerDigest") if ledger else None,
         "historyLedgerHeadDigest": ledger.get("headRecordDigest") if ledger else None,
+        "baselineRegistryDigest": (
+            _record_baseline_registry_digest(baseline_registry)
+            if baseline_registry else None
+        ),
+        "baselineRegistryArtifactDigest": (
+            contract["evidence"]["baselineRegistry"]["digest"]
+            if contract["evidence"]["baselineRegistry"] is not None else None
+        ),
         "baselineProposalDigest": proposal.get("proposalDigest") if proposal else None,
         "graduationRecordDigests": sorted(item["recordDigest"] for item in graduations),
         "deprecationLedgerDigest": deprecation.get("ledgerDigest") if deprecation else None,

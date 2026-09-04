@@ -117,6 +117,9 @@ class Api1xFixture:
         path = self.evidence / "baseline-registry.json"
         self.baseline_registry_value = {"baselineRegistry": registry}
         write_json(path, self.baseline_registry_value)
+        previous_path = self.evidence / "previous-baseline-registry.json"
+        write_json(previous_path, self.baseline_registry_value)
+        self.previous_baseline_registry = _binding(previous_path)
         return _binding(path)
 
     def _record(
@@ -365,6 +368,7 @@ class Api1xFixture:
             "evidence": {
                 "historyLedger": self.history,
                 "previousHistoryLedger": self.previous_history,
+                "previousBaselineRegistry": self.previous_baseline_registry,
                 "selectedRcFreeze": None,
                 "baselineRegistry": self.baseline_registry,
                 "baselineProposal": None,
@@ -503,6 +507,16 @@ class StablePlatformApi1xTest(unittest.TestCase):
         summary = read_json(output / api1x.SUMMARY_FILE)
         self.assertEqual("fixture-verification-complete", summary["state"])
         self.assertFalse(summary["operational"])
+        self.assertEqual(
+            api1x._record_baseline_registry_digest(
+                self.fixture.baseline_registry_value
+            ),
+            summary["baselineRegistryDigest"],
+        )
+        self.assertEqual(
+            self.fixture.baseline_registry["digest"],
+            summary["baselineRegistryArtifactDigest"],
+        )
         self.assertNotEqual(ZERO, summary["summaryDigest"])
 
     def test_preflight_whenFixtureRequestsOperationalState_expectBlocked(self) -> None:
@@ -811,6 +825,51 @@ class StablePlatformApi1xTest(unittest.TestCase):
         )
 
         self.assertTrue(any("lineage 0 self digest is invalid" in item for item in findings))
+
+    def test_baselineRegistry_whenPreActivationCoordinatesAreClaimed_expectFinding(
+        self,
+    ) -> None:
+        registry = self._registry_with_future_baseline("proposed", "fixture")
+        item = registry["baselineRegistry"]["lineage"][-1]
+        item["activationRelease"] = "not-activated"
+        item["activationBuild"] = 24
+        item["supportStartedRelease"] = "not-supported"
+        item["lineageDigest"] = api1x._baseline_lineage_digest(item)
+        registry["baselineRegistry"]["registryDigest"] = api1x._baseline_registry_digest(
+            registry["baselineRegistry"]
+        )
+
+        findings = api1x._baseline_registry_errors(
+            registry, self.fixture.contract, True
+        )
+
+        self.assertTrue(any("before activation" in item for item in findings))
+
+    def test_baselineRegistry_whenAuthenticatedPredecessorIsRewritten_expectBlocked(
+        self,
+    ) -> None:
+        previous = self._registry_with_future_baseline("proposed", "fixture")
+        current = copy.deepcopy(previous)
+        definition = current["baselineRegistry"]["definitions"][-1]
+        definition["reviewDigest"] = "9" * 64
+        definition["definitionDigest"] = api1x._baseline_definition_digest(definition)
+        lineage = current["baselineRegistry"]["lineage"][-1]
+        lineage["definitionDigest"] = definition["definitionDigest"]
+        lineage["lineageDigest"] = api1x._baseline_lineage_digest(lineage)
+        current["baselineRegistry"]["registryDigest"] = api1x._baseline_registry_digest(
+            current["baselineRegistry"]
+        )
+
+        findings = api1x._baseline_registry_extension_errors(
+            current, previous, self.fixture.previous_ledger_value
+        )
+
+        self.assertIn(
+            "baseline registry rewrites the authenticated definition prefix", findings
+        )
+        self.assertIn(
+            "baseline registry rewrites the authenticated lifecycle prefix", findings
+        )
 
     def test_baselineRegistry_whenFutureBaselineStartsActiveWithFixture_expectBlocked(self) -> None:
         registry = self._registry_with_future_baseline("active", "fixture")

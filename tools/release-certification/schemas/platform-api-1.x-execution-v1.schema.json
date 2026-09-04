@@ -62,10 +62,11 @@
     },
     "evidence": {
       "type": "object", "additionalProperties": false,
-      "required": ["historyLedger", "previousHistoryLedger", "selectedRcFreeze", "baselineRegistry", "baselineProposal", "graduationRecords", "deprecationLedger", "previousDeprecationLedger", "appSubjectInventory", "appMatrix", "runtimeObservation", "supportLifecycleDescriptor"],
+      "required": ["historyLedger", "previousHistoryLedger", "previousBaselineRegistry", "selectedRcFreeze", "baselineRegistry", "baselineProposal", "graduationRecords", "deprecationLedger", "previousDeprecationLedger", "appSubjectInventory", "appMatrix", "runtimeObservation", "supportLifecycleDescriptor"],
       "properties": {
         "historyLedger": {"$ref": "#/$defs/nullableBinding"},
         "previousHistoryLedger": {"$ref": "#/$defs/nullableBinding"},
+        "previousBaselineRegistry": {"$ref": "#/$defs/nullableBinding"},
         "selectedRcFreeze": {"$ref": "#/$defs/nullableBinding"},
         "baselineRegistry": {"$ref": "#/$defs/nullableBinding"},
         "baselineProposal": {"$ref": "#/$defs/nullableBinding"},

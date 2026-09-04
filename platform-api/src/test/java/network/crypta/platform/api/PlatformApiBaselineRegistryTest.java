@@ -312,6 +312,37 @@ class PlatformApiBaselineRegistryTest {
   }
 
   @Test
+  void lineage_whenPreActivationStateCarriesActivationCoordinates_expectRejected() {
+    PlatformApiBaselineDefinition definition = candidateDefinition(false, false);
+    PlatformApiBaselineId baselineId = definition.id();
+    String definitionDigest = definition.definitionDigest();
+
+    for (PlatformApiBaselineStatus status :
+        List.of(
+            PlatformApiBaselineStatus.PROPOSED,
+            PlatformApiBaselineStatus.CANDIDATE,
+            PlatformApiBaselineStatus.REVIEWED,
+            PlatformApiBaselineStatus.DOCUMENTED,
+            PlatformApiBaselineStatus.REJECTED)) {
+      assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              PlatformApiBaselineLineage.create(
+                  baselineId,
+                  definitionDigest,
+                  status,
+                  PlatformApiBaselineEvidenceKind.FIXTURE,
+                  DIGEST_A,
+                  "not-activated",
+                  24,
+                  "not-supported",
+                  null,
+                  null),
+          status::toString);
+    }
+  }
+
+  @Test
   void lineage_whenReleaseCoordinatesAreNotCanonical_expectRejected() {
     PlatformApiBaselineDefinition definition = candidateDefinition(false, false);
     PlatformApiBaselineId baselineId = definition.id();

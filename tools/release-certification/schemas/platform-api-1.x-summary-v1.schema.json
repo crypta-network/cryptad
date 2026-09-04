@@ -23,6 +23,8 @@
     "policyDigest": {"$ref": "#/$defs/digest"},
     "historyLedgerDigest": {"$ref": "#/$defs/nullableDigest"},
     "historyLedgerHeadDigest": {"$ref": "#/$defs/nullableDigest"},
+    "baselineRegistryDigest": {"$ref": "#/$defs/nullableDigest"},
+    "baselineRegistryArtifactDigest": {"$ref": "#/$defs/nullableDigest"},
     "baselineProposalDigest": {"$ref": "#/$defs/nullableDigest"},
     "graduationRecordDigests": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
     "deprecationLedgerDigest": {"$ref": "#/$defs/nullableDigest"},

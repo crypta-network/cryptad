@@ -172,6 +172,8 @@ public record PlatformApiBaselineLineage(
       throw new IllegalArgumentException(
           "fixture evidence cannot establish an operational baseline lifecycle state");
     }
+    requireNoPreActivationCoordinates(
+        status, activationRelease, activationBuild, supportStartedRelease);
     if (evidenceKind == PlatformApiBaselineEvidenceKind.IMPORTED_FROZEN_BASELINE
         && (!baselineId.equals(new PlatformApiBaselineId(1, 0))
             || status != PlatformApiBaselineStatus.ACTIVE
@@ -195,6 +197,21 @@ public record PlatformApiBaselineLineage(
     }
     if (status != PlatformApiBaselineStatus.END_OF_SUPPORT && supportEndedRelease != null) {
       throw new IllegalArgumentException("supportEndedRelease is valid only at end-of-support");
+    }
+  }
+
+  private static void requireNoPreActivationCoordinates(
+      PlatformApiBaselineStatus status,
+      String activationRelease,
+      Integer activationBuild,
+      String supportStartedRelease) {
+    if (!status.isSupported()
+        && status != PlatformApiBaselineStatus.END_OF_SUPPORT
+        && (activationRelease != null
+            || activationBuild != null
+            || supportStartedRelease != null)) {
+      throw new IllegalArgumentException(
+          "activation coordinates are valid only at or after activation");
     }
   }
 

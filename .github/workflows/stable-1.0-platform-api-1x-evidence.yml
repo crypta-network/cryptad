@@ -344,8 +344,12 @@ jobs:
             .supportLifecycleAuthority.summary != null and
             .runtimeObservationAuthority != null and
             .runtimeObservationAuthority.summary != null' "$contract" >/dev/null
-          jq -e '(.evidence.previousHistoryLedger == null) or
-            (.previousHistoryAuthority != null and .previousHistoryAuthority.summary != null)' \
+          jq -e '(.evidence.previousHistoryLedger == null and
+              .evidence.previousBaselineRegistry == null) or
+            (.evidence.previousHistoryLedger != null and
+              .evidence.previousBaselineRegistry != null and
+              .previousHistoryAuthority != null and
+              .previousHistoryAuthority.summary != null)' \
             "$contract" >/dev/null
           current_source_ref="$(jq -er '.repository.sourceRef' "$contract")"
           previous_history_source_ref=""

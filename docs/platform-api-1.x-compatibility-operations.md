@@ -132,14 +132,18 @@ The history ledger retains a self-digested release record for each daemon releas
 the exact contract snapshot filename, byte size, SHA-256, contract version, baseline-registry
 semantic digest, compatibility-window digest, deprecation-ledger digest, optional app-matrix digest,
 release root, protected producer coordinates, and predecessor record digest. The execution
-contract separately binds the complete current baseline-registry artifact. Certification validates
-its closed schema and definition, lineage, and registry self-digests, requires its supported set to
-match the execution subject, and requires the history head to name that registry's exact semantic
-digest. The execution binding independently authenticates the current registry artifact's exact
-bytes. Each version-24-or-later snapshot binds its own semantic registry digest, so a later
-definition or lifecycle transition does not rewrite older release records. The compatibility-window
-digest is recomputed from the parsed contract snapshot rather than trusted as a caller-supplied
-label.
+contract separately binds the complete current baseline-registry artifact. Every successor also
+binds the predecessor registry bytes authenticated by the predecessor closeout summary.
+Certification requires the current definitions and lifecycle records to retain that exact prefix,
+so proposed, rejected, and other non-supported history cannot be edited or dropped between
+releases. It validates the registry's closed schema and definition, lineage, and self-digests,
+requires its supported set to match the execution subject, and requires the history head to name
+that registry's exact semantic digest. The execution binding independently authenticates the
+current registry artifact's exact bytes. Each version-24-or-later snapshot binds its own semantic
+registry digest, so a later definition or lifecycle transition does not rewrite older release
+records. The compatibility-window digest is recomputed from the parsed contract snapshot rather
+than trusted as a caller-supplied label. Earlier version-1 summaries without the registry artifact
+fields remain readable for audit, but cannot authenticate a production successor.
 
 Production history also binds the exact selected Stable RC freeze authenticated independently by
 the PR-291 protected-release and PR-292 reproducibility authorities. Both authorities must select

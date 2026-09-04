@@ -230,6 +230,7 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
             'current_source_ref="$(jq -er \'.repository.sourceRef\' "$contract")"',
             'previous_history_source_ref="$(jq -er \'.records[-1].sourceRef\'',
             'expected_source_ref="$previous_history_source_ref"',
+            ".evidence.previousBaselineRegistry != null",
             '--arg head_branch "$expected_head_branch"',
             ".head_branch == $head_branch",
             ".actor.login == \"leumor\" and .triggering_actor.login == \"leumor\"",
