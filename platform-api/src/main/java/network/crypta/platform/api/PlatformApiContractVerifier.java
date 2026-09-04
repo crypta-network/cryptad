@@ -169,10 +169,10 @@ public final class PlatformApiContractVerifier {
         verify(metadata, manifestPermissions, checkedContract, targetBaselineCapabilities, strict);
     List<CompatibilityFinding> findings = new ArrayList<>(contractResult.findings());
     checkTargetBaseline(metadata, checkedRegistry, strict, findings);
-    PlatformApiBaselineDefinition supportedDefinition =
-        supportedTargetBaselineDefinition(metadata, checkedRegistry);
-    if (supportedDefinition != null) {
-      findings.addAll(verifyBaselineDefinition(supportedDefinition, checkedContract).findings());
+    PlatformApiBaselineDefinition targetDefinition =
+        targetBaselineDefinitionForContractValidation(metadata, checkedRegistry);
+    if (targetDefinition != null) {
+      findings.addAll(verifyBaselineDefinition(targetDefinition, checkedContract).findings());
     }
     return new CompatibilityVerificationResult(List.copyOf(findings));
   }
@@ -1279,7 +1279,7 @@ public final class PlatformApiContractVerifier {
     return Set.copyOf(contract.stableBaseline().capabilities());
   }
 
-  private static PlatformApiBaselineDefinition supportedTargetBaselineDefinition(
+  private static PlatformApiBaselineDefinition targetBaselineDefinitionForContractValidation(
       AppApiCompatibilityMetadata metadata, PlatformApiBaselineRegistry registry) {
     String target = metadata.targetBaseline();
     if (target == null) {
@@ -1289,14 +1289,23 @@ public final class PlatformApiContractVerifier {
       PlatformApiBaselineId id = PlatformApiBaselineId.parse(target);
       PlatformApiBaselineLineage lifecycle = registry.latestLineageById().get(id);
       if (lifecycle == null
-          || (lifecycle.status() != PlatformApiBaselineStatus.ACTIVE
-              && lifecycle.status() != PlatformApiBaselineStatus.DEPRECATED)) {
+          || !requiresContractProjectionValidation(metadata, lifecycle.status())) {
         return null;
       }
       return registry.definitionsById().get(id);
     } catch (IllegalArgumentException _) {
       return null;
     }
+  }
+
+  private static boolean requiresContractProjectionValidation(
+      AppApiCompatibilityMetadata metadata, PlatformApiBaselineStatus status) {
+    return status.isSupported()
+        || (metadata.targetStability() == TargetStability.EXPERIMENTAL
+            && switch (status) {
+              case PROPOSED, CANDIDATE, REVIEWED, DOCUMENTED -> true;
+              case ACTIVE, DEPRECATED, END_OF_SUPPORT, REJECTED -> false;
+            });
   }
 
   private static void checkCapabilities(List<String> capabilities, CapabilityCheckContext context) {

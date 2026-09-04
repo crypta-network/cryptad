@@ -569,6 +569,39 @@ class PlatformApiBaselineRegistryTest {
   }
 
   @Test
+  void verify_whenExperimentalAppTargetsIncompleteCandidate_expectDefinitionRejected() {
+    PlatformApiBaselineRegistry registry =
+        registryWithCandidate(PlatformApiBaselineRegistry.current(), additiveDefinition());
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            19,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION,
+            List.of(),
+            TargetStability.EXPERIMENTAL,
+            true,
+            "1.1",
+            true,
+            true,
+            true);
+
+    PlatformApiContractVerifier.CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(QUEUE_READ_CAPABILITY),
+            PlatformApiContract.current(),
+            registry,
+            true);
+
+    assertTrue(result.hasErrors());
+    assertTrue(
+        result.findings().stream()
+            .anyMatch(finding -> finding.code().equals("target_baseline_preview_only")));
+    assertTrue(
+        result.findings().stream()
+            .anyMatch(finding -> finding.code().equals("baseline_descriptor_missing")));
+  }
+
+  @Test
   void verify_whenActiveSuccessorContainsAdditiveCapability_expectNamedBaselineAllowsIt() {
     PlatformApiContract contract = contractWithCapability(PlatformApiStabilityLevel.EXPERIMENTAL);
     PlatformApiBaselineDefinition successor = additiveDefinition();
