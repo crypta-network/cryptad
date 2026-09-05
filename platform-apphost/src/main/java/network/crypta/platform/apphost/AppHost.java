@@ -476,6 +476,41 @@ public interface AppHost {
   Optional<InstalledAppSnapshot> describe(String appId) throws IOException;
 
   /**
+   * Runs a bounded local data operation while the exact signed installed bundle cannot change.
+   *
+   * <p>The host revalidates historical signature trust before invoking the action. Implementations
+   * must serialize this action with bundle replacement, rollback, and uninstall. The conservative
+   * default rejects the operation; describing an app alone does not provide a mutation lease.
+   *
+   * @param appId installed app identifier
+   * @param action local operation, which must not launch processes or mutate the host lifecycle
+   * @param <T> operation result type
+   * @return the action result
+   * @throws IOException if signature verification or the guarded action fails
+   */
+  default <T> T withVerifiedInstalledBundle(String appId, VerifiedBundleAction<T> action)
+      throws IOException {
+    throw new IOException("Verified installed-bundle guard is unavailable.");
+  }
+
+  /** Local operation invoked under the host's verified installed-bundle mutation guard. */
+  @FunctionalInterface
+  interface VerifiedBundleAction<T> {
+    /**
+     * Executes against the freshly verified installed snapshot.
+     *
+     * @param installed immutable installed manifest and internal paths
+     * @param verification authenticated path-free signing identity
+     * @return local operation result
+     * @throws IOException if the local operation cannot complete
+     */
+    T run(
+        InstalledAppSnapshot installed,
+        network.crypta.platform.appdist.AppBundleVerification verification)
+        throws IOException;
+  }
+
+  /**
    * Starts one installed app as a child process.
    *
    * <p>Implementations are expected to validate the installed bundle again at launch time, create

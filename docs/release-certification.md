@@ -1,5 +1,13 @@
 # Release certification
 
+The [Sharesite migration pilot](real-legacy-plugin-migration-pilot.md) adds deterministic binary
+decoder, converter, owning-app UI, and guarded data recovery checks. Its
+`stable-legacy-plugin-migration` command accepts only a closed sanitized local observation;
+`--self-test` proves verifier behavior, not migration of a user's database. Source snapshots,
+private plans/packages/backups, and raw content comparison hashes never belong in release
+artifacts. Runtime authentication and real-data migration remain separate from format tests.
+Release closeout retains the pending PR-296 protected subject-projection prerequisite.
+
 Use release certification to collect a candidate’s compatibility, performance, app-platform,
 security, soak, recovery, and release-policy evidence into one redacted release workspace.
 

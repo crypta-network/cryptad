@@ -16,6 +16,16 @@ Shell controls for long-term backup envelopes and cross-app restore planning. Th
 described here is internal, app-scoped, bounded by the existing app-data export/import limits, and
 retained only while the update apply/rollback choreography needs it.
 
+The [Sharesite pilot](real-legacy-plugin-migration-pilot.md) introduces Site Publisher's first
+durable schema in app version `3.1`. An ordinary stateless `3` installation has no stored draft
+schema to transform during that update. The legacy conversion happens offline and is imported
+after the signed app update and permission review, using a separate guarded app-owned draft
+operation. Its import preview is not an update-time migration executable. Existing update write
+barriers also reject concurrent draft commits. Bundle rollback preserves draft data independently;
+rolling back to the stateless app removes its draft UI and permissions, so retain a private export
+and reinstall an approved compatible bundle to resume editing. Local import undo is a distinct
+operation and refuses to erase later edits.
+
 ## Manifest properties
 
 Migration metadata lives in `cryptad-app.properties`, so it is covered by the same bundle digest

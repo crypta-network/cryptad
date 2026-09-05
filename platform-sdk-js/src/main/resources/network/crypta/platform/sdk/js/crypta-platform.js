@@ -651,6 +651,25 @@
     );
   }
 
+  function insertPlainText(options) {
+    const source = requireOptionsObject(options, "Plain-text insert options");
+    if (typeof source.text !== "string") {
+      throw new Error("Plain-text content is required.");
+    }
+    if (new TextEncoder().encode(source.text).length > 65536) {
+      throw new Error("Plain-text content exceeds the document limit.");
+    }
+    const params = new URLSearchParams();
+    params.set("documentBase64", utf8Base64(source.text));
+    params.set("contentType", "text/plain; charset=utf-8");
+    params.set("insertUri", "CHK@");
+    params.set("targetFilename", "draft.txt");
+    params.set("compatibilityMode", "COMPAT_CURRENT");
+    params.set("compress", "true");
+    copyStringParam(source, params, "identifier");
+    return apiPostForm("queue/inserts/app-document", params, requestOptionsFrom(source));
+  }
+
   function listVaultIdentities(options) {
     return apiGet("app-vault/identities", options);
   }
@@ -1361,6 +1380,10 @@
     params.set("key", appDataSegment(source.key, "key"));
     copyStringParam(source, params, "contentType");
     copyStringParam(source, params, "ifMatchSha256");
+    copyStringParam(source, params, "writeIntent");
+    copyStringParam(source, params, "writePreviewId");
+    copyStringParam(source, params, "writeMode");
+    copyStringParam(source, params, "backupReady");
     copyPositiveIntegerParam(source, params, "schemaVersion");
     if (!params.has("schemaVersion")) {
       throw new Error("App-data record schemaVersion is required.");
@@ -2570,6 +2593,7 @@
       insertFile,
       insertDirectory,
       insertAppDocument,
+      insertPlainText,
       subscriptions: Object.freeze({
         list: listContentSubscriptions,
         create: createContentSubscription,

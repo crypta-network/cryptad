@@ -155,3 +155,6 @@
     grid-template-columns: 1fr;
   }
 }
+
+#draft-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; }
+#draft-panel textarea { width: 100%; box-sizing: border-box; }

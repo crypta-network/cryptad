@@ -8,7 +8,7 @@ plugins {
   `java-library`
 }
 
-version = rootProject.version
+version = "3.1"
 
 val appDisplayName = "Site Publisher"
 val appId = "site-publisher"
@@ -130,6 +130,8 @@ dependencies {
 
 val generateManifest by
   tasks.registering(Copy::class) {
+    description = "Generates the $appDisplayName AppHost manifest."
+    inputs.property("appVersion", project.version.toString())
     from(manifestTemplateFile) {
       rename { "cryptad-app.properties" }
       expand("appVersion" to project.version.toString())
@@ -178,7 +180,7 @@ val signApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPrivateKeyArguments(signingTask, name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 
@@ -201,7 +203,7 @@ val verifyApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPublicKeyArguments(name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 

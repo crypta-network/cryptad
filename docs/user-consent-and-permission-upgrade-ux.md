@@ -100,6 +100,14 @@ The update route validates the approved snapshot before staging a candidate. Rev
 migration acknowledgements are derived from the verified consent approval so Web Shell does not
 need to present separate raw acknowledgement checkboxes for the same operation.
 
+For the [Sharesite migration pilot](real-legacy-plugin-migration-pilot.md), updating Site Publisher
+from `3` to `3.1` adds `app.data.read`, `app.data.write`, and `content.insert.app-document`, a
+positive data quota, and the schema-1 draft declaration. Review those changes through this normal
+signed-app update flow before opening the migration controls. The app's private import preview is
+a subsequent, separate data decision. Its local payload checksums are private consent bindings;
+they must not be copied into operator audit summaries or certification observations. Import
+consent neither grants app capabilities nor authorizes a network publication.
+
 ## Permission Delta
 
 Permission changes are grouped by added, removed, and changed rationale. Added permissions and

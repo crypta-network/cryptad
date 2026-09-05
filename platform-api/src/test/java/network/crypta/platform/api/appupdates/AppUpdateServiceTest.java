@@ -64,8 +64,12 @@ import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
+import network.crypta.platform.appdist.AppBundleSigner;
+import network.crypta.platform.appdist.AppBundleVerifier;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppUiMode;
+import network.crypta.platform.appdist.TrustedAppKey;
+import network.crypta.platform.appdist.TrustedAppKeys;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
@@ -76,6 +80,7 @@ import network.crypta.platform.apphost.InstalledAppSnapshot;
 import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestException;
+import network.crypta.platform.apphost.manifest.AppManifestParser;
 import network.crypta.platform.apphost.sandbox.AppSandboxPolicy;
 import network.crypta.platform.appvault.AppIdentityGrant;
 import network.crypta.platform.appvault.AppIdentityGrantScope;
@@ -96,6 +101,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -2539,6 +2545,125 @@ class AppUpdateServiceTest {
                 .orElseThrow();
     assertEquals("channel_policy_blocked", historyEntry.get(ERROR_CODE));
     verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenSitePublisherMigrationUpdateAddsCapabilities_expectExplicitConsentBeforeApply()
+      throws Exception {
+    String siteId = "site-publisher";
+    KeyPair signingKey = reviewerKeyPair();
+    Path repository = Path.of("").toAbsolutePath();
+    Path template = Path.of("apps/site-publisher/src/staged/cryptad-app.properties.template");
+    while (repository != null && !Files.isRegularFile(repository.resolve(template))) {
+      repository = repository.getParent();
+    }
+    assertNotNull(repository, "Site Publisher manifest template must be available");
+    String currentTemplate = Files.readString(repository.resolve(template));
+    AppManifest target =
+        signedSitePublisherFixture(
+            tempDir.resolve("site-target"),
+            currentTemplate.replace("${appVersion}", "3.1"),
+            signingKey);
+    AppManifest old =
+        signedSitePublisherFixture(
+            tempDir.resolve("site-old"),
+            """
+            manifest.version=1
+            app.id=site-publisher
+            app.name=Site Publisher
+            app.version=3
+            api.minimumVersion=3
+            api.maximumTestedVersion=24
+            api.targetStability=stable
+            api.targetBaseline=1.0
+            api.experimentalCapabilitiesAccepted=false
+            app.exec=bin/site-publisher.sh
+            app.ui.mode=static
+            app.ui.entry=static/index.html
+            app.permissions=queue.read,queue.write,content.insert
+            quota.data.bytes=0
+            quota.cache.bytes=0
+            """,
+            signingKey);
+    InstalledAppSnapshot installed =
+        new InstalledAppSnapshot(
+            old,
+            new InstalledAppPaths(
+                siteId,
+                tempDir.resolve("site-old"),
+                tempDir.resolve("site-data"),
+                tempDir.resolve("site-cache"),
+                tempDir.resolve("site-run")));
+    when(appHost.describe(siteId)).thenReturn(Optional.of(installed));
+    when(appHost.status(siteId)).thenReturn(Optional.empty());
+    AppUpdateService service =
+        new AppUpdateService(
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(signingKey));
+    AppCatalogEntry candidateEntry =
+        withTrustedReceipt(
+            new AppCatalogEntry(
+                siteId,
+                target.appName(),
+                target.appVersion(),
+                "Private plain-text drafts.",
+                null,
+                null,
+                null,
+                List.of(),
+                new AppCatalogCompatibilityMetadata(null, target.apiCompatibility()),
+                new AppCatalogReviewMetadata(AppCatalogReviewStatus.REVIEWED, null),
+                AppCatalogChangelog.EMPTY,
+                List.of(),
+                AppCatalogProductionMetadata.DEFAULT,
+                tempDir.resolve("site-publisher-3.1.zip").toUri(),
+                DIGEST,
+                1234L,
+                AppCatalogEntry.ZIP_BUNDLE_TYPE,
+                target.permissions(),
+                Map.of()),
+            signingKey);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listRoutineApps(CATALOG_ID)).thenReturn(List.of(candidateEntry));
+    service.setPolicy(siteId, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+
+    Map<String, Object> summary = service.check(siteId, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals("3", candidate.get(INSTALLED_VERSION_FIELD));
+    assertEquals("3.1", candidate.get(TARGET_VERSION));
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(
+        List.of("app.data.read", "app.data.write", "content.insert.app-document"),
+        ((Map<?, ?>) candidate.get("permissionDelta")).get("added"));
+    assertEquals(List.of("new_permission"), candidate.get("materialConsentReasons"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertTrue(
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream().anyMatch(entry -> "consent_required".equals(entry.get(ERROR_CODE))));
+    verifyNoInstallPlanPreparation();
+    verify(appHost, never()).updateFromDirectory(eq(siteId), any());
+    assertEquals(List.of("queue.read", "queue.write", "content.insert"), old.permissions());
+  }
+
+  private static AppManifest signedSitePublisherFixture(
+      Path bundle, String manifest, KeyPair signingKey) throws IOException {
+    Files.createDirectories(bundle.resolve("bin"));
+    Files.createDirectories(bundle.resolve("static"));
+    Files.writeString(bundle.resolve("cryptad-app.properties"), manifest);
+    Files.writeString(bundle.resolve("bin/site-publisher.sh"), "#!/bin/sh\nexit 0\n");
+    Files.writeString(bundle.resolve("static/index.html"), "<!doctype html><title>Fixture</title>");
+    AppBundleSigner.sign(bundle, "site-test-key", signingKey.getPrivate());
+    AppBundleVerifier.verify(
+        bundle,
+        TrustedAppKeys.of(
+            TrustedAppKey.ed25519("site-test-key", signingKey.getPublic().getEncoded())));
+    return AppManifestParser.parse(bundle.resolve("cryptad-app.properties"));
   }
 
   @Test

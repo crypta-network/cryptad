@@ -1,5 +1,10 @@
 # Legacy plugin migration cookbook
 
+For an implemented format-specific path, use the [Sharesite migration
+pilot](real-legacy-plugin-migration-pilot.md): explicitly selected active pastebin pages become
+private Site Publisher drafts. It preserves literal text and uses explicit new-CHK publication.
+Textile, old signing identity, scheduling, and full-plugin migration remain unsupported.
+
 Use this cookbook to turn an old plugin design into a public-beta app or app-service design without
 restoring the removed in-process plugin runtime.
 

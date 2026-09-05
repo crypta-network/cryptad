@@ -1677,6 +1677,45 @@ class CryptaPlatformSdkResourceTest {
     }
   }
 
+  @Test
+  void insertPlainText_whenMarkupAndUnicode_expectExactUtf8AndNewChkOnly() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        await CryptaPlatform.bootstrap.load({ appId: "feed-reader" });
+        enqueueResponse((url) => url.endsWith("/queue/inserts/app-document"), { outcome: "queued" });
+        const text = "<script>alert('literal')</script>\\r\\n雪\\n";
+        await CryptaPlatform.content.insertPlainText({ text, identifier: "test-text", insertUri: "USK@ignored" });
+        const body = decodeFormBody(calls[calls.length - 1]);
+        assert.strictEqual(Buffer.from(body.get("documentBase64"), "base64").toString("utf8"), text);
+        assert.strictEqual(body.get("insertUri"), "CHK@");
+        assert.strictEqual(body.get("contentType"), "text/plain; charset=utf-8");
+        assert.strictEqual(body.get("targetFilename"), "draft.txt");
+        assert.strictEqual(body.has("sourcePath"), false);
+        const count = calls.length;
+        assert.throws(() => CryptaPlatform.content.insertPlainText({ text: "雪".repeat(21846) }));
+        assert.strictEqual(calls.length, count);
+        """);
+  }
+
+  @Test
+  void putRecord_whenGuardedDraftPreview_expectCompleteFenceParameters() throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        await CryptaPlatform.bootstrap.load({ appId: "feed-reader" });
+        enqueueResponse((url) => url.endsWith("/app-data/records"), { record: { previewId: "preview" } });
+        await CryptaPlatform.data.records.put({ namespace: "sharesite-drafts", key: "dataset",
+          schemaVersion: 1, valueJson: "{}", ifMatchSha256: "absent", writeIntent: "preview",
+          writePreviewId: "preview", writeMode: "import", backupReady: "true" });
+        const body = decodeFormBody(calls[calls.length - 1]);
+        for (const [key, value] of Object.entries({ ifMatchSha256: "absent", writeIntent: "preview",
+          writePreviewId: "preview", writeMode: "import", backupReady: "true" })) {
+          assert.strictEqual(body.get(key), value);
+        }
+        """);
+  }
+
   private void runSdkNode(String scriptBody) throws Exception {
     Assumptions.assumeTrue(nodeAvailable(), "Node.js is required for SDK behavior tests.");
     Path sdkScript = tempDir.resolve("crypta-platform.js");

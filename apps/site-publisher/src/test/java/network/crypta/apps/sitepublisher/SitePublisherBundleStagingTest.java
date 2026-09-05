@@ -28,8 +28,9 @@ class SitePublisherBundleStagingTest {
   private static final String EXPECTED_APP_NAME = "Site Publisher";
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/site-publisher.sh";
-  private static final String EXPECTED_PERMISSIONS = "queue.read,queue.write,content.insert";
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 3;
+  private static final String EXPECTED_PERMISSIONS =
+      "queue.read,queue.write,content.insert,app.data.read,app.data.write,content.insert.app-document";
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
   private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 24;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
@@ -62,11 +63,19 @@ class SitePublisherBundleStagingTest {
 
     assertEquals(EXPECTED_APP_ID, manifest.appId());
     assertEquals(EXPECTED_APP_NAME, manifest.appName());
+    assertEquals("3.1", manifest.appVersion());
     assertEquals(EXPECTED_LAUNCHER_PATH, manifest.execPathText());
     assertEquals(AppUiMode.STATIC, manifest.uiMode());
     assertEquals(EXPECTED_UI_ENTRY, manifest.uiEntry());
     assertEquals(
-        java.util.List.of("queue.read", "queue.write", "content.insert"), manifest.permissions());
+        java.util.List.of(
+            "queue.read",
+            "queue.write",
+            "content.insert",
+            "app.data.read",
+            "app.data.write",
+            "content.insert.app-document"),
+        manifest.permissions());
     assertEquals(
         Integer.valueOf(EXPECTED_PLATFORM_API_MINIMUM_VERSION),
         manifest.apiCompatibility().minimumVersion());
@@ -76,7 +85,7 @@ class SitePublisherBundleStagingTest {
     assertEquals(TargetStability.STABLE, manifest.apiCompatibility().targetStability());
     assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
     assertFalse(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
-    assertEquals(Long.valueOf(0L), manifest.dataQuotaBytes());
+    assertEquals(Long.valueOf(1048576L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(0L), manifest.cacheQuotaBytes());
   }
 
@@ -100,7 +109,7 @@ class SitePublisherBundleStagingTest {
     assertTrue(manifestText.contains("app.ui.mode=static"));
     assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));
     assertTrue(manifestText.contains("app.permissions=" + EXPECTED_PERMISSIONS));
-    assertTrue(manifestText.contains("quota.data.bytes=0"));
+    assertTrue(manifestText.contains("quota.data.bytes=1048576"));
     assertTrue(manifestText.contains("quota.cache.bytes=0"));
   }
 

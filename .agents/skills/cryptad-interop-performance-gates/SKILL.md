@@ -80,6 +80,14 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 
 ## Release certification gate
 
+- `stable-legacy-plugin-migration` validates the narrow Sharesite pilot's closed sanitized local
+  observations. Local claims remain unverified; its runtime/closeout modes fail closed while a
+  protected migration producer is unavailable. Keep the PR-296 subject-projection prerequisite
+  separate from successful offline conversion or local data commit. Synthetic upstream-writer
+  vectors and executable tests cannot claim real-user migration or network publication. Never
+  upload private snapshots, conversion packages, plans, backups, labels, old read URIs, or raw
+  private comparison hashes. See `docs/real-legacy-plugin-migration-pilot.md`.
+
 - `tools/release-certification/certify.py release-certification` aggregates interop, performance,
   app-platform, network-scale soak, multi-node beta soak, catalog, app-owned UI, operator beta
   recovery, optional live-network beta certification, legacy-admin retirement, and CI metadata into:

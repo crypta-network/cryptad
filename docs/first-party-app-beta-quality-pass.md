@@ -45,7 +45,7 @@ legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
 | --- | --- | --- | --- | --- |
 | `queue-manager` | `core` | Stateless; backup/export/import are `not-applicable`. | `not-applicable` | Queue read/control UI for operator queue recovery. |
 | `publisher` | `core` | Stateless; backup/export/import are `not-applicable`. | `not-applicable` | Insert queue workflow with redacted publish summaries. |
-| `site-publisher` | `maintained` | Stateless; backup/export/import are `not-applicable`. | `not-applicable` | Site bundle validation and insert queue workflow. |
+| `site-publisher` | `maintained` | Private schema-1 literal drafts; guarded additive import and private export/restore. | `supported` for selected Sharesite conversion preview | Existing site/file inserts plus explicit new-CHK text publication. |
 | `profile-publisher` | `maintained` | Durable limited draft/history state; operator-supported export/import. | `not-applicable` | Backup/export never exports vault private identity material. |
 | `feed-reader` | `maintained` | Durable feed list, read state, subscription summary, and draft metadata; export/import supported. | `supported` for `ui-state-v1-v2` | Diagnostics must not include raw fetched content. |
 | `trust-graph` | `local-rc` | Durable UI-local state; operator-supported export/import. | `supported` for `ui-state-v1-v2` | Local trust only, not global truth, not global WoT, not moderation, not a crawler. |
@@ -68,6 +68,11 @@ the existing RC recovery and support workflow instead of creating app-specific u
 
 Stateless apps explicitly say backup/export/import are not applicable because they store no durable
 local app state. This is different from unsupported backup; there is nothing app-owned to export.
+
+Site Publisher's [Sharesite pilot](real-legacy-plugin-migration-pilot.md) previews a converted
+private package before committing one complete draft dataset. Its migration dry-run status refers
+to that import preview, not to an update-time schema transformation. An already installed version
+requires normal signed update review and consent for the additional permissions.
 
 Apps with durable app data show the declared schema version when safe, the export/import status,
 and whether migration dry-run is available. Feed Reader and Trust Graph declare `ui-state-v1-v2`

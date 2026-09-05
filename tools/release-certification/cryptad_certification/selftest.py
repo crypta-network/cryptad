@@ -95,6 +95,9 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_platform_api_1x",
         "cryptad_certification.tests.test_stable_platform_api_1x_workflow",
     ],
+    "stable-legacy-plugin-migration": [
+        "cryptad_certification.tests.test_stable_legacy_plugin_migration",
+    ],
     "stable-independent-reproducibility": [
         "cryptad_certification.tests.test_stable_independent_handoff",
         "cryptad_certification.tests.test_stable_independent_reproducibility",

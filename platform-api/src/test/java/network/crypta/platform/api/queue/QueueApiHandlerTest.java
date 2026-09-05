@@ -725,6 +725,64 @@ class QueueApiHandlerTest {
   }
 
   @Test
+  void createAppDocumentInsert_whenLiteralOrEmptyText_expectExactUtf8NewChkUpload()
+      throws Exception {
+    for (String text : List.of("", "Unicode 雪\r\n<script>alert(1)</script>\n\r")) {
+      RecordingQueueInsertPort port = new RecordingQueueInsertPort();
+      QueueApiHandler handler =
+          new QueueApiHandler(
+              new RecordingQueuePagePort(),
+              new RecordingQueueMutationPort(),
+              new RecordingQueueDownloadPort(),
+              port,
+              new FixedQueueSupportPort(true),
+              new RecordingQueueCompletionPort());
+      var parameters =
+          orderedParameters(
+              Map.entry("insertUri", List.of("CHK@")),
+              Map.entry("identifier", List.of("literal-draft")),
+              Map.entry("contentType", List.of("text/plain; charset=utf-8")),
+              Map.entry("targetFilename", List.of("draft.txt")),
+              Map.entry(
+                  "documentBase64",
+                  List.of(
+                      Base64.getEncoder().encodeToString(text.getBytes(StandardCharsets.UTF_8)))));
+
+      handler.createAppDocumentInsert("site-publisher", parameters);
+
+      assertEquals("CHK@", port.lastBrowserUploadRequest.insertUri());
+      assertEquals(
+          "text/plain; charset=utf-8", port.lastBrowserUploadRequest.upload().contentType());
+      assertEquals("draft.txt", port.lastBrowserUploadRequest.filenameForKey());
+      try (var input = port.lastBrowserUploadRequest.upload().openStream()) {
+        assertEquals(text, new String(input.readAllBytes(), StandardCharsets.UTF_8));
+      }
+      assertNull(port.lastLocalFileRequest);
+    }
+  }
+
+  @Test
+  void createAppDocumentInsert_whenEmptyJson_expectValidationFailure() {
+    QueueApiHandler handler =
+        new QueueApiHandler(
+            new RecordingQueuePagePort(),
+            new RecordingQueueMutationPort(),
+            new RecordingQueueDownloadPort(),
+            new RecordingQueueInsertPort(),
+            new FixedQueueSupportPort(true),
+            new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("literal-draft")),
+            Map.entry("documentBase64", List.of("")));
+
+    assertThrows(
+        PlatformApiException.class,
+        () -> handler.createAppDocumentInsert("site-publisher", parameters));
+  }
+
+  @Test
   void createAppDocumentInsert_whenRequested_expectBrowserUploadInsertAndRedactedResponse()
       throws Exception {
     RecordingQueueInsertPort queueInsertPort = new RecordingQueueInsertPort();

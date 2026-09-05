@@ -144,6 +144,13 @@ Load only the docs needed for the change:
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
+  Its selected Sharesite pastebin pilot uses `sharesite-drafts` schema 1 and one bounded dataset
+  record. Read `docs/real-legacy-plugin-migration-pilot.md` before changing the offline converter,
+  private package, draft UI, or guarded writes. Require the `sharesiteWriteGuard` status marker
+  before preview requests; older daemons ignore unknown record fields. Preserve signed installed
+  bundle verification, generation/consent/quota fencing, literal text fidelity, independent bundle
+  rollback and data undo, and explicit new-CHK publication. Private payloads and comparison hashes
+  must never become support or release evidence. The plugin runtime remains removed.
 - `:apps:profile-publisher` stages the first-party identity-profile reference static UI bundle.
 - `:apps:social-inbox` stages the first-party Social Inbox RC static UI bundle for beta
   social/mail-like threading, multi-source subscriptions, local read/filter/export state, and

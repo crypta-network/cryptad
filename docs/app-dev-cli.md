@@ -3,6 +3,21 @@
 This document describes the `crypta-app` command for scaffolding, validating, signing, packing,
 and cataloging standalone AppHost bundles.
 
+## Offline Sharesite migration
+
+`crypta-app migration sharesite inspect`, `plan`, and `export` operate on one explicit consistent
+regular-file snapshot. They never contact a node, install an app, queue content, repair a database,
+or load the legacy plugin. Use `--help` on each subcommand and follow the exact
+[Sharesite pilot sequence](real-legacy-plugin-migration-pilot.md).
+
+The common options are `--snapshot`, `--workspace`, and `--writer-stopped`. Plan/export require
+`--select`, `--operation-id`, `--provenance`, and `--ack-exclusions`; export additionally requires
+the privately reviewed `--ack-plan-sha256`. An owner-only operation workspace receives fixed
+`inspection.json`, `plan.json`, and `migration.json` files. Existing targets and unsafe links are
+rejected. All three files are PRIVATE user data, not review or CI artifacts; ordinary CLI output
+contains only bounded status codes. Source paths and private comparison hashes belong only in
+local operator handling.
+
 ## Scope
 
 Use `crypta-app` for developer-owned bundles that live outside the first-party `apps/*` Gradle
@@ -420,15 +435,16 @@ api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
-A Site Publisher local catalog descriptor should include explicit permission rationales:
+A Site Publisher local catalog descriptor should include explicit permission rationales. Replace
+the example version and artifact location with the exact signed bundle selected for review:
 
 ```properties
-artifact.path=/abs/path/to/dist/apps/site-publisher-1.0.0.zip
-bundle.uri=file:/abs/path/to/dist/apps/site-publisher-1.0.0.zip
+artifact.path=/abs/path/to/dist/apps/site-publisher-3.1.zip
+bundle.uri=file:/abs/path/to/dist/apps/site-publisher-3.1.zip
 summary=Reference app for publishing a local static site through Crypta.
 name=Site Publisher
-version=1.0.0
-permissions=queue.read,queue.write,content.insert
+version=3.1
+permissions=queue.read,queue.write,content.insert,app.data.read,app.data.write,content.insert.app-document
 app.id=site-publisher
 homepage=https://example.invalid/apps/site-publisher
 source=https://example.invalid/src/site-publisher
@@ -439,10 +455,14 @@ review.note=First-party content reference app.
 permissions.rationale.content.insert=Submits selected local site content to the insert pipeline.
 permissions.rationale.queue.write=Creates insert requests for the publish operation.
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
-changelog.summary=Adds the first content reference app.
-api.minimumVersion=3
+permissions.rationale.app.data.read=Reads private durable drafts and private recovery copies.
+permissions.rationale.app.data.write=Commits reviewed imports, edits, and local undo.
+permissions.rationale.content.insert.app-document=Publishes selected literal text to a new CHK address.
+changelog.summary=Adds selected Sharesite plain-text draft migration.
+api.minimumVersion=9
 api.maximumTestedVersion=24
 api.targetStability=stable
+api.targetBaseline=1.0
 api.experimentalCapabilitiesAccepted=false
 ```
 

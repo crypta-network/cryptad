@@ -993,6 +993,9 @@ public final class FileAppDataStore implements AppDataStore {
       Files.move(
           source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (AtomicMoveNotSupportedException _) {
+      if (Path.of(CURRENT_FILE).equals(target.getFileName())) {
+        throw new IOException("Atomic app-data generation commit is unavailable.");
+      }
       Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
     }
   }

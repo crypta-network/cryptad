@@ -2,6 +2,13 @@
 
 Use this template when a submitted app replaces legacy plugin behavior.
 
+For the implemented Sharesite pastebin profile, use the exact scope and commands in the
+[real migration pilot](../real-legacy-plugin-migration-pilot.md). Keep its private source bindings,
+plans, user text and old read references separate from submitted review evidence. A secret-free
+draft payload remains private; user-content hashes are private comparison data too. Do not use
+the generic identity-grant example below to imply that Sharesite insertion keys are transferable,
+or treat a synthetic demonstration as an authenticated user migration.
+
 ## Summary
 
 Use these exact field names in the submitted migration plan, then expand each section below:
