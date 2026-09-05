@@ -5,6 +5,8 @@
   const key = "dataset";
   const maximumDatasetBytes = 196608;
   const maximumPackageBytes = 524288;
+  // The converter permits 512 active pages and 512 deleted pages per snapshot.
+  const maximumSourcePages = 1024;
   const revision = "c99ad9c8e83004f904f8ee742ab2861f5751ee3b";
   const encoder = new TextEncoder();
   const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -99,7 +101,7 @@
       "invalid_number", "prohibited_secret_material", "prohibited_or_invalid_key", "invalid_public_reference",
       "not_selected", "private_insert_identity_not_imported", "css_not_imported",
       "external_resource_not_imported", "scheduling_not_imported", "runtime_status_not_imported"]);
-    if (Object.values(value.exclusions).some((count) => !Number.isSafeInteger(count) || count < 0 || count > 512)) fail();
+    if (Object.values(value.exclusions).some((count) => !Number.isSafeInteger(count) || count < 0 || count > maximumSourcePages)) fail();
     const payload = value.payload;
     keysOnly(payload, ["exportVersion", "appId", "exportedAt", "namespaceCount", "recordCount", "namespaces", "records"]);
     if (!payload || payload.exportVersion !== 1 || payload.appId !== "site-publisher"

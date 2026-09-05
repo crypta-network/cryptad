@@ -374,26 +374,7 @@ class SharesiteMigrationTest {
     var failure =
         assertThrows(IllegalArgumentException.class, () -> convert(oversizedFields, selectedIds));
     assertEquals("sharesite_dataset_limit", failure.getMessage());
-    Path payload = temporary.resolve("private-boundary.json");
-    Files.write(payload, converted);
-    Path harness = temporary.resolve("import-boundary.cjs");
-    try (var input = getClass().getResourceAsStream("import-boundary.cjs")) {
-      assertNotNull(input);
-      Files.copy(input, harness);
-    }
-    Path script =
-        Path.of(
-            System.getProperty("sharesite.synthetic.sitePublisherBundle"), "static", "drafts.js");
-    Path log = temporary.resolve("synthetic-boundary.log");
-    Process process =
-        new ProcessBuilder("node", harness.toString(), script.toString(), payload.toString())
-            .redirectErrorStream(true)
-            .redirectOutput(log.toFile())
-            .start();
-    boolean finished = process.waitFor(20, TimeUnit.SECONDS);
-    if (!finished) process.destroyForcibly();
-    assertTrue(finished, "Synthetic controller boundary check timed out");
-    assertEquals(0, process.exitValue(), Files.readString(log));
+    assertControllerAccepts(converted, 0);
 
     Path source = temporary.resolve("Sharesite.db");
     byte[] original = encode(oversizedFields);
@@ -410,6 +391,70 @@ class SharesiteMigrationTest {
     assertTrue(diagnostics.toString().contains("sharesite_dataset_limit"));
     assertFalse(Files.exists(workspace.resolve("plan.json")));
     assertArrayEquals(original, Files.readAllBytes(source));
+  }
+
+  @Test
+  void convert_whenCombinedInventoryExceeds512_expectControllerAcceptsSelectedSubset()
+      throws Exception {
+    for (int deletedCount : List.of(1, 512)) {
+      Map<String, String> fields = validFields();
+      fields.put(
+          "keys",
+          java.util.stream.IntStream.range(0, 512)
+              .mapToObj(Integer::toString)
+              .collect(java.util.stream.Collectors.joining(" ")));
+      fields.put(
+          "deleted_keys",
+          java.util.stream.IntStream.range(512, 512 + deletedCount)
+              .mapToObj(Integer::toString)
+              .collect(java.util.stream.Collectors.joining(" ")));
+      fields.put("increasingCounter", Integer.toString(512 + deletedCount));
+      for (int id = 0; id < 512 + deletedCount; id++) {
+        fields.put("collection-" + id + "/insertSSK", CANARY);
+      }
+      byte[] original = encode(fields);
+      Path source = temporary.resolve("inventory-" + deletedCount + ".db");
+      Files.write(source, original);
+      byte[] converted =
+          SharesiteSnapshot.inspect(
+              source,
+              decoded ->
+                  SharesiteConversion.convert(
+                      decoded, List.of(0), OPERATION, "synthetic stopped snapshot"));
+
+      assertControllerAccepts(converted, 512 + deletedCount);
+      assertArrayEquals(original, Files.readAllBytes(source));
+      assertFalse(new String(converted, StandardCharsets.UTF_8).contains(CANARY));
+    }
+  }
+
+  private void assertControllerAccepts(byte[] converted, int inventoryCount) throws Exception {
+    Path workspace = Files.createTempDirectory(temporary, "controller-");
+    Path payload = workspace.resolve("private-boundary.json");
+    Files.write(payload, converted);
+    Path harness = workspace.resolve("import-boundary.cjs");
+    try (var input = getClass().getResourceAsStream("import-boundary.cjs")) {
+      assertNotNull(input);
+      Files.copy(input, harness);
+    }
+    Path script =
+        Path.of(
+            System.getProperty("sharesite.synthetic.sitePublisherBundle"), "static", "drafts.js");
+    Path log = workspace.resolve("synthetic-boundary.log");
+    Process process =
+        new ProcessBuilder(
+                "node",
+                harness.toString(),
+                script.toString(),
+                payload.toString(),
+                Integer.toString(inventoryCount))
+            .redirectErrorStream(true)
+            .redirectOutput(log.toFile())
+            .start();
+    boolean finished = process.waitFor(20, TimeUnit.SECONDS);
+    if (!finished) process.destroyForcibly();
+    assertTrue(finished, "Synthetic controller boundary check timed out");
+    assertEquals(0, process.exitValue(), Files.readString(log));
   }
 
   private static Map<String, String> threePages(int textBytes) {
