@@ -96,6 +96,7 @@ public final class AppDataService {
   private final AppDiskUsageScanner diskUsageScanner;
   private final boolean storeUsageOutsideAppDataDir;
   private final AppDataBackupRestoreWorkflow backupRestoreWorkflow;
+  private final SharesiteDraftWriteGuard sharesiteWriteGuard;
   private final Map<String, Integer> updateMigrationWriteBarriers = new LinkedHashMap<>();
 
   /**
@@ -192,6 +193,7 @@ public final class AppDataService {
     this.diskUsageScanner = Objects.requireNonNull(diskUsageScanner, "diskUsageScanner");
     this.storeUsageOutsideAppDataDir = storeUsageOutsideAppDataDir;
     backupRestoreWorkflow = new AppDataBackupRestoreWorkflow(this);
+    sharesiteWriteGuard = new SharesiteDraftWriteGuard(clock);
   }
 
   /**
@@ -218,6 +220,9 @@ public final class AppDataService {
     json.put("quota", quotaJson(normalizedAppId));
     json.put("warnings", quotaWarnings(normalizedAppId));
     json.put("storeAvailable", true);
+    if (SharesiteDraftWriteGuard.APP_ID.equals(normalizedAppId)) {
+      json.put("sharesiteWriteGuard", 1);
+    }
     return json;
   }
 
@@ -269,6 +274,7 @@ public final class AppDataService {
       String appId, String namespace, Map<String, List<String>> parameters) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
     String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    SharesiteDraftWriteGuard.rejectUnguardedMutation(normalizedAppId, normalizedNamespace);
     rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     return updateSchemaInternal(normalizedAppId, normalizedNamespace, parameters);
   }
@@ -332,6 +338,7 @@ public final class AppDataService {
   public synchronized Map<String, Object> deleteNamespace(String appId, String namespace) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
     String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    SharesiteDraftWriteGuard.rejectUnguardedMutation(normalizedAppId, normalizedNamespace);
     rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     AppDataNamespaceMetadata existing = readNamespaceRequired(normalizedAppId, normalizedNamespace);
     try {
@@ -417,6 +424,9 @@ public final class AppDataService {
     String key =
         AppDataRecord.normalizeKey(PlatformApiParameters.requireString(parameters, PARAM_KEY));
     int schemaVersion = readRequiredPositiveInt(parameters, PARAM_SCHEMA_VERSION);
+    if (SharesiteDraftWriteGuard.NAMESPACE.equals(namespace)) {
+      return putSharesiteDataset(normalizedAppId, key, schemaVersion, parameters);
+    }
     ValueInput valueInput = valueInput(parameters);
     if (valueInput.value().length > config.maxRecordBytes()) {
       throw new PlatformApiException(
@@ -446,6 +456,88 @@ public final class AppDataService {
     return readRecordRequired(normalizedAppId, namespace, key).toReadJson();
   }
 
+  private Map<String, Object> putSharesiteDataset(
+      String appId, String key, int schemaVersion, Map<String, List<String>> parameters) {
+    if (!SharesiteDraftWriteGuard.APP_ID.equals(appId) || appHost == null) {
+      throw SharesiteDraftWriteGuard.failure("sharesite_target_not_ready");
+    }
+    // Bound form representations before decoding or cloning generated data.
+    for (String field : List.of(PARAM_VALUE_BASE64, PARAM_VALUE_TEXT, PARAM_VALUE_JSON)) {
+      String value = PlatformApiParameters.readOptionalString(parameters, field);
+      if (value != null
+          && value.length() > 4L * SharesiteDraftWriteGuard.MAX_DATASET_BYTES / 3 + 4) {
+        throw SharesiteDraftWriteGuard.failure("sharesite_invalid_dataset");
+      }
+    }
+    ValueInput input = valueInput(parameters);
+    if (input.value().length
+        > Math.min(config.maxRecordBytes(), SharesiteDraftWriteGuard.MAX_DATASET_BYTES)) {
+      throw SharesiteDraftWriteGuard.failure("sharesite_invalid_dataset");
+    }
+    try {
+      return appHost.withVerifiedInstalledBundle(
+          appId,
+          (installed, verification) -> {
+            Map<String, Object> target =
+                new LinkedHashMap<>(sharesiteWriteGuard.targetBinding(installed, verification));
+            var origin = appHost.catalogOrigin(appId);
+            target.put(
+                "catalogOrigin",
+                origin
+                    .<Object>map(
+                        item ->
+                            Map.of(
+                                "catalogId",
+                                item.catalogId(),
+                                "originDigestSha256",
+                                item.selfDigestSha256(),
+                                "catalogRevisionDigestSha256",
+                                item.catalogRevisionDigestSha256(),
+                                "bundleSha256",
+                                item.bundleSha256()))
+                    .orElse("not-recorded"));
+            String namespace = SharesiteDraftWriteGuard.NAMESPACE;
+            Optional<AppDataNamespaceMetadata> metadata = readNamespaceOptional(appId, namespace);
+            if (metadata.isPresent() && metadata.get().schemaVersion() != 1) {
+              throw SharesiteDraftWriteGuard.failure("sharesite_target_not_ready");
+            }
+            Optional<AppDataRecord> current = readRecordOptional(appId, namespace, key);
+            Instant now = clock.instant();
+            AppDataRecord proposed =
+                new AppDataRecord(
+                    appId,
+                    namespace,
+                    key,
+                    new AppDataRecord.Payload(input.contentType(), schemaVersion, input.value()),
+                    current.map(AppDataRecord::createdAt).orElse(now),
+                    now);
+            enforceWriteQuotas(appId, namespace, current.orElse(null), proposed.valueBytes());
+            String generation =
+                SharesiteDraftWriteGuard.canonicalDigest(
+                    Map.of(
+                        "records",
+                        listStoredRecordSummaries(appId, null).stream()
+                            .map(AppDataRecordSummary::toJsonValue)
+                            .toList(),
+                        "namespaces",
+                        listNamespaceMetadata(appId).stream()
+                            .map(item -> item.toJsonValue(true))
+                            .toList()));
+            Map<String, Object> preview =
+                sharesiteWriteGuard.authorize(
+                    parameters, proposed, current.orElse(null), target, generation);
+            if (preview != null) {
+              return preview;
+            }
+            ensureNamespaceForRecord(proposed);
+            writeRecord(proposed);
+            return readRecordRequired(appId, namespace, key).toReadJson();
+          });
+    } catch (IOException _) {
+      throw SharesiteDraftWriteGuard.failure("sharesite_verified_target_unavailable");
+    }
+  }
+
   /**
    * Deletes one app-owned record.
    *
@@ -460,6 +552,7 @@ public final class AppDataService {
    */
   public synchronized Map<String, Object> deleteRecord(String appId, String namespace, String key) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
+    SharesiteDraftWriteGuard.rejectUnguardedMutation(normalizedAppId, namespace);
     rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
     AppDataRecord existing = readRecordRequired(normalizedAppId, namespace, key);
     Optional<AppDataNamespaceMetadata> namespaceBeforeDelete =
@@ -568,6 +661,18 @@ public final class AppDataService {
     }
     AppDataExportPayload payload =
         AppDataExportPayload.parseForImport(payloadBytes, normalizedAppId);
+    payload
+        .namespaces()
+        .forEach(
+            metadata ->
+                SharesiteDraftWriteGuard.rejectUnguardedMutation(
+                    normalizedAppId, metadata.namespace()));
+    payload
+        .records()
+        .forEach(
+            record ->
+                SharesiteDraftWriteGuard.rejectUnguardedMutation(
+                    normalizedAppId, record.namespace()));
     List<AppDataNamespaceMetadata> importedNamespacesMetadata =
         payload.namespaces().stream()
             .map(metadata -> withCallerAppId(metadata, normalizedAppId))

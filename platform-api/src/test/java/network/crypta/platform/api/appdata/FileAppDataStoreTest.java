@@ -2,20 +2,30 @@ package network.crypta.platform.api.appdata;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Properties;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Answers;
+import org.mockito.MockedStatic;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 class FileAppDataStoreTest {
   private static final String APP_ID = "feed-reader";
@@ -52,6 +62,48 @@ class FileAppDataStoreTest {
     assertEquals("{\"theme\":\"dark\"}", new String(restored.value(), StandardCharsets.UTF_8));
     assertEquals(1, reopened.listNamespaces(APP_ID).getFirst().recordCount());
     assertFalse(allRelativePaths().contains(SETTINGS_KEY));
+  }
+
+  @Test
+  void writeRecord_whenAtomicPointerMoveUnsupported_expectOldGenerationAndNoFallback()
+      throws Exception {
+    FileAppDataStore store = new FileAppDataStore(tempDir);
+    store.writeRecord(appDataRecord(APP_ID, "old-complete-value"));
+    Path pointer = findFile("current.properties");
+    byte[] previousPointer = Files.readAllBytes(pointer);
+    AppDataRecord replacement = appDataRecord(APP_ID, "new-complete-value");
+
+    try (MockedStatic<Files> files = mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
+      files
+          .when(
+              () ->
+                  Files.move(
+                      any(Path.class),
+                      eq(pointer),
+                      eq(StandardCopyOption.ATOMIC_MOVE),
+                      eq(StandardCopyOption.REPLACE_EXISTING)))
+          .thenThrow(new AtomicMoveNotSupportedException("source", "target", "unsupported"));
+
+      assertThrows(IOException.class, () -> store.writeRecord(replacement));
+
+      files.verify(
+          () ->
+              Files.move(
+                  any(Path.class),
+                  eq(pointer),
+                  eq(StandardCopyOption.ATOMIC_MOVE),
+                  eq(StandardCopyOption.REPLACE_EXISTING)),
+          times(1));
+      files.verify(
+          () -> Files.move(any(Path.class), eq(pointer), eq(StandardCopyOption.REPLACE_EXISTING)),
+          never());
+    }
+    FileAppDataStore reopened = new FileAppDataStore(tempDir);
+    AppDataRecord visible =
+        reopened.readRecord(APP_ID, UI_STATE_NAMESPACE, SETTINGS_KEY).orElseThrow();
+    assertEquals("old-complete-value", new String(visible.value(), StandardCharsets.UTF_8));
+    assertEquals(1, reopened.listRecords(APP_ID, UI_STATE_NAMESPACE).size());
+    assertArrayEquals(previousPointer, Files.readAllBytes(pointer));
   }
 
   @Test

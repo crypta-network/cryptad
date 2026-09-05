@@ -1032,6 +1032,22 @@ public final class LocalProcessAppHost implements AppHost {
         new InstalledAppSnapshot(readInstalledManifest(paths.installedRoot()), paths));
   }
 
+  /** {@inheritDoc} */
+  @Override
+  public synchronized <T> T withVerifiedInstalledBundle(
+      String appId, VerifiedBundleAction<T> action) throws IOException {
+    InstalledAppSnapshot installed =
+        describe(appId).orElseThrow(() -> new IOException("App is not installed."));
+    AppBundleVerification verification =
+        verifyHistoricalCopiedBundle(installed.paths().installedRoot());
+    if (!verification.signed()
+        || verification.keyFingerprintSha256() == null
+        || verification.signedContentDigestSha256() == null) {
+      throw new IOException("A complete verified signed bundle identity is required.");
+    }
+    return action.run(installed, verification);
+  }
+
   /**
    * Starts one installed app as a child process.
    *

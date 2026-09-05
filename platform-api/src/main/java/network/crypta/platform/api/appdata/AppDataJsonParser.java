@@ -81,6 +81,9 @@ final class AppDataJsonParser {
     do {
       skipWhitespace();
       String key = parseString();
+      if (object.containsKey(key)) {
+        throw error();
+      }
       skipWhitespace();
       expect(':');
       object.put(key, parseValue(depth + 1));

@@ -48,9 +48,9 @@
         "owner": "crypta-core",
         "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "maintained",
-        "dataSchemaPolicy": "stateless",
-        "migrationPolicy": "none",
-        "backupRestore": "not-applicable",
+        "dataSchemaPolicy": "declared",
+        "migrationPolicy": "operator-approved",
+        "backupRestore": "export-import",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
         "supportUri": "https://github.com/crypta-network/cryptad/issues"

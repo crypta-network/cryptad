@@ -43,6 +43,8 @@
         <li><code>queue.read</code> reads upload queue snapshots for publish progress.</li>
         <li><code>queue.write</code> creates insert queue requests for publish operations.</li>
         <li><code>content.insert</code> submits local file and directory content to the insert pipeline.</li>
+        <li><code>app.data.read</code> and <code>app.data.write</code> read and save private durable drafts.</li>
+        <li><code>content.insert.app-document</code> publishes saved literal text to a new CHK address after consent.</li>
       </ul>
     </section>
 
@@ -65,9 +67,50 @@
       <ul class="beta-readiness-list">
         <li>No source selected shows an empty state; invalid bundle, metadata, or queue errors use bounded copy.</li>
         <li>Retry validation by re-submitting the form and retry queue inspection with Refresh queue.</li>
-        <li>App data is stateless; backup, export, import, and migrations are not applicable.</li>
+        <li>Private plain-text drafts persist through restarts. Export and import use private recovery copies and an explicit guarded preview.</li>
         <li>Support uses catalog metadata, operation categories, and redacted-summary-only diagnostics.</li>
       </ul>
+    </section>
+
+    <section class="cr-card" id="draft-panel" aria-labelledby="draft-title">
+      <h2 id="draft-title">Private Sharesite plain-text drafts</h2>
+      <p>Import only a converted private package from a consistent stopped Sharesite snapshot.
+        Never select the original database here. The selected pastebin workflow preserves literal
+        text; Textile, CSS, scheduling, deleted pages, and old USK writing are unsupported.</p>
+      <p>Approve the signed Site Publisher update and added permissions first. This workflow requires
+        a daemon with guarded draft writes. Private copies contain user content and are not encrypted.
+        Keep source snapshots and target backups separately in owner-only local storage.</p>
+      <label class="cr-field"><span class="cr-label">Converted package or private target backup</span>
+        <input class="cr-input" type="file" id="draft-file" accept="application/json,.json"></label>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-backup">Download private target backup</button>
+      <label class="cr-checkbox"><input type="checkbox" id="draft-backup-ack">
+        <span>I retained a separate private target backup and can recover it.</span></label>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-inspect">Inspect and preview selected import</button>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-restore">Preview additive private restore</button>
+      <details><summary>Private selection, literal content, and exclusions</summary><pre id="draft-selection"></pre></details>
+      <details><summary>Private target and change binding</summary><pre id="draft-binding"></pre></details>
+      <label class="cr-checkbox"><input type="checkbox" id="draft-ack">
+        <span>I reviewed the exact selected pages, excluded categories, and local change in this preview.</span></label>
+      <button class="cr-button cr-button--primary" type="button" id="draft-commit" disabled>Commit reviewed local change</button>
+      <p class="cr-status" id="draft-status" role="status" aria-live="polite">No drafts loaded.</p>
+      <label class="cr-field"><span class="cr-label">Saved draft</span><select class="cr-input" id="draft-list"></select></label>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-refresh">Refresh durable drafts</button>
+      <label class="cr-field"><span class="cr-label">Literal text</span>
+        <textarea class="cr-input" id="draft-text" rows="10" spellcheck="false"></textarea></label>
+      <p>Imports and publication preserve original UTF-8 text and line endings. Editing in the browser
+        uses the textarea's LF line endings; preview the change before saving.</p>
+      <h3>Safe literal preview</h3><pre id="draft-preview"></pre>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-save">Preview save</button>
+      <button class="cr-button cr-button--secondary" type="button" id="draft-undo">Preview undo of selected draft's import</button>
+      <p>Undo removes only an unchanged import. Later edits require private manual recovery.
+        App bundle rollback is separate and keeps durable drafts, which may require the newer app to open.</p>
+      <label class="cr-checkbox"><input type="checkbox" id="draft-publish-ack">
+        <span>I approve publishing this saved literal text to a new CHK address. It may become public
+          and cannot be reliably removed by queue cancellation or local undo.</span></label>
+      <button class="cr-button cr-button--primary" type="button" id="draft-publish">Publish saved text to new CHK</button>
+      <p>Import, restore, undo, and save never queue publication. The old insert identity remains with
+        its owner; this is not the next edition of the old USK. Disable old automatic publishing only
+        after a separate operator cutover decision.</p>
     </section>
 
     <section class="publish-grid" aria-label="Publishing forms">
@@ -246,5 +289,6 @@
   </main>
   <script src="./crypta-platform.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./drafts.js" defer></script>
 </body>
 </html>
