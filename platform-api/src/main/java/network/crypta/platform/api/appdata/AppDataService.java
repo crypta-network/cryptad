@@ -80,8 +80,10 @@ public final class AppDataService {
   private static final String PARAM_MODE = "mode";
   private static final String PARAM_APP_ID = "appId";
   private static final String FIELD_NAMESPACE_COUNT = "namespaceCount";
+  private static final String FIELD_NAMESPACES = "namespaces";
   private static final String FIELD_PAYLOAD_BYTES = "payloadBytes";
   private static final String FIELD_RECORD_COUNT = "recordCount";
+  private static final String FIELD_RECORDS = "records";
   private static final String STATUS_QUOTA_UNAVAILABLE = "app_data_quota_unavailable";
   private static final String IMPORT_MODE_MERGE = "merge";
   private static final String IMPORT_MODE_REPLACE_NAMESPACE = "replaceNamespace";
@@ -376,7 +378,7 @@ public final class AppDataService {
     int toIndex = Math.min(fromIndex + limit, summaries.size());
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
     json.put(
-        "records",
+        FIELD_RECORDS,
         summaries.subList(fromIndex, toIndex).stream()
             .map(AppDataRecordSummary::toJsonValue)
             .toList());
@@ -424,7 +426,7 @@ public final class AppDataService {
     String key =
         AppDataRecord.normalizeKey(PlatformApiParameters.requireString(parameters, PARAM_KEY));
     int schemaVersion = readRequiredPositiveInt(parameters, PARAM_SCHEMA_VERSION);
-    if (SharesiteDraftWriteGuard.NAMESPACE.equals(namespace)) {
+    if (SharesiteDraftWriteGuard.applies(normalizedAppId, namespace)) {
       return putSharesiteDataset(normalizedAppId, key, schemaVersion, parameters);
     }
     ValueInput valueInput = valueInput(parameters);
@@ -515,18 +517,18 @@ public final class AppDataService {
             String generation =
                 SharesiteDraftWriteGuard.canonicalDigest(
                     Map.of(
-                        "records",
+                        FIELD_RECORDS,
                         listStoredRecordSummaries(appId, null).stream()
                             .map(AppDataRecordSummary::toJsonValue)
                             .toList(),
-                        "namespaces",
+                        FIELD_NAMESPACES,
                         listNamespaceMetadata(appId).stream()
                             .map(item -> item.toJsonValue(true))
                             .toList()));
             Map<String, Object> preview =
                 sharesiteWriteGuard.authorize(
                     parameters, proposed, current.orElse(null), target, generation);
-            if (preview != null) {
+            if (!preview.isEmpty()) {
               return preview;
             }
             ensureNamespaceForRecord(proposed);
@@ -552,9 +554,10 @@ public final class AppDataService {
    */
   public synchronized Map<String, Object> deleteRecord(String appId, String namespace, String key) {
     String normalizedAppId = AppDataRecord.normalizeAppId(appId);
-    SharesiteDraftWriteGuard.rejectUnguardedMutation(normalizedAppId, namespace);
+    String normalizedNamespace = AppDataRecord.normalizeNamespace(namespace);
+    SharesiteDraftWriteGuard.rejectUnguardedMutation(normalizedAppId, normalizedNamespace);
     rejectIfUpdateMigrationWriteBarrierActive(normalizedAppId);
-    AppDataRecord existing = readRecordRequired(normalizedAppId, namespace, key);
+    AppDataRecord existing = readRecordRequired(normalizedAppId, normalizedNamespace, key);
     Optional<AppDataNamespaceMetadata> namespaceBeforeDelete =
         readNamespaceOptional(existing.appId(), existing.namespace());
     boolean deleted;
@@ -670,9 +673,9 @@ public final class AppDataService {
     payload
         .records()
         .forEach(
-            record ->
+            importedRecord ->
                 SharesiteDraftWriteGuard.rejectUnguardedMutation(
-                    normalizedAppId, record.namespace()));
+                    normalizedAppId, importedRecord.namespace()));
     List<AppDataNamespaceMetadata> importedNamespacesMetadata =
         payload.namespaces().stream()
             .map(metadata -> withCallerAppId(metadata, normalizedAppId))
@@ -1497,8 +1500,9 @@ public final class AppDataService {
     json.put(FIELD_NAMESPACE_COUNT, namespaces.size());
     json.put(FIELD_RECORD_COUNT, summaries.size());
     json.put(
-        "namespaces", namespaces.stream().map(namespace -> namespace.toJsonValue(true)).toList());
-    json.put("records", List.of());
+        FIELD_NAMESPACES,
+        namespaces.stream().map(namespace -> namespace.toJsonValue(true)).toList());
+    json.put(FIELD_RECORDS, List.of());
     long bytesWithoutRecords = utf8Length(PlatformApiJsonWriter.write(json)) - 2L;
     if (summaries.isEmpty()) {
       return bytesWithoutRecords + 2L;
@@ -2259,7 +2263,7 @@ public final class AppDataService {
   private record ProjectedImport(Map<String, Long> recordBytesByKey, Set<String> namespaces) {
     private ProjectedImport {
       recordBytesByKey = Map.copyOf(Objects.requireNonNull(recordBytesByKey, "recordBytesByKey"));
-      namespaces = Set.copyOf(Objects.requireNonNull(namespaces, "namespaces"));
+      namespaces = Set.copyOf(Objects.requireNonNull(namespaces, FIELD_NAMESPACES));
     }
   }
 

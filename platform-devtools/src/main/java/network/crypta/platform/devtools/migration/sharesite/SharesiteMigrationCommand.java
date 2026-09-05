@@ -46,7 +46,9 @@ public final class SharesiteMigrationCommand {
    * itself does not accept a node endpoint or publication authority; all supported operations
    * inspect private files and produce private conversion artifacts only.
    */
-  public SharesiteMigrationCommand() {}
+  private SharesiteMigrationCommand() {
+    // Picocli constructs this command group reflectively; all work belongs to its subcommands.
+  }
 
   @Command(
       name = "sharesite",
@@ -224,7 +226,11 @@ public final class SharesiteMigrationCommand {
                 StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW, LinkOption.NOFOLLOW_LINKS),
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {
       var buffer = java.nio.ByteBuffer.wrap(bytes);
-      while (buffer.hasRemaining()) channel.write(buffer);
+      while (buffer.hasRemaining()) {
+        if (channel.write(buffer) <= 0) {
+          throw SharesiteSnapshot.failure("private_write_stalled");
+        }
+      }
       channel.force(true);
     }
   }

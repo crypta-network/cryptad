@@ -153,6 +153,13 @@ function backend() {
   const uiStore = backend();
   const initial = drafts.controller(uiStore.api);
   await initial.load(); await initial.previewImport(converted); await initial.commit();
+  const secondOperation = '22222222-2222-4222-8222-222222222222';
+  const secondDraft = { ...draft, id: `${secondOperation}-3`, operationId: secondOperation,
+    name: 'Second private draft', text: 'Second draft text' };
+  await initial.previewImport({ ...converted, payloadSha256: 'd'.repeat(64),
+    package: { ...converted.package, operationId: secondOperation },
+    dataset: { ...converted.dataset, drafts: [secondDraft] } });
+  await initial.commit();
   uiStore.api.bootstrap = { load: async () => {} };
   const uiContext = { TextEncoder, TextDecoder, Uint8Array, atob, btoa, Blob, URL,
     CryptaPlatform: uiStore.api, window: { crypto: webcrypto },
@@ -163,6 +170,63 @@ function backend() {
   assert.equal(element('draft-preview').textContent, literal, 'markup is rendered with textContent');
   assert.equal(element('draft-list').children[0].textContent, draft.name);
   assert.equal(uiStore.publications.length, 0);
+  function deferNextPreview() {
+    const original = uiStore.api.data.records.put;
+    let release, entered;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { entered = resolve; });
+    uiStore.api.data.records.put = async (request) => {
+      const receipt = await original(request);
+      if (request.writeIntent === 'preview') {
+        uiStore.api.data.records.put = original;
+        entered();
+        await gate;
+      }
+      return receipt;
+    };
+    return { release, started };
+  }
+  element('draft-backup-ack').checked = true;
+  for (const invalidation of ['input', 'selection', 'file', 'backup']) {
+    element('draft-text').value = 'first edit';
+    element('draft-text').listeners.input();
+    const delayed = deferNextPreview();
+    const save = element('draft-save').listeners.click();
+    await delayed.started;
+    assert.equal(element('draft-commit').disabled, true);
+    const editorLocked = element('draft-text').disabled;
+    const writes = uiStore.writes();
+    if (invalidation !== 'input') {
+      await element('draft-save').listeners.click();
+      await element('draft-refresh').listeners.click();
+    }
+    assert.equal(uiStore.writes(), writes, 'competing actions cannot replace the pending preview');
+    if (invalidation === 'input') {
+      element('draft-text').value = 'newer unsaved edit';
+      element('draft-text').listeners.input();
+    } else if (invalidation === 'selection') {
+      element('draft-list').value = secondDraft.id;
+      element('draft-list').listeners.change();
+    } else {
+      element(invalidation === 'file' ? 'draft-file' : 'draft-backup-ack').listeners.change();
+    }
+    delayed.release(); await save;
+    assert.equal(element('draft-commit').disabled, true, `${invalidation} discards late preview`);
+    assert.equal(editorLocked, true, 'editor is locked during an async action');
+    assert.equal(element('draft-binding').textContent, '');
+    element('draft-ack').checked = true;
+    await element('draft-commit').listeners.click();
+    assert.equal(uiStore.writes(), writes, 'stale consent never writes');
+    assert.equal(JSON.parse(uiStore.value()).drafts[0].text, literal);
+    assert.equal(JSON.parse(uiStore.value()).drafts[1].text, secondDraft.text);
+    if (invalidation === 'input') {
+      assert.equal(element('draft-text').value, 'newer unsaved edit');
+      assert.equal(element('draft-preview').textContent, 'newer unsaved edit');
+    }
+    element('draft-list').value = draft.id;
+    element('draft-list').listeners.change();
+  }
+  element('draft-backup-ack').checked = false;
   element('draft-text').value = '<svg onload=alert(1)>literal</svg>';
   element('draft-text').listeners.input();
   assert.equal(element('draft-preview').textContent, '<svg onload=alert(1)>literal</svg>');

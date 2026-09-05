@@ -130,6 +130,7 @@ dependencies {
 
 val generateManifest by
   tasks.registering(Copy::class) {
+    description = "Generates the $appDisplayName AppHost manifest."
     inputs.property("appVersion", project.version.toString())
     from(manifestTemplateFile) {
       rename { "cryptad-app.properties" }
@@ -179,7 +180,7 @@ val signApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPrivateKeyArguments(signingTask, name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 
@@ -202,7 +203,7 @@ val verifyApp by
           requiredSigningInput("cryptadAppSigningKeyId", "CRYPTAD_APP_SIGNING_KEY_ID", name),
         )
       addPublicKeyArguments(name, arguments)
-      setArgs(arguments)
+      args = arguments
     }
   }
 

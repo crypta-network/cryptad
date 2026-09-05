@@ -52,30 +52,36 @@ public final class SharesiteConversion {
    */
   public static final int MAX_PACKAGE_BYTES = 409600;
 
+  private static final String FIELD_DESCRIPTION = "description";
+  private static final String FIELD_REQUEST_SSK = "requestSSK";
+  private static final String FIELD_EDITION = "edition";
+  private static final String FIELD_INSERT_HOUR = "insertHour";
+  private static final String FIELD_OPERATION_ID = "operationId";
+  private static final String INVALID_NUMBER = "invalid_number";
+
   private static final Set<String> ROOT_FIELDS =
       Set.of("keys", "deleted_keys", "increasingCounter", "lastDeletedTime");
   private static final Set<String> PAGE_FIELDS =
       Set.of(
           "name",
           "path",
-          "description",
+          FIELD_DESCRIPTION,
           "pastebin",
           "text",
           "css",
           "activelinkUri",
-          "requestSSK",
+          FIELD_REQUEST_SSK,
           "insertSSK",
-          "edition",
-          "insertHour",
+          FIELD_EDITION,
+          FIELD_INSERT_HOUR,
           "l10nStatus");
-  private static final Pattern PAGE = Pattern.compile("collection-([0-9]+)/([^/]+)");
+  private static final Pattern PAGE = Pattern.compile("collection-(\\d+)/([^/]+)");
   private static final Pattern KEYS = Pattern.compile("(?i)(?:SSK|USK)@[^\\s<>\"']*");
-  private static final Pattern SECRET =
+  private static final Pattern SECRET_CREDENTIAL =
+      Pattern.compile("(?i)(?:-----BEGIN[^\\r\\n]*PRIVATE KEY|bearer\\s+[a-z0-9._~-]+)");
+  private static final Pattern SECRET_MARKER =
       Pattern.compile(
-          "(?i)(?:-----BEGIN[^\\r"
-              + "\\n"
-              + "]*PRIVATE KEY|bearer\\s+[a-z0-9._~-]+|insertssk|private["
-              + " _-]?key|(?:inserturi|password|secret|token|seed)\\s*[:=])");
+          "(?i)(?:insertssk|private[ _-]?key|(?:inserturi|password|secret|token|seed)\\s*[:=])");
   private static final String APP = "site-publisher";
   private static final String NAMESPACE = "sharesite-drafts";
 
@@ -130,8 +136,12 @@ public final class SharesiteConversion {
    * private source lineage and text digests, but excludes insertion identity. Failure returns no
    * partially converted package and does not silently rewrite supported text.
    *
+   * <p>The size check reserves the ledger entry that Site Publisher adds on import. It ensures the
+   * selected dataset fits an empty target; existing target data and current app quota still require
+   * a guarded import preview. Conversion itself neither creates that preview nor authorizes commit.
+   *
    * @param source immutable decoded snapshot and exact private source comparison digest
-   * @param selection explicit original logical IDs, at most sixteen
+   * @param selection explicit original logical IDs, at most sixteen distinct active pages
    * @param operationId explicit local operation UUID used to derive stable draft identities
    * @param provenance private operator description of stopped-writer snapshot preparation
    * @return detached bounded PRIVATE wrapper around the existing app-data interchange
@@ -163,35 +173,21 @@ public final class SharesiteConversion {
       require(reason == null, reason == null ? "invalid_selection" : reason);
       Map<String, Object> draft = new LinkedHashMap<>();
       draft.put("id", operationId + "-" + id);
-      draft.put("operationId", operationId.toString());
+      draft.put(FIELD_OPERATION_ID, operationId.toString());
       draft.put("sourceId", id);
       draft.put("name", fields.get("name"));
-      draft.put("description", fields.get("description"));
+      draft.put(FIELD_DESCRIPTION, fields.get(FIELD_DESCRIPTION));
       draft.put("text", fields.get("text"));
       draft.put("historicalEdition", edition(fields));
       draft.put("logicalPath", fields.getOrDefault("path", fields.get("name")));
-      String reference = fields.getOrDefault("requestSSK", "");
+      String reference = fields.getOrDefault(FIELD_REQUEST_SSK, "");
       if (!reference.isEmpty()) draft.put("publicReadReference", reference);
       drafts.add(draft);
       fidelity.put(
           Integer.toString(id),
           SharesiteSnapshot.sha256(fields.get("text").getBytes(StandardCharsets.UTF_8)));
     }
-    byte[] dataset = json(Map.of("schemaVersion", 1, "operations", List.of(), "drafts", drafts));
-    require(dataset.length <= 196608, "dataset_limit");
-    Instant at = Instant.EPOCH;
-    AppDataRecord record =
-        new AppDataRecord(
-            APP,
-            NAMESPACE,
-            "dataset",
-            new AppDataRecord.Payload("application/json", 1, dataset),
-            at,
-            at);
-    AppDataNamespaceMetadata namespace =
-        new AppDataNamespaceMetadata(APP, NAMESPACE, 1, 1, dataset.length, at, at, null, List.of());
-    AppDataExportPayload payload =
-        new AppDataExportPayload(1, APP, at, List.of(namespace), List.of(record));
+    AppDataExportPayload payload = draftPayload(drafts, operationId);
     Map<String, Object> wrapper = new LinkedHashMap<>();
     wrapper.put("format", "crypta.sharesite-migration.v1");
     wrapper.put("privacy", "private-user-data");
@@ -210,13 +206,52 @@ public final class SharesiteConversion {
             provenance,
             "literalTextSha256",
             fidelity));
-    wrapper.put("operationId", operationId.toString());
+    wrapper.put(FIELD_OPERATION_ID, operationId.toString());
     wrapper.put("selectedIds", List.copyOf(selected));
     wrapper.put("exclusions", exclusions(inventory, selected));
     wrapper.put("payload", payload.toJsonValue());
     byte[] result = json(wrapper);
     require(result.length <= MAX_PACKAGE_BYTES, "package_limit");
     return result;
+  }
+
+  /**
+   * Builds the inner app-data representation after reserving the complete import ledger size.
+   *
+   * @param drafts validated selected drafts in deterministic logical ID order
+   * @param operationId local operation identity used to size the eventual ledger entry
+   * @return detached app-data payload with fixed epoch metadata and an empty ledger
+   */
+  private static AppDataExportPayload draftPayload(
+      List<Map<String, Object>> drafts, UUID operationId) {
+    byte[] dataset = json(Map.of("schemaVersion", 1, "operations", List.of(), "drafts", drafts));
+    // Reserve the complete import ledger size using fixed-width digest placeholders.
+    // The exported payload retains an empty ledger until the app commits the import.
+    Map<String, Object> importOperation =
+        Map.of(
+            FIELD_OPERATION_ID,
+            operationId.toString(),
+            "payloadSha256",
+            "0".repeat(64),
+            "status",
+            "committed",
+            "draftIds",
+            drafts.stream().map(draft -> draft.get("id")).toList(),
+            "originalsSha256",
+            "0".repeat(64));
+    require((long) dataset.length + json(importOperation).length <= 196608, "dataset_limit");
+    Instant at = Instant.EPOCH;
+    AppDataRecord datasetRecord =
+        new AppDataRecord(
+            APP,
+            NAMESPACE,
+            "dataset",
+            new AppDataRecord.Payload("application/json", 1, dataset),
+            at,
+            at);
+    AppDataNamespaceMetadata namespace =
+        new AppDataNamespaceMetadata(APP, NAMESPACE, 1, 1, dataset.length, at, at, null, List.of());
+    return new AppDataExportPayload(1, APP, at, List.of(namespace), List.of(datasetRecord));
   }
 
   private static Inventory inventory(Map<String, String> fields) {
@@ -249,30 +284,40 @@ public final class SharesiteConversion {
     String pastebin = fields.get("pastebin");
     if (pastebin != null && !Set.of("true", "false").contains(pastebin)) return "malformed_boolean";
     if (!"true".equals(pastebin)) return "unsupported_textile";
-    if (!fields.keySet().containsAll(Set.of("name", "description", "text", "edition")))
+    if (!fields.keySet().containsAll(Set.of("name", FIELD_DESCRIPTION, "text", FIELD_EDITION)))
       return "broken_record";
     if (utf8Length(fields.get("text")) > 65536) return "text_limit";
     if (utf8Length(fields.get("name")) > 1024
-        || utf8Length(fields.get("description")) > 8192
+        || utf8Length(fields.get(FIELD_DESCRIPTION)) > 8192
         || utf8Length(fields.getOrDefault("path", "")) > 1024) return "metadata_limit";
     try {
       edition(fields);
-      for (String field : List.of("name", "description", "text", "path"))
+      for (String field : List.of("name", FIELD_DESCRIPTION, "text", "path"))
         checkContent(fields.getOrDefault(field, ""));
-      String reference = fields.getOrDefault("requestSSK", "");
+      String reference = fields.getOrDefault(FIELD_REQUEST_SSK, "");
       if (!reference.isEmpty()) requirePublicReference(reference);
-      if (fields.containsKey("insertHour")) boundedLong(fields.get("insertHour"), -1, 23);
+      if (fields.containsKey(FIELD_INSERT_HOUR)) boundedLong(fields.get(FIELD_INSERT_HOUR), -1, 23);
     } catch (IllegalArgumentException exception) {
-      String code = exception.getMessage();
-      return code != null && code.matches("sharesite_[a-z_]+")
-          ? code.substring("sharesite_".length())
-          : "invalid_record";
+      return recordFailureReason(exception);
     }
     return null;
   }
 
+  /**
+   * Converts bounded adapter exceptions to exclusion codes without exposing rejected content.
+   *
+   * @param exception validation failure whose message may contain an adapter reason
+   * @return recognized reason suffix or the fixed fallback for other failures
+   */
+  private static String recordFailureReason(IllegalArgumentException exception) {
+    String code = exception.getMessage();
+    return code != null && code.matches("sharesite_[a-z_]+")
+        ? code.substring("sharesite_".length())
+        : "invalid_record";
+  }
+
   private static long edition(Map<String, String> fields) {
-    return boundedLong(fields.get("edition"), -1, 9007199254740991L);
+    return boundedLong(fields.get(FIELD_EDITION), -1, 9007199254740991L);
   }
 
   private static Map<String, Integer> exclusions(Inventory inventory, Set<Integer> selected) {
@@ -288,7 +333,7 @@ public final class SharesiteConversion {
             counts.merge("css_not_imported", 1, Integer::sum);
           if (!fields.getOrDefault("activelinkUri", "").isEmpty())
             counts.merge("external_resource_not_imported", 1, Integer::sum);
-          if (fields.containsKey("insertHour"))
+          if (fields.containsKey(FIELD_INSERT_HOUR))
             counts.merge("scheduling_not_imported", 1, Integer::sum);
           if (fields.containsKey("l10nStatus"))
             counts.merge("runtime_status_not_imported", 1, Integer::sum);
@@ -299,7 +344,7 @@ public final class SharesiteConversion {
   private static Set<Integer> ids(String value) {
     Set<Integer> result = new TreeSet<>();
     if (value.isEmpty()) return result;
-    require(value.matches("(?:0|[1-9][0-9]*)(?: (?:0|[1-9][0-9]*))*"), "invalid_id_list");
+    require(value.matches("(?:0|[1-9]\\d*+)(?: (?:0|[1-9]\\d*+))*+"), "invalid_id_list");
     String[] tokens = value.split(" ", -1);
     require(tokens.length <= 512, "page_count_limit");
     for (String token : tokens) require(result.add(id(token)), "duplicate_page_id");
@@ -307,23 +352,25 @@ public final class SharesiteConversion {
   }
 
   private static int id(String value) {
-    require(value.matches("0|[1-9][0-9]*"), "invalid_page_id");
+    require(value.matches("0|[1-9]\\d*"), "invalid_page_id");
     return (int) boundedLong(value, 0, Integer.MAX_VALUE);
   }
 
   private static long boundedLong(String value, long minimum, long maximum) {
     try {
-      require(value != null && value.matches("-?(?:0|[1-9][0-9]*)"), "invalid_number");
+      require(value != null && value.matches("-?(?:0|[1-9]\\d*)"), INVALID_NUMBER);
       long number = Long.parseLong(value);
-      require(number >= minimum && number <= maximum, "invalid_number");
+      require(number >= minimum && number <= maximum, INVALID_NUMBER);
       return number;
     } catch (NumberFormatException _) {
-      throw invalid("invalid_number");
+      throw invalid(INVALID_NUMBER);
     }
   }
 
   private static void checkContent(String value) {
-    require(!SECRET.matcher(value).find(), "prohibited_secret_material");
+    require(
+        !SECRET_CREDENTIAL.matcher(value).find() && !SECRET_MARKER.matcher(value).find(),
+        "prohibited_secret_material");
     var matcher = KEYS.matcher(value);
     while (matcher.find()) requirePublicReference(matcher.group());
   }

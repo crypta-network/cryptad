@@ -277,17 +277,38 @@
     let editorDirty = false;
     let converted = null;
     let prepared = false;
+    let revision = 0;
+    let busy = true;
+    const actions = ["inspect", "save", "undo", "restore", "commit", "backup", "refresh", "publish"];
+    function invalidate() {
+      revision++;
+      prepared = false;
+      controls.commit.disabled = true;
+      controls.ack.checked = false;
+      controls.binding.textContent = "";
+    }
+    function setBusy(value) {
+      busy = value;
+      for (const id of actions) document.getElementById(`draft-${id}`).disabled = value;
+      for (const id of ["text", "list", "file"]) controls[id].disabled = value;
+      controls.commit.disabled = value || !prepared;
+    }
     const status = (message) => { controls.status.textContent = message; };
     const on = (id, action) => document.getElementById(`draft-${id}`).addEventListener("click", async () => {
+      if (busy) return;
       try {
         if (["inspect", "save", "undo", "restore"].includes(id) && !controls["backup-ack"].checked) {
           status("Download and retain a private target backup, then acknowledge backup readiness before preview.");
           return;
         }
-        await action();
+        if (["inspect", "save", "undo", "restore", "refresh"].includes(id)) invalidate();
+        setBusy(true);
+        await action(revision);
       } catch (_) {
-        prepared = false; controls.commit.disabled = true;
+        invalidate();
         status("Draft action could not complete. Refresh and preview again. Edited drafts or collisions require private manual recovery; no publication was requested by import or save.");
+      } finally {
+        setBusy(false);
       }
     });
     function render() {
@@ -309,9 +330,10 @@
       controls.preview.textContent = draft?.text || "";
       controls["publish-ack"].checked = false;
     }
-    async function showPlan(result) {
+    function showPlan(result, expectedRevision) {
+      if (expectedRevision !== revision) return;
       prepared = !result.replay;
-      controls.commit.disabled = !prepared;
+      controls.commit.disabled = busy || !prepared;
       controls.ack.checked = false;
 
       controls.binding.textContent = result.replay ? "Completed import replay: no changes."
@@ -320,16 +342,18 @@
         : "Private preview ready. Download a separate target backup, review this change, then acknowledge and commit.");
     }
     controls.list.addEventListener("change", () => {
-      selectedId = controls.list.value; prepared = false; controls.commit.disabled = true;
+      selectedId = controls.list.value; invalidate();
       showSelected();
     });
     controls.text.addEventListener("input", () => {
       editorDirty = true;
       controls.preview.textContent = controls.text.value;
       controls["publish-ack"].checked = false;
-      prepared = false; controls.commit.disabled = true;
+      invalidate();
     });
-    on("inspect", async () => {
+    controls.file.addEventListener("change", invalidate);
+    controls["backup-ack"].addEventListener("change", invalidate);
+    on("inspect", async (expectedRevision) => {
       const file = controls.file.files[0];
       if (!file || file.size > maximumPackageBytes) fail();
       converted = await parsePackage(new Uint8Array(await file.arrayBuffer()));
@@ -337,22 +361,22 @@
         pages: converted.dataset.drafts.map((draft) => ({ sourceId: draft.sourceId,
           name: draft.name, description: draft.description, text: draft.text })),
         exclusions: converted.package.exclusions }, null, 2);
-      await showPlan(await model.previewImport(converted));
+      showPlan(await model.previewImport(converted), expectedRevision);
     });
-    on("save", async () => {
+    on("save", async (expectedRevision) => {
       const saved = model.snapshot().drafts.find((entry) => entry.id === selectedId);
       if (!saved) fail();
-      await showPlan(await model.previewEdit(selectedId, editorDirty ? controls.text.value : saved.text));
+      showPlan(await model.previewEdit(selectedId, editorDirty ? controls.text.value : saved.text), expectedRevision);
     });
-    on("undo", async () => {
+    on("undo", async (expectedRevision) => {
       const draft = model.snapshot().drafts.find((entry) => entry.id === selectedId);
       if (!draft) fail();
-      await showPlan(await model.previewUndo(draft.operationId));
+      showPlan(await model.previewUndo(draft.operationId), expectedRevision);
     });
-    on("restore", async () => {
+    on("restore", async (expectedRevision) => {
       const file = controls.file.files[0];
       if (!file || file.size > maximumPackageBytes) fail();
-      await showPlan(await model.previewRestore(new Uint8Array(await file.arrayBuffer())));
+      showPlan(await model.previewRestore(new Uint8Array(await file.arrayBuffer())), expectedRevision);
     });
     on("commit", async () => {
       if (!prepared || !controls.ack.checked || !controls["backup-ack"].checked) fail();
@@ -375,9 +399,11 @@
       await model.publish(selectedId); controls["publish-ack"].checked = false;
       status("Saved literal text queued for a new CHK address. Inspect the upload queue for completion. Local undo cannot remove published content.");
     });
+    setBusy(true);
     try {
       await CryptaPlatform.bootstrap.load({ appId: "site-publisher" });
       await model.load(); render(); status("Private durable drafts ready. Import and save never publish.");
     } catch (_) { status("Draft storage unavailable. Approve the signed app update and its data permissions, then refresh."); }
+    finally { setBusy(false); }
   }
 })();

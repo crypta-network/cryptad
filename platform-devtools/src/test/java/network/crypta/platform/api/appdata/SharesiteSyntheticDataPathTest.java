@@ -81,18 +81,8 @@ class SharesiteSyntheticDataPathTest {
     byte[] migrationBytes = Files.readAllBytes(workspace.resolve("migration.json"));
     Map<String, Object> wrapper = object(migrationBytes);
     AppDataExportPayload converted = AppDataExportPayload.parse(json(wrapper.get("payload")));
-    assertEquals(APP, converted.appId());
-    assertEquals(1, converted.records().size());
-    assertEquals(NAMESPACE, converted.records().getFirst().namespace());
-    Map<String, Object> proposed = object(converted.records().getFirst().value());
+    Map<String, Object> proposed = assertConvertedPayload(wrapper, converted);
     List<Map<String, Object>> drafts = rows(proposed, "drafts");
-    assertEquals(LITERAL, drafts.getFirst().get("text"));
-    assertEquals("Synthetic page 0", drafts.getFirst().get("logicalPath"));
-    assertTrue(rows(proposed, "operations").isEmpty());
-    Map<?, ?> lineage = (Map<?, ?>) wrapper.get("source");
-    assertEquals(
-        digest(LITERAL.getBytes(StandardCharsets.UTF_8)),
-        ((Map<?, ?>) lineage.get("literalTextSha256")).get("0"));
 
     // The owning app derives a ledger from the verified converted drafts, as its UI does.
     Map<String, Object> operation =
@@ -164,6 +154,48 @@ class SharesiteSyntheticDataPathTest {
             .get("payloadSha256"));
     assertEquals(committedDigest, service.getRecord(APP, NAMESPACE, "dataset").get("sha256"));
 
+    AppDataExportPayload backup =
+        assertIndependentRecovery(
+            host,
+            signer,
+            service,
+            committed,
+            operation,
+            authentication.signedContentDigestSha256());
+    assertArrayEquals(sourceBytes, Files.readAllBytes(source));
+    assertFalse(diagnostics.toString().contains(source.toString()));
+    assertFalse(diagnostics.toString().contains("SYNTHETIC_SECRET_CANARY_DO_NOT_EXPORT"));
+    assertFalse(
+        new String(backup.toJsonBytes(), StandardCharsets.UTF_8)
+            .contains("SYNTHETIC_SECRET_CANARY_DO_NOT_EXPORT"));
+  }
+
+  private static Map<String, Object> assertConvertedPayload(
+      Map<String, Object> wrapper, AppDataExportPayload converted) {
+    assertEquals(APP, converted.appId());
+    assertEquals(1, converted.records().size());
+    assertEquals(NAMESPACE, converted.records().getFirst().namespace());
+    Map<String, Object> proposed = object(converted.records().getFirst().value());
+    List<Map<String, Object>> drafts = rows(proposed, "drafts");
+    assertEquals(LITERAL, drafts.getFirst().get("text"));
+    assertEquals("Synthetic page 0", drafts.getFirst().get("logicalPath"));
+    assertTrue(rows(proposed, "operations").isEmpty());
+    Map<?, ?> lineage = (Map<?, ?>) wrapper.get("source");
+    assertEquals(
+        digest(LITERAL.getBytes(StandardCharsets.UTF_8)),
+        ((Map<?, ?>) lineage.get("literalTextSha256")).get("0"));
+    return proposed;
+  }
+
+  private AppDataExportPayload assertIndependentRecovery(
+      LocalProcessAppHost host,
+      KeyPair signer,
+      AppDataService service,
+      Map<String, Object> committed,
+      Map<String, Object> operation,
+      String signedContentDigest)
+      throws IOException {
+    String committedDigest = (String) committed.get("sha256");
     // A private app export is parsed back through the existing interchange representation.
     var privateBackup = service.exportData(APP, Map.of("namespace", List.of(NAMESPACE)));
     AppDataExportPayload backup =
@@ -197,12 +229,10 @@ class SharesiteSyntheticDataPathTest {
     Map<String, Object> edited = object(backup.records().getFirst().value());
     rows(edited, "drafts").getFirst().put("text", "edited literal <img src=x onerror=alert(1)>");
     var saved = apply(recovered, edited, "edit", (String) restored.get("sha256"));
+    var undoRequest = request(undone, "undo", (String) saved.get("sha256"));
     assertEquals(
         "sharesite_undo_requires_manual_recovery",
-        assertThrows(
-                PlatformApiException.class,
-                () ->
-                    recovered.putRecord(APP, request(undone, "undo", (String) saved.get("sha256"))))
+        assertThrows(PlatformApiException.class, () -> recovered.putRecord(APP, undoRequest))
             .errorCode());
 
     // Signed app bundle update/rollback is independently verified and does not roll back drafts.
@@ -211,16 +241,11 @@ class SharesiteSyntheticDataPathTest {
     host.rollback(APP);
     assertEquals("3.1", host.describe(APP).orElseThrow().manifest().appVersion());
     assertEquals(
-        authentication.signedContentDigestSha256(),
+        signedContentDigest,
         host.withVerifiedInstalledBundle(
             APP, (_, verification) -> verification.signedContentDigestSha256()));
     assertEquals(saved, recovered.getRecord(APP, NAMESPACE, "dataset"));
-    assertArrayEquals(sourceBytes, Files.readAllBytes(source));
-    assertFalse(diagnostics.toString().contains(source.toString()));
-    assertFalse(diagnostics.toString().contains("SYNTHETIC_SECRET_CANARY_DO_NOT_EXPORT"));
-    assertFalse(
-        new String(backup.toJsonBytes(), StandardCharsets.UTF_8)
-            .contains("SYNTHETIC_SECRET_CANARY_DO_NOT_EXPORT"));
+    return backup;
   }
 
   private LocalProcessAppHost host(KeyPair signer) {

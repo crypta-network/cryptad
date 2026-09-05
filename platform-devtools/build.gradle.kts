@@ -22,8 +22,6 @@ dependencies {
   compileOnly(libs.jetbrainsAnnotations)
 
   testImplementation(mainSourceSet.map { it.output })
-  testImplementation(project(":platform-appcatalog"))
-  testImplementation(project(":platform-appdist"))
   testImplementation(project(":platform-api"))
   testImplementation(libs.junitJupiterApi)
   testRuntimeOnly(libs.junitJupiterEngine)

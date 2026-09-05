@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Strict independent decoder for the pinned Sharesite map writer.
@@ -40,6 +41,12 @@ public final class SharesiteSnapshot {
   static final int MAX_INPUT_BYTES = 8 * 1024 * 1024;
   static final int MAX_ENTRIES = 4096;
   static final int MAX_VALUE_BYTES = 131072;
+
+  /**
+   * Content-free reason for a changed source identity, size, modification time, or byte sequence.
+   */
+  private static final String SNAPSHOT_CHANGED = "snapshot_changed";
+
   private static final byte[] HEADER = "ShareWiki-db-ver1".getBytes(StandardCharsets.UTF_8);
 
   private SharesiteSnapshot() {}
@@ -63,28 +70,7 @@ public final class SharesiteSnapshot {
   public static <T> T inspect(Path path, Function<Decoded, T> operation) throws IOException {
     Path source = path.toAbsolutePath().normalize();
     try {
-      requireSafePath(source);
-      requireNoRecovery(source);
-      BasicFileAttributes before = attributes(source);
-      byte[] original = read(source, MAX_INPUT_BYTES);
-      T result = null;
-      Exception conversionFailure = null;
-      try {
-        result = operation.apply(new Decoded(decode(original), sha256(original)));
-      } catch (IOException | RuntimeException exception) {
-        conversionFailure = exception;
-      }
-      requireNoRecovery(source);
-      BasicFileAttributes after = attributes(source);
-      if (!Objects.equals(before.fileKey(), after.fileKey())
-          || before.size() != after.size()
-          || !before.lastModifiedTime().equals(after.lastModifiedTime())
-          || !MessageDigest.isEqual(original, read(source, MAX_INPUT_BYTES))) {
-        throw failure("snapshot_changed");
-      }
-      if (conversionFailure instanceof IOException ioFailure) throw ioFailure;
-      if (conversionFailure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
-      return result;
+      return inspectSnapshot(source, operation);
     } catch (IOException exception) {
       if (exception.getClass() == IOException.class
           && exception.getMessage() != null
@@ -93,6 +79,44 @@ public final class SharesiteSnapshot {
       }
       throw failure("snapshot_io");
     }
+  }
+
+  /**
+   * Verifies source preservation before returning a result or rethrowing a conversion failure.
+   *
+   * <p>A source verification failure takes precedence over a saved decoding or callback failure.
+   * The outer inspection method translates unexpected I/O diagnostics to a content-free error.
+   *
+   * @param source normalized absolute path to the explicitly selected regular snapshot
+   * @param operation callback using detached private decoded fields and source identity
+   * @param <T> private result type produced by the supplied conversion callback
+   * @return callback result after file identity, metadata, and bytes remain consistent
+   * @throws IOException if reading, decoding, or final source-preservation verification fails
+   */
+  private static <T> T inspectSnapshot(Path source, Function<Decoded, T> operation)
+      throws IOException {
+    requireSafePath(source);
+    requireNoRecovery(source);
+    BasicFileAttributes before = attributes(source);
+    byte[] original = read(source, MAX_INPUT_BYTES);
+    T result = null;
+    Exception conversionFailure = null;
+    try {
+      result = operation.apply(new Decoded(decode(original), sha256(original)));
+    } catch (IOException | RuntimeException exception) {
+      conversionFailure = exception;
+    }
+    requireNoRecovery(source);
+    BasicFileAttributes after = attributes(source);
+    if (!Objects.equals(before.fileKey(), after.fileKey())
+        || before.size() != after.size()
+        || !before.lastModifiedTime().equals(after.lastModifiedTime())
+        || !MessageDigest.isEqual(original, read(source, MAX_INPUT_BYTES))) {
+      throw failure(SNAPSHOT_CHANGED);
+    }
+    if (conversionFailure instanceof IOException ioFailure) throw ioFailure;
+    if (conversionFailure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
+    return result;
   }
 
   /**
@@ -131,7 +155,7 @@ public final class SharesiteSnapshot {
      * @return fixed privacy label independent of source identity and decoded content
      */
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return "SharesiteSnapshot[PRIVATE]";
     }
   }
@@ -230,8 +254,8 @@ public final class SharesiteSnapshot {
       long size = channel.size();
       if (size < 0 || size > maximum) throw failure("input_limit");
       ByteBuffer bytes = ByteBuffer.allocate((int) size);
-      while (bytes.hasRemaining()) if (channel.read(bytes) < 0) throw failure("snapshot_changed");
-      if (channel.read(ByteBuffer.allocate(1)) != -1) throw failure("snapshot_changed");
+      while (bytes.hasRemaining()) if (channel.read(bytes) < 0) throw failure(SNAPSHOT_CHANGED);
+      if (channel.read(ByteBuffer.allocate(1)) != -1) throw failure(SNAPSHOT_CHANGED);
       return bytes.array();
     }
   }

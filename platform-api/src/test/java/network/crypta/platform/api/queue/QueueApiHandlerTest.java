@@ -727,7 +727,7 @@ class QueueApiHandlerTest {
   @Test
   void createAppDocumentInsert_whenLiteralOrEmptyText_expectExactUtf8NewChkUpload()
       throws Exception {
-    for (String text : List.of("", "Unicode \u96ea\r\n<script>alert(1)</script>\n\r")) {
+    for (String text : List.of("", "Unicode 雪\r\n<script>alert(1)</script>\n\r")) {
       RecordingQueueInsertPort port = new RecordingQueueInsertPort();
       QueueApiHandler handler =
           new QueueApiHandler(
@@ -771,15 +771,15 @@ class QueueApiHandlerTest {
             new RecordingQueueInsertPort(),
             new FixedQueueSupportPort(true),
             new RecordingQueueCompletionPort());
+    Map<String, List<String>> parameters =
+        orderedParameters(
+            Map.entry("insertUri", List.of("CHK@")),
+            Map.entry("identifier", List.of("literal-draft")),
+            Map.entry("documentBase64", List.of("")));
+
     assertThrows(
         PlatformApiException.class,
-        () ->
-            handler.createAppDocumentInsert(
-                "site-publisher",
-                orderedParameters(
-                    Map.entry("insertUri", List.of("CHK@")),
-                    Map.entry("identifier", List.of("literal-draft")),
-                    Map.entry("documentBase64", List.of("")))));
+        () -> handler.createAppDocumentInsert("site-publisher", parameters));
   }
 
   @Test

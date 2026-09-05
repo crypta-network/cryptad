@@ -31,31 +31,69 @@ import network.crypta.keys.FreenetURI;
  * record inputs.
  */
 final class SharesiteDraftDataset {
+  /** Canonical UUID field shared by a ledger entry and its drafts. */
+  private static final String FIELD_OPERATION_ID = "operationId";
+
+  /** Ledger state field distinguishing committed imports from local undo tombstones. */
+  private static final String FIELD_STATUS = "status";
+
+  /** Ordered draft identities covered by an operation and its undo digest. */
+  private static final String FIELD_DRAFT_IDS = "draftIds";
+
+  /** Private canonical digest of the original imported draft set. */
+  private static final String FIELD_ORIGINALS_SHA256 = "originalsSha256";
+
+  /** Original nonnegative Sharesite logical page identifier. */
+  private static final String FIELD_SOURCE_ID = "sourceId";
+
+  /** Editable literal description retained as private app data. */
+  private static final String FIELD_DESCRIPTION = "description";
+
+  /** Bounded historical edition metadata without legacy write authority. */
+  private static final String FIELD_HISTORICAL_EDITION = "historicalEdition";
+
+  /** Literal historical path metadata that never grants filesystem authority. */
+  private static final String FIELD_LOGICAL_PATH = "logicalPath";
+
+  /** Optional typed public read reference retained only as private metadata. */
+  private static final String FIELD_PUBLIC_READ_REFERENCE = "publicReadReference";
+
+  /** Ledger state requiring every referenced draft to remain present. */
+  private static final String STATUS_COMMITTED = "committed";
+
   /** Required fields of the version-one dataset envelope. */
   private static final Set<String> ROOT_FIELDS = Set.of("schemaVersion", "operations", "drafts");
 
   /** Exact persisted import-ledger fields, including private replay and undo bindings. */
   private static final Set<String> OP_FIELDS =
-      Set.of("operationId", "payloadSha256", "status", "draftIds", "originalsSha256");
+      Set.of(
+          FIELD_OPERATION_ID,
+          "payloadSha256",
+          FIELD_STATUS,
+          FIELD_DRAFT_IDS,
+          FIELD_ORIGINALS_SHA256);
 
   /** Allowed literal draft fields; only the historical public read reference is optional. */
   private static final Set<String> DRAFT_FIELDS =
       Set.of(
           "id",
-          "operationId",
-          "sourceId",
+          FIELD_OPERATION_ID,
+          FIELD_SOURCE_ID,
           "name",
-          "description",
+          FIELD_DESCRIPTION,
           "text",
-          "historicalEdition",
-          "logicalPath",
-          "publicReadReference");
+          FIELD_HISTORICAL_EDITION,
+          FIELD_LOGICAL_PATH,
+          FIELD_PUBLIC_READ_REFERENCE);
 
   /** Markers that block credential-bearing text before it enters a draft dataset. */
-  private static final Pattern SECRET =
+  private static final Pattern SECRET_CREDENTIAL =
+      Pattern.compile("(?i)(-----BEGIN [^-]*(?:PRIVATE|SECRET)|bearer\\s+[a-z0-9._~-]+)");
+
+  /** Assignment-style markers for secret or insertion-capability fields. */
+  private static final Pattern SECRET_ASSIGNMENT =
       Pattern.compile(
-          "(?i)(-----BEGIN [^-]*(?:PRIVATE|SECRET)|bearer\\s+[a-z0-9._~-]+|(?:private["
-              + " _-]?key|insertssk|token|password|secret|seed|inserturi)\\s*[:=])");
+          "(?i)(?:private[ _-]?key|insertssk|token|password|secret|seed|inserturi)\\s*[:=]");
 
   /** Candidate key references that require typed public-read validation. */
   private static final Pattern KEY =
@@ -94,6 +132,20 @@ final class SharesiteDraftDataset {
     if (bytes.length > SharesiteDraftWriteGuard.MAX_DATASET_BYTES) {
       throw invalid();
     }
+    Map<String, Object> root = parseRoot(bytes);
+    Map<String, Map<String, Object>> operations = parseOperations(root.get("operations"));
+    Map<String, Map<String, Object>> drafts = parseDrafts(root.get("drafts"), operations);
+    validateMembership(operations, drafts);
+    return new Dataset(operations, drafts);
+  }
+
+  /**
+   * Decodes strict UTF-8 and checks the closed version-one root fields.
+   *
+   * @param bytes size-checked private JSON bytes of the entire dataset
+   * @return detached root map after encoding, version, and field checks succeed
+   */
+  private static Map<String, Object> parseRoot(byte[] bytes) {
     String json;
     try {
       json =
@@ -106,82 +158,113 @@ final class SharesiteDraftDataset {
     } catch (CharacterCodingException _) {
       throw invalid();
     }
-    Map<?, ?> root = map(AppDataJsonParser.parse(json));
+    Map<String, Object> root = map(AppDataJsonParser.parse(json));
     if (!root.keySet().equals(ROOT_FIELDS) || !Long.valueOf(1).equals(root.get("schemaVersion"))) {
       throw invalid();
     }
-    List<?> operations = list(root.get("operations"), 32);
-    List<?> drafts = list(root.get("drafts"), 512);
-    Map<String, Map<?, ?>> operationMap = new LinkedHashMap<>();
-    Map<String, Map<?, ?>> draftMap = new LinkedHashMap<>();
+    return root;
+  }
+
+  /**
+   * Validates each ledger entry before indexing its canonical operation identity.
+   *
+   * @param value parsed ledger array with at most thirty-two operations
+   * @return operation index with unique identities and bounded string draft lists
+   */
+  private static Map<String, Map<String, Object>> parseOperations(Object value) {
+    List<?> operations = list(value, 32);
+    Map<String, Map<String, Object>> operationMap = new LinkedHashMap<>();
     for (Object item : operations) {
-      Map<?, ?> op = map(item);
+      Map<String, Object> op = map(item);
       if (!op.keySet().equals(OP_FIELDS)) {
         throw invalid();
       }
-      String id = uuid(op.get("operationId"));
+      String id = uuid(op.get(FIELD_OPERATION_ID));
       digest(op.get("payloadSha256"));
-      digest(op.get("originalsSha256"));
-      if (!Set.of("committed", "undone").contains(op.get("status"))
+      digest(op.get(FIELD_ORIGINALS_SHA256));
+      if (!(STATUS_COMMITTED.equals(op.get(FIELD_STATUS)) || "undone".equals(op.get(FIELD_STATUS)))
           || operationMap.putIfAbsent(id, op) != null) {
         throw invalid();
       }
-      List<?> ids = list(op.get("draftIds"), 16);
+      List<String> ids = draftIds(op);
       if (ids.isEmpty() || new HashSet<>(ids).size() != ids.size()) {
         throw invalid();
       }
-      for (Object draftId : ids) {
-        if (!(draftId instanceof String value) || !value.startsWith(id + "-")) {
+      for (String draftId : ids) {
+        if (!draftId.startsWith(id + "-")) {
           throw invalid();
         }
       }
     }
-    for (Object item : drafts) {
-      Map<?, ?> draft = map(item);
+    return operationMap;
+  }
+
+  /**
+   * Validates literal drafts and requires a committed owning ledger entry.
+   *
+   * @param value parsed draft array with at most five hundred twelve entries
+   * @param operationMap validated ledger index used to check each draft owner
+   * @return unique draft index after literal content and lineage validation succeeds
+   */
+  private static Map<String, Map<String, Object>> parseDrafts(
+      Object value, Map<String, Map<String, Object>> operationMap) {
+    Map<String, Map<String, Object>> draftMap = new LinkedHashMap<>();
+    for (Object item : list(value, 512)) {
+      Map<String, Object> draft = map(item);
       if (!DRAFT_FIELDS.containsAll(draft.keySet())
           || !draft
               .keySet()
               .containsAll(
                   Set.of(
                       "id",
-                      "operationId",
-                      "sourceId",
+                      FIELD_OPERATION_ID,
+                      FIELD_SOURCE_ID,
                       "name",
-                      "description",
+                      FIELD_DESCRIPTION,
                       "text",
-                      "historicalEdition",
-                      "logicalPath"))) {
+                      FIELD_HISTORICAL_EDITION,
+                      FIELD_LOGICAL_PATH))) {
         throw invalid();
       }
-      String operation = uuid(draft.get("operationId"));
-      long sourceId = number(draft.get("sourceId"), 0, Integer.MAX_VALUE);
+      String operation = uuid(draft.get(FIELD_OPERATION_ID));
+      long sourceId = number(draft.get(FIELD_SOURCE_ID), 0, Integer.MAX_VALUE);
       String id = text(draft.get("id"), 64);
       if (!id.equals(operation + "-" + sourceId) || draftMap.putIfAbsent(id, draft) != null) {
         throw invalid();
       }
       text(draft.get("name"), 4096);
-      text(draft.get("description"), 16_384);
-      text(draft.get("logicalPath"), 4096);
+      text(draft.get(FIELD_DESCRIPTION), 16_384);
+      text(draft.get(FIELD_LOGICAL_PATH), 4096);
       text(draft.get("text"), 65_536);
-      number(draft.get("historicalEdition"), -1, 9_007_199_254_740_991L);
-      if (draft.containsKey("publicReadReference")) {
-        publicRead(text(draft.get("publicReadReference"), 4096));
+      number(draft.get(FIELD_HISTORICAL_EDITION), -1, 9_007_199_254_740_991L);
+      if (draft.containsKey(FIELD_PUBLIC_READ_REFERENCE)) {
+        publicRead(text(draft.get(FIELD_PUBLIC_READ_REFERENCE), 4096));
       }
-      Map<?, ?> op = operationMap.get(operation);
+      Map<String, Object> op = operationMap.get(operation);
       if (op == null
-          || !"committed".equals(op.get("status"))
-          || !list(op.get("draftIds"), 16).contains(id)) {
+          || !STATUS_COMMITTED.equals(op.get(FIELD_STATUS))
+          || !draftIds(op).contains(id)) {
         throw invalid();
       }
     }
-    for (Map<?, ?> op : operationMap.values()) {
-      for (Object id : list(op.get("draftIds"), 16)) {
-        if ("committed".equals(op.get("status")) != draftMap.containsKey(id)) {
+    return draftMap;
+  }
+
+  /**
+   * Requires all committed drafts to be present and all undone drafts to be absent.
+   *
+   * @param operationMap validated operation index defining expected draft membership
+   * @param draftMap validated draft index whose presence must match ledger states
+   */
+  private static void validateMembership(
+      Map<String, Map<String, Object>> operationMap, Map<String, Map<String, Object>> draftMap) {
+    for (Map<String, Object> op : operationMap.values()) {
+      for (String id : draftIds(op)) {
+        if (STATUS_COMMITTED.equals(op.get(FIELD_STATUS)) != draftMap.containsKey(id)) {
           throw invalid();
         }
       }
     }
-    return new Dataset(operationMap, draftMap);
   }
 
   /**
@@ -200,13 +283,13 @@ final class SharesiteDraftDataset {
     }
     for (var entry : next.operations().entrySet()) {
       if (!old.operations().containsKey(entry.getKey())) {
-        Map<?, ?> op = entry.getValue();
-        if (singleOperation && !"committed".equals(op.get("status"))) {
+        Map<String, Object> op = entry.getValue();
+        if (singleOperation && !STATUS_COMMITTED.equals(op.get(FIELD_STATUS))) {
           throw invalid();
         }
         if (singleOperation
-            && "committed".equals(op.get("status"))
-            && !op.get("originalsSha256").equals(originals(next, op))) {
+            && STATUS_COMMITTED.equals(op.get(FIELD_STATUS))
+            && !op.get(FIELD_ORIGINALS_SHA256).equals(originals(next, op))) {
           throw invalid();
         }
       }
@@ -225,12 +308,12 @@ final class SharesiteDraftDataset {
       throw invalid();
     }
     for (var entry : old.drafts().entrySet()) {
-      Map<?, ?> replacement = next.drafts().get(entry.getKey());
+      Map<String, Object> replacement = next.drafts().get(entry.getKey());
       if (!entry.getValue().keySet().equals(replacement.keySet())) {
         throw invalid();
       }
       for (var field : entry.getValue().entrySet()) {
-        if (!Set.of("name", "description", "text").contains(field.getKey())
+        if (!Set.of("name", FIELD_DESCRIPTION, "text").contains(field.getKey())
             && !field.getValue().equals(replacement.get(field.getKey()))) {
           throw invalid();
         }
@@ -251,22 +334,22 @@ final class SharesiteDraftDataset {
     int undone = 0;
     Set<String> removed = new HashSet<>();
     for (var entry : old.operations().entrySet()) {
-      Map<?, ?> before = entry.getValue();
-      Map<?, ?> after = next.operations().get(entry.getKey());
+      Map<String, Object> before = entry.getValue();
+      Map<String, Object> after = next.operations().get(entry.getKey());
       if (before.equals(after)) {
         continue;
       }
-      Map<Object, Object> expected = new LinkedHashMap<>(before);
-      expected.put("status", "undone");
-      if (!"committed".equals(before.get("status"))
+      Map<String, Object> expected = new LinkedHashMap<>(before);
+      expected.put(FIELD_STATUS, "undone");
+      if (!STATUS_COMMITTED.equals(before.get(FIELD_STATUS))
           || !expected.equals(after)
-          || !before.get("originalsSha256").equals(originals(old, before))) {
+          || !before.get(FIELD_ORIGINALS_SHA256).equals(originals(old, before))) {
         throw SharesiteDraftWriteGuard.failure("sharesite_undo_requires_manual_recovery");
       }
       undone++;
-      list(before.get("draftIds"), 16).forEach(id -> removed.add((String) id));
+      removed.addAll(draftIds(before));
     }
-    Map<String, Map<?, ?>> remaining = new LinkedHashMap<>(old.drafts());
+    Map<String, Map<String, Object>> remaining = new LinkedHashMap<>(old.drafts());
     removed.forEach(remaining::remove);
     if (undone != 1 || !remaining.equals(next.drafts())) {
       throw invalid();
@@ -280,9 +363,9 @@ final class SharesiteDraftDataset {
    * @param operation ledger entry selecting the exact ordered draft identities
    * @return local comparison digest, never a public content-fidelity receipt
    */
-  private static String originals(Dataset dataset, Map<?, ?> operation) {
+  private static String originals(Dataset dataset, Map<String, Object> operation) {
     return SharesiteDraftWriteGuard.canonicalDigest(
-        list(operation.get("draftIds"), 16).stream().map(dataset.drafts()::get).toList());
+        draftIds(operation).stream().map(dataset.drafts()::get).toList());
   }
 
   /**
@@ -291,7 +374,8 @@ final class SharesiteDraftDataset {
    * @param before existing entries that the operation must preserve exactly
    * @param after candidate entries that may contain additional unrelated identities
    */
-  private static void preserve(Map<String, Map<?, ?>> before, Map<String, Map<?, ?>> after) {
+  private static void preserve(
+      Map<String, Map<String, Object>> before, Map<String, Map<String, Object>> after) {
     before.forEach(
         (id, value) -> {
           if (!value.equals(after.get(id))) {
@@ -311,24 +395,41 @@ final class SharesiteDraftDataset {
     if (!(object instanceof String value)
         || value.length() > maxBytes
         || value.getBytes(StandardCharsets.UTF_8).length > maxBytes
-        || SECRET.matcher(value).find()) {
+        || SECRET_CREDENTIAL.matcher(value).find()
+        || SECRET_ASSIGNMENT.matcher(value).find()) {
       throw invalid();
     }
-    for (int index = 0; index < value.length(); index++) {
-      char ch = value.charAt(index);
-      if (Character.isHighSurrogate(ch)) {
-        if (++index >= value.length() || !Character.isLowSurrogate(value.charAt(index))) {
-          throw invalid();
-        }
-      } else if (Character.isLowSurrogate(ch)) {
-        throw invalid();
-      }
-    }
+    validateSurrogates(value);
     var keys = KEY.matcher(value);
     while (keys.find()) {
       publicRead(keys.group());
     }
     return value;
+  }
+
+  /**
+   * Requires every high surrogate to have exactly one following low surrogate.
+   *
+   * @param value literal Java string whose UTF-16 code units are checked
+   */
+  private static void validateSurrogates(String value) {
+    boolean expectingLow = false;
+    for (int index = 0; index < value.length(); index++) {
+      char ch = value.charAt(index);
+      if (expectingLow) {
+        if (!Character.isLowSurrogate(ch)) {
+          throw invalid();
+        }
+        expectingLow = false;
+      } else if (Character.isHighSurrogate(ch)) {
+        expectingLow = true;
+      } else if (Character.isLowSurrogate(ch)) {
+        throw invalid();
+      }
+    }
+    if (expectingLow) {
+      throw invalid();
+    }
   }
 
   /**
@@ -401,13 +502,39 @@ final class SharesiteDraftDataset {
    * Requires a JSON object without exposing its contents in failures.
    *
    * @param value parsed private JSON value to check structurally
-   * @return original object map after confirming its structural type
+   * @return detached object map with validated string keys
    */
-  private static Map<?, ?> map(Object value) {
-    if (!(value instanceof Map<?, ?> map)) {
+  private static Map<String, Object> map(Object value) {
+    if (!(value instanceof Map<?, ?> raw)) {
       throw invalid();
     }
-    return map;
+    Map<String, Object> result = new LinkedHashMap<>();
+    raw.forEach(
+        (key, item) -> {
+          if (!(key instanceof String name)) {
+            throw invalid();
+          }
+          result.put(name, item);
+        });
+    return result;
+  }
+
+  /**
+   * Requires a bounded list of string draft identities without coercing other JSON types.
+   *
+   * @param operation private ledger entry containing the candidate draft identity list
+   * @return detached list of at most sixteen unchanged string draft identities
+   */
+  private static List<String> draftIds(Map<String, Object> operation) {
+    return list(operation.get(FIELD_DRAFT_IDS), 16).stream()
+        .map(
+            item -> {
+              if (!(item instanceof String id)) {
+                throw invalid();
+              }
+              return id;
+            })
+        .toList();
   }
 
   /**
@@ -439,5 +566,6 @@ final class SharesiteDraftDataset {
    * @param operations canonical operation identities mapped to private ledger metadata
    * @param drafts exact draft identities mapped to private literal document fields
    */
-  private record Dataset(Map<String, Map<?, ?>> operations, Map<String, Map<?, ?>> drafts) {}
+  private record Dataset(
+      Map<String, Map<String, Object>> operations, Map<String, Map<String, Object>> drafts) {}
 }

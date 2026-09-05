@@ -67,7 +67,7 @@ class SharesiteDraftImportTest {
 
   @Test
   void import_whenPreviewedAndCommitted_expectDurableExactLiteralAndNoPreviewMutation() {
-    String literal = "Unicode \u96ea\r\n<script>alert(1)</script>\n\r";
+    String literal = "Unicode 雪 🌍\r\n<script>alert(1)</script>\n\r";
     Map<String, Object> data = dataset(OP, literal);
     Map<String, List<String>> request = request(data, "import", "absent");
     Map<String, Object> preview = service.putRecord(APP, request);
@@ -127,7 +127,7 @@ class SharesiteDraftImportTest {
   void commit_whenUpdateBarrierActive_expectNoMutationAndRetryRequiresCurrentConsent() {
     var request = request(dataset(OP, "selected"), "import", "absent");
     var preview = service.putRecord(APP, request);
-    try (var barrier = service.beginUpdateMigrationWriteBarrier(APP)) {
+    try (var _ = service.beginUpdateMigrationWriteBarrier(APP)) {
       assertEquals(
           "app_data_migration_in_progress",
           assertThrows(PlatformApiException.class, () -> commit(request, preview)).errorCode());
@@ -140,11 +140,10 @@ class SharesiteDraftImportTest {
   @Test
   void import_whenQuotaTooSmall_expectPreviewFailureBeforeNamespaceCreation() {
     installed.set(installed("2", 1L, PERMISSIONS));
+    var request = request(dataset(OP, "selected"), "import", "absent");
     assertEquals(
         "app_data_quota_exceeded",
-        assertThrows(
-                PlatformApiException.class,
-                () -> service.putRecord(APP, request(dataset(OP, "selected"), "import", "absent")))
+        assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request))
             .errorCode());
     assertEquals(0, service.listNamespaces(APP).size());
   }
@@ -167,12 +166,8 @@ class SharesiteDraftImportTest {
   void import_whenExistingOperationCollides_expectNoOverwrite() {
     Map<String, Object> data = dataset(OP, "old");
     var written = apply(data, "import", "absent");
-    assertThrows(
-        PlatformApiException.class,
-        () ->
-            service.putRecord(
-                APP,
-                request(dataset(OP, "replacement"), "import", (String) written.get("sha256"))));
+    var request = request(dataset(OP, "replacement"), "import", (String) written.get("sha256"));
+    assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
     assertEquals(written, service.getRecord(APP, NS, "dataset"));
   }
 
@@ -182,7 +177,7 @@ class SharesiteDraftImportTest {
     var written = apply(first, "import", "absent");
     var combined = combine(first, dataset(OP2, "second"));
     written = apply(combined, "import", (String) written.get("sha256"));
-    Map<String, Object> undone = undo(combined, OP);
+    Map<String, Object> undone = undo(combined);
     written = apply(undone, "undo", (String) written.get("sha256"));
     assertEquals(PlatformApiJsonWriter.write(undone), written.get("valueText"));
     assertTrue(((String) written.get("valueText")).contains("second"));
@@ -196,11 +191,10 @@ class SharesiteDraftImportTest {
     var edited = edit(original, "user edit");
     written = apply(edited, "edit", (String) written.get("sha256"));
     String current = (String) written.get("sha256");
+    var request = request(undo(edited), "undo", current);
     assertEquals(
         "sharesite_undo_requires_manual_recovery",
-        assertThrows(
-                PlatformApiException.class,
-                () -> service.putRecord(APP, request(undo(edited, OP), "undo", current)))
+        assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request))
             .errorCode());
     var backup = service.exportData(APP, Map.of("namespace", List.of(NS)));
     assertTrue(PlatformApiJsonWriter.write(backup).contains("payloadBase64"));
@@ -216,16 +210,20 @@ class SharesiteDraftImportTest {
         List.of(
             "token=SECRET_CANARY",
             "-----BEGIN PRIVATE KEY-----",
+            "-----BEGIN SECRET-----",
+            "Authorization: Bearer SECRET_CANARY",
+            "private-key=SECRET_CANARY",
+            "insertssk=SECRET_CANARY",
+            "password=SECRET_CANARY",
+            "secret=SECRET_CANARY",
+            "seed=SECRET_CANARY",
+            "inserturi=SECRET_CANARY",
             "SSK@invalid,invalid,AQECAAE/site")) {
+      var secretRequest = request(dataset(OP, secret), "import", "absent");
       var exception =
-          assertThrows(
-              PlatformApiException.class,
-              () -> service.putRecord(APP, request(dataset(OP, secret), "import", "absent")));
+          assertThrows(PlatformApiException.class, () -> service.putRecord(APP, secretRequest));
       assertFalse(exception.toString().contains(secret));
     }
-    assertThrows(
-        PlatformApiException.class,
-        () -> service.putRecord("another-app", request(dataset(OP, "text"), "import", "absent")));
     var request = request(dataset(OP, "text"), "import", "absent");
     request.put("schemaVersion", List.of("2"));
     assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
@@ -233,17 +231,81 @@ class SharesiteDraftImportTest {
   }
 
   @Test
+  void write_whenOperationHasNonStringStatusOrDraftIds_expectNoMutation() {
+    Map<String, Object> original = dataset(OP, "text");
+    for (var field :
+        List.of(
+            Map.entry("status", 42),
+            Map.entry("draftIds", List.of(42)),
+            Map.entry("draftIds", List.of(Map.of("id", OP + "-0"))),
+            Map.entry("draftIds", List.of(OP + "-0", OP + "-0")),
+            Map.entry("draftIds", List.of(OP2 + "-0")))) {
+      var operation = new LinkedHashMap<>(rows(original, "operations").getFirst());
+      operation.put(field.getKey(), field.getValue());
+      var candidate = new LinkedHashMap<>(original);
+      candidate.put("operations", List.of(operation));
+      var request = request(candidate, "import", "absent");
+
+      var failure = assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
+
+      assertEquals("sharesite_invalid_dataset", failure.errorCode());
+      assertEquals(0, service.status(APP).get("recordCount"));
+    }
+  }
+
+  @Test
+  void write_whenTextContainsUnpairedSurrogate_expectNoMutation() {
+    for (String escaped : List.of("\\ud800", "\\udc00", "\\ud800x", "\\ud800\\ud800")) {
+      var request = request(dataset(OP, "surrogate-placeholder"), "restore", "absent");
+      String json = request.get("valueJson").getFirst().replace("surrogate-placeholder", escaped);
+      request.put("valueJson", List.of(json));
+
+      assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
+      assertEquals(0, service.status(APP).get("recordCount"));
+    }
+  }
+
+  @Test
+  void putRecord_whenOtherAppUsesDraftNamespace_expectOrdinaryIsolatedWrite() {
+    var request =
+        Map.of(
+            "namespace", List.of(" SHARESITE-DRAFTS "),
+            "key", List.of("ordinary-record"),
+            "schemaVersion", List.of("1"),
+            "valueText", List.of("other app data"));
+
+    var written = service.putRecord("another-app", request);
+
+    assertEquals("other app data", written.get("valueText"));
+    assertEquals(written, service.getRecord("another-app", NS, "ordinary-record"));
+    assertEquals(0, service.status(APP).get("recordCount"));
+    assertEquals(1, service.status("another-app").get("recordCount"));
+    assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
+  }
+
+  @Test
+  void deleteRecord_whenNamespaceNormalizesToDrafts_expectGuardAndDatasetPreserved() {
+    var request = request(dataset(OP, "retained text"), "import", "absent");
+    var preview = service.putRecord(APP, request);
+    var before = commit(request, preview);
+
+    for (String namespace : List.of(NS, "SHARESITE-DRAFTS", " Sharesite-Drafts ")) {
+      PlatformApiException failure =
+          assertThrows(
+              PlatformApiException.class, () -> service.deleteRecord(APP, namespace, "dataset"));
+      assertEquals("sharesite_guard_required", failure.errorCode());
+      assertEquals(before, service.getRecord(APP, NS, "dataset"));
+      assertEquals(1, service.status(APP).get("recordCount"));
+    }
+  }
+
+  @Test
   void reservedDataset_whenBypassingGuardOrChangingType_expectNoMutation() {
     var request = request(dataset(OP, "text"), "import", "absent");
     request.put("contentType", List.of("text/plain"));
     assertThrows(PlatformApiException.class, () -> service.putRecord(APP, request));
-    assertThrows(
-        PlatformApiException.class,
-        () ->
-            service.updateSchema(
-                APP,
-                NS,
-                Map.of("fromSchemaVersion", List.of("1"), "toSchemaVersion", List.of("2"))));
+    var schemaRequest = Map.of("fromSchemaVersion", List.of("1"), "toSchemaVersion", List.of("2"));
+    assertThrows(PlatformApiException.class, () -> service.updateSchema(APP, NS, schemaRequest));
     assertThrows(PlatformApiException.class, () -> service.deleteNamespace(APP, NS));
     assertThrows(PlatformApiException.class, () -> service.deleteRecord(APP, NS, "dataset"));
     assertEquals(0, service.status(APP).get("recordCount"));
@@ -384,19 +446,19 @@ class SharesiteDraftImportTest {
         "schemaVersion", 1, "operations", original.get("operations"), "drafts", List.of(draft));
   }
 
-  private static Map<String, Object> undo(Map<String, Object> original, String operation) {
+  private static Map<String, Object> undo(Map<String, Object> original) {
     var operations =
         rows(original, "operations").stream()
             .map(
                 op -> {
                   var next = new LinkedHashMap<>(op);
-                  if (operation.equals(op.get("operationId"))) next.put("status", "undone");
+                  if (OP.equals(op.get("operationId"))) next.put("status", "undone");
                   return next;
                 })
             .toList();
     var drafts =
         rows(original, "drafts").stream()
-            .filter(draft -> !operation.equals(draft.get("operationId")))
+            .filter(draft -> !OP.equals(draft.get("operationId")))
             .toList();
     return Map.of("schemaVersion", 1, "operations", operations, "drafts", drafts);
   }

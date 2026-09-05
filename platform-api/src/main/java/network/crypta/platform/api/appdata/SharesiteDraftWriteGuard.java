@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -103,7 +104,7 @@ final class SharesiteDraftWriteGuard {
         || !verification.signed()
         || verification.keyFingerprintSha256() == null
         || verification.signedContentDigestSha256() == null
-        || !manifest.permissions().containsAll(REQUIRED_PERMISSIONS)
+        || !new HashSet<>(manifest.permissions()).containsAll(REQUIRED_PERMISSIONS)
         || api.targetStability() != TargetStability.STABLE
         || !"1.0".equals(api.targetBaseline())
         || api.experimentalCapabilitiesAccepted()
@@ -136,7 +137,7 @@ final class SharesiteDraftWriteGuard {
    * @param current previous visible dataset record, or null before first import
    * @param target exact signed target binding freshly computed under the host guard
    * @param generation private digest of all current app-data summaries and namespaces
-   * @return private preview metadata, or null when exact commit consent succeeds
+   * @return private preview metadata, or an empty map when exact commit consent succeeds
    */
   Map<String, Object> authorize(
       Map<String, List<String>> parameters,
@@ -186,7 +187,7 @@ final class SharesiteDraftWriteGuard {
     if (consent == null || !consent.matches(binding)) {
       throw failure("sharesite_stale_preview");
     }
-    return null;
+    return Map.of();
   }
 
   /**

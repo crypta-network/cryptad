@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import network.crypta.platform.devtools.CryptaAppCli;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -102,7 +103,7 @@ class SharesiteMigrationTest {
   }
 
   @Test
-  void convert_whenMapOrderChanges_expectIdenticalPrivatePayload() throws Exception {
+  void convert_whenMapOrderChanges_expectIdenticalPrivatePayload() {
     Map<String, String> fields = validFields();
     List<Map.Entry<String, String>> entries = new ArrayList<>(fields.entrySet());
     java.util.Collections.reverse(entries);
@@ -115,52 +116,79 @@ class SharesiteMigrationTest {
 
   @Test
   void convert_whenAmbiguousOrMalformedMembership_expectFailure() {
-    for (String ids : List.of("0 0", "-1", "2147483648", " 0", "0  ", "0\t1", "00")) {
+    List<Integer> selectedIds = List.of(0);
+    for (String ids : List.of("0 0", "-1", "2147483648", " 0", "0  ", "0\t1", "00", "1١")) {
       Map<String, String> fields = validFields();
       fields.put("keys", ids);
-      assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+      assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
     }
     Map<String, String> overlap = validFields();
     overlap.put("deleted_keys", "0");
-    assertThrows(IllegalArgumentException.class, () -> convert(overlap, List.of(0)));
+    assertThrows(IllegalArgumentException.class, () -> convert(overlap, selectedIds));
     Map<String, String> orphan = validFields();
     orphan.put("collection-5/name", "orphan");
-    assertThrows(IllegalArgumentException.class, () -> convert(orphan, List.of(0)));
+    assertThrows(IllegalArgumentException.class, () -> convert(orphan, selectedIds));
+  }
+
+  @Test
+  void convert_whenIdListIsLong_expectBoundedFailureWithoutStackOverflow() {
+    Map<String, String> fields = validFields();
+    List<Integer> selection = List.of(0);
+    fields.put("keys", "1 ".repeat(20000) + "2");
+    IllegalArgumentException oversized =
+        assertThrows(IllegalArgumentException.class, () -> convert(fields, selection));
+    assertEquals("sharesite_page_count_limit", oversized.getMessage());
+
+    fields.put("keys", "1 ".repeat(20000) + "02");
+    IllegalArgumentException malformed =
+        assertThrows(IllegalArgumentException.class, () -> convert(fields, selection));
+    assertEquals("sharesite_invalid_id_list", malformed.getMessage());
   }
 
   @Test
   void convert_whenUnsupportedOrBrokenSelectedRecord_expectExplicitFailure() {
+    List<Integer> selectedIds = List.of(0);
     for (String value : List.of("false", "TRUE", "maybe")) {
       Map<String, String> fields = validFields();
       fields.put("collection-0/pastebin", value);
-      assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+      assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
     }
     for (String field : List.of("pastebin", "text", "name", "edition")) {
       Map<String, String> fields = validFields();
       fields.remove("collection-0/" + field);
-      assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+      assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
     }
     Map<String, String> fields = validFields();
     fields.put("collection-0/unknown", "private unknown value");
-    assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+    assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
     fields.remove("collection-0/unknown");
     fields.put("collection-0/text", "a".repeat(65537));
-    assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+    assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
   }
 
   @Test
   void convert_whenSelectedTextContainsSecret_expectNoEchoOrAutomaticEditing() {
+    List<Integer> selectedIds = List.of(0);
     for (String text :
         List.of(
             "password=" + CANARY,
             "Authorization: Bearer " + CANARY,
             "insertURI=" + CANARY,
             "-----BEGIN PRIVATE KEY-----\n" + CANARY,
+            "-----BEGIN RSA PRIVATE KEY-----\n" + CANARY,
+            "INSERTSSK " + CANARY,
+            "private_key " + CANARY,
+            "private-key " + CANARY,
+            "private key " + CANARY,
+            "privatekey " + CANARY,
+            "secret : " + CANARY,
+            "token=" + CANARY,
+            "seed=" + CANARY,
             "USK@ZTeIa1g4T3OYCdUFfHrFSlRnt5coeFFDCIZxWSb7abs,ZP4aASnyZax8nYOvCOlUebegsmbGQIXfVzw7iyOsXEc,AQECAAE/WebOfTrust/5")) {
       Map<String, String> fields = validFields();
       fields.put("collection-0/text", text);
       IllegalArgumentException exception =
-          assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+          assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
       assertFalse(exception.toString().contains(text));
       assertFalse(exception.toString().contains(CANARY));
       assertNull(exception.getCause());
@@ -169,13 +197,14 @@ class SharesiteMigrationTest {
 
   @Test
   void convert_whenTypedPublicReference_expectRetainedOnlyInsidePrivateRecord() {
+    List<Integer> selectedIds = List.of(0);
     Map<String, String> fields = validFields();
     String reference =
         "SSK@sdFxM0Z4zx4-gXhGwzXAVYvOUi6NRfdGbyJa797bNAg,ZP4aASnyZax8nYOvCOlUebegsmbGQIXfVzw7iyOsXEc,AQACAAE/";
     fields.put("collection-0/requestSSK", reference);
-    assertNotNull(convert(fields, List.of(0)));
+    assertNotNull(convert(fields, selectedIds));
     fields.put("collection-0/requestSSK", "SSK@not-proof-of-public");
-    assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0)));
+    assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
   }
 
   @Test
@@ -307,7 +336,8 @@ class SharesiteMigrationTest {
   @Test
   void convert_whenSelectionOrEncodedDatasetExceedsLimits_expectNoPayload() {
     Map<String, String> fields = validFields();
-    assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0, 0)));
+    List<Integer> duplicateIds = List.of(0, 0);
+    assertThrows(IllegalArgumentException.class, () -> convert(fields, duplicateIds));
     List<Integer> seventeen = java.util.stream.IntStream.range(0, 17).boxed().toList();
     assertThrows(IllegalArgumentException.class, () -> convert(fields, seventeen));
     fields.put("keys", "0 1 2");
@@ -319,7 +349,83 @@ class SharesiteMigrationTest {
       fields.put("collection-" + id + "/edition", "-1");
     }
     // Three maximum text values alone fill the cap; metadata must also fit before output exists.
-    assertThrows(IllegalArgumentException.class, () -> convert(fields, List.of(0, 1, 2)));
+    List<Integer> selectedIds = List.of(0, 1, 2);
+    assertThrows(IllegalArgumentException.class, () -> convert(fields, selectedIds));
+  }
+
+  @Test
+  void convert_whenCommittedDatasetAtSizeBoundary_expectControllerAcceptsAndNextByteRejected()
+      throws Exception {
+    List<Integer> selectedIds = List.of(0, 1, 2);
+    int accepted = 0;
+    int rejected = 3 * 65536;
+    while (accepted + 1 < rejected) {
+      int candidate = (accepted + rejected) / 2;
+      try {
+        convert(threePages(candidate), selectedIds);
+        accepted = candidate;
+      } catch (IllegalArgumentException failure) {
+        assertEquals("sharesite_dataset_limit", failure.getMessage());
+        rejected = candidate;
+      }
+    }
+    byte[] converted = convert(threePages(accepted), selectedIds);
+    Map<String, String> oversizedFields = threePages(rejected);
+    var failure =
+        assertThrows(IllegalArgumentException.class, () -> convert(oversizedFields, selectedIds));
+    assertEquals("sharesite_dataset_limit", failure.getMessage());
+    Path payload = temporary.resolve("private-boundary.json");
+    Files.write(payload, converted);
+    Path harness = temporary.resolve("import-boundary.cjs");
+    try (var input = getClass().getResourceAsStream("import-boundary.cjs")) {
+      assertNotNull(input);
+      Files.copy(input, harness);
+    }
+    Path script =
+        Path.of(
+            System.getProperty("sharesite.synthetic.sitePublisherBundle"), "static", "drafts.js");
+    Path log = temporary.resolve("synthetic-boundary.log");
+    Process process =
+        new ProcessBuilder("node", harness.toString(), script.toString(), payload.toString())
+            .redirectErrorStream(true)
+            .redirectOutput(log.toFile())
+            .start();
+    boolean finished = process.waitFor(20, TimeUnit.SECONDS);
+    if (!finished) process.destroyForcibly();
+    assertTrue(finished, "Synthetic controller boundary check timed out");
+    assertEquals(0, process.exitValue(), Files.readString(log));
+
+    Path source = temporary.resolve("Sharesite.db");
+    byte[] original = encode(oversizedFields);
+    Files.write(source, original);
+    Path workspace = temporary.resolve("operation");
+    Files.createDirectory(
+        workspace,
+        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    assertEquals(0, cli(new StringWriter(), "inspect", source, workspace));
+    StringWriter diagnostics = new StringWriter();
+    String[] selection = selectionArgs();
+    selection[1] = "0,1,2";
+    assertNotEquals(0, cli(diagnostics, "plan", source, workspace, selection));
+    assertTrue(diagnostics.toString().contains("sharesite_dataset_limit"));
+    assertFalse(Files.exists(workspace.resolve("plan.json")));
+    assertArrayEquals(original, Files.readAllBytes(source));
+  }
+
+  private static Map<String, String> threePages(int textBytes) {
+    Map<String, String> fields = validFields();
+    fields.put("keys", "0 1 2");
+    int remaining = textBytes;
+    for (int id = 0; id < 3; id++) {
+      fields.put("collection-" + id + "/name", "bounded 雪");
+      fields.put("collection-" + id + "/description", "bounded");
+      int length = Math.min(remaining, 65536);
+      fields.put("collection-" + id + "/text", "x".repeat(length));
+      remaining -= length;
+      fields.put("collection-" + id + "/pastebin", "true");
+      fields.put("collection-" + id + "/edition", "-1");
+    }
+    return fields;
   }
 
   @Test
