@@ -1,5 +1,9 @@
 # Content publisher migration example
 
+The [implemented Sharesite pilot](../../real-legacy-plugin-migration-pilot.md) supports selected
+pastebin pages with private durable drafts and explicit new-address publication. The generic
+example below describes broader publisher patterns; it is not evidence of a real-user migration.
+
 This example maps content publishing plugins to app-platform publisher patterns.
 
 ## Recommended shape

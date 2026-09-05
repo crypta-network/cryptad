@@ -4,6 +4,26 @@ This document describes the bounded app-owned data store exposed through Platfor
 
 ## Scope
 
+Site Publisher adds a narrow guarded dataset in `sharesite-drafts`, schema 1, key `dataset`.
+The owning app must check `status.sharesiteWriteGuard=1` before submitting a draft write. Its
+record POST uses `writeIntent=preview|commit`, `writeMode=import|edit|undo|restore`,
+`ifMatchSha256=absent|<current-private-digest>`, and `backupReady=true`; commit also sends the
+returned `writePreviewId`. Preview does not create a namespace or record. Consent expires after
+five minutes or a daemon restart, and binds exact proposed bytes, all current app-data summaries,
+installed signed bundle identity, permissions, quota, schema, and operation mode.
+
+The service holds its app-data monitor and AppHost's verified installed-bundle guard through
+commit. The file store fails closed when atomic generation-pointer replacement is unavailable.
+Import and restore add only non-colliding operations; edit preserves lineage; undo changes one
+operation to an enduring tombstone and refuses edited imported drafts. Generic app-facing import
+and delete cannot bypass this namespace's guard. An interrupted first commit may leave empty
+namespace metadata, but the visible dataset is old or complete. A failed response after pointer
+publication requires reading current state before retrying.
+
+This behavior is a pilot extension discovered by its explicit marker, not a new stable baseline.
+The immutable Platform API 1.0 capability set remains unchanged. See the
+[Sharesite pilot runbook](real-legacy-plugin-migration-pilot.md).
+
 The durable app data store is for app-owned user state that should survive daemon restarts, app
 updates, and live catalog refreshes. Typical records include Feed Reader source lists, Profile
 Publisher drafts, publish summaries, selected subscription ids, UI filters, and redacted import

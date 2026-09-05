@@ -25,7 +25,7 @@ classes, and `redacted-summary-only` diagnostics.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `queue-manager` | `stable` | `supported` | `core` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
 | `publisher` | `stable` | `supported` | `core` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
-| `site-publisher` | `stable` | `supported` | `maintained` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
+| `site-publisher` | `stable` | `supported` | `maintained` | `declared` | `operator-approved` | `export-import` | `catalog-advisories` | `none` |
 | `profile-publisher` | `stable` | `supported` | `maintained` | `declared` | `declared` | `operator-supported` | `catalog-advisories` | `none` |
 | `feed-reader` | `stable` | `supported` | `maintained` | `migratable` | `dry-run-required` | `export-import` | `catalog-advisories` | `none` |
 | `social-inbox` | `stable` | `supported` | `local-rc` | `declared` | `operator-approved` | `operator-supported` | `catalog-advisories` | `none` |

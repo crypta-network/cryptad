@@ -1,5 +1,9 @@
 # Legacy plugin migration guide
 
+The [Sharesite pilot](real-legacy-plugin-migration-pilot.md) implements offline binary inspection,
+selected literal-page conversion, and guarded durable draft import into Site Publisher. Its private
+conversion package and content comparisons must stay outside support and release evidence.
+
 This guide explains how legacy plugin-style functionality should move to the Crypta app platform.
 
 Former plugin authors should start with
