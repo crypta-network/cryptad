@@ -646,6 +646,51 @@ class PlatformApiBaselineRegistryTest {
   }
 
   @Test
+  void verify_whenExperimentalAppTargetsActiveBaseline_expectStrictRejectsWarning() {
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            19,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION,
+            List.of(),
+            TargetStability.EXPERIMENTAL,
+            true,
+            "1.0",
+            true,
+            true,
+            true);
+
+    var nonStrict =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(QUEUE_READ_CAPABILITY),
+            PlatformApiContract.current(),
+            PlatformApiBaselineRegistry.current(),
+            false);
+    var strict =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(QUEUE_READ_CAPABILITY),
+            PlatformApiContract.current(),
+            PlatformApiBaselineRegistry.current(),
+            true);
+
+    assertFalse(nonStrict.hasErrors(), nonStrict.messages().toString());
+    assertEquals(1, nonStrict.findings().size());
+    assertEquals(
+        "experimental_target_does_not_claim_stable_support",
+        nonStrict.findings().getFirst().code());
+    assertEquals(
+        PlatformApiContractVerifier.CompatibilityFindingSeverity.WARNING,
+        nonStrict.findings().getFirst().severity());
+    assertTrue(strict.hasErrors());
+    assertEquals(1, strict.findings().size());
+    assertEquals(nonStrict.findings().getFirst().code(), strict.findings().getFirst().code());
+    assertEquals(
+        PlatformApiContractVerifier.CompatibilityFindingSeverity.ERROR,
+        strict.findings().getFirst().severity());
+  }
+
+  @Test
   void verify_whenExperimentalAppTargetsIncompleteCandidate_expectDefinitionRejected() {
     PlatformApiBaselineRegistry registry =
         registryWithCandidate(PlatformApiBaselineRegistry.current(), additiveDefinition());

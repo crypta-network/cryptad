@@ -2210,6 +2210,49 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void compatibilityCommands_whenExperimentalAppTargetsActiveBaseline_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("experimental-active-baseline-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "experimental-active-baseline-app",
+        "--name",
+        "Experimental Active Baseline App",
+        "--version",
+        "0.1.0");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("api.targetStability=stable", "api.targetStability=experimental")
+            .replace(
+                "api.experimentalCapabilitiesAccepted=false",
+                "api.experimentalCapabilitiesAccepted=true"),
+        StandardCharsets.UTF_8);
+
+    CliResult nonStrict = runCli("compat", "verify", "--bundle-dir", appDir.toString());
+    CliResult strict = runCli("compat", "verify", "--bundle-dir", appDir.toString(), "--strict");
+    CliResult nonStrictTest = runCli("test", "--bundle-dir", appDir.toString());
+    CliResult strictTest = runCli("test", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, nonStrict.exitCode(), nonStrict.err());
+    assertTrue(nonStrict.out().contains("Compatibility verified"));
+    assertTrue(
+        nonStrict.err().contains("Experimental target does not claim the active stable baseline"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, strict.exitCode(), strict.err());
+    assertTrue(
+        strict.err().contains("Experimental target does not claim the active stable baseline"));
+    assertFalse(strict.out().contains("Compatibility verified"));
+    assertEquals(CommandLine.ExitCode.OK, nonStrictTest.exitCode(), nonStrictTest.err());
+    assertTrue(nonStrictTest.out().contains("api.compat warn"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, strictTest.exitCode(), strictTest.err());
+    assertTrue(strictTest.out().contains("api.compat fail"));
+  }
+
+  @Test
   void test_whenCandidateContractUsesPairedRegistry_expectPreviewCompatibilityEvaluated()
       throws Exception {
     PlatformApiBaselineRegistry candidateRegistry = proposed11Registry();

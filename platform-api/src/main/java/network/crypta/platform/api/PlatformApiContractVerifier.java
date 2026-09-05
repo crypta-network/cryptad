@@ -1217,7 +1217,7 @@ public final class PlatformApiContractVerifier {
                       + "."));
         }
       }
-      case ACTIVE -> checkExperimentalActiveBaseline(metadata, id, findings);
+      case ACTIVE -> checkExperimentalActiveBaseline(metadata, id, strict, findings);
       case DEPRECATED ->
           findings.add(
               finding(
@@ -1247,6 +1247,7 @@ public final class PlatformApiContractVerifier {
   private static void checkExperimentalActiveBaseline(
       AppApiCompatibilityMetadata metadata,
       PlatformApiBaselineId id,
+      boolean strict,
       List<CompatibilityFinding> findings) {
     if (metadata.targetStability() != TargetStability.EXPERIMENTAL) {
       return;
@@ -1254,7 +1255,7 @@ public final class PlatformApiContractVerifier {
     findings.add(
         finding(
             "experimental_target_does_not_claim_stable_support",
-            CompatibilityFindingSeverity.WARNING,
+            releaseRiskSeverity(strict),
             "Experimental target does not claim the active stable baseline guarantee: "
                 + id
                 + "."));
