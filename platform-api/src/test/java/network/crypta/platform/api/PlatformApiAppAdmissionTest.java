@@ -53,6 +53,42 @@ class PlatformApiAppAdmissionTest {
   }
 
   @Test
+  void requireCurrentCompatibility_whenNamedBaselineLacksStability_expectAdmissionBlocked() {
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            null, null, List.of(), TargetStability.EXPERIMENTAL, false, "1.0", true, false, false);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                PlatformApiAppAdmission.requireCurrentCompatibility(
+                    metadata, QUEUE_READ_PERMISSIONS));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals(ERROR_INCOMPATIBLE_CONTRACT, exception.errorCode());
+    assertEquals(
+        STATUS_INCOMPATIBLE,
+        PlatformApiAppAdmission.summarizeAdmission(metadata, QUEUE_READ_PERMISSIONS)
+            .get(FIELD_STATUS));
+  }
+
+  @Test
+  void requireCurrentCompatibility_whenLegacyRangeLacksStability_expectBehaviorPreserved() {
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            19, 24, List.of(), TargetStability.EXPERIMENTAL, false, false, false);
+
+    assertDoesNotThrow(
+        () ->
+            PlatformApiAppAdmission.requireCurrentCompatibility(metadata, QUEUE_READ_PERMISSIONS));
+    assertEquals(
+        "compatible",
+        PlatformApiAppAdmission.summarizeAdmission(metadata, QUEUE_READ_PERMISSIONS)
+            .get(FIELD_STATUS));
+  }
+
+  @Test
   void requireCurrentCompatibility_whenRangeExcludesBaselineRoot_expectAdmissionBlocked() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(

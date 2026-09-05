@@ -2168,6 +2168,48 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void compatVerify_whenExperimentalBaselineIsPreviewOnly_expectStrictFailure() throws Exception {
+    PlatformApiBaselineRegistry registry = proposed11Registry();
+    Path appDir = tempDir.resolve("strict-preview-app");
+    Path registryFile = tempDir.resolve("strict-preview-registry.json");
+    Path contractFile = tempDir.resolve("strict-preview-contract.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "strict-preview-app",
+        "--name",
+        "Strict Preview App",
+        "--version",
+        "0.1.0");
+    Files.writeString(
+        registryFile,
+        PlatformApiContractJson.writeBaselineRegistry(registry),
+        StandardCharsets.UTF_8);
+    Files.writeString(
+        contractFile,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current(), registry),
+        StandardCharsets.UTF_8);
+    String[] arguments = {
+      "compat", "verify", "--bundle-dir", appDir.toString(),
+      "--contract", contractFile.toString(), "--baseline-registry", registryFile.toString(),
+      "--target-stability", "experimental", "--target-baseline", "1.1"
+    };
+    List<String> strictArguments = new ArrayList<>(List.of(arguments));
+    strictArguments.add("--strict");
+
+    CliResult nonStrict = runCli(arguments);
+    CliResult strict = runCli(strictArguments.toArray(String[]::new));
+
+    assertEquals(CommandLine.ExitCode.OK, nonStrict.exitCode(), nonStrict.err());
+    assertTrue(nonStrict.out().contains("Compatibility verified"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, strict.exitCode(), strict.err());
+    assertTrue(strict.err().contains("Experimental app target is preview-only"));
+    assertFalse(strict.out().contains("Compatibility verified"));
+  }
+
+  @Test
   void test_whenCandidateContractUsesPairedRegistry_expectPreviewCompatibilityEvaluated()
       throws Exception {
     PlatformApiBaselineRegistry candidateRegistry = proposed11Registry();

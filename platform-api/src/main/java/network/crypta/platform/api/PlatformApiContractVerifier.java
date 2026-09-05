@@ -1211,7 +1211,7 @@ public final class PlatformApiContractVerifier {
           findings.add(
               finding(
                   "target_baseline_preview_only",
-                  CompatibilityFindingSeverity.WARNING,
+                  releaseRiskSeverity(strict),
                   "Experimental app target is preview-only and does not activate baseline support: "
                       + id
                       + "."));

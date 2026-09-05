@@ -600,6 +600,52 @@ class PlatformApiBaselineRegistryTest {
   }
 
   @Test
+  void verify_whenExperimentalAppTargetsCompleteCandidate_expectStrictRejectsPreviewWarning() {
+    PlatformApiBaselineRegistry registry =
+        registryWithCandidate(
+            PlatformApiBaselineRegistry.current(), candidateDefinition(false, false));
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(
+            19,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION,
+            List.of(),
+            TargetStability.EXPERIMENTAL,
+            true,
+            "1.1",
+            true,
+            true,
+            true);
+
+    var nonStrict =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(QUEUE_READ_CAPABILITY),
+            PlatformApiContract.current(),
+            registry,
+            false);
+    var strict =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(QUEUE_READ_CAPABILITY),
+            PlatformApiContract.current(),
+            registry,
+            true);
+
+    assertFalse(nonStrict.hasErrors(), nonStrict.messages().toString());
+    assertEquals(1, nonStrict.findings().size());
+    assertEquals("target_baseline_preview_only", nonStrict.findings().getFirst().code());
+    assertEquals(
+        PlatformApiContractVerifier.CompatibilityFindingSeverity.WARNING,
+        nonStrict.findings().getFirst().severity());
+    assertTrue(strict.hasErrors());
+    assertEquals(1, strict.findings().size());
+    assertEquals("target_baseline_preview_only", strict.findings().getFirst().code());
+    assertEquals(
+        PlatformApiContractVerifier.CompatibilityFindingSeverity.ERROR,
+        strict.findings().getFirst().severity());
+  }
+
+  @Test
   void verify_whenExperimentalAppTargetsIncompleteCandidate_expectDefinitionRejected() {
     PlatformApiBaselineRegistry registry =
         registryWithCandidate(PlatformApiBaselineRegistry.current(), additiveDefinition());

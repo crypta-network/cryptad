@@ -73,7 +73,7 @@ public final class PlatformApiAppAdmission {
         strictVerification(effective, permissions);
     if (unsupportedBaseline(verification)) {
       summary.put(FIELD_STATUS, "unsupported-baseline");
-    } else if (baselineRangeExcluded(verification)
+    } else if (baselineDeclarationRejected(effective, verification)
         || stableCapabilityDeclarationRejected(effective, verification)) {
       summary.put(FIELD_STATUS, "incompatible");
     }
@@ -111,7 +111,7 @@ public final class PlatformApiAppAdmission {
           "The app targets a Platform API baseline that this node does not actively support.");
     }
     String reviewStatus = String.valueOf(summarize(effective, permissions).get(FIELD_STATUS));
-    if (baselineRangeExcluded(verification)
+    if (baselineDeclarationRejected(effective, verification)
         || stableCapabilityDeclarationRejected(effective, verification)
         || "below_minimum".equals(reviewStatus)
         || "incompatible".equals(reviewStatus)) {
@@ -197,11 +197,16 @@ public final class PlatformApiAppAdmission {
                     || code.equals("target_baseline_malformed"));
   }
 
-  private static boolean baselineRangeExcluded(
+  private static boolean baselineDeclarationRejected(
+      AppApiCompatibilityMetadata metadata,
       PlatformApiContractVerifier.CompatibilityVerificationResult verification) {
     return verification.findings().stream()
         .map(PlatformApiContractVerifier.CompatibilityFinding::code)
-        .anyMatch("target_baseline_outside_contract_range"::equals);
+        .anyMatch(
+            code ->
+                code.equals("target_baseline_outside_contract_range")
+                    || (metadata.targetBaselineDeclared()
+                        && code.equals("api_target_stability_missing")));
   }
 
   private static boolean stableCapabilityDeclarationRejected(
