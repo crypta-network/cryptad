@@ -33,6 +33,7 @@ python3 tools/release-certification/certify.py stable-catalog-authority --self-t
 python3 tools/release-certification/certify.py stable-third-party-pilot --self-test
 python3 tools/release-certification/certify.py stable-federated-catalog --self-test
 python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
+python3 tools/release-certification/certify.py stable-legacy-plugin-migration --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -120,6 +121,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-third-party-pilot` | Authenticate one external developer handoff, reviewed/rejected/corrected/caution cohort, bounded publisher approval, PR-293 beta publication, exact live-collector bytes, isolated-node runtime drill, and read-only Actions-authenticated operational closeout without remote mutation. |
 | `stable-federated-catalog` | Authenticate bounded signed discovery and non-transitive endorsements, local scoped trust and conflicts, pinned origin/runtime observations, and exact digest-bound PR-291–294 predecessor summaries and closeout coordinates without fetching or mutating local or remote state. |
 | `stable-platform-api-1x` | Verify the append-only Platform API contract ledger, future-baseline proposals, experimental graduation records, monotonic deprecation timelines, static cross-release app matrix, bounded runtime observation, and exact PR-291–295 protected roots without activating a baseline or mutating release state. |
+| `stable-legacy-plugin-migration` | Validate a closed sanitized local Sharesite observation while keeping private payloads out of evidence. Local claims remain unverified; runtime and closeout fail closed because no protected migration producer is configured. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -1776,3 +1778,24 @@ self-tests, and the default `evaluate` path cannot invoke publication.
 See the [support lifecycle and deprecation governance runbook](../../docs/stable-1.0-support-lifecycle-and-deprecation-governance.md)
 for policy clocks, descriptor rollback protection, runtime behavior, Platform API and ecosystem
 deprecation rules, security revocation, protected operations, recovery, and public-data boundaries.
+
+## Sharesite migration observations
+
+`stable-legacy-plugin-migration` accepts only a bounded sanitized observation, never a source
+database, conversion package, private plan, backup, or raw content comparison. Use `--mode
+preflight` or `--mode verify-migration` with `--observation`, `--workspace-root`, and a fresh
+`--out-dir`. The example at
+`manifests/sharesite-migration-local-observation.example.json` has synthetic identity placeholders
+and unobserved outcomes; it does not prove an executable migration.
+
+Output contains only `summary.json`, `report.md`, and `redaction-report.json`. The closed allowlist
+permits exact public adapter/app identities, pinned source format, opaque operation ID, bounded
+counts, exclusions and outcome enums. It rejects source paths/hashes, labels, old read references,
+private payloads and arbitrary producer assertions before the shared redaction scan runs.
+
+Local reports never become authenticated format/runtime/real-data evidence. `verify-runtime` and
+`closeout` return nonzero with `protected-migration-producer-not-configured`; release eligibility
+also retains `pr296-protected-subject-projection-pending`. A local self-digest, fixture, or resealed
+receipt cannot bypass those prerequisites. No protected workflow or new release authority is
+introduced. See [the pilot runbook](../../docs/real-legacy-plugin-migration-pilot.md) for conversion,
+consent, identity, private-data recovery and the four evidence levels.

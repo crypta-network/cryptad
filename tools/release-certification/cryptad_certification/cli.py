@@ -235,6 +235,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     platform_api_1x.add_argument("--self-test", action="store_true")
 
+    legacy_pilot = subparsers.add_parser("stable-legacy-plugin-migration")
+    legacy_pilot.add_argument(
+        "--mode", choices=("preflight", "verify-migration", "verify-runtime", "closeout")
+    )
+    legacy_pilot.add_argument("--observation", type=Path)
+    legacy_pilot.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    legacy_pilot.add_argument("--out-dir", type=Path)
+    legacy_pilot.add_argument("--self-test", action="store_true")
+
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
     migration.add_argument("--manifest", type=Path, required=True)
@@ -1406,6 +1415,16 @@ def _run_command(args: argparse.Namespace) -> int:
             args.mode,
             args.out_dir,
             args.evidence_dir,
+        )
+    if command == "stable-legacy-plugin-migration":
+        from .engines import stable_legacy_plugin_migration
+
+        if args.mode is None or args.observation is None or args.out_dir is None:
+            raise ValueError(
+                "stable-legacy-plugin-migration requires --mode, --observation, and --out-dir"
+            )
+        return stable_legacy_plugin_migration.run(
+            args.workspace_root.resolve(), args.observation, args.mode, args.out_dir
         )
     manifest_path = getattr(args, "manifest", None)
     if manifest_path is None:

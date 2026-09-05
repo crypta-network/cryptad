@@ -1,0 +1,48 @@
+{
+  "adapter": {
+    "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "classification": "synthetic",
+  "excludedCounts": {
+    "deleted": 2,
+    "textile": 1
+  },
+  "kind": "sharesite-migration-local-observation",
+  "operationId": "01234567-89ab-4def-8123-456789abcdef",
+  "outcomes": {
+    "bundleRollback": "not-observed",
+    "cleanup": "not-observed",
+    "dataUndo": "not-observed",
+    "editSave": "not-observed",
+    "importCommit": "not-observed",
+    "interruptionRecovery": "not-observed",
+    "literalFidelity": "not-observed",
+    "literalPreview": "not-observed",
+    "newChkPublication": "not-observed",
+    "privateRestore": "not-observed",
+    "quotaFailure": "not-observed",
+    "replay": "not-observed",
+    "restartPersistence": "not-observed",
+    "secretExclusionStatus": "not-observed",
+    "sourcePreservation": "not-observed",
+    "stalePreview": "not-observed"
+  },
+  "schemaVersion": 1,
+  "selectedCount": 2,
+  "source": {
+    "profile": "sharesite-pastebin-v1",
+    "repository": "hyphanet/plugin-sharesite",
+    "revision": "c99ad9c8e83004f904f8ee742ab2861f5751ee3b"
+  },
+  "target": {
+    "appId": "site-publisher",
+    "baseline": "1.0",
+    "bundleDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "publisherFingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "signatureDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "version": "1.0.0"
+  }
+}
