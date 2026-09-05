@@ -257,6 +257,29 @@ class ConsentServiceTest {
   }
 
   @Test
+  void installPreview_whenApiBaselineUnsupported_expectBlockingAndApprovalRejected() {
+    when(catalogHandler.getApp(CATALOG_ID, APP_ID))
+        .thenReturn(catalogApp(apiCompatibility("unsupported-baseline")));
+    ConsentService service = new ConsentService(catalogHandler, null, null);
+
+    Map<String, Object> preview = service.installPreview(CATALOG_ID, APP_ID);
+    String requestId = (String) preview.get(KEY_CONSENT_REQUEST_ID);
+    String digest = (String) preview.get(KEY_SNAPSHOT_DIGEST);
+    Map<String, List<String>> mutationParams = params(requestId, digest);
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.approve(mutationParams, HOST_OPERATOR));
+
+    assertEquals(VALUE_BLOCKING, preview.get(KEY_RISK_LEVEL));
+    assertEquals(true, preview.get(KEY_REQUIRES_APPROVAL));
+    assertEquals("do_not_continue", preview.get(KEY_RECOMMENDED_ACTION));
+    assertTrue(
+        ((List<String>) preview.get(KEY_BLOCKING_REASONS)).contains("platform_api_compatibility"));
+    assertEquals(409, exception.statusCode());
+    assertEquals("consent_blocked", exception.errorCode());
+  }
+
+  @Test
   void requireApprovedUpdate_whenCandidateStatusNone_expectNoConsentRequired() {
     when(updateService.previewReadOnly(APP_ID)).thenReturn(noUpdateSummary());
     ConsentService service = new ConsentService(null, updateService, null);
@@ -954,9 +977,8 @@ class ConsentServiceTest {
         List.of(securityAdvisory("CRYPTA-2026-0001", "https://example.invalid/a/1")),
         Map.of(KEY_STATUS, "missing", KEY_POSITIVE, false, KEY_REQUIRES_ACKNOWLEDGEMENT, true),
         candidateStatus,
-        STATUS_INCOMPATIBLE.equals(candidateStatus)
-            ? apiCompatibility("below_minimum")
-            : apiCompatibility(VALUE_COMPATIBLE));
+        apiCompatibility(
+            STATUS_INCOMPATIBLE.equals(candidateStatus) ? "below_minimum" : VALUE_COMPATIBLE));
   }
 
   private static Map<String, Object> securityAdvisory(String id, String uri) {

@@ -89,6 +89,30 @@ class AppsApiHandlerTest {
   }
 
   @Test
+  void install_whenStableAppTargetsInactiveBaseline_expectRejectedBeforeMutation()
+      throws IOException {
+    ThrowingAppHost appHost = new ThrowingAppHost();
+    AppsApiHandler handler = new AppsApiHandler(appHost);
+    Path stagedDir = stageApp(tempDir.resolve("inactive-baseline"));
+    Files.writeString(
+        stagedDir.resolve(AppManifestParser.MANIFEST_FILE_NAME),
+        """
+        api.targetStability=stable
+        api.targetBaseline=1.1
+        """,
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+    Map<String, List<String>> installParameters =
+        Map.of(STAGED_DIR_PARAMETER, List.of(stagedDir.toString()));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install(installParameters));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("unsupported_platform_api_baseline", exception.errorCode());
+  }
+
+  @Test
   void update_whenSignedBundleVerificationFails_expectBadRequestWithoutAbsolutePathLeak()
       throws IOException {
     ThrowingAppHost appHost = new ThrowingAppHost();
@@ -184,6 +208,29 @@ class AppsApiHandlerTest {
     assertEquals("none", sandbox.get("mode"));
     assertEquals("none", sandbox.get("supportLevel"));
     assertEquals("no-sandbox", sandbox.get("provider"));
+  }
+
+  @Test
+  void get_whenStableBaselineRootFallsOutsideDeclaredRange_expectIncompatibleSummary()
+      throws IOException {
+    Path stagedDir = stageApp(tempDir.resolve("baseline-range-summary"));
+    Path manifestFile = stagedDir.resolve(AppManifestParser.MANIFEST_FILE_NAME);
+    String manifestText =
+        Files.readString(manifestFile, StandardCharsets.UTF_8)
+                .replace("app.permissions=network.access", "app.permissions=queue.read")
+            + "api.minimumVersion=23\n"
+            + "api.maximumTestedVersion=23\n"
+            + "api.targetStability=stable\n";
+    Files.writeString(manifestFile, manifestText, StandardCharsets.UTF_8);
+    AppManifest manifest = AppManifestParser.parse(manifestFile);
+    InstalledAppSnapshot paths = snapshot(AppUiMode.NONE, null);
+    AppsApiHandler handler =
+        new AppsApiHandler(new SingleAppHost(new InstalledAppSnapshot(manifest, paths.paths())));
+
+    Map<String, Object> summary = handler.get(APP_ID);
+
+    Map<?, ?> compatibility = (Map<?, ?>) summary.get("apiCompatibility");
+    assertEquals("incompatible", compatibility.get("status"));
   }
 
   @Test

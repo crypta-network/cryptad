@@ -79,6 +79,7 @@ The top-level `crypta-app-submission.json` uses schema version `1` and records:
 - `bundleSignatureKeyId` when the staged bundle has a signature sidecar
 - `catalogEntryDigest` when a catalog descriptor is supplied
 - `apiTargetStability`
+- optional `apiTargetBaseline`
 - `experimentalCapabilitiesAccepted`
 - `requestedPermissions`
 - `permissionRationaleDigest` when a permission rationale is supplied
@@ -154,15 +155,21 @@ backup/restore behavior, explicit unsupported old plugin behavior, and redaction
 Third-party submissions inherit the Platform API 1.0 rules from
 [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md).
 
-Stable-target apps must set `api.targetStability=stable` and use only stable app-facing
-capabilities. They must not request experimental capabilities unless a reviewer policy explicitly
-allows the app to target experimental APIs and the manifest changes to
-`api.targetStability=experimental`.
+Stable-target apps must set `api.targetStability=stable`, should explicitly set
+`api.targetBaseline=1.0`, and use only members of that baseline. Older explicit stable manifests
+without the baseline field retain effective 1.0 compatibility; undeclared legacy manifests do not.
+They must not request experimental capabilities unless a reviewer policy explicitly allows the app
+to target experimental APIs and the manifest changes to `api.targetStability=experimental`.
 
 Experimental app-facing APIs require `api.targetStability=experimental` and
 `api.experimentalCapabilitiesAccepted=true`.
 
 Internal or host/operator-only capabilities always fail third-party submission pre-review.
+An explicit catalog, submission, reviewed-manifest, or packaged-artifact target-baseline mismatch
+also fails rather than being normalized away.
+The durable intake record, candidate descriptor, and candidate manifest retain the exact optional
+target-baseline declaration from the verified bundle so operators review the same compatibility
+subject that installation later admits.
 
 The pre-review API compatibility artifact must include the current contract snapshot and the
 support-window result from `crypta-app api policy` or equivalent release evidence. Stable
@@ -282,11 +289,11 @@ crypta-app submission catalog-candidate \
 The descriptor includes app identity, artifact digest, API stability metadata, submission id,
 submission digest, pre-review digest, reviewer key id, reviewer policy, review receipt
 fingerprint, reviewer decision-rationale digest, resubmission link, and the non-production marker
-when applicable. Rejected receipts are refused. Third-party candidate descriptors emit
-`catalog.version=6` metadata when converted into signed catalogs, and they are not promoted into
-first-party stable channels automatically. The command verifies the receipt signature and reviewer
-key against the local trusted reviewer registry before writing any candidate descriptor or copied
-artifact.
+when applicable. Rejected receipts are refused. Third-party candidate descriptors emit at least
+`catalog.version=6` metadata when converted into signed catalogs. A candidate that carries an
+explicit `api.targetBaseline` uses `catalog.version=7`. Neither form is promoted into first-party
+stable channels automatically. The command verifies the receipt signature and reviewer key against
+the local trusted reviewer registry before writing any candidate descriptor or copied artifact.
 
 The Web Shell and local catalog API expose this workflow metadata as `thirdPartyReview`, separate
 from publisher advisory `review` metadata and independent trusted receipt `reviewTrust` evaluation.

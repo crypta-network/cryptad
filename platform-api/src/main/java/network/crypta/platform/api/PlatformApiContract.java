@@ -62,7 +62,7 @@ public record PlatformApiContract(
    * a way that tooling should be able to compare. Operator-only descriptors do not advance it. It
    * is not the Cryptad build number, and it is not the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 23;
+  public static final int CURRENT_CONTRACT_VERSION = 24;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -103,6 +103,7 @@ public record PlatformApiContract(
   private static final int CONSENT_CONTRACT_VERSION = 21;
   private static final int TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION = 22;
   private static final int CATALOG_OPERATIONS_CONTRACT_VERSION = 23;
+  static final int NAMED_BASELINE_METADATA_CONTRACT_VERSION = 24;
 
   /**
    * Contract snapshot version that first records the operator-only support lifecycle descriptor.
@@ -154,6 +155,9 @@ public record PlatformApiContract(
           + CATALOG_OPERATIONS_CONTRACT_VERSION
           + " adds signed catalog operations for mirrors, source health, rollback, key-rotation"
           + " status, and emergency advisory refresh"
+          + ". Contract version "
+          + NAMED_BASELINE_METADATA_CONTRACT_VERSION
+          + " adds the named stable-baseline registry summary to public contract metadata"
           + ". The operator-only support-lifecycle descriptor does not advance the app-facing"
           + " compatibility version"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "

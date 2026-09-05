@@ -444,6 +444,12 @@ class WebShellResourcesTest {
         "function setBetaDashboardStatus(message, tone)",
         "function updateBetaDashboardToolbar()",
         "function renderBetaDashboard(data)",
+        "Platform API 1.x compatibility",
+        "Active stable baselines",
+        "Supported baseline lifecycle",
+        "baselineRegistrySummary?.supportedBaselines",
+        "Runtime observation",
+        "Static compatibility metadata is not a runtime verification.",
         "function renderBetaWarningList(warnings)",
         "function renderSecurityResponseSummary(response)",
         "function securityResponseTone(status)",
@@ -1007,6 +1013,20 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function apiCompatibilityDetailsNode(app)"));
     assertTrue(script.contains("function apiCompatibilityLabel(apiCompatibility)"));
     assertTrue(script.contains("function apiCompatibilityTone(apiCompatibility)"));
+    assertTrue(script.contains("status === \"unsupported-baseline\""));
+    assertTrue(script.contains("return \"Unsupported API baseline\";"));
+    assertTrue(script.contains("function apiTargetBaselinePresentation(apiCompatibility)"));
+    assertTrue(
+        script.contains(
+            "return { targetBaseline: \"Not targeted\", declaration: \"Not targeted\" };"));
+    assertTrue(
+        script.contains(
+            "declaration: compatibility.targetBaselineDeclared ? \"Explicit\" : \"Compatibility"
+                + " default\""));
+    assertTrue(script.contains("Target stable baseline"));
+    assertTrue(script.contains("Target baseline declaration"));
+    assertTrue(
+        script.contains("Static contract analysis; not a runtime compatibility observation"));
     assertTrue(script.contains("function catalogPermissionReviewDetailsNode(app)"));
     assertTrue(script.contains("function catalogReleaseDetailsNode(app)"));
     assertTrue(script.contains("function catalogMaintenancePolicyNode(app)"));

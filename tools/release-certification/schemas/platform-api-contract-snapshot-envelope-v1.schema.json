@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-contract-snapshot-envelope-v1.schema.json",
+  "title": "Platform API contract snapshot envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract"],
+  "properties": {
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apiVersion", "contractVersion", "generatedBy", "stabilityPolicy", "compatibilityWindow", "stableBaseline", "capabilities", "endpoints"],
+      "properties": {
+        "apiVersion": {"const": "v1"},
+        "contractVersion": {"type": "integer", "minimum": 19},
+        "generatedBy": {"type": "string", "minLength": 1, "maxLength": 64},
+        "stabilityPolicy": {"type": "string", "minLength": 1, "maxLength": 8192},
+        "compatibilityWindow": {"$ref": "#/$defs/compatibilityWindow"},
+        "stableBaseline": {"$ref": "#/$defs/stableBaseline"},
+        "baselineRegistrySummary": {"$ref": "#/$defs/baselineRegistrySummary"},
+        "capabilities": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/capability"}},
+        "endpoints": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/endpoint"}}
+      }
+    }
+  },
+  "$defs": {
+    "baseline": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"},
+    "nullableBaseline": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/baseline"}]},
+    "nullableVersion": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+    "nullableText": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 4096}]},
+    "deprecation": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["deprecatedSinceContractVersion", "removalContractVersion", "note"],
+          "properties": {
+            "deprecatedSinceContractVersion": {"$ref": "#/$defs/nullableVersion"},
+            "removalContractVersion": {"$ref": "#/$defs/nullableVersion"},
+            "note": {"$ref": "#/$defs/nullableText"}
+          }
+        }
+      ]
+    },
+    "compatibilityWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "baselineName", "baselineContractVersion", "currentContractVersion", "supportPhase", "supportWindowStartedRelease", "minimumDeprecationWindowContractVersions", "minimumScheduledRemovalWindowContractVersions", "stableRemovalRequiresNewBaseline", "stableRemovalRequiresPreviousSnapshot", "stableRemovalRequiresExplicitWaiver", "criticalStableRemovalWaiverAllowed", "experimentalGraduationRequiresReview", "experimentalGraduationRequiresStableReferenceUpdate", "previousSnapshotRequiredInProductionBeta", "policyDocument"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "baselineName": {"$ref": "#/$defs/baseline"},
+        "baselineContractVersion": {"type": "integer", "minimum": 1},
+        "currentContractVersion": {"type": "integer", "minimum": 19},
+        "supportPhase": {"enum": ["beta", "stable", "maintenance", "end-of-support"]},
+        "supportWindowStartedRelease": {"type": "string", "minLength": 1, "maxLength": 128},
+        "minimumDeprecationWindowContractVersions": {"type": "integer", "minimum": 2},
+        "minimumScheduledRemovalWindowContractVersions": {"type": "integer", "minimum": 2},
+        "stableRemovalRequiresNewBaseline": {"const": true},
+        "stableRemovalRequiresPreviousSnapshot": {"const": true},
+        "stableRemovalRequiresExplicitWaiver": {"const": true},
+        "criticalStableRemovalWaiverAllowed": {"const": false},
+        "experimentalGraduationRequiresReview": {"const": true},
+        "experimentalGraduationRequiresStableReferenceUpdate": {"const": true},
+        "previousSnapshotRequiredInProductionBeta": {"const": true},
+        "policyDocument": {"const": "docs/platform-api-compatibility-support-window.md"}
+      }
+    },
+    "stableBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "contractVersion", "capabilityCount", "endpointCount", "capabilities", "endpoints"],
+      "properties": {
+        "name": {"$ref": "#/$defs/baseline"},
+        "contractVersion": {"type": "integer", "minimum": 1},
+        "capabilityCount": {"type": "integer", "minimum": 0, "maximum": 4096},
+        "endpointCount": {"type": "integer", "minimum": 0, "maximum": 4096},
+        "capabilities": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "endpoints": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+      }
+    },
+    "baselineRegistrySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "registryDigest", "supportedBaselines"],
+      "properties": {
+        "schemaVersion": {"const": 1},
+        "registryDigest": {"$ref": "#/$defs/rawDigest"},
+        "supportedBaselines": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/supportedBaselineSummary"}
+        }
+      }
+    },
+    "supportedBaselineSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "definitionDigest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/baseline"},
+        "status": {"enum": ["active", "deprecated"]},
+        "definitionDigest": {"$ref": "#/$defs/rawDigest"}
+      }
+    },
+    "rawDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "stability", "audience", "stableBaselineMember", "stableBaseline", "sinceContractVersion", "deprecation", "description"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "stability": {"enum": ["stable", "experimental", "deprecated", "scheduled-for-removal", "operator-only", "internal"]},
+        "audience": {"enum": ["app", "operator-only", "internal"]},
+        "stableBaselineMember": {"type": "boolean"},
+        "stableBaseline": {"$ref": "#/$defs/nullableBaseline"},
+        "sinceContractVersion": {"type": "integer", "minimum": 1},
+        "deprecation": {"$ref": "#/$defs/deprecation"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 4096}
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routeFamily", "method", "routeTemplate", "actionLabel", "requiredCapabilities", "hostOperatorBypassAllowed", "appProcessPrincipalsAllowed", "appBrowserPrincipalsAllowed", "stability", "audience", "stableBaselineMember", "stableBaseline", "sinceContractVersion", "deprecation", "description"],
+      "properties": {
+        "routeFamily": {"type": "string", "minLength": 1, "maxLength": 128},
+        "method": {"enum": ["DELETE", "GET", "PATCH", "POST", "PUT"]},
+        "routeTemplate": {"type": "string", "pattern": "^/[A-Za-z0-9._~/{}/-]+$", "maxLength": 512},
+        "actionLabel": {"type": "string", "minLength": 1, "maxLength": 256},
+        "requiredCapabilities": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "hostOperatorBypassAllowed": {"type": "boolean"},
+        "appProcessPrincipalsAllowed": {"type": "boolean"},
+        "appBrowserPrincipalsAllowed": {"type": "boolean"},
+        "stability": {"enum": ["stable", "experimental", "deprecated", "scheduled-for-removal", "operator-only", "internal"]},
+        "audience": {"enum": ["app", "operator-only", "internal"]},
+        "stableBaselineMember": {"type": "boolean"},
+        "stableBaseline": {"$ref": "#/$defs/nullableBaseline"},
+        "sinceContractVersion": {"type": "integer", "minimum": 1},
+        "deprecation": {"$ref": "#/$defs/deprecation"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 4096}
+      }
+    }
+  }
+}

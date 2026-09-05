@@ -1,0 +1,323 @@
+name: Stable 1.0 Platform API 1.x protected runtime observation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact protected Cryptad source commit
+        required: true
+        type: string
+      source_ref:
+        description: Exact protected refs/heads or refs/tags source
+        required: true
+        type: string
+      release_id:
+        description: Public release identity bound by the execution template
+        required: true
+        type: string
+      build_version:
+        description: Integer daemon build bound by the execution template
+        required: true
+        type: string
+      contract_version:
+        description: Integer Platform API contract version
+        required: true
+        type: string
+      evidence_directory:
+        description: Repository-relative static evidence template directory
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: stable-platform-api-1x-runtime-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.contract_version }}
+  cancel-in-progress: false
+
+jobs:
+  runtime-observation:
+    name: Observe bounded Platform API 1.x runtime compatibility
+    if: github.ref_protected && github.actor == 'leumor' && github.triggering_actor == 'leumor'
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ${{ 'cryptad-platform-api-1x-runtime' }}
+    timeout-minutes: 90
+    environment: stable-1-0-platform-api-1x-runtime
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out the exact protected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Validate the protected dispatch and confine static evidence
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+          CONTRACT_VERSION: ${{ inputs.contract_version }}
+          EVIDENCE_DIRECTORY: ${{ inputs.evidence_directory }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != "crypta-network/cryptad" \
+                || "$GITHUB_EVENT_NAME" != "workflow_dispatch" \
+                || "$GITHUB_ACTOR" != "leumor" \
+                || "$TRIGGERING_ACTOR" != "leumor" \
+                || ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$SOURCE_COMMIT" != "$GITHUB_SHA" \
+                || "$WORKFLOW_SHA" != "$GITHUB_SHA" \
+                || "$(git rev-parse HEAD)" != "$GITHUB_SHA" \
+                || "$SOURCE_REF" != "$GITHUB_REF" \
+                || ! "$RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ \
+                || ! "$BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$CONTRACT_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Runtime dispatch is not bound to the exact protected source."
+            exit 2
+          fi
+          mkdir -p build/platform-api-1x-runtime-failure
+          printf '%s\n' 'Protected runtime observation did not complete.' \
+            > build/platform-api-1x-runtime-failure/status.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+          requested = Path(os.environ["EVIDENCE_DIRECTORY"])
+          if (
+              requested.is_absolute()
+              or not requested.parts
+              or any(part in {"", ".", ".."} for part in requested.parts)
+          ):
+              raise SystemExit("evidence directory must be repository-relative")
+          unresolved_source = workspace
+          for part in requested.parts:
+              unresolved_source /= part
+              if unresolved_source.is_symlink():
+                  raise SystemExit("static evidence path contains a linked component")
+          try:
+              source = unresolved_source.resolve(strict=True)
+              source.relative_to(workspace)
+          except (OSError, RuntimeError, ValueError) as error:
+              raise SystemExit("static evidence directory is missing or escapes the workspace") from error
+          if source == workspace or not source.is_dir():
+              raise SystemExit("static evidence directory is missing or is a link")
+          destination = workspace / "build/platform-api-1x-runtime-source"
+          destination.mkdir(parents=True, exist_ok=False)
+          names: set[str] = set()
+          folded: set[str] = set()
+          total = 0
+          for member in sorted(source.iterdir(), key=lambda path: path.name):
+              if member.is_symlink() or not member.is_file() or member.stat().st_nlink != 1:
+                  raise SystemExit("static evidence contains a link or non-file member")
+              if member.name == "__MACOSX" or member.name == ".DS_Store" or member.name.startswith("._"):
+                  raise SystemExit("static evidence contains a prohibited sidecar")
+              folded_name = member.name.casefold()
+              if member.name in names or folded_name in folded:
+                  raise SystemExit("static evidence contains a case-colliding member")
+              names.add(member.name)
+              folded.add(folded_name)
+              total += member.stat().st_size
+              if len(names) > 512 or total > 64 * 1024 * 1024:
+                  raise SystemExit("static evidence exceeds closed bounds")
+              shutil.copyfile(member, destination / member.name)
+          if not (destination / "platform-api-1.x-execution.json").is_file():
+              raise SystemExit("execution template is missing")
+          if (destination / "platform-api-1.x-runtime-observation.json").exists():
+              raise SystemExit("execution template must not carry a runtime observation")
+          PY
+          contract=build/platform-api-1x-runtime-source/platform-api-1.x-execution.json
+          jq -e --arg commit "$SOURCE_COMMIT" --arg ref "$SOURCE_REF" \
+            --arg release "$RELEASE_ID" --argjson build "$BUILD_VERSION" \
+            --argjson contractVersion "$CONTRACT_VERSION" '
+            .repository.sourceCommit == $commit and .repository.sourceRef == $ref and
+            .release.releaseId == $release and .release.buildVersion == $build and
+            .contractVersion == $contractVersion and
+            .activeStableBaselines == ["1.0"] and
+            .fixtureOnly == false and .selfTest == false and
+            .evidence.appSubjectInventory != null and
+            .runtimeObservationAuthority == null and .evidence.runtimeObservation == null
+          ' "$contract" >/dev/null
+
+      - name: Verify the exact static matrix before node access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
+          python3 tools/release-certification/certify.py stable-platform-api-1x \
+            --mode verify-app-matrix \
+            --execution-contract build/platform-api-1x-runtime-source/platform-api-1.x-execution.json \
+            --evidence-dir build/platform-api-1x-runtime-source \
+            --out-dir build/platform-api-1x-runtime-preflight
+
+      - name: Exercise the managed node with the protected runtime adapter
+        env:
+          CRYPTAD_PLATFORM_API_1X_NODE_URL: ${{ secrets.CRYPTAD_PLATFORM_API_1X_NODE_URL }}
+          CRYPTAD_PLATFORM_API_1X_NODE_FORM_PASSWORD: ${{ secrets.CRYPTAD_PLATFORM_API_1X_NODE_FORM_PASSWORD }}
+          RUNTIME_ADAPTER_DIGEST: ${{ vars.CRYPTAD_PLATFORM_API_1X_RUNTIME_ADAPTER_DIGEST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ ! "$CRYPTAD_PLATFORM_API_1X_NODE_URL" =~ ^http://(127\.0\.0\.1|localhost|\[::1\]):[1-9][0-9]{0,4}/?$ \
+                || -z "$CRYPTAD_PLATFORM_API_1X_NODE_FORM_PASSWORD" \
+                || ! "$RUNTIME_ADAPTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Protected managed-node configuration is missing or unsafe."
+            exit 2
+          fi
+          resolved_adapter="$(command -v cryptad-platform-api-1x-runtime || true)"
+          adapter="$(mktemp "$RUNNER_TEMP/cryptad-platform-api-1x-runtime.XXXXXX")"
+          trap 'rm -f -- "$adapter"' EXIT
+          if [[ -z "$resolved_adapter" || ! -f "$resolved_adapter" || ! -x "$resolved_adapter" ]]; then
+            echo "::error::Protected Platform API runtime adapter is unavailable."
+            exit 2
+          fi
+          cp -- "$resolved_adapter" "$adapter"
+          chmod 500 "$adapter"
+          if [[ "sha256:$(sha256sum "$adapter" | cut -d' ' -f1)" != "$RUNTIME_ADAPTER_DIGEST" ]]; then
+            echo "::error::Protected Platform API runtime adapter was substituted."
+            exit 2
+          fi
+          "$adapter" run \
+            --require-managed-daemon \
+            --execution-contract build/platform-api-1x-runtime-source/platform-api-1.x-execution.json \
+            --evidence-dir build/platform-api-1x-runtime-source \
+            --observation-dir build/platform-api-1x-runtime-observation \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-path ".github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml" \
+            --workflow-commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --environment "stable-1-0-platform-api-1x-runtime"
+
+      - name: Validate the bounded runtime observation
+        env:
+          PYTHONPATH: tools/release-certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cryptad_certification.engines import stable_platform_api_1x as engine
+          from cryptad_certification.redaction import scan_value
+          from cryptad_certification.schema_validation import validate_schema
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          source = root / "build/platform-api-1x-runtime-source"
+          observation_path = root / "build/platform-api-1x-runtime-observation/platform-api-1.x-runtime-observation.json"
+          if observation_path.is_symlink() or not observation_path.is_file():
+              raise SystemExit("canonical runtime observation is missing or unsafe")
+          if observation_path.stat().st_nlink != 1 or observation_path.stat().st_size > 8 * 1024 * 1024:
+              raise SystemExit("canonical runtime observation violates file bounds")
+          members = list(observation_path.parent.iterdir())
+          if members != [observation_path]:
+              raise SystemExit("runtime observation directory has an unexpected member set")
+          observation = json.loads(observation_path.read_text(encoding="utf-8"))
+          errors = validate_schema(observation, engine.RUNTIME_SCHEMA)
+          if scan_value(observation):
+              errors.append("runtime observation contains prohibited material")
+          if observation.get("observationDigest") != engine._semantic_digest(
+              observation, "observationDigest"
+          ):
+              errors.append("runtime observation self digest is invalid")
+          expected = {
+              "sourceCommit": os.environ["GITHUB_SHA"],
+              "workflowPath": ".github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml",
+              "runId": int(os.environ["GITHUB_RUN_ID"]),
+              "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "status": "pass",
+              "partial": False,
+              "fixtureOnly": False,
+              "longDurationSoak": False,
+          }
+          for name, value in expected.items():
+              if observation.get(name) != value:
+                  errors.append(f"runtime observation {name} differs")
+          policy, _ = engine._policy(root)
+          contract = json.loads(
+              (source / "platform-api-1.x-execution.json").read_text(encoding="utf-8")
+          )
+          ledger = json.loads(
+              (source / contract["evidence"]["historyLedger"]["fileName"]).read_text(encoding="utf-8")
+          )
+          matrix = json.loads(
+              (source / contract["evidence"]["appMatrix"]["fileName"]).read_text(encoding="utf-8")
+          )
+          errors.extend(
+              engine._runtime_errors(
+                  observation,
+                  contract,
+                  True,
+                  engine._timestamp(observation["completedAt"], "runtime completedAt"),
+                  policy,
+                  ledger,
+                  matrix,
+              )
+          )
+          if errors:
+              raise SystemExit("; ".join(sorted(set(errors))[:12]))
+          PY
+
+      - name: Select immutable runtime artifact name
+        id: names
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "observation=stable-platform-api-1x-runtime-$RELEASE_ID-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable runtime observation
+        id: observation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ${{ steps.names.outputs.observation }}
+          path: build/platform-api-1x-runtime-observation/platform-api-1.x-runtime-observation.json
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30
+
+      - name: Authenticate the uploaded observation artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.observation.outputs.artifact-id }}
+          ARTIFACT_NAME: ${{ steps.names.outputs.observation }}
+          ARTIFACT_DIGEST: sha256:${{ steps.observation.outputs.artifact-digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" \
+            > "$RUNNER_TEMP/runtime-artifact.json"
+          jq -e '.id == (env.ARTIFACT_ID | tonumber)
+            and .name == env.ARTIFACT_NAME
+            and .workflow_run.id == (env.GITHUB_RUN_ID | tonumber)
+            and .digest == env.ARTIFACT_DIGEST and .expired == false' \
+            "$RUNNER_TEMP/runtime-artifact.json" >/dev/null
+
+      - name: Upload bounded runtime failure status
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: stable-platform-api-1x-runtime-failure-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/platform-api-1x-runtime-failure/status.txt
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 7

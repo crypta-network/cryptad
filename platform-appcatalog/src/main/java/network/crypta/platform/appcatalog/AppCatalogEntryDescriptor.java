@@ -159,6 +159,7 @@ public record AppCatalogEntryDescriptor(
   private static final String API_MAXIMUM_TESTED_VERSION = "api.maximumTestedVersion";
   private static final String API_OPTIONAL_CAPABILITIES = "api.optionalCapabilities";
   private static final String API_TARGET_STABILITY = "api.targetStability";
+  private static final String API_TARGET_BASELINE = "api.targetBaseline";
   private static final String API_EXPERIMENTAL_CAPABILITIES_ACCEPTED =
       "api.experimentalCapabilitiesAccepted";
   private static final String REVIEW_STATUS = "review.status";
@@ -423,6 +424,7 @@ public record AppCatalogEntryDescriptor(
         removeOptional(properties, API_TARGET_STABILITY)
             .map(AppCatalogEntryDescriptor::parseTargetStability)
             .orElse(null);
+    Optional<String> targetBaseline = removeOptional(properties, API_TARGET_BASELINE);
     Optional<String> experimentalCapabilitiesAcceptedText =
         removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
     boolean experimentalCapabilitiesAccepted =
@@ -436,6 +438,8 @@ public record AppCatalogEntryDescriptor(
           optionalCapabilities,
           targetStability,
           targetStability != null,
+          targetBaseline.orElse(null),
+          targetBaseline.isPresent(),
           experimentalCapabilitiesAccepted,
           experimentalCapabilitiesAcceptedText.isPresent());
     } catch (IllegalArgumentException exception) {

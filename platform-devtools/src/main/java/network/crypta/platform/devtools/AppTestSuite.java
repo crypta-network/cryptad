@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.platform.api.PlatformApiBaselineRegistry;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityVerificationResult;
@@ -159,10 +160,14 @@ final class AppTestSuite {
    */
   private static AppTestCheck verifyCompatibility(Request request, AppBundleManifest manifest)
       throws IOException {
-    PlatformApiContract contract = loadContract(request.contract());
+    ContractSelection selection = loadContract(request.contract(), request.baselineRegistry());
     CompatibilityVerificationResult result =
         PlatformApiContractVerifier.verify(
-            manifest.apiCompatibility(), manifest.permissions(), contract, request.strict());
+            manifest.apiCompatibility(),
+            manifest.permissions(),
+            selection.contract(),
+            selection.registry(),
+            request.strict());
     if (result.hasErrors()) {
       return new AppTestCheck(CHECK_API_COMPAT, AppTestStatus.FAIL, "API compatibility failed.");
     }
@@ -180,14 +185,25 @@ final class AppTestSuite {
    *
    * @param contractFile optional user-supplied contract JSON, or {@code null} for the current
    *     built-in validation contract
-   * @return parsed Platform API contract used for this suite run
-   * @throws IOException if a user-supplied contract file cannot be read
+   * @param registryFile optional named-baseline registry paired with the supplied contract
+   * @return parsed and registry-bound Platform API inputs used for this suite run
+   * @throws IOException if a user-supplied contract or registry file cannot be read
    */
-  private static PlatformApiContract loadContract(Path contractFile) throws IOException {
+  private static ContractSelection loadContract(Path contractFile, Path registryFile)
+      throws IOException {
+    PlatformApiBaselineRegistry registry =
+        registryFile == null
+            ? PlatformApiBaselineRegistry.current()
+            : PlatformApiContractJson.parseBaselineRegistry(
+                Files.readString(registryFile, StandardCharsets.UTF_8));
     if (contractFile == null) {
-      return DevtoolsCapabilityVocabulary.currentValidationContract();
+      return new ContractSelection(
+          DevtoolsCapabilityVocabulary.currentValidationContract(), registry);
     }
-    return PlatformApiContractJson.parse(Files.readString(contractFile, StandardCharsets.UTF_8));
+    String json = Files.readString(contractFile, StandardCharsets.UTF_8);
+    PlatformApiContract contract = PlatformApiContractJson.parse(json);
+    PlatformApiContractJson.verifyBaselineRegistrySummary(json, registry);
+    return new ContractSelection(contract, registry);
   }
 
   /**
@@ -369,21 +385,28 @@ final class AppTestSuite {
     private BundleValidation validation;
   }
 
+  /** Contract and named-baseline authority selected for one compatibility check. */
+  private record ContractSelection(
+      PlatformApiContract contract, PlatformApiBaselineRegistry registry) {}
+
   /**
    * Input for one test suite run.
    *
    * <p>The CLI constructs this record from command-line options before invoking the suite. Paths
    * are normalized to absolute form once so lower-level checks can open files consistently, while
    * report generation still redacts any path text that escapes through diagnostics. A {@code null}
-   * contract uses the built-in current Platform API contract, and a {@code null} catalog entry
-   * skips descriptor sanity checking.
+   * contract uses the built-in current Platform API contract, a {@code null} baseline registry uses
+   * the built-in current registry, and a {@code null} catalog entry skips descriptor sanity
+   * checking.
    *
    * @param bundleDir staged bundle directory to validate and, for static apps, serve locally
    * @param strict whether warnings should make the aggregate report fail
    * @param contract optional Platform API contract JSON used instead of the built-in contract
+   * @param baselineRegistry optional named-baseline registry paired with the contract
    * @param catalogEntry optional catalog entry descriptor checked after manifest validation
    */
-  record Request(Path bundleDir, boolean strict, Path contract, Path catalogEntry) {
+  record Request(
+      Path bundleDir, boolean strict, Path contract, Path baselineRegistry, Path catalogEntry) {
     /**
      * Normalizes user-supplied paths for deterministic filesystem access.
      *
@@ -395,6 +418,9 @@ final class AppTestSuite {
       bundleDir = bundleDir.toAbsolutePath().normalize();
       if (contract != null) {
         contract = contract.toAbsolutePath().normalize();
+      }
+      if (baselineRegistry != null) {
+        baselineRegistry = baselineRegistry.toAbsolutePath().normalize();
       }
       if (catalogEntry != null) {
         catalogEntry = catalogEntry.toAbsolutePath().normalize();

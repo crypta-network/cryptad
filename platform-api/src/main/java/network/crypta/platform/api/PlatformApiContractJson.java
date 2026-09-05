@@ -83,6 +83,72 @@ public final class PlatformApiContractJson {
   private static final String FIELD_SUPPORT_WINDOW_STARTED_RELEASE = "supportWindowStartedRelease";
   private static final String FIELD_CURRENT_CONTRACT_VERSION = "currentContractVersion";
   private static final String FIELD_ENDPOINT_COUNT = "endpointCount";
+  private static final String FIELD_BASELINE_REGISTRY = "baselineRegistry";
+  private static final String FIELD_BASELINE_REGISTRY_SUMMARY = "baselineRegistrySummary";
+  private static final String FIELD_REGISTRY_DIGEST = "registryDigest";
+  private static final String FIELD_DEFINITIONS = "definitions";
+  private static final String FIELD_LINEAGE = "lineage";
+  private static final String FIELD_ID = "id";
+  private static final String FIELD_PREDECESSOR_ID = "predecessorId";
+  private static final String FIELD_SOURCE_ARTIFACT_DIGEST = "sourceArtifactDigest";
+  private static final String FIELD_PROPOSAL_DIGEST = "proposalDigest";
+  private static final String FIELD_REVIEW_DIGEST = "reviewDigest";
+  private static final String FIELD_DOCUMENTATION_DIGEST = "documentationDigest";
+  private static final String FIELD_FIRST_COMPLETE_CONTRACT_VERSION =
+      "firstCompleteContractVersion";
+  private static final String FIELD_DEFINITION_DIGEST = "definitionDigest";
+  private static final String FIELD_STATUS = "status";
+  private static final String FIELD_EVIDENCE_KIND = "evidenceKind";
+  private static final String FIELD_EVIDENCE_DIGEST = "evidenceDigest";
+  private static final String FIELD_ACTIVATION_RELEASE = "activationRelease";
+  private static final String FIELD_ACTIVATION_BUILD = "activationBuild";
+  private static final String FIELD_SUPPORT_STARTED_RELEASE = "supportStartedRelease";
+  private static final String FIELD_SUPPORT_ENDED_RELEASE = "supportEndedRelease";
+  private static final String FIELD_PREVIOUS_LINEAGE_DIGEST = "previousLineageDigest";
+  private static final String FIELD_LINEAGE_DIGEST = "lineageDigest";
+  private static final String FIELD_SUPPORTED_BASELINES = "supportedBaselines";
+  private static final Set<String> BASELINE_REGISTRY_ENVELOPE_FIELDS =
+      Set.of(FIELD_BASELINE_REGISTRY);
+  private static final Set<String> BASELINE_REGISTRY_FIELDS =
+      Set.of(FIELD_SCHEMA_VERSION, FIELD_DEFINITIONS, FIELD_LINEAGE, FIELD_REGISTRY_DIGEST);
+  private static final Set<String> BASELINE_DEFINITION_FIELDS =
+      Set.of(
+          FIELD_ID,
+          FIELD_PREDECESSOR_ID,
+          FIELD_CAPABILITIES,
+          FIELD_ENDPOINTS,
+          FIELD_SOURCE_ARTIFACT_DIGEST,
+          FIELD_PROPOSAL_DIGEST,
+          FIELD_REVIEW_DIGEST,
+          FIELD_DOCUMENTATION_DIGEST,
+          FIELD_FIRST_COMPLETE_CONTRACT_VERSION,
+          FIELD_DEFINITION_DIGEST);
+  private static final Set<String> BASELINE_ENDPOINT_FIELDS =
+      Set.of(
+          FIELD_ID,
+          FIELD_ROUTE_FAMILY,
+          FIELD_ACTION_LABEL,
+          FIELD_REQUIRED_CAPABILITIES,
+          FIELD_HOST_OPERATOR_BYPASS_ALLOWED,
+          FIELD_APP_PROCESS_PRINCIPALS_ALLOWED,
+          FIELD_APP_BROWSER_PRINCIPALS_ALLOWED);
+  private static final Set<String> BASELINE_LINEAGE_FIELDS =
+      Set.of(
+          FIELD_ID,
+          FIELD_DEFINITION_DIGEST,
+          FIELD_STATUS,
+          FIELD_EVIDENCE_KIND,
+          FIELD_EVIDENCE_DIGEST,
+          FIELD_ACTIVATION_RELEASE,
+          FIELD_ACTIVATION_BUILD,
+          FIELD_SUPPORT_STARTED_RELEASE,
+          FIELD_SUPPORT_ENDED_RELEASE,
+          FIELD_PREVIOUS_LINEAGE_DIGEST,
+          FIELD_LINEAGE_DIGEST);
+  private static final Set<String> BASELINE_REGISTRY_SUMMARY_FIELDS =
+      Set.of(FIELD_SCHEMA_VERSION, FIELD_REGISTRY_DIGEST, FIELD_SUPPORTED_BASELINES);
+  private static final Set<String> SUPPORTED_BASELINE_SUMMARY_FIELDS =
+      Set.of(FIELD_ID, FIELD_STATUS, FIELD_DEFINITION_DIGEST);
 
   private PlatformApiContractJson() {}
 
@@ -103,6 +169,26 @@ public final class PlatformApiContractJson {
   }
 
   /**
+   * Builds a contract envelope with a bounded optional supported-baseline summary.
+   *
+   * <p>The legacy {@link #envelope(PlatformApiContract)} shape remains byte-for-byte unchanged.
+   * Callers opt into this additive metadata only when the surrounding contract/release artifact
+   * explicitly carries the matching registry. The summary grants no capabilities and contains no
+   * app inventory or release credentials.
+   */
+  public static Map<String, Object> envelope(
+      PlatformApiContract contract, PlatformApiBaselineRegistry registry) {
+    LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
+    LinkedHashMap<String, Object> contractJson =
+        new LinkedHashMap<>(toJsonValue(Objects.requireNonNull(contract, FIELD_CONTRACT)));
+    contractJson.put(
+        FIELD_BASELINE_REGISTRY_SUMMARY,
+        baselineRegistrySummaryJson(Objects.requireNonNull(registry, FIELD_BASELINE_REGISTRY)));
+    envelope.put(FIELD_CONTRACT, contractJson);
+    return envelope;
+  }
+
+  /**
    * Serializes a contract snapshot envelope.
    *
    * <p>The method delegates to the Platform API JSON writer after building the same map shape
@@ -114,6 +200,102 @@ public final class PlatformApiContractJson {
    */
   public static String writeEnvelope(PlatformApiContract contract) {
     return PlatformApiJsonWriter.write(envelope(contract));
+  }
+
+  /** Writes the additive contract envelope carrying a bounded baseline-registry summary. */
+  public static String writeEnvelope(
+      PlatformApiContract contract, PlatformApiBaselineRegistry registry) {
+    return PlatformApiJsonWriter.write(envelope(contract, registry));
+  }
+
+  /** Writes a complete deterministic named-baseline registry artifact. */
+  public static String writeBaselineRegistry(PlatformApiBaselineRegistry registry) {
+    LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
+    envelope.put(
+        FIELD_BASELINE_REGISTRY,
+        baselineRegistryToJsonValue(Objects.requireNonNull(registry, FIELD_BASELINE_REGISTRY)));
+    return PlatformApiJsonWriter.write(envelope);
+  }
+
+  /** Returns the complete deterministic JSON-compatible registry object without an envelope. */
+  public static Map<String, Object> baselineRegistryToJsonValue(
+      PlatformApiBaselineRegistry registry) {
+    return baselineRegistryJson(Objects.requireNonNull(registry, FIELD_BASELINE_REGISTRY));
+  }
+
+  /** Returns the bounded supported-baseline summary used by contract and operator views. */
+  public static Map<String, Object> baselineRegistrySummaryToJsonValue(
+      PlatformApiBaselineRegistry registry) {
+    return baselineRegistrySummaryJson(Objects.requireNonNull(registry, FIELD_BASELINE_REGISTRY));
+  }
+
+  /** Parses a complete named-baseline registry artifact, with or without its outer envelope. */
+  public static PlatformApiBaselineRegistry parseBaselineRegistry(String json) {
+    Object root = new Parser(Objects.requireNonNull(json, "json")).parse();
+    Map<String, Object> rootObject = asObject(root, "baseline registry root");
+    Object registryObject;
+    if (rootObject.containsKey(FIELD_BASELINE_REGISTRY)) {
+      requireExactFields(rootObject, BASELINE_REGISTRY_ENVELOPE_FIELDS, "baseline registry root");
+      registryObject = rootObject.get(FIELD_BASELINE_REGISTRY);
+    } else {
+      registryObject = rootObject;
+    }
+    return parseBaselineRegistryValue(asObject(registryObject, FIELD_BASELINE_REGISTRY));
+  }
+
+  /**
+   * Verifies that a contract snapshot is bound to the supplied named-baseline registry.
+   *
+   * <p>Contract snapshots from before named-baseline metadata remain valid without a summary. A
+   * version that carries named-baseline metadata must include the closed summary shape, and any
+   * summary that is present must exactly match the registry's digest, supported baseline order,
+   * lifecycle status, and definition digests. This check is intended for consumers that accept a
+   * contract and registry as separate artifacts, such as the offline preview command.
+   *
+   * @param json exact contract snapshot JSON, either enveloped or as the nested contract object
+   * @param registry registry that the snapshot must identify
+   * @throws IllegalArgumentException if required metadata is absent, malformed, or mismatched
+   */
+  public static void verifyBaselineRegistrySummary(
+      String json, PlatformApiBaselineRegistry registry) {
+    Object root = new Parser(Objects.requireNonNull(json, "json")).parse();
+    Map<String, Object> rootObject = asObject(root, "contract root");
+    Object contractObject = rootObject.get(FIELD_CONTRACT);
+    if (contractObject == null && !rootObject.containsKey(FIELD_CONTRACT)) {
+      contractObject = rootObject;
+    }
+    Map<String, Object> contract = asObject(contractObject, FIELD_CONTRACT);
+    int contractVersion = integer(contract, FIELD_CONTRACT_VERSION);
+    Object summaryValue = contract.get(FIELD_BASELINE_REGISTRY_SUMMARY);
+    if (summaryValue == null) {
+      if (contractVersion >= PlatformApiContract.NAMED_BASELINE_METADATA_CONTRACT_VERSION) {
+        throw new IllegalArgumentException(
+            FIELD_BASELINE_REGISTRY_SUMMARY + " is required for this contract version");
+      }
+      return;
+    }
+
+    Map<String, Object> summary = asObject(summaryValue, FIELD_BASELINE_REGISTRY_SUMMARY);
+    requireExactFields(summary, BASELINE_REGISTRY_SUMMARY_FIELDS, FIELD_BASELINE_REGISTRY_SUMMARY);
+    LinkedHashMap<String, Object> normalized = LinkedHashMap.newLinkedHashMap(3);
+    normalized.put(FIELD_SCHEMA_VERSION, integer(summary, FIELD_SCHEMA_VERSION));
+    normalized.put(FIELD_REGISTRY_DIGEST, string(summary, FIELD_REGISTRY_DIGEST));
+    List<Map<String, Object>> supported = new ArrayList<>();
+    for (Object item : asArray(summary.get(FIELD_SUPPORTED_BASELINES), FIELD_SUPPORTED_BASELINES)) {
+      Map<String, Object> baseline = asObject(item, "supported baseline summary");
+      requireExactFields(baseline, SUPPORTED_BASELINE_SUMMARY_FIELDS, "supported baseline summary");
+      LinkedHashMap<String, Object> normalizedBaseline = LinkedHashMap.newLinkedHashMap(3);
+      normalizedBaseline.put(FIELD_ID, string(baseline, FIELD_ID));
+      normalizedBaseline.put(FIELD_STATUS, string(baseline, FIELD_STATUS));
+      normalizedBaseline.put(FIELD_DEFINITION_DIGEST, string(baseline, FIELD_DEFINITION_DIGEST));
+      supported.add(normalizedBaseline);
+    }
+    normalized.put(FIELD_SUPPORTED_BASELINES, List.copyOf(supported));
+    if (!normalized.equals(
+        baselineRegistrySummaryJson(Objects.requireNonNull(registry, FIELD_BASELINE_REGISTRY)))) {
+      throw new IllegalArgumentException(
+          FIELD_BASELINE_REGISTRY_SUMMARY + " does not match the candidate baseline registry");
+    }
   }
 
   /**
@@ -236,6 +418,154 @@ public final class PlatformApiContractJson {
     json.put(FIELD_CAPABILITIES, stableBaseline.capabilities());
     json.put(FIELD_ENDPOINTS, stableBaseline.endpoints());
     return json;
+  }
+
+  private static Map<String, Object> baselineRegistrySummaryJson(
+      PlatformApiBaselineRegistry registry) {
+    Map<PlatformApiBaselineId, PlatformApiBaselineDefinition> definitions =
+        registry.definitionsById();
+    Map<PlatformApiBaselineId, PlatformApiBaselineLineage> latest = registry.latestLineageById();
+    List<Map<String, Object>> supported = new ArrayList<>();
+    for (PlatformApiBaselineId id : registry.supportedBaselineIds()) {
+      LinkedHashMap<String, Object> baseline = LinkedHashMap.newLinkedHashMap(3);
+      baseline.put(FIELD_ID, id.toString());
+      baseline.put(FIELD_STATUS, latest.get(id).status().jsonValue());
+      baseline.put(FIELD_DEFINITION_DIGEST, definitions.get(id).definitionDigest());
+      supported.add(baseline);
+    }
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(3);
+    summary.put(FIELD_SCHEMA_VERSION, registry.schemaVersion());
+    summary.put(FIELD_REGISTRY_DIGEST, registry.registryDigest());
+    summary.put(FIELD_SUPPORTED_BASELINES, List.copyOf(supported));
+    return summary;
+  }
+
+  private static Map<String, Object> baselineRegistryJson(PlatformApiBaselineRegistry registry) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    json.put(FIELD_SCHEMA_VERSION, registry.schemaVersion());
+    json.put(
+        FIELD_DEFINITIONS,
+        registry.definitions().stream()
+            .map(PlatformApiContractJson::baselineDefinitionJson)
+            .toList());
+    json.put(
+        FIELD_LINEAGE,
+        registry.lineage().stream().map(PlatformApiContractJson::baselineLineageJson).toList());
+    json.put(FIELD_REGISTRY_DIGEST, registry.registryDigest());
+    return json;
+  }
+
+  private static Map<String, Object> baselineDefinitionJson(
+      PlatformApiBaselineDefinition definition) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
+    json.put(FIELD_ID, definition.id().toString());
+    json.put(
+        FIELD_PREDECESSOR_ID,
+        definition.predecessorId() == null ? null : definition.predecessorId().toString());
+    json.put(FIELD_CAPABILITIES, definition.capabilities());
+    json.put(
+        FIELD_ENDPOINTS,
+        definition.endpoints().stream()
+            .map(PlatformApiContractJson::baselineEndpointJson)
+            .toList());
+    json.put(FIELD_SOURCE_ARTIFACT_DIGEST, definition.sourceArtifactDigest());
+    json.put(FIELD_PROPOSAL_DIGEST, definition.proposalDigest());
+    json.put(FIELD_REVIEW_DIGEST, definition.reviewDigest());
+    json.put(FIELD_DOCUMENTATION_DIGEST, definition.documentationDigest());
+    json.put(FIELD_FIRST_COMPLETE_CONTRACT_VERSION, definition.firstCompleteContractVersion());
+    json.put(FIELD_DEFINITION_DIGEST, definition.definitionDigest());
+    return json;
+  }
+
+  private static Map<String, Object> baselineEndpointJson(PlatformApiBaselineEndpoint endpoint) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put(FIELD_ID, endpoint.identity());
+    json.put(FIELD_ROUTE_FAMILY, endpoint.routeFamily());
+    json.put(FIELD_ACTION_LABEL, endpoint.actionLabel());
+    json.put(FIELD_REQUIRED_CAPABILITIES, endpoint.requiredCapabilities());
+    json.put(FIELD_HOST_OPERATOR_BYPASS_ALLOWED, endpoint.hostOperatorBypassAllowed());
+    json.put(FIELD_APP_PROCESS_PRINCIPALS_ALLOWED, endpoint.appProcessAllowed());
+    json.put(FIELD_APP_BROWSER_PRINCIPALS_ALLOWED, endpoint.appBrowserAllowed());
+    return json;
+  }
+
+  private static Map<String, Object> baselineLineageJson(PlatformApiBaselineLineage lineage) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(11);
+    json.put(FIELD_ID, lineage.baselineId().toString());
+    json.put(FIELD_DEFINITION_DIGEST, lineage.definitionDigest());
+    json.put(FIELD_STATUS, lineage.status().jsonValue());
+    json.put(FIELD_EVIDENCE_KIND, lineage.evidenceKind().jsonValue());
+    json.put(FIELD_EVIDENCE_DIGEST, lineage.evidenceDigest());
+    json.put(FIELD_ACTIVATION_RELEASE, lineage.activationRelease());
+    json.put(FIELD_ACTIVATION_BUILD, lineage.activationBuild());
+    json.put(FIELD_SUPPORT_STARTED_RELEASE, lineage.supportStartedRelease());
+    json.put(FIELD_SUPPORT_ENDED_RELEASE, lineage.supportEndedRelease());
+    json.put(FIELD_PREVIOUS_LINEAGE_DIGEST, lineage.previousLineageDigest());
+    json.put(FIELD_LINEAGE_DIGEST, lineage.lineageDigest());
+    return json;
+  }
+
+  private static PlatformApiBaselineRegistry parseBaselineRegistryValue(Map<String, Object> json) {
+    requireExactFields(json, BASELINE_REGISTRY_FIELDS, FIELD_BASELINE_REGISTRY);
+    List<PlatformApiBaselineDefinition> definitions = new ArrayList<>();
+    for (Object value : asArray(json.get(FIELD_DEFINITIONS), FIELD_DEFINITIONS)) {
+      definitions.add(parseBaselineDefinition(asObject(value, "baseline definition")));
+    }
+    List<PlatformApiBaselineLineage> lineage = new ArrayList<>();
+    for (Object value : asArray(json.get(FIELD_LINEAGE), FIELD_LINEAGE)) {
+      lineage.add(parseBaselineLineage(asObject(value, "baseline lineage")));
+    }
+    return new PlatformApiBaselineRegistry(
+        integer(json, FIELD_SCHEMA_VERSION),
+        definitions,
+        lineage,
+        string(json, FIELD_REGISTRY_DIGEST));
+  }
+
+  private static PlatformApiBaselineDefinition parseBaselineDefinition(Map<String, Object> json) {
+    requireExactFields(json, BASELINE_DEFINITION_FIELDS, "baseline definition");
+    List<PlatformApiBaselineEndpoint> endpoints = new ArrayList<>();
+    for (Object value : asArray(json.get(FIELD_ENDPOINTS), FIELD_ENDPOINTS)) {
+      Map<String, Object> endpoint = asObject(value, "baseline endpoint");
+      requireExactFields(endpoint, BASELINE_ENDPOINT_FIELDS, "baseline endpoint");
+      endpoints.add(
+          new PlatformApiBaselineEndpoint(
+              string(endpoint, FIELD_ID),
+              string(endpoint, FIELD_ROUTE_FAMILY),
+              string(endpoint, FIELD_ACTION_LABEL),
+              stringArray(endpoint.get(FIELD_REQUIRED_CAPABILITIES), FIELD_REQUIRED_CAPABILITIES),
+              bool(endpoint, FIELD_HOST_OPERATOR_BYPASS_ALLOWED),
+              bool(endpoint, FIELD_APP_PROCESS_PRINCIPALS_ALLOWED),
+              bool(endpoint, FIELD_APP_BROWSER_PRINCIPALS_ALLOWED)));
+    }
+    String predecessor = optionalString(json, FIELD_PREDECESSOR_ID);
+    return new PlatformApiBaselineDefinition(
+        PlatformApiBaselineId.parse(string(json, FIELD_ID)),
+        predecessor == null ? null : PlatformApiBaselineId.parse(predecessor),
+        stringArray(json.get(FIELD_CAPABILITIES), FIELD_CAPABILITIES),
+        endpoints,
+        string(json, FIELD_SOURCE_ARTIFACT_DIGEST),
+        optionalString(json, FIELD_PROPOSAL_DIGEST),
+        optionalString(json, FIELD_REVIEW_DIGEST),
+        optionalString(json, FIELD_DOCUMENTATION_DIGEST),
+        integer(json, FIELD_FIRST_COMPLETE_CONTRACT_VERSION),
+        string(json, FIELD_DEFINITION_DIGEST));
+  }
+
+  private static PlatformApiBaselineLineage parseBaselineLineage(Map<String, Object> json) {
+    requireExactFields(json, BASELINE_LINEAGE_FIELDS, "baseline lineage");
+    return new PlatformApiBaselineLineage(
+        PlatformApiBaselineId.parse(string(json, FIELD_ID)),
+        string(json, FIELD_DEFINITION_DIGEST),
+        PlatformApiBaselineStatus.parse(string(json, FIELD_STATUS)),
+        PlatformApiBaselineEvidenceKind.parse(string(json, FIELD_EVIDENCE_KIND)),
+        string(json, FIELD_EVIDENCE_DIGEST),
+        optionalString(json, FIELD_ACTIVATION_RELEASE),
+        optionalInteger(json, FIELD_ACTIVATION_BUILD),
+        optionalString(json, FIELD_SUPPORT_STARTED_RELEASE),
+        optionalString(json, FIELD_SUPPORT_ENDED_RELEASE),
+        optionalString(json, FIELD_PREVIOUS_LINEAGE_DIGEST),
+        string(json, FIELD_LINEAGE_DIGEST));
   }
 
   private static Map<String, Object> compatibilityWindowJson(
@@ -464,6 +794,13 @@ public final class PlatformApiContractJson {
     throw new IllegalArgumentException(fieldName + " must be a boolean");
   }
 
+  private static void requireExactFields(
+      Map<String, Object> json, Set<String> expectedFields, String fieldName) {
+    if (!json.keySet().equals(expectedFields)) {
+      throw new IllegalArgumentException(fieldName + " has missing or unsupported fields");
+    }
+  }
+
   private static List<String> requiredCapabilities(Object value) {
     return stringArray(value, FIELD_REQUIRED_CAPABILITIES);
   }
@@ -526,6 +863,9 @@ public final class PlatformApiContractJson {
         String key = parseString();
         skipWhitespace();
         expect(':');
+        if (object.containsKey(key)) {
+          throw error("duplicate JSON object member");
+        }
         object.put(key, parseValue());
         skipWhitespace();
       } while (consume(','));

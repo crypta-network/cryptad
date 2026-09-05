@@ -668,6 +668,10 @@ public record AppCatalogEntry(
     return review.hasSubmissionReviewFields();
   }
 
+  boolean hasNamedApiBaselineMetadata() {
+    return compatibility.apiCompatibility().targetBaselineDeclared();
+  }
+
   /**
    * Normalizes an app id using the signed-bundle manifest rules.
    *

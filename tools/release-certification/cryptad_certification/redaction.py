@@ -44,33 +44,58 @@ FILE_URI_RE = re.compile(
 )
 SAFE_PUBLIC_ROUTE_ROOTS = (
     "/api/v1",
+    "/alerts",
+    "/app-catalogs",
+    "/app-services",
     "/apps",
     "/app/node",
     "/app-data",
     "/app-vault",
+    "/consent",
     "/content",
     "/core-update",
     "/filterfile",
     "/identity-vault",
     "/operator",
+    "/peers",
     "/platform",
     "/queue",
+    "/security-levels",
     "/trust-graph",
+    "/updates",
+    "/wizard",
     "/.well-known",
     "/{CHK,SSK,USK,KSK}@...",
 )
-PUBLIC_ROUTE_FIELD_MARKERS = ("route", "endpoint", "url", "href")
-LOCAL_PATH_FIELD_MARKERS = (
-    "archive",
-    "artifact",
-    "directory",
-    "file",
-    "output",
-    "report",
-    "root",
-    "source",
-    "summary",
-    "workspace",
+SAFE_PUBLIC_ROUTE_EXACT = frozenset(
+    {
+        "/config",
+        "/config/overrides",
+        "/config/persist",
+        "/connectivity",
+        "/diagnostics",
+        "/node/greeting",
+        "/node/reference",
+    }
+)
+PUBLIC_ROUTE_FIELDS = frozenset(
+    {"endpoint", "endpoints", "route", "routes", "routetemplate"}
+)
+PUBLIC_ROUTE_CONTAINERS = frozenset({"replacementurls"})
+SAFE_REPLACEMENT_URLS = frozenset(
+    {"/app/node/#diagnostics", "/app/node/#security"}
+)
+PUBLIC_HTTP_METHODS = frozenset({"DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"})
+BASELINE_ENDPOINT_ID_FIELDS = frozenset(
+    {
+        "actionLabel",
+        "appBrowserPrincipalsAllowed",
+        "appProcessPrincipalsAllowed",
+        "hostOperatorBypassAllowed",
+        "id",
+        "requiredCapabilities",
+        "routeFamily",
+    }
 )
 PUBLIC_ROUTE_FRAGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
 REPO_PLACEHOLDER_PREFIX = "<repo>/"
@@ -347,33 +372,23 @@ def _field_allows_public_route(
     """Return whether the JSON field context explicitly represents a public route."""
 
     normalized = tuple(_normalized_field_name(field) for field in field_path)
-    last_has_public_marker = bool(
-        normalized
-        and any(marker in normalized[-1] for marker in PUBLIC_ROUTE_FIELD_MARKERS)
-    )
-    ancestor_has_public_marker = any(
-        marker in field
-        for field in normalized[:-1]
-        for marker in PUBLIC_ROUTE_FIELD_MARKERS
-    )
+    if normalized and normalized[-1] in PUBLIC_ROUTE_FIELDS:
+        return True
+    if any(field in PUBLIC_ROUTE_CONTAINERS for field in normalized[:-1]):
+        return True
     if (
         normalized
-        and any(marker in normalized[-1] for marker in LOCAL_PATH_FIELD_MARKERS)
-        and not last_has_public_marker
-        and not ancestor_has_public_marker
-    ):
-        return False
-    if any(
-        marker in field
-        for field in normalized
-        for marker in PUBLIC_ROUTE_FIELD_MARKERS
+        and normalized[-1] == "id"
+        and "endpoints" in normalized[:-1]
+        and isinstance(parent, dict)
+        and set(parent) == BASELINE_ENDPOINT_ID_FIELDS
     ):
         return True
     return bool(
         normalized
         and normalized[-1] == "path"
         and isinstance(parent, dict)
-        and isinstance(parent.get("method"), str)
+        and parent.get("method") in PUBLIC_HTTP_METHODS
     )
 
 
@@ -386,6 +401,9 @@ def _is_normalized_public_route(
 
     if not _field_allows_public_route(field_path, parent):
         return False
+    normalized = tuple(_normalized_field_name(field) for field in field_path)
+    if any(field in PUBLIC_ROUTE_CONTAINERS for field in normalized[:-1]):
+        return value in SAFE_REPLACEMENT_URLS
     if not value.startswith("/") or "\\" in value or "\x00" in value or any(
         character.isspace() for character in value
     ):
@@ -408,7 +426,7 @@ def _is_normalized_public_route(
         return False
     if parsed.fragment and PUBLIC_ROUTE_FRAGMENT_RE.fullmatch(parsed.fragment) is None:
         return False
-    return any(
+    return decoded_path in SAFE_PUBLIC_ROUTE_EXACT or any(
         decoded_path == route or decoded_path.startswith(f"{route}/")
         for route in SAFE_PUBLIC_ROUTE_ROOTS
     )

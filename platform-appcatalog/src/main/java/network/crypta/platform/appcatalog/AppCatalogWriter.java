@@ -204,37 +204,45 @@ public final class AppCatalogWriter {
 
   private static int catalogVersion(
       List<AppCatalogEntry> entries, AppCatalogSecurityPolicy securityPolicy) {
-    for (AppCatalogEntry entry : entries) {
-      if (entry.hasSubmissionReviewMetadata()) {
-        return AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW;
-      }
+    if (entries.stream().anyMatch(AppCatalogEntry::hasNamedApiBaselineMetadata)) {
+      return AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE;
     }
-    for (AppCatalogEntry entry : entries) {
-      if (entry.hasMaintenanceMetadata()) {
-        return AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
-      }
+    if (entries.stream().anyMatch(AppCatalogEntry::hasSubmissionReviewMetadata)) {
+      return AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW;
+    }
+    if (entries.stream().anyMatch(AppCatalogEntry::hasMaintenanceMetadata)) {
+      return AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
     }
     if (securityPolicy.hasCatalogFields()) {
       return AppCatalog.VERSION_SECURITY_POLICY;
     }
-    for (AppCatalogEntry entry : entries) {
-      if (entry.hasProductionMetadata()) {
-        return AppCatalog.VERSION_PRODUCTION_CHANNELS;
-      }
+    if (entries.stream().anyMatch(AppCatalogEntry::hasProductionMetadata)) {
+      return AppCatalog.VERSION_PRODUCTION_CHANNELS;
     }
-    for (AppCatalogEntry entry : entries) {
-      if (entry.hasStoreMetadata()) {
-        return AppCatalog.VERSION_STORE_METADATA;
-      }
+    if (entries.stream().anyMatch(AppCatalogEntry::hasStoreMetadata)) {
+      return AppCatalog.VERSION_STORE_METADATA;
     }
     return AppCatalog.VERSION_MINIMAL;
   }
 
   private static void requireCatalogVersionMatchesEntries(AppCatalog catalog) {
     requireSecurityPolicyVersion(catalog);
+    requireNamedApiBaselineVersion(catalog);
     requireSubmissionAndMaintenanceMetadataVersions(catalog);
     requireProductionMetadataVersion(catalog);
     requireStoreMetadataVersion(catalog);
+  }
+
+  private static void requireNamedApiBaselineVersion(AppCatalog catalog) {
+    if (catalog.version() >= AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE) {
+      return;
+    }
+    for (AppCatalogEntry entry : catalog.entries()) {
+      if (entry.hasNamedApiBaselineMetadata()) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 7 is required when api.targetBaseline metadata is present");
+      }
+    }
   }
 
   private static void requireSecurityPolicyVersion(AppCatalog catalog) {
@@ -392,9 +400,74 @@ public final class AppCatalogWriter {
     if (!descriptorApi.declared()) {
       return manifestApi;
     }
+    requireTargetBaselineMatches(descriptorApi, manifestApi);
+    requireTargetStabilityMatches(descriptorApi, manifestApi);
+    requireEffectiveStableBaselineMatches(descriptorApi, manifestApi);
     if (!manifestApi.declared()) {
       return descriptorApi;
     }
+    return mergeApiCompatibility(descriptorApi, manifestApi);
+  }
+
+  private static void requireTargetBaselineMatches(
+      AppApiCompatibilityMetadata descriptorApi, AppApiCompatibilityMetadata manifestApi) {
+    if (!descriptorApi.targetBaselineDeclared()) {
+      return;
+    }
+    if (manifestApi.targetBaselineDeclared()
+        && descriptorApi.targetBaseline().equals(manifestApi.targetBaseline())) {
+      return;
+    }
+    String manifestTargetBaseline =
+        manifestApi.targetBaselineDeclared() ? manifestApi.targetBaseline() : "undeclared";
+    throw AppCatalogSidecars.invalidEntry(
+        "catalog entry descriptor api.targetBaseline must match artifact manifest "
+            + "api.targetBaseline: "
+            + descriptorApi.targetBaseline()
+            + " != "
+            + manifestTargetBaseline);
+  }
+
+  private static void requireTargetStabilityMatches(
+      AppApiCompatibilityMetadata descriptorApi, AppApiCompatibilityMetadata manifestApi) {
+    if (!descriptorApi.targetStabilityDeclared()) {
+      return;
+    }
+    if (manifestApi.targetStabilityDeclared()
+        && descriptorApi.targetStability() == manifestApi.targetStability()) {
+      return;
+    }
+    String manifestTargetStability =
+        manifestApi.targetStabilityDeclared()
+            ? manifestApi.targetStability().manifestValue()
+            : "undeclared";
+    throw AppCatalogSidecars.invalidEntry(
+        "catalog entry descriptor api.targetStability must match artifact manifest "
+            + "api.targetStability: "
+            + descriptorApi.targetStability().manifestValue()
+            + " != "
+            + manifestTargetStability);
+  }
+
+  private static void requireEffectiveStableBaselineMatches(
+      AppApiCompatibilityMetadata descriptorApi, AppApiCompatibilityMetadata manifestApi) {
+    if (!descriptorApi.targetStabilityDeclared()
+        || descriptorApi.targetStability() != AppApiCompatibilityMetadata.TargetStability.STABLE) {
+      return;
+    }
+    if (Objects.equals(descriptorApi.targetBaseline(), manifestApi.targetBaseline())) {
+      return;
+    }
+    throw AppCatalogSidecars.invalidEntry(
+        "catalog entry descriptor effective api.targetBaseline must match artifact manifest "
+            + "api.targetBaseline: "
+            + descriptorApi.targetBaseline()
+            + " != "
+            + manifestApi.targetBaseline());
+  }
+
+  private static AppApiCompatibilityMetadata mergeApiCompatibility(
+      AppApiCompatibilityMetadata descriptorApi, AppApiCompatibilityMetadata manifestApi) {
     boolean targetStabilityDeclared =
         descriptorApi.targetStabilityDeclared() || manifestApi.targetStabilityDeclared();
     AppApiCompatibilityMetadata.TargetStability targetStability = null;
@@ -402,6 +475,14 @@ public final class AppCatalogWriter {
       targetStability = descriptorApi.targetStability();
     } else if (manifestApi.targetStabilityDeclared()) {
       targetStability = manifestApi.targetStability();
+    }
+    boolean targetBaselineDeclared =
+        descriptorApi.targetBaselineDeclared() || manifestApi.targetBaselineDeclared();
+    String targetBaseline = null;
+    if (descriptorApi.targetBaselineDeclared()) {
+      targetBaseline = descriptorApi.targetBaseline();
+    } else if (manifestApi.targetBaselineDeclared()) {
+      targetBaseline = manifestApi.targetBaseline();
     }
     boolean experimentalCapabilitiesAccepted =
         descriptorApi.experimentalCapabilitiesAcceptedDeclared()
@@ -422,6 +503,8 @@ public final class AppCatalogWriter {
             : descriptorApi.optionalCapabilities(),
         targetStability,
         targetStabilityDeclared,
+        targetBaseline,
+        targetBaselineDeclared,
         experimentalCapabilitiesAccepted,
         experimentalCapabilitiesAcceptedDeclared);
   }
@@ -801,6 +884,9 @@ public final class AppCatalogWriter {
     if (api.targetStabilityDeclared()) {
       appendProperty(
           builder, prefix + "api.targetStability", api.targetStability().manifestValue());
+    }
+    if (api.targetBaselineDeclared()) {
+      appendProperty(builder, prefix + "api.targetBaseline", api.targetBaseline());
     }
     if (api.declared()) {
       appendProperty(

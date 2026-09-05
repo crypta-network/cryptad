@@ -755,6 +755,7 @@
     const networkBudgets = recordValue(data.networkBudgets);
     const securityResponse = recordValue(data.securityResponse);
     const thirdPartyIntake = recordValue(data.thirdPartyIntake);
+    const platformApiCompatibility = recordValue(data.platformApiCompatibility);
 
     const summaryCards = document.createElement("div");
     summaryCards.className = "app-card-list";
@@ -810,6 +811,37 @@
           ["Sensitivity", "Contains raw app-owned user data"],
         ],
         "is-warning",
+      ),
+      summaryCard(
+        "Platform API 1.x compatibility",
+        [
+          ["URL API version", scalar(platformApiCompatibility.urlApiVersion)],
+          ["Contract version", scalar(platformApiCompatibility.contractVersion)],
+          [
+            "Active stable baselines",
+            stringList(platformApiCompatibility.activeStableBaselines).join(", ") || "None",
+          ],
+          [
+            "Supported baseline lifecycle",
+            arrayValue(platformApiCompatibility.baselineRegistrySummary?.supportedBaselines)
+              .map((baseline) => `${scalar(baseline?.id)} (${normalizedStatus(baseline?.status, "Unknown")})`)
+              .join(", ") || "None",
+          ],
+          ["Support phase", normalizedStatus(platformApiCompatibility.supportPhase, "Unknown")],
+          ["History chain", normalizedStatus(platformApiCompatibility.historyChainHealth, "Unknown")],
+          ["Candidate proposals", scalar(platformApiCompatibility.candidateBaselineProposalCount)],
+          ["Graduation blockers", scalar(platformApiCompatibility.graduationBlockerCount)],
+          ["Stable deprecations", scalar(platformApiCompatibility.stableDeprecationCount)],
+          ["App matrix", normalizedStatus(platformApiCompatibility.appCompatibilityMatrixStatus, "Not generated")],
+          ["Runtime observation", normalizedStatus(platformApiCompatibility.runtimeObservationStatus, "Not observed")],
+          ["Protected evidence", normalizedStatus(platformApiCompatibility.protectedOperationState, "Not observed")],
+          [
+            "Evidence boundary",
+            platformApiCompatibility.evidenceBoundary
+              || "Static compatibility metadata is not a runtime verification.",
+          ],
+        ],
+        platformApiCompatibility.historyChainHealth === "healthy" ? "" : "is-warning",
       ),
     );
     sections.betaDashboard.append(summaryCards);
@@ -3361,7 +3393,7 @@
     if (status === "compatible") {
       return "is-success";
     }
-    if (status === "below_minimum" || status === "incompatible") {
+    if (status === "below_minimum" || status === "incompatible" || status === "unsupported-baseline") {
       return "is-error";
     }
     return "is-warning";
@@ -3384,7 +3416,23 @@
     if (status === "incompatible") {
       return "API contract warning";
     }
+    if (status === "unsupported-baseline") {
+      return "Unsupported API baseline";
+    }
     return "API contract unknown";
+  }
+
+  function apiTargetBaselinePresentation(apiCompatibility) {
+    const compatibility = recordValue(apiCompatibility);
+    const targetBaseline =
+      typeof compatibility.targetBaseline === "string" ? compatibility.targetBaseline.trim() : "";
+    if (!targetBaseline) {
+      return { targetBaseline: "Not targeted", declaration: "Not targeted" };
+    }
+    return {
+      targetBaseline,
+      declaration: compatibility.targetBaselineDeclared ? "Explicit" : "Compatibility default",
+    };
   }
 
   function versionTone(app) {
@@ -5877,6 +5925,7 @@
 
   function apiCompatibilityDetailsNode(app) {
     const compatibility = recordValue(app.apiCompatibility);
+    const targetBaseline = apiTargetBaselinePresentation(compatibility);
     const details = document.createElement("details");
     details.className = "json-details api-compatibility-details";
     const summary = document.createElement("summary");
@@ -5887,7 +5936,11 @@
         ["Current API contract version", scalar(compatibility.currentVersion)],
         ["Minimum API contract version", scalar(compatibility.minimumVersion)],
         ["Maximum tested API contract version", scalar(compatibility.maximumTestedVersion)],
+        ["Target API stability", normalizedStatus(compatibility.targetStability, "Legacy experimental")],
+        ["Target stable baseline", targetBaseline.targetBaseline],
+        ["Target baseline declaration", targetBaseline.declaration],
         ["Status", apiCompatibilityLabel(compatibility)],
+        ["Evidence boundary", "Static contract analysis; not a runtime compatibility observation"],
         ["Optional capabilities", formatPermissions(compatibility.optionalCapabilities)],
         ["Experimental capabilities accepted", compatibility.experimentalCapabilitiesAccepted ? "Yes" : "No"],
         ["Warnings", stringList(compatibility.warnings).join("; ") || "None"],

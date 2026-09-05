@@ -434,6 +434,49 @@ python3 tools/release-certification/certify.py stable-ga \
   and commit, dispatch actors, successful producer job, protected environment deployment, artifact
   ID/name, and archive digest before extraction. Do not make historical Stable GA or earlier
   PR-293/PR-294 evidence depend retroactively on PR-295.
+- PR-296 Platform API 1.x compatibility operations use the single side-effect-free
+  `stable-platform-api-1x` command and
+  `.github/workflows/stable-1.0-platform-api-1x-compatibility.yml`. Its only evidence source is the
+  fixed protected `.github/workflows/stable-1.0-platform-api-1x-evidence.yml` producer; authenticate
+  the producer run, exact successful job, protected environment deployment, actors, source, and
+  artifact ownership/name/digest/time bounds before extraction. The static execution template must
+  leave runtime evidence and authority null. The allowlisted
+  `.github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml` producer must first verify
+  the exact static matrix and then use only the digest-pinned adapter and daemon access selected by
+  its protected managed-node environment. The evidence producer independently authenticates that
+  exact runtime run, successful job, protected deployment, source, artifact ownership, and
+  observation bytes, then constructs the runtime authority binding locally. The evidence producer
+  must also authenticate every bound PR-291 through PR-295 and previous Platform API run attempt,
+  exact job, protected deployment, artifact, and summary bytes; copying local summaries is not
+  authentication.
+  Preserve the exact Platform API 1.0 freeze while verifying a digest-chained per-release contract
+  ledger, conditionally required proposal and graduation evidence, history-bound monotonic
+  deprecation clocks, static app matrix, and bounded runtime observation. Derive proposal
+  membership, graduation semantics, and matrix verdicts from the accepted registry and exact
+  history snapshots rather than producer labels. Resolve the
+  oldest-supported matrix role through the ledger's authenticated support projection rather than
+  assuming the genesis release remains supported. Authenticate the independently re-fetched Stable
+  lifecycle receipt and exact descriptor bytes, then derive the minimum `current-stable` or
+  `supported-maintenance` build; the ledger's own oldest-supported field is not authority. New
+  deprecation rows must match their first authenticated history notice and cannot begin removed or
+  backdated. This authority version rejects operational lifecycle states for future baselines until
+  a separately reviewed protected activation receipt exists. A production runtime pass likewise
+  requires an allowlisted protected runtime producer run/job/deployment/artifact binding; a
+  self-digested observation is not evidence. Treat checked-in
+  manifests, repository history files, fixtures, and self-tests as non-operational. Only exact
+  authenticated PR-291 through PR-295 roots may complete closeout. Do not claim a Platform API 1.1
+  activation or the PR-300 long-duration cross-version soak.
+  A nonterminal future definition requires its exact singular version-1 proposal and app-matrix
+  binding; pure `1.0` history may omit a proposal, while multiple simultaneous future definitions
+  require a later schema. Reject member descriptors introduced after a definition's claimed
+  first-complete contract and graduation observations later than the execution evaluation time.
+  Authenticate current authorities against the current execution source ref and previous-history
+  authority against its accepted ledger head's source ref.
+  Treat the app matrix as a derived report, not an app inventory: require a separate closed
+  authority-root-bound subject inventory, compare every identity, digest, target, range, and
+  capability field before computing a verdict, and derive required coverage from that inventory
+  plus the policy-fixed first-party IDs. A PR-292/294/295 summary that omits those fields cannot
+  authenticate them by implication.
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
   branches and `v*` tags. When the manual extended gate produces

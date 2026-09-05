@@ -24,6 +24,14 @@ producer creates the coordinator's exact aggregate artifact from authenticated p
 operational closeout then uses read-only Actions metadata to authenticate the retained PR-291,
 PR-292, and PR-293 ZIPs and their exact summary members.
 
+Platform API release-to-release governance is documented in [Platform API 1.x compatibility
+operations](platform-api-1.x-compatibility-operations.md). The side-effect-free
+`stable-platform-api-1x` command verifies a digest-chained contract ledger, optional future-baseline
+proposal and graduation records, monotonic deprecation history, a static cross-release app matrix,
+and bounded runtime evidence. Fixture evidence cannot activate a baseline or produce operational
+completion; operational closeout requires exact authenticated PR-291 through PR-295 roots. It does
+not claim Platform API 1.1 activation or the PR-300 long-duration network soak.
+
 Python 3.12 or newer is required. The public command is
 `tools/release-certification/certify.py`; the previous per-tool Python scripts and shell wrappers
 were removed when evidence envelope v2 became the release contract.

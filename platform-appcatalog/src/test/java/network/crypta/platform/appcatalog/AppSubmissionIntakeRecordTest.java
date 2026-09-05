@@ -25,6 +25,18 @@ class AppSubmissionIntakeRecordTest {
     assertEquals("sub-hello", restored.toSummary().submissionId());
     assertEquals(REVIEWER_KEY_ID, restored.toSummary().reviewerKeyId());
     assertTrue(restored.toJson().contains("\"auditEvents\""));
+    assertEquals("stable", restored.toSummary().apiTargetStability());
+    assertEquals("1.0", restored.toSummary().apiTargetBaseline());
+    assertTrue(restored.toSummary().toJson().contains("\"apiTargetBaseline\":\"1.0\""));
+  }
+
+  @Test
+  void parse_whenHistoricalRecordOmitsTargetBaseline_expectEmptyBaselinePreserved() {
+    String historical = submittedRecord().toJson().replace(",\"apiTargetBaseline\":\"1.0\"", "");
+
+    AppSubmissionIntakeRecord restored = AppSubmissionIntakeRecord.parse(historical);
+
+    assertEquals(Optional.empty(), restored.apiTargetBaseline());
   }
 
   @Test
@@ -206,6 +218,7 @@ class AppSubmissionIntakeRecordTest {
         SHA256,
         SHA256,
         "stable",
+        Optional.of("1.0"),
         List.of("queue.read"),
         "Example Maintainer",
         "https://example.invalid/contact",

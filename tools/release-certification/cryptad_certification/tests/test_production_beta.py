@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,47 @@ from cryptad_certification.workspace import prepare_context, prepare_run_root
 
 
 class ProductionBetaCharacterizationTest(unittest.TestCase):
+    def test_self_test_git_disables_automatic_maintenance(self) -> None:
+        workspace = Path("fixture-workspace")
+        with mock.patch.object(
+            production_beta_release.subprocess,
+            "run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ) as run:
+            self.assertTrue(
+                production_beta_release.run_git(workspace, "commit", "-m", "fixture")
+            )
+
+        run.assert_called_once_with(
+            [
+                "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+                "commit", "-m", "fixture",
+            ],
+            cwd=str(workspace),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=60,
+        )
+
+    def test_self_test_git_preserves_command_failures(self) -> None:
+        for outcome in (
+            subprocess.CompletedProcess([], 1),
+            OSError("git unavailable"),
+            subprocess.TimeoutExpired("git", 60),
+        ):
+            with self.subTest(outcome=type(outcome).__name__), mock.patch.object(
+                production_beta_release.subprocess, "run"
+            ) as run:
+                if isinstance(outcome, Exception):
+                    run.side_effect = outcome
+                else:
+                    run.return_value = outcome
+                self.assertFalse(
+                    production_beta_release.run_git(Path("fixture-workspace"), "init")
+                )
+
     def test_existing_production_beta_scenarios(self) -> None:
         production_beta_release.run_self_test()
 

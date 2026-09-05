@@ -68,9 +68,14 @@ class PlatformApiContractVerifierTest {
   }
 
   @Test
-  void verify_whenVersion23AppTargetsCurrentContractWithOperatorRoute_expectCompatible() {
+  void verify_whenVersion24AppTargetsCurrentContractWithOperatorRoute_expectCompatible() {
     AppApiCompatibilityMetadata metadata =
-        new AppApiCompatibilityMetadata(1, 23, List.of(), TargetStability.STABLE, false);
+        new AppApiCompatibilityMetadata(
+            1,
+            PlatformApiContract.CURRENT_CONTRACT_VERSION,
+            List.of(),
+            TargetStability.STABLE,
+            false);
 
     CompatibilityVerificationResult result =
         PlatformApiContractVerifier.verify(

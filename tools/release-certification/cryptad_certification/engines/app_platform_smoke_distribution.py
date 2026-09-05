@@ -1807,6 +1807,12 @@ def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[E
             in catalog_writer_text
             and "review.submission.id" in catalog_writer_text
         ),
+        "catalogSchemaV7": (
+            "VERSION_PLATFORM_API_TARGET_BASELINE = 7" in catalog_text
+            and "catalog.version 7 is required when api.targetBaseline metadata is present"
+            in catalog_writer_text
+            and "api.targetBaseline" in catalog_writer_text
+        ),
         "decisionReasonBound": (
             "review.receipt.decision.reason.sha256" in receipt_payload_text
             and "RECEIPT_VERSION_WITH_DECISION_REASON = 2" in receipt_payload_text

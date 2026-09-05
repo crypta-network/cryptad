@@ -32,6 +32,7 @@ python3 tools/release-certification/certify.py stable-independent-reproducibilit
 python3 tools/release-certification/certify.py stable-catalog-authority --self-test
 python3 tools/release-certification/certify.py stable-third-party-pilot --self-test
 python3 tools/release-certification/certify.py stable-federated-catalog --self-test
+python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
 ```
 
 Before dispatching the protected Stable workflows, validate one versioned non-secret execution
@@ -118,6 +119,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `stable-catalog-authority` | Prepare and verify the role-separated Stable key ceremony, exact catalog publication, rotation and rollback drills, transparency artifact, and authenticated closeout without remote mutation. |
 | `stable-third-party-pilot` | Authenticate one external developer handoff, reviewed/rejected/corrected/caution cohort, bounded publisher approval, PR-293 beta publication, exact live-collector bytes, isolated-node runtime drill, and read-only Actions-authenticated operational closeout without remote mutation. |
 | `stable-federated-catalog` | Authenticate bounded signed discovery and non-transitive endorsements, local scoped trust and conflicts, pinned origin/runtime observations, and exact digest-bound PR-291–294 predecessor summaries and closeout coordinates without fetching or mutating local or remote state. |
+| `stable-platform-api-1x` | Verify the append-only Platform API contract ledger, future-baseline proposals, experimental graduation records, monotonic deprecation timelines, static cross-release app matrix, bounded runtime observation, and exact PR-291–295 protected roots without activating a baseline or mutating release state. |
 | `stable-dependency-vulnerability` | Validate authenticated advisory snapshots, exact PR-289 component matching, bounded dispositions, PR-288/287/285 remediation lineage, promotion, and public observation without live retrieval or remote mutation. |
 | `stable-vulnerability` | Validate the protected Stable 1.0 vulnerability case lifecycle, exact disclosure authorization, publication observation, and closure without remote mutation. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
@@ -1195,6 +1197,78 @@ bounded blockers and never reports operational completion.
 See [Federated catalog discovery and local
 trust](../../docs/stable-1.0-federated-catalog-discovery-and-trust.md) for the trust model,
 certification contract, privacy boundary, state machine, and operational prerequisites.
+
+## Platform API 1.x compatibility operations
+
+Run the focused offline authority suite with:
+
+```bash
+python3 tools/release-certification/certify.py stable-platform-api-1x --self-test
+python3 tools/release-certification/certify.py stable-platform-api-1x --help
+```
+
+The seven closed modes verify preflight, append-only contract history, a conditionally required
+future-baseline proposal, descriptor graduation records, a monotonic deprecation ledger, the static
+cross-release app matrix, an optional bounded runtime observation, and closeout. Exact inputs use
+the closed `platform-api-1.x-*-v1` schemas and the checked-in compatibility policy. The example
+execution contract is fixture-only and cannot produce operational completion. History verification
+parses the real contract-envelope shape, recomputes its compatibility-window digest, validates the
+complete named-baseline registry and its self-digested lifecycle, and binds the current history
+head to the exact registry artifact bytes. Operational history additionally requires the exact
+selected RC freeze authenticated by both PR-291 and PR-292: their selected-RC coordinates must
+agree, and the freeze byte/content digests, product root, release/build/source identity, contract
+version, and contract-snapshot digest must match the head. Proposal membership, graduation
+descriptor semantics, and matrix verdicts are recomputed from the accepted registry and
+digest-bound history snapshots; producer assertions do not substitute for those checks.
+
+Production matrix verification also requires the closed app-subject inventory. It independently
+commits the complete compatibility declaration behind every matrix row and the required release-app
+set. Matrix rows and `requiredAppIds` are redundant projections that must exactly match this input;
+removing an app from both matrix collections, or pairing authentic bundle digests with changed
+permissions, baseline, or contract-range fields, fails. The policy fixes the seven required
+first-party IDs, and operational input must additionally carry authenticated third-party-pilot
+coverage. Existing PR-292, PR-294, and PR-295 summaries remain valid for their original purposes,
+but summaries that omit full compatibility subjects cannot alone satisfy this new operational gate.
+Version 1 fails closed before `app-matrix-verified` when only such a broad digest is supplied. It
+does not infer complete compatibility metadata from legacy summaries; operational matrix completion
+remains pending until a versioned protected subject-projection authority can authenticate every
+matrix field.
+
+The singular version-1 proposal binding may be absent only when the registry has no nonterminal
+future definition. One such definition requires its exact proposal and app-matrix bytes; multiple
+simultaneous future definitions require a later evidence schema. The verifier also rejects a
+definition whose member descriptor was introduced after its claimed first-complete contract and a
+graduation observation dated after the execution evaluation time.
+
+The protected import is three-stage. `stable-1.0-platform-api-1x-runtime-observation.yml` verifies
+the static matrix, runs the digest-pinned adapter selected by its protected managed-node
+environment, and uploads the one bounded redaction-checked observation for its exact run and source.
+`stable-1.0-platform-api-1x-evidence.yml` independently authenticates that observation and every
+other protected input, constructs the runtime authority binding locally, and uploads one confined
+aggregate from the exact protected source. The compatibility workflow accepts only that fixed
+aggregate producer and authenticates its exact run, job, protected environment deployment,
+dispatch actors, source, artifact ownership, timestamps, name, and digest before closeout.
+Current authorities are checked against the execution source ref. The previous-history run is
+checked against its authenticated ledger head's source ref so a valid successor may cross release
+branches without weakening ref binding.
+
+Operational closeout requires exact non-fixture PR-291 through PR-295 authority roots. The command
+does not activate Platform API 1.1, change `/api/v1`, authorize an app capability, mutate a runtime,
+publish a release, or claim the long-duration cross-version soak assigned to PR-300. See
+[Platform API 1.x compatibility operations](../../docs/platform-api-1.x-compatibility-operations.md).
+
+The runtime execution template must leave both runtime fields null; a checked-in or caller-filled
+observation cannot bypass the dedicated producer. The protected evidence producer authenticates
+each predecessor's exact run attempt, successful allowlisted job, protected deployment, artifact
+ownership/name/digest, and bound summary bytes before closeout. History records bind both the
+deprecation-ledger head and an explicit
+`oldestSupportedRecordDigest`; matrix verification independently authenticates the published
+Stable lifecycle receipt and descriptor, derives the minimum ordinarily supported build, and
+requires the ledger projection to match. New deprecation rows must match their first authenticated
+history notice. The version-1 authority permits future proposal and preview states but rejects any
+future baseline activation. A production runtime result requires the separately authenticated
+managed-node producer rather than caller-authored status or check labels; actual protected
+execution remains a release operation and is not implied by this implementation.
 
 ## Stable 1.0 catalog authority
 

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "kind": "platform-api-1.x-compatibility-policy",
+  "repositoryIdentity": "github.com/crypta-network/cryptad",
+  "urlApiVersion": "v1",
+  "immutableBootstrapBaseline": {
+    "baselineId": "1.0",
+    "originContractVersion": 19,
+    "artifact": "docs/platform-api/contracts/platform-api-1.0-baseline.json"
+  },
+  "minimumDeprecationContractVersions": 2,
+  "maximumEvidenceBytes": 8388608,
+  "maximumLedgerRecords": 4096,
+  "maximumAppRows": 4096,
+  "requiredFirstPartyAppIds": [
+    "feed-reader",
+    "profile-publisher",
+    "publisher",
+    "queue-manager",
+    "site-publisher",
+    "social-inbox",
+    "trust-graph"
+  ],
+  "maximumRuntimeObservationHours": 24,
+  "runtimeObservationLimit": "bounded-short-smoke",
+  "requiredRuntimeRepresentativeChecks": [
+    "app.start",
+    "platform.contract.read",
+    "stable-endpoint.subset",
+    "cleanup.restored"
+  ],
+  "requiredRuntimeDenialChecks": [
+    "capability.denied",
+    "operator-route.denied"
+  ],
+  "longDurationSoakAuthority": "PR-300",
+  "operationallyActivatableBaselines": ["1.0"],
+  "reviewWorkflow": ".github/workflows/stable-1.0-platform-api-1x-compatibility.yml",
+  "requiredAuthorityWorkflows": {
+    "protectedRelease": ".github/workflows/stable-1.0-protected-release-closeout.yml",
+    "independentReproducibility": ".github/workflows/stable-1.0-independent-reproducibility.yml",
+    "catalogAuthority": ".github/workflows/stable-1.0-catalog-authority.yml",
+    "thirdPartyPilot": ".github/workflows/stable-1.0-third-party-app-pilot.yml",
+    "federatedCatalog": ".github/workflows/stable-1.0-federated-catalog-trust.yml"
+  },
+  "requiredAuthorityProducers": {
+    "protectedRelease": {
+      "workflowPath": ".github/workflows/stable-1.0-protected-release-closeout.yml",
+      "jobName": "Authenticate final protected-release evidence",
+      "environment": "stable-1-0-protected-release-closeout",
+      "summaryFileName": "stable-1.0-protected-release-execution-summary.json",
+      "artifactNamePrefix": "stable-1-0-protected-release-closeout-"
+    },
+    "independentReproducibility": {
+      "workflowPath": ".github/workflows/stable-1.0-independent-reproducibility.yml",
+      "jobName": "Authenticate and compare independent rebuild",
+      "environment": "stable-1.0-independent-reproducibility-external-receipt",
+      "summaryFileName": "stable-1.0-independent-reproducibility-summary.json",
+      "artifactNamePrefix": "stable-1-0-independent-closeout-"
+    },
+    "catalogAuthority": {
+      "workflowPath": ".github/workflows/stable-1.0-catalog-authority.yml",
+      "jobName": "Close out only authenticated catalog-authority evidence",
+      "environment": "stable-1-0-catalog-authority-closeout",
+      "summaryFileName": "stable-1.0-catalog-authority-summary.json",
+      "artifactNamePrefix": "stable-1-0-catalog-authority-closeout-"
+    },
+    "thirdPartyPilot": {
+      "workflowPath": ".github/workflows/stable-1.0-third-party-app-pilot.yml",
+      "jobName": "Authenticate operational closeout",
+      "environment": "stable-1-0-third-party-pilot-closeout",
+      "summaryFileName": "stable-1.0-third-party-app-pilot-summary.json",
+      "artifactNamePrefix": "stable-1-0-third-party-pilot-closeout-"
+    },
+    "federatedCatalog": {
+      "workflowPath": ".github/workflows/stable-1.0-federated-catalog-trust.yml",
+      "jobName": "Close out authenticated federation evidence",
+      "environment": "stable-1-0-federated-catalog-closeout",
+      "summaryFileName": "stable-1.0-federated-catalog-summary.json",
+      "artifactNamePrefix": "stable-federated-catalog-closeout-"
+    }
+  },
+  "previousHistoryProducer": {
+    "workflowPath": ".github/workflows/stable-1.0-platform-api-1x-compatibility.yml",
+    "jobName": "Authenticate and verify Platform API 1.x compatibility evidence",
+    "environment": "stable-1-0-platform-api-1x-compatibility",
+    "summaryFileName": "platform-api-1.x-compatibility-summary.json",
+    "artifactNamePrefix": "stable-platform-api-1x-"
+  },
+  "supportLifecycleProducer": {
+    "workflowPath": ".github/workflows/stable-1.0-support-lifecycle.yml",
+    "jobName": "Independently re-fetch exact lifecycle descriptor",
+    "environment": "stable-1.0-lifecycle-evidence",
+    "summaryFileName": "stable-1.0-support-lifecycle-independent-verification-receipt.json",
+    "artifactNamePrefix": "stable-1-0-lifecycle-verification-"
+  },
+  "runtimeObservationProducer": {
+    "workflowPath": ".github/workflows/stable-1.0-platform-api-1x-runtime-observation.yml",
+    "jobName": "Observe bounded Platform API 1.x runtime compatibility",
+    "environment": "stable-1-0-platform-api-1x-runtime",
+    "summaryFileName": "platform-api-1.x-runtime-observation.json",
+    "artifactNamePrefix": "stable-platform-api-1x-runtime-"
+  },
+  "schemas": {
+    "execution": "platform-api-1.x-execution-v1.schema.json",
+    "selectedRcFreeze": "stable-1.0-rc-freeze-v1.schema.json",
+    "contractSnapshot": "platform-api-contract-snapshot-envelope-v1.schema.json",
+    "baselineRegistry": "platform-api-1.x-baseline-registry-v1.schema.json",
+    "historyLedger": "platform-api-1.x-history-ledger-v1.schema.json",
+    "baselineProposal": "platform-api-1.x-baseline-proposal-v1.schema.json",
+    "graduationRecord": "platform-api-1.x-graduation-record-v1.schema.json",
+    "deprecationLedger": "platform-api-1.x-deprecation-ledger-v1.schema.json",
+    "appSubjectInventory": "platform-api-1.x-app-subject-inventory-v1.schema.json",
+    "appMatrix": "platform-api-1.x-app-compatibility-matrix-v1.schema.json",
+    "runtimeObservation": "platform-api-1.x-runtime-observation-v1.schema.json",
+    "summary": "platform-api-1.x-summary-v1.schema.json"
+  },
+  "operationalRequirements": {
+    "historyAuthenticated": true,
+    "appMatrixVerified": true,
+    "runtimeObservationRequired": true,
+    "allPredecessorAuthoritiesRequired": true,
+    "fixtureEvidenceAccepted": false
+  }
+}

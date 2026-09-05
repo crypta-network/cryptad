@@ -199,6 +199,12 @@ The update review surface includes:
 - changelog metadata when present;
 - permission rationales and a permission delta with added, removed, and unchanged permissions.
 
+Consent preparation derives Platform API compatibility and the permission delta from the verified
+staged bundle manifest. An explicit catalog target-stability or target-baseline declaration must
+match that manifest or consent preparation fails as an invalid bundle. A legacy catalog that omits
+the declaration remains readable, but its staged signed manifest is the compatibility authority;
+catalog compatibility hints cannot make an unsupported staged target appear compatible.
+
 Site Publisher uses the same update lifecycle as other catalog-installed apps: updates are
 detected from signed catalog metadata, reviewed with permission deltas and review receipt status,
 staged as verified bundles, and applied only under the configured app-update policy.

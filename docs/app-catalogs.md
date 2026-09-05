@@ -113,7 +113,7 @@ app.queue-manager.screenshot.1=https://example.invalid/assets/queue-manager-1.pn
 app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
-app.queue-manager.api.maximumTestedVersion=23
+app.queue-manager.api.maximumTestedVersion=24
 app.queue-manager.api.targetStability=stable
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
@@ -137,7 +137,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=23
+app.site-publisher.api.maximumTestedVersion=24
 app.site-publisher.api.targetStability=stable
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
@@ -165,7 +165,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=23
+app.profile-publisher.api.maximumTestedVersion=24
 app.profile-publisher.api.targetStability=experimental
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
@@ -204,7 +204,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
-app.social-inbox.api.maximumTestedVersion=23
+app.social-inbox.api.maximumTestedVersion=24
 app.social-inbox.api.targetStability=experimental
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
@@ -232,7 +232,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=23
+app.feed-reader.api.maximumTestedVersion=24
 app.feed-reader.api.targetStability=stable
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
@@ -273,7 +273,7 @@ app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
 app.trust-graph.api.minimumVersion=22
-app.trust-graph.api.maximumTestedVersion=23
+app.trust-graph.api.maximumTestedVersion=24
 app.trust-graph.api.targetStability=experimental
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
@@ -305,8 +305,9 @@ advisory references. `catalog.version=4` adds catalog-level security response po
 `catalog.version=5` adds first-party maintenance policy metadata. `catalog.version=6` adds
 third-party submission review workflow metadata such as submission ids, pre-review digests,
 reviewer policy fingerprints, receipt fingerprints, decision-rationale digests, resubmission
-links, and non-production markers. Current Cryptad nodes parse all six versions. Older strict
-v1-v5 nodes reject newer catalogs rather than silently accepting unknown metadata fields.
+links, and non-production markers. `catalog.version=7` adds the explicit named Platform API target
+baseline. Current Cryptad nodes parse all seven versions. Older strict nodes reject a newer catalog
+rather than silently accepting unknown metadata fields.
 
 Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
 app-store metadata fields remain optional within the v2 schema. V1 and v2 catalogs that omit
@@ -431,6 +432,7 @@ Catalog entries can include these optional fields:
 | `app.<id>.api.maximumTestedVersion` | Advisory maximum Platform API compatibility contract version tested by the app author. |
 | `app.<id>.api.optionalCapabilities` | Advisory comma-separated optional capability names used for verifier and review warnings. |
 | `app.<id>.api.targetStability` | App author target: `stable` for the Platform API 1.0 stable baseline or `experimental` for opt-in app-facing experimental API. |
+| `app.<id>.api.targetBaseline` | Explicit named Platform API 1.x compatibility baseline; this field requires `catalog.version=7`. |
 | `app.<id>.api.experimentalCapabilitiesAccepted` | Whether the app author explicitly accepts experimental capability use. |
 | `app.<id>.review.receipt.*` | Optional independently signed review receipt. See [Trusted review receipts](#trusted-review-receipts). |
 
@@ -648,6 +650,8 @@ prefix. The writer computes `bundle.sha256` and `bundle.size.bytes` from the loc
 A descriptor and artifact with no app-store metadata and no API compatibility metadata produce
 `catalog.version=1`; descriptors that include app-store metadata, or descriptors/artifacts that
 declare API compatibility metadata, produce `catalog.version=2`.
+An explicit `api.targetBaseline` raises the generated schema to `catalog.version=7`; the writer
+does not add that field to v2-v6 signed formats. Existing v1-v6 bytes remain valid and readable.
 
 Create, sign, and verify a catalog with:
 

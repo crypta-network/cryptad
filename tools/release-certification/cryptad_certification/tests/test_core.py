@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from cryptad_certification import cli, selftest
 from cryptad_certification.envelope import from_legacy, validate_envelope
 from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.manifest import ManifestError, load_manifest
@@ -643,6 +644,37 @@ class EnvelopeTest(unittest.TestCase):
         }
 
         self.assertEqual([], scan_value(value))
+
+    def test_scanner_accepts_only_closed_public_route_contexts_and_templates(self) -> None:
+        safe_values = (
+            {"routeTemplate": "/config/overrides"},
+            {"routeTemplate": "/node/greeting"},
+            {"routeTemplate": "/diagnostics"},
+            {"method": "GET", "path": "/api/v1/platform/contract"},
+            {"routes": ["/apps/publisher/", "/content/fetch"]},
+            {"replacementUrls": {"diagnostic": "/app/node/#diagnostics"}},
+            {"publicUrl": "https://example.invalid/releases/v24"},
+        )
+        unsafe_values = (
+            {"artifactUrl": "/config/cryptad.ini"},
+            {"reportHref": "/node/private"},
+            {"outputEndpoint": "/diagnostics/private.json"},
+            {"routeTemplate": "/config/cryptad.ini"},
+            {"endpoint": "/node/private"},
+            {"method": "GET", "path": "/diagnostics/private"},
+            {"method": "not-http", "path": "/api/v1/platform/contract"},
+            {"replacementUrls": {"diagnostic": "/app/node/private"}},
+        )
+
+        for value in safe_values:
+            with self.subTest(safe=value):
+                self.assertEqual([], scan_value(value))
+        for value in unsafe_values:
+            with self.subTest(unsafe=value):
+                self.assertIn(
+                    "absolute-path",
+                    {finding["category"] for finding in scan_value(value)},
+                )
 
     def test_scanner_rejects_malformed_sanitized_engine_output(self) -> None:
         cases = {
@@ -1392,6 +1424,14 @@ class SourceSizeTest(unittest.TestCase):
 
 
 class CommandIntegrationTest(unittest.TestCase):
+    def test_self_test_parser_exposes_every_registered_suite(self) -> None:
+        self.assertEqual(("all", *selftest.SUITE_MODULES), cli.SELF_TEST_SUITES)
+        parser = cli.build_parser()
+        for suite_name in cli.SELF_TEST_SUITES:
+            with self.subTest(suite=suite_name):
+                parsed = parser.parse_args(["self-test", suite_name])
+                self.assertEqual(suite_name, parsed.suite)
+
     def test_network_scale_command_writes_a_bound_v2_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

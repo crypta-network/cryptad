@@ -438,6 +438,12 @@ snapshots, `PlatformApiDeprecation`, and stable third-party samples. It proves t
 validation both fail on clock reset, premature stable removal, or an unauthenticated compatibility
 claim.
 
+The Platform API 1.x deprecation ledger imports these clocks and adds a predecessor/timeline digest
+for release-to-release verification. It cannot replace this lifecycle authority, move the first
+notice later, remove an earlier deprecation object, shorten the runway, or hide the notice in a new
+baseline. See [Platform API 1.x compatibility
+operations](platform-api-1.x-compatibility-operations.md).
+
 ## App, catalog, advisory, and profile governance
 
 The lifecycle governance projection summarizes existing authenticated sources. It does not replace

@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataUpdateSnapshot;
@@ -36,6 +37,7 @@ import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.AppHostException;
 import network.crypta.platform.apphost.InstalledAppOrigin;
 import network.crypta.platform.apphost.InstalledAppSnapshot;
+import network.crypta.platform.apphost.RunningAppSnapshot;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.appvault.AppVaultService;
 
@@ -149,11 +151,6 @@ public final class AppUpdateService {
   private static final String JSON_BLOCKS_AUTOMATIC_APPLY = "blocksAutomaticApply";
   private static final String JSON_MESSAGE = "message";
   private static final String JSON_CATALOG_ID = "catalogId";
-
-  private enum ReviewGate {
-    UPDATE,
-    POLICY_APPLY
-  }
 
   private final AppHost appHost;
   private final AppCatalogManager catalogManager;
@@ -919,10 +916,10 @@ public final class AppUpdateService {
     try {
       requireStageableCandidate(
           candidate, reviewAcknowledged, securityAcknowledged, targetCatalogId != null);
-      recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "explicit_stage_allowed");
+      catalogAuthority.recordUpdateGate(candidate, "explicit_stage_allowed");
     } catch (PlatformApiException exception) {
-      recordUpdateReviewGate(
-          ReviewGate.UPDATE, candidate, "explicit_stage_blocked:" + exception.errorCode());
+      catalogAuthority.recordUpdateGate(
+          candidate, "explicit_stage_blocked:" + exception.errorCode());
       throw exception;
     }
     stageCandidate(
@@ -1002,8 +999,8 @@ public final class AppUpdateService {
         appHost.stop(normalizedAppId);
       }
       verifyStageStillMatchesInstalledForApply(normalizedAppId, staged, installed);
-      AppManifest targetManifest = stagedManifestForApplyOrReject(staged);
       verifyStagedBundleBeforeApply(staged);
+      AppManifest targetManifest = stagedManifestForApplyOrReject(staged);
       revalidateSourceSwitchAuthorizationForApply(normalizedAppId, staged);
       requireCurrentStagedReviewDecision(normalizedAppId, staged);
       if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
@@ -1055,7 +1052,7 @@ public final class AppUpdateService {
           staged.candidate().targetVersion(),
           null,
           vaultCleanupFailed ? MESSAGE_APPLY_VAULT_CLEANUP_FAILED : "Staged update applied.");
-      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_applied");
+      catalogAuthority.recordPolicyApplyGate(staged.candidate(), "explicit_apply_applied");
       return summary(normalizedAppId, updated);
     } catch (PlatformApiException exception) {
       handlePlatformApplyFailure(
@@ -1063,6 +1060,7 @@ public final class AppUpdateService {
               normalizedAppId,
               staged,
               wasRunning,
+              installed,
               updated,
               healthFailureState,
               appDataSnapshot,
@@ -1076,6 +1074,7 @@ public final class AppUpdateService {
                   normalizedAppId,
                   staged,
                   wasRunning,
+                  installed,
                   updated,
                   healthFailureState,
                   appDataSnapshot,
@@ -1089,6 +1088,7 @@ public final class AppUpdateService {
               normalizedAppId,
               staged,
               wasRunning,
+              installed,
               updated,
               healthFailureState,
               appDataSnapshot,
@@ -1104,13 +1104,11 @@ public final class AppUpdateService {
       String appId, StagedUpdate staged, InstalledAppSnapshot installed, ApplyOptions options) {
     try {
       boolean wasRunning = validateApplyRequest(appId, staged, installed, options);
-      recordUpdateReviewGate(ReviewGate.POLICY_APPLY, staged.candidate(), "explicit_apply_allowed");
+      catalogAuthority.recordPolicyApplyGate(staged.candidate(), "explicit_apply_allowed");
       return wasRunning;
     } catch (PlatformApiException exception) {
-      recordUpdateReviewGate(
-          ReviewGate.POLICY_APPLY,
-          staged.candidate(),
-          "explicit_apply_blocked:" + exception.errorCode());
+      catalogAuthority.recordPolicyApplyGate(
+          staged.candidate(), "explicit_apply_blocked:" + exception.errorCode());
       throw exception;
     }
   }
@@ -1132,7 +1130,8 @@ public final class AppUpdateService {
           context.migrationPlan());
       return;
     }
-    restartOriginalAfterUncommittedApplyFailure(context.appId(), context.wasRunning(), null);
+    restartOriginalAfterUncommittedApplyFailure(
+        context.appId(), context.wasRunning(), context.original(), null);
   }
 
   private boolean shouldRestoreSnapshotAfterRollback(ApplyFailureContext context) {
@@ -1145,7 +1144,7 @@ public final class AppUpdateService {
   private PlatformApiException handleAppHostApplyFailure(
       ApplyFailureContext context, AppHostException exception) {
     restartOriginalAfterUncommittedApplyFailure(
-        context.appId(), context.wasRunning(), context.updated());
+        context.appId(), context.wasRunning(), context.original(), context.updated());
     return appHostApplyFailure(
         context.appId(),
         context.staged(),
@@ -1167,7 +1166,8 @@ public final class AppUpdateService {
           context.migrationPlan());
       return;
     }
-    restartOriginalAfterUncommittedApplyFailure(context.appId(), context.wasRunning(), null);
+    restartOriginalAfterUncommittedApplyFailure(
+        context.appId(), context.wasRunning(), context.original(), null);
   }
 
   private StagedUpdate requireStagedUpdate(String appId) {
@@ -1342,7 +1342,9 @@ public final class AppUpdateService {
 
   private AppManifest stagedManifestForApplyOrReject(StagedUpdate staged) {
     try {
-      return AppUpdateBundleSupport.readManifest(staged.stagedBundleDirectory());
+      AppManifest manifest = AppUpdateBundleSupport.readManifest(staged.stagedBundleDirectory());
+      requireStagedPlatformApiAdmission(staged.entry(), manifest);
+      return manifest;
     } catch (IOException _) {
       throw lifecycleFailure(
           400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle manifest is invalid.");
@@ -1458,8 +1460,8 @@ public final class AppUpdateService {
   private void rollbackAndRestoreSnapshot(
       String appId, AppDataUpdateSnapshot snapshot, HealthFailureState healthFailureState) {
     try {
-      invokeRollback(appId);
-      healthFailureState.markRollbackCommitted();
+      InstalledAppSnapshot rolledBack = invokeRollback(appId);
+      healthFailureState.markRollbackCommitted(rolledBack);
     } catch (IOException _) {
       healthFailureState.markRollbackFailed();
       throw lifecycleFailure(
@@ -1501,7 +1503,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_APPLY_FAILED);
-    recordUpdateReviewGate(ReviewGate.POLICY_APPLY, candidate, "apply_failed:" + errorCode);
+    catalogAuthority.recordPolicyApplyGate(candidate, "apply_failed:" + errorCode);
   }
 
   private PlatformApiException appHostApplyFailure(
@@ -1556,7 +1558,12 @@ public final class AppUpdateService {
    */
   public synchronized Map<String, Object> rollback(String appId, boolean restart) {
     String normalizedAppId = normalizeInstalledAppId(appId);
-    boolean wasRunning = appHost.status(normalizedAppId).isPresent();
+    Optional<RunningAppSnapshot> running = appHost.status(normalizedAppId);
+    boolean wasRunning = running.isPresent();
+    InstalledAppSnapshot original =
+        running
+            .map(snapshot -> new InstalledAppSnapshot(snapshot.manifest(), snapshot.paths()))
+            .orElse(null);
     if (wasRunning && !restart) {
       throw lifecycleFailure(
           409, ERROR_ROLLBACK_APP_RUNNING, "App must be stopped before rollback.");
@@ -1584,12 +1591,12 @@ public final class AppUpdateService {
           "Previous app bundle restored.");
       return summary(normalizedAppId, rolledBack);
     } catch (AppHostException exception) {
-      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning);
+      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning, original);
       PlatformApiException mapped = appHostRollbackFailure(exception);
       recordRollbackFailure(normalizedAppId, mapped.errorCode());
       throw mapped;
     } catch (IOException _) {
-      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning);
+      restartOriginalAfterUncommittedRollbackFailure(normalizedAppId, wasRunning, original);
       recordRollbackFailure(normalizedAppId, ERROR_ROLLBACK_FAILED);
       throw lifecycleFailure(500, ERROR_ROLLBACK_FAILED, MESSAGE_ROLLBACK_FAILED);
     }
@@ -1621,13 +1628,17 @@ public final class AppUpdateService {
   }
 
   private void restartOriginalAfterUncommittedApplyFailure(
-      String appId, boolean wasRunning, InstalledAppSnapshot updated) {
+      String appId,
+      boolean wasRunning,
+      InstalledAppSnapshot original,
+      InstalledAppSnapshot updated) {
     if (updated != null) {
       return;
     }
     restartOriginalAfterUncommittedFailure(
         appId,
         wasRunning,
+        original,
         ACTION_APPLY,
         ERROR_UPDATE_FAILED,
         "Update failed before replacement, and original app restart failed.");
@@ -1637,30 +1648,74 @@ public final class AppUpdateService {
     if (!context.healthFailureState().rollbackCommitted()) {
       return;
     }
-    restartOriginalAfterUncommittedFailure(
-        context.appId(),
-        context.wasRunning(),
-        ACTION_APPLY,
-        ERROR_UPDATE_FAILED,
-        "Update failed after replacement, rollback succeeded, and original app restart failed.");
+    restartRestoredAfterCommittedApplyFailure(
+        context.appId(), context.wasRunning(), context.healthFailureState().rolledBackSnapshot());
   }
 
-  private void restartOriginalAfterUncommittedRollbackFailure(String appId, boolean wasRunning) {
+  private void restartRestoredAfterCommittedApplyFailure(
+      String appId, boolean wasRunning, InstalledAppSnapshot rolledBack) {
+    if (!wasRunning || appHost.status(appId).isPresent()) {
+      return;
+    }
+    try {
+      requireCurrentCompatibility(rolledBack);
+      appHost.start(appId);
+    } catch (PlatformApiException exception) {
+      appendHistory(
+          appId,
+          ACTION_APPLY,
+          STATUS_FAILED,
+          null,
+          rolledBack.manifest().appVersion(),
+          exception.errorCode(),
+          "Update rollback restored the previous bundle, but Platform API compatibility blocked"
+              + " its restart.");
+    } catch (IOException _) {
+      appendHistory(
+          appId,
+          ACTION_APPLY,
+          STATUS_FAILED,
+          null,
+          rolledBack.manifest().appVersion(),
+          ERROR_UPDATE_FAILED,
+          "Update failed after replacement, rollback succeeded, and original app restart failed.");
+    }
+  }
+
+  private void restartOriginalAfterUncommittedRollbackFailure(
+      String appId, boolean wasRunning, InstalledAppSnapshot original) {
     restartOriginalAfterUncommittedFailure(
         appId,
         wasRunning,
+        original,
         ACTION_ROLLBACK,
         ERROR_ROLLBACK_FAILED,
         "Rollback failed before restore, and original app restart failed.");
   }
 
   private void restartOriginalAfterUncommittedFailure(
-      String appId, boolean wasRunning, String action, String errorCode, String message) {
+      String appId,
+      boolean wasRunning,
+      InstalledAppSnapshot original,
+      String action,
+      String errorCode,
+      String message) {
     if (!wasRunning || appHost.status(appId).isPresent()) {
       return;
     }
     try {
+      requireCurrentCompatibility(Objects.requireNonNull(original, "original"));
       appHost.start(appId);
+    } catch (PlatformApiException exception) {
+      appendHistory(
+          appId,
+          action,
+          STATUS_FAILED,
+          null,
+          original.manifest().appVersion(),
+          exception.errorCode(),
+          "Recovery kept the original bundle stopped because Platform API compatibility blocked"
+              + " its restart.");
     } catch (IOException _) {
       appendHistory(appId, action, STATUS_FAILED, null, null, errorCode, message);
     }
@@ -1688,7 +1743,18 @@ public final class AppUpdateService {
 
   private void startAfterRollback(String appId, InstalledAppSnapshot rolledBack) {
     try {
+      requireCurrentCompatibility(rolledBack);
       appHost.start(appId);
+    } catch (PlatformApiException exception) {
+      appendHistory(
+          appId,
+          ACTION_ROLLBACK,
+          STATUS_FAILED,
+          null,
+          rolledBack.manifest().appVersion(),
+          exception.errorCode(),
+          "Previous app bundle restored, but Platform API compatibility blocked its restart.");
+      throw exception;
     } catch (IOException _) {
       appendHistory(
           appId,
@@ -1701,6 +1767,11 @@ public final class AppUpdateService {
       throw lifecycleFailure(
           500, ERROR_ROLLBACK_RESTART_FAILED, "Previous app bundle restored, but restart failed.");
     }
+  }
+
+  private static void requireCurrentCompatibility(InstalledAppSnapshot installed) {
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        installed.manifest().apiCompatibility(), installed.manifest().permissions());
   }
 
   private void recordRollbackFailure(String appId, String errorCode) {
@@ -1811,8 +1882,8 @@ public final class AppUpdateService {
     }
     if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
       appendCompatibilityGateHistory(appId, candidate);
-      recordUpdateReviewGate(
-          ReviewGate.POLICY_APPLY, candidate, "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
+      catalogAuthority.recordPolicyApplyGate(
+          candidate, "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
       return;
     }
     if (!stageCandidateForAutomaticPolicy(appId, installed, candidate, ACTION_APPLY)) {
@@ -1830,8 +1901,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_APP_RUNNING,
         "Policy skipped apply because the app is running.");
-    recordUpdateReviewGate(
-        ReviewGate.POLICY_APPLY, candidate, "policy_apply_skipped:" + ERROR_APP_RUNNING);
+    catalogAuthority.recordPolicyApplyGate(candidate, "policy_apply_skipped:" + ERROR_APP_RUNNING);
   }
 
   private boolean stageCandidateForAutomaticPolicy(
@@ -1887,8 +1957,8 @@ public final class AppUpdateService {
           candidate.targetVersion(),
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Candidate no longer matches the installed app version.");
-      recordUpdateReviewGate(
-          ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+      catalogAuthority.recordUpdateGate(
+          candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
       throw lifecycleFailure(
           409,
           ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -1919,6 +1989,7 @@ public final class AppUpdateService {
             ERROR_CATALOG_SOURCE_SWITCH_CONSENT_REQUIRED,
             "A same-version source switch requires an exact source-switch preview.");
       }
+      verifyStagedBundleBeforeStageDryRun(appId, candidate, plan);
       AppManifest targetManifest = stagedManifestOrReject(appId, candidate, plan);
       AppDataMigrationPlan migrationPlan =
           AppUpdateMigrationPlanner.buildPlan(
@@ -1927,7 +1998,6 @@ public final class AppUpdateService {
       requireStoppedForStageDryRun(appId, candidate, migrationPlan, plan);
       requireStageableMigrationExecution(appId, candidate, migrationPlan, targetManifest, plan);
       if (migrationPlan.required()) {
-        verifyStagedBundleBeforeStageDryRun(appId, candidate, plan);
         AppDataMigrationRunner.MigrationExecutionResult dryRunResult =
             runStageDryRunOrReject(appId, candidate, plan, migrationPlan, targetManifest);
         if (!dryRunResult.success()) {
@@ -1955,7 +2025,7 @@ public final class AppUpdateService {
           stagedCandidate.targetVersion(),
           null,
           "Verified update candidate staged.");
-      recordUpdateReviewGate(ReviewGate.UPDATE, stagedCandidate, "stage_staged");
+      catalogAuthority.recordUpdateGate(stagedCandidate, "stage_staged");
     }
   }
 
@@ -2097,8 +2167,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_UPDATE_CANDIDATE_CHANGED,
         "Prepared catalog plan no longer matches the reviewed candidate.");
-    recordUpdateReviewGate(
-        ReviewGate.UPDATE, candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+    catalogAuthority.recordUpdateGate(candidate, "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
     throw lifecycleFailure(
         409,
         ERROR_UPDATE_CANDIDATE_CHANGED,
@@ -2133,13 +2202,27 @@ public final class AppUpdateService {
   private AppManifest stagedManifestOrReject(
       String appId, AppUpdateCandidate candidate, AppCatalogInstallPlan plan) {
     try {
-      return AppUpdateBundleSupport.readManifest(plan.stagedBundleDirectory());
+      AppManifest manifest = AppUpdateBundleSupport.readManifest(plan.stagedBundleDirectory());
+      requireStagedPlatformApiAdmission(plan.entry(), manifest);
+      return manifest;
+    } catch (PlatformApiException exception) {
+      recordStageFailure(appId, candidate, exception.errorCode());
+      closePlan(plan);
+      throw exception;
     } catch (IOException _) {
       recordStageFailure(appId, candidate, ERROR_INVALID_APP_BUNDLE);
       closePlan(plan);
       throw lifecycleFailure(
           400, ERROR_INVALID_APP_BUNDLE, "Staged app bundle manifest is invalid.");
     }
+  }
+
+  private static void requireStagedPlatformApiAdmission(
+      AppCatalogEntry entry, AppManifest manifest) {
+    PlatformApiAppAdmission.requireCatalogDeclarationMatchesManifest(
+        entry.compatibility().apiCompatibility(), manifest.apiCompatibility());
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        manifest.apiCompatibility(), manifest.permissions());
   }
 
   private void requireStageableMigrationPlan(
@@ -2436,13 +2519,48 @@ public final class AppUpdateService {
 
   private AppUpdateCandidate candidateWithMigrationPlan(
       AppUpdateCandidate candidate, AppDataMigrationPlan migrationPlan) {
+    return copyCandidate(
+        candidate,
+        candidate.status(),
+        candidate.apiCompatibility(),
+        candidate.permissionDelta(),
+        migrationPlan);
+  }
+
+  private AppUpdateCandidate candidateWithStagedManifest(
+      AppUpdateCandidate candidate,
+      InstalledAppSnapshot installed,
+      AppCatalogEntry entry,
+      AppManifest targetManifest,
+      AppDataMigrationPlan migrationPlan) {
+    PlatformApiAppAdmission.requireCatalogDeclarationMatchesManifest(
+        entry.compatibility().apiCompatibility(), targetManifest.apiCompatibility());
+    Map<String, Object> apiCompatibility =
+        PlatformApiAppAdmission.summarizeAdmission(
+            targetManifest.apiCompatibility(), targetManifest.permissions());
+    AppUpdateCandidateStatus status =
+        apiCompatibilityBlocksUpdate(apiCompatibility)
+            ? AppUpdateCandidateStatus.INCOMPATIBLE
+            : candidate.status();
+    Map<String, Object> permissionDelta =
+        AppUpdateCandidate.permissionDelta(
+            targetManifest.permissions(), installed.manifest().permissions());
+    return copyCandidate(candidate, status, apiCompatibility, permissionDelta, migrationPlan);
+  }
+
+  private static AppUpdateCandidate copyCandidate(
+      AppUpdateCandidate candidate,
+      AppUpdateCandidateStatus status,
+      Map<String, Object> apiCompatibility,
+      Map<String, Object> permissionDelta,
+      AppDataMigrationPlan migrationPlan) {
     return new AppUpdateCandidate(
         candidate.appId(),
         candidate.catalogId(),
         candidate.catalogSourceId(),
         candidate.installedVersion(),
         candidate.targetVersion(),
-        candidate.status(),
+        status,
         candidate.versionComparison(),
         candidate.channel(),
         candidate.supportStatus(),
@@ -2456,8 +2574,8 @@ public final class AppUpdateService {
         candidate.bundleType(),
         candidate.review(),
         candidate.reviewTrust(),
-        candidate.apiCompatibility(),
-        candidate.permissionDelta(),
+        apiCompatibility,
+        permissionDelta,
         migrationPlan.toJsonValue(),
         candidate.running(),
         candidate.detectedAt());
@@ -2478,11 +2596,12 @@ public final class AppUpdateService {
             "Catalog candidate changed since consent preview generation.");
       }
       AppManifest targetManifest = stagedManifestForConsentPreview(plan);
-      return candidateWithMigrationPlan(
-          candidate,
+      AppDataMigrationPlan migrationPlan =
           AppUpdateMigrationPlanner.buildPlan(
                   appDataService, appId, installed.manifest(), targetManifest)
-              .withoutDryRunResult());
+              .withoutDryRunResult();
+      return candidateWithStagedManifest(
+          candidate, installed, plan.entry(), targetManifest, migrationPlan);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -2523,7 +2642,7 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         errorCode,
         MESSAGE_STAGE_FAILED);
-    recordUpdateReviewGate(ReviewGate.UPDATE, candidate, "stage_failed:" + errorCode);
+    catalogAuthority.recordUpdateGate(candidate, "stage_failed:" + errorCode);
   }
 
   private AppUpdateCandidate detectCandidate(
@@ -2792,10 +2911,11 @@ public final class AppUpdateService {
     return catalogAuthority.targetSecurityDecision(catalogId, entry);
   }
 
-  private void recordUpdateReviewGate(ReviewGate kind, AppUpdateCandidate candidate, String phase) {
-    switch (kind) {
-      case UPDATE -> catalogAuthority.recordUpdateGate(candidate, phase);
-      case POLICY_APPLY -> catalogAuthority.recordPolicyApplyGate(candidate, phase);
+  private void recordPolicyReviewGate(String action, AppUpdateCandidate candidate, String phase) {
+    if (ACTION_STAGE.equals(action)) {
+      catalogAuthority.recordUpdateGate(candidate, phase);
+    } else {
+      catalogAuthority.recordPolicyApplyGate(candidate, phase);
     }
   }
 
@@ -2805,7 +2925,9 @@ public final class AppUpdateService {
 
   private static boolean apiCompatibilityBlocksUpdate(Map<String, Object> apiCompatibility) {
     String apiStatus = String.valueOf(apiCompatibility.get(JSON_STATUS));
-    return "below_minimum".equals(apiStatus) || "incompatible".equals(apiStatus);
+    return "below_minimum".equals(apiStatus)
+        || "incompatible".equals(apiStatus)
+        || "unsupported-baseline".equals(apiStatus);
   }
 
   static Integer compareDottedNumericVersions(String left, String right) {
@@ -2939,8 +3061,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         reviewGateFailureCode(candidate.reviewTrust()),
         "Policy skipped update because no trusted positive review receipt verified.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
+    recordPolicyReviewGate(
+        action,
         candidate,
         policyBlockedEventStatus(action, reviewGateFailureCode(candidate.reviewTrust())));
   }
@@ -2956,10 +3078,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_CHANNEL_POLICY_BLOCKED,
         "Policy skipped update because the catalog channel is not allowed.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
-        candidate,
-        policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
+    recordPolicyReviewGate(
+        action, candidate, policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
   }
 
   private void appendMaterialConsentHistory(
@@ -2972,10 +3092,8 @@ public final class AppUpdateService {
         candidate.targetVersion(),
         ERROR_CONSENT_REQUIRED,
         "Policy skipped update because material consent is required.");
-    recordUpdateReviewGate(
-        ACTION_STAGE.equals(action) ? ReviewGate.UPDATE : ReviewGate.POLICY_APPLY,
-        candidate,
-        policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
+    recordPolicyReviewGate(
+        action, candidate, policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
   }
 
   private static String policyBlockedEventStatus(String action, String errorCode) {
@@ -3282,8 +3400,8 @@ public final class AppUpdateService {
       String appId, ApplyOptions options, HealthFailureState healthFailureState) {
     if (options.rollbackOnHealthFailure() && rollbackAvailable(appId)) {
       try {
-        invokeRollback(appId);
-        healthFailureState.markRollbackCommitted();
+        InstalledAppSnapshot rolledBack = invokeRollback(appId);
+        healthFailureState.markRollbackCommitted(rolledBack);
       } catch (IOException _) {
         throw lifecycleFailure(
             500,
@@ -3796,6 +3914,7 @@ public final class AppUpdateService {
       String appId,
       StagedUpdate staged,
       boolean wasRunning,
+      InstalledAppSnapshot original,
       InstalledAppSnapshot updated,
       HealthFailureState healthFailureState,
       AppDataUpdateSnapshot appDataSnapshot,
@@ -3803,6 +3922,7 @@ public final class AppUpdateService {
     private ApplyFailureContext {
       Objects.requireNonNull(appId, JSON_APP_ID);
       Objects.requireNonNull(staged, "staged");
+      Objects.requireNonNull(original, "original");
       Objects.requireNonNull(healthFailureState, "healthFailureState");
       Objects.requireNonNull(migrationPlan, "migrationPlan");
     }
@@ -3822,6 +3942,7 @@ public final class AppUpdateService {
     private boolean rollbackCommitted;
     private boolean appDataRestored;
     private boolean rollbackFailed;
+    private InstalledAppSnapshot rolledBackSnapshot;
 
     private boolean rollbackCommitted() {
       return rollbackCommitted;
@@ -3835,7 +3956,12 @@ public final class AppUpdateService {
       return rollbackFailed;
     }
 
-    private void markRollbackCommitted() {
+    private InstalledAppSnapshot rolledBackSnapshot() {
+      return Objects.requireNonNull(rolledBackSnapshot, "rolledBackSnapshot");
+    }
+
+    private void markRollbackCommitted(InstalledAppSnapshot rolledBackSnapshot) {
+      this.rolledBackSnapshot = Objects.requireNonNull(rolledBackSnapshot, "rolledBackSnapshot");
       rollbackCommitted = true;
     }
 

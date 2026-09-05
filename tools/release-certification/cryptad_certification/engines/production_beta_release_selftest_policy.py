@@ -2006,9 +2006,11 @@ def assert_no_clean_rerun_drops_stale_dist_files() -> None:
         assert "reports/stale-report.txt" not in names, names
 
 def run_git(workspace: Path, *args: str) -> bool:
+    # Detached maintenance can keep writing .git/objects after a fixture commit returns,
+    # racing TemporaryDirectory cleanup. These disposable repositories need no auto-GC.
     try:
         completed = subprocess.run(
-            ["git", *args],
+            ["git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", *args],
             cwd=str(workspace),
             text=True,
             stdout=subprocess.PIPE,

@@ -518,7 +518,9 @@ their workflow needs them.
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
 metadata, changelog metadata, and advisory minimum Cryptad version. Descriptors without those
 fields and without API compatibility metadata generate minimal `catalog.version=1` catalogs;
-descriptors or artifacts with store/API compatibility metadata generate `catalog.version=2`. See
+descriptors or artifacts with store/API compatibility metadata generate at least
+`catalog.version=2`. An explicit `api.targetBaseline` requires `catalog.version=7`, so older strict
+consumers reject the new compatibility subject instead of ignoring it. See
 [docs/app-dev-cli.md](docs/app-dev-cli.md) for descriptor fields.
 
 `crypta-app review sign` and `crypta-app review verify` create and check independent review

@@ -13,8 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 import network.crypta.platform.api.AppAuditEvent;
 import network.crypta.platform.api.AppAuditLog;
-import network.crypta.platform.api.PlatformApiContract;
-import network.crypta.platform.api.PlatformApiContractVerifier;
+import network.crypta.platform.api.PlatformApiAppAdmission;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
@@ -329,6 +328,8 @@ public final class AppsApiHandler {
       Map<String, List<String>> queryParameters, boolean includeVaultDetails) {
     Path stagedDir = parseStagedDirectory(queryParameters);
     AppManifest manifest = parseManifest(stagedDir);
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        manifest.apiCompatibility(), manifest.permissions());
     if (installed(manifest.appId())) {
       throw conflict(APP_ALREADY_INSTALLED_PREFIX + manifest.appId());
     }
@@ -381,6 +382,8 @@ public final class AppsApiHandler {
     String normalizedAppId = normalizeAppId(appId);
     Path stagedDir = parseStagedDirectory(queryParameters);
     AppManifest manifest = parseManifest(stagedDir);
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        manifest.apiCompatibility(), manifest.permissions());
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + normalizedAppId);
     }
@@ -439,7 +442,9 @@ public final class AppsApiHandler {
     if (appHost.status(normalizedAppId).isPresent()) {
       throw conflict("app is already running: " + normalizedAppId);
     }
-    requireInstalled(normalizedAppId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    PlatformApiAppAdmission.requireCurrentCompatibility(
+        installed.manifest().apiCompatibility(), installed.manifest().permissions());
 
     try {
       RunningAppSnapshot running = appHost.start(normalizedAppId);
@@ -984,8 +989,7 @@ public final class AppsApiHandler {
 
   private static Map<String, Object> apiCompatibility(
       AppApiCompatibilityMetadata metadata, List<String> permissions) {
-    return PlatformApiContractVerifier.summarize(
-        metadata, permissions, PlatformApiContract.current());
+    return PlatformApiAppAdmission.summarizeAdmission(metadata, permissions);
   }
 
   private static String sameOriginFallbackUrl(AppManifest manifest) {

@@ -91,6 +91,10 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_stable_federated_catalog",
         "cryptad_certification.tests.test_stable_federated_catalog_workflow",
     ],
+    "stable-platform-api-1x": [
+        "cryptad_certification.tests.test_stable_platform_api_1x",
+        "cryptad_certification.tests.test_stable_platform_api_1x_workflow",
+    ],
     "stable-independent-reproducibility": [
         "cryptad_certification.tests.test_stable_independent_handoff",
         "cryptad_certification.tests.test_stable_independent_reproducibility",

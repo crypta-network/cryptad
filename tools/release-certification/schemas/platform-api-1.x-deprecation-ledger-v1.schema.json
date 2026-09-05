@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform-api-1.x-deprecation-ledger-v1.schema.json",
+  "title": "Platform API 1.x deprecation ledger",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "entries", "predecessorLedgerDigest", "ledgerDigest"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "platform-api-1.x-deprecation-ledger"},
+    "entries": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/entry"}},
+    "predecessorLedgerDigest": {"$ref": "#/$defs/nullableDigest"},
+    "ledgerDigest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "nullableVersion": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 19}]},
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["descriptorKind", "descriptorIdentity", "supportedBaselineMemberships", "firstDeprecatedContractVersion", "firstAuthenticatedReleaseId", "firstAuthenticatedBuildVersion", "firstObservedAt", "scheduledRemovalContractVersion", "scheduledRemovalBaseline", "replacementDescriptor", "replacementDocumentationDigest", "requiredAppDependencies", "lifecyclePrerequisitesDigest", "state", "critical", "predecessorTimelineDigest", "timelineDigest"],
+      "properties": {
+        "descriptorKind": {"enum": ["capability", "endpoint"]},
+        "descriptorIdentity": {"type": "string", "pattern": "^(?:capability|endpoint):[A-Za-z0-9._:/{}-]{1,255}$"},
+        "supportedBaselineMemberships": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"}},
+        "firstDeprecatedContractVersion": {"type": "integer", "minimum": 19},
+        "firstAuthenticatedReleaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$"},
+        "firstAuthenticatedBuildVersion": {"type": "integer", "minimum": 1},
+        "firstObservedAt": {"type": "string", "format": "date-time"},
+        "scheduledRemovalContractVersion": {"$ref": "#/$defs/nullableVersion"},
+        "scheduledRemovalBaseline": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^1\\.(?:0|[1-9][0-9]*)$"}]},
+        "replacementDescriptor": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^(?:capability|endpoint):[A-Za-z0-9._:/{}-]{1,255}$"}]},
+        "replacementDocumentationDigest": {"$ref": "#/$defs/nullableDigest"},
+        "requiredAppDependencies": {"type": "array", "maxItems": 4096, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}},
+        "lifecyclePrerequisitesDigest": {"$ref": "#/$defs/digest"},
+        "state": {"enum": ["deprecated", "scheduled", "removal-blocked", "removed"]},
+        "critical": {"type": "boolean"},
+        "predecessorTimelineDigest": {"$ref": "#/$defs/nullableDigest"},
+        "timelineDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

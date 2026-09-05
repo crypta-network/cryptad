@@ -1071,14 +1071,64 @@ final class PlatformApiOperatorRoutes {
   private Map<String, Object> dashboard() {
     LinkedHashMap<String, Object> dashboard = new LinkedHashMap<>(dashboardService.dashboard());
     dashboard.put("coreSupportLifecycle", lifecycleSnapshot());
+    dashboard.put("platformApiCompatibility", platformApiCompatibilitySnapshot());
     return dashboard;
   }
 
   private Map<String, Object> supportBundleWithoutRecoveryContext() {
     LinkedHashMap<String, Object> bundle = new LinkedHashMap<>(dashboardService.supportBundle());
     bundle.put("coreSupportLifecycle", lifecycleSnapshot());
+    bundle.put("platformApiCompatibility", platformApiCompatibilitySnapshot());
     bundle.put("supportDigest", OperatorBetaDashboardService.supportDigestForPayload(bundle));
     return bundle;
+  }
+
+  private static Map<String, Object> platformApiCompatibilitySnapshot() {
+    return platformApiCompatibilitySnapshot(
+        PlatformApiContract.current(), PlatformApiBaselineRegistry.current());
+  }
+
+  static Map<String, Object> platformApiCompatibilitySnapshot(
+      PlatformApiContract contract, PlatformApiBaselineRegistry registry) {
+    long stableDeprecations =
+        contract.capabilities().stream()
+                .filter(PlatformApiContract::isStableBaselineCapability)
+                .filter(descriptor -> descriptor.deprecation() != null)
+                .count()
+            + contract.endpoints().stream()
+                .filter(PlatformApiContract::isStableBaselineEndpoint)
+                .filter(descriptor -> descriptor.deprecation() != null)
+                .count();
+    LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(19);
+    summary.put("urlApiVersion", contract.apiVersion());
+    summary.put("contractVersion", contract.contractVersion());
+    summary.put(
+        "activeStableBaselines",
+        registry.activeBaselineIds().stream().map(PlatformApiBaselineId::toString).toList());
+    summary.put(
+        "baselineRegistrySummary",
+        PlatformApiContractJson.baselineRegistrySummaryToJsonValue(registry));
+    summary.put("baselineRegistryDigest", registry.registryDigest());
+    summary.put("supportPhase", contract.compatibilityWindow().supportPhase().jsonValue());
+    summary.put(
+        "supportWindowStartedRelease",
+        contract.compatibilityWindow().supportWindowStartedRelease());
+    summary.put("previousAuthenticatedReleaseRecord", null);
+    summary.put("historyChainHealth", "bootstrap-only-not-release-authenticated");
+    summary.put("candidateBaselineProposalCount", 0);
+    summary.put("graduationBlockerCount", 0);
+    summary.put("stableDeprecationCount", stableDeprecations);
+    summary.put("appCompatibilityMatrixStatus", "not-generated");
+    summary.put("installedAppRiskCount", null);
+    summary.put("nextContractPreviewStatus", "not-generated");
+    summary.put("evidenceFreshness", "repository-bootstrap-only");
+    summary.put("protectedOperationState", "not-observed");
+    summary.put("runtimeObservationStatus", "not-observed");
+    summary.put(
+        "evidenceBoundary",
+        "Contract and baseline status is static metadata; no runtime compatibility observation is"
+            + " claimed.");
+    return java.util.Collections.unmodifiableMap(summary);
   }
 
   private Map<String, Object> lifecycleSnapshot() {

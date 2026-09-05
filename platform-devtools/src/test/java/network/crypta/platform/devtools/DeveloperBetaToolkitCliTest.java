@@ -59,6 +59,7 @@ class DeveloperBetaToolkitCliTest {
             + PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
             + "\n",
         "api.targetStability=stable\n",
+        "api.targetBaseline=1.0\n",
         "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "queue-dashboard",
@@ -66,6 +67,7 @@ class DeveloperBetaToolkitCliTest {
         "app.permissions=queue.read,queue.write\n",
         "platform.queue.snapshot",
         "api.targetStability=stable\n",
+        "api.targetBaseline=1.0\n",
         "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "publisher",
@@ -73,6 +75,7 @@ class DeveloperBetaToolkitCliTest {
         "app.permissions=content.insert,queue.read,queue.write\n",
         "window.CryptaPlatform.content.insertFile",
         "api.targetStability=stable\n",
+        "api.targetBaseline=1.0\n",
         "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "vault-profile",
@@ -326,6 +329,20 @@ class DeveloperBetaToolkitCliTest {
     assertTrue(json.contains("\"id\": \"dev.bootstrap-smoke\""));
     assertFalse(json.contains("browserSessionToken"));
     assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void test_whenStableAppTargetsUnknownBaseline_expectCompatibilityFailure() throws Exception {
+    Path appDir = scaffold("static-basic", "unknown-baseline-app");
+    replaceManifestLine(appDir, "api.targetBaseline=1.0", "api.targetBaseline=1.1");
+    Path report = tempDir.resolve("reports").resolve("unknown-baseline-test.json");
+
+    CliResult result =
+        runCli("test", "--bundle-dir", appDir.toString(), "--json", report.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.out().contains("api.compat fail"));
+    assertTrue(Files.readString(report, StandardCharsets.UTF_8).contains("\"status\": \"fail\""));
   }
 
   @Test

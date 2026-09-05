@@ -51,34 +51,7 @@ SECURITY_ACTIONS = (
     "drill-verify-all",
     "advisory-template",
 )
-SELF_TEST_SUITES = (
-    "all",
-    "core",
-    "app-platform",
-    "app-platform-docs",
-    "network-scale-soak",
-    "live-network-beta",
-    "multi-node-beta",
-    "security-response",
-    "release-certification",
-    "production-beta",
-    "go-no-go",
-    "stable-readiness",
-    "stable-rc",
-    "stable-ga",
-    "stable-backport",
-    "stable-maintenance",
-    "stable-lifecycle",
-    "stable-supply-chain",
-    "stable-independent-reproducibility",
-    "stable-dependency-vulnerability",
-    "stable-vulnerability",
-    "stable-protected-release",
-    "stable-catalog-authority",
-    "stable-third-party-pilot",
-    "stable-federated-catalog",
-    "migration",
-)
+SELF_TEST_SUITES = ("all", *selftest.SUITE_MODULES)
 
 
 def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -232,6 +205,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Confined discovery, runtime, and protected authority evidence directory.",
     )
     federated_catalog.add_argument("--self-test", action="store_true")
+
+    platform_api_1x = subparsers.add_parser("stable-platform-api-1x")
+    platform_api_1x.add_argument(
+        "--mode",
+        choices=(
+            "preflight",
+            "verify-history",
+            "verify-baseline-proposal",
+            "verify-graduation",
+            "verify-app-matrix",
+            "verify-runtime",
+            "closeout",
+        ),
+    )
+    platform_api_1x.add_argument(
+        "--execution-contract",
+        "--contract",
+        dest="execution_contract",
+        type=Path,
+        help="Closed, non-secret Platform API 1.x compatibility execution contract.",
+    )
+    platform_api_1x.add_argument("--workspace-root", type=Path, default=Path.cwd())
+    platform_api_1x.add_argument("--out-dir", type=Path)
+    platform_api_1x.add_argument(
+        "--evidence-dir",
+        type=Path,
+        help="Confined exact contract history, proposal, matrix, runtime, and authority evidence.",
+    )
+    platform_api_1x.add_argument("--self-test", action="store_true")
 
     migration = subparsers.add_parser("migrate-v1")
     migration.add_argument("migration_kind", choices=("previous-candidate", "release-history"))
@@ -1385,6 +1387,20 @@ def _run_command(args: argparse.Namespace) -> int:
                 "stable-federated-catalog requires --mode and --execution-contract"
             )
         return stable_1_0_federated_catalog.run(
+            args.workspace_root.resolve(),
+            args.execution_contract,
+            args.mode,
+            args.out_dir,
+            args.evidence_dir,
+        )
+    if command == "stable-platform-api-1x":
+        from .engines import stable_platform_api_1x
+
+        if args.mode is None or args.execution_contract is None:
+            raise ValueError(
+                "stable-platform-api-1x requires --mode and --execution-contract"
+            )
+        return stable_platform_api_1x.run(
             args.workspace_root.resolve(),
             args.execution_contract,
             args.mode,

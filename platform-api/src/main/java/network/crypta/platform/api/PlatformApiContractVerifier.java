@@ -35,6 +35,9 @@ public final class PlatformApiContractVerifier {
   private static final String STATUS_NEWER_THAN_TESTED = "newer_than_tested";
   private static final String STATUS_UNKNOWN = "unknown";
   private static final String STATUS_INCOMPATIBLE = "incompatible";
+  private static final String STATUS_UNSUPPORTED_BASELINE = "unsupported-baseline";
+  private static final String CONTRACT_PARAMETER = "contract";
+  private static final String CONTRACT_VERSION_INFIX = " contract ";
   private static final String FINDINGS_FIELD = "findings";
   private static final String FIELD_CONTRACT_VERSION = "contractVersion";
   private static final String FIELD_CURRENT_CONTRACT_VERSION = "currentContractVersion";
@@ -71,6 +74,18 @@ public final class PlatformApiContractVerifier {
       "stable_api_removal_window_too_short";
   private static final String CODE_COMPATIBILITY_WINDOW_METADATA_MISSING =
       "compatibility_window_metadata_missing";
+  private static final String CODE_BASELINE_DEFINITION_CHANGED = "baseline_definition_changed";
+  private static final String CODE_BASELINE_HISTORY_REWRITTEN = "baseline_history_rewritten";
+  private static final String CODE_BASELINE_DESCRIPTOR_MISSING = "baseline_descriptor_missing";
+  private static final String CODE_BASELINE_DESCRIPTOR_RESTRICTED =
+      "baseline_descriptor_restricted";
+  private static final String CODE_BASELINE_DESCRIPTOR_INTRODUCED_AFTER_COMPLETE_VERSION =
+      "baseline_descriptor_introduced_after_complete_version";
+  private static final String CODE_BASELINE_DESCRIPTOR_SEMANTICS_CHANGED =
+      "baseline_descriptor_semantics_changed";
+  private static final String CODE_BASELINE_CONTRACT_VERSION_INCOMPLETE =
+      "baseline_contract_version_incomplete";
+  private static final String CODE_TARGET_BASELINE_INACTIVE = "target_baseline_inactive";
 
   private PlatformApiContractVerifier() {}
 
@@ -97,22 +112,68 @@ public final class PlatformApiContractVerifier {
       boolean strict) {
     AppApiCompatibilityMetadata metadata =
         Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
-    PlatformApiContract checkedContract = Objects.requireNonNull(contract, "contract");
+    PlatformApiContract checkedContract = Objects.requireNonNull(contract, CONTRACT_PARAMETER);
+    return verify(
+        metadata,
+        manifestPermissions,
+        checkedContract,
+        Set.copyOf(checkedContract.stableBaseline().capabilities()),
+        strict);
+  }
+
+  private static CompatibilityVerificationResult verify(
+      AppApiCompatibilityMetadata metadata,
+      Collection<String> manifestPermissions,
+      PlatformApiContract contract,
+      Set<String> stableBaselineCapabilities,
+      boolean strict) {
     List<String> permissions = sorted(manifestPermissions);
-    Map<String, PlatformApiCapabilityDescriptor> descriptors = checkedContract.capabilitiesByName();
+    Map<String, PlatformApiCapabilityDescriptor> descriptors = contract.capabilitiesByName();
     List<CompatibilityFinding> findings = new ArrayList<>();
     checkTargetStability(metadata, strict, findings);
-    checkContractRange(metadata, checkedContract.contractVersion(), strict, findings);
+    checkContractRange(metadata, contract.contractVersion(), strict, findings);
     CapabilityCheckContext capabilityCheck =
         new CapabilityCheckContext(
             "manifest permission",
             "unknown_manifest_permission",
             descriptors,
+            Set.copyOf(stableBaselineCapabilities),
             metadata,
             strict,
             findings);
     checkCapabilities(permissions, capabilityCheck);
     checkCapabilities(metadata.optionalCapabilities(), capabilityCheck.forOptionalCapabilities());
+    return new CompatibilityVerificationResult(List.copyOf(findings));
+  }
+
+  /**
+   * Verifies app compatibility against both an integer contract and named-baseline registry.
+   *
+   * <p>The target baseline is an admission promise only. This overload delegates all manifest
+   * permission checks to the established verifier and adds lifecycle/range findings; it never adds
+   * a permission or changes endpoint authorization.
+   */
+  public static CompatibilityVerificationResult verify(
+      AppApiCompatibilityMetadata apiCompatibility,
+      Collection<String> manifestPermissions,
+      PlatformApiContract contract,
+      PlatformApiBaselineRegistry registry,
+      boolean strict) {
+    AppApiCompatibilityMetadata metadata =
+        Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
+    PlatformApiContract checkedContract = Objects.requireNonNull(contract, CONTRACT_PARAMETER);
+    PlatformApiBaselineRegistry checkedRegistry = Objects.requireNonNull(registry, "registry");
+    Set<String> targetBaselineCapabilities =
+        targetBaselineCapabilities(metadata, checkedContract, checkedRegistry);
+    CompatibilityVerificationResult contractResult =
+        verify(metadata, manifestPermissions, checkedContract, targetBaselineCapabilities, strict);
+    List<CompatibilityFinding> findings = new ArrayList<>(contractResult.findings());
+    checkTargetBaseline(metadata, checkedRegistry, strict, findings);
+    PlatformApiBaselineDefinition targetDefinition =
+        targetBaselineDefinitionForContractValidation(metadata, checkedRegistry);
+    if (targetDefinition != null) {
+      findings.addAll(verifyBaselineDefinition(targetDefinition, checkedContract).findings());
+    }
     return new CompatibilityVerificationResult(List.copyOf(findings));
   }
 
@@ -136,7 +197,7 @@ public final class PlatformApiContractVerifier {
       PlatformApiContract contract) {
     AppApiCompatibilityMetadata metadata =
         Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
-    PlatformApiContract checkedContract = Objects.requireNonNull(contract, "contract");
+    PlatformApiContract checkedContract = Objects.requireNonNull(contract, CONTRACT_PARAMETER);
     CompatibilityVerificationResult result =
         verify(metadata, manifestPermissions, checkedContract, false);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
@@ -151,6 +212,33 @@ public final class PlatformApiContractVerifier {
     json.put("status", status(metadata, checkedContract.contractVersion(), result));
     json.put("warnings", result.messages());
     return json;
+  }
+
+  /** Builds a compatibility summary including named-baseline admission metadata. */
+  public static Map<String, Object> summarize(
+      AppApiCompatibilityMetadata apiCompatibility,
+      Collection<String> manifestPermissions,
+      PlatformApiContract contract,
+      PlatformApiBaselineRegistry registry) {
+    AppApiCompatibilityMetadata metadata =
+        Objects.requireNonNullElse(apiCompatibility, AppApiCompatibilityMetadata.undeclared());
+    PlatformApiContract checkedContract = Objects.requireNonNull(contract, CONTRACT_PARAMETER);
+    PlatformApiBaselineRegistry checkedRegistry = Objects.requireNonNull(registry, "registry");
+    CompatibilityVerificationResult result =
+        verify(metadata, manifestPermissions, checkedContract, checkedRegistry, false);
+    LinkedHashMap<String, Object> json =
+        new LinkedHashMap<>(summarize(metadata, manifestPermissions, checkedContract));
+    json.put("targetBaseline", metadata.targetBaseline());
+    json.put("targetBaselineDeclared", metadata.targetBaselineDeclared());
+    json.put(
+        "supportedBaselines",
+        checkedRegistry.supportedBaselineIds().stream()
+            .map(PlatformApiBaselineId::toString)
+            .toList());
+    json.put("baselineRegistryDigest", checkedRegistry.registryDigest());
+    json.put("status", baselineStatus(metadata, checkedContract.contractVersion(), result));
+    json.put("warnings", result.messages());
+    return Collections.unmodifiableMap(json);
   }
 
   /**
@@ -249,6 +337,209 @@ public final class PlatformApiContractVerifier {
     return new CompatibilityVerificationResult(List.copyOf(findings));
   }
 
+  /**
+   * Verifies that a named-baseline definition is an exact projection of one contract snapshot.
+   *
+   * <p>This check does not activate the definition. Experimental app-facing descriptors may be
+   * present in a future candidate definition only after the separate graduation authority has
+   * approved them; operator-only and internal descriptors are always rejected here. Endpoint
+   * findings compare the authorization semantics that a compatible 1.x successor must inherit.
+   *
+   * @param definition immutable named-baseline definition to inspect
+   * @param contract exact contract snapshot that is claimed to carry the definition
+   * @return deterministic descriptor and semantics findings
+   */
+  public static CompatibilityVerificationResult verifyBaselineDefinition(
+      PlatformApiBaselineDefinition definition, PlatformApiContract contract) {
+    PlatformApiBaselineDefinition checkedDefinition =
+        Objects.requireNonNull(definition, "definition");
+    PlatformApiContract checkedContract = Objects.requireNonNull(contract, CONTRACT_PARAMETER);
+    List<CompatibilityFinding> findings = new ArrayList<>();
+    if (checkedContract.contractVersion() < checkedDefinition.firstCompleteContractVersion()) {
+      findings.add(
+          finding(
+              CODE_BASELINE_CONTRACT_VERSION_INCOMPLETE,
+              CompatibilityFindingSeverity.ERROR,
+              "Target contract predates the complete baseline definition: "
+                  + checkedDefinition.id()
+                  + ".",
+              detail(
+                  "baseline",
+                  checkedDefinition.id().toString(),
+                  "firstCompleteContractVersion",
+                  checkedDefinition.firstCompleteContractVersion(),
+                  FIELD_CONTRACT_VERSION,
+                  checkedContract.contractVersion())));
+    }
+    checkBaselineCapabilities(checkedDefinition, checkedContract, findings);
+    checkBaselineEndpoints(checkedDefinition, checkedContract, findings);
+    return new CompatibilityVerificationResult(List.copyOf(findings));
+  }
+
+  private static void checkBaselineCapabilities(
+      PlatformApiBaselineDefinition definition,
+      PlatformApiContract contract,
+      List<CompatibilityFinding> findings) {
+    Map<String, PlatformApiCapabilityDescriptor> capabilities = contract.capabilitiesByName();
+    for (String capability : definition.capabilities()) {
+      PlatformApiCapabilityDescriptor descriptor = capabilities.get(capability);
+      if (descriptor == null) {
+        findings.add(
+            finding(
+                CODE_BASELINE_DESCRIPTOR_MISSING,
+                CompatibilityFindingSeverity.ERROR,
+                "Baseline capability is absent from the target contract: " + capability + ".",
+                detail(DETAIL_KIND, DETAIL_CAPABILITY, DETAIL_IDENTITY, capability)));
+        continue;
+      }
+      checkBaselineMemberIntroductionVersion(
+          DETAIL_CAPABILITY,
+          capability,
+          descriptor.sinceContractVersion(),
+          definition.firstCompleteContractVersion(),
+          findings);
+      if (descriptor.stability().isRestrictedAudience()) {
+        findings.add(
+            finding(
+                CODE_BASELINE_DESCRIPTOR_RESTRICTED,
+                CompatibilityFindingSeverity.ERROR,
+                "Restricted capability cannot enter an app stable baseline: " + capability + ".",
+                detail(DETAIL_KIND, DETAIL_CAPABILITY, DETAIL_IDENTITY, capability)));
+      }
+    }
+  }
+
+  private static void checkBaselineEndpoints(
+      PlatformApiBaselineDefinition definition,
+      PlatformApiContract contract,
+      List<CompatibilityFinding> findings) {
+    Map<String, PlatformApiEndpointDescriptor> endpoints = endpointsByIdentity(contract);
+    for (PlatformApiBaselineEndpoint expected : definition.endpoints()) {
+      checkBaselineEndpoint(definition, expected, endpoints.get(expected.identity()), findings);
+    }
+  }
+
+  private static void checkBaselineEndpoint(
+      PlatformApiBaselineDefinition definition,
+      PlatformApiBaselineEndpoint expected,
+      PlatformApiEndpointDescriptor descriptor,
+      List<CompatibilityFinding> findings) {
+    if (descriptor == null) {
+      findings.add(
+          finding(
+              CODE_BASELINE_DESCRIPTOR_MISSING,
+              CompatibilityFindingSeverity.ERROR,
+              "Baseline endpoint is absent from the target contract: " + expected.identity() + ".",
+              detail(DETAIL_KIND, DETAIL_ENDPOINT, DETAIL_IDENTITY, expected.identity())));
+      return;
+    }
+    checkBaselineMemberIntroductionVersion(
+        DETAIL_ENDPOINT,
+        expected.identity(),
+        descriptor.sinceContractVersion(),
+        definition.firstCompleteContractVersion(),
+        findings);
+    boolean restricted =
+        descriptor.stability().isRestrictedAudience()
+            || (!descriptor.appProcessAllowed() && !descriptor.appBrowserAllowed());
+    if (restricted) {
+      findings.add(
+          finding(
+              CODE_BASELINE_DESCRIPTOR_RESTRICTED,
+              CompatibilityFindingSeverity.ERROR,
+              "Restricted endpoint cannot enter an app stable baseline: "
+                  + expected.identity()
+                  + ".",
+              detail(DETAIL_KIND, DETAIL_ENDPOINT, DETAIL_IDENTITY, expected.identity())));
+      return;
+    }
+    PlatformApiBaselineEndpoint actual = PlatformApiBaselineEndpoint.fromDescriptor(descriptor);
+    if (!expected.equals(actual)) {
+      findings.add(
+          finding(
+              CODE_BASELINE_DESCRIPTOR_SEMANTICS_CHANGED,
+              CompatibilityFindingSeverity.ERROR,
+              "Baseline endpoint semantics do not match the target contract: "
+                  + expected.identity()
+                  + ".",
+              detail(DETAIL_KIND, DETAIL_ENDPOINT, DETAIL_IDENTITY, expected.identity())));
+    }
+  }
+
+  private static void checkBaselineMemberIntroductionVersion(
+      String kind,
+      String identity,
+      int sinceContractVersion,
+      int firstCompleteContractVersion,
+      List<CompatibilityFinding> findings) {
+    if (sinceContractVersion <= firstCompleteContractVersion) {
+      return;
+    }
+    findings.add(
+        finding(
+            CODE_BASELINE_DESCRIPTOR_INTRODUCED_AFTER_COMPLETE_VERSION,
+            CompatibilityFindingSeverity.ERROR,
+            "Baseline "
+                + kind
+                + " was introduced after the claimed complete contract version: "
+                + identity
+                + ".",
+            detail(
+                DETAIL_KIND,
+                kind,
+                DETAIL_IDENTITY,
+                identity,
+                "sinceContractVersion",
+                sinceContractVersion,
+                "firstCompleteContractVersion",
+                firstCompleteContractVersion)));
+  }
+
+  /**
+   * Compares two valid registries for append-only lifecycle and immutable-definition history.
+   *
+   * <p>Registry construction already checks lineage gaps and monotonic compatibility with every
+   * supported predecessor. This comparison additionally prevents a later artifact from dropping or
+   * replacing an earlier definition or lifecycle record.
+   *
+   * @param previousRegistry authenticated previous registry
+   * @param currentRegistry current candidate registry
+   * @return deterministic history-rewrite findings
+   */
+  public static CompatibilityVerificationResult compareBaselineRegistries(
+      PlatformApiBaselineRegistry previousRegistry, PlatformApiBaselineRegistry currentRegistry) {
+    PlatformApiBaselineRegistry previous =
+        Objects.requireNonNull(previousRegistry, "previousRegistry");
+    PlatformApiBaselineRegistry current =
+        Objects.requireNonNull(currentRegistry, "currentRegistry");
+    List<CompatibilityFinding> findings = new ArrayList<>();
+    Map<PlatformApiBaselineId, PlatformApiBaselineDefinition> currentDefinitions =
+        current.definitionsById();
+    for (PlatformApiBaselineDefinition oldDefinition : previous.definitions()) {
+      PlatformApiBaselineDefinition candidate = currentDefinitions.get(oldDefinition.id());
+      if (candidate == null
+          || !oldDefinition.definitionDigest().equals(candidate.definitionDigest())) {
+        findings.add(
+            finding(
+                CODE_BASELINE_DEFINITION_CHANGED,
+                CompatibilityFindingSeverity.ERROR,
+                "An existing baseline definition was removed or edited: "
+                    + oldDefinition.id()
+                    + ".",
+                detail(DETAIL_IDENTITY, oldDefinition.id().toString())));
+      }
+    }
+    if (current.lineage().size() < previous.lineage().size()
+        || !current.lineage().subList(0, previous.lineage().size()).equals(previous.lineage())) {
+      findings.add(
+          finding(
+              CODE_BASELINE_HISTORY_REWRITTEN,
+              CompatibilityFindingSeverity.ERROR,
+              "Platform API baseline lifecycle history is not an append-only extension."));
+    }
+    return new CompatibilityVerificationResult(List.copyOf(findings));
+  }
+
   private static void checkStableBaselineMetadata(
       PlatformApiContract previous,
       PlatformApiContract current,
@@ -295,11 +586,11 @@ public final class PlatformApiContractVerifier {
               CompatibilityFindingSeverity.ERROR,
               "Stable baseline identity changed from "
                   + previous.stableBaseline().name()
-                  + " contract "
+                  + CONTRACT_VERSION_INFIX
                   + previous.stableBaseline().contractVersion()
                   + " to "
                   + current.stableBaseline().name()
-                  + " contract "
+                  + CONTRACT_VERSION_INFIX
                   + current.stableBaseline().contractVersion()
                   + ".",
               detail(
@@ -866,6 +1157,158 @@ public final class PlatformApiContractVerifier {
     }
   }
 
+  private static void checkTargetBaseline(
+      AppApiCompatibilityMetadata metadata,
+      PlatformApiBaselineRegistry registry,
+      boolean strict,
+      List<CompatibilityFinding> findings) {
+    String target = metadata.targetBaseline();
+    if (target == null) {
+      return;
+    }
+    PlatformApiBaselineId id;
+    try {
+      id = PlatformApiBaselineId.parse(target);
+    } catch (IllegalArgumentException _) {
+      findings.add(
+          finding(
+              "target_baseline_malformed",
+              CompatibilityFindingSeverity.ERROR,
+              "App target baseline is malformed: " + target + "."));
+      return;
+    }
+    PlatformApiBaselineDefinition definition = registry.definitionsById().get(id);
+    PlatformApiBaselineLineage lifecycle = registry.latestLineageById().get(id);
+    if (definition == null || lifecycle == null) {
+      findings.add(
+          finding(
+              "target_baseline_unknown",
+              CompatibilityFindingSeverity.ERROR,
+              "App targets an unknown Platform API baseline: " + id + "."));
+      return;
+    }
+    switch (lifecycle.status()) {
+      case END_OF_SUPPORT ->
+          findings.add(
+              finding(
+                  "target_baseline_end_of_support",
+                  CompatibilityFindingSeverity.ERROR,
+                  "App targets a Platform API baseline that reached end of support: " + id + "."));
+      case REJECTED ->
+          findings.add(
+              finding(
+                  CODE_TARGET_BASELINE_INACTIVE,
+                  CompatibilityFindingSeverity.ERROR,
+                  "App targets a rejected Platform API baseline: " + id + "."));
+      case PROPOSED, CANDIDATE, REVIEWED, DOCUMENTED -> {
+        if (metadata.targetStability() == TargetStability.STABLE) {
+          findings.add(
+              finding(
+                  CODE_TARGET_BASELINE_INACTIVE,
+                  CompatibilityFindingSeverity.ERROR,
+                  "Stable app targets a baseline that is not active: " + id + "."));
+        } else {
+          findings.add(
+              finding(
+                  "target_baseline_preview_only",
+                  releaseRiskSeverity(strict),
+                  "Experimental app target is preview-only and does not activate baseline support: "
+                      + id
+                      + "."));
+        }
+      }
+      case ACTIVE -> checkExperimentalActiveBaseline(metadata, id, strict, findings);
+      case DEPRECATED ->
+          findings.add(
+              finding(
+                  "target_baseline_deprecated",
+                  releaseRiskSeverity(strict),
+                  "App targets a deprecated but still-supported Platform API baseline: "
+                      + id
+                      + "."));
+    }
+    Integer minimum = metadata.minimumVersion();
+    Integer maximum = metadata.maximumTestedVersion();
+    int baselineContract = definition.firstCompleteContractVersion();
+    if ((minimum != null && minimum > baselineContract)
+        || (maximum != null && maximum < baselineContract)) {
+      findings.add(
+          finding(
+              "target_baseline_outside_contract_range",
+              releaseRiskSeverity(strict),
+              "App contract range does not include target baseline "
+                  + id
+                  + CONTRACT_VERSION_INFIX
+                  + baselineContract
+                  + "."));
+    }
+  }
+
+  private static void checkExperimentalActiveBaseline(
+      AppApiCompatibilityMetadata metadata,
+      PlatformApiBaselineId id,
+      boolean strict,
+      List<CompatibilityFinding> findings) {
+    if (metadata.targetStability() != TargetStability.EXPERIMENTAL) {
+      return;
+    }
+    findings.add(
+        finding(
+            "experimental_target_does_not_claim_stable_support",
+            releaseRiskSeverity(strict),
+            "Experimental target does not claim the active stable baseline guarantee: "
+                + id
+                + "."));
+  }
+
+  private static Set<String> targetBaselineCapabilities(
+      AppApiCompatibilityMetadata metadata,
+      PlatformApiContract contract,
+      PlatformApiBaselineRegistry registry) {
+    String target = metadata.targetBaseline();
+    if (target != null) {
+      try {
+        PlatformApiBaselineDefinition definition =
+            registry.definitionsById().get(PlatformApiBaselineId.parse(target));
+        if (definition != null) {
+          return Set.copyOf(definition.capabilities());
+        }
+      } catch (IllegalArgumentException _) {
+        // The lifecycle check emits the bounded malformed-baseline finding.
+      }
+    }
+    return Set.copyOf(contract.stableBaseline().capabilities());
+  }
+
+  private static PlatformApiBaselineDefinition targetBaselineDefinitionForContractValidation(
+      AppApiCompatibilityMetadata metadata, PlatformApiBaselineRegistry registry) {
+    String target = metadata.targetBaseline();
+    if (target == null) {
+      return null;
+    }
+    try {
+      PlatformApiBaselineId id = PlatformApiBaselineId.parse(target);
+      PlatformApiBaselineLineage lifecycle = registry.latestLineageById().get(id);
+      if (lifecycle == null
+          || !requiresContractProjectionValidation(metadata, lifecycle.status())) {
+        return null;
+      }
+      return registry.definitionsById().get(id);
+    } catch (IllegalArgumentException _) {
+      return null;
+    }
+  }
+
+  private static boolean requiresContractProjectionValidation(
+      AppApiCompatibilityMetadata metadata, PlatformApiBaselineStatus status) {
+    return status.isSupported()
+        || (metadata.targetStability() == TargetStability.EXPERIMENTAL
+            && switch (status) {
+              case PROPOSED, CANDIDATE, REVIEWED, DOCUMENTED -> true;
+              case ACTIVE, DEPRECATED, END_OF_SUPPORT, REJECTED -> false;
+            });
+  }
+
   private static void checkCapabilities(List<String> capabilities, CapabilityCheckContext context) {
     for (String capability : capabilities) {
       PlatformApiCapabilityDescriptor descriptor = context.descriptors().get(capability);
@@ -890,6 +1333,12 @@ public final class PlatformApiContractVerifier {
     switch (descriptor.stability()) {
       case PlatformApiStabilityLevel stability
           when stability == PlatformApiStabilityLevel.EXPERIMENTAL
+              && targetStability == TargetStability.STABLE
+              && context.stableBaselineCapabilities().contains(descriptor.name()) -> {
+        // Authenticated active-baseline membership is the named 1.x stability authority.
+      }
+      case PlatformApiStabilityLevel stability
+          when stability == PlatformApiStabilityLevel.EXPERIMENTAL
               && targetStability == TargetStability.STABLE ->
           findings.add(
               finding(
@@ -911,7 +1360,19 @@ public final class PlatformApiContractVerifier {
       case PlatformApiStabilityLevel stability
           when stability == PlatformApiStabilityLevel.STABLE
               && targetStability == TargetStability.STABLE
-              && !PlatformApiContract.isStableBaselineCapability(descriptor) ->
+              && !context.stableBaselineCapabilities().contains(descriptor.name()) ->
+          findings.add(
+              finding(
+                  "stable_target_uses_non_baseline_capability",
+                  CompatibilityFindingSeverity.ERROR,
+                  "Stable Platform API target must not declare non-baseline capability: "
+                      + descriptor.name()
+                      + "."));
+      case PlatformApiStabilityLevel stability
+          when (stability == PlatformApiStabilityLevel.DEPRECATED
+                  || stability == PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL)
+              && targetStability == TargetStability.STABLE
+              && !context.stableBaselineCapabilities().contains(descriptor.name()) ->
           findings.add(
               finding(
                   "stable_target_uses_non_baseline_capability",
@@ -963,6 +1424,7 @@ public final class PlatformApiContractVerifier {
       String label,
       String unknownCode,
       Map<String, PlatformApiCapabilityDescriptor> descriptors,
+      Set<String> stableBaselineCapabilities,
       AppApiCompatibilityMetadata metadata,
       boolean strict,
       List<CompatibilityFinding> findings) {
@@ -970,6 +1432,7 @@ public final class PlatformApiContractVerifier {
       Objects.requireNonNull(label, "label");
       Objects.requireNonNull(unknownCode, "unknownCode");
       Objects.requireNonNull(descriptors, "descriptors");
+      Objects.requireNonNull(stableBaselineCapabilities, "stableBaselineCapabilities");
       Objects.requireNonNull(metadata, "metadata");
       Objects.requireNonNull(findings, FINDINGS_FIELD);
     }
@@ -979,6 +1442,7 @@ public final class PlatformApiContractVerifier {
           "optional capability",
           "unknown_optional_capability",
           descriptors,
+          stableBaselineCapabilities,
           metadata,
           strict,
           findings);
@@ -1010,6 +1474,23 @@ public final class PlatformApiContractVerifier {
       return STATUS_NEWER_THAN_TESTED;
     }
     return STATUS_COMPATIBLE;
+  }
+
+  private static String baselineStatus(
+      AppApiCompatibilityMetadata metadata,
+      int targetContractVersion,
+      CompatibilityVerificationResult result) {
+    if (result.findings().stream()
+        .map(CompatibilityFinding::code)
+        .anyMatch(
+            code ->
+                code.equals("target_baseline_unknown")
+                    || code.equals(CODE_TARGET_BASELINE_INACTIVE)
+                    || code.equals("target_baseline_end_of_support")
+                    || code.equals("target_baseline_malformed"))) {
+      return STATUS_UNSUPPORTED_BASELINE;
+    }
+    return status(metadata, targetContractVersion, result);
   }
 
   private static CompatibilityFindingSeverity releaseRiskSeverity(boolean strict) {

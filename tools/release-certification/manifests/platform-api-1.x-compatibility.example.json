@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "platform-api-1.x-compatibility-execution",
+  "executionId": "fixture-platform-api-1x-preview",
+  "repository": {
+    "identity": "github.com/crypta-network/cryptad",
+    "sourceCommit": "0000000000000000000000000000000000000000",
+    "sourceRef": "refs/heads/fixture-platform-api-1x-preview"
+  },
+  "release": {
+    "releaseId": "fixture-platform-api-1x-preview",
+    "buildVersion": 1,
+    "releaseRootDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "evaluationTime": "2026-09-01T00:00:00Z",
+  "requestedState": "implementation-complete",
+  "fixtureOnly": true,
+  "selfTest": false,
+  "policyDigest": "sha256:575ce154523f037a80cd923ffd2555830ac77d0f0d186778c83b3344e85bcdf7",
+  "urlApiVersion": "v1",
+  "contractVersion": 24,
+  "activeStableBaselines": ["1.0"],
+  "previousHistoryAuthority": null,
+  "supportLifecycleAuthority": null,
+  "runtimeObservationAuthority": null,
+  "authorityRoots": {
+    "protectedRelease": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "independentReproducibility": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "catalogAuthority": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "thirdPartyPilot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "federatedCatalog": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "authorities": {
+    "protectedRelease": {"summaryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "operational": false, "provenance": {"repositoryIdentity": "github.com/crypta-network/cryptad", "workflowPath": ".github/workflows/stable-1.0-protected-release-closeout.yml", "workflowCommit": "0000000000000000000000000000000000000000", "runId": 1, "runAttempt": 1, "artifactName": "fixture-protected-release", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "environment": "fixture-platform-api-1x", "conclusion": "success"}, "summary": null},
+    "independentReproducibility": {"summaryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "operational": false, "provenance": {"repositoryIdentity": "github.com/crypta-network/cryptad", "workflowPath": ".github/workflows/stable-1.0-independent-reproducibility.yml", "workflowCommit": "0000000000000000000000000000000000000000", "runId": 1, "runAttempt": 1, "artifactName": "fixture-independent-reproducibility", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "environment": "fixture-platform-api-1x", "conclusion": "success"}, "summary": null},
+    "catalogAuthority": {"summaryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "operational": false, "provenance": {"repositoryIdentity": "github.com/crypta-network/cryptad", "workflowPath": ".github/workflows/stable-1.0-catalog-authority.yml", "workflowCommit": "0000000000000000000000000000000000000000", "runId": 1, "runAttempt": 1, "artifactName": "fixture-catalog-authority", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "environment": "fixture-platform-api-1x", "conclusion": "success"}, "summary": null},
+    "thirdPartyPilot": {"summaryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "operational": false, "provenance": {"repositoryIdentity": "github.com/crypta-network/cryptad", "workflowPath": ".github/workflows/stable-1.0-third-party-app-pilot.yml", "workflowCommit": "0000000000000000000000000000000000000000", "runId": 1, "runAttempt": 1, "artifactName": "fixture-third-party-pilot", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "environment": "fixture-platform-api-1x", "conclusion": "success"}, "summary": null},
+    "federatedCatalog": {"summaryDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "operational": false, "provenance": {"repositoryIdentity": "github.com/crypta-network/cryptad", "workflowPath": ".github/workflows/stable-1.0-federated-catalog-trust.yml", "workflowCommit": "0000000000000000000000000000000000000000", "runId": 1, "runAttempt": 1, "artifactName": "fixture-federated-catalog", "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "environment": "fixture-platform-api-1x", "conclusion": "success"}, "summary": null}
+  },
+  "evidence": {
+    "historyLedger": null,
+    "previousHistoryLedger": null,
+    "previousBaselineRegistry": null,
+    "selectedRcFreeze": null,
+    "baselineRegistry": null,
+    "baselineProposal": null,
+    "graduationRecords": [],
+    "deprecationLedger": null,
+    "previousDeprecationLedger": null,
+    "appSubjectInventory": null,
+    "appMatrix": null,
+    "runtimeObservation": null,
+    "supportLifecycleDescriptor": null
+  }
+}

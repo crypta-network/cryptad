@@ -353,7 +353,8 @@ class PlatformApiRouterTest {
     assertEquals(200, response.statusCode());
     assertEquals(
         PlatformApiJsonWriter.write(
-            PlatformApiContractJson.envelope(PlatformApiContract.current())),
+            PlatformApiContractJson.envelope(
+                PlatformApiContract.current(), PlatformApiBaselineRegistry.current())),
         response.body());
   }
 
@@ -3694,6 +3695,7 @@ class PlatformApiRouterTest {
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     Path stagedDir = tempDir.resolve("catalog-install-stage");
+    writeCatalogManifest(stagedDir, catalogEntry(APP_VERSION));
     InstalledAppSnapshot installed = installedSnapshot();
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
@@ -3803,6 +3805,7 @@ class PlatformApiRouterTest {
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     Path stagedDir = tempDir.resolve("catalog-invalid-static-ui-install");
+    writeCatalogManifest(stagedDir, catalogEntry(APP_VERSION));
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
@@ -3837,6 +3840,7 @@ class PlatformApiRouterTest {
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     Path stagedDir = tempDir.resolve("catalog-update-stage");
+    writeCatalogManifest(stagedDir, catalogEntry("9.9.9"));
     InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
@@ -4001,6 +4005,7 @@ class PlatformApiRouterTest {
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     Path stagedDir = tempDir.resolve("catalog-invalid-static-ui-update");
+    writeCatalogManifest(stagedDir, catalogEntry("9.9.9"));
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
@@ -4032,6 +4037,7 @@ class PlatformApiRouterTest {
     AppCatalogInstallPlan plan = mock(AppCatalogInstallPlan.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     Path stagedDir = tempDir.resolve("catalog-repair-stage");
+    writeCatalogManifest(stagedDir, catalogEntry("9.9.9"));
     InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
@@ -4215,6 +4221,12 @@ class PlatformApiRouterTest {
   private AppCatalogInstallPlan catalogInstallPlan(AppCatalogEntry entry, Path scratchDir)
       throws IOException {
     Path stagedDir = scratchDir.resolve("bundle");
+    writeCatalogManifest(stagedDir, entry);
+    return new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
+  }
+
+  private static void writeCatalogManifest(Path stagedDir, AppCatalogEntry entry)
+      throws IOException {
     Files.createDirectories(stagedDir);
     Files.writeString(
         stagedDir.resolve("cryptad-app.properties"),
@@ -4231,7 +4243,6 @@ class PlatformApiRouterTest {
                 entry.name(),
                 entry.version(),
                 String.join(",", entry.permissions())));
-    return new AppCatalogInstallPlan("core", entry, stagedDir, scratchDir);
   }
 
   private AppCatalogInstallPlan catalogInstallPlanWithUiStateMigration(
@@ -4505,7 +4516,7 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> undeclaredApiCompatibility(List<String> warnings) {
-    LinkedHashMap<String, Object> compatibility = LinkedHashMap.newLinkedHashMap(10);
+    LinkedHashMap<String, Object> compatibility = LinkedHashMap.newLinkedHashMap(14);
     compatibility.put("minimumVersion", null);
     compatibility.put("maximumTestedVersion", null);
     compatibility.put("currentVersion", PlatformApiContract.current().contractVersion());
@@ -4516,6 +4527,11 @@ class PlatformApiRouterTest {
     compatibility.put("declared", false);
     compatibility.put("status", "unknown");
     compatibility.put("warnings", warnings);
+    compatibility.put("targetBaseline", null);
+    compatibility.put("targetBaselineDeclared", false);
+    compatibility.put("supportedBaselines", List.of("1.0"));
+    compatibility.put(
+        "baselineRegistryDigest", PlatformApiBaselineRegistry.current().registryDigest());
     return compatibility;
   }
 

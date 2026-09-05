@@ -39,8 +39,9 @@ A stable-only third-party app should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=stable
+api.targetBaseline=1.0
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -48,7 +49,7 @@ An app that knowingly uses experimental app-facing API should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -56,6 +57,11 @@ api.experimentalCapabilitiesAccepted=true
 Legacy manifests that omit `api.targetStability` remain readable. The compatibility metadata model
 treats the effective target as `experimental`, records that the field was not declared, and emits
 `api_target_stability_missing` when explicit API compatibility metadata is otherwise present.
+
+Stable manifests written before `api.targetBaseline` remain readable and use effective baseline
+`1.0`; tooling still records that the field was omitted. This compatibility default applies only
+when stability was explicitly stable. It does not convert an undeclared legacy app into a stable
+app. Baseline names do not change `/api/v1`, and they never grant permissions.
 
 ## Stable Baseline Counts
 

@@ -49,6 +49,7 @@ public final class AppCatalogParser {
   private static final String REVIEW_DECISION_REASON_SHA256 = "review.decision.reason.sha256";
   private static final String REVIEW_RESUBMISSION_OF = "review.resubmissionOf";
   private static final String REVIEW_NON_PRODUCTION = "review.nonProduction";
+  private static final String API_TARGET_BASELINE = "api.targetBaseline";
   private static final Set<String> SUBMISSION_REVIEW_FIELDS =
       Set.of(
           REVIEW_SUBMISSION_ID,
@@ -274,7 +275,7 @@ public final class AppCatalogParser {
             ? new AppCatalogCompatibilityMetadata(
                 removeOptional(properties, prefix + MINIMUM_CRYPTA_VERSION).orElse(null),
                 maximumCryptaVersion,
-                parseApiCompatibility(properties, prefix))
+                parseApiCompatibility(properties, prefix, version))
             : AppCatalogCompatibilityMetadata.EMPTY,
         storeMetadataAllowed ? parseReview(properties, prefix) : AppCatalogReviewMetadata.EMPTY,
         storeMetadataAllowed ? parseReviewReceipt(properties, prefix).orElse(null) : null,
@@ -296,6 +297,11 @@ public final class AppCatalogParser {
 
   private static void requireEntryMetadataVersion(
       Map<String, String> properties, String prefix, int version) {
+    if (version < AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE
+        && properties.containsKey(prefix + API_TARGET_BASELINE)) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 7 is required when api.targetBaseline metadata is present");
+    }
     if (version < AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW
         && hasSubmissionReviewMetadata(properties, prefix)) {
       throw AppCatalogSidecars.invalidEntry(
@@ -350,7 +356,7 @@ public final class AppCatalogParser {
   }
 
   private static AppApiCompatibilityMetadata parseApiCompatibility(
-      Map<String, String> properties, String prefix) {
+      Map<String, String> properties, String prefix, int version) {
     Integer minimumVersion =
         parseOptionalPositiveInteger(properties, prefix + "api.minimumVersion");
     Integer maximumTestedVersion =
@@ -362,6 +368,10 @@ public final class AppCatalogParser {
         removeOptional(properties, prefix + "api.targetStability")
             .map(AppCatalogParser::parseTargetStability)
             .orElse(null);
+    Optional<String> targetBaseline =
+        version >= AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE
+            ? removeOptional(properties, prefix + API_TARGET_BASELINE)
+            : Optional.empty();
     String experimentalCapabilitiesAcceptedKey = prefix + "api.experimentalCapabilitiesAccepted";
     Optional<String> experimentalCapabilitiesAcceptedValue =
         removeOptional(properties, experimentalCapabilitiesAcceptedKey);
@@ -379,6 +389,8 @@ public final class AppCatalogParser {
           optionalCapabilities,
           targetStability,
           targetStability != null,
+          targetBaseline.orElse(null),
+          targetBaseline.isPresent(),
           experimentalCapabilitiesAccepted,
           experimentalCapabilitiesAcceptedValue.isPresent());
     } catch (IllegalArgumentException exception) {

@@ -10,7 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class AppCatalogParserTest {
+  private static final String BUNDLE_URI_PROPERTY = "app.queue-manager.bundle.uri=";
+  private static final String CATALOG_VERSION_5 = "catalog.version=5";
+  private static final String CATALOG_VERSION_6 = "catalog.version=6";
   private static final String GENERATED_AT = "2026-04-21T18:22:40Z";
+  private static final String SECURITY_ADVISORY_ID = "CRYPTA-2026-0001";
   private static final String SHA256 = "0".repeat(64);
 
   @Test
@@ -89,7 +93,7 @@ class AppCatalogParserTest {
         AppCatalogParser.parse(
             bytes(
                 """
-                catalog.version=2
+                catalog.version=7
                 catalog.id=core
                 catalog.name=Crypta Core Apps
                 catalog.generatedAt=%s
@@ -107,6 +111,7 @@ class AppCatalogParserTest {
                 app.queue-manager.api.maximumTestedVersion=1
                 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
                 app.queue-manager.api.targetStability=experimental
+                app.queue-manager.api.targetBaseline=1.1
                 app.queue-manager.api.experimentalCapabilitiesAccepted=true
                 app.queue-manager.review.status=reviewed
                 app.queue-manager.review.note=Reviewed for local operator safety.
@@ -126,7 +131,7 @@ class AppCatalogParserTest {
 
     AppCatalogEntry entry = catalog.entries().getFirst();
 
-    assertEquals(AppCatalog.VERSION_STORE_METADATA, catalog.version());
+    assertEquals(AppCatalog.VERSION_PLATFORM_API_TARGET_BASELINE, catalog.version());
     assertEquals("https://example.invalid/app", entry.homepage().orElseThrow().toString());
     assertEquals("https://example.invalid/repo", entry.source().orElseThrow().toString());
     assertEquals("MIT", entry.license().orElseThrow());
@@ -142,6 +147,8 @@ class AppCatalogParserTest {
         network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL,
         entry.compatibility().apiCompatibility().targetStability());
     assertTrue(entry.compatibility().apiCompatibility().targetStabilityDeclared());
+    assertEquals("1.1", entry.compatibility().apiCompatibility().targetBaseline());
+    assertTrue(entry.compatibility().apiCompatibility().targetBaselineDeclared());
     assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
     assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAcceptedDeclared());
     assertEquals(AppCatalogReviewStatus.REVIEWED, entry.review().status());
@@ -155,6 +162,23 @@ class AppCatalogParserTest {
     assertEquals("Adds queue retry controls.", entry.changelog().summary().orElseThrow());
     assertEquals(
         "https://example.invalid/changelog.txt", entry.changelog().uri().orElseThrow().toString());
+  }
+
+  @Test
+  void parse_whenVersionSixCatalogDeclaresTargetBaseline_expectInvalidCatalogEntry() {
+    String catalog =
+        validStoreMetadataCatalog()
+            .replace("catalog.version=2", CATALOG_VERSION_6)
+            .replace(
+                BUNDLE_URI_PROPERTY,
+                "app.queue-manager.api.targetBaseline=1.0\napp.queue-manager.bundle.uri=");
+    byte[] catalogBytes = bytes(catalog);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> AppCatalogParser.parse(catalogBytes));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+    assertTrue(exception.getMessage().contains("catalog.version 7 is required"));
   }
 
   @Test
@@ -202,7 +226,7 @@ class AppCatalogParserTest {
     assertEquals(
         "queue-manager-stable", entry.productionMetadata().replacementAppId().orElseThrow());
     assertEquals(
-        "CRYPTA-2026-0001", entry.productionMetadata().securityAdvisories().getFirst().id());
+        SECURITY_ADVISORY_ID, entry.productionMetadata().securityAdvisories().getFirst().id());
   }
 
   @Test
@@ -262,7 +286,7 @@ class AppCatalogParserTest {
   @Test
   void parse_whenVersionFiveCatalogDeclaresSubmissionReviewMetadata_expectInvalidCatalogEntry() {
     assertInvalidEntry(
-        validSubmissionReviewCatalog().replace("catalog.version=6", "catalog.version=5"));
+        validSubmissionReviewCatalog().replace(CATALOG_VERSION_6, CATALOG_VERSION_5));
   }
 
   @Test
@@ -270,7 +294,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validMaintenanceCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.review.status=submitted\napp.queue-manager.bundle.uri="));
   }
 
@@ -287,7 +311,7 @@ class AppCatalogParserTest {
     assertEquals(AppCatalogSecurityDecisionStatus.DENYLISTED, decision.status());
     assertEquals(AppCatalogSecurityAction.DENYLIST, decision.action());
     assertEquals(AppCatalogSecuritySeverity.CRITICAL, decision.severity());
-    assertEquals(List.of("CRYPTA-2026-0001"), decision.advisoryIds());
+    assertEquals(List.of(SECURITY_ADVISORY_ID), decision.advisoryIds());
     assertTrue(decision.blocksInstall());
     assertTrue(decision.blocksUpdate());
     assertEquals("Export app data before removal.", decision.safeUninstallGuidance());
@@ -332,7 +356,7 @@ class AppCatalogParserTest {
     assertEquals(AppCatalogSecurityAction.BLOCK_UPDATE, decision.action());
     assertEquals(AppCatalogSecuritySeverity.HIGH, decision.severity());
     assertEquals(
-        List.of("CRYPTA-2026-0001", "CRYPTA-2026-0002", "CRYPTA-2026-0003"),
+        List.of(SECURITY_ADVISORY_ID, "CRYPTA-2026-0002", "CRYPTA-2026-0003"),
         decision.advisoryIds());
     assertTrue(decision.requiresAcknowledgement());
     assertTrue(decision.blocksInstall());
@@ -390,13 +414,13 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri="));
   }
 
   @Test
   void parse_whenVersionFourCatalogDeclaresMaintenanceMetadata_expectInvalidCatalogEntry() {
-    assertInvalidEntry(validMaintenanceCatalog().replace("catalog.version=5", "catalog.version=4"));
+    assertInvalidEntry(validMaintenanceCatalog().replace(CATALOG_VERSION_5, "catalog.version=4"));
   }
 
   @Test
@@ -404,9 +428,8 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validSingleEntryCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
-                "app.queue-manager.homepage=https://example.invalid/app\n"
-                    + "app.queue-manager.bundle.uri="));
+                BUNDLE_URI_PROPERTY,
+                "app.queue-manager.homepage=https://example.invalid/app\n" + BUNDLE_URI_PROPERTY));
   }
 
   @Test
@@ -474,7 +497,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.review.status=trusted\napp.queue-manager.bundle.uri="));
   }
 
@@ -573,7 +596,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validProductionCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.replacementAppId=bad id\napp.queue-manager.bundle.uri="));
   }
 
@@ -582,7 +605,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validProductionCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 """
                 app.queue-manager.securityAdvisories=CRYPTA-2026-0001
                 app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=file:///tmp/advisory
@@ -595,7 +618,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.categories=bad category\napp.queue-manager.bundle.uri="));
   }
 
@@ -604,9 +627,8 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
-                "app.queue-manager.homepage=http://example.invalid/app\n"
-                    + "app.queue-manager.bundle.uri="));
+                BUNDLE_URI_PROPERTY,
+                "app.queue-manager.homepage=http://example.invalid/app\n" + BUNDLE_URI_PROPERTY));
   }
 
   @Test
@@ -616,9 +638,9 @@ class AppCatalogParserTest {
             bytes(
                 validStoreMetadataCatalog()
                     .replace(
-                        "app.queue-manager.bundle.uri=",
+                        BUNDLE_URI_PROPERTY,
                         "app.queue-manager.homepage=http://localhost:8080/app\n"
-                            + "app.queue-manager.bundle.uri=")));
+                            + BUNDLE_URI_PROPERTY)));
 
     AppCatalogEntry entry = catalog.entries().getFirst();
 
@@ -630,9 +652,9 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.permissions.rationale.queue.write=Writes queues.\n"
-                    + "app.queue-manager.bundle.uri="));
+                    + BUNDLE_URI_PROPERTY));
   }
 
   @Test
@@ -653,9 +675,9 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.screenshot.2=https://example.invalid/assets/shot-2.png\n"
-                    + "app.queue-manager.bundle.uri="));
+                    + BUNDLE_URI_PROPERTY));
   }
 
   @Test
@@ -663,7 +685,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 """
                 app.queue-manager.screenshot.1=https://example.invalid/assets/shot-1.png
                 app.queue-manager.screenshot.2=https://example.invalid/assets/shot-2.png
@@ -683,7 +705,7 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validStoreMetadataCatalog()
             .replace(
-                "app.queue-manager.bundle.uri=",
+                BUNDLE_URI_PROPERTY,
                 "app.queue-manager.review.note=   \napp.queue-manager.bundle.uri="));
   }
 
@@ -724,8 +746,7 @@ class AppCatalogParserTest {
     return validSingleEntryCatalog()
         .replace("catalog.version=1", "catalog.version=3")
         .replace(
-            "app.queue-manager.bundle.uri=",
-            "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri=");
+            BUNDLE_URI_PROPERTY, "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri=");
   }
 
   private static String validSecurityPolicyCatalog() {
@@ -835,9 +856,9 @@ class AppCatalogParserTest {
 
   private static String validSubmissionReviewCatalog() {
     return validMaintenanceCatalog()
-        .replace("catalog.version=5", "catalog.version=6")
+        .replace(CATALOG_VERSION_5, CATALOG_VERSION_6)
         .replace(
-            "app.queue-manager.bundle.uri=",
+            BUNDLE_URI_PROPERTY,
             """
             app.queue-manager.review.status=reviewed
             app.queue-manager.review.submission.id=submission-1
