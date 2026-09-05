@@ -13,7 +13,10 @@ Prerequisite: read `writing-guide.md` first.
 - Release tags use integer build numbers: `v<build-number>`.
 - Render release names with the same prefix in prose and headings: `Cryptad v<build-number>`, not `Cryptad <build-number>`.
 - Each build gets its own release body. Do not design the notes around semver minor/patch files.
-- For pre-release drafting, if `v<build-number>` does not exist yet, use `release/<build-number>` as the working source branch.
+- For pre-tag drafting, retain the selected candidate: `release/<build-number>` for ordinary
+  stabilization, `hotfix/<build-number>` for a hotfix, or an explicit user-selected ref. Follow
+  [source selection and range validation](../../cryptad-write-release-notes/references/drafting.md)
+  and use the same resolved commit throughout drafting and verification.
 
 ## Stable 1.0 generated notes
 
