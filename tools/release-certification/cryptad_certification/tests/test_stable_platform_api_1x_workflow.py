@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
+import subprocess
 import unittest
 
 from cryptad_certification.tests.support import workspace_root
@@ -342,6 +346,57 @@ class StablePlatformApi1xWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(len(uses), 4)
         for action in uses:
             self.assertRegex(action, r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}$")
+
+    def test_runtimeProducer_whenArtifactUploaded_expectRestDigestNormalization(self) -> None:
+        step = self.runtime.split("Authenticate the uploaded observation artifact", 1)[1]
+        step = step.split("- name:", 1)[0]
+        self.assertIn(
+            "ARTIFACT_DIGEST: sha256:${{ steps.observation.outputs.artifact-digest }}",
+            step,
+        )
+        self.assertIn(".digest == env.ARTIFACT_DIGEST", step)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to exercise the workflow predicate")
+    def test_runtimeProducer_whenArtifactAuthenticated_expectExactRestSubject(self) -> None:
+        step = self.runtime.split("Authenticate the uploaded observation artifact", 1)[1]
+        step = step.split("- name:", 1)[0]
+        digest_value = re.search(r"ARTIFACT_DIGEST: (.+)", step).group(1)
+        digest_value = digest_value.replace(
+            "${{ steps.observation.outputs.artifact-digest }}", "a" * 64
+        )
+        predicate = re.search(r"jq -e '([^']+)'", step).group(1)
+        environment = {
+            **os.environ,
+            "ARTIFACT_ID": "17",
+            "ARTIFACT_NAME": "fixture-runtime-observation",
+            "ARTIFACT_DIGEST": digest_value,
+            "GITHUB_RUN_ID": "11",
+        }
+        artifact = {
+            "id": 17,
+            "name": environment["ARTIFACT_NAME"],
+            "workflow_run": {"id": 11},
+            "digest": "sha256:" + "a" * 64,
+            "expired": False,
+        }
+        cases = [
+            ({}, True),
+            ({"digest": "a" * 64}, False),
+            ({"digest": "sha256:" + "b" * 64}, False),
+            ({"digest": None}, False),
+            ({"id": 18}, False),
+            ({"name": "other-artifact"}, False),
+            ({"workflow_run": {"id": 12}}, False),
+            ({"expired": True}, False),
+        ]
+        for changes, accepted in cases:
+            with self.subTest(changes=changes):
+                result = subprocess.run(
+                    ["jq", "-e", predicate],
+                    input=json.dumps({**artifact, **changes}),
+                    text=True, capture_output=True, env=environment, check=False,
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
 
     def test_producer_whenRuntimeImported_expectProtectedAuthorityConstructedBeforeCloseout(
         self,

@@ -300,7 +300,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_ID: ${{ steps.observation.outputs.artifact-id }}
           ARTIFACT_NAME: ${{ steps.names.outputs.observation }}
-          ARTIFACT_DIGEST: ${{ steps.observation.outputs.artifact-digest }}
+          ARTIFACT_DIGEST: sha256:${{ steps.observation.outputs.artifact-digest }}
         shell: bash
         run: |
           set -euo pipefail
