@@ -237,7 +237,13 @@
         }
         if (!existing) next.drafts.push(clone(draft));
       }
-      return preview(next, "restore");
+      const selection = {
+        addedOperations: clone(next.operations.filter((operation) =>
+          !data.operations.some((existing) => existing.operationId === operation.operationId))),
+        addedDrafts: clone(next.drafts.filter((draft) =>
+          !data.drafts.some((existing) => existing.id === draft.id)))
+      };
+      return { ...await preview(next, "restore"), selection };
     }
 
     async function commit() {
@@ -288,6 +294,7 @@
       controls.commit.disabled = true;
       controls.ack.checked = false;
       controls.binding.textContent = "";
+      controls.selection.textContent = "";
     }
     function setBusy(value) {
       busy = value;
@@ -332,14 +339,17 @@
       controls.preview.textContent = draft?.text || "";
       controls["publish-ack"].checked = false;
     }
-    function showPlan(result, expectedRevision) {
+    function showPlan(result, expectedRevision, importSelection) {
       if (expectedRevision !== revision) return;
+      const { selection: restoreSelection, ...receipt } = result;
+      const selection = importSelection || restoreSelection;
+      controls.selection.textContent = selection ? JSON.stringify(selection, null, 2) : "";
       prepared = !result.replay;
       controls.commit.disabled = busy || !prepared;
       controls.ack.checked = false;
 
       controls.binding.textContent = result.replay ? "Completed import replay: no changes."
-        : JSON.stringify(result, null, 2);
+        : JSON.stringify(receipt, null, 2);
       status(result.replay ? "This exact import is already committed; no drafts or publication added."
         : "Private preview ready. Download a separate target backup, review this change, then acknowledge and commit.");
     }
@@ -359,11 +369,11 @@
       const file = controls.file.files[0];
       if (!file || file.size > maximumPackageBytes) fail();
       converted = await parsePackage(new Uint8Array(await file.arrayBuffer()));
-      controls.selection.textContent = JSON.stringify({ selectedIds: converted.package.selectedIds,
+      const selection = { selectedIds: converted.package.selectedIds,
         pages: converted.dataset.drafts.map((draft) => ({ sourceId: draft.sourceId,
           name: draft.name, description: draft.description, text: draft.text })),
-        exclusions: converted.package.exclusions }, null, 2);
-      showPlan(await model.previewImport(converted), expectedRevision);
+        exclusions: converted.package.exclusions };
+      showPlan(await model.previewImport(converted), expectedRevision, selection);
     });
     on("save", async (expectedRevision) => {
       const saved = model.snapshot().drafts.find((entry) => entry.id === selectedId);

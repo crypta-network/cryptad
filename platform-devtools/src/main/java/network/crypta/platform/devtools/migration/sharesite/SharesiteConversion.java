@@ -92,8 +92,10 @@ public final class SharesiteConversion {
    *
    * <p>The result identifies active supported records and explicit exclusions without creating a
    * selection or import. It can contain user labels and must remain owner-private even when secret
-   * markers have been excluded. Invalid root membership or malformed inventory fields fail rather
-   * than becoming an empty successful inspection. No source values are modified.
+   * markers have been excluded. The private snapshot digest binds the inspection to exact source
+   * bytes, including fields omitted from this summary. Invalid root membership or malformed
+   * inventory fields fail rather than becoming an empty successful inspection. No source values are
+   * modified.
    *
    * @param source immutable decoded private snapshot produced by the strict binary decoder
    * @return UTF-8 private inspection JSON; never print this document into ordinary diagnostics
@@ -121,6 +123,8 @@ public final class SharesiteConversion {
             "private-user-data",
             "profile",
             "sharesite-pastebin-v1",
+            "snapshotSha256",
+            source.snapshotSha256(),
             "pages",
             pages,
             "exclusions",

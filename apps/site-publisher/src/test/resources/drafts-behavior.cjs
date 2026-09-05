@@ -246,5 +246,52 @@ function backend() {
   await element('draft-publish').listeners.click();
   assert.equal(uiStore.publications.length, 1);
   assert.equal(uiStore.publications[0].text, '<svg onload=alert(1)>literal</svg>');
+  const restoreOperation = '33333333-3333-4333-8333-333333333333';
+  const restoreDraft = { ...draft, id: `${restoreOperation}-3`, operationId: restoreOperation,
+    name: 'Restored private title', description: 'Actual backup description', text: '<img src=x onerror=alert(1)> restored literal' };
+  const backupModel = drafts.controller(backend().api);
+  await backupModel.load();
+  await backupModel.previewImport({ ...converted, payloadSha256: 'e'.repeat(64),
+    package: { ...converted.package, operationId: restoreOperation },
+    dataset: { ...converted.dataset, drafts: [restoreDraft] } });
+  await backupModel.commit();
+  const backupData = JSON.parse(backupModel.backup());
+  const existingData = JSON.parse(uiStore.value());
+  backupData.dataset.operations.unshift(...existingData.operations);
+  backupData.dataset.drafts.unshift(...existingData.drafts);
+  function selectFile(value) {
+    const encoded = bytes(value);
+    element('draft-file').files = [{ size: encoded.length, arrayBuffer: async () => encoded.buffer }];
+    element('draft-file').listeners.change();
+  }
+  selectFile(wrapper);
+  await element('draft-inspect').listeners.click();
+  assert.ok(element('draft-selection').textContent.includes(draft.name));
+  selectFile(backupData);
+  assert.equal(element('draft-selection').textContent, '', 'changing file clears old inspected pages');
+  const delayedRestore = deferNextPreview();
+  const restoring = element('draft-restore').listeners.click();
+  await delayedRestore.started;
+  assert.equal(element('draft-commit').disabled, true);
+  assert.equal(element('draft-selection').textContent, '');
+  delayedRestore.release(); await restoring;
+  const review = JSON.parse(element('draft-selection').textContent);
+  assert.deepEqual(review.addedDrafts, [restoreDraft]);
+  assert.equal(review.addedOperations.length, 1);
+  assert.equal(review.addedOperations[0].operationId, restoreOperation);
+  assert.equal(element('draft-ack').checked, false);
+  assert.equal(element('draft-commit').disabled, false);
+  assert.equal(JSON.parse(uiStore.value()).drafts.length, 2, 'restore preview does not mutate');
+  element('draft-ack').checked = true;
+  await element('draft-commit').listeners.click();
+  assert.deepEqual(JSON.parse(uiStore.value()).drafts[2], restoreDraft);
+  assert.equal(uiStore.publications.length, 1, 'restore never publishes');
+  const staleRestore = deferNextPreview();
+  const staleRestoring = element('draft-restore').listeners.click();
+  await staleRestore.started;
+  selectFile(wrapper);
+  staleRestore.release(); await staleRestoring;
+  assert.equal(element('draft-selection').textContent, '', 'late restore cannot replace current selection');
+  assert.equal(element('draft-commit').disabled, true);
   console.log('Site Publisher controller: persistence, fidelity, replay, edits, undo, restore, guards, privacy, and publication separation passed.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

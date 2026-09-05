@@ -294,6 +294,35 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  void cli_whenEligibleTextChangesAfterInspection_expectStaleInspectionAndNoPlan()
+      throws Exception {
+    Path source = temporary.resolve("Sharesite.db");
+    Map<String, String> fields = validFields();
+    byte[] original = encode(fields);
+    Files.write(source, original);
+    Path workspace = temporary.resolve("operation");
+    StringWriter diagnostics = new StringWriter();
+    assertEquals(0, cli(diagnostics, "inspect", source, workspace));
+    byte[] inspection = Files.readAllBytes(workspace.resolve("inspection.json"));
+
+    fields.put("collection-0/text", "different supported literal text");
+    byte[] changed = encode(fields);
+    Files.write(source, changed);
+
+    assertNotEquals(0, cli(diagnostics, "plan", source, workspace, selectionArgs()));
+    assertTrue(diagnostics.toString().contains("sharesite_stale_inspection"));
+    assertFalse(Files.exists(workspace.resolve("plan.json")));
+    assertArrayEquals(inspection, Files.readAllBytes(workspace.resolve("inspection.json")));
+    assertArrayEquals(changed, Files.readAllBytes(source));
+    assertFalse(diagnostics.toString().contains(SharesiteSnapshot.sha256(original)));
+    assertFalse(diagnostics.toString().contains(SharesiteSnapshot.sha256(changed)));
+
+    Files.write(source, original);
+    assertEquals(0, cli(diagnostics, "plan", source, workspace, selectionArgs()));
+    assertArrayEquals(original, Files.readAllBytes(source));
+  }
+
+  @Test
   void cli_whenChangedSnapshotOrUnsafeWorkspace_expectNoExport() throws Exception {
     Path source = temporary.resolve("Sharesite.db");
     Files.write(source, encode(validFields()));
