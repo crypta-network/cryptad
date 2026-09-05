@@ -7,7 +7,9 @@ Prerequisite: read `writing-guide.md` first.
 ## Source of truth
 
 - Cryptad publishes authoritative release notes on GitHub Releases.
-- When the release-notes skill is used, also maintain repo-root `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
+- When changelog artifacts are requested, maintain repo-root `changelog-full.md`,
+  `changelog-short.txt`, and `changelog-full.txt` together. A release-body-only request does not
+  require creating these files.
 - Release tags use integer build numbers: `v<build-number>`.
 - Render release names with the same prefix in prose and headings: `Cryptad v<build-number>`, not `Cryptad <build-number>`.
 - Each build gets its own release body. Do not design the notes around semver minor/patch files.
