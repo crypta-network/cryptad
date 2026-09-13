@@ -22,6 +22,8 @@ import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionPressureGate;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionScheduler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
@@ -126,6 +128,72 @@ class PlatformApiOperatorRoutesTest {
     assertEquals(200, unavailable.statusCode());
     assertTrue(unavailable.body().contains("\"inFlightOperations\":null"));
     assertFalse(unavailable.body().contains(SOURCE));
+  }
+
+  @Test
+  void runtimeObservationReportsSharedBudgetLifecycleWithoutAppInventory() {
+    var budgets =
+        new AppNetworkBudgetService(
+            new InMemoryAppNetworkBudgetStore(), AppNetworkBudgetConfig.defaults());
+    var config = ContentSubscriptionSchedulerConfig.defaults();
+    var subscriptions =
+        new ContentSubscriptionService(
+            new InMemoryContentSubscriptionStore(), new RecordingFetchPort(), config, budgets);
+    var shared =
+        new PlatformApiSharedAppServices(null, null, subscriptions, null, null, null, budgets);
+    var router =
+        new PlatformApiRouter(
+            runtimePorts(), null, null, null, AppUiOriginRegistry.sameOriginOnly(), shared);
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var unconfigured = router.route(request("GET", path, Map.of()));
+    assertTrue(unconfigured.body().contains("\"pressureConfiguration\":{\"known\":false}"));
+    var host = mock(AppHost.class);
+    var gate = new ContentSubscriptionPressureGate(null, null, null, 2, 1);
+    var scheduler = new ContentSubscriptionScheduler(host, subscriptions, config, gate);
+    try {
+      scheduler.runDueTasksOnce();
+      var acquired =
+          budgets.acquire("private-installed-app", AppNetworkBudgetOperation.SUBSCRIPTION_POLL);
+      try (var lease = acquired.lease()) {
+        var response = router.route(request("GET", path, Map.of()));
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"activeFamilyLeases\":3"));
+        assertTrue(response.body().contains("RATE_CHARGED"));
+        assertTrue(response.body().contains("TICK_ENTERED"));
+        assertTrue(response.body().contains("\"operation\":null"));
+        assertTrue(response.body().contains("\"subscriptionPollPerAppPerHour\":48"));
+        assertTrue(response.body().contains("\"initialDelayMillis\":300000"));
+        assertTrue(response.body().contains("\"maximumInFlight\":2"));
+        assertTrue(response.body().contains("\"resumeAtOrBelow\":1"));
+        assertFalse(response.body().contains("private-installed-app"));
+        assertFalse(response.body().contains(SOURCE));
+      }
+      var released = router.route(request("GET", path, Map.of()));
+      assertTrue(released.body().contains("\"activeFamilyLeases\":0"));
+      assertTrue(released.body().contains("BUDGET_RELEASED"));
+    } finally {
+      scheduler.close();
+    }
+  }
+
+  @Test
+  void runtimeObservationWithoutSubscriptionsReportsUnavailableBudgetStoreHonestly()
+      throws java.io.IOException {
+    var store = mock(network.crypta.platform.api.networkbudget.AppNetworkBudgetStore.class);
+    when(store.observe(org.mockito.ArgumentMatchers.anyInt()))
+        .thenThrow(new java.io.IOException("private-store-path"));
+    var budgets = new AppNetworkBudgetService(store, AppNetworkBudgetConfig.defaults());
+    var shared = new PlatformApiSharedAppServices(null, null, null, null, null, null, budgets);
+    var router =
+        new PlatformApiRouter(
+            runtimePorts(), null, null, null, AppUiOriginRegistry.sameOriginOnly(), shared);
+
+    var response =
+        router.route(request("GET", List.of(OPERATOR_SEGMENT, "runtime-observation"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"valid\":false"));
+    assertFalse(response.body().contains("schedulerConfiguration"));
   }
 
   @Test

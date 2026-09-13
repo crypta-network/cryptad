@@ -45,6 +45,7 @@ import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionPressureGate;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationContext;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationPolicy;
 import network.crypta.platform.appcatalog.AppCatalogBundleVerificationResult;
@@ -73,7 +74,10 @@ import network.crypta.platform.apphost.runtime.LocalProcessAppHost;
 import network.crypta.runtime.alerts.UserAlertManager;
 import network.crypta.runtime.alerts.UserAlertSurface;
 import network.crypta.runtime.services.NodeServicesSubsystem;
+import network.crypta.runtime.spi.ContentFetchPort;
+import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RandomnessPort;
+import network.crypta.runtime.spi.RequestQueuePort;
 import network.crypta.runtime.spi.RuntimePorts;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
@@ -211,6 +215,44 @@ class CoreHttpShellRuntimeSupportTest {
     RuntimePorts actualRuntimePorts = runtimeSupport.runtimePorts();
 
     assertSame(runtimePorts, actualRuntimePorts);
+  }
+
+  @Test
+  void contentSubscriptionScheduler_whenRuntimePortsAvailable_expectConfiguredGateWiredToService(
+      @TempDir Path tempDir) {
+    RuntimePorts ports = mock(RuntimePorts.class);
+    QueueSupportPort queueSupport = mock(QueueSupportPort.class);
+    RequestQueuePort requestQueue = mock(RequestQueuePort.class);
+    ContentFetchPort contentFetch = mock(ContentFetchPort.class);
+    when(ports.queueSupport()).thenReturn(queueSupport);
+    when(ports.requestQueue()).thenReturn(requestQueue);
+    when(ports.contentFetch()).thenReturn(contentFetch);
+    ContentSubscriptionPressureGate gate =
+        new ContentSubscriptionPressureGate(queueSupport, requestQueue, contentFetch, 3, 1);
+
+    try (MockedStatic<ContentSubscriptionPressureGate> factory =
+        mockStatic(ContentSubscriptionPressureGate.class)) {
+      factory
+          .when(
+              () ->
+                  ContentSubscriptionPressureGate.fromSystem(
+                      queueSupport, requestQueue, contentFetch))
+          .thenReturn(gate);
+      CoreHttpShellRuntimeSupport runtimeSupport = managedRuntimeSupport(tempDir, ports);
+      try {
+        assertNotNull(runtimeSupport.contentSubscriptionScheduler());
+        assertEquals(
+            gate.configuration(),
+            runtimeSupport.contentSubscriptionService().pressureConfiguration());
+        factory.verify(
+            () ->
+                ContentSubscriptionPressureGate.fromSystem(
+                    queueSupport, requestQueue, contentFetch));
+      } finally {
+        runtimeSupport.contentSubscriptionScheduler().close();
+        runtimeSupport.appUpdateScheduler().close();
+      }
+    }
   }
 
   @Test
@@ -1782,6 +1824,10 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   private static CoreHttpShellRuntimeSupport managedRuntimeSupport(Path root) {
+    return managedRuntimeSupport(root, null);
+  }
+
+  private static CoreHttpShellRuntimeSupport managedRuntimeSupport(Path root, RuntimePorts ports) {
     NodeClientCore core = mock(NodeClientCore.class);
     Node node = mock(Node.class);
     ProgramDirectory nodeDir = mock(ProgramDirectory.class);
@@ -1793,6 +1839,9 @@ class CoreHttpShellRuntimeSupportTest {
     when(nodeDir.dir()).thenReturn(root.resolve("node").toFile());
     when(runDir.dir()).thenReturn(root.resolve("run").toFile());
     when(core.getPersistentTempDir()).thenReturn(root.resolve("persistent-temp").toFile());
+    if (ports != null) {
+      when(core.getRuntimePorts()).thenReturn(ports);
+    }
     try (MockedStatic<SemiOrderedShutdownHook> shutdownHooks =
         mockStatic(SemiOrderedShutdownHook.class)) {
       stubShutdownHookLookup(shutdownHooks, shutdownHook);

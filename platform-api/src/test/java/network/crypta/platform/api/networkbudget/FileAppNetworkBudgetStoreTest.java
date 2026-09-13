@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -150,5 +152,117 @@ class FileAppNetworkBudgetStoreTest {
     assertFalse(persisted.contains("/tmp"));
     assertFalse(persisted.contains("token"));
     assertFalse(persisted.contains("<html"));
+  }
+
+  @Test
+  void observe_whenRootAbsentOrEmpty_expectKnownEmpty() throws Exception {
+    FileAppNetworkBudgetStore absent = new FileAppNetworkBudgetStore(tempDir.resolve("absent"));
+    FileAppNetworkBudgetStore empty = new FileAppNetworkBudgetStore(tempDir);
+
+    assertTrue(absent.observe(1).isEmpty());
+    assertTrue(empty.observe(1).isEmpty());
+  }
+
+  @Test
+  void observe_whenBoundDoesNotIncludeDirectoryAndCounter_expectUnavailable() throws Exception {
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+    AppNetworkBudgetUsage usage = observationUsage();
+    store.write(usage);
+
+    assertThrows(IOException.class, () -> store.observe(0));
+    assertThrows(IOException.class, () -> store.observe(-1));
+    assertThrows(IOException.class, () -> store.observe(1));
+    assertEquals(List.of(usage), store.observe(2));
+  }
+
+  @Test
+  void observe_whenTemporaryWriteExists_expectIgnoredButChargedToInspectionBound()
+      throws Exception {
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+    AppNetworkBudgetUsage usage = observationUsage();
+    store.write(usage);
+    Files.writeString(tempDir.resolve("feed-reader/.app-network-budget-write.tmp"), "partial");
+
+    assertThrows(IOException.class, () -> store.observe(2));
+    assertEquals(List.of(usage), store.observe(3));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"unexpected.txt", "unknown.properties"})
+  void observe_whenUnrecognizedCounterPresent_expectUnavailableDespiteLegacyListing(String name)
+      throws Exception {
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+    AppNetworkBudgetUsage usage = observationUsage();
+    store.write(usage);
+    Files.writeString(tempDir.resolve("feed-reader").resolve(name), "not=valid");
+
+    assertThrows(IOException.class, () -> store.observe(10));
+    assertEquals(List.of(usage), store.listAll());
+  }
+
+  @Test
+  void observe_whenRootOrAppEntryIsNotDirectory_expectUnavailable() throws Exception {
+    Path file = Files.writeString(tempDir.resolve("file"), "unexpected");
+    FileAppNetworkBudgetStore fileRoot = new FileAppNetworkBudgetStore(file);
+    FileAppNetworkBudgetStore invalidEntry = new FileAppNetworkBudgetStore(tempDir);
+
+    assertThrows(IOException.class, () -> fileRoot.observe(10));
+    assertThrows(IOException.class, () -> invalidEntry.observe(10));
+  }
+
+  @Test
+  void observe_whenCounterIsDirectory_expectUnavailable() throws Exception {
+    Files.createDirectories(tempDir.resolve("feed-reader/subscription_poll.properties"));
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+
+    assertThrows(IOException.class, () -> store.observe(10));
+  }
+
+  @Test
+  void observe_whenScopeInvalid_expectUnavailableWithoutPathInMessage() throws Exception {
+    Files.createDirectory(tempDir.resolve("invalid scope"));
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+
+    IOException failure = assertThrows(IOException.class, () -> store.observe(10));
+
+    assertEquals("App network budget metadata is unavailable.", failure.getMessage());
+  }
+
+  @Test
+  void observe_whenCounterExceedsByteBound_expectUnavailableButLegacyReadPreserved()
+      throws Exception {
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+    AppNetworkBudgetUsage usage = observationUsage();
+    store.write(usage);
+    Path file = tempDir.resolve("feed-reader/subscription_poll.properties");
+    String metadata = Files.readString(file);
+    Files.writeString(file, metadata + "#" + "x".repeat(8191 - metadata.length()));
+    assertEquals(List.of(usage), store.observe(10));
+
+    Files.writeString(file, Files.readString(file) + "x");
+
+    assertThrows(IOException.class, () -> store.observe(10));
+    assertEquals(
+        usage,
+        store.read("feed-reader", AppNetworkBudgetOperation.SUBSCRIPTION_POLL).orElseThrow());
+  }
+
+  @Test
+  void observe_whenCounterDoesNotMatchFilename_expectUnavailable() throws Exception {
+    FileAppNetworkBudgetStore store = new FileAppNetworkBudgetStore(tempDir);
+    store.write(observationUsage());
+    Files.move(
+        tempDir.resolve("feed-reader/subscription_poll.properties"),
+        tempDir.resolve("feed-reader/foreground_content_fetch.properties"));
+
+    assertThrows(IOException.class, () -> store.observe(10));
+  }
+
+  private static AppNetworkBudgetUsage observationUsage() {
+    return AppNetworkBudgetUsage.empty(
+        "feed-reader",
+        AppNetworkBudgetOperation.SUBSCRIPTION_POLL,
+        Instant.parse("2026-06-12T00:00:00Z"),
+        Duration.ofHours(1));
   }
 }

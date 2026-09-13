@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
@@ -64,7 +65,8 @@ public final class ContentSubscriptionService {
   private static final HexFormat HEX = HexFormat.of();
 
   private final RuntimeWorkObservation observation;
-  private volatile ContentSubscriptionPressureGate.Configuration pressureConfiguration;
+  private final AtomicReference<ContentSubscriptionPressureGate.Configuration>
+      pressureConfiguration = new AtomicReference<>();
   private final ContentSubscriptionStore store;
   private final ContentFetchPort contentFetchPort;
   private final ContentSubscriptionSchedulerConfig config;
@@ -184,11 +186,11 @@ public final class ContentSubscriptionService {
    * @return captured scheduler pressure policy, or null when no scheduler was constructed
    */
   public ContentSubscriptionPressureGate.Configuration pressureConfiguration() {
-    return pressureConfiguration;
+    return pressureConfiguration.get();
   }
 
   void setPressureConfiguration(ContentSubscriptionPressureGate.Configuration configuration) {
-    pressureConfiguration = configuration;
+    pressureConfiguration.set(configuration);
   }
 
   /**

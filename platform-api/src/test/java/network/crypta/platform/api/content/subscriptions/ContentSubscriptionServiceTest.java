@@ -16,6 +16,7 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
@@ -184,6 +185,70 @@ class ContentSubscriptionServiceTest {
     assertEquals(1, failed.get("failureCount"));
     assertEquals(NOW.plus(Duration.ofMinutes(5)).toString(), failed.get("nextCheckAt"));
     assertEquals(failed, service.listAllForOperator().getFirst());
+  }
+
+  @Test
+  void refresh_whenFetchExceedsByteBound_expectFailureEventsAndReleasedBudget() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    AppNetworkBudgetService budget = subscriptionBudget(10);
+    ContentSubscriptionService service = service(fetchPort, config(2), budget);
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    fetchPort.enqueue("x".repeat(257), RUNTIME_SOURCE);
+
+    Map<String, Object> failed = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals("content_fetch_too_large", failed.get("lastErrorCode"));
+    assertFailedFetchObservation(service, budget);
+    fetchPort.enqueue("bounded body", RUNTIME_SOURCE);
+    assertEquals("success", service.refresh(APP_ID, subscriptionId).get("status"));
+  }
+
+  @Test
+  void refresh_whenFetchThrowsRuntimeException_expectRedactedFailureAndReleasedBudget() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    AppNetworkBudgetService budget = subscriptionBudget(10);
+    ContentSubscriptionService service = service(fetchPort, config(2), budget);
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    fetchPort.results.addLast(new IllegalStateException("private runtime failure /tmp/secret"));
+
+    Map<String, Object> failed = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals("backoff", failed.get("status"));
+    assertEquals("Subscription fetch failed.", failed.get("message"));
+    assertFalse(failed.toString().contains("private runtime failure"));
+    assertFailedFetchObservation(service, budget);
+    fetchPort.enqueue("bounded body", RUNTIME_SOURCE);
+    assertEquals("success", service.refresh(APP_ID, subscriptionId).get("status"));
+  }
+
+  private static void assertFailedFetchObservation(
+      ContentSubscriptionService service, AppNetworkBudgetService budget) {
+    List<RuntimeWorkObservation.Event> events = budget.observation().snapshot().events();
+    List<RuntimeWorkObservation.Event> fetchEvents =
+        events.stream()
+            .filter(
+                event ->
+                    event.kind() == RuntimeWorkObservation.Kind.FETCH_INVOKED
+                        || event.kind() == RuntimeWorkObservation.Kind.FETCH_FAILED
+                        || event.kind() == RuntimeWorkObservation.Kind.RETRY_SCHEDULED
+                        || event.kind() == RuntimeWorkObservation.Kind.BUDGET_RELEASED)
+            .toList();
+    assertEquals(
+        List.of(
+            RuntimeWorkObservation.Kind.FETCH_INVOKED,
+            RuntimeWorkObservation.Kind.FETCH_FAILED,
+            RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
+            RuntimeWorkObservation.Kind.BUDGET_RELEASED),
+        fetchEvents.stream().map(RuntimeWorkObservation.Event::kind).toList());
+    assertEquals(fetchEvents.getFirst().operationId(), fetchEvents.get(1).operationId());
+    assertEquals(
+        service.listAllForScheduler().getFirst().nextCheckAt().getEpochSecond(),
+        fetchEvents.get(2).value());
+    assertTrue(
+        events.stream()
+            .noneMatch(event -> event.kind() == RuntimeWorkObservation.Kind.FETCH_SUCCEEDED));
   }
 
   @Test
@@ -488,6 +553,9 @@ class ContentSubscriptionServiceTest {
       assertNotNull(request);
       Object next = results.removeFirst();
       if (next instanceof ContentFetchException failure) {
+        throw failure;
+      }
+      if (next instanceof RuntimeException failure) {
         throw failure;
       }
       return (BoundedContentFetchResult) next;

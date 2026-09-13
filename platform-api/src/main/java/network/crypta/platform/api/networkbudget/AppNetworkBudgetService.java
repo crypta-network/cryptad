@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * Shared deterministic app-network budget service.
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * operation. Store failures fail closed with safe metadata instead of resetting quota.
  */
 public final class AppNetworkBudgetService {
+  private static final Pattern RESERVATION_KEY_SEPARATOR = Pattern.compile("\\n");
   private static final String PARAM_OPERATION = "operation";
   private static final String ERROR_NETWORK_BUDGET_UNAVAILABLE = "network_budget_unavailable";
   private static final String MESSAGE_NETWORK_BUDGET_UNAVAILABLE =
@@ -680,7 +682,7 @@ public final class AppNetworkBudgetService {
   private void releasePendingRateReservations(List<String> reservationKeys, long operationId) {
     for (String key : reservationKeys) {
       pendingRateReservations.computeIfPresent(key, (_, count) -> count <= 1 ? null : count - 1);
-      String[] identity = key.split("\\n", 3);
+      String[] identity = RESERVATION_KEY_SEPARATOR.split(key, 3);
       observation.recordEvent(
           RuntimeWorkObservation.Kind.RATE_RESERVATION_RELEASED,
           AppNetworkBudgetOperation.fromJsonValue(identity[1]),
