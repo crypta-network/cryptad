@@ -2394,7 +2394,7 @@
         "adapter": "measured-soak",
         "module": "tools/release-certification/cryptad_certification/cross_version_evidence.py",
         "policy": "tools/release-certification/cryptad_certification/cross_version_evidence.py",
-        "policyDigest": "sha256:0227ed675a6ff0146f4c7c1054ee9093847f024885ebbe5478f41ab454b7f796",
+        "policyDigest": "sha256:bbac449d3ebbe29c7e674d9afafe3a78bcb4d601139b88b30488b6a29f14eb08",
         "schema": "python:tools/release-certification/cryptad_certification/cross_version_evidence.py#verify",
         "verifier": "verify"
       },
@@ -2591,7 +2591,7 @@
           },
           {
             "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
-            "digest": "sha256:11336c2c155be18b75424bf2b50ace21825434d7ff332b3eef67c05bf0af4693",
+            "digest": "sha256:8e456642dafb1fe83582f49bdc1f8f92d3ea3e6b6577a377e2c399a4175bd4f9",
             "path": "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
           },
           {
@@ -2630,7 +2630,7 @@
         "adapter": "measured-soak",
         "module": "tools/release-certification/cryptad_certification/cross_version_evidence.py",
         "policy": "tools/release-certification/cryptad_certification/cross_version_evidence.py",
-        "policyDigest": "sha256:0227ed675a6ff0146f4c7c1054ee9093847f024885ebbe5478f41ab454b7f796",
+        "policyDigest": "sha256:bbac449d3ebbe29c7e674d9afafe3a78bcb4d601139b88b30488b6a29f14eb08",
         "schema": "python:tools/release-certification/cryptad_certification/cross_version_evidence.py#verify",
         "verifier": "verify"
       },
@@ -2690,7 +2690,7 @@
         "adapter": "maintenance-measurements",
         "module": "tools/release-certification/protected/maintenance_runtime_projection.py",
         "policy": "tools/release-certification/protected/maintenance_runtime_projection.py",
-        "policyDigest": "sha256:0c155297a3994269ca542868b4bc9decd6c155266be0ddb5f89d65e790aa48ec",
+        "policyDigest": "sha256:716ebb64df2355335d70346663c7431d685be3fbbc70f480101ae3a2418f8339",
         "schema": "python:tools/release-certification/protected/maintenance_runtime_projection.py#project",
         "verifier": "project"
       },
