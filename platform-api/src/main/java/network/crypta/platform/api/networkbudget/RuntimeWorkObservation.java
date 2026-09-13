@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.regex.Pattern;
 import network.crypta.runtime.spi.ContentFetchObservation;
 
 /**
@@ -25,6 +25,8 @@ import network.crypta.runtime.spi.ContentFetchObservation;
 public final class RuntimeWorkObservation {
   /** Maximum retained records; sampling cannot grow the journal. */
   public static final int CAPACITY = 4096;
+
+  private static final Pattern OWNER_EPOCH = Pattern.compile("[a-zA-Z0-9._-]{1,96}");
 
   private final ArrayDeque<Event> events = new ArrayDeque<>();
   private final long originNanos = System.nanoTime();
@@ -192,18 +194,19 @@ public final class RuntimeWorkObservation {
   /**
    * Records the actual owner sample used for a contention assessment, without request inventory.
    *
-   * <p>An invalid owner UUID records {@link Kind#PRESSURE_UNKNOWN} instead of exposing its value.
-   * The caller must assess the sample's known/truncated flags before selecting the event kind.
+   * <p>Owner epochs are preserved exactly when they match the evidence consumer's bounded opaque
+   * label format: 1–96 ASCII letters, digits, dots, underscores or hyphens. Other values record
+   * {@link Kind#PRESSURE_UNKNOWN} without retaining the value. The SPI accepts broader opaque
+   * identifiers; this restriction applies only to evidence admission. The caller must assess the
+   * sample's known/truncated flags before selecting the event kind.
    *
    * @param kind assessment event to associate with a valid owner sample
    * @param sample detached owner counters and sample identity
    * @throws NullPointerException if the sample, its epoch, or the accepted event kind is null
    */
   public synchronized void pressure(Kind kind, ContentFetchObservation sample) {
-    String epoch;
-    try {
-      epoch = UUID.fromString(sample.epoch()).toString();
-    } catch (IllegalArgumentException _) {
+    String epoch = sample.epoch();
+    if (!OWNER_EPOCH.matcher(epoch).matches()) {
       recordEvent(Kind.PRESSURE_UNKNOWN);
       return;
     }
@@ -269,7 +272,7 @@ public final class RuntimeWorkObservation {
    * @param value documented count/time for the event kind
    * @param operationId process-local admission correlation, zero if inapplicable
    * @param scope opaque process-local family scope; one is global, two or more are app scopes
-   * @param sourceEpoch exact contention owner UUID, or null when inapplicable
+   * @param sourceEpoch exact opaque contention owner epoch, or null when inapplicable
    * @param sourceSequence contention owner transition sequence
    * @param sourceSampledAtEpochMillis actual gate sample wall time in milliseconds
    */

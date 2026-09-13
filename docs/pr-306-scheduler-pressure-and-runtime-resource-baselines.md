@@ -57,6 +57,11 @@ an executor marker. The consumer discards pending executor origin on a rejected 
 completed tick and ignores markers inside an active tick, so older rejected-attempt observations
 cannot give a later manual probe scheduler or recovery credit.
 
+Pressure events retain owner epochs exactly, including non-UUID identifiers. Evidence admission
+uses the existing consumer format of 1–96 ASCII letters, digits, dots, underscores or hyphens;
+values outside that bounded format yield an unknown event without retaining the identifier.
+This evidence restriction does not narrow the SPI's broader opaque-epoch contract.
+
 Four conditions have different meanings:
 
 | Condition | Source and meaning | Scheduler consequence |

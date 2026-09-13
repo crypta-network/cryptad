@@ -155,6 +155,19 @@ class RuntimePressureEvidenceTest(unittest.TestCase):
                       'background-recovery-observed'):
             self.assertEqual('not-observed', result['claims'][claim], claim)
 
+    def test_opaque_owner_epoch_preserves_contention_and_recovery_claims(self):
+        value = evidence_fixture()
+        for event in value['workEvents']:
+            if event['sourceEpoch'] is not None:
+                event['sourceEpoch'] = 'epoch-1'
+        for sample in value['contentFetchSamples']:
+            sample['epoch'] = 'epoch-1'
+
+        result = derive(value)
+
+        for claim in ('pressure-before-budget-observed', 'background-recovery-observed'):
+            self.assertEqual('observed', result['claims'][claim], claim)
+
     def test_measured_safety_exceedance_is_not_missing_runtime_series(self):
         value = evidence_fixture()
         for sample in value['series']['samples']:

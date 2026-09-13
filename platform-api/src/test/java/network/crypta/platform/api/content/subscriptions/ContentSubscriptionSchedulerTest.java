@@ -426,7 +426,7 @@ class ContentSubscriptionSchedulerTest {
     var service = service(fetch, config, budget);
     service.create(APP_ID, createParams(SOURCE, "Feed"));
     var owner = mock(ContentFetchPort.class);
-    String epoch = "a3816c21-7d7d-4d6c-bad8-e47991bb78d5";
+    String epoch = "epoch-1";
     when(owner.observation())
         .thenReturn(new ContentFetchObservation(true, epoch, 17, 123456789, 1, 10, 3, 2, 0, false));
     var scheduler =
