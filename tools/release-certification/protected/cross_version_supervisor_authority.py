@@ -700,9 +700,9 @@ def control(operation):
         if terminal is not None:
             terminal.require(activation)
     report['schemaVersion'] = report['maintenanceMeasurements']['schemaVersion'] + 1
-    if operation == 'finish' and _has_sealed_products(activation):
-        (AUTHORITY / 'runtime-products.json').unlink()
-        (AUTHORITY / 'runtime-authorization.json').unlink()
+    # Collection precedes redaction, stdout, original attestation and artifact upload. Retain
+    # immutable private inputs so any failed handoff can retry the same terminal observation.
+    # Removal belongs to explicit operator reconciliation after durable original evidence exists.
     return report
 
 

@@ -2810,7 +2810,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:6641b9a51189b97e143acf997fffba8e2adbf102cbabe77efd29f7f364de3a01",
+            "digest": "sha256:e8208c9d4e46d2d797d2750d32cf902b7a1ea9c30395f7d00a880c1fb6ac7b56",
             "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
           },
           {
@@ -2938,7 +2938,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:aeee04782754f87a9643d19d3c749b0442f565e9ab6a0040290385a1190908ff",
+            "digest": "sha256:c406196945937b81da081888b86afda430907adc5d36832543582fb8d23bbf15",
             "path": "tools/release-certification/protected/test_sealed_runtime_service_handoff.py"
           },
           {

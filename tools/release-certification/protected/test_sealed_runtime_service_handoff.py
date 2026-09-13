@@ -1,6 +1,7 @@
 """Offline service authority and lifetime tests, with synthetic OS ownership only."""
 import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -166,7 +167,7 @@ class ServiceHandoffTest(unittest.TestCase):
                 self.assertEqual(1, legacy['schemaVersion'])
                 self.assertEqual(authority.digest(bindings), legacy['selectionDigest'])
 
-    def test_finish_after_execution_deadline_reads_real_terminal_journal_and_cleans_private_records(self):
+    def test_finish_after_deadline_retains_exact_inputs_across_failed_handoffs_and_retry(self):
         from cryptad_certification.tests.test_cross_version_evidence import fixture_plan, fixture_events
         import maintenance_runtime_projection as projection
         plan = fixture_plan()
@@ -211,6 +212,7 @@ class ServiceHandoffTest(unittest.TestCase):
                     'planDigest': authority.digest(plan), 'producer': plan['producer'], 'selectionDigest': selection,
                     'approvalOrigin': activation['approvalOrigin'],
                     'admittedProductsDigest': authority.digest(activation['products'])}
+        retained = {path: path.read_bytes() for path in (self.record, self.root / 'runtime-authorization.json')}
         with patch.object(authority.os, 'geteuid', return_value=0), \
                 patch.object(authority, 'CONFIG', self.root), \
                 patch.object(authority, 'selected_inputs', return_value=(plan, private, authorization, 0, bindings)), \
@@ -222,13 +224,26 @@ class ServiceHandoffTest(unittest.TestCase):
             with self.assertRaises(authority.AuthorityError):
                 authority.AuthenticatedRunner(authority._SEAL, activation).product_admission(plan, private)
             result = authority.control('finish')
+            with patch.object(authority.sys, 'argv', ['supervisor', 'finish']), \
+                    patch.object(authority.sys, 'stderr', io.StringIO()):
+                with patch.object(authority, 'scan_value', return_value=['synthetic-redaction-failure']):
+                    self.assertEqual(2, authority.main())
+                with patch.object(authority, 'scan_value', return_value=[]), \
+                        patch.object(authority.sys, 'stdout') as output:
+                    output.write.side_effect = OSError('synthetic-output-failure')
+                    self.assertEqual(2, authority.main())
+            # Upload/attestation happen after control returns and cannot acknowledge durability.
+            # An unchanged original start selection can collect again without reconstructing state.
+            self.assertEqual(result, authority.control('finish'))
+            for path, raw in retained.items():
+                self.assertEqual(raw, path.read_bytes())
         self.assertEqual('finish', result['operation'])
         self.assertEqual(authority.digest(checkpoint), result['checkpoint']['digest'])
         self.assertEqual('complete', result['checkpoint']['status'])
         self.assertEqual(events, project.call_args.args[1])
         self.assertEqual(rows, project.call_args.args[3])
-        self.assertFalse(self.record.exists())
-        self.assertFalse((self.root / 'runtime-authorization.json').exists())
+        self.assertTrue(self.record.exists())
+        self.assertTrue((self.root / 'runtime-authorization.json').exists())
 
     def test_terminal_read_capability_is_root_only_stopped_bounded_and_cannot_resume_execution(self):
         with self.assertRaises(authority.AuthorityError):

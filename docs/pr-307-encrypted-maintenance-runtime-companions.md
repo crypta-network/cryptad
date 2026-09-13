@@ -204,7 +204,14 @@ private configuration and authorization commitments remain in root-owned mode-06
 `runtime-authorization.json`; retries retain its original bytes. Activation v2 excludes private
 configuration/authorization hashes. The root-owned, service-readable runtime product record carries
 those bindings privately, and the service rechecks them without decrypt keys or network access.
-Successful finish removes owned private state; interrupted operations require reconciliation.
+Finish retains the exact private authorization and product records: report construction precedes
+redaction, stdout, original attestation and artifact upload, so command success cannot acknowledge
+a durable handoff. A retry using the same original start/checkpoint selection can re-collect the
+stopped terminal journal without reconstructing private state. The original execution deadline still
+applies. No automatic deletion or caller-supplied success receipt authorizes cleanup. Operators must
+retain the private records, journal and bound package/app inputs until actual original evidence is
+durably retained and explicitly reconciled; owned-state removal is a separate operator action.
+This can extend private disk retention beyond finish and does not promise secure erasure.
 Execution still expires at the activation deadline. A later root-owned `finish` can inspect the
 stopped run through a separate two-minute terminal evidence capability, bound to the same activation
 and boot. It rechecks stopped service state at every private read and after the final journal
