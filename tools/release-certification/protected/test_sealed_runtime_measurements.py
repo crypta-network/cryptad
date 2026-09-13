@@ -13,6 +13,7 @@ class SealedMeasurementsTest(unittest.TestCase):
         helper = fixtures.MaintenanceRuntimeProjectionTest()
         values = helper.runtime_fixture()
         for row in values[3]:
+            row['frozenPortableBinding'] = 'existing-maintenance-freeze-exact-product-v3'
             row['sealedRuntimeBinding'] = {
                 'descriptor': {'fileName': 'runtime-companion.json', 'sizeBytes': 512,
                                'digest': 'sha256:' + 'a' * 64},
@@ -34,6 +35,23 @@ class SealedMeasurementsTest(unittest.TestCase):
             self.assertNotIn(private, encoded)
         self.assertTrue(all(row['status'] == 'blocked' for row in result['rows']))
         self.assertEqual(9, len(result['rows']))
+        self.assertTrue(all(row['binding'] == 'exact-maintenance-product' for row in result['products']))
+        self.assertTrue(all('candidate-or-predecessor-portable-freeze-unbound' not in row['blockers']
+                            for row in result['rows']))
+
+    def test_sealed_binding_keeps_exact_identity_and_known_version_requirements(self):
+        for change in ({'frozenPortableBinding': 'existing-maintenance-freeze-exact-product-v99'},
+                       {'artifactDigest': 'sha256:' + 'f' * 64},
+                       {'maintenanceFreezeDigest': None}, {'freezeCompletedAt': None}):
+            with self.subTest(change=change):
+                helper, values = self.fixture()
+                row = next(row for row in values[3] if row['role'] == 'candidate-sender')
+                row.update(change)
+                result = projection._project_v1(*values, now=fixtures.dt.datetime(2026, 1, 1, 0, 10, tzinfo=fixtures.dt.timezone.utc))
+                selected = next(row for row in result['products'] if row['role'] == 'candidate-sender')
+                self.assertEqual('not-established', selected['binding'])
+                self.assertTrue(all('candidate-or-predecessor-portable-freeze-unbound' in row['blockers']
+                                    for row in result['rows']))
 
     def test_ciphertext_identity_alone_cannot_prove_native_relations(self):
         helper, values = self.fixture()

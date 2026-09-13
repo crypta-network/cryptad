@@ -116,7 +116,9 @@ def _project_v1(plan, events, checkpoint, products, *, policy_path=POLICY, now=N
         row = by_role.get(node["role"], {})
         exact = all(row.get(key) == node[key] for key in ("sourceCommit", "artifactDigest", "artifactSize", "packageTarget"))
         frozen = parse_timestamp(row.get("freezeCompletedAt"))
-        bound = (exact and row.get("frozenPortableBinding") == "existing-maintenance-freeze-exact-product-v1"
+        bound = (exact and row.get("frozenPortableBinding") in {
+                     "existing-maintenance-freeze-exact-product-v1",
+                     "existing-maintenance-freeze-exact-product-v3"}
                  and re.fullmatch(r"sha256:[0-9a-f]{64}", str(row.get("maintenanceFreezeDigest"))) is not None
                  and frozen is not None)
         if node["role"] in {"candidate-sender", "candidate-recipient", "previous"}:

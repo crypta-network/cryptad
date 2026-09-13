@@ -2805,7 +2805,7 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate all nine measured maintenance/release-consumer rows from original products and journal; subcase labels cannot replace required adapters.",
-            "digest": "sha256:fb94261c2d8384c13af30022c4c7e8c11b1a4d041f3221259b60e77bca1a265b",
+            "digest": "sha256:cee07d7ad8d17e0bf571f75fe616bb3e508cb753cfc2d591ffda318b7977f02e",
             "path": "tools/release-certification/protected/maintenance_runtime_projection.py"
           },
           {
@@ -2933,7 +2933,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:621459a53fcce7e8cf9fb4754712aec3e661a43dd9a460f7d8aee51ca77a373d",
+            "digest": "sha256:ce0ca59340d426d18fb7768c39019e09faa06948a1861cfbd81500196c442108",
             "path": "tools/release-certification/protected/test_sealed_runtime_measurements.py"
           },
           {
