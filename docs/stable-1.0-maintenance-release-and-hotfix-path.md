@@ -1022,8 +1022,10 @@ narrow admission success does not close missing runtime adapters or operational 
 
 For selected federation, use [PR-307 encrypted runtime companions](pr-307-encrypted-maintenance-runtime-companions.md).
 Freeze v3 commits a fixed descriptor and complete-set CMS companion outside public assets. Use the
-closed mode marker and provision private cohort/projection/recipient authority separately. Protected
-prepare/validate runs the explicit private original/native resolver; ordinary offline validation
-without that context blocks. Handoffs and publication retries retain exact ciphertext, and the
+closed mode marker. The current hosted job has unrestricted sudo and therefore rejects selected
+production and v3 validation before private opening. Never provision private cohort/projection or
+recipient material on that worker. A separately restricted worker with an immutable installed
+resolver is required before enabling this path; ordinary offline validation without an owning
+private context also blocks. Handoffs and publication retries retain exact ciphertext, and the
 publication provider checks the authenticated authorization chain and sealed bytes without keys.
 No companion is added to GitHub Release, catalog, USK, CoreUpdater or public transparency payloads.

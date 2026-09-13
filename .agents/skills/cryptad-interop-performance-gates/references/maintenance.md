@@ -89,3 +89,8 @@ state and plaintext commitments out of public identities. Offline engines requir
 typed private context and must not acquire keys/network implicitly. Publication providers use
 the authenticated native-validation handoff and never receive recipient keys. Legacy v1/v2 private
 rejections, product bytes, baseline 1.0 contract 19 and Phase 12 operational blockers remain intact.
+
+The hosted maintenance job has unrestricted sudo. Do not provision private runtime keys, cohorts or
+source selections there, and do not execute writable checkout Python as a privileged resolver. The
+selected hosted path is blocked pending an isolated restricted worker and immutable installed
+resolver; local crypto/native integration does not establish that operational privilege boundary.

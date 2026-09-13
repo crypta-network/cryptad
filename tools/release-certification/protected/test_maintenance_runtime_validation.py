@@ -52,15 +52,19 @@ class OriginalRuntimeContextTest(unittest.TestCase):
                     patch("cryptad_certification.manifest.load_manifest", return_value=manifest), \
                     patch("cryptad_certification.cli.main", side_effect=certify), \
                     patch.object(validation, "original_context", side_effect=original) as resolver:
-                self.assertEqual(23, validation.main(["--manifest", str(manifest.path)]))
-            self.assertEqual(["open", "close"] if version == 3 else [], opened)
-            self.assertEqual(1 if version == 3 else 0, resolver.call_count)
-            self.assertTrue((run_root / ".cryptad-certification-run.json").is_file())
+                if version == 3:
+                    with self.assertRaisesRegex(validation.RuntimeValidationError, "isolated-worker-required"):
+                        validation.main(["--manifest", str(manifest.path)])
+                else:
+                    self.assertEqual(23, validation.main(["--manifest", str(manifest.path)]))
+            self.assertEqual([], opened)
+            resolver.assert_not_called()
+            self.assertEqual(version != 3, (run_root / ".cryptad-certification-run.json").is_file())
 
     def test_fresh_legacy_workspace_is_prepared_once_by_normal_cli(self):
         self.fresh_invocation(1)
 
-    def test_fresh_sealed_workspace_enters_original_context_before_normal_cli_preparation(self):
+    def test_sealed_hosted_cli_blocks_before_private_opening_or_workspace_creation(self):
         self.fresh_invocation(3)
 
     def test_cli_delegates_to_canonical_module_authority(self):

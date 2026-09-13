@@ -1885,11 +1885,9 @@ jobs:
           PY
           )"
           if [[ "$runtime_mode" == selected-federation ]]; then
-            # The protected runner provisions the cohort, native tools, JDK and original pointer.
-            # The transferable marker contains no selection and does not install authority.
-            test -x /usr/bin/bwrap
-            test -x /usr/bin/prlimit
-            exit 0
+            # This hosted account has unrestricted sudo. Never provision private material here.
+            echo "::error::runtime-metadata-isolated-worker-required"
+            exit 1
           fi
           prepared_cohort="$RUNNER_TEMP/maintenance-runtime-cohort.json"
           GH_TOKEN="${{ github.token }}" python3 tools/release-certification/protected/maintenance_runtime_metadata.py \
@@ -3346,10 +3344,9 @@ jobs:
           manifest="build/stable-1.0-maintenance.json"
           freeze="$(jq -er '.inputs.maintenanceCandidateFreeze' "$manifest")"
           if [[ "$(jq -r '.schemaVersion' "$freeze")" == 3 ]]; then
-            # Only this owning resolver reads the provisioned root-only source and recipient key.
-            sudo --preserve-env=GITHUB_ACTIONS,GH_TOKEN,CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64,CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64,CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 \
-              /usr/bin/python3 tools/release-certification/protected/maintenance_runtime_validation.py \
-              --manifest "$manifest"
+            # A sudo wrapper over this writable checkout is not a key isolation boundary.
+            echo "::error::maintenance-runtime-isolated-worker-required"
+            exit 1
           else
             python3 tools/release-certification/protected/maintenance_runtime_validation.py --manifest "$manifest"
           fi

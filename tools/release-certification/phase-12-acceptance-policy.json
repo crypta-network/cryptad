@@ -2310,7 +2310,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:dfcfd60581eb702d30235abdf6e7fab711aa3cebf41f6b0092c3842d117aef4b",
+            "digest": "sha256:71a1f9b000a39921fef2356545e130af87bb950e2e20df9459b18225170c1fa4",
             "path": ".github/workflows/stable-1.0-maintenance-release.yml"
           },
           {
@@ -2335,7 +2335,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:4df8ed1925ed7c739cbc68229b94c23f2d2cd559d8abd236ba47e90ec864870c",
+            "digest": "sha256:fcd6db784f12c2d3593197fe5c22a8ba4971d406184d1bccc229bcf92ca18869",
             "path": "tools/release-certification/protected/maintenance_runtime_validation.py"
           },
           {
@@ -2355,7 +2355,7 @@
           },
           {
             "assertion": "Source-owned private freeze key authority and fixed encrypted output handoff; local regression evidence does not establish protected execution.",
-            "digest": "sha256:0df24ec7257df6a3b9ad1e1c761941bce567b6d7ff053547c25f16d2088a72bb",
+            "digest": "sha256:ca8e450c2f1051b299c17b3ed5979175d57e5a57f703164ac5ca0c1b31f5e5c0",
             "path": "tools/release-certification/protected/maintenance_runtime_production.py"
           }
         ],
@@ -2433,7 +2433,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:2a341ad10ccdaad2be12c9c088f7a2f0631b41eeaae4f1b33740d008a803aa69",
+            "digest": "sha256:140390b832add3e337f976bc769377cbb86729ae87b96c393ec0f44c82568ff4",
             "path": "tools/release-certification/protected/test_maintenance_runtime_validation.py"
           },
           {
@@ -2458,7 +2458,7 @@
           },
           {
             "assertion": "Source-owned private freeze key authority and fixed encrypted output handoff; local regression evidence does not establish protected execution.",
-            "digest": "sha256:76ae0563c34585d30c7b390478d96a696007c7ee95b03142aa8a552c303fb2ec",
+            "digest": "sha256:79780b079bcf4296aa8bfbd03bc54d319a132af0f6497dd06195cd9ebd468939",
             "path": "tools/release-certification/protected/test_maintenance_runtime_production.py"
           }
         ]
@@ -3705,7 +3705,7 @@
         "sourceEvidence": [
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:a2acaeaf48d11a0c6e7388787e311be705335e7a9c1631b90125ca5492f77443",
+            "digest": "sha256:a515719d0bc7b9f40d20fe5b7625f40e1924d74459f60fed4daa9dd9bbc659b2",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3887,7 +3887,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify assessment then export only closed public fields, preserve reviewed history and prevent site feedback or circular phase authority.",
-            "digest": "sha256:a2acaeaf48d11a0c6e7388787e311be705335e7a9c1631b90125ca5492f77443",
+            "digest": "sha256:a515719d0bc7b9f40d20fe5b7625f40e1924d74459f60fed4daa9dd9bbc659b2",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -4656,6 +4656,15 @@
       "disposition": "Prospective reviewable implementation disposition: freeze v3 seals all private runtime members, original ciphertext authentication precedes bounded opening and confined native re-verification, exact handoffs retain ciphertext, and supervisor/Phase12 consumers separate private capabilities from allowlisted outward identities. Existing p12-300-products implementation state remains implemented for its now-extended supported contract; p12-300-consumers remains partial. All 49 mandatory IDs, assertions, dimensions, subjects, applicability, prerequisites, owner mappings, closure rules, residuals and original clocks are unchanged. Local tests and this source review do not establish independent review approval, protected execution, baseline approval, publication, activation or long-run duration.",
       "id": "pr307-encrypted-maintenance-runtime-companions",
       "priorPolicyDigest": "sha256:cc0cf8b8bfccb6c7bc180d26453c47c9ef87846522150cf2e30dab5f76a0970c",
+      "requirements": [
+        "p12-300-products",
+        "p12-300-consumers"
+      ]
+    },
+    {
+      "authority": "docs/pr-307-encrypted-maintenance-runtime-companions.md",
+      "disposition": "Security review found that the hosted job has unrestricted sudo and writable resolver code, so root-only files do not isolate private runtime material. Remove the sudo bridge and block selected hosted production/validation before private opening. Local sealed transport and isolated native APIs remain implemented; hosted producer-to-consumer integration is incomplete pending a separately restricted worker and immutable resolver. This dependency precedes runtime-baseline approval. No mandatory obligation, implementation state, original clock or unresolved acceptance dimension is removed or promoted.",
+      "id": "pr307-private-worker-boundary-blocker",
       "requirements": [
         "p12-300-products",
         "p12-300-consumers"

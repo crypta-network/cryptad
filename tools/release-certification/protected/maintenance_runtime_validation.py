@@ -121,10 +121,9 @@ def main(argv=None):
     arguments = ['stable-maintenance', '--manifest', str(args.manifest)]
     if loaded.value.get('schemaVersion') != 3:
         return certify(arguments)
-    portable = next(row for row in loaded.value['assets'] if row['role'] == 'product')
-    package = owner._asset_path(owner._asset_root(context), portable['fileName'])
-    with original_context(loaded.value, package, freeze_digest=loaded.digest):
-        return certify(arguments)
+    # This CLI is called by the hosted job, whose account has unrestricted sudo. The
+    # explicit original_context API belongs only to a separately isolated owning caller.
+    raise RuntimeValidationError('maintenance-runtime-isolated-worker-required')
 
 
 if __name__ == '__main__':

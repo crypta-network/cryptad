@@ -1,7 +1,9 @@
 # Encrypted maintenance runtime companions
 
-PR-307 carries selected-federation runtime metadata from native verification through maintenance
-freeze v3, exact artifact retention and original product admission. It is internal evidence
+PR-307 implements selected-federation runtime metadata transport from native verification through
+maintenance freeze v3, exact retention and original product admission in isolated local contexts.
+The current hosted maintenance workflow is blocked for selected-federation production and validation:
+its job account has unrestricted sudo, so it cannot isolate provisioned keys from the caller. It is internal evidence
 transport within the existing maintenance workflow. It does not authorize release publication,
 add apps to a Stable role, or establish protected execution and Phase 12 completion.
 
@@ -100,19 +102,24 @@ authorities, and the fixed records below under `/etc/cryptad-certification/`:
 | `maintenance-runtime-recipient.pem` | Approved operational RSA recipient certificate |
 | `maintenance-runtime-recipient.key` | Recipient private key, root-owned mode 0600, only at private resolvers |
 
-The selected freeze invokes the fixed source-owned `maintenance_runtime_production.py` through
-noninteractive sudo, preserving only `GITHUB_ACTIONS` and `GH_TOKEN`. It opens the provisioned
-projection pointer and encrypted original inventory under root authority, with a new root-private
-scratch directory. Only the inspected descriptor/CMS roster returns to the invoking runner's
-ownership; recipient keys and plaintext do not. The original selection decrypt key is required at
-this stage even though maintenance companion creation itself needs only its encryption certificate.
+The hosted workflow must never receive private recipient keys, private cohorts, or source-selection
+records. Review identified that its unrestricted sudo account can read root-only files and modify
+the checkout Python that a privileged wrapper executes. The former sudo producer/validator path
+was therefore removed. Selected marker intake and v3 hosted validation now fail closed with an
+`isolated-worker-required` diagnostic before private opening. Root ownership, a runner label, or an
+environment flag alone cannot establish the missing boundary.
 
-The projection pointer follows the existing root-owned cohort reader policy; only the approved
-runner group may read a group-readable pointer. Source selection and recipient private key remain
-owner-only. The protected selected validation wrapper runs under the owning root authority, with
-only the existing explicitly named original-authentication and evidence-verification environment
-values. It does not invoke the publication backend. The ordinary offline `certify.py` engine cannot
-create this capability from JSON or silently acquire keys/network access.
+A replacement requires a separately restricted worker with no general sudo or equivalent host-root
+access, a fixed root-owned resolver installed outside the writable checkout with immutable imports,
+finite operations, confined snapshotted inputs, exact safe transfer outputs, and independently bound
+resolver revision/provenance. No worker, sudoers rule or private material was provisioned here.
+Do not deploy the old wrapper or install candidate checkout code as a privileged resolver.
+
+The local `seal_private_freeze` and explicit `original_context` APIs remain usable by isolated owning
+contexts and synthetic integration tests; they do not authorize the hosted job to acquire secrets.
+The ordinary legacy CLI remains offline and owns normal fresh-workspace initialization. Enabling
+the production hosted selected path is an outstanding implementation/infrastructure dependency,
+not merely a missing certificate.
 
 Recipient policy fields are `schemaVersion`, `purpose`, `policy`, `epoch`, `certificateDigest`,
 `notBefore`, `notAfter` and `status`. Purpose is `stable-maintenance-runtime`, policy is
@@ -124,9 +131,9 @@ or borrow app, Mail, catalog, reviewer or recovery keys.
 | Stage | Ciphertext handling | Private authority/key access | Public behavior |
 | --- | --- | --- | --- |
 | App-product producers | Existing signed handoff | Existing scoped app/catalog signing authority | No new publication |
-| Freeze | Encrypts once; installs exact closed roster | Root original resolver uses existing selection decrypt key; maintenance encryption certificate; confined native verifiers | Existing public products unchanged |
-| Prepare authorization | Retains original complete freeze | Root private resolver authenticates originals, opens and reruns native verification | Sanitized candidate artifact only |
-| Validate authorization | Retains original complete freeze | Same explicit original private resolver | No publication |
+| Freeze | Local producer seals exact roster; hosted selected intake blocked | No private material on hosted worker; isolated resolver required | Existing public products unchanged |
+| Prepare authorization | Retains exact sealed bytes; hosted v3 validation blocked | Isolated resolver required before approval | No private opening on hosted worker |
+| Validate authorization | Retains exact sealed bytes; hosted v3 validation blocked | Isolated resolver required before approval | No publication |
 | Publication preflight/retry | Rechecks exact committed companion through authenticated authorized handoff | Authorization producer owns prior native validation; backend gets no decrypt key/context | Existing plan assets only |
 | Runtime admission | Authenticates original freeze/member before opening | Private original resolver and bounded native verification | Safe product/ciphertext identities |
 | Supervisor service | Reopens root-owned service-private admission state | Existing `cryptad-soak` group; no key or original-provider network | Safe activation and reports |
@@ -254,8 +261,9 @@ context. A plan that independently opens several sealed releases needs the appro
 original native context for each; this change does not introduce an automatic context registry or
 policy selector. Missing historical recipient material or native authority remains a blocker.
 
-The next bounded dependency remains authenticated runtime-baseline approval and scoped performance
-consumption. PR-306's baseline is measured-but-uncompared, with missing original approval and an
+The immediate dependency is the isolated private-worker/resolver boundary described above. Until it
+exists, this PR does not meet hosted producer-to-consumer implementation completeness. Authenticated
+runtime-baseline approval and scoped performance consumption follow that boundary work. PR-306's baseline is measured-but-uncompared, with missing original approval and an
 insufficient reference repetition count. Older latency bytes need recollection with the corrected
 driver. Full native pending-key backlog, complete Trust Graph/import budgets, normal-profile
 throughput, full catalog/runtime matrices, 24/72-hour evidence, Mail recovery, independent review,

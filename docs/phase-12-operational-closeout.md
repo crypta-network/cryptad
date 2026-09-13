@@ -5,6 +5,8 @@ adds encrypted maintenance admission and safe private consumer projections. Its 
 assessment uses fixed cutoff `2026-09-13T10:30:00Z` in separate before/after roots. Missing original
 proof, recipient policy/key, native selection authority and protected runtime evidence remain
 blockers; ciphertext integrity alone does not advance a measured or operational dimension.
+The hosted private path is additionally disabled pending an isolated restricted worker and immutable
+resolver. Its unrestricted-sudo job account cannot protect root-only keys from the caller.
 
 Use `phase-12-closeout` to reconcile the accepted PR-291–303 requirements with exact source,
 original evidence and the existing owning verifiers. A successfully executed audit can report
