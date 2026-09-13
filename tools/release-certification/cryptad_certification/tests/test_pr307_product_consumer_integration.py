@@ -238,6 +238,11 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         with self.assertRaises(validation.RuntimeValidationError):
             validation.require_context(sealed, transfer, package)
         with patch.object(validation, "SOURCE", source_path), patch.object(legacy.projection, "COHORT_FILE", policy_path):
+            substituted = {**sealed, "runtimeMetadata": {**sealed["runtimeMetadata"], "digest": "sha256:" + "f" * 64}}
+            with self.assertRaises(validation.RuntimeValidationError):
+                with validation.original_context(substituted, package, freeze_digest=selected_product["freezeDigest"]):
+                    self.fail("caller freeze acquired unrelated original authority")
+            self.assertIsNone(validation._ACTIVE.get())
             with validation.original_context(sealed, package, freeze_digest=selected_product["freezeDigest"]):
                 validation.require_context(sealed, transfer, package)
                 with self.assertRaises(validation.RuntimeValidationError):

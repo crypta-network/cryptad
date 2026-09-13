@@ -91,17 +91,30 @@ class OriginalRuntimeContextTest(unittest.TestCase):
             package = Path(directory) / 'package'
             package.write_bytes(b'public product')
             freeze = {'schemaVersion': 3, 'runtimeMetadata': {'digest': 'original'}}
-            context = validation._OriginalContext(validation._SEAL, freeze, package,
-                {'_runtimeContext': object(), 'artifactDigest': validation.metadata.digest_bytes(b'public product'),
-                 'artifactSize': len(b'public product')})
-            context.check(freeze, package)
+            binding = {'descriptor': freeze['runtimeMetadata'], 'ciphertextDigest': 'sha256:' + 'a' * 64}
+            row = {'_runtimeContext': object(), '_freeze': freeze, 'sealedRuntimeBinding': binding,
+                   'artifactDigest': validation.metadata.digest_bytes(b'public product'),
+                   'artifactSize': len(b'public product')}
+            context = validation._OriginalContext(validation._SEAL, freeze, package, row)
+            context.check(freeze, package, binding)
+            with self.assertRaisesRegex(validation.RuntimeValidationError, 'original-freeze-substituted'):
+                validation._OriginalContext(validation._SEAL,
+                    {**freeze, 'runtimeMetadata': {'digest': 'substituted'}}, package, row)
+            with self.assertRaisesRegex(validation.RuntimeValidationError, 'original-freeze-substituted'):
+                validation._OriginalContext(validation._SEAL, freeze, package,
+                    {**row, 'sealedRuntimeBinding': {**binding, 'descriptor': {'digest': 'substituted'}}})
+            token = validation._ACTIVE.set(context)
+            self.addCleanup(validation._ACTIVE.reset, token)
+            with patch('maintenance_runtime_companion.inspect', return_value={'ciphertext': {'digest': 'substituted'}}):
+                with self.assertRaisesRegex(validation.RuntimeValidationError, 'context-substituted'):
+                    validation.require_context(freeze, Path('local-companion'), package)
             package.write_bytes(b'changed product')
             with self.assertRaises(validation.RuntimeValidationError):
-                context.check(freeze, package)
+                context.check(freeze, package, binding)
             package.write_bytes(b'public product')
             context.active = False
             with self.assertRaises(validation.RuntimeValidationError):
-                context.check(freeze, package)
+                context.check(freeze, package, binding)
 
 
 if __name__ == '__main__':

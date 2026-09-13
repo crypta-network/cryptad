@@ -28,7 +28,16 @@ class _OriginalContext:
     def __init__(self, seal, freeze, package, row):
         if seal is not _SEAL:
             raise RuntimeValidationError('maintenance-runtime-original-context-required')
-        self.freeze = metadata.semantic_digest(freeze)
+        original = row.get('_freeze')
+        binding = row.get('sealedRuntimeBinding')
+        if (not isinstance(original, dict) or original.get('schemaVersion') != 3
+                or metadata.semantic_digest(freeze) != metadata.semantic_digest(original)
+                or not isinstance(binding, dict)
+                or binding.get('descriptor') != original.get('runtimeMetadata')
+                or row.get('_runtimeContext') is None):
+            raise RuntimeValidationError('maintenance-runtime-original-freeze-substituted')
+        self.freeze = metadata.semantic_digest(original)
+        self.sealed_binding = metadata.semantic_digest(binding)
         self.package = metadata.identity(package, 1024 ** 3)
         if (row.get('artifactDigest') != self.package['digest']
                 or row.get('artifactSize') != self.package['sizeBytes']):
@@ -36,8 +45,9 @@ class _OriginalContext:
         self.row = row
         self.active = True
 
-    def check(self, freeze, package):
+    def check(self, freeze, package, sealed_binding):
         if (not self.active or self.freeze != metadata.semantic_digest(freeze)
+                or self.sealed_binding != metadata.semantic_digest(sealed_binding)
                 or self.package != metadata.identity(package, 1024 ** 3)
                 or self.row.get('_runtimeContext') is None):
             raise RuntimeValidationError('maintenance-runtime-original-context-substituted')
@@ -46,11 +56,12 @@ class _OriginalContext:
 def require_context(freeze, runtime_root, package):
     """Check outer bytes and an existing original capability, without I/O authority escalation."""
     from maintenance_runtime_companion import inspect
-    inspect(freeze, runtime_root)
+    descriptor = inspect(freeze, runtime_root)
     context = _ACTIVE.get()
     if not isinstance(context, _OriginalContext):
         raise RuntimeValidationError('maintenance-runtime-original-private-context-required')
-    context.check(freeze, package)
+    context.check(freeze, package, {'descriptor': freeze['runtimeMetadata'],
+                                   'ciphertextDigest': descriptor['ciphertext']['digest']})
 
 
 @contextmanager

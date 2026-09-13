@@ -173,7 +173,9 @@ recipient key access.
 
 Reads reject links, multiple hard links, changing identities and unexpected files. The fixed member
 map excludes traversal, filename aliases, nested archives and sidecars. Plaintext is parsed only
-after authenticated decryption succeeds. Native results are regenerated from original signed
+after authenticated decryption succeeds. The owning context compares the supplied freeze to the authenticated original before installation
+and snapshots its sealed binding; every use checks the local descriptor/ciphertext identities against
+that original binding. Native results are regenerated from original signed
 sources and compared with retained metadata; encrypted `nativeAdmission=accepted` JSON is not an
 authority. Scratch directories are owner-restricted and lifetime-bound. Cleanup limits retention;
 it does not promise secure erasure from memory, swap or arbitrary filesystems. Interrupted service

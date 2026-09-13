@@ -2335,7 +2335,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:fcd6db784f12c2d3593197fe5c22a8ba4971d406184d1bccc229bcf92ca18869",
+            "digest": "sha256:68c101d8c79ffb30c92e4f4071c10a570aa699cdd75574dbcedc949ad61d3124",
             "path": "tools/release-certification/protected/maintenance_runtime_validation.py"
           },
           {
@@ -2433,7 +2433,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:140390b832add3e337f976bc769377cbb86729ae87b96c393ec0f44c82568ff4",
+            "digest": "sha256:e3cd8029b9f726822669df4c95daa86d116c7ab2a73f7e8ff49e7eef83f65d9b",
             "path": "tools/release-certification/protected/test_maintenance_runtime_validation.py"
           },
           {
@@ -2453,7 +2453,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:86294ecc03db25b416cdaa9577ac0d7436a16901696f2732f0d4d6509780e83c",
+            "digest": "sha256:60d7f964c65df02cd1135504587c9ce8180aa9fd6033766e265f740ecebc6160",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr307_product_consumer_integration.py"
           },
           {
