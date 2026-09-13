@@ -3,6 +3,8 @@ package network.crypta.platform.api.content.subscriptions;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,6 +12,36 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SuppressWarnings("java:S100")
 class ContentSubscriptionSchedulerConfigTest {
+  @Test
+  void from_whenShortProfileConfigured_expectEffectiveJitterAndNormalizedBackoff() {
+    var config =
+        ContentSubscriptionSchedulerConfig.from(
+            Map.of(),
+            Map.of(
+                ContentSubscriptionSchedulerConfig.JITTER_ENV, "0",
+                ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV, "2",
+                ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV, "1"));
+
+    assertEquals(Duration.ZERO, config.jitter());
+    assertEquals(Duration.ofSeconds(2), config.failureBackoff());
+    assertEquals(Duration.ofSeconds(2), config.maximumFailureBackoff());
+  }
+
+  @Test
+  void from_whenInvalidShortProfileConfigured_expectConservativeDefaults() {
+    var config =
+        ContentSubscriptionSchedulerConfig.from(
+            Map.of(),
+            Map.of(
+                ContentSubscriptionSchedulerConfig.JITTER_ENV, "-1",
+                ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV, "0",
+                ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV, "invalid"));
+
+    assertEquals(Duration.ofMinutes(1), config.jitter());
+    assertEquals(Duration.ofMinutes(5), config.failureBackoff());
+    assertEquals(Duration.ofHours(1), config.maximumFailureBackoff());
+  }
+
   @Test
   void from_whenPropertiesAndEnvironmentConfigured_expectPropertiesOverrideEnvironment() {
     Map<String, String> properties =
@@ -79,6 +111,65 @@ class ContentSubscriptionSchedulerConfigTest {
     assertEquals(defaults.perAppSubscriptionLimit(), config.perAppSubscriptionLimit());
     assertEquals(defaults.globalSubscriptionLimit(), config.globalSubscriptionLimit());
     assertEquals(defaults.perTickFetchLimit(), config.perTickFetchLimit());
+  }
+
+  @ParameterizedTest
+  @ValueSource(longs = {86_401L, Long.MAX_VALUE})
+  void from_whenDurationExceedsOperationalMaximum_expectDefaultsForBothSources(long seconds) {
+    Map<String, String> environment = timingEnvironment(seconds);
+    Map<String, String> properties = timingProperties(seconds);
+
+    assertEquals(
+        ContentSubscriptionSchedulerConfig.defaults(),
+        ContentSubscriptionSchedulerConfig.from(Map.of(), environment));
+    assertEquals(
+        ContentSubscriptionSchedulerConfig.defaults(),
+        ContentSubscriptionSchedulerConfig.from(properties, timingEnvironment(1)));
+  }
+
+  @Test
+  void from_whenDurationAtOperationalMaximum_expectAcceptedForBothSources() {
+    var environmentConfig =
+        ContentSubscriptionSchedulerConfig.from(Map.of(), timingEnvironment(86_400));
+    var propertyConfig =
+        ContentSubscriptionSchedulerConfig.from(timingProperties(86_400), Map.of());
+
+    assertEquals(environmentConfig, propertyConfig);
+    Duration maximum = Duration.ofHours(24);
+    assertEquals(maximum, propertyConfig.initialDelay());
+    assertEquals(maximum, propertyConfig.schedulerPollInterval());
+    assertEquals(maximum, propertyConfig.minimumPollInterval());
+    assertEquals(maximum, propertyConfig.jitter());
+    assertEquals(maximum, propertyConfig.failureBackoff());
+    assertEquals(maximum, propertyConfig.maximumFailureBackoff());
+  }
+
+  private static Map<String, String> timingEnvironment(long seconds) {
+    String value = Long.toString(seconds);
+    return Map.of(
+        ContentSubscriptionSchedulerConfig.INITIAL_DELAY_ENV, value,
+        ContentSubscriptionSchedulerConfig.SCHEDULER_POLL_INTERVAL_ENV, value,
+        ContentSubscriptionSchedulerConfig.MINIMUM_POLL_INTERVAL_ENV, value,
+        ContentSubscriptionSchedulerConfig.JITTER_ENV, value,
+        ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV, value,
+        ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV, value);
+  }
+
+  private static Map<String, String> timingProperties(long seconds) {
+    String value = Long.toString(seconds);
+    return Map.of(
+        ContentSubscriptionSchedulerConfig.INITIAL_DELAY_PROPERTY,
+        value,
+        ContentSubscriptionSchedulerConfig.SCHEDULER_POLL_INTERVAL_PROPERTY,
+        value,
+        ContentSubscriptionSchedulerConfig.MINIMUM_POLL_INTERVAL_PROPERTY,
+        value,
+        "cryptad.content.subscriptions.scheduler.jitterSeconds",
+        value,
+        "cryptad.content.subscriptions.failureBackoffSeconds",
+        value,
+        "cryptad.content.subscriptions.maximumFailureBackoffSeconds",
+        value);
   }
 
   @Test

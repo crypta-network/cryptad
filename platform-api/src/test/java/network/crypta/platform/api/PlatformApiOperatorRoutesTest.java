@@ -22,6 +22,8 @@ import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appdata.AppDataStoreConfig;
 import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.api.appupdates.AppUpdateService;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionPressureGate;
+import network.crypta.platform.api.content.subscriptions.ContentSubscriptionScheduler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
@@ -79,6 +81,121 @@ class PlatformApiOperatorRoutesTest {
   private static final String SOURCE = "USK@example/feed/7/feed.json";
   private static final Instant NOW = Instant.parse("2026-05-24T12:00:00Z");
   private static final HexFormat HEX = HexFormat.of();
+
+  @Test
+  void runtimeObservationRequiresOperatorAndRejectsMutation() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var response = router.route(request("GET", path, Map.of()));
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"inFlightOperations\":null"));
+    assertTrue(response.body().contains("\"pendingKeys\":null"));
+    assertTrue(response.body().contains("fixed-management-beans-v1"));
+    assertEquals(405, router.route(request("POST", path, Map.of())).statusCode());
+    assertEquals(
+        403,
+        router
+            .route(request("GET", path, Map.of(), PlatformApiPrincipal.appToken(APP_ID, List.of())))
+            .statusCode());
+    assertEquals(
+        403,
+        router
+            .route(
+                request(
+                    "GET",
+                    path,
+                    Map.of(),
+                    PlatformApiPrincipal.appBrowserSession(APP_ID, List.of())))
+            .statusCode());
+  }
+
+  @Test
+  void runtimeObservationUsesNativeAggregateAndRedactsProbeFailures() {
+    RuntimePorts ports = runtimePorts();
+    ContentFetchPort fetch = mock(ContentFetchPort.class);
+    when(ports.contentFetch()).thenReturn(fetch);
+    when(fetch.observation())
+        .thenReturn(
+            new network.crypta.runtime.spi.ContentFetchObservation(
+                true, "synthetic-epoch", 5, 1000, 1, 20, 3, 1, 1, false));
+    PlatformApiRouter router = new PlatformApiRouter(ports);
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var response = router.route(request("GET", path, Map.of()));
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"inFlightOperations\":1"));
+    when(fetch.observation()).thenThrow(new IllegalStateException(SOURCE));
+    var unavailable = router.route(request("GET", path, Map.of()));
+    assertEquals(200, unavailable.statusCode());
+    assertTrue(unavailable.body().contains("\"inFlightOperations\":null"));
+    assertFalse(unavailable.body().contains(SOURCE));
+  }
+
+  @Test
+  void runtimeObservationReportsSharedBudgetLifecycleWithoutAppInventory() {
+    var budgets =
+        new AppNetworkBudgetService(
+            new InMemoryAppNetworkBudgetStore(), AppNetworkBudgetConfig.defaults());
+    var config = ContentSubscriptionSchedulerConfig.defaults();
+    var subscriptions =
+        new ContentSubscriptionService(
+            new InMemoryContentSubscriptionStore(), new RecordingFetchPort(), config, budgets);
+    var shared =
+        new PlatformApiSharedAppServices(null, null, subscriptions, null, null, null, budgets);
+    var router =
+        new PlatformApiRouter(
+            runtimePorts(), null, null, null, AppUiOriginRegistry.sameOriginOnly(), shared);
+    List<String> path = List.of(OPERATOR_SEGMENT, "runtime-observation");
+    var unconfigured = router.route(request("GET", path, Map.of()));
+    assertTrue(unconfigured.body().contains("\"pressureConfiguration\":{\"known\":false}"));
+    var host = mock(AppHost.class);
+    var gate = new ContentSubscriptionPressureGate(null, null, null, 2, 1);
+    var scheduler = new ContentSubscriptionScheduler(host, subscriptions, config, gate);
+    try {
+      scheduler.runDueTasksOnce();
+      var acquired =
+          budgets.acquire("private-installed-app", AppNetworkBudgetOperation.SUBSCRIPTION_POLL);
+      try (var lease = acquired.lease()) {
+        assertTrue(lease.active());
+        var response = router.route(request("GET", path, Map.of()));
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"activeFamilyLeases\":3"));
+        assertTrue(response.body().contains("RATE_CHARGED"));
+        assertTrue(response.body().contains("TICK_ENTERED"));
+        assertTrue(response.body().contains("\"operation\":null"));
+        assertTrue(response.body().contains("\"subscriptionPollPerAppPerHour\":48"));
+        assertTrue(response.body().contains("\"initialDelayMillis\":300000"));
+        assertTrue(response.body().contains("\"maximumInFlight\":2"));
+        assertTrue(response.body().contains("\"resumeAtOrBelow\":1"));
+        assertFalse(response.body().contains("private-installed-app"));
+        assertFalse(response.body().contains(SOURCE));
+      }
+      var released = router.route(request("GET", path, Map.of()));
+      assertTrue(released.body().contains("\"activeFamilyLeases\":0"));
+      assertTrue(released.body().contains("BUDGET_RELEASED"));
+    } finally {
+      scheduler.close();
+    }
+  }
+
+  @Test
+  void runtimeObservationWithoutSubscriptionsReportsUnavailableBudgetStoreHonestly()
+      throws java.io.IOException {
+    var store = mock(network.crypta.platform.api.networkbudget.AppNetworkBudgetStore.class);
+    when(store.observe(org.mockito.ArgumentMatchers.anyInt()))
+        .thenThrow(new java.io.IOException("private-store-path"));
+    var budgets = new AppNetworkBudgetService(store, AppNetworkBudgetConfig.defaults());
+    var shared = new PlatformApiSharedAppServices(null, null, null, null, null, null, budgets);
+    var router =
+        new PlatformApiRouter(
+            runtimePorts(), null, null, null, AppUiOriginRegistry.sameOriginOnly(), shared);
+
+    var response =
+        router.route(request("GET", List.of(OPERATOR_SEGMENT, "runtime-observation"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"valid\":false"));
+    assertFalse(response.body().contains("schedulerConfiguration"));
+  }
 
   @Test
   void route_whenSupportLifecycleRequested_expectReadOnlyFailClosedSnapshot() {

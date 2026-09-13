@@ -174,6 +174,20 @@ public record ContentSubscriptionSchedulerConfig(
   public static final String PER_TICK_LIMIT_ENV =
       "CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_PER_TICK_FETCH_LIMIT";
 
+  /** Operator-only maximum jitter in seconds; zero is allowed for synthetic integration. */
+  public static final String JITTER_ENV = "CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_JITTER_SECONDS";
+
+  /** Operator-only first failure retry in seconds; must be positive. */
+  public static final String FAILURE_BACKOFF_ENV =
+      "CRYPTAD_CONTENT_SUBSCRIPTIONS_FAILURE_BACKOFF_SECONDS";
+
+  /** Operator-only maximum failure retry in seconds; normalized to at least the first retry. */
+  public static final String MAXIMUM_FAILURE_BACKOFF_ENV =
+      "CRYPTAD_CONTENT_SUBSCRIPTIONS_MAXIMUM_FAILURE_BACKOFF_SECONDS";
+
+  // Bound operator timings to the default maximum poll interval, including retry and jitter.
+  private static final long MAXIMUM_CONFIGURED_DURATION_SECONDS = 86_400L;
+
   private static final ContentSubscriptionSchedulerConfig DEFAULT =
       new ContentSubscriptionSchedulerConfig(
           true,
@@ -264,7 +278,9 @@ public record ContentSubscriptionSchedulerConfig(
    *
    * <p>System properties take precedence over environment variables. Malformed local values are
    * ignored in favor of defaults so a typo does not produce a partially initialized scheduler. The
-   * method does not read app manifests or durable subscription state.
+   * method does not read app manifests or durable subscription state. Loaded durations above 24
+   * hours also fall back to defaults, bounding retry arithmetic and executor delays. Explicit
+   * constructor configurations retain their existing validation contract.
    *
    * @return immutable scheduler configuration for the current process
    */
@@ -310,9 +326,27 @@ public record ContentSubscriptionSchedulerConfig(
             defaults.minimumPollInterval(),
             true),
         defaults.maximumPollInterval(),
-        defaults.jitter(),
-        defaults.failureBackoff(),
-        defaults.maximumFailureBackoff(),
+        durationSetting(
+            properties,
+            environment,
+            "cryptad.content.subscriptions.scheduler.jitterSeconds",
+            JITTER_ENV,
+            defaults.jitter(),
+            false),
+        durationSetting(
+            properties,
+            environment,
+            "cryptad.content.subscriptions.failureBackoffSeconds",
+            FAILURE_BACKOFF_ENV,
+            defaults.failureBackoff(),
+            true),
+        durationSetting(
+            properties,
+            environment,
+            "cryptad.content.subscriptions.maximumFailureBackoffSeconds",
+            MAXIMUM_FAILURE_BACKOFF_ENV,
+            defaults.maximumFailureBackoff(),
+            true),
         integerSetting(
             properties,
             environment,
@@ -364,7 +398,8 @@ public record ContentSubscriptionSchedulerConfig(
     }
     try {
       long seconds = Long.parseLong(value);
-      if (positive ? seconds <= 0L : seconds < 0L) {
+      if (seconds > MAXIMUM_CONFIGURED_DURATION_SECONDS
+          || (positive ? seconds <= 0L : seconds < 0L)) {
         return defaultValue;
       }
       return Duration.ofSeconds(seconds);

@@ -179,6 +179,46 @@ class LegacyContentFetchPortTest {
     assertSame(fetchException, exception.getCause());
   }
 
+  @Test
+  void streamResult_whenDestinationFails_expectBucketFreedAndFailurePreserved() throws IOException {
+    TrackingBucket bucket = new TrackingBucket(new byte[] {1});
+    FetchResult result = FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
+    var request = new BoundedContentFetchRequest("CHK@test", 1, Duration.ofSeconds(1), "test");
+    IOException failure = new IOException("destination failed");
+    try (var destination =
+        new java.io.OutputStream() {
+          @Override
+          public void write(int value) throws IOException {
+            throw failure;
+          }
+        }) {
+      IOException actual =
+          assertThrows(
+              IOException.class,
+              () -> LegacyContentFetchPort.streamResult(request, result, destination));
+
+      assertSame(failure, actual);
+      assertTrue(bucket.freed());
+    }
+  }
+
+  @Test
+  void streamResult_whenReportedSizeExceedsBound_expectNoDestinationWrites() {
+    TrackingBucket bucket = new TrackingBucket(new byte[] {1, 2});
+    FetchResult result = FetchResult.create(new ClientMetadata("application/octet-stream"), bucket);
+    var request = new BoundedContentFetchRequest("CHK@test", 1, Duration.ofSeconds(1), "test");
+    ByteArrayOutputStream destination = new ByteArrayOutputStream();
+
+    ContentFetchException failure =
+        assertThrows(
+            ContentFetchException.class,
+            () -> LegacyContentFetchPort.streamResult(request, result, destination));
+
+    assertEquals(ContentFetchException.CATALOG_FETCH_TOO_LARGE, failure.errorCode());
+    assertEquals(0, destination.size());
+    assertTrue(bucket.freed());
+  }
+
   private static class TrackingBucket extends ArrayBucket {
     private boolean freed;
 
