@@ -1862,7 +1862,7 @@ def _candidate_freeze_errors(
         != expected_predecessor_observation.get("publicationReceiptDigest")
         or observation.get("latestPublishedPointerDigest")
         != expected_predecessor_observation.get("latestPublishedPointerDigest")
-        or (value.get("schemaVersion") == 2
+        or (value.get("schemaVersion") in {2, 3}
             and observation.get("sourceCommit") != expected_predecessor_observation.get("sourceCommit"))
         or observation.get("status") != "latest-published"
     ):

@@ -212,13 +212,14 @@ class StableMaintenanceCandidateFreezeTest(unittest.TestCase):
 
             self.assertEqual(validate_schema(freeze, CANDIDATE_FREEZE_SCHEMA), [])
             self.assertEqual(errors, [])
-            # v1 has no predecessor source binding. v2 must accept the authenticated SHA and
+            # v1 has no predecessor source binding. v2/v3 must accept the authenticated SHA and
             # reject substitution independently of its separate runtime-metadata gate.
-            for source_commit in (predecessor.source_commit, "d" * 40):
+            for version, source_commit in ((version, commit) for version in (2, 3)
+                                            for commit in (predecessor.source_commit, "d" * 40)):
                 prospective = copy.deepcopy(freeze)
-                prospective["schemaVersion"] = 2
+                prospective["schemaVersion"] = version
                 prospective["predecessorObservation"]["sourceCommit"] = source_commit
-                prospective["runtimeMetadata"] = {"fileName": "runtime-subjects.json",
+                prospective["runtimeMetadata"] = {"fileName": "runtime-subjects.json" if version == 2 else "runtime-companion.json",
                     "digest": _digest("8"), "sizeBytes": 2}
                 prospective_path = root / "prospective-freeze.json"
                 write_json(prospective_path, prospective)
@@ -227,10 +228,12 @@ class StableMaintenanceCandidateFreezeTest(unittest.TestCase):
                     prospective, file_digest(prospective_path))
                 prospective_errors = _candidate_freeze_errors(context, prospective_loaded,
                     prospective_candidate, predecessor, expected_assets, _digest("7"))
-                expected_errors = ["candidate freeze runtime metadata is missing or does not bind exact inputs"]
+                self.assertEqual([], validate_schema(prospective, CANDIDATE_FREEZE_SCHEMA))
+                expected_errors = (["candidate freeze runtime metadata is missing or does not bind exact inputs"]
+                                   if version == 2 else ["maintenance-runtime-original-private-context-required"])
                 if source_commit != predecessor.source_commit:
                     expected_errors.append("candidate freeze used a stale or substituted predecessor observation")
-                self.assertEqual(expected_errors, prospective_errors)
+                self.assertEqual(expected_errors, prospective_errors, (version, source_commit))
             unverified_catalog = copy.deepcopy(freeze)
             unverified_catalog["stableCatalogVerification"][
                 "cryptographicVerificationStatus"
