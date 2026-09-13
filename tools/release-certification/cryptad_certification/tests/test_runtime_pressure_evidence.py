@@ -112,6 +112,49 @@ def derive(value):
 
 
 class RuntimePressureEvidenceTest(unittest.TestCase):
+    def test_rejected_executor_attempts_do_not_credit_later_manual_ticks(self):
+        value = evidence_fixture()
+        events = []
+        for event in value['workEvents']:
+            events.append(event)
+            if event['kind'] == 'EXECUTOR_TICK':
+                rejected = copy.deepcopy(event)
+                rejected['kind'] = 'TICK_ALREADY_RUNNING'
+                events.append(rejected)
+        for sequence, event in enumerate(events, 1):
+            event['sequence'] = sequence
+        value['workEvents'] = events
+
+        result = derive(value)
+
+        for claim in ('scheduler-executor-observed', 'pressure-before-budget-observed',
+                      'background-recovery-observed'):
+            self.assertEqual('not-observed', result['claims'][claim], claim)
+
+    def test_executor_marker_inside_manual_tick_cannot_escape_to_next_tick(self):
+        value = evidence_fixture()
+        events = []
+        for event in value['workEvents']:
+            if event['kind'] == 'EXECUTOR_TICK':
+                manual = copy.deepcopy(event)
+                manual['kind'] = 'TICK_ENTERED'
+                events.append(manual)
+                events.append(event)
+                completed = copy.deepcopy(event)
+                completed['kind'] = 'TICK_COMPLETED'
+                events.append(completed)
+            else:
+                events.append(event)
+        for sequence, event in enumerate(events, 1):
+            event['sequence'] = sequence
+        value['workEvents'] = events
+
+        result = derive(value)
+
+        for claim in ('scheduler-executor-observed', 'pressure-before-budget-observed',
+                      'background-recovery-observed'):
+            self.assertEqual('not-observed', result['claims'][claim], claim)
+
     def test_measured_safety_exceedance_is_not_missing_runtime_series(self):
         value = evidence_fixture()
         for sample in value['series']['samples']:

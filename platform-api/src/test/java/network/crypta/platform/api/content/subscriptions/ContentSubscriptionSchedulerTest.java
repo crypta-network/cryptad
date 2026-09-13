@@ -311,6 +311,51 @@ class ContentSubscriptionSchedulerTest {
   }
 
   @Test
+  void executor_whenManualTickOwnsGuard_expectRejectedAttemptWithoutExecutorMarker()
+      throws Exception {
+    var fetch = new BlockingFetchPort();
+    var config = config(Duration.ZERO, 2, 2);
+    var budget = subscriptionBudget();
+    var service = service(fetch, config, budget);
+    service.create(APP_ID, createParams(SOURCE, "Feed"));
+    var scheduler = scheduler(appHost(installed(SUBSCRIPTION_CAPABILITIES)), service, config);
+    AtomicReference<ContentSubscriptionSchedulerTickResult> manualResult = new AtomicReference<>();
+    Thread manual = new Thread(() -> manualResult.set(scheduler.tick(NOW)), "manual-test-tick");
+
+    try {
+      manual.start();
+      assertTrue(fetch.started.await(5, TimeUnit.SECONDS));
+      scheduler.start();
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while (budget.observation().snapshot().events().stream()
+          .noneMatch(event -> event.kind() == RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING)) {
+        assertTrue(System.nanoTime() < deadline, "Executor must attempt the occupied guard");
+        Thread.sleep(10);
+      }
+      scheduler.close();
+      fetch.release.countDown();
+      manual.join(5000);
+      assertFalse(manual.isAlive());
+      assertEquals(ContentSubscriptionStatus.SUCCESS, manualResult.get().status());
+      scheduler.runDueTasksOnce();
+
+      var events = budget.observation().snapshot().events();
+      assertTrue(
+          events.stream()
+              .noneMatch(event -> event.kind() == RuntimeWorkObservation.Kind.EXECUTOR_TICK));
+      assertEquals(
+          2,
+          events.stream()
+              .filter(event -> event.kind() == RuntimeWorkObservation.Kind.TICK_ENTERED)
+              .count());
+    } finally {
+      scheduler.close();
+      fetch.release.countDown();
+      manual.join(5000);
+    }
+  }
+
+  @Test
   void executor_whenCancelledDuringFetch_expectBudgetReleasedAndNoOverlappingRestart()
       throws Exception {
     CountDownLatch entered = new CountDownLatch(1);
@@ -337,6 +382,11 @@ class ContentSubscriptionSchedulerTest {
       scheduler.start();
       scheduler.start();
       assertTrue(entered.await(5, TimeUnit.SECONDS));
+      assertEquals(
+          1,
+          budget.observation().snapshot().events().stream()
+              .filter(event -> event.kind() == RuntimeWorkObservation.Kind.EXECUTOR_TICK)
+              .count());
       scheduler.close();
       assertTrue(cancelled.await(5, TimeUnit.SECONDS));
       // Taking the service lock waits for the interrupted fetch and its reservation cleanup.

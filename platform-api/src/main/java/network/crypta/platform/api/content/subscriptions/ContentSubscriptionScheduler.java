@@ -165,6 +165,10 @@ public final class ContentSubscriptionScheduler {
    * @throws NullPointerException if {@code now} is {@code null}
    */
   public ContentSubscriptionSchedulerTickResult tick(Instant now) {
+    return tick(now, false);
+  }
+
+  private ContentSubscriptionSchedulerTickResult tick(Instant now, boolean executorOrigin) {
     Instant checkedNow = Objects.requireNonNull(now, "now");
     if (!config.enabled()) {
       return ContentSubscriptionSchedulerTickResult.disabled(checkedNow);
@@ -172,6 +176,9 @@ public final class ContentSubscriptionScheduler {
     if (!running.compareAndSet(false, true)) {
       observation().recordEvent(RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING);
       return ContentSubscriptionSchedulerTickResult.alreadyRunning(checkedNow);
+    }
+    if (executorOrigin) {
+      observation().recordEvent(RuntimeWorkObservation.Kind.EXECUTOR_TICK);
     }
     observation().recordEvent(RuntimeWorkObservation.Kind.TICK_ENTERED);
     try {
@@ -202,9 +209,8 @@ public final class ContentSubscriptionScheduler {
   }
 
   private void runDueTasksOnceSafely() {
-    observation().recordEvent(RuntimeWorkObservation.Kind.EXECUTOR_TICK);
     try {
-      runDueTasksOnce();
+      tick(clock.instant(), true);
     } catch (RuntimeException exception) {
       LOG.log(System.Logger.Level.WARNING, "Content subscription scheduler pass failed", exception);
     }

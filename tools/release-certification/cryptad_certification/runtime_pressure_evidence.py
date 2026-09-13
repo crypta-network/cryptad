@@ -139,7 +139,9 @@ def derive(value, *, workload_digest, observation_time=None):
     ticks, tick, executor_pending = [], None, False
     for event in events:
         if event['kind'] == 'EXECUTOR_TICK':
-            executor_pending = True
+            executor_pending = tick is None
+        elif event['kind'] in ('TICK_ALREADY_RUNNING', 'TICK_COMPLETED'):
+            executor_pending = False
         elif event['kind'] == 'TICK_ENTERED':
             tick = {'executor': executor_pending, 'events': []}
             executor_pending = False

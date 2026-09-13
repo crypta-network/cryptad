@@ -51,6 +51,12 @@ ownership and admission boundaries.
 
 ## Pressure, admission and timing
 
+`EXECUTOR_TICK` is emitted only after a background callback acquires the no-overlap guard,
+immediately before its `TICK_ENTERED`. Rejected callbacks emit `TICK_ALREADY_RUNNING` without
+an executor marker. The consumer discards pending executor origin on a rejected attempt or a
+completed tick and ignores markers inside an active tick, so older rejected-attempt observations
+cannot give a later manual probe scheduler or recovery credit.
+
 Four conditions have different meanings:
 
 | Condition | Source and meaning | Scheduler consequence |
