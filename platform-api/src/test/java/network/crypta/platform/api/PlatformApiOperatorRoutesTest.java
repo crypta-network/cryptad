@@ -155,6 +155,7 @@ class PlatformApiOperatorRoutesTest {
       var acquired =
           budgets.acquire("private-installed-app", AppNetworkBudgetOperation.SUBSCRIPTION_POLL);
       try (var lease = acquired.lease()) {
+        assertTrue(lease.active());
         var response = router.route(request("GET", path, Map.of()));
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("\"activeFamilyLeases\":3"));
