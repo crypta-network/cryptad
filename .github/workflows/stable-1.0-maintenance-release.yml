@@ -1874,15 +1874,23 @@ jobs:
         run: |
           set -euo pipefail
           runtime_inputs="$(jq -er '.inputs.maintenanceRuntimeInputs' build/stable-1.0-maintenance.json)"
-          PYTHONPATH=tools/release-certification/protected python3 - "$runtime_inputs" <<'PY'
+          runtime_mode="$(PYTHONPATH=tools/release-certification/protected python3 - "$runtime_inputs" <<'PY'
           import sys
           from pathlib import Path
-          from maintenance_runtime_metadata import _regular, read_json
-          root = Path(sys.argv[1]).resolve(strict=True)
-          root.relative_to(Path("build/protected-inputs").resolve(strict=True))
-          for name in ("cohort.json", "projection-selection.json"):
-              read_json(_regular(root / name))
+          from maintenance_runtime_inputs import detect_private_inputs
+          root = Path(sys.argv[1]).absolute()
+          root.relative_to(Path("build/protected-inputs").absolute())
+          private = detect_private_inputs(root)
+          print("selected-federation" if private else "legacy")
           PY
+          )"
+          if [[ "$runtime_mode" == selected-federation ]]; then
+            # The protected runner provisions the cohort, native tools, JDK and original pointer.
+            # The transferable marker contains no selection and does not install authority.
+            test -x /usr/bin/bwrap
+            test -x /usr/bin/prlimit
+            exit 0
+          fi
           prepared_cohort="$RUNNER_TEMP/maintenance-runtime-cohort.json"
           GH_TOKEN="${{ github.token }}" python3 tools/release-certification/protected/maintenance_runtime_metadata.py \
             prepare-environment --inputs "$runtime_inputs" --prepared-cohort "$prepared_cohort" \
@@ -2412,16 +2420,18 @@ jobs:
           sys.path.insert(0, "tools/release-certification/protected")
           from maintenance_runtime_metadata import seal_prospective_freeze, RuntimeMetadataError
           runtime_inputs = protected_input(inputs["maintenanceRuntimeInputs"], directory=True)
-          projection_selection = read_json(runtime_inputs / "projection-selection.json")
-          if set(projection_selection) != {"coordinates"}:
-              raise SystemExit("runtime projection selection must contain only original coordinates")
+          from maintenance_runtime_inputs import detect_private_inputs, projection_origin
+          from maintenance_runtime_production import seal_with_authority
           private_runtime = Path(os.environ["RUNNER_TEMP"]) / "maintenance-runtime-authentication"
           try:
               private_runtime.mkdir(mode=0o700, exist_ok=False)
-              freeze = seal_prospective_freeze(
-                  freeze, product_path, selected.parent / "runtime",
-                  projection_origin=projection_selection["coordinates"], private_root=private_runtime,
-              )
+              if detect_private_inputs(runtime_inputs):
+                  freeze = seal_with_authority(freeze, product_path, selected.parent / "runtime", runtime_inputs)
+              else:
+                  freeze = seal_prospective_freeze(
+                      freeze, product_path, selected.parent / "runtime",
+                      projection_origin=projection_origin(runtime_inputs), private_root=private_runtime,
+                  )
           except (RuntimeMetadataError, OSError, ValueError):
               raise SystemExit("prospective runtime metadata preparation failed") from None
           finally:
@@ -2487,13 +2497,14 @@ jobs:
           cp "$prior_freeze/assets/"* "$asset_root/"
           cp "$prior_freeze/stable-1.0-maintenance-candidate-freeze.json" "$freeze_path"
           chmod 0644 "$asset_root/"* "$freeze_path"
-          if [[ "$(jq -r '.schemaVersion' "$freeze_path")" == 2 ]]; then
+          if [[ "$(jq -r '.schemaVersion' "$freeze_path")" =~ ^[23]$ ]]; then
             runtime_inputs="$(jq -er '.inputs.maintenanceRuntimeInputs' "$manifest")"
             PYTHONPATH=tools/release-certification/protected python3 - "$runtime_inputs" "$prior_freeze" <<'PY'
           import shutil
           import sys
           from pathlib import Path
-          from maintenance_runtime_metadata import read_json, validate_runtime_metadata
+          from maintenance_runtime_metadata import read_json
+          from maintenance_runtime_transfer import copy_runtime
           root = Path(sys.argv[1]).resolve(strict=True)
           root.relative_to(Path("build/protected-inputs").resolve(strict=True))
           destination = root / "runtime"
@@ -2501,8 +2512,7 @@ jobs:
               raise SystemExit("post-freeze producer must not supply runtime metadata")
           prior = Path(sys.argv[2])
           freeze = read_json((prior / "stable-1.0-maintenance-candidate-freeze.json").read_bytes())
-          validate_runtime_metadata(freeze, prior / "runtime")
-          shutil.copytree(prior / "runtime", destination)
+          copy_runtime(freeze, prior / "runtime", destination)
           PY
           fi
           if ! cmp --silent "$prior_freeze/checksums.txt" "$checksums_path"; then
@@ -3330,9 +3340,19 @@ jobs:
           CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64 }}
           CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64: ${{ secrets.CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 }}
-        run: >-
-          python3 tools/release-certification/certify.py stable-maintenance
-          --manifest build/stable-1.0-maintenance.json
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          freeze="$(jq -er '.inputs.maintenanceCandidateFreeze' "$manifest")"
+          if [[ "$(jq -r '.schemaVersion' "$freeze")" == 3 ]]; then
+            # Only this owning resolver reads the provisioned root-only source and recipient key.
+            sudo --preserve-env=GITHUB_ACTIONS,GH_TOKEN,CRYPTAD_STABLE_DEPENDENCY_VULNERABILITY_HANDOFF_KEY_BASE64,CRYPTAD_STABLE_VULNERABILITY_HANDOFF_KEY_BASE64,CRYPTAD_STABLE_SUPPLY_CHAIN_HANDOFF_KEY_BASE64 \
+              /usr/bin/python3 tools/release-certification/protected/maintenance_runtime_validation.py \
+              --manifest "$manifest"
+          else
+            python3 tools/release-certification/protected/maintenance_runtime_validation.py --manifest "$manifest"
+          fi
 
       - name: Prepare exact authorization material without publication
         if: inputs.operation == 'prepare-authorization'
@@ -3459,7 +3479,21 @@ jobs:
             cp -R "$component/." "$root/component/"
             cp -R build/stable-maintenance-packages/. "$root/packages/"
             cp build/stable-1.0-maintenance.json "$root/stable-1.0-maintenance.json"
-            cp -R build/protected-inputs "$root/protected-inputs"
+            PYTHONPATH=tools/release-certification/protected python3 - "$root/protected-inputs" <<'PY'
+          import shutil
+          import sys
+          from pathlib import Path
+          from maintenance_runtime_metadata import read_json
+          from maintenance_runtime_transfer import stage_protected_inputs, copy_frozen_tree
+          manifest = read_json(Path("build/stable-1.0-maintenance.json").read_bytes())
+          freeze = read_json(Path(manifest["inputs"]["maintenanceCandidateFreeze"]).read_bytes())
+          destination = Path(sys.argv[1])
+          if freeze["schemaVersion"] == 3:
+              stage_protected_inputs(freeze, manifest, Path("build/protected-inputs"), destination)
+              copy_frozen_tree(freeze, Path("build/prior-validated-candidate/freeze"), destination.parent / "freeze")
+          else:
+              shutil.copytree("build/protected-inputs", destination)
+          PY
             artifact_name="stable-1-0-maintenance-prepared-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
               artifact_name="stable-1-0-maintenance-authorized-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -3711,6 +3745,25 @@ jobs:
             echo "::error::Staged maintenance artifact exposes plaintext release-train authority."
             exit 1
           fi
+          PYTHONPATH=tools/release-certification/protected python3 - "$root" <<'PY'
+          import sys
+          from pathlib import Path
+          from maintenance_runtime_metadata import read_json
+          from maintenance_runtime_transfer import _validate
+          root = Path(sys.argv[1])
+          if (root / "freeze").is_dir():
+              freeze = read_json((root / "freeze/stable-1.0-maintenance-candidate-freeze.json").read_bytes())
+              runtime = root / "freeze/runtime"
+          else:
+              manifest = read_json((root / "stable-1.0-maintenance.json").read_bytes())
+              relative = Path(manifest["inputs"]["maintenanceCandidateFreeze"]).relative_to("build/protected-inputs")
+              freeze = read_json((root / "protected-inputs" / relative).read_bytes())
+              if freeze["schemaVersion"] in (2, 3):
+                  relative = Path(manifest["inputs"]["maintenanceRuntimeInputs"]).relative_to("build/protected-inputs")
+                  runtime = root / "protected-inputs" / relative / "runtime"
+          if freeze["schemaVersion"] in (2, 3):
+              _validate(freeze, runtime, None)
+          PY
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
       - name: Upload exact validated candidate
@@ -3789,6 +3842,19 @@ jobs:
             build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json
             build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json
             build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/core-info.json
+
+      - name: Verify exact runtime roster before original member attestation
+        if: inputs.operation == 'freeze-candidate'
+        run: |
+          PYTHONPATH=tools/release-certification/protected python3 - <<'PY'
+          from pathlib import Path
+          from maintenance_runtime_metadata import read_json
+          from maintenance_runtime_transfer import _validate
+          root = Path("build/stable-maintenance-evidence-attestation/freeze")
+          freeze = read_json((root / "stable-1.0-maintenance-candidate-freeze.json").read_bytes())
+          if freeze["schemaVersion"] in (2, 3):
+              _validate(freeze, root / "runtime", None)
+          PY
 
       - name: Attest exact candidate freeze record and selected bytes
         if: inputs.operation == 'freeze-candidate'

@@ -143,6 +143,11 @@ hotfix policy windows, cleanup and uncertain outcomes remain separate. No supple
 subcase, requested duration, fake clock, node-hour sum or pre-freeze work satisfies observed coverage.
 A changed freeze or app cohort requires a new admission and experiment binding.
 
+The later [PR-307 companion path](pr-307-encrypted-maintenance-runtime-companions.md) adds freeze
+v3 for selected federation, retaining v1/v2 semantics and their private-input rejection. It encrypts
+the entire runtime set, authenticates ciphertext before opening, and keeps native relations in a
+private capability. Supervisor v5/measurement v4 use ciphertext identities in outward projections.
+
 ## Remaining work and authorization
 
 Federated projection/catalog-origin runtime coverage is the provisional PR-305 dependency handoff.

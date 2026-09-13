@@ -1,12 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Maintenance candidate freeze historical v1 or prospective v2",
+  "title": "Maintenance candidate freeze historical v1/v2 or sealed runtime v3",
   "oneOf": [
     {
       "$ref": "stable-1.0-maintenance-candidate-freeze-v1.schema.json"
     },
     {
       "$ref": "stable-1.0-maintenance-candidate-freeze-v2.schema.json"
+    },
+    {
+      "$ref": "stable-1.0-maintenance-candidate-freeze-v3.schema.json"
     }
   ]
 }

@@ -44,7 +44,7 @@ class CloseoutTest(unittest.TestCase):
 
     def test_pr305_successor_preserves_scope_and_only_advances_selected_implementation(self):
         prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr304.json").read_bytes())
-        current, _ = audit.policy()
+        current = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr306.json").read_bytes())
         self.assertEqual(3, current["version"])
         before = {row["id"]: row for row in prior["requirements"]}
         after = {row["id"]: row for row in current["requirements"]}
@@ -67,6 +67,26 @@ class CloseoutTest(unittest.TestCase):
         self.assertEqual("implemented", after["p12-296-federation"]["implementation"]["state"])
         for identity in ("p12-300-adapters", "p12-300-consumers"):
             self.assertEqual("partial", after[identity]["implementation"]["state"])
+        self.assertFalse(self.evaluate()["phaseComplete"])
+
+    def test_pr307_extends_transport_without_dropping_acceptance_obligations(self):
+        prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr306.json").read_bytes())
+        current, _ = audit.policy()
+        self.assertEqual(4, current["version"])
+        self.assertEqual(49, len(current["requirements"]))
+        for old, new in zip(prior["requirements"], current["requirements"], strict=True):
+            for field in ("id", "assertion", "dimensions", "subjects", "prerequisites", "mandatory",
+                          "closure", "operatingClass", "applicability", "limitations"):
+                self.assertEqual(old[field], new[field], (old["id"], field))
+            self.assertEqual(old["implementation"]["state"], new["implementation"]["state"])
+            self.assertEqual({key: value for key, value in old["authority"].items() if key != "policyDigest"},
+                             {key: value for key, value in new["authority"].items() if key != "policyDigest"})
+        self.assertEqual(prior["residuals"], current["residuals"])
+        for row in prior["history"]:
+            self.assertIn(row, current["history"])
+        products = next(row for row in current["requirements"] if row["id"] == "p12-300-products")
+        self.assertIn("tools/release-certification/protected/maintenance_runtime_companion.py",
+                      [row["path"] for row in products["implementation"]["sourceEvidence"]])
         self.assertFalse(self.evaluate()["phaseComplete"])
 
     def setUp(self):

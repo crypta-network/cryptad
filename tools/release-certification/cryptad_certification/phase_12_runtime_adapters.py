@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+from contextlib import ExitStack
 import tempfile
 from types import SimpleNamespace
 import zipfile
@@ -326,6 +327,8 @@ def _product(adapter, values, payloads, scratch, now):
             row = owner.verify_portable_artifact(portable, view, node, root / "portable.tar.gz")
             blockers = ["product-original-producer-unverified", "rc-portable-post-freeze-binding-not-established"]
     runtime_bound = bool(row.get("runtimeBinding"))
+    if row.get("sealedRuntimeBinding"):
+        blockers.append("product-encrypted-private-original-context-required")
     if node["appDigests"] and not runtime_bound:
         blockers.append("product-app-api-cohort-binding-incomplete")
     result = _result(claims=("p12-300-products",), blockers=blockers,
@@ -336,7 +339,9 @@ def _product(adapter, values, payloads, scratch, now):
     result["productBinding"] = {"role": node["role"], "commit": row["sourceCommit"], "digest": row["artifactDigest"],
                                 "appDigests": node["appDigests"], "contractVersion": node.get("contractVersion"),
                                 "appContractAuthentication": "frozen-byte-consistency" if runtime_bound else "not-established"}
-    if runtime_bound:
+    if row.get("sealedRuntimeBinding"):
+        result["sealedRuntimeBinding"] = owner.public_product_identity(row)["sealedRuntimeBinding"]
+    elif runtime_bound:
         result["runtimeBinding"] = row["runtimeBinding"]
     return result
 
@@ -461,13 +466,13 @@ def _measured(values, now, *, mail=False, measurements=False):
         result["claims"] = ["p12-300-consumers"]
         result["coverage"] = {"required": sorted(row["id"] for row in measured["rows"]), "observed": []}
         result["blockers"].append("maintenance-required-consumer-adapters-incomplete")
-        if measured["schemaVersion"] in {2, 3}:
+        if measured["schemaVersion"] in {2, 3, 4}:
             result["components"] = {"subjectAdmission": measured["subjectAdmission"]["status"],
                                     "measurementDerivation": measured["measurementDerivation"]["status"],
                                     "originalAuthentication": "unverified",
                                     "maintenanceEligibility": measured["maintenanceEligibility"]}
             result["measurements"]["consumerComponents"] = dict(result["components"])
-            if measured["schemaVersion"] == 3 and measured["runtimeComponents"] is not None:
+            if measured["schemaVersion"] in {3, 4} and measured.get("runtimeComponents") is not None:
                 result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
                 result["measurements"]["consumerComponents"] = dict(result["components"])
     return result
@@ -537,13 +542,21 @@ _ORIGINAL_SUPERVISOR = object()
 
 class _AuthenticatedSupervisor:
     """Immutable result of the existing original-report verifier and bounded lineage reads."""
-    def __init__(self, reports, authority=None):
+    def __init__(self, reports, authority=None, *, private_products=None):
         if authority is not _ORIGINAL_SUPERVISOR:
             raise ValueError("phase12-runtime-original-supervisor-required")
         self._reports = json.dumps(reports, sort_keys=True, separators=(",", ":"))
+        if private_products is not None:
+            owner = _protected("cross_version_product_admission")
+            if not isinstance(private_products, owner.AuthenticatedProducts):
+                raise ValueError("phase12-runtime-private-products-required")
+        self._private_products = private_products
 
     def reports(self):
         return json.loads(self._reports)
+
+    def private_products(self):
+        return None if self._private_products is None else self._private_products.private_identities()
 
 
 def _supervisor_relationships(authority, values, now):
@@ -581,12 +594,16 @@ def _supervisor_relationships(authority, values, now):
             or final["checkpoint"] != {"sequence": checkpoint["sequence"], "tailDigest": checkpoint["tailDigest"],
                                        "digest": soak.digest(checkpoint), "status": checkpoint["status"]}):
         raise ValueError("phase12-runtime-supervisor-observation-substituted")
+    if (final["schemaVersion"] == 5 or authorization["schemaVersion"] == 5) and (
+            final["schemaVersion"] != 5 or authorization["schemaVersion"] != 5
+            or authorization["admittedProductsDigest"] != final["admittedProductsDigest"]):
+        raise ValueError("phase12-runtime-supervisor-authorized-products-substituted")
     for row in chain[:-1]:
         report = row["report"]
         if (report["approvalOrigin"] != chain[-1]["origin"]
                 or report["approvalReportDigest"] != soak.digest(authorization)):
             raise ValueError("phase12-runtime-supervisor-approval-substituted")
-        if final["schemaVersion"] in {3, 4} and (
+        if final["schemaVersion"] in {3, 4, 5} and (
                 report["schemaVersion"] != final["schemaVersion"]
                 or report["admittedProductsDigest"] != final["admittedProductsDigest"]):
             raise ValueError("phase12-runtime-supervisor-products-substituted")
@@ -677,19 +694,30 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                 owner = _protected("maintenance_runtime_projection")
                 original = final["maintenanceMeasurements"]
                 evaluated = (dt.datetime.fromisoformat(original["evaluationCutoff"])
-                             if original["schemaVersion"] in {2, 3} else now)
+                             if original["schemaVersion"] in {2, 3, 4} else now)
                 if evaluated > now:
                     raise ValueError("maintenance-measurements-future-evaluation")
-                measured = owner.project(plan, values["events.json"], values["checkpoint.json"], values["products.json"], now=evaluated)
-                if final.get("schemaVersion") not in {2, 3, 4} or measured != original:
+                if original["schemaVersion"] == 4 and (final.get("schemaVersion") != 5
+                        or final.get("admittedProductsDigest") != soak.digest(values["products.json"])):
+                    raise ValueError("maintenance-measurements-products-substituted")
+                private_products = authority.private_products() if original["schemaVersion"] == 4 else None
+                if original["schemaVersion"] == 4 and private_products is None:
+                    result["blockers"].append("maintenance-encrypted-private-original-context-required")
+                    result["dimensions"].update(runtimeExecution="partial", coverage="partial")
+                    return result
+                measured = owner.project(plan, values["events.json"], values["checkpoint.json"],
+                    private_products if private_products is not None else values["products.json"], now=evaluated,
+                    **({"public_products": values["products.json"]} if private_products is not None else {}))
+                if final.get("schemaVersion") not in {2, 3, 4, 5} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
-                if original["schemaVersion"] in {2, 3}:
+                if original["schemaVersion"] in {2, 3, 4}:
                     if (final["schemaVersion"] != original["schemaVersion"] + 1
                             or final["admittedProductsDigest"] != soak.digest(values["products.json"])):
                         raise ValueError("maintenance-measurements-products-substituted")
                     result["components"]["originalAuthentication"] = "authenticated"
+                    result["components"]["subjectAdmission"] = measured["subjectAdmission"]["status"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
-                if measured["schemaVersion"] == 3 and measured["runtimeComponents"] is not None:
+                if measured["schemaVersion"] in {3, 4} and measured.get("runtimeComponents") is not None:
                     result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
                 result["dimensions"].update(runtimeExecution="partial", coverage="partial")
@@ -754,7 +782,7 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
         if coordinates["artifactSize"] > (PRODUCT_BYTES if adapter in {"product-admission", "rc-product-admission"} else 4 * 1024 * 1024):
             raise ValueError("original-artifact-budget")
         values = {name: _json(raw) for name, raw in payloads.items() if name.endswith(".json")}
-        with tempfile.TemporaryDirectory(prefix="runtime-original-", dir=scratch) as temporary:
+        with tempfile.TemporaryDirectory(prefix="runtime-original-", dir=scratch) as temporary, ExitStack() as openings:
             root = Path(temporary)
             if adapter in {"product-admission", "rc-product-admission"}:
                 owner = _protected("cross_version_product_admission")
@@ -763,7 +791,8 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                 if adapter == "product-admission":
                     row = owner.authenticate_maintenance_product(
                         {"coordinates": coordinates, "freezeDigest": selection["freezeDigest"]}, node, root / "maintenance")
-                    if row.get("runtimeBinding"):
+                    openings.callback(owner.close_runtime_context, row)
+                    if row.get("runtimeBinding") and not row.get("sealedRuntimeBinding"):
                         metadata = _json((row["runtimeRoot"] / "runtime-subjects.json").read_bytes())
                         owner.authenticate_runtime_projection(row,
                             {"coordinates": metadata["projectionOrigin"],
@@ -781,6 +810,15 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                         or row["artifactDigest"] != local["subjectBindings"]["digest"]
                         or str(row["buildVersion"]) != local["subjectBindings"]["build"]):
                     raise ValueError("product-original-subject-substitution")
+                if row.get("sealedRuntimeBinding"):
+                    outward = owner.public_product_identity(row)
+                    if outward["sealedRuntimeBinding"] != local.get("sealedRuntimeBinding"):
+                        raise ValueError("product-original-sealed-substitution")
+                    local["blockers"].remove("product-encrypted-private-original-context-required")
+                    if "product-app-api-cohort-binding-incomplete" in local["blockers"]:
+                        local["blockers"].remove("product-app-api-cohort-binding-incomplete")
+                    local["coverage"]["observed"].append("frozen-api-app-cohort")
+                    local["productBinding"]["appContractAuthentication"] = "original-native-private-context"
                 local["dimensions"]["originalProvenance"] = "authenticated"
                 local["blockers"].remove("product-original-producer-unverified")
                 local["originalProof"] = {"state": "authenticated", "scope": "original-product-owner-verification",
@@ -830,7 +868,35 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                     coordinates = validate_coordinates(report["previousOrigin"])
                 else:
                     raise ValueError("original-supervisor-lineage-budget")
-                authority = _AuthenticatedSupervisor(chain, _ORIGINAL_SUPERVISOR)
+                private_products = None
+                if adapter == "maintenance-measurements" and any(
+                        "sealedRuntimeBinding" in row for row in values["products.json"]):
+                    product_owner = _protected("cross_version_product_admission")
+                    nodes = {node["role"]: node for node in values["plan.json"]["nodes"]}
+                    rows = {}
+                    sealed_previous = any(row.get("role") == "previous" and "sealedRuntimeBinding" in row
+                                          for row in values["products.json"])
+                    for number, outward in enumerate(values["products.json"]):
+                        role = outward["role"]
+                        if role in rows or role not in nodes:
+                            raise ValueError("maintenance-private-product-roster-substituted")
+                        if "sealedRuntimeBinding" in outward or sealed_previous and role == "candidate-sender":
+                            row = product_owner.authenticate_maintenance_product(
+                                {"coordinates": outward["portableOrigin"], "freezeDigest": outward["maintenanceFreezeDigest"]},
+                                nodes[role], root / ("product-" + str(number)))
+                            openings.callback(product_owner.close_runtime_context, row)
+                            rows[role] = row
+                        else:
+                            rows[role] = outward
+                    if sealed_previous:
+                        product_owner.bind_predecessor(rows["candidate-sender"], rows["previous"])
+                    for outward in values["products.json"]:
+                        if product_owner.public_product_identity(rows[outward["role"]]) != outward:
+                            raise ValueError("maintenance-private-original-product-substituted")
+                    private_products = product_owner.AuthenticatedProducts(product_owner._SEAL,
+                        soak.digest(values["plan.json"]), rows)
+                    openings.callback(private_products.close)
+                authority = _AuthenticatedSupervisor(chain, _ORIGINAL_SUPERVISOR, private_products=private_products)
             result = verify_authenticated(adapter, payloads, as_of, scratch, authority)
             if adapter == "migration-observation" and "migration-original-execution-time-unavailable" in result["blockers"]:
                 result["originalProof"] = {"state": "unverified", "scope": "original-migration-execution-time-unavailable",

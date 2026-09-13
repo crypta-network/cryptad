@@ -1074,6 +1074,18 @@ def _load_bundle(root: Path) -> PublicationBundle:
     _validate_schema(
         candidate_freeze, "stable-1.0-maintenance-candidate-freeze.schema.json"
     )
+    if candidate_freeze.get("schemaVersion") == 3:
+        # The authenticated authorization handoff owns private semantic validation. This
+        # credential-free provider rechecks its exact retained ciphertext on every retry;
+        # it must neither open the companion nor discover it through the public asset plan.
+        try:
+            from maintenance_runtime_companion import inspect as inspect_companion
+            inspect_companion(candidate_freeze, root / "freeze" / "runtime")
+            if (_file_digest(root / "freeze" / "stable-1.0-maintenance-candidate-freeze.json")
+                    != _file_digest(candidate_freeze_path)):
+                raise ValueError("freeze changed")
+        except (ValueError, KeyError, TypeError, OSError):
+            raise AdapterError("maintenance-runtime-sealed-handoff-invalid") from None
     follow_up_closure_path, follow_up_closure = _load_follow_up_closure(
         authenticated_inputs,
         lineage,

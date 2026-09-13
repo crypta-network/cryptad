@@ -371,15 +371,29 @@ def authenticate_product_selection(plan, private_config):
     if selection is None:
         raise RuntimeFailure("original-product-selection-required")
     try:
-        with fixed_helper_imports(), tempfile.TemporaryDirectory(prefix="cryptad-product-admission-") as temporary:
+        temporary = tempfile.TemporaryDirectory(prefix="cryptad-product-admission-")
+        with fixed_helper_imports():
             module = fixed_helper("cross_version_product_admission")
-            admission = module.authenticate_products(plan, selection, Path(temporary) / "original")
+            admission = module.authenticate_products(plan, selection, Path(temporary.name) / "original")
             if not isinstance(admission, module.AuthenticatedProducts):
                 raise RuntimeFailure("original-product-authority-not-produced")
             admission.bind(plan, private_config)
+            original_close = admission.close
+            def close():
+                try:
+                    original_close()
+                finally:
+                    temporary.cleanup()
+            admission.close = close
             return admission
-    except (ValueError, OSError) as error:
-        raise RuntimeFailure("original-product-authentication-failed") from error
+    except BaseException as error:
+        if 'admission' in locals():
+            admission.close()
+        if 'temporary' in locals():
+            temporary.cleanup()
+        if isinstance(error, (ValueError, OSError)):
+            raise RuntimeFailure("original-product-authentication-failed") from error
+        raise
 
 
 def validate_migration_selection(selection):
@@ -933,9 +947,15 @@ class Supervisor:
         if plan["provenanceClass"] == "production-artifact-comparison":
             self.product_admission = (self.runner_admission.product_admission(plan, self.private)
                                       if self.runner_admission else authenticate_product_selection(plan, self.private))
-            self.product_admission.bind_apps(plan)
-            self.product_identities = self.product_admission.public_identities()
-        self.prepare_catalog_selection()
+            try:
+                self.product_admission.bind_apps(plan)
+                self.product_identities = self.product_admission.public_identities()
+                self.prepare_catalog_selection()
+            except BaseException:
+                self.product_admission.close()
+                raise
+        else:
+            self.prepare_catalog_selection()
 
     def _validate(self):
         if os.name != "posix" or not Path("/proc/sys/kernel/random/boot_id").is_file():
@@ -2231,7 +2251,11 @@ class Supervisor:
             failure = "controller-interrupted"
             self.emit("fault", outcome="partial")
         finally:
-            cleanup = self.cleanup()
+            try:
+                cleanup = self.cleanup()
+            finally:
+                if self.product_admission is not None:
+                    self.product_admission.close()
         scenarios = self.plan["requiredScenarios"]
         for scenario in scenarios:
             identifier = scenario["id"] if isinstance(scenario, dict) else scenario
@@ -2305,6 +2329,8 @@ def runner_identity():
              "tools/release-certification/protected/original_artifact_authentication.py",
              "tools/release-certification/protected/cross_version_product_admission.py",
              "tools/release-certification/protected/maintenance_runtime_metadata.py",
+             "tools/release-certification/protected/maintenance_runtime_companion.py",
+             "tools/release-certification/protected/federation_selection.py",
              "tools/release-certification/protected/maintenance_app_products.py",
              "tools/release-certification/protected/historical_runtime_subjects.py",
              "tools/release-certification/protected/cross_version_supervisor_authority.py",
@@ -2328,6 +2354,15 @@ implementation_identity = runner_identity
 
 
 def _preflight(plan, private_config, authorization=None, product_admission=None):
+    owned = []
+    try:
+        return _preflight_impl(plan, private_config, authorization, product_admission, owned)
+    finally:
+        for admission in owned:
+            admission.close()
+
+
+def _preflight_impl(plan, private_config, authorization=None, product_admission=None, owned=None):
     """Read actual selected bytes; never extract, start a process or contact a node."""
     if plan["producer"] != implementation_identity():
         raise RuntimeFailure("selected-runner-identity-mismatch")
@@ -2341,6 +2376,7 @@ def _preflight(plan, private_config, authorization=None, product_admission=None)
         if product_admission is None:
             product_admission = (runner_admission.product_admission(plan, private_config)
                                  if runner_admission else authenticate_product_selection(plan, private_config))
+            owned.append(product_admission)
         else:
             with fixed_helper_imports():
                 module = fixed_helper("cross_version_product_admission")

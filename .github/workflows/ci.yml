@@ -269,6 +269,10 @@ jobs:
         shell: bash
         run: ${{ matrix.python_cmd }} tools/release-certification/certify.py self-test all
 
+      - name: Prepare protected helper namespace tests
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/setup-packaged-export-sandbox
+
       - name: Test protected producer boundaries offline
         shell: bash
         run: ${{ matrix.python_cmd }} -m unittest discover -s tools/release-certification/protected -p 'test_*.py'
@@ -321,6 +325,8 @@ jobs:
               "cryptad_certification.tests.test_pr304_product_consumer_integration")
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
               "cryptad_certification.tests.test_pr305_product_consumer_integration"))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName(
+              "cryptad_certification.tests.test_pr307_product_consumer_integration"))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
               raise SystemExit(1)

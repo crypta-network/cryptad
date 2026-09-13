@@ -1772,6 +1772,18 @@ def _candidate_freeze_errors(
                                       package_path=_asset_root(context) / product["fileName"])
         except (ValueError, KeyError, OSError):
             errors.append("candidate freeze runtime metadata is missing or does not bind exact inputs")
+    elif value.get("schemaVersion") == 3:
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "protected"))
+            from maintenance_runtime_validation import require_context
+            runtime_inputs = configured_path(context, "maintenanceRuntimeInputs", directory=True)
+            if runtime_inputs is None:
+                raise ValueError("missing runtime input")
+            require_context(value, runtime_inputs / "runtime",
+                            _asset_root(context) / candidate_value["product"]["fileName"])
+        except (ValueError, KeyError, OSError):
+            errors.append("maintenance-runtime-original-private-context-required")
     source = candidate_value.get("source")
     source = source if isinstance(source, dict) else {}
     toolchain = candidate_value.get("toolchain")

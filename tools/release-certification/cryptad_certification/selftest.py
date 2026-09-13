@@ -11,6 +11,7 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_phase_12_closeout",
         "cryptad_certification.tests.test_phase_12_adapters",
         "cryptad_certification.tests.test_phase_12_runtime_adapters",
+        "cryptad_certification.tests.test_pr307_phase12_runtime",
         "cryptad_certification.tests.test_phase_12_authority_context",
         "cryptad_certification.tests.test_phase_12_public",
         "cryptad_certification.tests.test_phase_12_ci",

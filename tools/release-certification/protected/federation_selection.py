@@ -124,6 +124,19 @@ def _archive(files):
     return output.getvalue()
 
 
+def _cms_arguments(source, target, certificate, *, key=None):
+    """Fixed DER/GCM transport command shared by purpose-specific envelope owners.
+
+    Paths identify invocation-private snapshots supplied by those owners, never dispatch
+    arguments. Recipient lifecycle, authenticated input and inner purpose checks stay with
+    each owner. This helper accepts no cipher, provider, engine, or command selection.
+    """
+    args = ['cms', '-binary', '-in', str(source), '-out', str(target)]
+    if key is not None:
+        return args + ['-decrypt', '-inform', 'DER', '-recip', str(certificate), '-inkey', str(key)]
+    return args + ['-encrypt', '-outform', 'DER', '-aes-256-gcm', str(certificate)]
+
+
 def _cms(raw, private_root, *, decrypt=False):
     """Keep key material off command arguments and produce no uploadable plaintext."""
     with tempfile.TemporaryDirectory(prefix='selection-cms-', dir=private_root) as directory:
@@ -133,16 +146,14 @@ def _cms(raw, private_root, *, decrypt=False):
         source.chmod(0o600)
         certificate = root / 'recipient.pem'
         certificate.write_bytes(_regular(RECIPIENT, protected=True))
-        args = ['/usr/bin/openssl', 'cms', '-binary', '-in', str(source), '-out', str(target)]
+        key = None
         if decrypt:
             if RECIPIENT_KEY.stat().st_mode & 0o077:
                 raise SelectionFailure('federation-selection-key-not-private')
             key = root / 'recipient.key'
             key.write_bytes(_regular(RECIPIENT_KEY, protected=True))
             key.chmod(0o600)
-            args += ['-decrypt', '-inform', 'DER', '-recip', str(certificate), '-inkey', str(key)]
-        else:
-            args += ['-encrypt', '-outform', 'DER', '-aes-256-gcm', str(certificate)]
+        args = ['/usr/bin/openssl', *_cms_arguments(source, target, certificate, key=key)]
         try:
             run(args, environment={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'OPENSSL_CONF': '/dev/null'},
                 timeout=60, output_limit=4096)
