@@ -35,7 +35,11 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -316,7 +320,18 @@ class ContentSubscriptionSchedulerTest {
     var fetch = new BlockingFetchPort();
     var config = config(Duration.ZERO, 2, 2);
     var budget = subscriptionBudget();
-    var service = service(fetch, config, budget);
+    var service = spy(service(fetch, config, budget));
+    CountDownLatch rejected = new CountDownLatch(1);
+    var observation = mock(RuntimeWorkObservation.class, delegatesTo(budget.observation()));
+    doAnswer(
+            _ -> {
+              budget.observation().recordEvent(RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING);
+              rejected.countDown();
+              return null;
+            })
+        .when(observation)
+        .recordEvent(RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING);
+    doReturn(observation).when(service).observation();
     service.create(APP_ID, createParams(SOURCE, "Feed"));
     var scheduler = scheduler(appHost(installed(SUBSCRIPTION_CAPABILITIES)), service, config);
     AtomicReference<ContentSubscriptionSchedulerTickResult> manualResult = new AtomicReference<>();
@@ -326,12 +341,7 @@ class ContentSubscriptionSchedulerTest {
       manual.start();
       assertTrue(fetch.started.await(5, TimeUnit.SECONDS));
       scheduler.start();
-      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-      while (budget.observation().snapshot().events().stream()
-          .noneMatch(event -> event.kind() == RuntimeWorkObservation.Kind.TICK_ALREADY_RUNNING)) {
-        assertTrue(System.nanoTime() < deadline, "Executor must attempt the occupied guard");
-        Thread.sleep(10);
-      }
+      assertTrue(rejected.await(2, TimeUnit.SECONDS), "Executor must attempt the occupied guard");
       scheduler.close();
       fetch.release.countDown();
       manual.join(5000);
