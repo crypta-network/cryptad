@@ -220,6 +220,28 @@ const driver=require(process.argv[1]);
         self.assertEqual([50, 27], lane.work['latencyMillis'])
         self.assertEqual(2, lane.work['timedOut'])
         self.assertEqual(0, lane.work['outstanding'])
+        lane.sample.assert_called_once()
+
+        lane = lane_for([50, 27])
+        lane.phase = 'pressure'
+        samples = []
+
+        def capture_sample():
+            samples.append({'phase': lane.phase, 'work': dict(lane.work)})
+            lane.work = {'outstanding': lane.work['outstanding'], 'timedOut': 0,
+                         'failed': 0, 'latencyMillis': []}
+
+        lane.sample.side_effect = capture_sample
+        lane.finish_pressure()
+        lane.phase = 'recovery'
+        lane.sample()
+        self.assertEqual('pressure', samples[0]['phase'])
+        self.assertEqual([50, 27], samples[0]['work']['latencyMillis'])
+        self.assertEqual(2, samples[0]['work']['timedOut'])
+        self.assertEqual(0, samples[0]['work']['outstanding'])
+        self.assertEqual('recovery', samples[1]['phase'])
+        self.assertEqual([], samples[1]['work']['latencyMillis'])
+        self.assertEqual(0, samples[1]['work']['timedOut'])
         for invalid in (None, True, -1, 480001, 1.5, '50', float('nan'), float('inf')):
             with self.subTest(invalid=invalid):
                 lane = lane_for([invalid])

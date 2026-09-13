@@ -639,6 +639,8 @@ class SchedulerLane(runtime.Supervisor):
         self.driver_process = None
         if runtime.digest_file(HERE / 'cross_version_budget_driver.cjs') != self.driver_digest:
             raise runtime.RuntimeFailure('scheduler-fixed-driver-identity-changed')
+        # Flush terminal outcomes while their pressure phase is still active.
+        self.sample()
         return reports
 
     def stop_owned(self):
