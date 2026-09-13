@@ -85,6 +85,11 @@ bounded permissive fallback and are recorded as unknown, never healthy evidence.
 
 Existing startup, scheduler wakeup, minimum poll interval and per-tick controls continue to apply.
 The collector records effective normalized configuration as well as requested synthetic settings.
+Operator-loaded timing values above 86,400 seconds (24 hours) fall back to their defaults,
+including startup, wakeup, minimum poll interval, jitter and both failure-backoff settings.
+The boundary is inclusive; property precedence and backoff normalization remain unchanged.
+Explicit Java constructor configurations retain their existing validation contract.
+
 Defaults retain five-minute startup/minimum poll delay, one-minute wakeup/jitter, thirty-minute
 normal interval, five-minute initial failure backoff and one-hour maximum backoff. A short profile
 cannot establish default-profile throughput or recovery timing.

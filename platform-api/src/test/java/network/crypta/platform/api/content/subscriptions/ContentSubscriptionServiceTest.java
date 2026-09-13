@@ -159,6 +159,34 @@ class ContentSubscriptionServiceTest {
   }
 
   @Test
+  void refresh_whenConfiguredBackoffOverflowsInstant_expectPersistedFailureAndDefaultRetry() {
+    var loadedConfig =
+        ContentSubscriptionSchedulerConfig.from(
+            Map.of(),
+            Map.of(
+                ContentSubscriptionSchedulerConfig.FAILURE_BACKOFF_ENV,
+                    Long.toString(Long.MAX_VALUE),
+                ContentSubscriptionSchedulerConfig.MAXIMUM_FAILURE_BACKOFF_ENV,
+                    Long.toString(Long.MAX_VALUE),
+                ContentSubscriptionSchedulerConfig.JITTER_ENV, "0"));
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionService service = service(fetchPort, loadedConfig);
+    String subscriptionId =
+        (String)
+            service
+                .create(APP_ID, Map.of("uri", List.of(SOURCE), "label", List.of("Retry test")))
+                .get("subscriptionId");
+    fetchPort.enqueueTimeoutFailure();
+
+    Map<String, Object> failed = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals("backoff", failed.get("status"));
+    assertEquals(1, failed.get("failureCount"));
+    assertEquals(NOW.plus(Duration.ofMinutes(5)).toString(), failed.get("nextCheckAt"));
+    assertEquals(failed, service.listAllForOperator().getFirst());
+  }
+
+  @Test
   void resetBackoff_whenSubscriptionFailed_expectMetadataClearedWithoutFetch() {
     RecordingFetchPort fetchPort = new RecordingFetchPort();
     ContentSubscriptionService service = service(fetchPort, config(2));
