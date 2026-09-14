@@ -220,7 +220,8 @@ class ProvisioningDependencyTests(unittest.TestCase):
         names = ('/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles')
         self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
         with patch.object(installation, 'DEPENDENCY_ROOTS', ()), \
-                patch.object(installation, 'DEPENDENCY_FILES', names):
+                patch.object(installation, 'DEPENDENCY_FILES', names), \
+                patch.object(installation, 'TLS_ROOT_PATHS', ()):
             records = installation.dependency_inventory()
         for name in names:
             self.assertIn(name, records)
