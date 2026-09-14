@@ -1130,7 +1130,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:2faadf0bb2853eb74dcd56647f567bfb5da81c43625ee4ca4c42310af34ca899",
+            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2401,7 +2401,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:2faadf0bb2853eb74dcd56647f567bfb5da81c43625ee4ca4c42310af34ca899",
+            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2644,7 +2644,7 @@
           },
           {
             "path": "tools/release-certification/protected/runtime_reference_ledger.py",
-            "digest": "sha256:1719f77df415a2d8f7c851b5d00042f1483d00c531b53a5d245f2eb4fd56a061",
+            "digest": "sha256:bdc0b59938d4f97c4c64450e69064191c134ef344a1968dece6b47608a409a0b",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           },
           {
@@ -2692,7 +2692,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:2faadf0bb2853eb74dcd56647f567bfb5da81c43625ee4ca4c42310af34ca899",
+            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2737,7 +2737,7 @@
           },
           {
             "path": "tools/release-certification/protected/test_runtime_reference_ledger.py",
-            "digest": "sha256:dbf93456e59221ba70af656fafd95c409f378cf6f2b966a29dbc3716fae87d7b",
+            "digest": "sha256:8c0ef2cfc8104415cade4d3aeba5250260a292bdd99ba1e3d2af1c4786b8a1ef",
             "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
           },
           {
@@ -2858,7 +2858,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:a25234638c604bda8507fd7b195d01b670d682bab6a44353fbceb3c7ee7e71ff",
+            "digest": "sha256:79466686c3440f4e1509659fa2735ce5b5053826bcd2b18cacb6000bc6e5ba83",
             "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
           },
           {
@@ -2933,7 +2933,7 @@
           },
           {
             "path": "tools/release-certification/protected/runtime_reference_ledger.py",
-            "digest": "sha256:1719f77df415a2d8f7c851b5d00042f1483d00c531b53a5d245f2eb4fd56a061",
+            "digest": "sha256:bdc0b59938d4f97c4c64450e69064191c134ef344a1968dece6b47608a409a0b",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           },
           {
@@ -2991,7 +2991,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:2faadf0bb2853eb74dcd56647f567bfb5da81c43625ee4ca4c42310af34ca899",
+            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3026,7 +3026,7 @@
           },
           {
             "path": "tools/release-certification/protected/test_runtime_reference_ledger.py",
-            "digest": "sha256:dbf93456e59221ba70af656fafd95c409f378cf6f2b966a29dbc3716fae87d7b",
+            "digest": "sha256:8c0ef2cfc8104415cade4d3aeba5250260a292bdd99ba1e3d2af1c4786b8a1ef",
             "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
           },
           {
@@ -3908,7 +3908,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:2faadf0bb2853eb74dcd56647f567bfb5da81c43625ee4ca4c42310af34ca899",
+            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
             "path": ".github/workflows/ci.yml"
           },
           {

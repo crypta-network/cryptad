@@ -322,7 +322,7 @@ jobs:
           suite = unittest.defaultTestLoader.discover(
               'tools/release-certification/protected', pattern='test_*baseline*.py')
           suite.addTests(unittest.defaultTestLoader.discover(
-              'tools/release-certification/protected', pattern='test_runtime_reference_ledger.py'))
+              'tools/release-certification/protected', pattern='test_runtime_reference_*.py'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
               raise SystemExit(1)

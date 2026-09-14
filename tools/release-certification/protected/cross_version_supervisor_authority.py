@@ -493,15 +493,59 @@ class TerminalEvidence:
         self._closed = True
 
 
-def _write_private_products(activation, rows, private, authorization):
+def _write_private_products(activation, rows, private, authorization, *, resume=False):
     path = AUTHORITY / 'runtime-products.json'
-    if path.exists() or path.is_symlink():
+    value = {'schemaVersion': 2, 'kind': 'service-private-runtime-products',
+             'activationDigest': digest(activation), 'products': rows,
+             'privateConfigDigest': digest(private), 'authorizationDigest': digest(authorization)}
+    if resume:
+        _create_or_verify(path, value, 0o600)
+    elif path.exists() or path.is_symlink():
         raise AuthorityError('protected-private-products-reuse-requires-reconciliation')
-    _atomic(path, {'schemaVersion': 2, 'kind': 'service-private-runtime-products',
-                   'activationDigest': digest(activation), 'products': rows,
-                   'privateConfigDigest': digest(private), 'authorizationDigest': digest(authorization)}, 0o600)
+    else:
+        _atomic(path, value, 0o600)
     os.chown(path, 0, pwd.getpwnam('cryptad-soak').pw_gid)
     path.chmod(0o640)
+
+
+def _create_or_verify(path, value, mode):
+    """Resume a root-owned preparation without replacing an existing selection."""
+    if os.path.lexists(path):
+        if secured(path).read_bytes() != json.dumps(value, sort_keys=True, separators=(',', ':')).encode():
+            raise AuthorityError('protected-reference-start-record-substituted')
+    else:
+        _atomic(path, value, mode)
+
+
+def _reference_launch_permitted(activation, private):
+    """Prove the original activation has not launched before retrying the fixed unit."""
+    now = time.monotonic_ns()
+    if (activation['bootId'] != boot_id()
+            or not activation['startedMonotonicNs'] <= now <= activation['deadlineMonotonicNs']):
+        raise AuthorityError('protected-reference-start-lifetime-invalid')
+    if (os.path.lexists(private['root'])
+            or os.path.lexists(STATE / 'public' / Path(private['root']).name)):
+        raise AuthorityError('protected-reference-start-execution-already-observed')
+    launched = _reference_service_quiescent()
+    if launched * 1000 >= activation['startedMonotonicNs']:
+        raise AuthorityError('protected-reference-start-service-not-unlaunched')
+
+
+def _reference_service_quiescent():
+    """Require fully stopped systemd state and no owned processes, including descendants."""
+    completed = subprocess.run(['/usr/bin/systemctl', 'show', UNIT,
+        '--property=ActiveState,SubState,MainPID,ControlPID,ExecMainStartTimestampMonotonic', '--no-pager'],
+        capture_output=True, text=True, check=True, timeout=20,
+        env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
+    values = dict(line.split('=', 1) for line in completed.stdout.splitlines() if '=' in line)
+    if ((values.get('ActiveState'), values.get('SubState')) not in {('inactive', 'dead'), ('failed', 'failed')}
+            or values.get('MainPID') != '0' or values.get('ControlPID') != '0'
+            or not values.get('ExecMainStartTimestampMonotonic', '').isdigit()):
+        raise AuthorityError('protected-reference-start-service-not-unlaunched')
+    group = Path('/sys/fs/cgroup/system.slice') / UNIT
+    if group.exists() and any(path.read_text().strip() for path in group.rglob('cgroup.procs')):
+        raise AuthorityError('protected-reference-start-service-not-unlaunched')
+    return int(values['ExecMainStartTimestampMonotonic'])
 
 
 def _runtime_authorization(bindings, *, create=False):
@@ -673,7 +717,10 @@ def control(operation):
     if operation == 'start':
         if previous.get('operation') != 'authorize' or previous.get('plan') != plan:
             raise AuthorityError('protected-start-requires-original-authorization')
-        if _service_state() != 'stopped' or Path(private['root']).exists():
+        intent_path = AUTHORITY / 'runtime-reference-start.json'
+        resuming = reference_campaign is not None and os.path.lexists(intent_path)
+        service_state = _service_state()
+        if not resuming and (service_state != 'stopped' or Path(private['root']).exists()):
             raise AuthorityError('protected-start-topology-not-new')
         product_rows, private_product_rows = _admit_product_rows(plan, private)
         if ((private_product_rows is not None or private_runtime) != sealed_authorization
@@ -681,7 +728,7 @@ def control(operation):
             raise AuthorityError('protected-start-original-products-substituted')
         authority_directory()
         used = AUTHORITY / ('used-' + str(origin['artifactId']) + '.json')
-        if used.exists() or (AUTHORITY / 'activation.json').exists():
+        if not resuming and (used.exists() or (AUTHORITY / 'activation.json').exists()):
             raise AuthorityError('protected-start-reuse-requires-reconciliation')
         now = time.monotonic_ns()
         activation = {'schemaVersion': 1, 'planDigest': digest(plan), 'privateConfigDigest': digest(private),
@@ -698,11 +745,26 @@ def control(operation):
             activation['privateRuntimeContext'] = 'runtime-baseline-v1'
         elif reference_campaign is not None:
             activation['privateRuntimeContext'] = 'runtime-reference-v1'
+            if resuming:
+                retained = read_json(secured(intent_path, private=True))
+                _create_or_verify(intent_path, retained, 0o400)
+                comparable = dict(retained)
+                for key in ('startedMonotonicNs', 'deadlineMonotonicNs'):
+                    comparable[key] = activation[key]
+                if comparable != activation:
+                    raise AuthorityError('protected-reference-start-intent-substituted')
+                activation = retained
+            else:
+                _atomic(intent_path, activation, 0o400)
             from runtime_reference_ledger import begin
-            begin(reference_campaign, plan['experimentId'], private['runtimePolicy'])
-        _atomic(used, {'approvalOrigin': origin})
+            begin(reference_campaign, plan['experimentId'], private['runtimePolicy'], activation_digest=digest(activation))
+        if reference_campaign is not None:
+            _create_or_verify(used, {'approvalOrigin': origin}, 0o600)
+        else:
+            _atomic(used, {'approvalOrigin': origin})
         if private_product_rows is not None or private_runtime:
-            _write_private_products(activation, private_product_rows or product_rows, private, authorization)
+            _write_private_products(activation, private_product_rows or product_rows, private, authorization,
+                                   **({'resume': True} if reference_campaign is not None else {}))
         if selected_baseline is not None:
             path = AUTHORITY / 'runtime-baseline-policy.json'
             if path.exists():
@@ -711,11 +773,28 @@ def control(operation):
                            'policy': baseline_proposal['baseline']['policy']})
             os.chown(path, 0, pwd.getpwnam('cryptad-soak').pw_gid)
             path.chmod(0o640)
-        _atomic(AUTHORITY / 'activation.json', activation, 0o644)
-        subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
-                       env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if reference_campaign is not None:
+            _create_or_verify(AUTHORITY / 'activation.json', activation, 0o644)
+        else:
+            _atomic(AUTHORITY / 'activation.json', activation, 0o644)
+        recovered_terminal = resuming and service_state == 'stopped' and os.path.lexists(private['root'])
+        if recovered_terminal:
+            # A launched execution is never restarted. Recover its start handoff only after
+            # verifying and retaining the stopped original terminal evidence for normal finish.
+            _reference_service_quiescent()
+            with TerminalEvidence(_SEAL, activation) as terminal:
+                if product_rows and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in product_rows):
+                    terminal.validate_selection(activation, plan, private)
+                snapshot(plan, Path(private['root']), expected_uid=uid, require_eof=True,
+                         activation=activation, terminal=terminal)
+                terminal.require(activation)
+        elif not (resuming and service_state == 'running'):
+            if reference_campaign is not None:
+                _reference_launch_permitted(activation, private)
+            subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
+                           env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         report['serviceState'] = _service_state()
-        if report['serviceState'] != 'running':
+        if report['serviceState'] != ('stopped' if recovered_terminal else 'running'):
             raise AuthorityError('protected-service-start-not-observed')
         report['approvalOrigin'] = origin
         report['approvalReportDigest'] = digest(previous)

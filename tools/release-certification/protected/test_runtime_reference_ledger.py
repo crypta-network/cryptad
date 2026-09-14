@@ -103,6 +103,26 @@ class ReferenceLedgerTest(unittest.TestCase):
         with self.assertRaisesRegex(ledger.LedgerError, 'attempt-pending'):
             ledger.verify_complete(self.campaign, ['reference-1'])
 
+    def test_exact_activation_retry_preserves_marker_and_cannot_advance_campaign(self):
+        identity = 'sha256:' + 'a' * 64
+        ledger.begin(self.campaign, 'reference-1', self.policy, activation_digest=identity)
+        path = self.store / 'campaigns' / self.campaign['campaignId'] / 'attempt-00.json'
+        raw = path.read_bytes()
+        Clock.seconds = 5
+        ledger.begin(self.campaign, 'reference-1', self.policy, activation_digest=identity)
+        self.assertEqual(raw, path.read_bytes())
+        with self.assertRaisesRegex(ledger.LedgerError, 'start-substituted'):
+            ledger.begin(self.campaign, 'reference-1', self.policy, activation_digest='sha256:' + 'b' * 64)
+        with self.assertRaisesRegex(ledger.LedgerError, 'attempt-pending'):
+            ledger.begin(self.campaign, 'reference-2', self.policy, activation_digest=identity)
+        with self.assertRaisesRegex(ledger.LedgerError, 'attempt-pending'):
+            ledger.verify_complete(self.campaign, ['reference-1'])
+
+    def test_historical_marker_cannot_acquire_activation_retry_authority(self):
+        ledger.begin(self.campaign, 'reference-1', self.policy)
+        with self.assertRaisesRegex(ledger.LedgerError, 'start-substituted'):
+            ledger.begin(self.campaign, 'reference-1', self.policy, activation_digest='sha256:' + 'a' * 64)
+
     def test_renamed_reordered_and_changed_campaign_cannot_reselect(self):
         with self.assertRaisesRegex(ledger.LedgerError, 'next-attempt-invalid'):
             ledger.begin(self.campaign, 'reference-2', self.policy)

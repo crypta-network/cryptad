@@ -107,8 +107,12 @@ def _started(directory, campaign):
         if missing:
             raise LedgerError('runtime-reference-ledger-nonprefix-attempts')
         marker = _read(path, 2048)
-        if (not isinstance(marker, dict) or set(marker) != {'schemaVersion', 'kind', 'campaignDigest', 'index', 'experimentId', 'startedAt'}
-                or type(marker['schemaVersion']) is not int or marker['schemaVersion'] != 1
+        fields = {'schemaVersion', 'kind', 'campaignDigest', 'index', 'experimentId', 'startedAt'}
+        if isinstance(marker, dict) and marker.get('schemaVersion') == 2:
+            fields.add('activationDigest')
+        if (not isinstance(marker, dict) or set(marker) != fields
+                or type(marker['schemaVersion']) is not int or marker['schemaVersion'] not in {1, 2}
+                or marker['schemaVersion'] == 2 and not admission.baseline.DIGEST.fullmatch(str(marker['activationDigest']))
                 or marker['kind'] != 'runtime-reference-attempt-started'
                 or marker['campaignDigest'] != admission.digest(campaign)
                 or type(marker['index']) is not int or marker['index'] != index or marker['experimentId'] != experiment):
@@ -165,12 +169,22 @@ def _outcomes(markers, campaign, policy):
     return accepted
 
 
-def begin(campaign, experiment_id, policy):
+def begin(campaign, experiment_id, policy, *, activation_digest=None):
     """Durably mark the next fixed attempt before the supervisor starts candidate processes."""
     with _campaign(campaign, policy=policy, create=True) as (directory, frozen_policy):
         if admission.baseline._time(campaign['plannedAt']) > dt.datetime.now(dt.timezone.utc):
             raise LedgerError('runtime-reference-ledger-plan-in-future')
         markers = _started(directory, campaign)
+        if activation_digest is not None:
+            if not admission.baseline.DIGEST.fullmatch(str(activation_digest)):
+                raise LedgerError('runtime-reference-ledger-activation-invalid')
+            if markers and markers[-1]['experimentId'] == experiment_id:
+                if markers[-1].get('activationDigest') != activation_digest:
+                    raise LedgerError('runtime-reference-ledger-start-substituted')
+                # Only the exact retained activation can resume preparation. The supervisor
+                # independently proves no service launch occurred before retrying execution.
+                _outcomes(markers[:-1], campaign, frozen_policy)
+                return
         accepted = _outcomes(markers, campaign, frozen_policy)
         if (accepted >= campaign['requiredRepetitions'] or len(markers) >= len(campaign['attempts'])
                 or experiment_id != campaign['attempts'][len(markers)]):
@@ -178,6 +192,8 @@ def begin(campaign, experiment_id, policy):
         marker = {'schemaVersion': 1, 'kind': 'runtime-reference-attempt-started',
                   'campaignDigest': admission.digest(campaign), 'index': len(markers),
                   'experimentId': experiment_id, 'startedAt': dt.datetime.now(dt.timezone.utc).isoformat()}
+        if activation_digest is not None:
+            marker.update(schemaVersion=2, activationDigest=activation_digest)
         _write_new(directory / f'attempt-{len(markers):02d}.json', marker)
 
 

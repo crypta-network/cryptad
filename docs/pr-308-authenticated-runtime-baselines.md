@@ -179,6 +179,38 @@ authenticate that context. An arbitrary partial checkpoint, absent fault, or mis
 not a terminal attempt. The proposal retains these outcomes and enforces the campaign's allowed
 replacement dispositions without rewriting raw journal history.
 
+Reference start preparation retains a root-private `runtime-reference-start.json` intent before
+marking the attempt. The intent fixes the original activation, authorization, boot, product
+selection and monotonic deadline. New ledger marker v2 binds its activation digest; historical v1
+markers retain their original non-resumable meaning. A retry of the same current attempt verifies
+the intent, completes only missing matching root records, and preserves the marker and activation
+bytes. Another attempt cannot skip the pending one, and retry does not extend any execution clock.
+This retry guarantee requires complete, valid retained intent/marker records. A torn record or
+orphaned staging file from a hard process/machine crash remains an explicit reconciliation error;
+the helper does not delete accounting state or guess the missing original bytes.
+
+After an interrupted preparation or a failed systemd command, retry the existing fixed `start`
+operation with the same selected authorization. A fresh launch is allowed only within the original
+boot/deadline when systemd reports a fully inactive/failed unit with no main/control/cgroup processes,
+no private/public experiment roots exist, and systemd records no service launch since the intent.
+An already running selected service only recovers its start report; it is not launched again.
+For a stopped service with a retained execution root, recovery verifies and retains the original
+terminal evidence before returning a stopped start report for the normal finish handoff. A prior
+launch with missing or invalid terminal evidence remains a reconciliation error, never an inferred
+empty successful run or permission to replay workload. Do not delete immutable marker/intent files.
+After a completed reference's original finish handoff is durably retained, include its start intent
+with the activation/private records in the existing operator reconciliation before preparing a new
+reference. Preserve the campaign ledger and retained observation capsules throughout; a new attempt
+must not reuse the previous global activation or intent.
+
+The native reference-start/ledger suite covers interrupted intent, root-record and activation
+writes, failed pre-launch systemd calls, lost running-service handoffs, exact-byte substitution,
+deadline expiry, changed original authorization, transitions and prior launches. These are isolated
+synthetic original/systemd providers with real root-owned files, not protected workflow dispatches.
+The focused retry/ledger suite passes 24 tests; the reproduced pre-fix systemd failure instead
+rejected every retry with `protected-start-reuse-requires-reconciliation`. The successor assessment
+is retained under `build/pr308-phase12-reference-start-fix` at the original cutoff.
+
 Keep private proposal and observation files at their original identities. A root-owned
 `<approvalContext>.revoked` or `<approvalContext>.superseded` marker in the private store denies
 current use without altering historical evidence; marker removal is not an approval or automatic
