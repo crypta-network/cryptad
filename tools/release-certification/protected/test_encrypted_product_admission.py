@@ -3,6 +3,10 @@ from contextlib import contextmanager
 import json
 import io
 import hashlib
+import os
+import re
+import subprocess
+import textwrap
 import zipfile
 from pathlib import Path
 import tempfile
@@ -69,6 +73,68 @@ class EncryptedProductAdmissionTests(unittest.TestCase):
             original.content = archive(files)
             with self.assertRaisesRegex(products.ProductAdmissionError, "unbound-member"):
                 products.verify_maintenance_artifact(original, node, freeze_digest, root / "extra")
+
+    def test_both_supply_chain_intakes_attest_only_fixed_v3_runtime_members(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/stable-1.0-supply-chain.yml'
+        blocks = re.findall(r"            case .*?            esac", workflow.read_text(), re.DOTALL)
+        blocks = [block for block in blocks if "'.schemaVersion'" in block]
+        self.assertEqual(2, len(blocks))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            (root / 'runtime').mkdir()
+            (root / 'runtime/runtime-subjects.json').write_bytes(b'legacy public manifest')
+            for version in (1, 2, 3):
+                if version == 3:
+                    (root / 'runtime/private-canary.json').write_bytes(b'never attest this plaintext')
+                (root / 'stable-1.0-maintenance-candidate-freeze.json').write_text(json.dumps({'schemaVersion': version}))
+                for block in blocks:
+                    result = subprocess.run(['bash', '-c', textwrap.dedent(block)],
+                        env={**os.environ, 'freeze': str(root)}, capture_output=True, check=True, timeout=10)
+                    members = [Path(name.decode()).name for name in result.stdout.split(b'\0') if name]
+                    expected = ([] if version == 1 else ['runtime-subjects.json'] if version == 2 else
+                                ['runtime-companion.json', 'runtime-companion.cms'])
+                    self.assertEqual(expected, members)
+
+    def test_both_supply_chain_intakes_validate_closed_v3_companion_without_keys(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/stable-1.0-supply-chain.yml'
+        blocks = re.findall(r'          if not errors and value.get\("schemaVersion"\) == 2:.*?(?=          if errors:)',
+                            workflow.read_text(), re.DOTALL)
+        self.assertEqual(2, len(blocks))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            runtime = root / 'runtime'
+            runtime.mkdir()
+            raw = b'synthetic opaque ciphertext: outer integrity only'
+            descriptor = {'schemaVersion': 1, 'kind': 'maintenance-runtime-companion',
+                'mode': 'selected-federation', 'purpose': companion.PURPOSE,
+                'recipientPolicy': companion.POLICY_ID, 'recipientEpoch': 1,
+                'ciphertext': companion._identity(companion.CIPHERTEXT, raw)}
+            encoded = json.dumps(descriptor).encode()
+            value = {'schemaVersion': 3, 'runtimeMetadata': companion._identity(companion.DESCRIPTOR, encoded)}
+            (runtime / companion.DESCRIPTOR).write_bytes(encoded)
+            ciphertext = runtime / companion.CIPHERTEXT
+            for block in blocks:
+                code = compile(textwrap.dedent(block), str(workflow), 'exec')
+                with patch.object(companion, 'open_companion', side_effect=AssertionError('private opening')):
+                    for mutation in ('valid', 'missing', 'changed', 'extra', 'descriptor'):
+                        ciphertext.write_bytes(raw)
+                        extra = runtime / 'projection-inventory.json'
+                        extra.unlink(missing_ok=True)
+                        (runtime / companion.DESCRIPTOR).write_bytes(encoded)
+                        if mutation == 'missing':
+                            ciphertext.unlink()
+                        elif mutation == 'changed':
+                            ciphertext.write_bytes(b'substituted')
+                        elif mutation == 'extra':
+                            extra.write_bytes(b'private canary')
+                        elif mutation == 'descriptor':
+                            (runtime / companion.DESCRIPTOR).write_bytes(encoded + b' ')
+                        with self.subTest(mutation=mutation):
+                            if mutation == 'valid':
+                                exec(code, {'value': value, 'root': root, 'errors': []})
+                            else:
+                                with self.assertRaises(companion.CompanionError):
+                                    exec(code, {'value': value, 'root': root, 'errors': []})
 
     def run_admission(self, *, bad_attestation=False, native_failure=False):
         order = []
