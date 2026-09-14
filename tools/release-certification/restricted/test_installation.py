@@ -281,6 +281,56 @@ class HostAssetTests(unittest.TestCase):
                 installation.verify_host_assets(self.bundle, upgrading=True)
 
 
+class RoleGroupTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        names = ('cryptad-runner', 'cryptad-native', 'cryptad-workload', 'cryptad-soak')
+        self.roles = [SimpleNamespace(pw_name=name, pw_uid=62001 + i, pw_gid=62001 + i)
+                      for i, name in enumerate(names)]
+        self.groups = {role.pw_name: {role.pw_gid} for role in self.roles}
+        self.groups['cryptad-runner'].add(62005)
+        self.config = {'runnerUid': 62001, 'runnerGroups': [62001, 62005]}
+        ids = {role.pw_name: role.pw_gid for role in self.roles}
+        ids['cryptad-control'] = 62005
+        group_lookup = patch('grp.getgrnam', side_effect=lambda name: SimpleNamespace(gr_gid=ids[name]))
+        memberships = patch.object(installation.os, 'getgrouplist', side_effect=lambda name, gid: list(self.groups[name]))
+        for change in (group_lookup, memberships):
+            change.start()
+            self.addCleanup(change.stop)
+
+    def test_exact_provisioned_groups_pass_for_all_roles(self):
+        allowed = installation.verify_role_groups(self.roles, self.config)
+        self.assertEqual({role.pw_uid: self.groups[role.pw_name] for role in self.roles}, allowed)
+
+    def test_extra_groups_reject_every_role_including_unknown_host_control_groups(self):
+        for role in self.roles:
+            for extra in (0, 998, 999, 62005):
+                if extra in self.groups[role.pw_name]:
+                    continue
+                with self.subTest(role=role.pw_name, extra=extra):
+                    self.groups[role.pw_name].add(extra)
+                    with self.assertRaisesRegex(installation.InstallationError, 'groups-unreviewed'):
+                        installation.verify_role_groups(self.roles, self.config)
+                    self.groups[role.pw_name].remove(extra)
+
+    def test_nonprovisioned_primary_group_rejects_service_role(self):
+        self.roles[-1].pw_gid = 999
+        with self.assertRaisesRegex(installation.InstallationError, 'groups-unreviewed'):
+            installation.verify_role_groups(self.roles, self.config)
+
+    def test_running_processes_cannot_retain_removed_group_membership(self):
+        allowed = installation.verify_role_groups(self.roles, self.config)
+        for role in self.roles:
+            base = f'Uid:\t{role.pw_uid} {role.pw_uid} {role.pw_uid} {role.pw_uid}\n'
+            base += f'Gid:\t{role.pw_gid} {role.pw_gid} {role.pw_gid} {role.pw_gid}\n'
+            with patch.object(Path, 'iterdir', return_value=[Path('/proc/123')]):
+                with patch.object(Path, 'read_text', return_value=base + f'Groups:\t{role.pw_gid}\n'):
+                    installation.verify_role_processes(self.roles, allowed)
+                with patch.object(Path, 'read_text', return_value=base + f'Groups:\t{role.pw_gid} 999\n'):
+                    with self.assertRaisesRegex(installation.InstallationError, 'process-groups-unreviewed'):
+                        installation.verify_role_processes(self.roles, allowed)
+
+
 class UnitLoadPathTests(unittest.TestCase):
     UNITS = ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service')
 

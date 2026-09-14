@@ -293,8 +293,55 @@ def configuration():
     return config
 
 
-def verify_profile(config):
+def verify_role_groups(roles, config):
+    """Accept only the provisioned primary group, plus socket access for the runner."""
     import grp
+    allowed = {}
+    primary = set()
+    control = grp.getgrnam('cryptad-control').gr_gid
+    if control == 0 or any(role.pw_gid == control for role in roles):
+        raise InstallationError('restricted-role-groups-unreviewed')
+    for role in roles:
+        own = grp.getgrnam(role.pw_name).gr_gid
+        expected = {own}
+        if role.pw_name == 'cryptad-runner':
+            expected.add(control)
+        actual = set(os.getgrouplist(role.pw_name, role.pw_gid))
+        if own == 0 or role.pw_gid != own or own in primary or actual != expected or 0 in actual:
+            raise InstallationError('restricted-role-groups-unreviewed')
+        primary.add(own)
+        if role.pw_name == 'cryptad-runner' and (
+                role.pw_uid != config['runnerUid'] or sorted(actual) != sorted(config['runnerGroups'])):
+            raise InstallationError('restricted-runner-identity-mismatch')
+        allowed[role.pw_uid] = expected
+    return allowed
+
+
+def verify_role_processes(roles, allowed):
+    """Reject stale group memberships and capabilities in already running role processes."""
+    for path in Path('/proc').iterdir():
+        if not path.name.isdecimal():
+            continue
+        try:
+            status = dict(line.split(':', 1) for line in (path / 'status').read_text().splitlines() if ':' in line)
+        except FileNotFoundError:
+            continue
+        uids = [int(item) for item in status.get('Uid', '').split()]
+        for role in roles:
+            if role.pw_uid not in uids:
+                continue
+            gids = [int(item) for item in status.get('Gid', '').split()]
+            groups = {int(item) for item in status.get('Groups', '').split()}
+            if (len(uids) != 4 or set(uids) != {role.pw_uid} or len(gids) != 4
+                    or set(gids) != {role.pw_gid} or 'Groups' not in status
+                    or not groups <= allowed[role.pw_uid]):
+                raise InstallationError('restricted-role-process-groups-unreviewed')
+            if any(int(status.get(field, '0').strip(), 16)
+                   for field in ('CapEff', 'CapPrm', 'CapAmb', 'CapInh')):
+                raise InstallationError('restricted-role-process-capabilities')
+
+
+def verify_profile(config):
     import pwd
     if 'VERSION_ID="13"' not in Path('/etc/os-release').read_text():
         raise InstallationError('restricted-host-profile-unsupported')
@@ -308,23 +355,8 @@ def verify_profile(config):
     roles = [pwd.getpwnam(name) for name in ('cryptad-runner', 'cryptad-native', 'cryptad-workload', 'cryptad-soak')]
     if len({row.pw_uid for row in roles}) != 4 or any(row.pw_uid == 0 for row in roles):
         raise InstallationError('restricted-role-uids-not-separated')
-    groups = sorted(os.getgrouplist(runner.pw_name, runner.pw_gid))
-    if runner.pw_uid != config['runnerUid'] or groups != sorted(config['runnerGroups']):
-        raise InstallationError('restricted-runner-identity-mismatch')
-    forbidden = {'sudo', 'wheel', 'docker', 'containerd', 'lxd', 'libvirt', 'disk', 'kvm', 'adm', 'systemd-journal'}
-    if any(grp.getgrgid(group).gr_name in forbidden for group in groups):
-        raise InstallationError('restricted-runner-privileged-group')
-    # Inspect actual running runner processes, not an environment assertion by the client.
-    for path in Path('/proc').iterdir():
-        if not path.name.isdecimal():
-            continue
-        try:
-            status = dict(line.split(':', 1) for line in (path / 'status').read_text().splitlines() if ':' in line)
-        except FileNotFoundError:
-            continue
-        if runner.pw_uid in [int(item) for item in status.get('Uid', '').split()]:
-            if any(int(status.get(field, '0').strip(), 16) for field in ('CapEff', 'CapPrm', 'CapAmb', 'CapInh')):
-                raise InstallationError('restricted-runner-process-capabilities')
+    allowed = verify_role_groups(roles, config)
+    verify_role_processes(roles, allowed)
     # sudo policy is evaluated by its actual policy engine, not by grepping one drop-in.
     probe = subprocess.run(['/usr/bin/sudo', '-n', '-l', '-U', runner.pw_name],
                            env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, timeout=15)

@@ -450,3 +450,17 @@ including resolved link targets and exact bytes. Missing entries or changed conf
 invalidate the approved image inventory before installation or private owner execution.
 Administrator review must still assess configuration contents and provider behavior; the
 inventory is an integrity check, not approval of arbitrary OpenSSL configuration.
+
+## Review correction: service-account group isolation
+
+Profile verification now requires each role's own distinct, non-root primary group. The runner
+may additionally belong to `cryptad-control`; native, workload and soak identities may have no
+other groups. This exact allowlist rejects privileged and unknown supplementary groups without
+depending on a list of known socket-group names. The socket group must be separate from every
+role's primary group. Verification does not modify existing account memberships.
+
+Already running processes for all four roles are checked for matching real/effective/saved/fs
+UIDs and GIDs, permitted supplementary groups and no effective/permitted/ambient/inheritable
+capabilities. A process retaining an old group after account cleanup therefore fails verification.
+The regressions use account/process fixtures; real disposable multi-UID conformance remains an
+unexecuted requirement.
