@@ -29,7 +29,8 @@ DEPENDENCY_FILES = ('/usr/bin/python3', '/usr/bin/python3.13', '/usr/bin/openssl
                     '/usr/bin/bwrap', '/usr/bin/prlimit', '/usr/bin/gh', '/usr/bin/git',
                     '/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles',
                     '/usr/bin/systemctl', '/usr/bin/sudo', '/usr/bin/setpriv', '/usr/bin/true', '/usr/lib/systemd/systemd',
-                    '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ssl/certs/ca-certificates.crt')
+                    '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ssl/certs/ca-certificates.crt',
+                    '/usr/lib/ssl/openssl.cnf', '/etc/ssl/openssl.cnf')
 # Go crypto/x509 Linux system roots: first available file plus all certificate directories.
 TLS_ROOT_PATHS = ('/etc/ssl/certs', '/etc/pki/tls/certs',
     '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem', '/etc/pki/tls/cacert.pem',
@@ -388,9 +389,16 @@ def verify_host_assets(bundle, *, upgrading=False):
 def verify_units():
     verify_host_assets(PREFIX / 'current')
     for name in ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
-        for root in ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system'):
+        for root in ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system',
+                     '/etc/systemd/system.control', '/run/systemd/system.control'):
             if (Path(root) / (name + '.d')).exists():
                 raise InstallationError('restricted-unit-dropin-unreviewed')
+        loaded = subprocess.run(['/usr/bin/systemctl', 'show', name,
+            '--property=FragmentPath,DropInPaths', '--no-pager'], check=True, capture_output=True,
+            timeout=15, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+        paths = dict(line.split('=', 1) for line in loaded.stdout.decode().splitlines() if '=' in line)
+        if paths != {'FragmentPath': '/etc/systemd/system/' + name, 'DropInPaths': ''}:
+            raise InstallationError('restricted-unit-load-path-unreviewed')
     result = subprocess.run(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
         '--property=User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices,LimitCORE,FragmentPath,CapabilityBoundingSet',
         '--no-pager'], check=True, capture_output=True, timeout=15,

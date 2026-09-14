@@ -160,6 +160,29 @@ class InstallationArtifactTests(unittest.TestCase):
 
 
 class ProvisioningDependencyTests(unittest.TestCase):
+    def test_openssl_configuration_and_resolved_target_are_required_and_inventoried(self):
+        names = ('/usr/lib/ssl/openssl.cnf', '/etc/ssl/openssl.cnf')
+        self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
+        with patch.object(installation, 'DEPENDENCY_ROOTS', ()), \
+                patch.object(installation, 'DEPENDENCY_FILES', names), \
+                patch.object(installation, 'TLS_ROOT_PATHS', ()):
+            records = installation.dependency_inventory()
+        for name in names:
+            self.assertIn(name, records)
+            self.assertEqual(installation.file_record(Path(name).resolve(strict=True)),
+                             records[str(Path(name).resolve(strict=True))])
+            incomplete = {key: {} for key in installation.DEPENDENCY_FILES if key != name}
+            with self.assertRaisesRegex(installation.InstallationError, 'closure-incomplete'):
+                installation.dependencies({'dependencies': incomplete})
+
+    def test_changed_openssl_configuration_identity_rejects_approved_inventory(self):
+        records = {key: {} for key in installation.DEPENDENCY_FILES}
+        records.update({'/usr/lib/python3.13/os.py': {}, '/lib/ld-linux-fixture': {}})
+        changed = {**records, '/etc/ssl/openssl.cnf': {'sha256': 'changed'}}
+        with patch.object(installation, 'dependency_inventory', return_value=changed):
+            with self.assertRaisesRegex(installation.InstallationError, 'closure-changed'):
+                installation.dependencies({'dependencies': records})
+
     def test_tls_inventory_detects_certificate_addition_replacement_and_new_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -255,6 +278,50 @@ class HostAssetTests(unittest.TestCase):
                     installation.verify_host_assets(self.bundle, upgrading=True)
                 target.write_bytes(source.read_bytes())
                 installation.verify_host_assets(self.bundle, upgrading=True)
+
+
+class UnitLoadPathTests(unittest.TestCase):
+    UNITS = ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service')
+
+    def verify(self, *, override=None, properties=None):
+        def show(arguments, **kwargs):
+            unit = arguments[2]
+            if arguments[3] == '--property=FragmentPath,DropInPaths':
+                values = {'FragmentPath': '/etc/systemd/system/' + unit, 'DropInPaths': ''}
+                if properties is not None and unit == properties[0]:
+                    values = properties[1]
+            else:
+                values = {'User': 'root', 'Group': 'root', 'NoNewPrivileges': 'yes',
+                    'ProtectSystem': 'strict', 'ProtectHome': 'yes', 'PrivateTmp': 'yes',
+                    'PrivateDevices': 'yes', 'LimitCORE': '0',
+                    'FragmentPath': '/etc/systemd/system/cryptad-restricted.service',
+                    'CapabilityBoundingSet': ' '.join(installation.CONTROLLER_CAPABILITIES)}
+            return subprocess.CompletedProcess(arguments, 0,
+                stdout=''.join(key + '=' + value + '\n' for key, value in values.items()).encode())
+        with patch.object(installation, 'verify_host_assets'), \
+                patch.object(Path, 'exists', lambda path: str(path) == override), \
+                patch.object(installation.subprocess, 'run', side_effect=show):
+            installation.verify_units()
+
+    def test_exact_loaded_fragments_without_dropins_pass(self):
+        self.verify()
+
+    def test_persistent_and_runtime_control_overrides_reject_every_unit(self):
+        for unit in self.UNITS:
+            for directory in ('/etc/systemd/system.control', '/run/systemd/system.control'):
+                with self.subTest(unit=unit, directory=directory):
+                    with self.assertRaisesRegex(installation.InstallationError, 'dropin-unreviewed'):
+                        self.verify(override=directory + '/' + unit + '.d')
+
+    def test_loaded_dropins_wrong_fragments_and_unknown_state_reject_every_unit(self):
+        for unit in self.UNITS:
+            for values in ({'FragmentPath': '/etc/systemd/system/' + unit,
+                            'DropInPaths': '/run/systemd/generator/' + unit + '.d/override.conf'},
+                           {'FragmentPath': '/run/systemd/transient/' + unit, 'DropInPaths': ''},
+                           {'FragmentPath': '/etc/systemd/system/' + unit}):
+                with self.subTest(unit=unit, values=values):
+                    with self.assertRaisesRegex(installation.InstallationError, 'load-path-unreviewed'):
+                        self.verify(properties=(unit, values))
 
 
 class ControllerCapabilityTests(unittest.TestCase):

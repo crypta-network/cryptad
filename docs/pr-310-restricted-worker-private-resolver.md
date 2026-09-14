@@ -435,3 +435,18 @@ requires the exact `python3 -I -S .../runtime_bootstrap.py service` command, exp
 and fixed cgroup. Historical installations retain their exact legacy command. Extra arguments,
 the `runtime` operation or failed installed verification reject observation. This correction does
 not enable the blocked restricted supervisor start path or close the workload/observer UID gap.
+
+## Review corrections: systemd control overrides and OpenSSL configuration
+
+Verification rejects per-unit override directories under both persistent and runtime
+`system.control` paths. It also queries `FragmentPath` and `DropInPaths` for the controller,
+socket and soak service, requiring each exact installed fragment and no loaded drop-ins.
+Overrides from another load path, missing properties or alternate fragments fail closed even
+when the ordinary drop-in directory scan finds nothing. Offline tests cover all three units;
+they do not establish effective systemd isolation on a deployed host.
+
+The dependency inventory requires both `/usr/lib/ssl/openssl.cnf` and `/etc/ssl/openssl.cnf`,
+including resolved link targets and exact bytes. Missing entries or changed configuration
+invalidate the approved image inventory before installation or private owner execution.
+Administrator review must still assess configuration contents and provider behavior; the
+inventory is an integrity check, not approval of arbitrary OpenSSL configuration.
