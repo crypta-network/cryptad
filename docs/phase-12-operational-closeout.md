@@ -1,5 +1,12 @@
 # Phase 12 acceptance audit and operational closeout
 
+The [PR-310 restricted boundary work](pr-310-restricted-worker-private-resolver.md) adds
+installed socket/maintenance/native adapters but remains **implementation-incomplete**. The
+observer/workload UID and storage split is missing, new supervisor execution is blocked, and the
+mandatory disposable service/UID positive lane has not executed. Its installer and offline tests
+do not establish a deployed protected host or reduce the retained 49 mandatory / 47 unresolved
+Phase 12 assessment. Hosted selected-federation maintenance guards remain in force.
+
 The prospective [PR-307 runtime companion path](pr-307-encrypted-maintenance-runtime-companions.md)
 adds encrypted maintenance admission and safe private consumer projections. Its repository
 assessment uses fixed cutoff `2026-09-13T10:30:00Z` in separate before/after roots. Missing original

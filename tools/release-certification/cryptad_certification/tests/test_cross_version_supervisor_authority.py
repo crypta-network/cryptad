@@ -24,6 +24,27 @@ SPEC.loader.exec_module(authority)
 
 @unittest.skipUnless(os.name == 'posix', 'Linux installed service authority')
 class SupervisorAuthorityTest(unittest.TestCase):
+    def test_owned_dispatch_rejects_unprivileged_and_unknown_methods_before_owner_entry(self):
+        with patch.object(authority, 'execute_owned') as execute:
+            with patch.object(authority.os, 'geteuid', return_value=12345):
+                with self.assertRaisesRegex(authority.AuthorityError, 'fixed-root-operation-required'):
+                    authority.dispatch_owned('supervisor-start')
+            with patch.object(authority.os, 'geteuid', return_value=0):
+                for method in ('start', 'systemctl', 'supervisor-start /tmp/input', '../finish'):
+                    with self.subTest(method=method):
+                        with self.assertRaisesRegex(authority.AuthorityError, 'protected-operation-required'):
+                            authority.dispatch_owned(method)
+            execute.assert_not_called()
+
+    def test_owned_adapter_keeps_redaction_failure_and_owned_stop_before_return(self):
+        result = {'operation': 'start', 'serviceState': 'running'}
+        with patch.object(authority, 'control', return_value=result), \
+                patch.object(authority, 'scan_value', return_value=['private-canary']), \
+                patch.object(authority, 'stop_owned_service') as stop:
+            with self.assertRaisesRegex(authority.AuthorityError, 'public-redaction-failed'):
+                authority.execute_owned('start')
+            stop.assert_called_once_with()
+
     def test_checkpoint_wrapper_preserves_underlying_product_lineage_requirement(self):
         for private_runtime in (False, True):
             for base_version in (2, 3, 4, 5):

@@ -1,0 +1,45 @@
+[Unit]
+Description=Cryptad reviewed private resolver and fixed OS controller
+Requires=cryptad-restricted.socket
+After=network.target cryptad-restricted.socket
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/restricted/bootstrap.py
+WorkingDirectory=/opt/cryptad-cross-version/current
+Sockets=cryptad-restricted.socket
+Environment=LANG=C.UTF-8
+UMask=0077
+StandardInput=null
+StandardOutput=null
+StandardError=null
+Restart=no
+NoNewPrivileges=yes
+# The controller must signal its owned process groups after native children drop their host UID.
+# restricted_native removes every capability from those children before executing candidate code.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_KILL
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/var/lib/cryptad-restricted /var/lib/cryptad-cross-version-authority /var/lib/cryptad-runtime-baselines /var/lib/cryptad-cross-version /run/cryptad-restricted
+InaccessiblePaths=/var/lib/cryptad-runner
+LimitCORE=0
+LimitNOFILE=512
+TasksMax=512
+MemoryMax=4G
+CPUQuota=200%
+IOWeight=50
+TimeoutStopSec=210
+KillMode=control-group

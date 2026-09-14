@@ -7,7 +7,7 @@ Type=simple
 User=cryptad-soak
 Group=cryptad-soak
 WorkingDirectory=/opt/cryptad-cross-version/current
-ExecStart=/usr/bin/python3 /opt/cryptad-cross-version/current/tools/interop/cross_version_service.py
+ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/restricted/runtime_bootstrap.py service
 Environment=LANG=C.UTF-8
 UMask=0077
 StandardOutput=null
@@ -21,6 +21,27 @@ RuntimeMaxSec=432380
 LimitNOFILE=8192
 TasksMax=2048
 MemoryMax=8G
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/var/lib/cryptad-cross-version
+ReadOnlyPaths=/var/lib/cryptad-cross-version/selected /var/lib/cryptad-cross-version-authority
+InaccessiblePaths=/var/lib/cryptad-restricted /var/lib/cryptad-runtime-baselines /var/lib/cryptad-runner
+CPUQuota=400%
+IOWeight=50
 
 [Install]
 WantedBy=multi-user.target

@@ -7,3 +7,4 @@ self-hosted-runner:
     - cryptad-app-subject-projection
     - cryptad-sharesite-runtime
     - cryptad-cross-version-supervisor
+    - cryptad-restricted-worker

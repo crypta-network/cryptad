@@ -1,5 +1,12 @@
 # Encrypted maintenance runtime companions
 
+The [PR-310 restricted boundary work](pr-310-restricted-worker-private-resolver.md) adds
+installed socket/maintenance/native adapters but remains **implementation-incomplete**. The
+observer/workload UID and storage split is missing, new supervisor execution is blocked, and the
+mandatory disposable service/UID positive lane has not executed. Its installer and offline tests
+do not establish a deployed protected host or reduce the retained 49 mandatory / 47 unresolved
+Phase 12 assessment. Hosted selected-federation maintenance guards remain in force.
+
 PR-307 implements selected-federation runtime metadata transport from native verification through
 maintenance freeze v3, exact retention and original product admission in isolated local contexts.
 The current hosted maintenance workflow is blocked for selected-federation production and validation:

@@ -1,0 +1,69 @@
+name: Restricted worker isolation prerequisites
+
+on:
+  pull_request:
+    paths:
+      - 'tools/release-certification/protected/restricted_*.py'
+      - 'tools/release-certification/restricted/**'
+      - '.github/workflows/restricted-worker-isolation.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'tools/release-certification/protected/restricted_*.py'
+      - 'tools/release-certification/restricted/**'
+      - '.github/workflows/restricted-worker-isolation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reference-prerequisite-audit:
+    # Ordinary PR code only runs on a fresh hosted VM. No private runner group or secret is used.
+    # Ubuntu is not the approved Debian 13 reference: the result must explicitly remain
+    # unexecuted until a separately supplied disposable reference VM can run the harness.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify offline installation and native boundary contracts
+        run: |
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_installation.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_native.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_disposable_integration.py'
+      - name: Record mandatory reference VM prerequisite gap
+        shell: bash
+        run: |
+          mkdir -p build/restricted-isolation-public
+          set +e
+          python3 tools/release-certification/restricted/disposable_integration.py --probe > build/restricted-isolation-public/reference-prerequisites.json
+          probe_status=$?
+          set -e
+          test "$probe_status" -eq 78
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('build/restricted-isolation-public/reference-prerequisites.json').read_text())
+          assert value['executed'] is False
+          assert value['mandatoryIsolationTestSatisfied'] is False
+          assert value['status'] == 'unexecuted'
+          PY
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF_SUMMARY'
+          Mandatory service/UID integration is **unexecuted**, not passed. This job verifies
+          offline contracts and records host prerequisites. It does not provision users,
+          services, recipients or an approved private worker.
+
+          Execute the committed harness in a fresh disposable Debian 13 / systemd 257 VM,
+          with JDK 25, the declared runtime dependencies and the supported distribution build:
+          `python3 tools/release-certification/restricted/disposable_integration.py --disposable-vm --source /root/cryptad`.
+          Root bootstrap is permitted only inside that disposable test VM; runner/native probes
+          then run as their actual distinct non-root accounts. Full socket-positive lifecycle
+          and fault-matrix tests remain separate explicit gaps in the harness report.
+          EOF_SUMMARY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: restricted-isolation-prerequisites
+          path: build/restricted-isolation-public/reference-prerequisites.json
+          if-no-files-found: error
+          retention-days: 7

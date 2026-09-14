@@ -290,7 +290,7 @@ def _run_maintenance_native(arguments, root, exporter, tool_root, java_home):
     public_options = {'--catalog-keys', '--publisher-keys', '--reviewer-keys', '--contract', '--baseline-registry'}
     local_options = {'--catalog', '--catalog-signature', '--bundle', '--submission-file',
                      '--private-root', '--output', '--federation-selection'}
-    from bounded_process import run
+    from restricted_native import run
     with tempfile.TemporaryDirectory(prefix='native-public-', dir=root.parent) as temporary:
         public = Path(temporary)
         mapped = ['/tools/' + exporter.resolve().relative_to(tool_root.resolve()).as_posix()]

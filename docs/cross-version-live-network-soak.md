@@ -1,5 +1,12 @@
 # Cross-version observed network experiments
 
+The [PR-310 restricted boundary work](pr-310-restricted-worker-private-resolver.md) adds
+installed socket/maintenance/native adapters but remains **implementation-incomplete**. The
+observer/workload UID and storage split is missing, new supervisor execution is blocked, and the
+mandatory disposable service/UID positive lane has not executed. Its installer and offline tests
+do not establish a deployed protected host or reduce the retained 49 mandatory / 47 unresolved
+Phase 12 assessment. Hosted selected-federation maintenance guards remain in force.
+
 Use `certify.py cross-version-soak` to validate a closed experiment, run the owned packaged-node
 adapter, and verify its measured journal. This command extends the interop/certification tools;
 it does not replace the Stable RC, GA, maintenance, catalog, or lifecycle authorities.
@@ -274,18 +281,16 @@ private experiment directory.
 
 [`cross-version-live-network-soak.yml`](../.github/workflows/cross-version-live-network-soak.yml)
 uses one dedicated `cross-version-live-network-soak` environment and
-`cryptad-cross-version-supervisor` self-hosted runner label. It accepts only four fixed operations;
+`cryptad-restricted-workflows` runner group and `cryptad-restricted-worker` label. It accepts only four fixed operations;
 there is no dispatcher-provided node address, script or target path. The environment must approve
 the exact disposable inputs and bounds, and the runner must never accept arbitrary PR jobs.
 
-The privileged boundary is the fixed installed
-[`cross_version_supervisor_authority.py`](../tools/release-certification/protected/cross_version_supervisor_authority.py).
-An authorized administrator installs a clean, root-owned exact checkout, the dedicated service
-account and unit, and the narrowly scoped
-[sudoers template](../tools/interop/systemd/cryptad-cross-version-control.sudoers). The template
-permits only the installed isolated Python command with each of the four literal operation
-arguments. Validate it with the host's `visudo` before installation. No service or sudoers change
-is performed by local tests or by reading this runbook.
+The workflow now submits an administrator-registered operation handle through the installed
+restricted client. Follow the [current installation and limitation runbook](pr-310-restricted-worker-private-resolver.md).
+The old sudoers template is historical deployment material, not the new boundary. Do not install
+it for restricted workers. The existing supervisor owner remains behind the client, but new
+authorize/start/checkpoint requests reject until the missing workload/observer separation is
+implemented and verified. No service or sudoers change is performed by local tests or this runbook.
 
 The service's runner-identity Git command supplies a command-local `safe.directory` exception for
 its exact executing checkout, after clearing any inherited safe-directory list. No global Git

@@ -7,6 +7,10 @@ on:
         type: choice
         required: true
         options: [authorize, start, checkpoint, finish]
+      operation-handle:
+        description: Opaque operation registered by the restricted host administrator for this exact job.
+        type: string
+        required: true
 permissions: {}
 concurrency:
   group: cross-version-protected-supervisor
@@ -15,7 +19,9 @@ jobs:
   supervise-cross-version:
     name: supervise-cross-version
     if: github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor'
-    runs-on: [self-hosted, linux, cryptad-cross-version-supervisor]
+    runs-on:
+      group: cryptad-restricted-workflows
+      labels: [self-hosted, linux, cryptad-restricted-worker]
     environment: cross-version-live-network-soak
     timeout-minutes: 20
     permissions:
@@ -32,7 +38,7 @@ jobs:
           persist-credentials: false
       - name: Execute fixed installed protected control
         env:
-          GH_TOKEN: ${{ github.token }}
+          REGISTERED_HANDLE: ${{ inputs.operation-handle }}
           SELECTED_OPERATION: ${{ inputs.operation }}
         shell: bash
         run: |
@@ -42,9 +48,8 @@ jobs:
           case "$SELECTED_OPERATION" in authorize|start|checkpoint|finish) ;; *) exit 2 ;; esac
           public_root="$(mktemp -d "$RUNNER_TEMP/cross-version-public.XXXXXX")"
           echo "CROSS_VERSION_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
-          sudo -n --preserve-env=GH_TOKEN,GITHUB_ACTIONS,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT \
-            /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/cross_version_supervisor_authority.py \
-            "$SELECTED_OPERATION" > "$public_root/cross-version-supervisor.json"
+          /usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_client.py \
+            "supervisor-$SELECTED_OPERATION" "$REGISTERED_HANDLE" > "$public_root/cross-version-supervisor.json"
       - name: Attest exact bounded public observation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

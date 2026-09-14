@@ -22,6 +22,9 @@ class ApprovalTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(dir='/run')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+        workspace = patch.object(approval, 'WORKSPACE', self.root)
+        workspace.start()
+        self.addCleanup(workspace.stop)
         self.store = self.root / 'private'
         self.store.mkdir(mode=0o700)
         self.proposal = b'{"proposal":"synthetic"}'

@@ -7,6 +7,10 @@ on:
         type: choice
         required: true
         options: [prepare, approve]
+      operation-handle:
+        description: Opaque operation registered by the restricted host administrator for this exact job.
+        type: string
+        required: true
 permissions: {}
 concurrency:
   group: runtime-baseline-protected-approval
@@ -15,7 +19,9 @@ jobs:
   prepare-runtime-baseline:
     name: prepare-runtime-baseline
     if: inputs.operation == 'prepare' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor' && github.run_attempt == 1
-    runs-on: [self-hosted, linux, cryptad-cross-version-supervisor]
+    runs-on:
+      group: cryptad-restricted-workflows
+      labels: [self-hosted, linux, cryptad-restricted-worker]
     environment: runtime-baseline-preparation
     timeout-minutes: 20
     permissions:
@@ -32,7 +38,7 @@ jobs:
           persist-credentials: false
       - name: Execute fixed installed prepare helper
         env:
-          GH_TOKEN: ${{ github.token }}
+          REGISTERED_HANDLE: ${{ inputs.operation-handle }}
         shell: bash
         run: |
           set -euo pipefail
@@ -41,9 +47,8 @@ jobs:
           test "$GITHUB_RUN_ATTEMPT" = 1
           public_root="$(mktemp -d "$RUNNER_TEMP/runtime-baseline-public.XXXXXX")"
           echo "RUNTIME_BASELINE_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
-          sudo -n --preserve-env=GH_TOKEN,GITHUB_ACTIONS,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_JOB \
-            /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/runtime_baseline_approval.py \
-            prepare > "$public_root/runtime-baseline-proposal.json"
+          /usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_client.py \
+            baseline-prepare "$REGISTERED_HANDLE" > "$public_root/runtime-baseline-proposal.json"
       - name: Attest only the opaque public anchor
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -75,7 +80,9 @@ jobs:
   approve-runtime-baseline:
     name: approve-runtime-baseline
     if: inputs.operation == 'approve' && github.ref == 'refs/heads/develop' && github.actor == 'leumor' && github.triggering_actor == 'leumor' && github.run_attempt == 1
-    runs-on: [self-hosted, linux, cryptad-cross-version-supervisor]
+    runs-on:
+      group: cryptad-restricted-workflows
+      labels: [self-hosted, linux, cryptad-restricted-worker]
     environment: runtime-baseline-approval
     timeout-minutes: 20
     permissions:
@@ -92,7 +99,7 @@ jobs:
           persist-credentials: false
       - name: Execute fixed installed approve helper
         env:
-          GH_TOKEN: ${{ github.token }}
+          REGISTERED_HANDLE: ${{ inputs.operation-handle }}
         shell: bash
         run: |
           set -euo pipefail
@@ -101,9 +108,8 @@ jobs:
           test "$GITHUB_RUN_ATTEMPT" = 1
           public_root="$(mktemp -d "$RUNNER_TEMP/runtime-baseline-public.XXXXXX")"
           echo "RUNTIME_BASELINE_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
-          sudo -n --preserve-env=GH_TOKEN,GITHUB_ACTIONS,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_JOB \
-            /usr/bin/python3 -I /opt/cryptad-cross-version/current/tools/release-certification/protected/runtime_baseline_approval.py \
-            approve > "$public_root/runtime-baseline-approval.json"
+          /usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_client.py \
+            baseline-approve "$REGISTERED_HANDLE" > "$public_root/runtime-baseline-approval.json"
       - name: Attest only the opaque public anchor
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
