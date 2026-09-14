@@ -29,7 +29,11 @@ DEPENDENCY_FILES = ('/usr/bin/python3', '/usr/bin/python3.13', '/usr/bin/openssl
                     '/usr/bin/bwrap', '/usr/bin/prlimit', '/usr/bin/gh', '/usr/bin/git',
                     '/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles',
                     '/usr/bin/systemctl', '/usr/bin/sudo', '/usr/bin/setpriv', '/usr/bin/true', '/usr/lib/systemd/systemd',
-                    '/etc/ld.so.cache', '/etc/ld.so.conf')
+                    '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ssl/certs/ca-certificates.crt')
+# Go crypto/x509 Linux system roots: first available file plus all certificate directories.
+TLS_ROOT_PATHS = ('/etc/ssl/certs', '/etc/pki/tls/certs',
+    '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem', '/etc/pki/tls/cacert.pem',
+    '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem', '/etc/ssl/cert.pem')
 
 
 class InstallationError(ValueError):
@@ -247,6 +251,14 @@ def dependency_inventory():
             records[name] = file_record(path)
     for name in (*DEPENDENCY_ROOTS, *DEPENDENCY_FILES):
         add(Path(name))
+    for name in TLS_ROOT_PATHS:
+        path = Path(name)
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            records[name] = {'absent': True}
+        else:
+            add(path)
     # A loader hook is privileged code. The supported reference has none.
     if Path('/etc/ld.so.preload').exists():
         raise InstallationError('restricted-loader-preload-unsupported')

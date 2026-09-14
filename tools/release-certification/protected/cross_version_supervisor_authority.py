@@ -330,7 +330,12 @@ def _service_state():
             raise AuthorityError('protected-service-runtime-identity-mismatch')
         command = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
         expected = [b'/usr/bin/python3', str(CHECKOUT / 'tools/interop/cross_version_service.py').encode()]
-        if command[:2] != expected or Path(f'/proc/{pid}').stat().st_uid != pwd.getpwnam('cryptad-soak').pw_uid:
+        if (CHECKOUT / '.restricted-manifest.json').exists():
+            installed_identity()  # Verify the approved installed source/dependency closure.
+            expected = [b'/usr/bin/python3', b'-I', b'-S',
+                        str(CHECKOUT / 'tools/release-certification/restricted/runtime_bootstrap.py').encode(),
+                        b'service']
+        if command != expected + [b''] or Path(f'/proc/{pid}').stat().st_uid != pwd.getpwnam('cryptad-soak').pw_uid:
             raise AuthorityError('protected-service-process-not-selected')
     return 'running' if active else 'stopped'
 

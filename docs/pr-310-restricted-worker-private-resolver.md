@@ -78,7 +78,31 @@ python3 -I -S tools/release-certification/restricted/installation.py host-plan \
 ```
 
 `REVIEWED_MANIFEST_SHA256` is the exact `bundleIdentity` returned by plan, not a product SHA.
-An authorized administrator must review the bundle, dependency inventory, host configuration,
+Before review or any root execution, the administrator transfers the preparer's bundle as data
+into a new directory beneath root's private home, using the provisioned system tools. In the
+administrator shell on the dedicated host:
+
+```bash
+set -euo pipefail
+test ! -e /root/cryptad-reviewed-bundle
+test ! -L /root/cryptad-reviewed-bundle
+mkdir -m 0700 /root/cryptad-reviewed-bundle
+cp -R --no-preserve=ownership,mode /tmp/cryptad-reviewed-bundle/. /root/cryptad-reviewed-bundle/
+test -z "$(find /root/cryptad-reviewed-bundle ! -type f ! -type d -print -quit)"
+test -z "$(find /root/cryptad-reviewed-bundle ! -user root -print -quit)"
+chmod -R go-w /root/cryptad-reviewed-bundle
+sha256sum /root/cryptad-reviewed-bundle/.restricted-manifest.json
+```
+
+Do not execute code from the incoming `/tmp` bundle as root. The copied tree remains untrusted
+data until the administrator compares its manifest identity with the independently reviewed
+identity, verifies every file digest and executable mode against that manifest using trusted
+administrator tooling, and reviews the installer and its source. Perform this review on the
+root-controlled copy, not the preparer's mutable tree. The `/root` directory and its ancestors
+must be root-owned and inaccessible for modification by the preparer; do not reuse an existing
+destination. A failed transfer/check requires inspection before proceeding.
+
+An authorized administrator must review this protected copy, dependency inventory, host configuration,
 exclusive runner routing and original authority before separately installing the root-private
 approval as `/etc/cryptad-certification/restricted-installation.json`. This is an explicit
 administrative action, not a workflow step. No approval file or key was installed in this session.
@@ -86,8 +110,8 @@ administrative action, not a workflow step. No approval file or key was installe
 On that approved disposable/reference host, the administrator executes:
 
 ```bash
-python3 -I -S /tmp/cryptad-reviewed-bundle/tools/release-certification/restricted/installation.py \
-  install --bundle /tmp/cryptad-reviewed-bundle
+python3 -I -S /root/cryptad-reviewed-bundle/tools/release-certification/restricted/installation.py \
+  install --bundle /root/cryptad-reviewed-bundle
 python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/restricted/installation.py verify
 ```
 
@@ -392,3 +416,22 @@ Checkout filters and archive attribute substitutions do not modify the exported 
 Regressions cover hidden `assume-unchanged` modifications, content/mode changes after the status
 check, HEAD movement after revision capture, replacement blobs and committed symlinks. These
 checks establish source-bundle provenance, not administrator approval or deployed isolation.
+
+## Review corrections: first-install trust, TLS roots and service identity
+
+First-install review and execution use the administrator-controlled copy described above, never
+the preparer's mutable `/tmp` bundle. Copying it grants no approval: review and exact identity
+verification occur after transfer, before any bundle code runs as root.
+
+Dependency verification binds Debian's mandatory CA bundle, the certificate directories and
+fallback files used by [Go's Linux system-root loader](https://go.dev/src/crypto/x509/root_linux.go),
+including resolved link targets and explicit absence records. Certificate additions/replacements
+or newly present alternate stores invalidate the approved inventory. The controller's closed
+environment excludes caller TLS overrides. CA changes require new administrator review; these
+checks do not establish a live TLS-interception test or independent security assessment.
+
+For an installed restricted bundle, service observation first verifies installed identity and
+requires the exact `python3 -I -S .../runtime_bootstrap.py service` command, expected service UID
+and fixed cgroup. Historical installations retain their exact legacy command. Extra arguments,
+the `runtime` operation or failed installed verification reject observation. This correction does
+not enable the blocked restricted supervisor start path or close the workload/observer UID gap.

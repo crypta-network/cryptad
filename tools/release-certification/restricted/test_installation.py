@@ -160,6 +160,39 @@ class InstallationArtifactTests(unittest.TestCase):
 
 
 class ProvisioningDependencyTests(unittest.TestCase):
+    def test_tls_inventory_detects_certificate_addition_replacement_and_new_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store, fallback = root / 'certs', root / 'fallback.pem'
+            store.mkdir()
+            store.chmod(0o755)
+            certificate = store / 'ca.pem'
+            certificate.write_bytes(b'original trust')
+            certificate.chmod(0o644)
+            with patch.object(installation, 'DEPENDENCY_ROOTS', ()), \
+                    patch.object(installation, 'DEPENDENCY_FILES', ()), \
+                    patch.object(installation, 'TLS_ROOT_PATHS', (str(store), str(fallback))), \
+                    patch.object(installation, 'secured', side_effect=lambda path: path):
+                # Only ownership is a seam; directory contents and file hashes are real.
+                original_lstat = Path.lstat
+                def owned(path):
+                    info = original_lstat(path)
+                    from types import SimpleNamespace
+                    return SimpleNamespace(st_uid=0, st_mode=info.st_mode)
+                with patch.object(Path, 'lstat', owned):
+                    baseline = installation.dependency_inventory()
+                    self.assertEqual({'absent': True}, baseline[str(fallback)])
+                    certificate.write_bytes(b'replaced trust')
+                    self.assertNotEqual(baseline, installation.dependency_inventory())
+                    certificate.write_bytes(b'original trust')
+                    (store / 'added.pem').write_bytes(b'additional CA')
+                    (store / 'added.pem').chmod(0o644)
+                    self.assertNotEqual(baseline, installation.dependency_inventory())
+                    (store / 'added.pem').unlink()
+                    fallback.write_bytes(b'new fallback CA')
+                    fallback.chmod(0o644)
+                    self.assertNotEqual(baseline, installation.dependency_inventory())
+
     def test_provisioning_binaries_and_resolved_targets_are_inventoried(self):
         names = ('/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles')
         self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
