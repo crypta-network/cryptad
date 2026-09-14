@@ -819,7 +819,7 @@ def control(operation):
     if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
         bound_digest = digest(activation['products'])
         expected_version = 5 if sealed_authorization else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
-        if previous.get('schemaVersion') not in ({4, 5, 6, 7} if private_runtime else {expected_version, 7}) or previous.get('admittedProductsDigest') != bound_digest:
+        if prior_version not in ({4, 5, 6} if private_runtime else {expected_version}) or previous.get('admittedProductsDigest') != bound_digest:
             raise AuthorityError('protected-collection-products-substituted')
         report['admittedProductsDigest'] = bound_digest
     report['approvalOrigin'] = expected_origin

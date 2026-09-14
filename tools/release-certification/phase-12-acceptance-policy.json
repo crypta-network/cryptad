@@ -2858,7 +2858,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:ce770c57284a46bce961c7c3e7c9c9dc2c2f752bb98ee25e83d016e5976a02f8",
+            "digest": "sha256:99ed8c16196bea8e6f67634c6861ef6b87e5ab7321200af1395fcae1a950f099",
             "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
           },
           {

@@ -386,3 +386,10 @@ construction and URI import fingerprint acceptance. Its fixed-cutoff successor a
 `build/pr309-phase12-review-route-stages`; the 49 mandatory requirements and 47 unresolved
 requirements remain unchanged, with `phaseComplete=false` and the expected `--require-complete`
 exit 2. This successor binds the corrected verifier rather than reusing the earlier tool digest.
+
+The wrapper-lineage review makes protected product-lineage admission compare schema 7 using its
+underlying measurement version plus one, preserving the historical minimum report versions. One
+mutable supervisor source digest is refreshed without changing assertions or requirement scope.
+`build/pr309-phase12-review-wrapper-lineage` separately evaluates and verifies that correction at
+the same cutoff: 49 mandatory requirements, 47 unresolved, `phaseComplete=false`, and the expected
+`--require-complete` exit 2.
