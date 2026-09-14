@@ -9,6 +9,7 @@ import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.regex.Pattern;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppBundleSigner;
@@ -26,6 +27,8 @@ import picocli.CommandLine;
 
 /** Creates signed disposable experimental apps and native signed synthetic trust documents. */
 public final class Pr309SignedBudgetFixture {
+  private static final Pattern APP_PERMISSIONS = Pattern.compile("(?m)^app\\.permissions=.*$");
+
   private Pr309SignedBudgetFixture() {}
 
   static void main(String[] args) throws Exception {
@@ -75,7 +78,7 @@ public final class Pr309SignedBudgetFixture {
               .replace(
                   "api.experimentalCapabilitiesAccepted=false",
                   "api.experimentalCapabilitiesAccepted=true");
-      text = text.replaceAll("(?m)^app\\.permissions=.*$", "app.permissions=" + permissions);
+      text = APP_PERMISSIONS.matcher(text).replaceAll("app.permissions=" + permissions);
       Files.writeString(manifest, text);
       AppBundleSigner.sign(app, "synthetic-budget", publisher.getPrivate());
       AppBundlePackager.packageBundle(app, root.resolve(id + ".zip"));
