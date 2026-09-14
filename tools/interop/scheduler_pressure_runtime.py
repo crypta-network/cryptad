@@ -63,6 +63,117 @@ def private_json(path, value):
     temporary.replace(path)
 
 
+def input_package_members(distribution):
+    """Freeze original package members before execution adds writable runtime files."""
+    root = Path(distribution).resolve(strict=True)
+    records, total = [], 0
+    for path in sorted(root.rglob('*')):
+        if path.is_file():
+            total += path.stat().st_size
+            if total > runtime.MAX_EXPANDED:
+                raise runtime.RuntimeFailure('scheduler-input-package-budget-exceeded')
+        name = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            target = path.resolve(strict=True)
+            if not target.is_relative_to(root) or not target.is_file():
+                raise runtime.RuntimeFailure('scheduler-input-package-link-invalid')
+            records.append([name, 'link', os.readlink(path), runtime.digest_file(target)])
+        elif path.is_file():
+            records.append([name, 'file', path.stat().st_mode & 0o777, runtime.digest_file(path)])
+        elif not path.is_dir():
+            raise runtime.RuntimeFailure('scheduler-input-package-member-invalid')
+        if len(records) > runtime.MAX_FILES:
+            raise runtime.RuntimeFailure('scheduler-input-package-budget-exceeded')
+    if not records:
+        raise runtime.RuntimeFailure('scheduler-input-package-empty')
+    return records
+
+
+def verify_input_package_members(distribution, records):
+    """Verify the frozen members; newly created files do not assert full-tree equality."""
+    root = Path(distribution).resolve(strict=True)
+    for name, kind, metadata, digest in records:
+        path = root / name
+        if (not path.resolve(strict=True).is_relative_to(root)
+                or (kind == 'link') != path.is_symlink()
+                or (os.readlink(path) if kind == 'link' else path.stat().st_mode & 0o777) != metadata
+                or runtime.digest_file(path) != digest):
+            raise runtime.RuntimeFailure('scheduler-input-package-member-changed')
+
+
+def derive_snapshot_fingerprints(snapshot):
+    """Recompute applicability inputs offline; source authenticity belongs to the caller."""
+    def closed(value, keys):
+        if not isinstance(value, dict) or set(value) != set(keys):
+            raise runtime.RuntimeFailure('scheduler-input-snapshot-fields-invalid')
+    try:
+        raw = json.dumps(snapshot, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+    except (ValueError, TypeError, RecursionError):
+        raise runtime.RuntimeFailure('scheduler-input-snapshot-invalid') from None
+    if len(raw) > 65536:
+        raise runtime.RuntimeFailure('scheduler-input-snapshot-budget-exceeded')
+    closed(snapshot, {'schemaVersion', 'kind', 'lane', 'environment', 'jvmConfiguration', 'configuration', 'fingerprint'})
+    if (type(snapshot['schemaVersion']) is not int or snapshot['schemaVersion'] != 1
+            or snapshot['kind'] != 'cryptad-runtime-input-snapshot'
+            or snapshot['lane'] not in {'standalone-v1', 'borrowed-v2'}):
+        raise runtime.RuntimeFailure('scheduler-input-snapshot-identity-invalid')
+    environment, configuration, jvm = (snapshot[key] for key in ('environment', 'configuration', 'jvmConfiguration'))
+    closed(environment, {'javaExecutable', 'javaVersion', 'os', 'arch', 'kernel', 'cpuCount', 'container',
+                         'hardware', 'hostRamBytes', 'processObservation', 'network', 'storage'})
+    closed(configuration, {'schedulerConfiguration', 'budgetConfiguration', 'pressureConfiguration'})
+    closed(configuration['schedulerConfiguration'], {'enabled', 'initialDelayMillis', 'schedulerPollIntervalMillis',
+        'defaultPollIntervalMillis', 'minimumPollIntervalMillis', 'maximumPollIntervalMillis', 'jitterMillis',
+        'failureBackoffMillis', 'maximumFailureBackoffMillis', 'perTickFetchLimit', 'perAppSubscriptionLimit',
+        'globalSubscriptionLimit', 'defaultMaxBytes', 'hardMaxBytes', 'defaultTimeoutMillis', 'hardTimeoutMillis'})
+    closed(configuration['budgetConfiguration'], {prefix + suffix for prefix in
+        ('foregroundContentFetch', 'subscriptionPoll', 'trustGraphImport') for suffix in
+        ('ConcurrentPerApp', 'ConcurrentGlobal', *(['PerAppPerMinute', 'GlobalPerMinute']
+        if prefix == 'foregroundContentFetch' else ['PerAppPerHour', 'GlobalPerHour']))})
+    closed(configuration['pressureConfiguration'], {'known', 'family', 'maximumInFlight', 'resumeAtOrBelow'})
+    closed(jvm, {'javaVendor', 'javaVersion', 'vmName', 'vmVersion', 'garbageCollectors',
+                 'availableProcessors', 'heapInitialBytes', 'heapMaxBytes'})
+    closed(snapshot['fingerprint'], pressure_evidence.baseline.FINGERPRINT)
+    closed(environment['container'], {'known', 'scope', 'ancestorCount', 'controllerConfigurationDigest',
+        'memoryMax', 'cpuMax', 'processAllowedCpuList', 'unlimitedMeaning', 'membershipDigest'})
+    closed(environment['hardware'], {'known', 'descriptorDigest'})
+    closed(environment['storage'], {'known', 'class', 'blockSizeBytes', 'fragmentSizeBytes', 'filesystemIdentityDigest'})
+    if snapshot['lane'] == 'standalone-v1':
+        closed(environment['network'], {'class'})
+        if environment['network']['class'] != 'single-node-isolated-loopback':
+            raise runtime.RuntimeFailure('scheduler-input-snapshot-network-invalid')
+    else:
+        closed(environment['network'], {'class', 'comparisonScope', 'topology'})
+        network = environment['network']
+        if (network['class'] != 'owned-supervisor-loopback-peers'
+                or network['comparisonScope'] != 'daemon-regression-unchanged-app-cohort-v2'
+                or not isinstance(network['topology'], list) or not 1 <= len(network['topology']) <= 16):
+            raise runtime.RuntimeFailure('scheduler-input-snapshot-network-invalid')
+        for node in network['topology']:
+            closed(node, {'role', 'product', 'packageTarget', 'contractVersion', 'runtimeDigest'})
+    for family in configuration.values():
+        if any(type(value) not in {int, bool, str} or type(value) is int and not 0 <= value < 2**53
+               for value in family.values()):
+            raise runtime.RuntimeFailure('scheduler-input-snapshot-configuration-invalid')
+    if (any(type(jvm[key]) is not int or not 0 < jvm[key] < 2**53
+            for key in ('availableProcessors', 'heapInitialBytes', 'heapMaxBytes'))
+            or not isinstance(jvm['garbageCollectors'], list) or not 1 <= len(jvm['garbageCollectors']) <= 32
+            or any(not isinstance(value, str) or not 1 <= len(value) <= 256
+                   for value in [jvm[key] for key in ('javaVendor', 'javaVersion', 'vmName', 'vmVersion')]
+                   + jvm['garbageCollectors'])):
+        raise runtime.RuntimeFailure('scheduler-input-snapshot-jvm-invalid')
+    if (not known_jvm_configuration(jvm) or environment['processObservation'] != 'selected-daemon'
+            or environment['container'].get('known') is not True
+            or environment['hardware'].get('known') is not True
+            or environment['storage'].get('known') is not True
+            or configuration['pressureConfiguration']['known'] is not True):
+        raise runtime.RuntimeFailure('scheduler-input-snapshot-unavailable')
+    wrapper = {'osAndToolchain': runtime.canonical_digest(environment), 'jvmConfiguration': jvm}
+    if snapshot['lane'] == 'standalone-v1':
+        wrapper['configurationKnown'] = True
+    return {'configurationDigest': runtime.canonical_digest(configuration),
+            'environmentDigest': runtime.canonical_digest(wrapper)}
+
+
 def _environment_text(path, maximum=4096):
     """Read a finite private kernel descriptor without retaining raw failures."""
     with path.open('rb') as source:
@@ -256,7 +367,11 @@ class SchedulerLane(runtime.Supervisor):
         self.package_target = {'x86_64': 'linux-x64', 'aarch64': 'linux-arm64'}.get(os.uname().machine)
         runtime.require_native_target(distribution, self.package_target, java)
         runtime.packaged_daemon_identity(distribution, source_commit)
-        self.product_digest = runtime.tree_digest(distribution, require_java=False)
+        self.input_package = input_package_members(distribution)
+        self.product_digest = runtime.canonical_digest(self.input_package)
+        private_json(self.root / 'input-package-members.json', {'schemaVersion': 1,
+            'identityKind': 'original-input-member-manifest', 'members': self.input_package,
+            'digest': self.product_digest})
         self.trust_paths = {'candidate-sender': fixture / 'publisher-keys.properties'}
         node_root = root / 'node'
         ports = runtime.interop.Ports(port(), port(), 0, 0)
@@ -346,6 +461,7 @@ class SchedulerLane(runtime.Supervisor):
             'processObservation': 'selected-daemon' if selected_identity is not None else 'collector-before-launch',
             'network': getattr(self, 'network_class', {'class': 'single-node-isolated-loopback'}), 'storage': storage}
         private_json(self.root / 'environment.json', environment)
+        self.environment_snapshot = environment
         self.environment_known = cpu['known'] and storage['known'] and limits['known'] and host_ram_bytes is not None
         return runtime.canonical_digest(environment)
 
@@ -415,6 +531,24 @@ class SchedulerLane(runtime.Supervisor):
         self.environment_known = self.environment_known and known_jvm_configuration(observed.get('jvm', {}).get('configuration'))
         self.fingerprint['configurationDigest'] = self.effective_configuration_digest
         private_json(self.root / 'configuration.json', {'requestedEnvironment': ENVIRONMENT, 'effective': effective})
+        self.retain_input_snapshot(effective, observed.get('jvm', {}).get('configuration'))
+
+    def retain_input_snapshot(self, effective, jvm):
+        snapshot = {'schemaVersion': 1, 'kind': 'cryptad-runtime-input-snapshot',
+            'lane': 'borrowed-v2' if isinstance(self, BorrowedSchedulerLane) else 'standalone-v1',
+            'environment': self.environment_snapshot, 'jvmConfiguration': jvm,
+            'configuration': effective, 'fingerprint': dict(self.fingerprint)}
+        if (self.samples and hasattr(self, 'runtime_input_snapshot')
+                and snapshot != self.runtime_input_snapshot):
+            raise runtime.RuntimeFailure('scheduler-effective-input-snapshot-changed')
+        if len(json.dumps(snapshot, allow_nan=False).encode()) > 65536:
+            raise runtime.RuntimeFailure('scheduler-input-snapshot-budget-exceeded')
+        self.runtime_input_snapshot = snapshot
+        private_json(self.root / 'runtime-input-snapshot.json', self.runtime_input_snapshot)
+
+    def input_snapshot(self):
+        """Return detached private source values; authentication is a separate boundary."""
+        return json.loads(json.dumps(self.runtime_input_snapshot, allow_nan=False))
 
     def observe(self):
         status, value = self.handle.request('GET', '/api/v1/operator/runtime-observation')
@@ -796,6 +930,7 @@ class SchedulerLane(runtime.Supervisor):
             raise
         finally:
             self.stop_owned()
+            verify_input_package_members(self.distribution, self.input_package)
             self.retain()
             result['cleanup'] = 'owned-processes-stopped-private-state-retained'
             private_json(self.root / 'result.json', result)
@@ -836,8 +971,10 @@ class BorrowedSchedulerLane(SchedulerLane):
         self.private, self.nodes, self.journal, self.plan = supervisor.private, supervisor.nodes, supervisor.journal, supervisor.plan
         self.evidence_class = 'operational' if self.plan['profile'] == 'protected-long-live' else 'synthetic-local'
         self.network_class = {'class': 'owned-supervisor-loopback-peers',
-            'cohortTopologyDigest': runtime.canonical_digest([{key: row[key] for key in
-                ('role', 'artifactDigest', 'runtimeDigest')} for row in self.plan['nodes']])}
+            'comparisonScope': 'daemon-regression-unchanged-app-cohort-v2',
+            'topology': [{key: row[key] for key in
+                ('role', 'product', 'packageTarget', 'contractVersion', 'runtimeDigest')}
+                for row in self.plan['nodes']]}
         selected_node = next(row for row in self.plan['nodes'] if row['role'] == 'candidate-sender')
         node = self.nodes['candidate-sender']
         self.java, self.distribution, self.source_commit = node.java_home, node.distribution, selected_node['sourceCommit']
@@ -858,6 +995,20 @@ class BorrowedSchedulerLane(SchedulerLane):
         self.policy = json.loads((HERE.parent / 'perf/baselines/runtime-synthetic-policy.json').read_bytes())
         self.selection = {'baselineDigest': None, 'selectedAt': self.started_at,
                           'policyDigest': pressure_evidence.baseline.digest(self.policy)}
+        if supervisor.private.get('runtimeBaseline') is not None:
+            selected = supervisor.private['runtimeBaseline']
+            if supervisor.runner_admission is None:
+                raise runtime.RuntimeFailure('scheduler-original-baseline-activation-required')
+            self.policy = supervisor.runner_admission.runtime_baseline_policy(selected)
+            pressure_evidence.baseline.validate_policy(self.policy)
+            self.selection = {key: selected[key] for key in ('baselineDigest', 'policyDigest', 'selectedAt')}
+        elif supervisor.authorization.get('runtimeReference') is not None:
+            self.policy = supervisor.private.get('runtimePolicy')
+            pressure_evidence.baseline.validate_policy(self.policy)
+            campaign = supervisor.authorization['runtimeReference']
+            if campaign['policyDigest'] != pressure_evidence.baseline.digest(self.policy):
+                raise runtime.RuntimeFailure('scheduler-reference-policy-not-selected')
+            self.selection['policyDigest'] = campaign['policyDigest']
         observed = self.observe()
         effective = {key: observed.get(key) for key in ('schedulerConfiguration', 'budgetConfiguration', 'pressureConfiguration')}
         scheduler = effective['schedulerConfiguration'] or {}
@@ -883,6 +1034,7 @@ class BorrowedSchedulerLane(SchedulerLane):
                 'maxSamples': MAX_SAMPLES, 'metrics': budget.RUNTIME_METRICS})}
         self.environment_known = self.environment_known and known_jvm_configuration(observed.get('jvm', {}).get('configuration'))
         private_json(self.root / 'configuration.json', {'requestedEnvironment': ENVIRONMENT, 'effective': effective})
+        self.retain_input_snapshot(effective, observed.get('jvm', {}).get('configuration'))
 
     def remaining(self, seconds):
         remaining = min(self.deadline - time.monotonic(), self.parent.remaining(seconds))

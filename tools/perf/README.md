@@ -256,3 +256,12 @@ nanoseconds as their denominator; GC deltas are collector statistics, not exact 
 
 See [the scheduler/resource runbook](../../docs/pr-306-scheduler-pressure-and-runtime-resource-baselines.md)
 for actual commands, units, privacy constraints and retained operational requirements.
+
+The [authenticated runtime baseline successor](../../docs/pr-308-authenticated-runtime-baselines.md)
+adds original-reference verification, complete attempt accounting, detached actual approval,
+pre-execution selection, and scoped owning-consumer admission. The pure v1 calculator remains local
+and cannot grant approval. Private source snapshots bind effective environment/configuration;
+original immutable package members are distinguished from writable execution trees. The packaged
+synthetic test now collects two references and one distinct candidate with the unchanged fixture
+policy. Neither that execution nor a scoped passing component completes the full app-budget or
+maintenance performance matrix.

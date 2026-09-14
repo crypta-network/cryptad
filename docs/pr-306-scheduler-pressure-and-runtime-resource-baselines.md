@@ -5,6 +5,12 @@ and exact daemon processes, plus an isolated packaged workload and a separate ru
 comparator. These components remain Phase 12 remediation; their output does not establish release
 eligibility, production publication, a reviewed production baseline, or 72 hours of observation.
 
+The [PR-308 successor](pr-308-authenticated-runtime-baselines.md) extends original reference
+verification, detached approval, private preselection, and scoped consumer admission. Its source
+snapshots and repeated packaged collection are prospective additions. This document's original
+measurements, local-review limitations, and collector identities remain historical; older latency
+series are not reinterpreted as corrected terminal-timing evidence.
+
 Use Java 25+, the Gradle wrapper, Python 3 and Node for the packaged Linux experiment. The workload
 owns fresh disposable roots and synthetic material. It does not authorize existing-node changes,
 public-network operations, protected workflow dispatch, publication or access to real user data.

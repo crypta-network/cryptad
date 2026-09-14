@@ -315,6 +315,18 @@ jobs:
         run: ./gradlew :platform-devtools:installDist assembleCryptadDist
       - name: Verify private selection envelope prerequisite
         run: test -x /usr/bin/openssl
+      - name: Exercise isolated original runtime baseline and reviewer admission
+        run: |
+          sudo -n python3 - <<'PY'
+          import unittest
+          suite = unittest.defaultTestLoader.discover(
+              'tools/release-certification/protected', pattern='test_*baseline*.py')
+          suite.addTests(unittest.defaultTestLoader.discover(
+              'tools/release-certification/protected', pattern='test_runtime_reference_ledger.py'))
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
+              raise SystemExit(1)
+          PY
       - name: Exercise synthetic producer and original consumer semantics
         env:
           PYTHONPATH: tools/release-certification

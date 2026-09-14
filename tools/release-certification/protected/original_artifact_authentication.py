@@ -19,6 +19,14 @@ REPOSITORY = "crypta-network/cryptad"
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 # These are existing upstream authorities, never caller-selected workflows or environments.
 PRODUCERS = {
+    "runtime-baseline-proposal": (
+        ".github/workflows/runtime-baseline-approval.yml",
+        "runtime-baseline-preparation", "prepare-runtime-baseline",
+    ),
+    "runtime-baseline-approval": (
+        ".github/workflows/runtime-baseline-approval.yml",
+        "runtime-baseline-approval", "approve-runtime-baseline",
+    ),
     "catalog-origin-observation": (
         ".github/workflows/stable-1.0-federated-catalog-runtime.yml",
         "stable-1-0-federated-catalog-runtime-observation",

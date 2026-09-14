@@ -23,3 +23,14 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
   runner evidence before promotion decisions.
 - Do not update `tools/perf/baselines/performance-smoke.json` only to silence a regression. Record
   before/after summaries, host or runner details, Java version, commit SHA, and the rationale.
+
+## Authenticated runtime references
+
+Use `docs/pr-308-authenticated-runtime-baselines.md` for the finite original reference campaign,
+private attempt ledger, opaque proposal review context, pre-execution baseline selection, and
+measurement v5/report v6 scoped consumer. Keep `runtime_baseline.py` as the pure arithmetic owner;
+its v1 review remains local. The fixed scheduler workload is synthetic even when historical raw
+series label protected execution `operational`. A narrow accepted resource component cannot
+complete full app budgets, maintenance performance, or Phase 12. Normal Linux CI exercises native
+private-file checks with synthetic original-provider seams; actual review and protected execution
+remain separate operational inputs. Preserve PR-307's restricted-worker blocker.

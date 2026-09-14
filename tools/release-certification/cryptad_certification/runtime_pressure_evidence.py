@@ -17,6 +17,10 @@ _spec = importlib.util.spec_from_file_location('cryptad_runtime_baseline', PERF)
 baseline = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(baseline)
 MAX_ATTACHMENT_BYTES = 1024 * 1024
+BASELINE_REASONS = frozenset('runtime-baseline-' + suffix for suffix in (
+    'reference-missing', 'approval-missing', 'approval-expired', 'approval-revoked',
+    'selection-mismatch', 'incomparable', 'insufficient-data', 'regression',
+    'candidate-unverified', 'policy-mismatch'))
 CLAIMS = ('scheduler-executor-observed', 'pressure-before-budget-observed',
           'budget-family-accounting-verified', 'background-recovery-observed',
           'runtime-series-valid', 'runtime-baseline-comparable', 'runtime-within-reviewed-bounds')
@@ -241,3 +245,48 @@ def derive(value, *, workload_digest, observation_time=None):
             'evidenceDigest': baseline.digest(value), 'resourceFindings': assessed['findings'],
             'baselineStatus': comparison['status'] if comparison else 'missing-reviewed-runtime-baseline', 'fullAppBudgets': 'not-observed',
             'releaseEligible': False}
+
+
+def validate_authenticated_comparison(value):
+    """Validate a public projection, without granting original evidence authority.
+
+    Original owning consumers must still recompute this value using their authenticated private
+    context. This closed format intentionally contains no reference or selection commitments.
+    """
+    fields = {'schemaVersion', 'kind', 'numericComparison', 'referenceProvenance',
+              'approvalAuthentication', 'preselectionBinding', 'applicability',
+              'originalCandidateObservation', 'scopedPerformanceVerdict', 'claim', 'status',
+              'scope', 'evidenceClass', 'reasons', 'fullAppBudgets', 'releaseEligible'}
+    _closed(value, fields, 'runtime-baseline-component-fields-invalid')
+    authentication = ('referenceProvenance', 'approvalAuthentication', 'preselectionBinding',
+                      'originalCandidateObservation')
+    enums = {
+        'numericComparison': {'within-reviewed-local-bounds', 'fail', 'incomparable',
+                              'insufficient-data', 'measured-but-uncompared'},
+        'applicability': {'applicable', 'inapplicable', 'expired', 'revoked'},
+        'scopedPerformanceVerdict': {'accepted', 'blocked', 'regression'},
+        'status': {'observed', 'not-observed'},
+        'scope': {'daemon-resource-regression-unchanged-app-cohort', 'same-product-repeatability'},
+        'evidenceClass': {'synthetic', 'operational'},
+        **{key: {'authenticated', 'missing'} for key in authentication},
+    }
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+            or value['kind'] != 'authenticated-runtime-baseline-comparison'
+            or value['claim'] != 'runtime-within-reviewed-bounds'
+            or value['fullAppBudgets'] != 'not-observed' or value['releaseEligible'] is not False
+            or any(not isinstance(value[key], str) or value[key] not in choices
+                   for key, choices in enums.items())
+            or not isinstance(value['reasons'], list) or len(value['reasons']) > 32
+            or any(not isinstance(code, str) or code not in BASELINE_REASONS
+                   for code in value['reasons'])
+            or value['reasons'] != sorted(set(value['reasons']))):
+        raise RuntimeEvidenceError('runtime-baseline-component-value-invalid')
+    accepted = (value['numericComparison'] == 'within-reviewed-local-bounds'
+                and all(value[key] == 'authenticated' for key in authentication)
+                and value['applicability'] == 'applicable')
+    if ((value['scopedPerformanceVerdict'] == 'accepted') != accepted
+            or (value['status'] == 'observed') != accepted
+            or accepted and value['reasons']
+            or value['scopedPerformanceVerdict'] == 'regression' and value['numericComparison'] != 'fail'):
+        raise RuntimeEvidenceError('runtime-baseline-component-verdict-invalid')
+    return value

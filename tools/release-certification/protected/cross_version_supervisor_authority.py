@@ -9,6 +9,7 @@ This authorizes measured nonrelease experiments; it does not establish post-free
 from __future__ import annotations
 
 import hashlib
+import datetime as dt
 from contextlib import nullcontext
 import io
 import json
@@ -222,26 +223,27 @@ def validate_report(report):
     }
     version = report.get('schemaVersion') if isinstance(report, dict) else None
     extra = {'maintenanceMeasurements'} if version == 2 else set()
-    if version in {3, 4, 5}:
+    if version in {3, 4, 5, 6}:
         extra = {'admittedProductsDigest'}
         if report.get('operation') in {'checkpoint', 'finish'}:
             extra.add('maintenanceMeasurements')
     if (not isinstance(report, dict) or report.get('operation') not in variants
             or set(report) != common | variants[report['operation']] | extra
-            or type(version) is not int or version not in {1, 2, 3, 4, 5} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or type(version) is not int or version not in {1, 2, 3, 4, 5, 6} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or (version == 6 and report['operation'] not in {'checkpoint', 'finish'})
             or (version in {3, 4} and report['operation'] not in {'start', 'checkpoint', 'finish'})
             or report.get('kind') != 'cryptad-cross-version-supervisor'
             or report.get('purpose') != 'nonrelease-observed-experiment' or report.get('releaseEligible') is not False):
         raise AuthorityError('protected-supervisor-report-contract-invalid')
-    if version in {3, 4, 5} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
+    if version in {3, 4, 5, 6} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
         raise AuthorityError('protected-supervisor-products-binding-invalid')
-    if version in {2, 3, 4, 5} and report['operation'] in {'checkpoint', 'finish'}:
+    if version in {2, 3, 4, 5, 6} and report['operation'] in {'checkpoint', 'finish'}:
         from maintenance_runtime_projection import validate
         measured = validate(report['maintenanceMeasurements'])
         if (measured['planDigest'] != report['planDigest'] or measured['producer'] != report['producer']
                 or measured['checkpointDigest'] != report['checkpoint']['digest']
                 or measured['schemaVersion'] != version - 1
-                or (version in {3, 4, 5} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
+                or (version in {3, 4, 5, 6} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
             raise AuthorityError('protected-supervisor-measurements-binding-invalid')
     if report['operation'] == 'authorize':
         plan = validate_plan(report['plan'])
@@ -337,6 +339,14 @@ class AuthenticatedRunner:
     def remaining_seconds(self):
         return max(0.0, (self._activation['deadlineMonotonicNs'] - time.monotonic_ns()) / 10**9)
 
+    def runtime_baseline_policy(self, selection):
+        """Read only the policy selected by root before service activation, without tokens."""
+        _private_product_record(self._activation)
+        record = read_json(secured(AUTHORITY / 'runtime-baseline-policy.json'))
+        if record.get('activationDigest') != digest(self._activation) or record.get('selection') != selection:
+            raise AuthorityError('protected-runtime-baseline-selection-mismatch')
+        return record['policy']
+
     def product_admission(self, plan, private_config):
         bindings = _private_product_record(self._activation) if self._activation.get('schemaVersion') == 2 else self._activation
         if (self._activation.get('planDigest') != digest(plan)
@@ -375,7 +385,8 @@ def authenticate_runner(plan, private_config, authorization):
     activation = read_json(secured(AUTHORITY / 'activation.json'))
     bindings = _private_product_record(activation) if activation.get('schemaVersion') == 2 else activation
     if (activation.get('schemaVersion') not in {1, 2} or activation.get('planDigest') != digest(plan)
-            or (activation.get('schemaVersion') == 2 and not _has_sealed_products(activation))
+            or (activation.get('schemaVersion') == 2 and not _has_sealed_products(activation)
+                and activation.get('privateRuntimeContext') not in {'runtime-baseline-v1', 'runtime-reference-v1'})
             or bindings.get('privateConfigDigest') != digest(private_config)
             or bindings.get('authorizationDigest') != digest(authorization)
             or activation.get('producer') != plan['producer']
@@ -530,7 +541,8 @@ def _admit_product_rows(plan, private):
             return public, semantic
 
 
-def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None, terminal=None):
+def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None, terminal=None,
+             baseline_selection=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
     from cryptad_certification.cross_version_evidence import event_byte_limit
@@ -582,12 +594,20 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
         if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
             raise AuthorityError('protected-measurements-activation-substituted')
         from maintenance_runtime_projection import project
+        baseline_arguments = {}
+        if activation.get('privateRuntimeContext') == 'runtime-baseline-v1' and checkpoint['status'] == 'complete':
+            from runtime_baseline_admission import project_owned_baseline
+            baseline_arguments = project_owned_baseline(plan, events, checkpoint, activation,
+                                                        authenticated_selection=baseline_selection)
         if _has_sealed_products(activation):
             product_rows = terminal.rows(activation) if terminal is not None else _private_products(activation)
             result['maintenanceMeasurements'] = project(plan, events, checkpoint, product_rows,
-                                                        public_products=activation['products'])
+                                                        public_products=activation['products'], **baseline_arguments)
         else:
-            result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'))
+            result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'), **baseline_arguments)
+        if require_eof and activation.get('privateRuntimeContext') in {'runtime-baseline-v1', 'runtime-reference-v1'}:
+            from runtime_baseline_admission import retain_owned_observation
+            retain_owned_observation(plan, events, checkpoint, activation)
     return result
 
 
@@ -601,6 +621,28 @@ def control(operation):
     report = {'schemaVersion': 1, 'kind': 'cryptad-cross-version-supervisor', 'operation': operation,
               'experimentId': plan['experimentId'], 'planDigest': digest(plan), 'producer': plan['producer'],
               'job': job, 'purpose': 'nonrelease-observed-experiment', 'releaseEligible': False}
+    selected_baseline = private.get('runtimeBaseline')
+    reference_campaign = authorization.get('runtimeReference')
+    if selected_baseline is not None and reference_campaign is not None:
+        raise AuthorityError('protected-runtime-reference-candidate-conflict')
+    private_runtime = selected_baseline is not None or reference_campaign is not None
+    if private_runtime and (plan['provenanceClass'] != 'production-artifact-comparison'
+                            or 'scheduler' not in plan.get('workloadInputs', {})):
+        raise AuthorityError('protected-runtime-baseline-lane-invalid')
+    if reference_campaign is not None:
+        from runtime_baseline_admission import validate_campaign, baseline
+        validate_campaign(reference_campaign, private.get('runtimePolicy'))
+        if (plan['experimentId'] not in reference_campaign['attempts']
+                or baseline._time(reference_campaign['plannedAt']) > dt.datetime.now(dt.timezone.utc)):
+            raise AuthorityError('protected-runtime-reference-plan-invalid')
+    baseline_proposal = None
+    if selected_baseline is not None and operation in {'authorize', 'start'}:
+        from runtime_baseline_admission import authenticate_selected, baseline
+        with tempfile.TemporaryDirectory(prefix='cryptad-baseline-preselection-') as directory:
+            baseline_proposal, approved_baseline, _references = authenticate_selected(selected_baseline, Path(directory),
+                cutoff=dt.datetime.now(dt.timezone.utc).isoformat())
+        if not baseline._time(approved_baseline.decision()['approvalCompletedBy']) <= baseline._time(selected_baseline['selectedAt']) <= dt.datetime.now(dt.timezone.utc):
+            raise AuthorityError('protected-runtime-baseline-preselection-invalid')
     if operation == 'authorize':
         if _service_state() != 'stopped' or Path(private['root']).exists():
             raise AuthorityError('protected-authorization-topology-not-new')
@@ -608,7 +650,7 @@ def control(operation):
         report['plan'] = plan
         report['serviceDigest'] = bindings['serviceDigest']
         public_products, private_products = _admit_product_rows(plan, private)
-        if private_products is not None:
+        if private_products is not None or private_runtime:
             report.update(schemaVersion=5, admittedProductsDigest=digest(public_products),
                           selectionDigest=_runtime_authorization(bindings, create=True))
         else:
@@ -618,7 +660,7 @@ def control(operation):
     coordinates = read_json(secured(coordinates_path, private=True))
     with tempfile.TemporaryDirectory(prefix='cryptad-supervisor-auth-') as directory:
         previous, origin = authenticate_report(coordinates, Path(directory))
-    sealed_authorization = previous.get('schemaVersion') == 5
+    sealed_authorization = previous.get('schemaVersion') in {5, 6} or private_runtime
     report['selectionDigest'] = _runtime_authorization(bindings) if sealed_authorization else digest(bindings)
     if any(previous.get(key) != report[key] for key in ('experimentId', 'planDigest', 'producer', 'selectionDigest')):
         raise AuthorityError('protected-original-authorization-selection-mismatch')
@@ -630,7 +672,7 @@ def control(operation):
         if _service_state() != 'stopped' or Path(private['root']).exists():
             raise AuthorityError('protected-start-topology-not-new')
         product_rows, private_product_rows = _admit_product_rows(plan, private)
-        if ((private_product_rows is not None) != sealed_authorization
+        if ((private_product_rows is not None or private_runtime) != sealed_authorization
                 or sealed_authorization and previous.get('admittedProductsDigest') != digest(product_rows)):
             raise AuthorityError('protected-start-original-products-substituted')
         authority_directory()
@@ -648,9 +690,23 @@ def control(operation):
             activation.update(schemaVersion=2, selectionDigest=report['selectionDigest'])
             activation.pop('privateConfigDigest')
             activation.pop('authorizationDigest')
+        if selected_baseline is not None:
+            activation['privateRuntimeContext'] = 'runtime-baseline-v1'
+        elif reference_campaign is not None:
+            activation['privateRuntimeContext'] = 'runtime-reference-v1'
+            from runtime_reference_ledger import begin
+            begin(reference_campaign, plan['experimentId'], private['runtimePolicy'])
         _atomic(used, {'approvalOrigin': origin})
-        if private_product_rows is not None:
-            _write_private_products(activation, private_product_rows, private, authorization)
+        if private_product_rows is not None or private_runtime:
+            _write_private_products(activation, private_product_rows or product_rows, private, authorization)
+        if selected_baseline is not None:
+            path = AUTHORITY / 'runtime-baseline-policy.json'
+            if path.exists():
+                raise AuthorityError('protected-runtime-baseline-policy-reuse')
+            _atomic(path, {'activationDigest': digest(activation), 'selection': selected_baseline,
+                           'policy': baseline_proposal['baseline']['policy']})
+            os.chown(path, 0, pwd.getpwnam('cryptad-soak').pw_gid)
+            path.chmod(0o640)
         _atomic(AUTHORITY / 'activation.json', activation, 0o644)
         subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
                        env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -660,7 +716,7 @@ def control(operation):
         report['approvalOrigin'] = origin
         report['approvalReportDigest'] = digest(previous)
         if product_rows and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in product_rows):
-            report['schemaVersion'] = 5 if _has_sealed_products(activation) else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
+            report['schemaVersion'] = 5 if sealed_authorization else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
             report['admittedProductsDigest'] = digest(product_rows)
         return report
     if previous.get('operation') not in {'start', 'checkpoint'}:
@@ -668,7 +724,7 @@ def control(operation):
     activation = read_json(secured(AUTHORITY / 'activation.json'))
     if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
         raise AuthorityError('protected-collection-activation-mismatch')
-    if (_has_sealed_products(activation) != sealed_authorization
+    if ((activation.get('schemaVersion') == 2) != sealed_authorization
             or sealed_authorization and activation.get('selectionDigest') != report['selectionDigest']):
         raise AuthorityError('protected-collection-private-authorization-mismatch')
     expected_origin = activation['approvalOrigin']
@@ -676,8 +732,8 @@ def control(operation):
         raise AuthorityError('protected-collection-original-start-substituted')
     if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
         bound_digest = digest(activation['products'])
-        expected_version = 5 if _has_sealed_products(activation) else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
-        if previous.get('schemaVersion') != expected_version or previous.get('admittedProductsDigest') != bound_digest:
+        expected_version = 5 if sealed_authorization else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
+        if previous.get('schemaVersion') not in ({4, 5, 6} if private_runtime else {expected_version}) or previous.get('admittedProductsDigest') != bound_digest:
             raise AuthorityError('protected-collection-products-substituted')
         report['admittedProductsDigest'] = bound_digest
     report['approvalOrigin'] = expected_origin
@@ -685,7 +741,15 @@ def control(operation):
     report['serviceState'] = _service_state()
     if operation == 'finish' and report['serviceState'] != 'stopped':
         raise AuthorityError('protected-finish-service-still-running')
-    terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and _has_sealed_products(activation) else None
+    baseline_selection = None
+    if operation == 'finish' and selected_baseline is not None:
+        # Original reference/approval network reads do not consume or extend the short stopped
+        # candidate context. Only the subsequent local original candidate read uses that context.
+        from runtime_baseline_admission import authenticate_selected
+        with tempfile.TemporaryDirectory(prefix='cryptad-baseline-originals-') as directory:
+            baseline_selection = authenticate_selected(selected_baseline, Path(directory),
+                cutoff=dt.datetime.now(dt.timezone.utc).isoformat())
+    terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and activation.get('schemaVersion') == 2 else None
     with terminal if terminal is not None else nullcontext():
         if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
             if terminal is not None:
@@ -696,6 +760,7 @@ def control(operation):
                     pass
         report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
                                require_eof=operation == 'finish', activation=activation,
+                               **({'baseline_selection': baseline_selection} if baseline_selection is not None else {}),
                                **({'terminal': terminal} if terminal is not None else {})))
         if terminal is not None:
             terminal.require(activation)

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private pre-execution runtime baseline selection v1",
+  "description": "Data contract only. Original approval, source observations, ledger, root activation and current status must be authenticated by the owning verifier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "proposalDigest",
+    "baselineDigest",
+    "approvalContext",
+    "policyDigest",
+    "selectedAt",
+    "role",
+    "scope",
+    "approvalOrigin"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "proposalDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "baselineDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "approvalContext": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "policyDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "selectedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "role": {
+      "const": "candidate-sender"
+    },
+    "scope": {
+      "enum": [
+        "daemon-resource-regression-unchanged-app-cohort",
+        "same-product-repeatability"
+      ]
+    },
+    "approvalOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "sourceFamily",
+        "sourceCommit",
+        "runId",
+        "runAttempt",
+        "jobId",
+        "jobName",
+        "artifactId",
+        "artifactName",
+        "artifactDigest",
+        "artifactSize"
+      ],
+      "properties": {
+        "repository": {
+          "const": "crypta-network/cryptad"
+        },
+        "sourceFamily": {
+          "const": "runtime-baseline-approval"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "runAttempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "jobId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "jobName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "artifactId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "artifactName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "artifactSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912
+        }
+      }
+    }
+  }
+}

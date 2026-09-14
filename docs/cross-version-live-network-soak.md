@@ -4,6 +4,13 @@ Use `certify.py cross-version-soak` to validate a closed experiment, run the own
 adapter, and verify its measured journal. This command extends the interop/certification tools;
 it does not replace the Stable RC, GA, maintenance, catalog, or lifecycle authorities.
 
+For the prospective original-reference and detached-approval path, use
+[authenticated runtime baselines](pr-308-authenticated-runtime-baselines.md). Baseline selection
+must be fixed in private supervisor state before candidate activation/workload events. The scoped
+resource verdict does not waive this runbook's original product, observation duration, operations,
+cleanup, or protected-runner requirements. Same-product synthetic repeats remain repeatability
+measurements; they do not inherit published-predecessor provenance.
+
 ## Execution and authority boundaries
 
 The implemented local adapter is Linux-only and uses independent processes on one host. It starts

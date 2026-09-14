@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Public opaque runtime baseline approval anchor v1",
+  "description": "Only a reference to retained private approved bytes. This serialized record is not original approval authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "approvalContext",
+    "preparationOrigin",
+    "producer"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "runtime-baseline-approval-anchor"
+    },
+    "approvalContext": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "preparationOrigin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "sourceFamily",
+        "sourceCommit",
+        "runId",
+        "runAttempt",
+        "jobId",
+        "jobName",
+        "artifactId",
+        "artifactName",
+        "artifactDigest",
+        "artifactSize"
+      ],
+      "properties": {
+        "repository": {
+          "const": "crypta-network/cryptad"
+        },
+        "sourceFamily": {
+          "const": "runtime-baseline-proposal"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "runAttempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "jobId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "jobName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "artifactId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "artifactName": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "artifactSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceCommit",
+        "runId",
+        "runAttempt",
+        "jobId"
+      ],
+      "properties": {
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "runId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runAttempt": {
+          "const": 1
+        },
+        "jobId": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

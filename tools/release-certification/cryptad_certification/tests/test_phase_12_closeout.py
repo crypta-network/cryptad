@@ -71,7 +71,7 @@ class CloseoutTest(unittest.TestCase):
 
     def test_pr307_extends_transport_without_dropping_acceptance_obligations(self):
         prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr306.json").read_bytes())
-        current, _ = audit.policy()
+        current = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr307.json").read_bytes())
         self.assertEqual(4, current["version"])
         self.assertEqual(49, len(current["requirements"]))
         for old, new in zip(prior["requirements"], current["requirements"], strict=True):
@@ -87,6 +87,23 @@ class CloseoutTest(unittest.TestCase):
         products = next(row for row in current["requirements"] if row["id"] == "p12-300-products")
         self.assertIn("tools/release-certification/protected/maintenance_runtime_companion.py",
                       [row["path"] for row in products["implementation"]["sourceEvidence"]])
+        self.assertFalse(self.evaluate()["phaseComplete"])
+
+    def test_pr308_scoped_baseline_preserves_every_parent_obligation_and_clock(self):
+        prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr307.json").read_bytes())
+        current, _ = audit.policy()
+        self.assertEqual(5, current["version"])
+        self.assertEqual(49, len(current["requirements"]))
+        for old, new in zip(prior["requirements"], current["requirements"], strict=True):
+            for field in ("id", "assertion", "dimensions", "subjects", "prerequisites", "mandatory",
+                          "closure", "operatingClass", "applicability", "limitations"):
+                self.assertEqual(old[field], new[field], (old["id"], field))
+            self.assertEqual(old["implementation"]["state"], new["implementation"]["state"])
+            self.assertEqual({key: value for key, value in old["authority"].items() if key != "policyDigest"},
+                             {key: value for key, value in new["authority"].items() if key != "policyDigest"})
+        self.assertEqual(prior["residuals"], current["residuals"])
+        for row in prior["history"]:
+            self.assertIn(row, current["history"])
         self.assertFalse(self.evaluate()["phaseComplete"])
 
     def setUp(self):

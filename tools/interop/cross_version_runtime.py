@@ -962,11 +962,11 @@ class Supervisor:
             raise RuntimeFailure("linux-supervisor-required")
         if self.plan.get("profile") not in {"bounded-live", "protected-long-live"} or self.plan.get("provenanceClass") not in {"source-build-comparison", "production-artifact-comparison"}:
             raise RuntimeFailure("protected-producer-admission-not-configured")
-        if set(self.private) - {"migration", "productAdmission", "recovery", "budget", "catalog", "scheduler"} != {"root", "nodes"}:
+        if set(self.private) - {"migration", "productAdmission", "recovery", "budget", "catalog", "scheduler", "runtimeBaseline", "runtimePolicy"} != {"root", "nodes"}:
             raise RuntimeFailure("private-config-fields-invalid")
         required = {"experimentId", "planDigest", "root", "maxSeconds", "maxOperations", "syntheticContent"}
         auth = self.authorization
-        if (set(auth) - {"runtimeStateDigest", "migrationInputsDigest", "recoveryInputsDigest", "budgetInputsDigest", "catalogInputsDigest", "schedulerInputsDigest"} != required or auth["experimentId"] != self.plan["experimentId"]
+        if (set(auth) - {"runtimeStateDigest", "migrationInputsDigest", "recoveryInputsDigest", "budgetInputsDigest", "catalogInputsDigest", "schedulerInputsDigest", "runtimeReference"} != required or auth["experimentId"] != self.plan["experimentId"]
                 or auth["planDigest"] != canonical_digest(self.plan)
                 or auth["syntheticContent"] is not True
                 or type(auth["maxSeconds"]) is not int or not 30 <= auth["maxSeconds"] <= 432000
