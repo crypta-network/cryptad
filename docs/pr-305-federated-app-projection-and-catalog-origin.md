@@ -77,14 +77,15 @@ Plaintext is bounded, parsed and materialized only under an invocation-owned pri
 producer similarly encrypts prospective inventory v4 before any output enters its upload directory.
 Public key material does not make a subscription, scope, installed origin or its hash public.
 
-The maintenance freeze publication path does not yet support encrypted runtime companions.
+At the PR-305 integration, maintenance freeze v1/v2 did not support encrypted runtime companions.
 It rejects selected-federation cohort v2 before acquiring the private inventory and also rejects
 inventory v4 before writing runtime members. The metadata producer reports
 `runtime-metadata-private-companion-unsupported`; the outer freeze sealer retains its fixed
 `runtime-metadata-freeze-sealing-failed` diagnostic. Do not place decrypted inventory or native
 `federationSelection` declarations under the freeze directory: the maintenance workflow copies
-that entire directory into its candidate artifact. This is an implementation gap for selected
-federation maintenance publication, pending encrypted member transport and consumer admission.
+that entire directory into its candidate artifact. The prospective
+[PR-307 freeze v3 path](pr-307-encrypted-maintenance-runtime-companions.md) supplies complete-set
+encrypted transport and private native admission; these legacy rejections remain mandatory.
 Ordinary inventory v2/v3 maintenance handling and private bounded runtime admission retain their
 existing contracts.
 
@@ -114,7 +115,8 @@ write, app install or app-code execution. V3 output is created atomically with m
 | Inventory v4 | Private selected-federation companion with explicit `baseInventoryVersion=2|3` |
 | Native declaration v3 | Existing v2 native admission plus exact private selection/policy/conflict commitments |
 | Synthetic fixture, observer plan and observation v2 | Four preauthorized native subjects and the expanded finite role/case roster; the narrower observation v1 cannot satisfy it |
-| Maintenance freeze v1/v2 | Historical v1 unchanged; existing v2 private metadata admits the prospective companion |
+| Maintenance freeze v1/v2 | Historical v1 unchanged; v2 admits only the ordinary public-safe runtime set, never selected inventory v4 |
+| Maintenance freeze v3 | PR-307 complete encrypted runtime companion with separate original/private admission |
 
 Inventory v4 retains one effective content subject per app and carries selected native context
 separately. Its reviewed cohort projection, selected context roster and contract/registry digests

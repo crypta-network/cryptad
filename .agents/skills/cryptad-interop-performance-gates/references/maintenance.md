@@ -80,3 +80,17 @@ Keep maintenance freeze v1 historical semantics, v2 internal runtime members out
 and native package-derived API/app admission separate from measured scenario eligibility.
 
 PR-305 adds a finite catalog-origin local driver and private selected-federation inventory companion. Follow `docs/pr-305-federated-app-projection-and-catalog-origin.md`; require actual daemon catalog/signature traffic for fallback and exact bundle plus origin for rollback. Original protected observer authentication, complete maintenance cohorts and observation windows remain separate from synthetic packaged integration.
+
+PR-307 adds freeze v3 complete-set encrypted runtime companions. Follow
+`docs/pr-307-encrypted-maintenance-runtime-companions.md`: private selection uses fixed protected
+provisioning and a public-safe mode marker; retain only exact descriptor/CMS members. Authenticate
+original ciphertext before private opening, rerun confined native verification, and keep service
+state and plaintext commitments out of public identities. Offline engines require an existing
+typed private context and must not acquire keys/network implicitly. Publication providers use
+the authenticated native-validation handoff and never receive recipient keys. Legacy v1/v2 private
+rejections, product bytes, baseline 1.0 contract 19 and Phase 12 operational blockers remain intact.
+
+The hosted maintenance job has unrestricted sudo. Do not provision private runtime keys, cohorts or
+source selections there, and do not execute writable checkout Python as a privileged resolver. The
+selected hosted path is blocked pending an isolated restricted worker and immutable installed
+resolver; local crypto/native integration does not establish that operational privilege boundary.

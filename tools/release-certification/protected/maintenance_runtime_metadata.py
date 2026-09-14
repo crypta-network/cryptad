@@ -31,6 +31,7 @@ MEMBER_NAMES = {"snapshot": "snapshot.json", "registry": "baseline-registry.json
 STABLE_DEFINITION = "f94a06f06e929e655c4481bea92d02b90fbcac7b28f3628f5538dd073d5c71d6"
 FIRST_PARTY = frozenset({"queue-manager", "publisher", "site-publisher", "profile-publisher",
                          "social-inbox", "feed-reader", "trust-graph"})
+_PRIVATE_PRODUCTION = object()
 FIELDS = frozenset({"schemaVersion", "kind", "provenance", "releaseId", "buildVersion", "sourceCommit",
     "generatedAt", "portable", "executable", "contractVersion", "contractSnapshotDigest",
     "contractSemanticDigest", "baselineRegistryDigest", "baselineName", "baselineContractVersion",
@@ -115,7 +116,8 @@ def validate_runtime_metadata(freeze: dict, runtime_root: Path, *, package_path:
         raise RuntimeMetadataError("runtime-metadata-binding-invalid") from None
 
 
-def _validate_runtime_metadata(freeze: dict, root: Path, package_path: Path | None = None) -> dict:
+def _validate_runtime_metadata(freeze: dict, root: Path, package_path: Path | None = None,
+                               *, private_companion=False) -> dict:
     from app_subject_projection import validate_declaration, inventory_schema
     if freeze.get("schemaVersion") != 2:
         raise RuntimeMetadataError("runtime-metadata-absent-historical-freeze")
@@ -159,6 +161,8 @@ def _validate_runtime_metadata(freeze: dict, root: Path, package_path: Path | No
             or type(executable["sizeBytes"]) is not int or not 0 < executable["sizeBytes"] <= 256 * 1024 * 1024):
         raise RuntimeMetadataError("runtime-metadata-executable-identity-invalid")
     inventory = read_json(contents["inventory"])
+    if (inventory.get("schemaVersion") == 4) != private_companion:
+        raise RuntimeMetadataError("runtime-metadata-private-companion-unsupported")
     if validate_schema(inventory, inventory_schema(inventory.get("schemaVersion"))):
         raise RuntimeMetadataError("runtime-metadata-inventory-schema-invalid")
     from app_subject_projection import validate_federation_inventory, content_declaration
@@ -292,7 +296,7 @@ def observe_package(package: Path, java_home: Path, private_root: Path, *,
 
 
 def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, projection_origin: dict,
-                             private_root: Path) -> dict:
+                             private_root: Path, _private_authority=None) -> dict:
     """Authenticate original cohort inputs and export/admit exact bytes before freezing metadata.
 
     The cohort policy is the existing root-owned app-subject policy; original projection coordinates
@@ -303,14 +307,17 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
     cohort = projection._cohort()
     # The maintenance workflow uploads this directory as ordinary artifact members.
     # Selected federation requires encrypted companions, which this format cannot carry.
-    if cohort["schemaVersion"] == 2:
+    private = _private_authority is _PRIVATE_PRODUCTION
+    if cohort["schemaVersion"] == 2 and not private:
         raise RuntimeMetadataError("runtime-metadata-private-companion-unsupported")
     cohort_digest = projection._canonical_digest(projection._public_cohort(cohort))
     original_projection = projection.authenticate_inventory(projection_origin, private_root,
                                                             expected_cohort_digest=cohort_digest)
     inventory = original_projection.inventory()
-    if inventory["schemaVersion"] == 4:
+    if inventory["schemaVersion"] == 4 and not private:
         raise RuntimeMetadataError("runtime-metadata-private-companion-unsupported")
+    if private and (cohort["schemaVersion"] != 2 or inventory["schemaVersion"] != 4):
+        raise RuntimeMetadataError("runtime-metadata-private-context-required")
     if (cohort["releaseId"] != freeze["releaseId"] or cohort["sourceCommit"] != freeze["source"]["commit"]):
         raise RuntimeMetadataError("runtime-metadata-cohort-release-mismatch")
     if any(source["original"]["sourceFamily"] != "maintenance-app-products"
@@ -353,7 +360,8 @@ def _produce_runtime_metadata(freeze: dict, package: Path, output: Path, *, proj
                 reviewer_keys=Path(source["reviewerKeys"]) if source["reviewerKeys"] else None,
                 private_root=private_root, java_home=java_home, catalog_artifact=catalog,
                 contract_path=output / MEMBER_NAMES["snapshot"],
-                baseline_registry_path=output / MEMBER_NAMES["registry"], source=source, **scoped)
+                baseline_registry_path=output / MEMBER_NAMES["registry"], source=source,
+                **({"maintenance_tool_root": tool_root} if private else {}), **scoped)
             declaration = result["declaration"]
             projection.verify_upstream_subject(source, declaration, artifact, private_root,
                 expected_release=expected_release)
@@ -427,6 +435,75 @@ def seal_prospective_freeze(freeze: dict, package: Path, runtime_root: Path, *, 
     except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, tarfile.TarError):
         if not existed and runtime_root.is_dir() and not runtime_root.is_symlink():
             shutil.rmtree(runtime_root, ignore_errors=True)
+        raise RuntimeMetadataError("runtime-metadata-freeze-sealing-failed") from None
+
+
+def validate_private_runtime(freeze: dict, runtime_root: Path, package: Path) -> dict:
+    """Check decrypted v3 semantics locally; this does not authenticate its producer."""
+    if freeze.get("schemaVersion") != 3:
+        raise RuntimeMetadataError("runtime-metadata-private-format-required")
+    inner = dict(freeze, schemaVersion=2,
+                 runtimeMetadata=identity(runtime_root / MANIFEST_FILE))
+    return _validate_runtime_metadata(inner, runtime_root, package, private_companion=True)
+
+
+def verify_private_runtime(freeze: dict, package: Path, runtime_root: Path,
+                           private_root: Path) -> dict:
+    """Reopen original cohort sources and rerun native verification before private use.
+
+    The caller must authenticate the original freeze and ciphertext before decryption. This
+    function independently authenticates the inner projection, selection, tools and signed app
+    sources using the provisioned cohort, and compares native output with the retained bytes.
+    No success flag in the encrypted container substitutes for these checks.
+    """
+    try:
+        retained = validate_private_runtime(freeze, runtime_root, package)
+        with tempfile.TemporaryDirectory(prefix="maintenance-native-", dir=private_root) as directory:
+            scratch = Path(directory)
+            current = _produce_runtime_metadata(freeze, package, scratch / "runtime",
+                projection_origin=retained["projectionOrigin"], private_root=scratch,
+                _private_authority=_PRIVATE_PRODUCTION)
+            if ({key: value for key, value in current.items() if key != "generatedAt"}
+                    != {key: value for key, value in retained.items() if key != "generatedAt"}):
+                raise RuntimeMetadataError("runtime-metadata-original-native-context-mismatch")
+        return retained
+    except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, tarfile.TarError):
+        raise RuntimeMetadataError("runtime-metadata-private-native-verification-failed") from None
+
+
+def seal_private_freeze(freeze: dict, package: Path, runtime_root: Path, *,
+                        projection_origin: dict, private_root: Path) -> dict:
+    """Produce a new selected-federation freeze, encrypting the entire private runtime set.
+
+    This is a prospective operation only. Retention and retries copy committed ciphertext
+    through the transfer helper; they must never invoke this producer again for an old freeze.
+    """
+    from maintenance_runtime_companion import seal, inspect
+    existed = runtime_root.exists() or runtime_root.is_symlink()
+    try:
+        transfer = runtime_root.absolute()
+        private = private_root.absolute()
+        if (existed or transfer.is_relative_to(private) or private.is_relative_to(transfer)
+                or any(path.is_symlink() for path in [private, *private.parents])):
+            raise RuntimeMetadataError("runtime-metadata-private-output-overlap")
+        with tempfile.TemporaryDirectory(prefix="maintenance-produce-", dir=private_root) as directory:
+            scratch = Path(directory)
+            output = scratch / "runtime"
+            _produce_runtime_metadata(freeze, package, output, projection_origin=projection_origin,
+                                      private_root=scratch, _private_authority=_PRIVATE_PRODUCTION)
+            completed = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            result = dict(freeze, schemaVersion=3, generatedAt=completed, frozenAt=completed)
+            validate_private_runtime(result, output, package)
+            result["runtimeMetadata"] = seal(output, runtime_root, result)
+            completed = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            result.update(generatedAt=completed, frozenAt=completed)
+            if validate_schema(result, "stable-1.0-maintenance-candidate-freeze-v3.schema.json"):
+                raise RuntimeMetadataError("runtime-metadata-freeze-schema-invalid")
+            inspect(result, runtime_root)
+            return result
+    except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, tarfile.TarError):
+        if not existed and runtime_root.is_dir() and not runtime_root.is_symlink():
+            shutil.rmtree(runtime_root)
         raise RuntimeMetadataError("runtime-metadata-freeze-sealing-failed") from None
 
 

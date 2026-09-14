@@ -190,7 +190,7 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             catalog_artifact: OriginalArtifact | None = None,
             contract_path: Path | None = None, baseline_registry_path: Path | None = None,
             federation_selection=None, selection_id: str | None = None,
-            source: dict | None = None) -> dict[str, Any]:
+            source: dict | None = None, maintenance_tool_root: Path | None = None) -> dict[str, Any]:
     """Execute the pinned Java exporter against exact selected original signed artifact bytes.
 
     The supervisor authenticates the exporter distribution and public-key registry artifact origins.
@@ -248,7 +248,10 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
                 environment["JAVA_HOME"] = str(java_home)
                 environment["PATH"] = str(java_home / "bin") + ":/usr/bin:/bin"
             from bounded_process import run as run_bounded
-            run_bounded(arguments, environment=environment)
+            if maintenance_tool_root is not None:
+                _run_maintenance_native(arguments, root, exporter, maintenance_tool_root, java_home)
+            else:
+                run_bounded(arguments, environment=environment)
             if not output.is_file() or output.stat().st_size > 32768:
                 raise ProjectionFailure("app-subject-java-verification-failed")
             declaration = validate_declaration(_strict_json(output.read_bytes()))
@@ -268,6 +271,77 @@ def produce(artifact: OriginalArtifact, names: dict[str, str], *, exporter: Path
             "declaration": declaration, "declarationDigest": "sha256:" + hashlib.sha256(canonical).hexdigest(),
             "originalSource": artifact.coordinates, "exporterDigest": exporter_digest,
             "producerAttestation": "not-observed", "releaseEligibility": "blocked"}
+
+
+def _run_maintenance_native(arguments, root, exporter, tool_root, java_home):
+    """Run the authenticated native verifier with only its finite semantic inputs visible.
+
+    This is selected only by the private maintenance producer. No transport key, caller home,
+    parent scratch directory, or host /etc is mounted into the child namespace.
+    """
+    if java_home is None:
+        raise ProjectionFailure('app-subject-private-native-jdk-required')
+    root, exporter, tool_root, java_home = map(Path, (root, exporter, tool_root, java_home))
+    if (any(path.is_symlink() for path in (root, exporter, tool_root, java_home))
+            or not exporter.resolve().is_relative_to(tool_root.resolve())
+            or root.resolve().is_relative_to(tool_root.resolve())
+            or tool_root.resolve().is_relative_to(root.resolve())):
+        raise ProjectionFailure('app-subject-private-native-roots-invalid')
+    public_options = {'--catalog-keys', '--publisher-keys', '--reviewer-keys', '--contract', '--baseline-registry'}
+    local_options = {'--catalog', '--catalog-signature', '--bundle', '--submission-file',
+                     '--private-root', '--output', '--federation-selection'}
+    from bounded_process import run
+    with tempfile.TemporaryDirectory(prefix='native-public-', dir=root.parent) as temporary:
+        public = Path(temporary)
+        mapped = ['/tools/' + exporter.resolve().relative_to(tool_root.resolve()).as_posix()]
+        index = 1
+        while index < len(arguments):
+            option = arguments[index]
+            mapped.append(option)
+            index += 1
+            if option in public_options:
+                selected = Path(arguments[index])
+                if any(path.is_symlink() for path in (selected, *selected.parents)):
+                    raise ProjectionFailure('app-subject-private-native-input-invalid')
+                descriptor = os.open(selected, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                try:
+                    before = os.fstat(descriptor)
+                    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 1 <= before.st_size <= 8 * 1024 * 1024:
+                        raise ProjectionFailure('app-subject-private-native-input-invalid')
+                    with os.fdopen(descriptor, 'rb', closefd=False) as stream:
+                        raw = stream.read(8 * 1024 * 1024 + 1)
+                    after, current = os.fstat(descriptor), selected.lstat()
+                    if len(raw) != before.st_size or any(getattr(before, field) != getattr(after, field)
+                            or getattr(before, field) != getattr(current, field)
+                            for field in ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')):
+                        raise ProjectionFailure('app-subject-private-native-input-changed')
+                finally:
+                    os.close(descriptor)
+                name = option[2:]
+                (public / name).write_bytes(raw)
+                (public / name).chmod(0o400)
+                mapped.append('/inputs/' + name)
+                index += 1
+            elif option in local_options:
+                selected = Path(arguments[index]).absolute()
+                if not selected.is_relative_to(root.absolute()):
+                    raise ProjectionFailure('app-subject-private-native-local-input-invalid')
+                relative = selected.relative_to(root.absolute()).as_posix()
+                mapped.append('/work' if relative == '.' else '/work/' + relative)
+                index += 1
+        sandbox = ['/usr/bin/bwrap', '--unshare-all', '--die-with-parent', '--new-session',
+                   '--ro-bind', '/usr', '/usr', '--symlink', 'usr/bin', '/bin', '--ro-bind', '/lib', '/lib',
+                   '--ro-bind', '/lib64', '/lib64', '--proc', '/proc', '--dev', '/dev',
+                   '--size', '16777216', '--tmpfs', '/tmp',
+                   '--ro-bind', str(java_home.resolve()), '/jdk',
+                   '--ro-bind', str(tool_root.resolve()), '/tools',
+                   '--ro-bind', str(public.resolve()), '/inputs',
+                   '--bind', str(root.resolve()), '/work', '--chdir', '/work']
+        environment = {'PATH': '/jdk/bin:/usr/bin:/bin', 'LANG': 'C.UTF-8',
+                       'HOME': '/tmp', 'TMPDIR': '/tmp', 'JAVA_HOME': '/jdk',
+                       'JAVA_OPTS': '-Xmx256m -XX:CompressedClassSpaceSize=64m -XX:ReservedCodeCacheSize=64m'}
+        return run(['/usr/bin/prlimit', '--cpu=180', '--fsize=8388608', '--nofile=128', '--as=4294967296',
+                    '--', *sandbox, '--', *mapped], environment=environment, timeout=180, output_limit=32768)
 
 
 def _canonical_digest(value: Any) -> str:

@@ -116,7 +116,9 @@ def _project_v1(plan, events, checkpoint, products, *, policy_path=POLICY, now=N
         row = by_role.get(node["role"], {})
         exact = all(row.get(key) == node[key] for key in ("sourceCommit", "artifactDigest", "artifactSize", "packageTarget"))
         frozen = parse_timestamp(row.get("freezeCompletedAt"))
-        bound = (exact and row.get("frozenPortableBinding") == "existing-maintenance-freeze-exact-product-v1"
+        bound = (exact and row.get("frozenPortableBinding") in {
+                     "existing-maintenance-freeze-exact-product-v1",
+                     "existing-maintenance-freeze-exact-product-v3"}
                  and re.fullmatch(r"sha256:[0-9a-f]{64}", str(row.get("maintenanceFreezeDigest"))) is not None
                  and frozen is not None)
         if node["role"] in {"candidate-sender", "candidate-recipient", "previous"}:
@@ -236,7 +238,7 @@ def _digest_valid(value):
     return isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
 
 
-def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None):
+def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None, public_products=None):
     """Project prospective exact subjects separately from incomplete maintenance scenarios.
 
     Historical input without a runtime binding retains byte-for-byte v1 semantics. A v2 result
@@ -245,10 +247,18 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None)
     """
     now = now or dt.datetime.now(dt.timezone.utc)
     result = _project_v1(plan, events, checkpoint, products, policy_path=policy_path, now=now)
-    if not any("runtimeBinding" in row for row in (products or [])):
+    sealed = any("sealedRuntimeBinding" in row for row in (products or []))
+    if not any("runtimeBinding" in row for row in (products or [])) and not sealed:
         return result
     from cryptad_certification.redaction import scan_value
-    if scan_value(products):
+    if sealed:
+        from cross_version_product_admission import public_product_identity
+        outward = [public_product_identity(row) for row in products]
+        if public_products is not None and public_products != outward:
+            raise ProjectionError("maintenance-measurements-public-products-substituted")
+        if scan_value(outward):
+            raise ProjectionError("maintenance-measurements-private-product-input")
+    elif scan_value(products):
         raise ProjectionError("maintenance-measurements-private-product-input")
     checked = verify(plan, events, checkpoint, now=now)
     start = parse_timestamp(events[0]["wallTime"]) if events else None
@@ -322,11 +332,50 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None)
                     row["blockers"].remove("scheduler-pressure-adapter-missing")
         # An applicable original reviewed baseline is independently required. Local comparison
         # diagnostics cannot remove that blocker, and no maintenance row changes status here.
+    if sealed:
+        # Compute native relations privately, but commit only retained ciphertext identities.
+        # No plaintext manifest, selected cohort or native matrix digest crosses this boundary.
+        for subject in result["subjectAdmission"]["subjects"]:
+            row = by_role[subject["role"]]
+            companion = row.get("sealedRuntimeBinding")
+            if companion is not None:
+                subject.pop("bindingDigest")
+                subject.pop("appMatrixDigest")
+                subject["sealedRuntimeBinding"] = companion
+        result.update(baseMeasurementVersion=result["schemaVersion"], schemaVersion=4,
+                      admittedProductsDigest=digest(outward))
     return result
 
 
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if isinstance(value, dict) and value.get("schemaVersion") == 4:
+        if value.get("baseMeasurementVersion") not in {2, 3}:
+            raise ProjectionError("maintenance-measurements-sealed-version-invalid")
+        historical = json.loads(json.dumps(value))
+        historical["schemaVersion"] = historical.pop("baseMeasurementVersion")
+        count = 0
+        for subject in historical.get("subjectAdmission", {}).get("subjects", []):
+            companion = subject.pop("sealedRuntimeBinding", None)
+            if companion is None:
+                continue
+            count += 1
+            descriptor = companion.get("descriptor", {}) if isinstance(companion, dict) else {}
+            if (set(subject) != {"role", "status", "blockers"}
+                    or set(companion) != {"descriptor", "ciphertextDigest"}
+                    or set(descriptor) != {"fileName", "digest", "sizeBytes"}
+                    or descriptor["fileName"] != "runtime-companion.json"
+                    or type(descriptor["sizeBytes"]) is not int or not 0 < descriptor["sizeBytes"] <= 16384
+                    or not _digest_valid(descriptor["digest"])
+                    or not _digest_valid(companion["ciphertextDigest"])):
+                raise ProjectionError("maintenance-measurements-sealed-subject-invalid")
+            # Reuse the existing status/coverage validator; these temporary fields never leave
+            # this validator and do not reinterpret ciphertext as plaintext subject hashes.
+            subject.update(bindingDigest=descriptor["digest"], appMatrixDigest=companion["ciphertextDigest"])
+        if not count:
+            raise ProjectionError("maintenance-measurements-sealed-subject-required")
+        validate(historical)
+        return value
     if isinstance(value, dict) and value.get("schemaVersion") == 3:
         from cryptad_certification.runtime_pressure_evidence import CLAIMS
         components = value.get("runtimeComponents")
@@ -406,14 +455,14 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") not in {2, 3, 4} or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3, 4, 5} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
             or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
             or value["schemaVersion"] != report["schemaVersion"] - 1
-            or (value["schemaVersion"] in {2, 3} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
+            or (value["schemaVersion"] in {2, 3, 4} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
     if "sha256:" + hashlib.sha256(policy_bytes).hexdigest() != expected_policy_digest:
@@ -423,6 +472,6 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     maximum_age = json.loads(policy_bytes)["evidenceWindows"]["maximumAgeDays"]
     if (now.tzinfo is None or now.utcoffset() is None or end is None or end > now
             or now - end > dt.timedelta(days=maximum_age)
-            or (value["schemaVersion"] in {2, 3} and parse_timestamp(value["evaluationCutoff"]) > now)):
+            or (value["schemaVersion"] in {2, 3, 4} and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

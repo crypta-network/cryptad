@@ -1019,3 +1019,13 @@ See [PR-304 runtime subject binding](pr-304-runtime-subject-binding.md) for the 
 maintenance v2 private metadata, exact packaged API export, independently selected app sets and
 versioned supervisor/measurement consumer path. Historical formats retain their original guarantees;
 narrow admission success does not close missing runtime adapters or operational evidence.
+
+For selected federation, use [PR-307 encrypted runtime companions](pr-307-encrypted-maintenance-runtime-companions.md).
+Freeze v3 commits a fixed descriptor and complete-set CMS companion outside public assets. Use the
+closed mode marker. The current hosted job has unrestricted sudo and therefore rejects selected
+production and v3 validation before private opening. Never provision private cohort/projection or
+recipient material on that worker. A separately restricted worker with an immutable installed
+resolver is required before enabling this path; ordinary offline validation without an owning
+private context also blocks. Handoffs and publication retries retain exact ciphertext, and the
+publication provider checks the authenticated authorization chain and sealed bytes without keys.
+No companion is added to GitHub Release, catalog, USK, CoreUpdater or public transparency payloads.

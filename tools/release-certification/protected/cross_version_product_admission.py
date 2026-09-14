@@ -8,6 +8,8 @@ subject handoff. This does not establish a post-freeze portable binding or a lon
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import ExitStack
+import copy
 import hashlib
 import io
 import json
@@ -43,8 +45,27 @@ class AuthenticatedProducts:
             raise ProductAdmissionError("product-authority-object-not-produced")
         self._plan_digest = plan_digest
         self._rows = rows
+        self._closed = False
+
+    def _require_open(self):
+        if self._closed:
+            raise ProductAdmissionError("product-authority-context-closed")
+
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            for row in self._rows.values():
+                close_runtime_context(row)
+
+    def __enter__(self):
+        self._require_open()
+        return self
+
+    def __exit__(self, *_exc):
+        self.close()
 
     def bind(self, plan, private_config):
+        self._require_open()
         if digest(plan) != self._plan_digest:
             raise ProductAdmissionError("product-authority-plan-substituted")
         for node in plan["nodes"]:
@@ -78,6 +99,7 @@ class AuthenticatedProducts:
 
     def bind_apps(self, plan):
         """Require artifact-derived declarations for every selected installed app before launch."""
+        self._require_open()
         if digest(plan) != self._plan_digest:
             raise ProductAdmissionError("app-authority-plan-substituted")
         for node in plan["nodes"]:
@@ -95,6 +117,7 @@ class AuthenticatedProducts:
 
     def verify_runtime_contract(self, role, payload):
         """Corroborate admitted static API bytes; an endpoint never creates provenance."""
+        self._require_open()
         row = self._rows.get(role, {})
         binding = row.get("runtimeBinding")
         if binding is None:
@@ -106,11 +129,42 @@ class AuthenticatedProducts:
         return True
 
     def package_paths(self):
+        self._require_open()
         return {role: str(row["path"]) for role, row in self._rows.items()}
 
-    def public_identities(self):
-        return [{key: value for key, value in row.items() if key not in {"path", "runtimeRoot"}}
+    def private_identities(self):
+        """Copy semantic rows for authorized in-process consumers; never serialize publicly."""
+        self._require_open()
+        return [copy.deepcopy({key: value for key, value in row.items()
+                               if key not in _INTERNAL_FIELDS})
                 for _role, row in sorted(self._rows.items())]
+
+    def public_identities(self):
+        """Expose only approved product/ciphertext identities for sealed private subjects."""
+        self._require_open()
+        return [public_product_identity(row) for _role, row in sorted(self._rows.items())]
+
+
+_INTERNAL_FIELDS = {"path", "runtimeRoot", "transferRoot", "_runtimeContext", "_freeze"}
+_PUBLIC_SEALED_FIELDS = frozenset({
+    "role", "sourceCommit", "releaseId", "buildVersion", "artifactDigest", "artifactSize",
+    "packageTarget", "maintenanceFreezeDigest", "freezeCompletedAt", "frozenAt",
+    "portableOrigin", "frozenPortableBinding", "sealedRuntimeBinding", "contractVersion",
+    "runtimeContractAuthentication", "predecessorObservation", "predecessorReleaseBinding",
+})
+
+
+def public_product_identity(row):
+    """Allowlist prospective identities; historical public-safe rows retain their meaning."""
+    keys = _PUBLIC_SEALED_FIELDS if row.get("sealedRuntimeBinding") else set(row) - _INTERNAL_FIELDS
+    return copy.deepcopy({key: row[key] for key in keys if key in row})
+
+
+def close_runtime_context(row):
+    """Close only the private opening owned by this admission row."""
+    context = row.pop("_runtimeContext", None)
+    if context is not None:
+        context.close()
 
 
 def _json(data):
@@ -297,11 +351,15 @@ def verify_maintenance_artifact(original, node, expected_freeze_digest, root):
                           if member.filename.startswith("freeze/assets/") and not member.is_dir()}
         if actual_members != expected_members:
             raise ProductAdmissionError("maintenance-freeze-asset-members-mismatch")
-        if freeze["schemaVersion"] == 2:
+        if freeze["schemaVersion"] in {2, 3}:
             from maintenance_runtime_metadata import MANIFEST_FILE, MEMBER_NAMES
             complete = expected_members | {"freeze/" + maintenance.CANDIDATE_FREEZE_FILE,
                                            "freeze/checksums.txt", "freeze/runtime/" + MANIFEST_FILE}
             complete.update("freeze/runtime/" + name for name in MEMBER_NAMES.values())
+            if freeze["schemaVersion"] == 3:
+                complete = expected_members | {"freeze/" + maintenance.CANDIDATE_FREEZE_FILE,
+                    "freeze/checksums.txt", "freeze/runtime/runtime-companion.json",
+                    "freeze/runtime/runtime-companion.cms"}
             frozen_members = {member.filename for member in source.infolist()
                               if member.filename.startswith("freeze/") and not member.is_dir()}
             if frozen_members != complete:
@@ -333,6 +391,23 @@ def verify_maintenance_artifact(original, node, expected_freeze_digest, root):
             "frozenAt": freeze["frozenAt"], "portableOrigin": coordinates,
             "runtimeContractAuthentication": "not-established-runtime-observation-required",
             "frozenPortableBinding": "existing-maintenance-freeze-exact-product-v1", "path": package}
+    if freeze["schemaVersion"] == 3:
+        from maintenance_runtime_companion import inspect
+        transfer_root = root / "runtime"
+        transfer_root.mkdir(mode=0o700)
+        with _members(original.content) as source:
+            for name in ("runtime-companion.json", "runtime-companion.cms"):
+                member = source.getinfo("freeze/runtime/" + name)
+                if member.file_size > 64 * 1024 * 1024:
+                    raise ProductAdmissionError("maintenance-runtime-member-budget")
+                _write(transfer_root / name, source.read(member))
+        inspect(freeze, transfer_root)
+        result.update(transferRoot=transfer_root, _freeze=freeze,
+                      predecessorObservation=dict(freeze["predecessorObservation"]),
+                      sealedRuntimeBinding={"descriptor": dict(freeze["runtimeMetadata"]),
+                          "ciphertextDigest": file_digest(transfer_root / "runtime-companion.cms")},
+                      frozenPortableBinding="existing-maintenance-freeze-exact-product-v3",
+                      runtimeContractAuthentication="encrypted-original-private-admission-required")
     if freeze["schemaVersion"] == 2:
         result["predecessorObservation"] = dict(freeze["predecessorObservation"])
         from maintenance_runtime_metadata import validate_runtime_metadata, verify_package_identity
@@ -411,7 +486,10 @@ def authenticate_maintenance_product(selection, node, private_root):
                       f"{original.coordinates['runId']}/attempts/{original.coordinates['runAttempt']}")
         members = [row["path"].parent / maintenance.CANDIDATE_FREEZE_FILE,
                    row["path"].parent / "checksums.txt", row["path"]]
-        if row.get("runtimeRoot"):
+        if row.get("sealedRuntimeBinding"):
+            members.extend(row["transferRoot"] / name for name in
+                           ("runtime-companion.json", "runtime-companion.cms"))
+        elif row.get("runtimeRoot"):
             members.extend(sorted(row["runtimeRoot"].iterdir()))
         for member in members:
             results = _gh(["attestation", "verify", str(member), "--repo", "crypta-network/cryptad",
@@ -422,6 +500,24 @@ def authenticate_maintenance_product(selection, node, private_root):
                     item.get("verificationResult", {}).get("signature", {}).get("certificate", {}).get("runInvocationURI") == invocation
                     for item in results if isinstance(item, dict)):
                 raise ProductAdmissionError("maintenance-product-attested-attempt-mismatch")
+        if row.get("sealedRuntimeBinding"):
+            from maintenance_runtime_companion import open_companion
+            from maintenance_runtime_metadata import verify_private_runtime
+            context = ExitStack()
+            try:
+                runtime_root = context.enter_context(open_companion(row["_freeze"], row["transferRoot"], root))
+                metadata = verify_private_runtime(row["_freeze"], row["path"], runtime_root, root)
+                row.update(runtimeRoot=runtime_root,
+                    runtimeBinding={"metadataDigest": file_digest(runtime_root / "runtime-subjects.json"),
+                        **{key: metadata[key] for key in ("contractSnapshotDigest", "contractSemanticDigest",
+                            "baselineRegistryDigest", "shippedCohortDigest", "experimentCohortDigest", "provenance")}},
+                    contractVersion=metadata["contractVersion"],
+                    runtimeContractAuthentication="frozen-with-original-release")
+                _bind_runtime_roster(row, metadata, runtime_root, node)
+            except BaseException:
+                context.close()
+                raise
+            row["_runtimeContext"] = context
         return row
     except ProductAdmissionError:
         raise
@@ -561,7 +657,7 @@ def _observe_historical(row, node, selection, root):
         raise ProductAdmissionError("historical-original-runtime-subject-admission-rejected") from None
 
 
-def authenticate_products(plan, selection, private_root):
+def _authenticate_products(plan, selection, private_root, owned_rows):
     """Fetch each original producer at its own source; return admitted exact packaged bytes.
 
     Selection is private environment configuration, not a caller-provided successful receipt.
@@ -590,6 +686,7 @@ def authenticate_products(plan, selection, private_root):
                 if node["appDigests"] and not {"appProjection", "runtimeObservation"} & set(selected):
                     raise ProductAdmissionError("maintenance-app-contract-projection-not-established")
                 rows[role] = authenticate_maintenance_product(selected["maintenanceProduct"], node, root / role)
+                owned_rows.append(rows[role])
                 if "runtimeObservation" in selected and (rows[role].get("runtimeBinding") or role not in {"previous", "oldest"}):
                     raise ProductAdmissionError("historical-observation-role-or-format-unsupported")
                 if rows[role].get("runtimeBinding"):
@@ -641,13 +738,20 @@ def authenticate_products(plan, selection, private_root):
         if any(candidate.get(key) != recipient.get(key) for key in
                ("runtimeBinding", "maintenanceFreezeDigest", "appMatrix", "requiredAppIds", "contractVersion")):
             raise ProductAdmissionError("authenticated-candidate-runtime-cohort-conflict")
-    if int(rows["previous"]["buildVersion"]) >= int(candidate["buildVersion"]):
+    bind_predecessor(candidate, rows["previous"])
+    if "oldest" in rows and int(rows["oldest"]["buildVersion"]) > int(rows["previous"]["buildVersion"]):
+        raise ProductAdmissionError("authenticated-oldest-build-order-invalid")
+    return AuthenticatedProducts(_SEAL, digest(plan), rows)
+
+
+def bind_predecessor(candidate, previous):
+    """Derive the predecessor relation from independently authenticated product rows."""
+    if int(previous["buildVersion"]) >= int(candidate["buildVersion"]):
         raise ProductAdmissionError("authenticated-predecessor-build-not-previous")
-    if rows["previous"]["artifactDigest"] == candidate["artifactDigest"]:
+    if previous["artifactDigest"] == candidate["artifactDigest"]:
         raise ProductAdmissionError("authenticated-predecessor-package-alias")
     predecessor = candidate.get("predecessorObservation")
     if predecessor is not None:
-        previous = rows["previous"]
         # GA promotion retains the exact RC product digest and integer build but may have a
         # different release ID. Maintenance successors retain their own release/product ID.
         if (("rcProductDigest" not in previous and predecessor["releaseId"] != previous["releaseId"])
@@ -669,6 +773,14 @@ def authenticate_products(plan, selection, private_root):
             "latestPublishedPointerDigest": predecessor["latestPublishedPointerDigest"],
             "observedAt": predecessor["observedAt"],
         }
-    if "oldest" in rows and int(rows["oldest"]["buildVersion"]) > int(rows["previous"]["buildVersion"]):
-        raise ProductAdmissionError("authenticated-oldest-build-order-invalid")
-    return AuthenticatedProducts(_SEAL, digest(plan), rows)
+
+
+def authenticate_products(plan, selection, private_root):
+    """Admit originals and own all private openings until the returned capability closes."""
+    owned_rows = []
+    try:
+        return _authenticate_products(plan, selection, private_root, owned_rows)
+    except BaseException:
+        for row in owned_rows:
+            close_runtime_context(row)
+        raise

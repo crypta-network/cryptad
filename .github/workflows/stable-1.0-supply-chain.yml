@@ -1029,9 +1029,10 @@ jobs:
               "$freeze/stable-1.0-maintenance-candidate-freeze.json" \
               "$freeze/checksums.txt"
             find "$freeze/assets" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
-            if [[ "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" == 2 ]]; then
-              find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
-            fi
+            case "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" in
+              2) find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z ;;
+              3) printf '%s\0' "$freeze/runtime/runtime-companion.json" "$freeze/runtime/runtime-companion.cms" ;;
+            esac
           )
           python3 - <<'PY'
           import hashlib
@@ -1050,6 +1051,11 @@ jobs:
               sys.path.insert(0, "tools/release-certification/protected")
               from maintenance_runtime_metadata import validate_runtime_metadata
               validate_runtime_metadata(value, root / "runtime")
+          elif not errors and value.get("schemaVersion") == 3:
+              import sys
+              sys.path.insert(0, "tools/release-certification/protected")
+              from maintenance_runtime_companion import inspect
+              inspect(value, root / "runtime")
           if errors:
               raise SystemExit("maintenance freeze schema failed: " + "; ".join(errors))
           expected = {
@@ -2279,9 +2285,10 @@ jobs:
               "$freeze/stable-1.0-maintenance-candidate-freeze.json" \
               "$freeze/checksums.txt"
             find "$freeze/assets" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
-            if [[ "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" == 2 ]]; then
-              find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
-            fi
+            case "$(jq -r '.schemaVersion' "$freeze/stable-1.0-maintenance-candidate-freeze.json")" in
+              2) find "$freeze/runtime" -mindepth 1 -maxdepth 1 -type f -print0 | LC_ALL=C sort -z ;;
+              3) printf '%s\0' "$freeze/runtime/runtime-companion.json" "$freeze/runtime/runtime-companion.cms" ;;
+            esac
           )
           ${{ matrix.python_cmd }} - <<'PY'
           import hashlib
@@ -2301,6 +2308,11 @@ jobs:
               sys.path.insert(0, "tools/release-certification/protected")
               from maintenance_runtime_metadata import validate_runtime_metadata
               validate_runtime_metadata(value, root / "runtime")
+          elif not errors and value.get("schemaVersion") == 3:
+              import sys
+              sys.path.insert(0, "tools/release-certification/protected")
+              from maintenance_runtime_companion import inspect
+              inspect(value, root / "runtime")
           if errors:
               raise SystemExit("maintenance freeze schema failed: " + "; ".join(errors))
           expected = {

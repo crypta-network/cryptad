@@ -9,6 +9,7 @@ This authorizes measured nonrelease experiments; it does not establish post-free
 from __future__ import annotations
 
 import hashlib
+from contextlib import nullcontext
 import io
 import json
 import os
@@ -23,6 +24,7 @@ import stat
 import sys
 import tempfile
 import time
+import uuid
 import zipfile
 
 CHECKOUT = Path('/opt/cryptad-cross-version/current')
@@ -220,26 +222,26 @@ def validate_report(report):
     }
     version = report.get('schemaVersion') if isinstance(report, dict) else None
     extra = {'maintenanceMeasurements'} if version == 2 else set()
-    if version in {3, 4}:
+    if version in {3, 4, 5}:
         extra = {'admittedProductsDigest'}
         if report.get('operation') in {'checkpoint', 'finish'}:
             extra.add('maintenanceMeasurements')
     if (not isinstance(report, dict) or report.get('operation') not in variants
             or set(report) != common | variants[report['operation']] | extra
-            or type(version) is not int or version not in {1, 2, 3, 4} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or type(version) is not int or version not in {1, 2, 3, 4, 5} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
             or (version in {3, 4} and report['operation'] not in {'start', 'checkpoint', 'finish'})
             or report.get('kind') != 'cryptad-cross-version-supervisor'
             or report.get('purpose') != 'nonrelease-observed-experiment' or report.get('releaseEligible') is not False):
         raise AuthorityError('protected-supervisor-report-contract-invalid')
-    if version in {3, 4} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
+    if version in {3, 4, 5} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
         raise AuthorityError('protected-supervisor-products-binding-invalid')
-    if version in {2, 3, 4} and report['operation'] in {'checkpoint', 'finish'}:
+    if version in {2, 3, 4, 5} and report['operation'] in {'checkpoint', 'finish'}:
         from maintenance_runtime_projection import validate
         measured = validate(report['maintenanceMeasurements'])
         if (measured['planDigest'] != report['planDigest'] or measured['producer'] != report['producer']
                 or measured['checkpointDigest'] != report['checkpoint']['digest']
                 or measured['schemaVersion'] != version - 1
-                or (version in {3, 4} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
+                or (version in {3, 4, 5} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
             raise AuthorityError('protected-supervisor-measurements-binding-invalid')
     if report['operation'] == 'authorize':
         plan = validate_plan(report['plan'])
@@ -336,15 +338,27 @@ class AuthenticatedRunner:
         return max(0.0, (self._activation['deadlineMonotonicNs'] - time.monotonic_ns()) / 10**9)
 
     def product_admission(self, plan, private_config):
+        bindings = _private_product_record(self._activation) if self._activation.get('schemaVersion') == 2 else self._activation
         if (self._activation.get('planDigest') != digest(plan)
-                or self._activation.get('privateConfigDigest') != digest(private_config)):
+                or bindings.get('privateConfigDigest') != digest(private_config)):
             raise AuthorityError('protected-activated-products-selection-mismatch')
         rows = self._activation.get('products')
+        if _has_sealed_products(self._activation):
+            rows = _private_products(self._activation)
         if not isinstance(rows, list) or {row['role'] for row in rows} != {node['role'] for node in plan['nodes']}:
             raise AuthorityError('protected-original-products-not-activated')
         import cross_version_product_admission as products
         selected = {row['role']: {**row, 'path': Path(private_config['nodes'][row['role']]['archivePath'])} for row in rows}
-        admitted = products.AuthenticatedProducts(products._SEAL, digest(plan), selected)
+        if _has_sealed_products(self._activation):
+            activation = self._activation
+            class ServiceProducts(products.AuthenticatedProducts):
+                def _require_open(self):
+                    super()._require_open()
+                    if _private_product_record(activation) != bindings:
+                        raise AuthorityError('protected-private-products-changed')
+            admitted = ServiceProducts(products._SEAL, digest(plan), selected)
+        else:
+            admitted = products.AuthenticatedProducts(products._SEAL, digest(plan), selected)
         admitted.bind(plan, private_config)
         admitted.bind_apps(plan)
         return admitted
@@ -359,9 +373,11 @@ class AuthenticatedRunner:
 def authenticate_runner(plan, private_config, authorization):
     """Tokenless service admission; root control already checked the original GitHub authority."""
     activation = read_json(secured(AUTHORITY / 'activation.json'))
-    if (activation.get('schemaVersion') != 1 or activation.get('planDigest') != digest(plan)
-            or activation.get('privateConfigDigest') != digest(private_config)
-            or activation.get('authorizationDigest') != digest(authorization)
+    bindings = _private_product_record(activation) if activation.get('schemaVersion') == 2 else activation
+    if (activation.get('schemaVersion') not in {1, 2} or activation.get('planDigest') != digest(plan)
+            or (activation.get('schemaVersion') == 2 and not _has_sealed_products(activation))
+            or bindings.get('privateConfigDigest') != digest(private_config)
+            or bindings.get('authorizationDigest') != digest(authorization)
             or activation.get('producer') != plan['producer']
             or activation.get('ownerUid') != os.getuid()
             or activation.get('bootId') != boot_id()
@@ -373,7 +389,148 @@ def authenticate_runner(plan, private_config, authorization):
     return AuthenticatedRunner(_SEAL, activation)
 
 
-def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None):
+def _has_sealed_products(activation):
+    return any(row.get('sealedRuntimeBinding') for row in activation.get('products') or [])
+
+
+def _private_products(activation):
+    return _private_product_record(activation)['products']
+
+
+def _private_product_record(activation, *, terminal=None):
+    """Read root's service-scoped semantic handoff, never trust public serialized success."""
+    if terminal is not None:
+        if not isinstance(terminal, TerminalEvidence):
+            raise AuthorityError('protected-terminal-evidence-authority-required')
+        terminal.require(activation)
+    if (activation.get('schemaVersion') != 2
+            or {'privateConfigDigest', 'authorizationDigest'} & set(activation)
+            or activation.get('bootId') != boot_id()
+            or time.monotonic_ns() < activation['startedMonotonicNs']
+            or terminal is None and time.monotonic_ns() > activation['deadlineMonotonicNs']):
+        raise AuthorityError('protected-private-products-lifetime-mismatch')
+    path = secured(AUTHORITY / 'runtime-products.json')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o640
+                or before.st_gid != pwd.getpwnam('cryptad-soak').pw_gid):
+            raise AuthorityError('protected-private-products-not-confined')
+        payload = bounded_fd(descriptor, 4 * 1024 * 1024)
+        after = os.fstat(descriptor)
+        current = path.lstat()
+        if any(getattr(before, field) != getattr(after, field) or getattr(before, field) != getattr(current, field)
+               for field in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink')):
+            raise AuthorityError('protected-private-products-changed')
+    finally:
+        os.close(descriptor)
+    value = decode_json(payload)
+    if (set(value) != {'schemaVersion', 'kind', 'activationDigest', 'products',
+                      'privateConfigDigest', 'authorizationDigest'}
+            or value['schemaVersion'] != 2 or value['kind'] != 'service-private-runtime-products'
+            or value['activationDigest'] != digest(activation) or not isinstance(value['products'], list)):
+        raise AuthorityError('protected-private-products-activation-mismatch')
+    from cross_version_product_admission import public_product_identity
+    if [public_product_identity(row) for row in value['products']] != activation['products']:
+        raise AuthorityError('protected-private-products-public-binding-mismatch')
+    return value
+
+
+class TerminalEvidence:
+    """Root-owned, two-minute read context for a stopped service's terminal evidence.
+
+    This grants no runner/product execution capability and cannot extend the activation deadline.
+    Original report lineage and private selection are checked by control before opening it.
+    """
+    def __init__(self, authority, activation):
+        if authority is not _SEAL or os.geteuid() != 0:
+            raise AuthorityError('protected-terminal-evidence-authority-required')
+        self._activation_digest = digest(activation)
+        self._boot_id = boot_id()
+        self._expires = time.monotonic_ns() + 120 * 10**9
+        self._closed = False
+        self.require(activation)
+
+    def require(self, activation):
+        if (self._closed or os.geteuid() != 0 or digest(activation) != self._activation_digest
+                or boot_id() != self._boot_id or activation.get('bootId') != self._boot_id
+                or time.monotonic_ns() > self._expires or _service_state() != 'stopped'):
+            raise AuthorityError('protected-terminal-evidence-lifetime-or-service-mismatch')
+
+    def rows(self, activation):
+        return _private_product_record(activation, terminal=self)['products']
+
+    def validate_selection(self, activation, plan, private):
+        record = _private_product_record(activation, terminal=self)
+        if activation['planDigest'] != digest(plan) or record['privateConfigDigest'] != digest(private):
+            raise AuthorityError('protected-terminal-evidence-selection-mismatch')
+        import cross_version_product_admission as products
+        rows = record['products']
+        if {row['role'] for row in rows} != {node['role'] for node in plan['nodes']}:
+            raise AuthorityError('protected-terminal-evidence-product-roster-mismatch')
+        selected = {row['role']: {**row, 'path': Path(private['nodes'][row['role']]['archivePath'])} for row in rows}
+        with products.AuthenticatedProducts(products._SEAL, digest(plan), selected) as admitted:
+            admitted.bind(plan, private)
+            admitted.bind_apps(plan)
+        self.require(activation)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self._closed = True
+
+
+def _write_private_products(activation, rows, private, authorization):
+    path = AUTHORITY / 'runtime-products.json'
+    if path.exists() or path.is_symlink():
+        raise AuthorityError('protected-private-products-reuse-requires-reconciliation')
+    _atomic(path, {'schemaVersion': 2, 'kind': 'service-private-runtime-products',
+                   'activationDigest': digest(activation), 'products': rows,
+                   'privateConfigDigest': digest(private), 'authorizationDigest': digest(authorization)}, 0o600)
+    os.chown(path, 0, pwd.getpwnam('cryptad-soak').pw_gid)
+    path.chmod(0o640)
+
+
+def _runtime_authorization(bindings, *, create=False):
+    """Anchor private exact input commitments behind a nonsecret randomized operation context."""
+    authority_directory()
+    path = AUTHORITY / 'runtime-authorization.json'
+    if not path.exists() and not path.is_symlink() and create:
+        context = {'kind': 'sealed-runtime-authorization', 'operationId': str(uuid.uuid4()),
+                   'planDigest': bindings['planDigest'], 'serviceDigest': bindings['serviceDigest']}
+        _atomic(path, {'schemaVersion': 1, 'kind': 'private-runtime-authorization',
+                       'publicContext': context, 'privateBindings': bindings})
+    from maintenance_runtime_companion import _read
+    value = decode_json(_read(secured(path, private=True), 4 * 1024 * 1024, protected=True, key=True))
+    if (set(value) != {'schemaVersion', 'kind', 'publicContext', 'privateBindings'}
+            or value['schemaVersion'] != 1 or value['kind'] != 'private-runtime-authorization'
+            or value['privateBindings'] != bindings):
+        raise AuthorityError('protected-runtime-authorization-selection-mismatch')
+    context = value['publicContext']
+    if (not isinstance(context, dict) or set(context) != {'kind', 'operationId', 'planDigest', 'serviceDigest'}
+            or context['kind'] != 'sealed-runtime-authorization'
+            or str(uuid.UUID(context['operationId'])) != context['operationId']
+            or context['planDigest'] != bindings['planDigest'] or context['serviceDigest'] != bindings['serviceDigest']):
+        raise AuthorityError('protected-runtime-authorization-context-mismatch')
+    return digest(context)
+
+
+def _admit_product_rows(plan, private):
+    if plan['provenanceClass'] != 'production-artifact-comparison':
+        return None, None
+    import cross_version_product_admission as products
+    with tempfile.TemporaryDirectory(prefix='cryptad-supervisor-products-') as directory:
+        with products.authenticate_products(plan, private.get('productAdmission'), Path(directory) / 'original') as admitted:
+            admitted.bind(plan, private)
+            admitted.bind_apps(plan)
+            public = admitted.public_identities()
+            semantic = admitted.private_identities() if any(row.get('sealedRuntimeBinding') for row in public) else None
+            return public, semantic
+
+
+def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None, terminal=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
     from cryptad_certification.cross_version_evidence import event_byte_limit
@@ -425,7 +582,12 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
         if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
             raise AuthorityError('protected-measurements-activation-substituted')
         from maintenance_runtime_projection import project
-        result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'))
+        if _has_sealed_products(activation):
+            product_rows = terminal.rows(activation) if terminal is not None else _private_products(activation)
+            result['maintenanceMeasurements'] = project(plan, events, checkpoint, product_rows,
+                                                        public_products=activation['products'])
+        else:
+            result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'))
     return result
 
 
@@ -439,21 +601,25 @@ def control(operation):
     report = {'schemaVersion': 1, 'kind': 'cryptad-cross-version-supervisor', 'operation': operation,
               'experimentId': plan['experimentId'], 'planDigest': digest(plan), 'producer': plan['producer'],
               'job': job, 'purpose': 'nonrelease-observed-experiment', 'releaseEligible': False}
-    # These digests bind operational inputs but are intentionally private in the activation;
-    # authorization exports only the exact public plan and executable/service identity.
-    selection_binding = digest(bindings)
-    report['selectionDigest'] = selection_binding
     if operation == 'authorize':
         if _service_state() != 'stopped' or Path(private['root']).exists():
             raise AuthorityError('protected-authorization-topology-not-new')
         report['approvedBounds'] = {key: authorization[key] for key in ('maxSeconds', 'maxOperations', 'syntheticContent')}
         report['plan'] = plan
         report['serviceDigest'] = bindings['serviceDigest']
+        public_products, private_products = _admit_product_rows(plan, private)
+        if private_products is not None:
+            report.update(schemaVersion=5, admittedProductsDigest=digest(public_products),
+                          selectionDigest=_runtime_authorization(bindings, create=True))
+        else:
+            report['selectionDigest'] = digest(bindings)
         return report
     coordinates_path = CONFIG / ('cross-version-start.json' if operation == 'start' else 'cross-version-previous.json')
     coordinates = read_json(secured(coordinates_path, private=True))
     with tempfile.TemporaryDirectory(prefix='cryptad-supervisor-auth-') as directory:
         previous, origin = authenticate_report(coordinates, Path(directory))
+    sealed_authorization = previous.get('schemaVersion') == 5
+    report['selectionDigest'] = _runtime_authorization(bindings) if sealed_authorization else digest(bindings)
     if any(previous.get(key) != report[key] for key in ('experimentId', 'planDigest', 'producer', 'selectionDigest')):
         raise AuthorityError('protected-original-authorization-selection-mismatch')
     report['previousReportDigest'] = digest(previous)
@@ -463,14 +629,10 @@ def control(operation):
             raise AuthorityError('protected-start-requires-original-authorization')
         if _service_state() != 'stopped' or Path(private['root']).exists():
             raise AuthorityError('protected-start-topology-not-new')
-        product_rows = None
-        if plan['provenanceClass'] == 'production-artifact-comparison':
-            import cross_version_product_admission as products
-            with tempfile.TemporaryDirectory(prefix='cryptad-supervisor-products-') as directory:
-                selected_products = products.authenticate_products(plan, private.get('productAdmission'), Path(directory) / 'original')
-                selected_products.bind(plan, private)
-                selected_products.bind_apps(plan)
-                product_rows = selected_products.public_identities()
+        product_rows, private_product_rows = _admit_product_rows(plan, private)
+        if ((private_product_rows is not None) != sealed_authorization
+                or sealed_authorization and previous.get('admittedProductsDigest') != digest(product_rows)):
+            raise AuthorityError('protected-start-original-products-substituted')
         authority_directory()
         used = AUTHORITY / ('used-' + str(origin['artifactId']) + '.json')
         if used.exists() or (AUTHORITY / 'activation.json').exists():
@@ -482,7 +644,13 @@ def control(operation):
                       'ownerUid': uid, 'bootId': boot_id(),
                       'startedMonotonicNs': now, 'deadlineMonotonicNs': now + authorization['maxSeconds'] * 10**9,
                       'products': product_rows}
+        if sealed_authorization:
+            activation.update(schemaVersion=2, selectionDigest=report['selectionDigest'])
+            activation.pop('privateConfigDigest')
+            activation.pop('authorizationDigest')
         _atomic(used, {'approvalOrigin': origin})
+        if private_product_rows is not None:
+            _write_private_products(activation, private_product_rows, private, authorization)
         _atomic(AUTHORITY / 'activation.json', activation, 0o644)
         subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
                        env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -491,8 +659,8 @@ def control(operation):
             raise AuthorityError('protected-service-start-not-observed')
         report['approvalOrigin'] = origin
         report['approvalReportDigest'] = digest(previous)
-        if product_rows and any('runtimeBinding' in row for row in product_rows):
-            report['schemaVersion'] = 4 if 'scheduler' in plan.get('workloadInputs', {}) else 3
+        if product_rows and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in product_rows):
+            report['schemaVersion'] = 5 if _has_sealed_products(activation) else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
             report['admittedProductsDigest'] = digest(product_rows)
         return report
     if previous.get('operation') not in {'start', 'checkpoint'}:
@@ -500,25 +668,41 @@ def control(operation):
     activation = read_json(secured(AUTHORITY / 'activation.json'))
     if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
         raise AuthorityError('protected-collection-activation-mismatch')
+    if (_has_sealed_products(activation) != sealed_authorization
+            or sealed_authorization and activation.get('selectionDigest') != report['selectionDigest']):
+        raise AuthorityError('protected-collection-private-authorization-mismatch')
     expected_origin = activation['approvalOrigin']
     if previous.get('approvalOrigin') != expected_origin:
         raise AuthorityError('protected-collection-original-start-substituted')
-    if activation.get('products') and any('runtimeBinding' in row for row in activation['products']):
+    if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
         bound_digest = digest(activation['products'])
-        if previous.get('schemaVersion') != (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3) or previous.get('admittedProductsDigest') != bound_digest:
+        expected_version = 5 if _has_sealed_products(activation) else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
+        if previous.get('schemaVersion') != expected_version or previous.get('admittedProductsDigest') != bound_digest:
             raise AuthorityError('protected-collection-products-substituted')
-        # Reopen the admitted private files at every continuation/finish boundary. Root activation
-        # is the authority; no release credential or online authentication is passed to the service.
-        AuthenticatedRunner(_SEAL, activation).product_admission(plan, private)
         report['admittedProductsDigest'] = bound_digest
     report['approvalOrigin'] = expected_origin
     report['approvalReportDigest'] = activation['approvalReportDigest']
     report['serviceState'] = _service_state()
     if operation == 'finish' and report['serviceState'] != 'stopped':
         raise AuthorityError('protected-finish-service-still-running')
-    report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
-                           require_eof=operation == 'finish', activation=activation))
+    terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and _has_sealed_products(activation) else None
+    with terminal if terminal is not None else nullcontext():
+        if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
+            if terminal is not None:
+                terminal.validate_selection(activation, plan, private)
+            else:
+                # Continuing execution retains the original activation deadline.
+                with AuthenticatedRunner(_SEAL, activation).product_admission(plan, private):
+                    pass
+        report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
+                               require_eof=operation == 'finish', activation=activation,
+                               **({'terminal': terminal} if terminal is not None else {})))
+        if terminal is not None:
+            terminal.require(activation)
     report['schemaVersion'] = report['maintenanceMeasurements']['schemaVersion'] + 1
+    # Collection precedes redaction, stdout, original attestation and artifact upload. Retain
+    # immutable private inputs so any failed handoff can retry the same terminal observation.
+    # Removal belongs to explicit operator reconciliation after durable original evidence exists.
     return report
 
 
