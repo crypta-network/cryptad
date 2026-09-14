@@ -2639,7 +2639,7 @@
           },
           {
             "path": "tools/release-certification/protected/runtime_baseline_approval.py",
-            "digest": "sha256:86df83bb75c156e6d988ec78fe6194a02da5cfffeaa052ebc5012b1ddb5873e3",
+            "digest": "sha256:012fccdb48bf72e79e53c48e4c50c8e274549872874713f8eb7e960cbe8a9194",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           },
           {
@@ -2928,7 +2928,7 @@
           },
           {
             "path": "tools/release-certification/protected/runtime_baseline_approval.py",
-            "digest": "sha256:86df83bb75c156e6d988ec78fe6194a02da5cfffeaa052ebc5012b1ddb5873e3",
+            "digest": "sha256:012fccdb48bf72e79e53c48e4c50c8e274549872874713f8eb7e960cbe8a9194",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           },
           {

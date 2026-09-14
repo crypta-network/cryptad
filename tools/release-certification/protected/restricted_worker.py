@@ -151,6 +151,8 @@ def validate_record(value):
 
 
 def check_inputs(record, root):
+    from restricted_configuration import require_roster
+    require_roster(record['method'], record['configurationFiles'], read)
     inputs = secure(root / 'inputs')
     names = set()
     total = 0
@@ -318,7 +320,9 @@ class Worker:
                 raise BoundaryError('restricted-operation-expired')
             persist(root / 'intent.json', {'registrationDigest': digest(record_raw),
                     'startedAt': now().isoformat(), 'method': record['method']})
-            public = dispatch(record, root)
+            from restricted_configuration import owning_configuration
+            with owning_configuration(record):
+                public = dispatch(record, root)
         # No payload controls arbitrary public fields: each owner constructs its closed projection.
         raw = encode(public)
         if len(raw) > MAX_RESULT - 2048:

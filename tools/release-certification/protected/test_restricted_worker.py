@@ -31,6 +31,15 @@ class DurableWorkerTest(unittest.TestCase):
             'expiresAt': (current + dt.timedelta(minutes=5)).isoformat(),
             'collectUntil': (current + dt.timedelta(days=1)).isoformat(),
             'inputFiles': {}, 'configurationFiles': {}}
+        from restricted_configuration import PREPARATION
+        config_raw = worker.encode({'campaignPath': PREPARATION, 'policyPath': PREPARATION,
+            'requestPath': PREPARATION, 'observations': [{'coordinates': {}, 'bundlePath': PREPARATION}]})
+        self.record['configurationFiles'] = {PREPARATION: {'digest': worker.digest(config_raw), 'size': len(config_raw)}}
+        original_read = worker.read
+        config_read = patch.object(worker, 'read', side_effect=lambda path, maximum=worker.MAX_RECORD:
+            config_raw if str(path) == PREPARATION else original_read(path, maximum))
+        config_read.start()
+        self.addCleanup(config_read.stop)
         (self.root / 'registration.json').write_bytes(worker.encode(self.record))
         (self.state / 'revocations.json').write_text('[]')
         self.client = worker.Worker('b' * 64)

@@ -91,6 +91,24 @@ class InstallationArtifactTests(unittest.TestCase):
         self.assertFalse(output.exists())
 
 
+class ProvisioningDependencyTests(unittest.TestCase):
+    def test_provisioning_binaries_and_resolved_targets_are_inventoried(self):
+        names = ('/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles')
+        self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
+        with patch.object(installation, 'DEPENDENCY_ROOTS', ()), \
+                patch.object(installation, 'DEPENDENCY_FILES', names):
+            records = installation.dependency_inventory()
+        for name in names:
+            self.assertIn(name, records)
+            self.assertIn(str(Path(name).resolve(strict=True)), records)
+
+    def test_each_missing_provisioning_binary_rejects_dependency_approval(self):
+        for name in ('/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles'):
+            records = {key: {} for key in installation.DEPENDENCY_FILES if key != name}
+            with self.subTest(name=name), self.assertRaisesRegex(installation.InstallationError, 'closure-incomplete'):
+                installation.dependencies({'dependencies': records})
+
+
 class HostAssetTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

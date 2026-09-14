@@ -185,6 +185,8 @@ def register(context_path, input_root, handle=None):
             or len(config['configurationFiles']) > 1024
             or len(set(config['configurationFiles'])) != len(config['configurationFiles'])):
         raise RegistrationError('restricted-registration-context-invalid')
+    from restricted_configuration import require_roster
+    require_roster(config['method'], config['configurationFiles'], worker.read)
     caller = pwd.getpwnam('cryptad-runner').pw_uid
     reserved = handle is not None
     if reserved and re.fullmatch('[0-9a-f]{64}', handle) is None:

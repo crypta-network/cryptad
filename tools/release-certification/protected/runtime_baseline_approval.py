@@ -364,7 +364,8 @@ def _configuration(path, maximum=65536):
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1 or observed.st_size > maximum:
             raise ApprovalError('runtime-approval-configuration-invalid')
-        return _decode(stream.read(maximum + 1), maximum)
+        from restricted_configuration import check_read
+        return _decode(check_read(selected, stream.read(maximum + 1)), maximum)
 
 
 def execute_owned(operation):

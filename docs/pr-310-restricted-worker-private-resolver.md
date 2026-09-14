@@ -363,3 +363,19 @@ the worker's method-keyed policy. Its offline regression calls the real worker j
 function with synthetic upstream responses and also rejects a changed source identity. Installed
 asset tests cover missing/modified definitions and replacement requirements for a new bundle.
 The actual disposable CMS/socket and service/UID integration lane remains unexecuted.
+
+## Review corrections: baseline configuration closure and provisioning dependencies
+
+Baseline registration requires an exact method-specific configuration roster. Prepare binds the
+fixed preparation descriptor and every referenced campaign, policy, request and observation
+bundle; approve binds its fixed original-proposal coordinates file. Missing and extra paths are
+rejected. Execution rechecks the roster and digests, and each baseline owner configuration read
+compares the bytes actually read with the registered identity. A change after preflight therefore
+fails rather than supplying unregistered configuration to the owner. The binding context is
+internal to the controller; original approval and retained-state authentication still apply.
+Other operation owners retain their existing snapshot and activation contracts.
+
+The dependency inventory now explicitly includes `systemd-sysusers` and `systemd-tmpfiles`, using
+the existing exact-byte and resolved-symlink-target checks. Older approval inventories missing
+either binary fail closed and require administrator review of a new inventory before installation.
+No provisioning is performed by these offline regressions.
