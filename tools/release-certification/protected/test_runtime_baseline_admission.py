@@ -390,21 +390,23 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
         payloads = {name: admission.encode(value) for name, value in values.items()}
         final, _ = phase._supervisor_relationships(authority, values, now)
         self.assertEqual(6, final['schemaVersion'])
-        with tempfile.TemporaryDirectory() as scratch:
-            result = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), authority)
+        with tempfile.TemporaryDirectory() as temporary:
+            # macOS temporary roots can have symlinked parents; the owner requires a canonical path.
+            scratch = Path(temporary).resolve(strict=True)
+            result = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, scratch, authority)
             self.assertEqual('not-observed' if uncompared else 'observed', result['components']['scopedRuntimeBaseline']['status'])
             self.assertEqual('partial', result['dimensions']['coverage'])
             self.assertIn('maintenance-required-consumer-adapters-incomplete', result['blockers'])
             self.assertNotIn('private-selected-baseline-canary', json.dumps(result))
             missing = phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR, private_products=private_products)
-            blocked = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), missing)
+            blocked = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, scratch, missing)
             self.assertIn('runtime-baseline-private-original-context-required', blocked['blockers'])
             if uncompared:
                 return
             rebound = phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR,
                 runtime_baseline=capability, baseline_binding={**binding, 'epoch': 'other'}, private_products=private_products)
             with self.assertRaisesRegex(ValueError, 'phase12-runtime-original-admission-rejected'):
-                phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), rebound)
+                phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, scratch, rebound)
 
     def test_uncompared_original_reports_reach_consumer_without_approval_or_candidate_admission(self):
         if not hasattr(os, 'geteuid') or os.geteuid() != 0:
