@@ -238,7 +238,8 @@ def _digest_valid(value):
     return isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
 
 
-def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None, public_products=None):
+def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None, public_products=None,
+            authenticated_baseline=None, baseline_binding=None):
     """Project prospective exact subjects separately from incomplete maintenance scenarios.
 
     Historical input without a runtime binding retains byte-for-byte v1 semantics. A v2 result
@@ -249,6 +250,8 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None,
     result = _project_v1(plan, events, checkpoint, products, policy_path=policy_path, now=now)
     sealed = any("sealedRuntimeBinding" in row for row in (products or []))
     if not any("runtimeBinding" in row for row in (products or [])) and not sealed:
+        if authenticated_baseline is not None or baseline_binding is not None:
+            raise ProjectionError("maintenance-runtime-baseline-subject-required")
         return result
     from cryptad_certification.redaction import scan_value
     if sealed:
@@ -344,11 +347,96 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None,
                 subject["sealedRuntimeBinding"] = companion
         result.update(baseMeasurementVersion=result["schemaVersion"], schemaVersion=4,
                       admittedProductsDigest=digest(outward))
+    if authenticated_baseline is not None or baseline_binding is not None:
+        from runtime_baseline_admission import AuthenticatedRuntimeBaseline
+        from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
+        if not isinstance(authenticated_baseline, AuthenticatedRuntimeBaseline):
+            raise ProjectionError("maintenance-runtime-baseline-original-authority-required")
+        if len(runtime_events) != 1 or not isinstance(baseline_binding, dict):
+            raise ProjectionError("maintenance-runtime-baseline-original-observation-required")
+        event = runtime_events[0]
+        node = next((node for node in plan["nodes"] if node["role"] == event["role"]), None)
+        if (node is None or baseline_binding.get("planDigest") != digest(plan)
+                or baseline_binding.get("checkpointDigest") != digest(checkpoint)
+                or baseline_binding.get("role") != event["role"]
+                or baseline_binding.get("sourceCommit") != node["sourceCommit"]
+                or baseline_binding.get("productDigest") != node["artifactDigest"]
+                or baseline_binding.get("epoch") != event["nodeEpoch"]):
+            raise ProjectionError("maintenance-runtime-baseline-original-binding-mismatch")
+        admission = validate_authenticated_comparison(authenticated_baseline.compare_candidate(
+            event["runtimeEvidence"]["series"], binding=baseline_binding, cutoff=now.isoformat(),
+            candidate_policy=event["runtimeEvidence"]["policy"]))
+        result.update(runtimeBaselineBaseVersion=result["schemaVersion"], schemaVersion=5,
+                      runtimeBaselineAdmission=admission)
+        # Original input commitments are private. Exact recomputation authenticates this bounded
+        # public projection; its serialized fields are never an authority capability.
+        if result.get("runtimeComponents") is not None:
+            for key in ("workloadDigest", "seriesDigest", "evidenceDigest"):
+                result["runtimeComponents"].pop(key)
+        if (admission["status"] == "observed" and result["subjectAdmission"]["status"] == "pass"
+                and result["measurementDerivation"]["status"] == "pass"):
+            for row in result["rows"]:
+                if row["id"] == PREFIX + "performance":
+                    row["blockers"].remove("reviewed-runtime-baseline-missing")
     return result
+
+
+def without_current_baseline(value, scope):
+    """Keep terminal measurements public-safe without asserting current baseline authority."""
+    validate(value)
+    if value['schemaVersion'] not in {2, 3, 4}:
+        return value
+    from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
+    admission = validate_authenticated_comparison({
+        'schemaVersion': 1, 'kind': 'authenticated-runtime-baseline-comparison',
+        'numericComparison': 'measured-but-uncompared', 'referenceProvenance': 'missing',
+        'approvalAuthentication': 'missing', 'preselectionBinding': 'missing',
+        'originalCandidateObservation': 'missing', 'applicability': 'inapplicable',
+        'scopedPerformanceVerdict': 'blocked', 'claim': 'runtime-within-reviewed-bounds',
+        'status': 'not-observed', 'scope': scope, 'evidenceClass': 'synthetic',
+        'reasons': ['runtime-baseline-approval-missing'], 'fullAppBudgets': 'not-observed',
+        'releaseEligible': False})
+    result = json.loads(json.dumps(value))
+    result.update(runtimeBaselineBaseVersion=result['schemaVersion'], schemaVersion=5,
+                  runtimeBaselineAdmission=admission)
+    if result.get('runtimeComponents') is not None:
+        for key in ('workloadDigest', 'seriesDigest', 'evidenceDigest'):
+            result['runtimeComponents'].pop(key)
+    return validate(result)
 
 
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if isinstance(value, dict) and value.get("schemaVersion") == 5:
+        from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
+        if (type(value["schemaVersion"]) is not int
+                or type(value.get("runtimeBaselineBaseVersion")) is not int
+                or value["runtimeBaselineBaseVersion"] not in {2, 3, 4}
+                or not isinstance(value.get("rows"), list)
+                or any(not isinstance(row, dict) or not isinstance(row.get("blockers"), list)
+                       for row in value["rows"])
+                or any(not isinstance(value.get(key), dict)
+                       for key in ("subjectAdmission", "measurementDerivation"))):
+            raise ProjectionError("maintenance-runtime-baseline-base-version-invalid")
+        admission = validate_authenticated_comparison(value.get("runtimeBaselineAdmission"))
+        historical = json.loads(json.dumps(value))
+        historical["schemaVersion"] = historical.pop("runtimeBaselineBaseVersion")
+        historical.pop("runtimeBaselineAdmission")
+        components = historical.get("runtimeComponents")
+        if components is not None:
+            private_fields = {"workloadDigest", "seriesDigest", "evidenceDigest"}
+            if not isinstance(components, dict) or private_fields.intersection(components):
+                raise ProjectionError("maintenance-runtime-baseline-public-input-commitment")
+            components.update({key: "sha256:" + "0" * 64 for key in private_fields})
+        for row in historical.get("rows", []):
+            if row.get("id") == PREFIX + "performance" and "reviewed-runtime-baseline-missing" not in row.get("blockers", []):
+                if (admission["status"] != "observed"
+                        or historical.get("subjectAdmission", {}).get("status") != "pass"
+                        or historical.get("measurementDerivation", {}).get("status") != "pass"):
+                    raise ProjectionError("maintenance-runtime-baseline-admission-invalid")
+                row["blockers"] = sorted(row["blockers"] + ["reviewed-runtime-baseline-missing"])
+        validate(historical)
+        return value
     if isinstance(value, dict) and value.get("schemaVersion") == 4:
         if value.get("baseMeasurementVersion") not in {2, 3}:
             raise ProjectionError("maintenance-measurements-sealed-version-invalid")
@@ -455,14 +543,14 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") not in {2, 3, 4, 5} or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3, 4, 5, 6} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
             or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
             or value["schemaVersion"] != report["schemaVersion"] - 1
-            or (value["schemaVersion"] in {2, 3, 4} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
+            or (value["schemaVersion"] in {2, 3, 4, 5} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
     if "sha256:" + hashlib.sha256(policy_bytes).hexdigest() != expected_policy_digest:
@@ -472,6 +560,6 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     maximum_age = json.loads(policy_bytes)["evidenceWindows"]["maximumAgeDays"]
     if (now.tzinfo is None or now.utcoffset() is None or end is None or end > now
             or now - end > dt.timedelta(days=maximum_age)
-            or (value["schemaVersion"] in {2, 3, 4} and parse_timestamp(value["evaluationCutoff"]) > now)):
+            or (value["schemaVersion"] in {2, 3, 4, 5} and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

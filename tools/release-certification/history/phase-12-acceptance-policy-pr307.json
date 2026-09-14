@@ -52,14 +52,6 @@
       "path": "tools/release-certification/history/phase-12-acceptance-policy-pr306.json",
       "sourceCommit": "1dc69847ea86e61db2d674e05a09b6b5150ae27b",
       "sourceTree": "d1ec28ae4445d394adfe12835f6f308f8e4dc528"
-    },
-    {
-      "kind": "prior-phase-12-acceptance-policy",
-      "path": "tools/release-certification/history/phase-12-acceptance-policy-pr307.json",
-      "digest": "sha256:00901193a63b8ab398ce93b86d269c0677c146acbd2008fc491d6c049a7b7e69",
-      "sourceCommit": "b1d662fd709d8699d86fd71d65c8a18d7845eb8e",
-      "sourceTree": "0c702e8464b25e418084af7bafda24abe736c52c",
-      "authority": "Immutable integrated PR-307 scope, including its restricted-worker blocker. PR-308 changes prospective implementation evidence only; original clocks and acceptance remain unchanged."
     }
   ],
   "kind": "phase-12-acceptance-policy",
@@ -1062,7 +1054,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:e802df5446f957d9b685845b0925cd3f020a74c26606cebcc18fe25a6332027e",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
@@ -1077,7 +1069,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -1130,7 +1122,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:a65cb6118b308d6d1b4e9a906900e3f77def90437e3def3041a521a1e24b487b",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -1264,7 +1256,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:74adb1b113110b9ea102715e91d2cbf4e884560f266379184fd9955c41a85bcc",
+            "digest": "sha256:498384aeebdfbd0cb881c97f54968f4f1c2179bbeef0b08b4cc85e5a8a612041",
             "path": "tools/release-certification/protected/original_artifact_authentication.py"
           },
           {
@@ -1294,7 +1286,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -1399,7 +1391,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:74adb1b113110b9ea102715e91d2cbf4e884560f266379184fd9955c41a85bcc",
+            "digest": "sha256:498384aeebdfbd0cb881c97f54968f4f1c2179bbeef0b08b4cc85e5a8a612041",
             "path": "tools/release-certification/protected/original_artifact_authentication.py"
           },
           {
@@ -1429,7 +1421,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2401,7 +2393,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:a65cb6118b308d6d1b4e9a906900e3f77def90437e3def3041a521a1e24b487b",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2554,7 +2546,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:e802df5446f957d9b685845b0925cd3f020a74c26606cebcc18fe25a6332027e",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
@@ -2569,7 +2561,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2631,26 +2623,6 @@
             "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
             "digest": "sha256:13e40ecc887828eec04ee8d0328d1019f38362f733366b972aa7903d8f7ad8fe",
             "path": "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_baseline_admission.py",
-            "digest": "sha256:f44444b0b9a57688ac79a3be060c91f3750ad8767551ef6cb2a43067e32b52b5",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_baseline_approval.py",
-            "digest": "sha256:d37aeae23c8884e82f2c77073c127c60e892826d2ca1aa92e34cf422983a9e6a",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_reference_ledger.py",
-            "digest": "sha256:bdc0b59938d4f97c4c64450e69064191c134ef344a1968dece6b47608a409a0b",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": ".github/workflows/runtime-baseline-approval.yml",
-            "digest": "sha256:fbc4be16a7f5d679a3befafa8b7014fd6135f7eb04d56a2d20dea0750bab3cec",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           }
         ],
         "state": "partial",
@@ -2692,7 +2664,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:a65cb6118b308d6d1b4e9a906900e3f77def90437e3def3041a521a1e24b487b",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2724,26 +2696,6 @@
             "assertion": "PR-305 native current-publisher authorization denials return fixed conflicts through normal catalog operations while unrelated I/O failures retain server-error handling. Audited source is not protected runtime evidence.",
             "digest": "sha256:0931a6cede2a5babbf2263f2099934d7d662f80e9aa1e13e0b2b130513b6b74c",
             "path": "platform-api/src/test/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandlerTest.java"
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_admission.py",
-            "digest": "sha256:c03102109c7c8212e840263ecdc61e4f31834ae264386c3960c7dd1472f77ecb",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_approval.py",
-            "digest": "sha256:b4dd0ca6f441131a6133c4a4e97b483ea967d08a6b25c2da85e1d4781895ab7a",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_reference_ledger.py",
-            "digest": "sha256:8c0ef2cfc8104415cade4d3aeba5250260a292bdd99ba1e3d2af1c4786b8a1ef",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_consumer.py",
-            "digest": "sha256:3b5175bab6ce1cc688cc3a935dbbf49262c0c0cd1614f4a1a3f9a7a0134999d4",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
           }
         ]
       },
@@ -2853,22 +2805,22 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate all nine measured maintenance/release-consumer rows from original products and journal; subcase labels cannot replace required adapters.",
-            "digest": "sha256:0b033b90a68e4e97bee3cb7750f9b00556535110b91d1efdee7c41826957d0df",
+            "digest": "sha256:cee07d7ad8d17e0bf571f75fe616bb3e508cb753cfc2d591ffda318b7977f02e",
             "path": "tools/release-certification/protected/maintenance_runtime_projection.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:79466686c3440f4e1509659fa2735ce5b5053826bcd2b18cacb6000bc6e5ba83",
+            "digest": "sha256:e8208c9d4e46d2d797d2750d32cf902b7a1ea9c30395f7d00a880c1fb6ac7b56",
             "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:e802df5446f957d9b685845b0925cd3f020a74c26606cebcc18fe25a6332027e",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2920,26 +2872,6 @@
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
             "digest": "sha256:5fcd280fc6ca6fb9b153425c82a9353abbac3c232d9736f70612a047b53b563d",
             "path": "tools/release-certification/protected/cross_version_product_admission.py"
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_baseline_admission.py",
-            "digest": "sha256:f44444b0b9a57688ac79a3be060c91f3750ad8767551ef6cb2a43067e32b52b5",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_baseline_approval.py",
-            "digest": "sha256:d37aeae23c8884e82f2c77073c127c60e892826d2ca1aa92e34cf422983a9e6a",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": "tools/release-certification/protected/runtime_reference_ledger.py",
-            "digest": "sha256:bdc0b59938d4f97c4c64450e69064191c134ef344a1968dece6b47608a409a0b",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
-          },
-          {
-            "path": ".github/workflows/runtime-baseline-approval.yml",
-            "digest": "sha256:fbc4be16a7f5d679a3befafa8b7014fd6135f7eb04d56a2d20dea0750bab3cec",
-            "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
           }
         ],
         "state": "partial",
@@ -2991,7 +2923,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:a65cb6118b308d6d1b4e9a906900e3f77def90437e3def3041a521a1e24b487b",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3013,26 +2945,6 @@
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
             "digest": "sha256:43abd78fc2c07c1ffe66b2ca70da9f88b9a80f80b62318e84f635e96224fe225",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr307_phase12_runtime.py"
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_admission.py",
-            "digest": "sha256:c03102109c7c8212e840263ecdc61e4f31834ae264386c3960c7dd1472f77ecb",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_approval.py",
-            "digest": "sha256:b4dd0ca6f441131a6133c4a4e97b483ea967d08a6b25c2da85e1d4781895ab7a",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_reference_ledger.py",
-            "digest": "sha256:8c0ef2cfc8104415cade4d3aeba5250260a292bdd99ba1e3d2af1c4786b8a1ef",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
-          },
-          {
-            "path": "tools/release-certification/protected/test_runtime_baseline_consumer.py",
-            "digest": "sha256:3b5175bab6ce1cc688cc3a935dbbf49262c0c0cd1614f4a1a3f9a7a0134999d4",
-            "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
           }
         ]
       },
@@ -3793,7 +3705,7 @@
         "sourceEvidence": [
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:d01ffc7fe8411dce4b81f7ec0d9e40daea7ba16301aa6353fdfcebd53e471a69",
+            "digest": "sha256:a515719d0bc7b9f40d20fe5b7625f40e1924d74459f60fed4daa9dd9bbc659b2",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3808,7 +3720,7 @@
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:70d25dfa8b8dd76d391083cf7aaabe96290057ed1e3af97cda29a564854d87e7",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -3831,7 +3743,7 @@
         "testEvidence": [
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:d9ee60ded968c3dcd10be97b07505b340f06eeb858d46f1698e9f30f87b41807",
+            "digest": "sha256:434e53547402446a0b6268b7e070267f0aeee6ee406206762a5c515ffa4b55c3",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           },
           {
@@ -3908,7 +3820,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:a65cb6118b308d6d1b4e9a906900e3f77def90437e3def3041a521a1e24b487b",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3975,7 +3887,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify assessment then export only closed public fields, preserve reviewed history and prevent site feedback or circular phase authority.",
-            "digest": "sha256:d01ffc7fe8411dce4b81f7ec0d9e40daea7ba16301aa6353fdfcebd53e471a69",
+            "digest": "sha256:a515719d0bc7b9f40d20fe5b7625f40e1924d74459f60fed4daa9dd9bbc659b2",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3998,7 +3910,7 @@
           },
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:d9ee60ded968c3dcd10be97b07505b340f06eeb858d46f1698e9f30f87b41807",
+            "digest": "sha256:434e53547402446a0b6268b7e070267f0aeee6ee406206762a5c515ffa4b55c3",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_closeout.py"
           }
         ]
@@ -4757,17 +4669,7 @@
         "p12-300-products",
         "p12-300-consumers"
       ]
-    },
-    {
-      "id": "pr308-authenticated-runtime-baselines",
-      "authority": "docs/pr-308-authenticated-runtime-baselines.md",
-      "priorPolicyDigest": "sha256:00901193a63b8ab398ce93b86d269c0677c146acbd2008fc491d6c049a7b7e69",
-      "requirements": [
-        "p12-300-adapters",
-        "p12-300-consumers"
-      ],
-      "disposition": "Prospective implementation: finite root-owned reference attempts and original measurement verification, immutable unreviewed baseline proposal, actual separated reviewer decision on an opaque private context, root preselection, and recomputed scoped runtime component in measurement v5/report v6. Parent implementations remain partial. All 49 mandatory IDs, accepted assertions, dimensions, subjects, clocks, requirements and residuals are preserved. Synthetic packaged repeatability and provider-seam tests do not establish actual protected references/approval, independent review, production publication, full app-budget directions, duration or all nine maintenance rows. PR-307 restricted-worker/private-opening blocker remains authoritative. The pinned historical open-items prose remains unchanged; the current-state successor is the PR-308 runbook."
     }
   ],
-  "version": 5
+  "version": 4
 }

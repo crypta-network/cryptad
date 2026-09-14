@@ -1,5 +1,6 @@
 """Real signed app, distributed JVM, elapsed scheduler and exact-process private measurements."""
 import json
+import copy
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -85,35 +86,82 @@ class PackagedSchedulerPressureTest(unittest.TestCase):
                            check=True, capture_output=True, timeout=60, env=environment)
             source_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, check=True,
                                            capture_output=True, text=True).stdout.strip()
-            lane = adapter.SchedulerLane(private / 'runtime', packaged, java, fixture,
-                                         source_commit, Path(shutil.which('node')).resolve())
-            try:
-                if borrowed:
-                    result, lane = self.execute_borrowed(lane)
-                else:
-                    result = lane.execute()
-            except adapter.runtime.RuntimeFailure as error:
-                # All runtime failure messages are fixed codes; raw daemon logs stay private.
-                raise AssertionError(str(error)) from None
-            self.assertEqual('observed', result['schedulerExecutor'])
-            self.assertEqual('observed', result['backgroundRecovery'])
-            self.assertEqual('blocked', result['releaseEligibility'])
-            self.assertEqual('not-observed', result['fullAppBudgets'])
-            claims = result['runtimeComponents']['claims']
-            for name in adapter.pressure_evidence.CLAIMS[:5]:
-                self.assertEqual('observed', claims[name],
-                                 f"{name}: {result['runtimeComponents']['resourceFindings']}")
-            for name in adapter.pressure_evidence.CLAIMS[5:]:
-                self.assertEqual('not-observed', claims[name], name)
-            self.assertGreaterEqual(len(lane.samples), 20)
-            self.assertEqual(1 if borrowed else 2, len(set(lane.epochs)))
-            self.assertTrue(all(sample['metrics']['rssBytes'] > 0 for sample in lane.samples))
-            self.assertTrue(all(sample['metrics']['heapUsedBytes'] is not None for sample in lane.samples))
-            self.assertTrue(lane.worker_samples)
-            self.assertTrue(any(adapter.scheduler_count(row['runtime'], 'PRESSURE_SKIP') for row in lane.observations))
-            public = json.dumps({'result': result, 'samples': lane.samples})
-            for secret in (lane.useful_uri, lane.missing_uri, str(private), lane.handle.session):
-                self.assertNotIn(secret, public)
+            observations, identities, intervals = [], [], []
+            repetitions = 1 if borrowed else 3
+            baseline_path = None
+            for attempt in range(repetitions):
+                execution_package = private / ('execution-package-' + str(attempt))
+                shutil.copytree(packaged, execution_package, symlinks=True)
+                lane = adapter.SchedulerLane(private / ('runtime-' + str(attempt)), execution_package, java, fixture,
+                                             source_commit, Path(shutil.which('node')).resolve(), baseline_path)
+                try:
+                    if borrowed:
+                        result, lane = self.execute_borrowed(lane)
+                    else:
+                        result = lane.execute()
+                except adapter.runtime.RuntimeFailure as error:
+                    # All runtime failure messages are fixed codes; raw daemon logs stay private.
+                    raise AssertionError(str(error)) from None
+                self.assertEqual('observed', result['schedulerExecutor'])
+                self.assertEqual('observed', result['backgroundRecovery'])
+                self.assertEqual('blocked', result['releaseEligibility'])
+                self.assertEqual('not-observed', result['fullAppBudgets'])
+                claims = result['runtimeComponents']['claims']
+                for name in adapter.pressure_evidence.CLAIMS[:5]:
+                    self.assertEqual('observed', claims[name],
+                                     f"{name}: {result['runtimeComponents']['resourceFindings']}")
+                for name in adapter.pressure_evidence.CLAIMS[5:]:
+                    if baseline_path is not None and name == 'runtime-baseline-comparable':
+                        self.assertIn(claims[name], {'observed', 'not-observed'})
+                    else:
+                        self.assertEqual('not-observed', claims[name], name)
+                self.assertGreaterEqual(len(lane.samples), 20)
+                self.assertEqual(1 if borrowed else 2, len(set(lane.epochs)))
+                self.assertTrue(all(sample['metrics']['rssBytes'] > 0 for sample in lane.samples))
+                self.assertTrue(all(sample['metrics']['heapUsedBytes'] is not None for sample in lane.samples))
+                self.assertTrue(lane.worker_samples)
+                self.assertTrue(any(adapter.scheduler_count(row['runtime'], 'PRESSURE_SKIP') for row in lane.observations))
+                public = json.dumps({'result': result, 'samples': lane.samples})
+                for secret in (lane.useful_uri, lane.missing_uri, str(private), lane.handle.session):
+                    self.assertNotIn(secret, public)
+                snapshot = lane.input_snapshot()
+                derived = adapter.derive_snapshot_fingerprints(snapshot)
+                self.assertEqual({key: lane.fingerprint[key] for key in derived}, derived)
+                series = lane.epoch_series(lane.epochs[0])
+                observations.append(series)
+                identities.append(series['samples'][0]['epoch'])
+                intervals.append((series['startedAt'], series['finishedAt']))
+                if not borrowed and attempt == 1:
+                    baseline = adapter.pressure_evidence.baseline.collect(observations, lane.policy)
+                    self.assertIsNone(baseline['review'])
+                    adapter.private_json(private / 'unreviewed-baseline.json', baseline)
+                    # This is the historical local calculator seam, explicitly synthetic.
+                    # It is never an original reviewer decision or production approval.
+                    local_view = copy.deepcopy(baseline)
+                    local_view['review'] = {'status': 'reviewed', 'reviewedAt': adapter.utcnow(),
+                        'originDigest': adapter.runtime.canonical_digest({'synthetic': 'local-original-unavailable'}),
+                        'approvalDigest': adapter.runtime.canonical_digest({'synthetic': 'local-approval-unavailable'}),
+                        'candidateDigest': adapter.pressure_evidence.baseline.digest(baseline),
+                        'evidenceClass': 'synthetic-local'}
+                    baseline_path = private / 'synthetic-local-calculator-view.json'
+                    adapter.private_json(baseline_path, local_view)
+            if not borrowed:
+                self.assertEqual(3, len(set(identities)))
+                for before, after in zip(intervals, intervals[1:]):
+                    self.assertLess(adapter.pressure_evidence.baseline._time(before[1]),
+                                    adapter.pressure_evidence.baseline._time(after[0]))
+                comparison = adapter.pressure_evidence.baseline.compare(observations[2], local_view)
+                self.assertFalse(comparison['releaseEligible'])
+                self.assertEqual('synthetic-local', comparison['evidenceClass'])
+                self.assertNotIn('runtime-baseline-selection-mismatch', comparison['findings'])
+                self.assertNotIn('runtime-environment-incomparable', comparison['findings'])
+                self.assertIn(comparison['status'], {'within-reviewed-local-bounds', 'fail', 'insufficient-data'})
+                if comparison['status'] == 'within-reviewed-local-bounds':
+                    self.assertEqual('observed', result['runtimeComponents']['claims']['runtime-baseline-comparable'])
+                adapter.private_json(private / 'repeated-runtime-comparison.json', comparison)
+                print(json.dumps({'test': 'packaged-runtime-repeatability', 'repetitions': 2,
+                    'candidateExecutions': 1, 'numericStatus': comparison['status'],
+                    'findings': comparison['findings'], 'releaseEligible': False}, sort_keys=True))
 
     def execute_borrowed(self, host):
         selection = {'role': 'candidate-sender', 'profile': 'bounded-contention-v1',

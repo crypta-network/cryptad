@@ -94,3 +94,10 @@ The hosted maintenance job has unrestricted sudo. Do not provision private runti
 source selections there, and do not execute writable checkout Python as a privileged resolver. The
 selected hosted path is blocked pending an isolated restricted worker and immutable installed
 resolver; local crypto/native integration does not establish that operational privilege boundary.
+
+PR-308's successor measurement v5/report v6 carries a separately validated authenticated runtime
+baseline component. Historical measurement v1-v4 and sealed five-member transports retain their
+contracts. Only the typed original baseline owner may remove the reviewed-baseline blocker;
+complete app-budget directions, duration, cleanup, product/native context and all other parent
+requirements remain separate. Follow `docs/pr-308-authenticated-runtime-baselines.md` and preserve
+the existing restricted-worker disposition.

@@ -129,3 +129,12 @@ failure preserves sanitized retry evidence without becoming publication success.
 ```bash
 python3 tools/release-certification/certify.py stable-catalog-authority --self-test
 ```
+
+Runtime baseline preparation and approval use the fixed installed
+`runtime_baseline_approval.py prepare|approve` operations and the single
+`runtime-baseline-approval.yml` workflow. See `docs/pr-308-authenticated-runtime-baselines.md`.
+Only random public context anchors are attested/uploaded. Exact proposal/reference/selection
+bytes stay in the root-private store. Verify actual review history and the original prepare and
+approval jobs; an environment success or list of configured reviewers is insufficient. Dedicated
+runner isolation and existing private-worker restrictions remain prerequisites; this helper does
+not authorize unrestricted sudo access to private production evidence.

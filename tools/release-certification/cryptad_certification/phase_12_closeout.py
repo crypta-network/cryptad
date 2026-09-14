@@ -68,7 +68,7 @@ MAX_INPUT_TOTAL = 1536 * 1024 * 1024
 # This pin covers the reviewed acceptance scope, independently of implementation byte pins.
 # Updating code/test evidence cannot shrink a cohort or weaken a mandatory dimension. A scope
 # revision requires an explicit reviewed code change as well as a new inventory version.
-ACCEPTANCE_SCOPE_DIGEST = "sha256:beae3d57eab49651fe292ee4451c695fea95c662934d473237766d1d4c507917"
+ACCEPTANCE_SCOPE_DIGEST = "sha256:d703df9abe4a1b88a746a1a456828d36a70f8b7937a90100b37ef0b758986175"
 
 
 def fail(code):

@@ -8,6 +8,13 @@ blockers; ciphertext integrity alone does not advance a measured or operational 
 The hosted private path is additionally disabled pending an isolated restricted worker and immutable
 resolver. Its unrestricted-sudo job account cannot protect root-only keys from the caller.
 
+The [PR-308 baseline successor](pr-308-authenticated-runtime-baselines.md) adds original-reference
+and actual-approval verification plus preselected, recomputed scoped runtime admission. Its local
+packaged repetitions remain synthetic and no actual production approval or protected campaign is
+supplied. Preserve the retained 49 mandatory / 47 unresolved assessment at the same fixed cutoff;
+implementation progress is not a reduction in missing operational evidence. The restricted-worker
+blocker and other maintenance dimensions remain authoritative.
+
 Use `phase-12-closeout` to reconcile the accepted PR-291–303 requirements with exact source,
 original evidence and the existing owning verifiers. A successfully executed audit can report
 Phase 12 incomplete or blocked. Passing the audit's self-tests, merging PR-303 or publishing its

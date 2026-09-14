@@ -7,6 +7,12 @@ its job account has unrestricted sudo, so it cannot isolate provisioned keys fro
 transport within the existing maintenance workflow. It does not authorize release publication,
 add apps to a Stable role, or establish protected execution and Phase 12 completion.
 
+The [PR-308 successor](pr-308-authenticated-runtime-baselines.md) adds a separate authenticated
+runtime-baseline capability and prospective scoped performance component. It preserves the closed
+encrypted runtime transport, historical measurement contracts, private projections, and the
+restricted-worker prerequisite above. A valid baseline never bypasses the hosted job-account
+isolation blocker or supplies missing protected execution.
+
 ## Integrated source and audit
 
 Work started from clean `develop` commit `1dc69847ea86e61db2d674e05a09b6b5150ae27b`, tree
