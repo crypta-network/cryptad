@@ -337,7 +337,10 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
     def test_sealed_report6_reaches_phase12_owner_without_private_commitments(self):
         self.test_report6_reaches_phase12_owner_with_exact_typed_context(sealed=True)
 
-    def test_report6_reaches_phase12_owner_with_exact_typed_context(self, sealed=False):
+    def test_sealed_uncompared_report6_reaches_phase12_owner_without_baseline_authority(self):
+        self.test_report6_reaches_phase12_owner_with_exact_typed_context(sealed=True, uncompared=True)
+
+    def test_report6_reaches_phase12_owner_with_exact_typed_context(self, sealed=False, uncompared=False):
         from cryptad_certification import phase_12_runtime_adapters as phase
         from cryptad_certification.tests.test_phase_12_runtime_adapters import supervisor_fixture
         import cross_version_supervisor_authority as supervisor
@@ -361,8 +364,11 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
             outward = private_products.public_identities()
         capability = self.capability(proposal, selection, observed)
         now = dt.datetime.fromisoformat(CUTOFF)
-        measured = projection.project(*fixture, now=now, authenticated_baseline=capability, baseline_binding=binding,
+        measured = projection.project(*fixture, now=now,
+                                      **({} if uncompared else {'authenticated_baseline': capability, 'baseline_binding': binding}),
                                       **({'public_products': outward} if sealed else {}))
+        if uncompared:
+            measured = projection.without_current_baseline(measured, selection['scope'])
         chain = supervisor_fixture(plan, events, checkpoint)
         for entry in chain:
             entry['report'].update(schemaVersion=5, admittedProductsDigest=admission.digest(outward))
@@ -374,27 +380,40 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
         chain[0]['report']['previousReportDigest'] = admission.digest(chain[-2]['report'])
         for entry in chain:
             supervisor.validate_report(entry['report'])
+        original = observed.values()
+        original['origin'] = chain[0]['origin']
+        original['selection'] = selection
         authority = phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR,
-            runtime_baseline=capability, baseline_binding=binding, private_products=private_products)
+            runtime_baseline=None if uncompared else capability, baseline_binding=binding, private_products=private_products,
+            runtime_observation=admission.OriginalRuntimeObservation(admission._SEAL, original) if uncompared else None)
         values = {'plan.json': plan, 'events.json': events, 'checkpoint.json': checkpoint, 'products.json': outward}
         payloads = {name: admission.encode(value) for name, value in values.items()}
         final, _ = phase._supervisor_relationships(authority, values, now)
         self.assertEqual(6, final['schemaVersion'])
         with tempfile.TemporaryDirectory() as scratch:
             result = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), authority)
-            self.assertEqual('observed', result['components']['scopedRuntimeBaseline']['status'])
+            self.assertEqual('not-observed' if uncompared else 'observed', result['components']['scopedRuntimeBaseline']['status'])
             self.assertEqual('partial', result['dimensions']['coverage'])
             self.assertIn('maintenance-required-consumer-adapters-incomplete', result['blockers'])
             self.assertNotIn('private-selected-baseline-canary', json.dumps(result))
             missing = phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR, private_products=private_products)
             blocked = phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), missing)
             self.assertIn('runtime-baseline-private-original-context-required', blocked['blockers'])
+            if uncompared:
+                return
             rebound = phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR,
                 runtime_baseline=capability, baseline_binding={**binding, 'epoch': 'other'}, private_products=private_products)
             with self.assertRaisesRegex(ValueError, 'phase12-runtime-original-admission-rejected'):
                 phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(scratch), rebound)
 
-    def test_original_candidate_chain_member_snapshot_and_checkpoint_are_reverified(self):
+    def test_uncompared_original_reports_reach_consumer_without_approval_or_candidate_admission(self):
+        if not hasattr(os, 'geteuid') or os.geteuid() != 0:
+            self.skipTest('isolated sudo invocation required for original private retention')
+        for status in ('complete', 'failed', 'partial'):
+            with self.subTest(status=status):
+                self.test_original_candidate_chain_member_snapshot_and_checkpoint_are_reverified(terminal_status=status)
+
+    def test_original_candidate_chain_member_snapshot_and_checkpoint_are_reverified(self, terminal_status=None):
         import cross_version_supervisor_authority as supervisor
         from original_artifact_authentication import OriginalArtifact
         from cryptad_certification.tests.test_phase_12_runtime_adapters import supervisor_fixture
@@ -414,11 +433,25 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
         original_snapshot['fingerprint'] = copy.deepcopy(evidence['series']['fingerprint'])
         for event in events:
             event['planDigest'] = admission.digest(plan)
+        if terminal_status in {'failed', 'partial'}:
+            events.pop()
+            events.insert(-1, {**events[-1], 'kind': 'fault',
+                'outcome': 'fail' if terminal_status == 'failed' else 'partial',
+                'role': '', 'scenario': '', 'operation': ''})
         consumer_fixtures.rechain(events)
         checkpoint = consumer_fixtures.checkpoint_for(plan, events)
+        if terminal_status:
+            checkpoint['status'] = terminal_status
         chain = supervisor_fixture(plan, events, checkpoint)
         authorization = {'runtimeReference': None}
-        private = {}
+        private = {'runtimeBaseline': prepared_pair()[1][1]} if terminal_status else {}
+        if terminal_status:
+            for entry in chain:
+                entry['report'].update(schemaVersion=5, admittedProductsDigest=admission.digest(products))
+            measured = projection.without_current_baseline(
+                projection.project(plan, events, checkpoint, products, now=dt.datetime.fromisoformat(CUTOFF)),
+                private['runtimeBaseline']['scope'])
+            chain[0]['report'].update(schemaVersion=6, maintenanceMeasurements=measured)
         bindings = {'serviceDigest': chain[-1]['report']['serviceDigest'],
             'planDigest': admission.byte_digest(admission.encode(plan)),
             'privateConfigDigest': admission.byte_digest(admission.encode(private)),
@@ -427,6 +460,10 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
             origin, report = entry['origin'], entry['report']
             origin.update(sourceFamily='cross-version-supervisor', sourceCommit=plan['producer']['sourceCommit'],
                 artifactName=f"cross-version-supervisor-{origin['runId']}-1", jobId=origin['runId'] + 100)
+            if terminal_status:
+                from original_artifact_authentication import PRODUCERS
+                origin.update(repository='crypta-network/cryptad', jobName=PRODUCERS['cross-version-supervisor'][2],
+                              artifactDigest='sha256:' + 'c' * 64, artifactSize=100)
             report['job'] = {key: origin[key] for key in ('sourceCommit', 'runId', 'runAttempt')}
             report['selectionDigest'] = admission.digest(bindings)
             if report['operation'] != 'authorize':
@@ -450,11 +487,40 @@ class RuntimeBaselineAdmissionTest(unittest.TestCase):
             report = json.loads(Path(args[2]).read_bytes())
             invocation = f"https://github.com/crypta-network/cryptad/actions/runs/{report['job']['runId']}/attempts/1"
             return [{'verificationResult': {'signature': {'certificate': {'runInvocationURI': invocation}}}}]
-        with tempfile.TemporaryDirectory() as temporary, patch.object(supervisor, 'authenticate_original', side_effect=original), \
+        with tempfile.TemporaryDirectory(dir='/run' if terminal_status else None) as temporary, patch.object(supervisor, 'authenticate_original', side_effect=original), \
                 patch.object(supervisor, '_gh', side_effect=attest), patch.object(supervisor, '_environment', return_value={}):
             observed = admission.authenticate_observation(chain[0]['origin'], bundle, Path(temporary) / 'good', cutoff=CUTOFF)
             self.assertEqual(evidence['series'], observed.values()['series'])
             self.assertEqual(admission.digest(checkpoint), observed.values()['checkpointDigest'])
+            if terminal_status:
+                from cryptad_certification import phase_12_runtime_adapters as phase
+                store = Path(temporary) / 'observations'
+                store.mkdir(mode=0o700)
+                retained = store / (plan['experimentId'] + '.json')
+                retained.write_bytes(admission.encode(bundle))
+                retained.chmod(0o400)
+                payloads = {name: admission.encode(value) for name, value in (
+                    ('plan.json', plan), ('events.json', events), ('checkpoint.json', checkpoint), ('products.json', products))}
+                proof = {'coordinates': chain[0]['origin'], 'members': phase.ORIGINAL_MEMBERS['maintenance-measurements']}
+                with patch.object(approval, 'PRIVATE_STORE', Path(temporary)), \
+                        patch.object(admission, 'authenticate_selected', side_effect=AssertionError('approval must not be reacquired')), \
+                        patch.object(admission, 'admit_candidate', side_effect=AssertionError('terminal evidence is not candidate admission')):
+                    result = phase.collect_and_verify('maintenance-measurements', payloads, CUTOFF, Path(temporary), proof)
+                self.assertEqual('authenticated', result['originalProof']['state'])
+                self.assertEqual(measured['runtimeBaselineAdmission'], result['components']['scopedRuntimeBaseline'])
+                self.assertEqual('not-observed', result['components']['scopedRuntimeBaseline']['status'])
+                self.assertIn('maintenance-required-consumer-adapters-incomplete', result['blockers'])
+                forged = copy.deepcopy(chain)
+                forged[0]['report']['maintenanceMeasurements']['runtimeBaselineAdmission']['reasons'] = ['runtime-baseline-approval-expired']
+                with self.assertRaisesRegex(ValueError, 'phase12-runtime-original-admission-rejected'):
+                    phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(temporary),
+                        phase._AuthenticatedSupervisor(forged, phase._ORIGINAL_SUPERVISOR, runtime_observation=observed))
+                rebound = observed.values()
+                rebound['checkpointDigest'] = 'sha256:' + '0' * 64
+                with self.assertRaisesRegex(ValueError, 'phase12-runtime-original-admission-rejected'):
+                    phase.verify_authenticated('maintenance-measurements', payloads, CUTOFF, Path(temporary),
+                        phase._AuthenticatedSupervisor(chain, phase._ORIGINAL_SUPERVISOR,
+                            runtime_observation=admission.OriginalRuntimeObservation(admission._SEAL, rebound)))
             altered = copy.deepcopy(bundle)
             altered['inputSnapshot']['jvmConfiguration']['heapMaxBytes'] *= 2
             with self.assertRaisesRegex(admission.AdmissionError, 'snapshot-mismatch'):

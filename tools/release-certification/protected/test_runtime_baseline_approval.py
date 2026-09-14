@@ -115,7 +115,14 @@ class ApprovalTest(unittest.TestCase):
         with self.assertRaises(approval.ApprovalError):
             approval.AuthenticatedApproval(None, {})
 
-    def test_selected_baseline_authenticates_approval_in_fresh_scratch_directory(self):
+    def test_revoked_selection_still_checks_original_references_and_approval(self):
+        for marker in ('revoked', 'superseded'):
+            for invalid_reference in (False, True):
+                with self.subTest(marker=marker, invalid_reference=invalid_reference):
+                    self.setUp()
+                    self.test_selected_baseline_authenticates_approval_in_fresh_scratch_directory(marker, invalid_reference)
+
+    def test_selected_baseline_authenticates_approval_in_fresh_scratch_directory(self, marker=None, invalid_reference=False):
         import runtime_baseline_admission as admission
         import runtime_reference_ledger as ledger
         from test_runtime_baseline_admission import originals, vector
@@ -129,6 +136,8 @@ class ApprovalTest(unittest.TestCase):
             proposalFinishedAt=proposal['finishedAt'], policyDigest=admission.digest(policy),
             scopeDigest=admission.digest(campaign['scope']))
         self.decision = self.produce()
+        if marker:
+            (self.store / (self.context + '.' + marker)).touch(mode=0o400)
         selection = {'schemaVersion': 1, 'approvalContext': self.context, 'approvalOrigin': self.coords,
             'selectedAt': '2026-09-14T10:03:00Z', 'role': 'candidate-sender', 'scope': campaign['scope'],
             'proposalDigest': admission.digest(proposal), 'policyDigest': admission.digest(policy),
@@ -150,12 +159,21 @@ class ApprovalTest(unittest.TestCase):
                 patch.object(approval, 'read_private_proposal',
                     side_effect=lambda context, private_store=self.store: read_proposal(context, private_store)), \
                 patch.object(ledger, 'verify_complete') as complete, \
-                patch.object(admission, 'authenticate_observation', side_effect=references), \
+                patch.object(admission, 'authenticate_observation', side_effect=(
+                    admission.AdmissionError('runtime-baseline-original-snapshot-mismatch') if invalid_reference else references)) as original_references, \
                 patch.object(approval, 'authenticate_approval',
                     side_effect=lambda *args, **kwargs: authenticate_approval(*args, private_store=self.store, **kwargs)), \
                 patch.object(approval, 'authenticate_original', side_effect=self.original), \
                 patch.object(approval, '_gh', side_effect=self.gh), \
                 patch.object(approval, '_environment', return_value={}):
+            if marker:
+                error = admission.AdmissionError if invalid_reference else approval.ApprovalError
+                code = 'runtime-baseline-original-snapshot-mismatch' if invalid_reference else 'runtime-approval-context-revoked-or-superseded'
+                with self.assertRaisesRegex(error, '^' + code + '$'):
+                    admission.authenticate_selected(selection, scratch, cutoff=self.kwargs['cutoff'])
+                self.assertEqual(1 if invalid_reference else len(references), original_references.call_count)
+                complete.assert_called_once_with(campaign, [row['experimentId'] for row in rows])
+                return
             rebuilt, approved, observed = admission.authenticate_selected(
                 selection, scratch, cutoff=self.kwargs['cutoff'])
         complete.assert_called_once_with(campaign, [row['experimentId'] for row in rows])
@@ -194,6 +212,44 @@ class ApprovalTest(unittest.TestCase):
             self.verify(decision, cutoff='2026-09-16T00:00:00Z')
         decision['approvalContext'] = '0' * 64
         with self.assertRaisesRegex(approval.ApprovalError, 'proposal-binding'):
+            self.verify(decision)
+
+    def test_original_job_integrity_errors_are_not_approval_expiry(self):
+        for family in ('runtime-baseline-approval', 'runtime-baseline-proposal'):
+            with self.subTest(family=family):
+                self.setUp()
+                decision = self.produce()
+                original = self.original
+                def inconsistent_job(coordinates, root):
+                    value = original(coordinates, root)
+                    if coordinates['sourceFamily'] == family:
+                        return OriginalArtifact(value.content, value.coordinates, '2026-09-14T10:03:00Z')
+                    return value
+                with patch.object(self, 'original', side_effect=inconsistent_job):
+                    with self.assertRaisesRegex(approval.ApprovalError, '^runtime-approval-original-job-integrity-invalid$'):
+                        self.verify(decision)
+                    # Expiry cannot hide a simultaneous original-job integrity failure.
+                    with self.assertRaisesRegex(approval.ApprovalError, '^runtime-approval-original-job-integrity-invalid$'):
+                        self.verify(decision, cutoff='2026-09-16T00:00:00Z')
+                    for marker in ('revoked', 'superseded'):
+                        path = self.store / (self.context + '.' + marker)
+                        path.touch(mode=0o400)
+                        with self.assertRaisesRegex(approval.ApprovalError, '^runtime-approval-original-job-integrity-invalid$'):
+                            self.verify(decision)
+                        path.unlink()
+
+    def test_revocation_does_not_hide_private_bytes_or_selected_scope_substitution(self):
+        decision = self.produce()
+        (self.store / (self.context + '.revoked')).touch(mode=0o400)
+        for arguments in ({'expected_policy_digest': 'sha256:' + '0' * 64},
+                          {'expected_scope_digest': 'sha256:' + '0' * 64},
+                          {'expected_context': '0' * 64}):
+            with self.subTest(arguments=arguments):
+                with self.assertRaisesRegex(approval.ApprovalError, '^runtime-approval-selected-scope-mismatch$'):
+                    self.verify(decision, **arguments)
+        path = self.store / (self.context + '.proposal.json')
+        path.write_bytes(self.proposal + b' ')
+        with self.assertRaisesRegex(approval.ApprovalError, '^runtime-approval-private-proposal-substituted$'):
             self.verify(decision)
 
     def test_status_revocation_and_conflicting_history_fail(self):
@@ -252,12 +308,17 @@ class ApprovalTest(unittest.TestCase):
             self.verify(decision)
 
     def test_operator_deny_marker_preserves_bytes_and_blocks_current_use(self):
-        decision = self.produce()
-        original = (self.store / (self.context + '.proposal.json')).read_bytes()
-        (self.store / (self.context + '.revoked')).touch(mode=0o400)
-        with self.assertRaisesRegex(approval.ApprovalError, 'revoked-or-superseded'):
-            self.verify(decision)
-        self.assertEqual((self.store / (self.context + '.proposal.json')).read_bytes(), original)
+        for marker in ('revoked', 'superseded'):
+            with self.subTest(marker=marker):
+                self.setUp()
+                decision = self.produce()
+                original = (self.store / (self.context + '.proposal.json')).read_bytes()
+                (self.store / (self.context + '.' + marker)).touch(mode=0o400)
+                with self.assertRaisesRegex(approval.ApprovalError, 'revoked-or-superseded'):
+                    self.verify(decision)
+                with self.assertRaisesRegex(approval.ApprovalError, 'revoked-or-superseded'):
+                    self.produce()
+                self.assertEqual(approval.read_private_proposal(self.context, self.store), original)
 
     def test_prepare_cli_isolates_each_original_reference_scratch_directory(self):
         # Original network/provider seam only: real proposal collect, exact private preparation,

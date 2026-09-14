@@ -542,7 +542,7 @@ def _admit_product_rows(plan, private):
 
 
 def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None, terminal=None,
-             baseline_selection=None):
+             baseline_selection=None, baseline_scope=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
     from cryptad_certification.cross_version_evidence import event_byte_limit
@@ -593,9 +593,13 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
     if activation is not None:
         if activation.get('planDigest') != digest(plan) or activation.get('producer') != plan['producer']:
             raise AuthorityError('protected-measurements-activation-substituted')
+        if require_eof and activation.get('privateRuntimeContext') in {'runtime-baseline-v1', 'runtime-reference-v1'}:
+            from runtime_baseline_admission import retain_owned_observation
+            retain_owned_observation(plan, events, checkpoint, activation)
         from maintenance_runtime_projection import project
         baseline_arguments = {}
-        if activation.get('privateRuntimeContext') == 'runtime-baseline-v1' and checkpoint['status'] == 'complete':
+        if (activation.get('privateRuntimeContext') == 'runtime-baseline-v1'
+                and checkpoint['status'] == 'complete' and baseline_selection is not None):
             from runtime_baseline_admission import project_owned_baseline
             baseline_arguments = project_owned_baseline(plan, events, checkpoint, activation,
                                                         authenticated_selection=baseline_selection)
@@ -605,9 +609,9 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
                                                         public_products=activation['products'], **baseline_arguments)
         else:
             result['maintenanceMeasurements'] = project(plan, events, checkpoint, activation.get('products'), **baseline_arguments)
-        if require_eof and activation.get('privateRuntimeContext') in {'runtime-baseline-v1', 'runtime-reference-v1'}:
-            from runtime_baseline_admission import retain_owned_observation
-            retain_owned_observation(plan, events, checkpoint, activation)
+        if baseline_scope is not None and not baseline_arguments:
+            from maintenance_runtime_projection import without_current_baseline
+            result['maintenanceMeasurements'] = without_current_baseline(result['maintenanceMeasurements'], baseline_scope)
     return result
 
 
@@ -746,9 +750,17 @@ def control(operation):
         # Original reference/approval network reads do not consume or extend the short stopped
         # candidate context. Only the subsequent local original candidate read uses that context.
         from runtime_baseline_admission import authenticate_selected
+        from runtime_baseline_approval import ApprovalError
         with tempfile.TemporaryDirectory(prefix='cryptad-baseline-originals-') as directory:
-            baseline_selection = authenticate_selected(selected_baseline, Path(directory),
-                cutoff=dt.datetime.now(dt.timezone.utc).isoformat())
+            try:
+                baseline_selection = authenticate_selected(selected_baseline, Path(directory),
+                    cutoff=dt.datetime.now(dt.timezone.utc).isoformat())
+            except ApprovalError as error:
+                if str(error) not in {'runtime-approval-not-currently-applicable',
+                                      'runtime-approval-context-revoked-or-superseded'}:
+                    raise
+                # Current eligibility cannot erase an already-executed observation. Without a
+                # capability, projection retains the historical reviewed-baseline blocker.
     terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and activation.get('schemaVersion') == 2 else None
     with terminal if terminal is not None else nullcontext():
         if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
@@ -760,6 +772,7 @@ def control(operation):
                     pass
         report.update(snapshot(plan, Path(private['root']), previous, expected_uid=uid,
                                require_eof=operation == 'finish', activation=activation,
+                               **({'baseline_scope': selected_baseline['scope']} if selected_baseline is not None else {}),
                                **({'baseline_selection': baseline_selection} if baseline_selection is not None else {}),
                                **({'terminal': terminal} if terminal is not None else {})))
         if terminal is not None:

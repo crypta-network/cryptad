@@ -426,14 +426,19 @@ def authenticate_selected(selection, scratch, *, cutoff):
         bundle = decode(owner.secured(path, private=True).read_bytes())
         observations.append(authenticate_observation(attempt['origin'], bundle, Path(scratch) / f'reference-{index}', cutoff=cutoff))
     rebuilt = prepare_proposal(proposal['campaign'], observations, proposal['baseline']['policy'])
-    if encode(rebuilt) != raw or digest(rebuilt) != selection['proposalDigest']:
+    if (encode(rebuilt) != raw or digest(rebuilt) != selection['proposalDigest']
+            or selection['baselineDigest'] != rebuilt['baselineSemanticDigest']
+            or selection['policyDigest'] != digest(rebuilt['baseline']['policy'])
+            or selection['scope'] != rebuilt['campaign']['scope']):
         raise AdmissionError('runtime-baseline-proposal-recomputation-mismatch')
     approval_scratch = Path(scratch) / 'approval'
     approval_scratch.mkdir(mode=0o700)
     approved = approvals.authenticate_approval(selection['approvalOrigin'], approval_scratch,
         proposal_digest=digest(rebuilt), proposal_byte_digest=byte_digest(raw),
         proposal_finished_at=rebuilt['finishedAt'], cutoff=cutoff,
-        reviewed_source_commit=selection['approvalOrigin']['sourceCommit'])
+        reviewed_source_commit=selection['approvalOrigin']['sourceCommit'],
+        expected_policy_digest=digest(rebuilt['baseline']['policy']),
+        expected_scope_digest=digest(rebuilt['campaign']['scope']), expected_context=selection['approvalContext'])
     decision = approved.decision()
     if (decision['policyDigest'] != digest(rebuilt['baseline']['policy'])
             or decision['scopeDigest'] != digest(rebuilt['campaign']['scope'])

@@ -192,9 +192,6 @@ def prepare_request(proposal_bytes, request, private_store=PRIVATE_STORE):
 def _private_request(context, private_store):
     decision_comment(context)
     root = _private_directory(private_store)
-    # A retained operator revocation marker only denies use; it cannot mint a new approval.
-    if os.path.lexists(root / (context + '.revoked')) or os.path.lexists(root / (context + '.superseded')):
-        raise ApprovalError('runtime-approval-context-revoked-or-superseded')
     try:
         descriptor = os.open(root / (context + '.json'), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
@@ -207,9 +204,16 @@ def _private_request(context, private_store):
         return validate_request(_decode(stream.read(65537)))
 
 
+def _require_current_context(context, private_store):
+    """Apply operator denial only after the caller has verified original integrity."""
+    decision_comment(context)
+    root = _private_directory(private_store)
+    if os.path.lexists(root / (context + '.revoked')) or os.path.lexists(root / (context + '.superseded')):
+        raise ApprovalError('runtime-approval-context-revoked-or-superseded')
+
 
 def read_private_proposal(context, private_store=PRIVATE_STORE):
-    """Read the immutable exact bounded proposal retained by fixed preparation."""
+    """Read immutable proposal bytes for integrity verification, without granting current use."""
     decision_comment(context)
     root = _private_directory(private_store)
     try:
@@ -289,6 +293,7 @@ def produce_approval(preparation_origin, private_root, *, private_store=PRIVATE_
     _, job = _review(request, env, completed=False, context=context, producer=producer)
     if _time(prepared_by) > _time(job['started_at']):
         raise ApprovalError('runtime-approval-preparation-after-review-boundary')
+    _require_current_context(context, private_store)
     return {'schemaVersion': 1, 'kind': 'runtime-baseline-approval-anchor', 'approvalContext': context,
             'preparationOrigin': preparation_origin, 'producer': producer}
 
@@ -310,7 +315,8 @@ class AuthenticatedApproval:
 
 
 def authenticate_approval(coordinates, private_root, *, proposal_digest, proposal_byte_digest,
-                          proposal_finished_at, cutoff, reviewed_source_commit, private_store=PRIVATE_STORE):
+                          proposal_finished_at, cutoff, reviewed_source_commit, private_store=PRIVATE_STORE,
+                          expected_policy_digest=None, expected_scope_digest=None, expected_context=None):
     """Reauthenticate private proposal, original opaque anchors, actual review and current use."""
     decision, original, byte_digest = _original_member(coordinates, private_root, MEMBER,
         'runtime-baseline-approval', JOB, reviewed_source_commit)
@@ -324,9 +330,15 @@ def authenticate_approval(coordinates, private_root, *, proposal_digest, proposa
         raise ApprovalError('runtime-approval-proposal-binding-mismatch')
     reviewer, job = _review(request, _environment(), completed=True, context=context, producer=decision['producer'])
     completed = _time(job.get('completed_at'))
-    if (_time(prepared_by) > _time(job['started_at']) or request['status'] != 'active'
-            or not _time(request['effectiveAt']) <= completed <= _time(cutoff) < _time(request['expiresAt'])
+    if (_time(prepared_by) > _time(job['started_at'])
             or original.job_completed_at != job.get('completed_at')):
+        raise ApprovalError('runtime-approval-original-job-integrity-invalid')
+    if ((expected_policy_digest is not None and request['policyDigest'] != expected_policy_digest)
+            or (expected_scope_digest is not None and request['scopeDigest'] != expected_scope_digest)
+            or (expected_context is not None and context != expected_context)):
+        raise ApprovalError('runtime-approval-selected-scope-mismatch')
+    _require_current_context(context, private_store)
+    if request['status'] != 'active' or not _time(request['effectiveAt']) <= completed <= _time(cutoff) < _time(request['expiresAt']):
         raise ApprovalError('runtime-approval-not-currently-applicable')
     return AuthenticatedApproval(_AUTHORITY, {**request, 'kind': 'runtime-baseline-approval',
         'reviewer': reviewer, 'producer': decision['producer'], 'approvalContext': context,

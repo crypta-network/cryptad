@@ -74,6 +74,49 @@ Approval accepts the scoped experiment and limits. It does not prove universal p
 
 Evaluate approval applicability and active status at the selected cutoff, including expiry, revocation, and supersession. Historic valid measurements remain historical facts after expiry; expired or revoked approval cannot authorize a new run or fresh release decision. A copied report or relocated file does not renew approval. Retries must preserve the original selected baseline; reselection starts a new controlled campaign.
 
+Terminal evidence capture remains available when an approval expires or is revoked after the
+candidate has executed. The stopped supervisor retains the exact private observation before
+comparison and emits the original terminal checkpoint, including failed/cancelled outcomes.
+Without current approval authority it performs no baseline comparison and preserves the
+`reviewed-runtime-baseline-missing` blocker. Where the prospective measurement contract applies,
+its public component says `measured-but-uncompared` and `not-observed`, and omits private input
+commitments. Original attestation or selection-integrity failures remain errors. This exception
+applies only to evidence collection; authorize/start still require current approval, and retrying
+finish cannot renew approval or change retained bytes.
+
+Original-evidence consumers dispatch these uncompared reports separately from reports that claim
+an authenticated comparison. They authenticate the retained original candidate capsule, private
+selection, terminal checkpoint, and supervisor chain, then exactly recompute the blocked public
+projection. They do not reacquire baseline approval or admit a failed/cancelled execution as a
+valid numerical candidate. Missing private context remains a blocker; altered component fields
+or a rebound observation fail verification. Sealed reports retain private-product verification.
+
+Approval authentication checks preparation ordering and independently fetched versus original
+job-completion timestamps before current applicability. An inconsistency raises
+`runtime-approval-original-job-integrity-invalid`; even simultaneous expiry cannot convert it
+into an eligibility fallback or a successful terminal report.
+
+Revocation and supersession markers are checked only after original integrity and selected-scope
+verification. Private proposal reads verify retained bytes without deciding current eligibility;
+this permits full reference recomputation and original approval authentication before a terminal
+fallback. Both approval production and current-use authentication still enforce the markers.
+A marker cannot hide invalid references, substituted proposal bytes, mismatched policy/context,
+or inconsistent original job timestamps. Regressions exercise both marker types, including
+simultaneous denial and invalid original evidence.
+
+The terminal-lifecycle regression reproduced the original expiry failure before the fix. The
+focused baseline suite now passes 52 tests, with 14 ledger, 12 sealed handoff/measurement, and 23
+projection tests passing separately. Lifecycle tests exercise real terminal file ownership,
+journal/checkpoint checks, retention, projection, and retry while isolating original-provider
+approval responses. No protected execution or external approval is implied. The fixed-cutoff
+successor assessments are retained separately in `build/pr308-phase12-terminal-fix` and
+`build/pr308-phase12-terminal-consumer-fix`. Original-consumer tests reproduce complete, failed,
+and cancelled report consumption through actual original member verification and exact projection,
+with synthetic network-provider responses. The new consumer and approval-integrity regressions
+both failed against the pre-fix code and pass with the corrections.
+The further revocation-ordering assessment is retained at
+`build/pr308-phase12-revocation-integrity-fix`, using the same original cutoff.
+
 Online original authentication is an explicit protected step. Pure arithmetic performs no network fetch. Offline verification requires the verified original inputs and private context; absent proofs yield a blocker rather than a substituted public assertion.
 
 ## Fixed protected operations

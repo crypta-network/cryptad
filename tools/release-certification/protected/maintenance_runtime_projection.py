@@ -381,6 +381,30 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None,
     return result
 
 
+def without_current_baseline(value, scope):
+    """Keep terminal measurements public-safe without asserting current baseline authority."""
+    validate(value)
+    if value['schemaVersion'] not in {2, 3, 4}:
+        return value
+    from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
+    admission = validate_authenticated_comparison({
+        'schemaVersion': 1, 'kind': 'authenticated-runtime-baseline-comparison',
+        'numericComparison': 'measured-but-uncompared', 'referenceProvenance': 'missing',
+        'approvalAuthentication': 'missing', 'preselectionBinding': 'missing',
+        'originalCandidateObservation': 'missing', 'applicability': 'inapplicable',
+        'scopedPerformanceVerdict': 'blocked', 'claim': 'runtime-within-reviewed-bounds',
+        'status': 'not-observed', 'scope': scope, 'evidenceClass': 'synthetic',
+        'reasons': ['runtime-baseline-approval-missing'], 'fullAppBudgets': 'not-observed',
+        'releaseEligible': False})
+    result = json.loads(json.dumps(value))
+    result.update(runtimeBaselineBaseVersion=result['schemaVersion'], schemaVersion=5,
+                  runtimeBaselineAdmission=admission)
+    if result.get('runtimeComponents') is not None:
+        for key in ('workloadDigest', 'seriesDigest', 'evidenceDigest'):
+            result['runtimeComponents'].pop(key)
+    return validate(result)
+
+
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
     if isinstance(value, dict) and value.get("schemaVersion") == 5:

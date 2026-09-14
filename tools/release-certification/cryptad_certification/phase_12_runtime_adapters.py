@@ -543,7 +543,8 @@ _ORIGINAL_SUPERVISOR = object()
 
 class _AuthenticatedSupervisor:
     """Immutable result of the existing original-report verifier and bounded lineage reads."""
-    def __init__(self, reports, authority=None, *, private_products=None, runtime_baseline=None, baseline_binding=None):
+    def __init__(self, reports, authority=None, *, private_products=None, runtime_baseline=None, baseline_binding=None,
+                 runtime_observation=None):
         if authority is not _ORIGINAL_SUPERVISOR:
             raise ValueError("phase12-runtime-original-supervisor-required")
         self._reports = json.dumps(reports, sort_keys=True, separators=(",", ":"))
@@ -558,6 +559,11 @@ class _AuthenticatedSupervisor:
                 raise ValueError("phase12-runtime-baseline-original-context-required")
         self._runtime_baseline = runtime_baseline
         self._baseline_binding = json.dumps(baseline_binding, sort_keys=True)
+        if runtime_observation is not None:
+            owner = _protected("runtime_baseline_admission")
+            if not isinstance(runtime_observation, owner.OriginalRuntimeObservation):
+                raise ValueError("phase12-runtime-original-observation-required")
+        self._runtime_observation = runtime_observation
 
     def reports(self):
         return json.loads(self._reports)
@@ -714,16 +720,31 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                     result["dimensions"].update(runtimeExecution="partial", coverage="partial")
                     return result
                 baseline_arguments = {}
+                uncompared_scope = None
                 if original["schemaVersion"] == 5:
-                    if authority._runtime_baseline is None:
+                    if original['runtimeBaselineAdmission']['approvalAuthentication'] == 'missing':
+                        if authority._runtime_observation is None:
+                            result['blockers'].append('runtime-baseline-private-original-context-required')
+                            return result
+                        observed = authority._runtime_observation.values()
+                        if (observed['planDigest'] != soak.digest(plan)
+                                or observed['checkpointDigest'] != soak.digest(values['checkpoint.json'])
+                                or observed['origin'] != authority.reports()[0]['origin']
+                                or not isinstance(observed['selection'], dict)):
+                            raise ValueError('maintenance-terminal-observation-substituted')
+                        uncompared_scope = observed['selection']['scope']
+                    elif authority._runtime_baseline is None:
                         result["blockers"].append("runtime-baseline-private-original-context-required")
                         result["dimensions"].update(runtimeExecution="partial", coverage="partial")
                         return result
-                    baseline_arguments = {"authenticated_baseline": authority._runtime_baseline,
-                                          "baseline_binding": json.loads(authority._baseline_binding)}
+                    else:
+                        baseline_arguments = {"authenticated_baseline": authority._runtime_baseline,
+                                              "baseline_binding": json.loads(authority._baseline_binding)}
                 measured = owner.project(plan, values["events.json"], values["checkpoint.json"],
                     private_products if private_products is not None else values["products.json"], now=evaluated,
                     **({"public_products": values["products.json"]} if private_products is not None else {}), **baseline_arguments)
+                if uncompared_scope is not None:
+                    measured = owner.without_current_baseline(measured, uncompared_scope)
                 if final.get("schemaVersion") not in {2, 3, 4, 5, 6} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
                 if original["schemaVersion"] in {2, 3, 4, 5}:
@@ -915,7 +936,7 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                     private_products = product_owner.AuthenticatedProducts(product_owner._SEAL,
                         soak.digest(values["plan.json"]), rows)
                     openings.callback(private_products.close)
-                runtime_baseline, baseline_binding = None, None
+                runtime_baseline, baseline_binding, runtime_observation = None, None, None
                 if chain[0]["report"].get("schemaVersion") == 6:
                     baseline_owner = _protected("runtime_baseline_admission")
                     approval_owner = _protected("runtime_baseline_approval")
@@ -925,18 +946,23 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                         root / 'baseline-candidate', cutoff=as_of)
                     original_measurement = chain[0]['report']['maintenanceMeasurements']
                     selected = bundle['privateConfig']['runtimeBaseline']
-                    proposal, approval, references = baseline_owner.authenticate_selected(selected, root / 'baseline-originals', cutoff=as_of)
-                    # Current eligibility is checked above. Exact original report recomputation
-                    # retains its original cutoff, rather than silently rebuilding history now.
-                    runtime_baseline = baseline_owner.admit_candidate(proposal, approval, selected, observed,
-                        cutoff=original_measurement['evaluationCutoff'], original_references=references)
-                    observed_values = observed.values()
-                    baseline_binding = {key: observed_values[key] for key in
-                        ('planDigest', 'activationDigest', 'role', 'epoch', 'checkpointDigest')}
-                    baseline_binding.update({key: observed_values['series']['fingerprint'][key]
-                                             for key in ('sourceCommit', 'productDigest')})
+                    if original_measurement['runtimeBaselineAdmission']['approvalAuthentication'] == 'missing':
+                        # Authenticate the original execution and private selection, not a fresh
+                        # approval. The consumer must exactly reproduce the blocked projection.
+                        runtime_observation = observed
+                    else:
+                        proposal, approval, references = baseline_owner.authenticate_selected(selected, root / 'baseline-originals', cutoff=as_of)
+                        # Current eligibility is checked above. Exact original report recomputation
+                        # retains its original cutoff, rather than silently rebuilding history now.
+                        runtime_baseline = baseline_owner.admit_candidate(proposal, approval, selected, observed,
+                            cutoff=original_measurement['evaluationCutoff'], original_references=references)
+                        observed_values = observed.values()
+                        baseline_binding = {key: observed_values[key] for key in
+                            ('planDigest', 'activationDigest', 'role', 'epoch', 'checkpointDigest')}
+                        baseline_binding.update({key: observed_values['series']['fingerprint'][key]
+                                                 for key in ('sourceCommit', 'productDigest')})
                 authority = _AuthenticatedSupervisor(chain, _ORIGINAL_SUPERVISOR, private_products=private_products,
-                    runtime_baseline=runtime_baseline, baseline_binding=baseline_binding)
+                    runtime_baseline=runtime_baseline, baseline_binding=baseline_binding, runtime_observation=runtime_observation)
             result = verify_authenticated(adapter, payloads, as_of, scratch, authority)
             if adapter == "migration-observation" and "migration-original-execution-time-unavailable" in result["blockers"]:
                 result["originalProof"] = {"state": "unverified", "scope": "original-migration-execution-time-unavailable",
