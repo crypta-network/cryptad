@@ -15,6 +15,7 @@ import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
@@ -150,6 +151,24 @@ public final class ContentApiHandler {
    */
   public Map<String, Object> fetch(
       Map<String, List<String>> parameters, String appId, RuntimeWorkObservation.Operation parent) {
+    return fetch(parameters, appId, parent, null);
+  }
+
+  /**
+   * Fetches while retaining a composed owner's reservation until native work terminates.
+   *
+   * @param parameters validated route fields
+   * @param appId authenticated billing scope
+   * @param parent native parent context, absent for independent requests
+   * @param reservation native outer reservation, absent for independent requests; the caller owns
+   *     closing and committing it
+   * @return bounded response
+   */
+  public Map<String, Object> fetch(
+      Map<String, List<String>> parameters,
+      String appId,
+      RuntimeWorkObservation.Operation parent,
+      AppNetworkBudgetReservation reservation) {
     FetchRequest request;
     try {
       request = parseRequest(parameters);
@@ -164,7 +183,7 @@ public final class ContentApiHandler {
     try (var lease = acquireBudget(appId, parent)) {
       BoundedContentFetchResult result;
       observeFetch(RuntimeWorkObservation.Kind.FETCH_INVOKED, lease, appId);
-      result = fetchContent(request, lease, appId, parent);
+      result = fetchContent(request, lease, appId, parent, reservation);
       observeFetch(RuntimeWorkObservation.Kind.FETCH_SUCCEEDED, lease, appId);
       byte[] bytes = result.bytes();
       if (bytes.length > request.maxBytes()) {
@@ -240,7 +259,8 @@ public final class ContentApiHandler {
       FetchRequest request,
       AppNetworkBudgetLease lease,
       String appId,
-      RuntimeWorkObservation.Operation parent) {
+      RuntimeWorkObservation.Operation parent,
+      AppNetworkBudgetReservation reservation) {
     try {
       return contentFetchPort.fetchContent(
           new BoundedContentFetchRequest(
@@ -265,6 +285,9 @@ public final class ContentApiHandler {
                 .thenRun(
                     () -> observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId));
         lease.deferUntil(terminal);
+        if (reservation != null) {
+          reservation.deferUntil(terminal);
+        }
       } else {
         observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
       }

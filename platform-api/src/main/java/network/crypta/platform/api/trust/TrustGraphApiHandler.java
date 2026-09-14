@@ -433,7 +433,8 @@ public final class TrustGraphApiHandler {
       if (documentJson == null && uri != null) {
         try (var importReservation = reserveTrustGraphImportBudget(appId, operation)) {
           documentJson =
-              fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri, operation);
+              fetchPreviewDocument(
+                  queryParameters, contentFetchPort, appId, uri, operation, importReservation);
           sourceUri = uri;
           parseObserved(documentJson, operation);
           commitTrustGraphImportBudget(importReservation);
@@ -537,7 +538,8 @@ public final class TrustGraphApiHandler {
                         "purpose",
                         List.of("trust-graph-import")),
                     budgetAppId(appId),
-                    operation);
+                    operation,
+                    importReservation);
         Object contentText = fetched.get("contentText");
         if (!(contentText instanceof String documentJson)) {
           throw new PlatformApiException(
@@ -582,7 +584,8 @@ public final class TrustGraphApiHandler {
       ContentFetchPort contentFetchPort,
       String appId,
       String uri,
-      RuntimeWorkObservation.Operation operation) {
+      RuntimeWorkObservation.Operation operation,
+      AppNetworkBudgetReservation importReservation) {
     if (contentFetchPort == null) {
       throw new PlatformApiException(
           503, "content_fetch_failed", "Content fetch service is unavailable.");
@@ -604,7 +607,8 @@ public final class TrustGraphApiHandler {
                     "purpose",
                     List.of("trust-graph-import-preview")),
                 budgetAppId(appId),
-                operation);
+                operation,
+                importReservation);
     Object contentText = fetched.get("contentText");
     if (!(contentText instanceof String documentJson)) {
       throw new PlatformApiException(

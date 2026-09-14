@@ -11,6 +11,7 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetSnapshot;
 import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appui.AppUiOriginRegistry;
@@ -26,6 +27,9 @@ import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -245,8 +249,9 @@ class TrustGraphApiRouterTest {
     assertEquals(0, budgets.diagnostics().activeFamilyLeases());
   }
 
-  @Test
-  void failedTerminalAcknowledgmentDoesNotReleaseUnknownNativeWork() {
+  @ParameterizedTest
+  @ValueSource(strings = {"import-uri", "import-preview-uri"})
+  void failedTerminalAcknowledgmentDoesNotReleaseUnknownNativeWork(String route) {
     var terminal = new java.util.concurrent.CompletableFuture<Void>();
     var budgets = trustImportBudget(10, 100);
     ContentFetchPort fetch =
@@ -263,58 +268,110 @@ class TrustGraphApiRouterTest {
     router.route(
         request(
             "POST",
-            List.of("trust-graph", "import-uri"),
+            List.of("trust-graph", route),
             Map.of("uri", List.of("CHK@private-canary")),
             PlatformApiPrincipal.appBrowserSession(
                 APP_ID, List.of("trust.write", "content.fetch"))));
 
     terminal.completeExceptionally(new IllegalStateException("synthetic owner unavailable"));
 
-    assertEquals(2, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(4, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(2, budgets.diagnostics().reservedFamilyRates());
     assertFalse(
         budgets.observation().snapshot().events().stream()
             .anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
   }
 
-  @Test
-  void uriTimeoutRetainsFetchCapacityUntilNativeOwnerAcknowledgesTermination() {
+  @ParameterizedTest
+  @CsvSource({
+    "import-uri,catalog_fetch_timeout,504,false",
+    "import-uri,catalog_fetch_timeout,504,true",
+    "import-preview-uri,catalog_fetch_timeout,504,false",
+    "import-preview-uri,catalog_fetch_timeout,504,true",
+    "import-uri,catalog_fetch_failed,502,false",
+    "import-uri,catalog_fetch_failed,502,true",
+    "import-preview-uri,catalog_fetch_failed,502,false",
+    "import-preview-uri,catalog_fetch_failed,502,true"
+  })
+  void uriFailureRetainsComposedCapacityUntilNativeOwnerAcknowledgesTermination(
+      String route, String errorCode, int status, boolean globalLimit) {
     var terminal = new java.util.concurrent.CompletableFuture<Void>();
-    var budgets = trustImportBudget(10, 100);
+    var budgets =
+        new AppNetworkBudgetService(
+            new InMemoryAppNetworkBudgetStore(),
+            new AppNetworkBudgetConfig(
+                20, 100, 2, 16, 48, 1024, 1, 8, 10, 1024, 1, globalLimit ? 1 : 8),
+            FIXED_CLOCK);
+    var calls = new AtomicInteger();
     ContentFetchPort fetch =
-        _ -> {
-          throw new network.crypta.runtime.spi.ContentFetchException(
-              network.crypta.runtime.spi.ContentFetchException.CATALOG_FETCH_TIMEOUT,
-              "synthetic timeout",
+        request -> {
+          if (calls.getAndIncrement() == 0) {
+            throw new network.crypta.runtime.spi.ContentFetchException(
+                errorCode,
+                "synthetic bounded wait failure",
+                null,
+                terminal.minimalCompletionStage());
+          }
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
               null,
-              terminal.minimalCompletionStage());
+              null);
         };
     var router =
         router(
             fetch, new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgets));
+    var initial =
+        request(
+            "POST",
+            List.of("trust-graph", route),
+            Map.of("uri", List.of("CHK@private-canary")),
+            PlatformApiPrincipal.appBrowserSession(
+                APP_ID, List.of("trust.write", "content.fetch")));
 
-    var response =
+    var response = router.route(initial);
+
+    assertEquals(status, response.statusCode());
+    assertEquals(4, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(2, budgets.diagnostics().reservedFamilyRates());
+    var denied =
         router.route(
             request(
                 "POST",
-                List.of("trust-graph", "import-uri"),
+                List.of("trust-graph", route),
                 Map.of("uri", List.of("CHK@private-canary")),
                 PlatformApiPrincipal.appBrowserSession(
-                    APP_ID, List.of("trust.write", "content.fetch"))));
-
-    assertEquals(504, response.statusCode());
-    assertEquals(2, budgets.diagnostics().activeFamilyLeases());
-    assertEquals(0, budgets.diagnostics().reservedFamilyRates());
+                    globalLimit ? "other-app" : APP_ID, List.of("trust.write", "content.fetch"))));
+    assertEquals(429, denied.statusCode());
+    assertTrue(denied.body().contains("trust_graph_import_concurrency_limited"));
+    assertEquals(1, calls.get());
     assertFalse(
         budgets.observation().snapshot().events().stream()
             .anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
+    if (!globalLimit) {
+      try (var other = budgets.reserve("other-app", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+        assertTrue(other.allowed());
+      }
+    }
     terminal.complete(null);
     assertEquals(0, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(0, budgets.diagnostics().reservedFamilyRates());
     assertTrue(
         budgets.observation().snapshot().events().stream()
             .anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
-    var charged = budgets.diagnostics().usage();
+    assertEquals(
+        0,
+        budgets.diagnostics().usage().stream()
+            .filter(row -> row.operation() == AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)
+            .mapToInt(AppNetworkBudgetSnapshot::count)
+            .sum());
+    var charged = budgets.diagnostics().usage().stream().filter(row -> row.count() > 0).toList();
     assertEquals(2, charged.size());
     assertTrue(charged.stream().allMatch(row -> row.count() == 1));
+    assertEquals(200, router.route(initial).statusCode());
+    assertEquals(2, calls.get());
+    assertEquals(0, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(0, budgets.diagnostics().reservedFamilyRates());
   }
 
   @Test

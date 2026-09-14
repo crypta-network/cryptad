@@ -65,7 +65,7 @@ trusted native authentication, never a caller's app-ID field.
 | Import reserve denied | No invocation | No allowed charge | None |
 | URI invalid before fetch acquisition | None | Temporary hold released | None |
 | Child fetch budget denied | No invocation | Uncommitted hold released | None |
-| Fetch admitted then timeout, oversized body or invalid UTF-8 | Retained | Uncommitted hold released | None |
+| Fetch admitted then timeout, oversized body or invalid UTF-8 | Retained | Uncommitted hold released after native termination; uncertain fetches defer release | None |
 | URI import: bounded UTF-8 then malformed statement | Retained | Committed before parse; retained | Parser rejects |
 | URI import: stale expected fingerprint | Retained | Committed before comparison; retained | No accepted store result |
 | URI preview: malformed direct root | Retained | Root check precedes commit; no import charge | None |
@@ -104,9 +104,12 @@ it is not an abrupt packaged-daemon termination observation.
 
 A client disconnect, response timeout, interrupted caller and actual runtime cessation are distinct.
 The bounded native adapter now attaches an owner-terminal acknowledgment to timeout/interruption
-failures. Foreground fetch leases and subscription reservations defer release until that acknowledgment
-completes normally; runtime activity follows the same boundary. The URI request may finish failed
-and release its unused import reservation while its child fetch still holds fetch concurrency.
+failures. Foreground fetch leases, subscription reservations and outer URI import/preview reservations
+defer release until that acknowledgment completes normally; runtime activity follows the same
+boundary. The URI response may finish failed while both the uncommitted import reservation and
+child fetch concurrency remain held. This prevents retries from overbooking import capacity while
+the first native fetch still runs. Normal acknowledgment releases the transient holds without an
+import quota commit or refund of the already charged fetch.
 
 `FETCH_TERMINATION_UNKNOWN` records the unresolved interval. Normal owner completion records child
 `FETCH_FAILED` before deferred hold release. An absent callback or exceptionally completed
@@ -351,6 +354,19 @@ warnings, including the new acknowledgment overload following the existing valid
 pattern. The actual full-build compiler log contains no warning for changed tracked Java files;
 retained Error Prone XML exports remain older and cannot establish fresh report cleanliness.
 No fresh Sonar analysis or independent security review is claimed.
+
+The later composed-owner termination review reproduced ten URI import/preview cases that released
+import holds while the fetch owner remained unresolved. The handler now passes the native outer
+reservation to the content-fetch path, which defers both owners before translating the failure.
+All 1,290 API tests passed with no skips, including app/global admission denial, exceptional owner
+acknowledgment and useful recovery after normal acknowledgment. These timing cases use native-port
+fixtures and do not claim a packaged network timeout. The corrected shared
+`test build :platform-devtools:installDist assembleCryptadDist` run passed in 7m 22s; the resulting
+JUnit inventory contains 17,405 tests, zero failures/errors and the ten existing skips described
+above. Focused API SpotBugs reports no findings in the two changed handlers; module-wide existing
+findings remain.
+Both packaged app-budget regression tests then passed against the rebuilt distribution in
+237.839s with zero skips, preserving normal route, restart/retry and shared-family recovery checks.
 
 ## Fixed-cutoff assessment disposition
 
