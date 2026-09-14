@@ -88,7 +88,7 @@ class OriginalRuntimeContextTest(unittest.TestCase):
 
     def test_context_is_bound_to_exact_product_and_lifetime(self):
         with tempfile.TemporaryDirectory() as directory:
-            package = Path(directory) / 'package'
+            package = Path(directory).resolve() / 'package'
             package.write_bytes(b'public product')
             freeze = {'schemaVersion': 3, 'runtimeMetadata': {'digest': 'original'}}
             binding = {'descriptor': freeze['runtimeMetadata'], 'ciphertextDigest': 'sha256:' + 'a' * 64}

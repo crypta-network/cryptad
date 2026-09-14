@@ -17,7 +17,7 @@ class CompanionTransportTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.source = self.root / 'private'
         self.source.mkdir(mode=0o700)
         self.files = {name: json.dumps({'private-canary': name}).encode() for name in companion.MEMBERS}

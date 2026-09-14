@@ -12,7 +12,7 @@ class RuntimeInputsTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         self.intake = self.root / "intake"
         self.intake.mkdir()
         self.coordinates = {"repository": "crypta-network/cryptad", "sourceFamily": "app-subject-projection",

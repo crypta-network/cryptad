@@ -11,7 +11,7 @@ import app_subject_projection as projection
 class NativeIsolationTest(unittest.TestCase):
     def test_native_tool_cannot_read_parent_key_or_host_config(self):
         with tempfile.TemporaryDirectory() as temporary:
-            parent = Path(temporary)
+            parent = Path(temporary).resolve()
             root, tools, jdk = (parent / name for name in ('private-inputs', 'tools', 'jdk'))
             for path in (root, tools, jdk):
                 path.mkdir(mode=0o700)
@@ -37,7 +37,7 @@ class NativeIsolationTest(unittest.TestCase):
 
     def test_local_input_outside_invocation_is_rejected_before_execution(self):
         with tempfile.TemporaryDirectory() as temporary:
-            parent = Path(temporary)
+            parent = Path(temporary).resolve()
             root, tools, jdk = (parent / name for name in ('input', 'tools', 'jdk'))
             for path in (root, tools, jdk):
                 path.mkdir()

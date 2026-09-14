@@ -24,7 +24,7 @@ class ServiceHandoffTest(unittest.TestCase):
         products = importlib.import_module('cross_version_product_admission')
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         package = self.root / 'package'
         package.write_bytes(b'authenticated synthetic package')
         identity = 'sha256:' + hashlib.sha256(package.read_bytes()).hexdigest()
