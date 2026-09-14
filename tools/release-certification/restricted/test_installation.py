@@ -65,7 +65,7 @@ class InstallationArtifactTests(unittest.TestCase):
         with self.assertRaises(installation.InstallationError):
             installation.inventory(self.root)
 
-    def test_plan_records_clean_committed_source(self):
+    def committed_source(self):
         source = self.root / 'source'
         source.mkdir()
         (source / 'module.py').write_text('VALUE = 1\n')
@@ -73,12 +73,80 @@ class InstallationArtifactTests(unittest.TestCase):
                           ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
                            'commit', '--quiet', '-m', 'fixture']):
             subprocess.run(['git', *arguments], cwd=source, check=True, capture_output=True)
+        return source
+
+    def test_plan_records_clean_committed_source(self):
+        source = self.committed_source()
         output = self.root / 'bundle'
         result = installation.plan(source, output)
         verified = installation.verify_bundle(output, result['bundleIdentity'], protected=False)
         self.assertEqual(result['sourceCommit'], verified['sourceCommit'])
         self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
         self.assertFalse((output / '.git').exists())
+
+    def test_assume_unchanged_substitution_does_not_enter_bundle(self):
+        source = self.committed_source()
+        subprocess.run(['git', 'update-index', '--assume-unchanged', 'module.py'], cwd=source, check=True)
+        (source / 'module.py').write_text('SUBSTITUTED = True\n')
+        status = subprocess.run(['git', 'status', '--porcelain'], cwd=source, check=True, capture_output=True)
+        self.assertEqual(b'', status.stdout)
+        output = self.root / 'bundle'
+        installation.plan(source, output)
+        self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
+
+    def test_change_after_status_cannot_substitute_bytes_or_executable_mode(self):
+        source = self.committed_source()
+        original_run = subprocess.run
+        def race(arguments, **kwargs):
+            result = original_run(arguments, **kwargs)
+            if arguments[1] == 'status':
+                (source / 'module.py').write_text('SUBSTITUTED = True\n')
+                (source / 'module.py').chmod(0o755)
+            return result
+        output = self.root / 'bundle'
+        with patch.object(installation.subprocess, 'run', side_effect=race):
+            installation.plan(source, output)
+        self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
+        self.assertFalse((output / 'module.py').stat().st_mode & 0o111)
+
+    def test_replacement_blob_is_ignored(self):
+        source = self.committed_source()
+        oid = subprocess.check_output(['git', 'rev-parse', 'HEAD:module.py'], cwd=source).decode().strip()
+        replacement = subprocess.check_output(['git', 'hash-object', '-w', '--stdin'],
+                                              cwd=source, input=b'SUBSTITUTED = True\n').decode().strip()
+        subprocess.run(['git', 'replace', oid, replacement], cwd=source, check=True)
+        output = self.root / 'bundle'
+        installation.plan(source, output)
+        self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
+
+    def test_head_movement_after_revision_capture_does_not_change_export(self):
+        source = self.committed_source()
+        revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source).decode().strip()
+        original_run = subprocess.run
+        def move_head(arguments, **kwargs):
+            result = original_run(arguments, **kwargs)
+            if arguments[1] == 'rev-parse':
+                (source / 'module.py').write_text('NEXT_COMMIT = True\n')
+                original_run(['git', 'add', 'module.py'], cwd=source, check=True)
+                original_run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                              'commit', '--quiet', '-m', 'concurrent fixture commit'], cwd=source, check=True)
+            return result
+        output = self.root / 'bundle'
+        with patch.object(installation.subprocess, 'run', side_effect=move_head):
+            result = installation.plan(source, output)
+        self.assertEqual(revision, result['sourceCommit'])
+        self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
+
+    def test_committed_symlink_rejected_and_partial_export_removed(self):
+        source = self.committed_source()
+        (source / 'linked.py').symlink_to('module.py')
+        subprocess.run(['git', 'add', 'linked.py'], cwd=source, check=True)
+        subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '--quiet', '-m', 'link fixture'], cwd=source, check=True)
+        output = self.root / 'bundle'
+        with self.assertRaisesRegex(installation.InstallationError, 'source-entry-invalid'):
+            installation.plan(source, output)
+        self.assertFalse(output.exists())
 
     def test_plan_rejects_dirty_source_before_output_creation(self):
         source = self.root / 'source'

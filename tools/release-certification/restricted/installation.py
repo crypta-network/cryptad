@@ -113,34 +113,24 @@ def inventory(root, *, protected=False):
 
 
 def plan(source, output):
-    """Snapshot an exact clean committed source tree for subsequent separate approval."""
+    """Export a pinned committed Git tree for subsequent separate approval."""
     source, output = Path(source).resolve(), Path(output).absolute()
     if output.exists() or output.is_relative_to(source):
         raise InstallationError('restricted-plan-output-must-be-new-external-directory')
-    environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}
+    environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'GIT_NO_REPLACE_OBJECTS': '1'}
     status = subprocess.run(['/usr/bin/git', 'status', '--porcelain', '--untracked-files=normal'],
                             cwd=source, env=environment, check=True, capture_output=True)
     if status.stdout:
         raise InstallationError('restricted-plan-exact-committed-source-required')
-    files = subprocess.run(['/usr/bin/git', 'ls-files', '-z'], cwd=source, env=environment,
-                           check=True, capture_output=True).stdout.split(b'\0')
-    revision = subprocess.run(['/usr/bin/git', 'rev-parse', 'HEAD'], cwd=source, env=environment,
-                              check=True, capture_output=True).stdout.decode().strip()
+    revision = subprocess.run(['/usr/bin/git', 'rev-parse', '--verify', 'HEAD^{commit}'], cwd=source,
+                              env=environment, check=True, capture_output=True).stdout.decode().strip()
+    if re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', revision) is None:
+        raise InstallationError('restricted-source-revision-invalid')
+    files = subprocess.run(['/usr/bin/git', 'ls-tree', '-r', '-z', '-l', '--full-tree', revision],
+                           cwd=source, env=environment, check=True, capture_output=True).stdout.split(b'\0')
     output.mkdir(mode=0o700)
     try:
-        for item in files:
-            if not item:
-                continue
-            relative = Path(os.fsdecode(item))
-            if relative.is_absolute() or '..' in relative.parts:
-                raise InstallationError('restricted-source-path-invalid')
-            original, target = source / relative, output / relative
-            if any(entry.is_symlink() for entry in (original, *original.parents)):
-                raise InstallationError('restricted-source-link')
-            record = file_record(original)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(original, target, follow_symlinks=False)
-            target.chmod(0o555 if record['executable'] else 0o444)
+        export_blobs(source, output, files, environment)
         manifest = {'schemaVersion': 1, 'kind': 'cryptad-restricted-installation',
                     'sourceCommit': revision, 'files': inventory(output)}
         (output / MANIFEST).write_bytes(encode(manifest))
@@ -149,6 +139,55 @@ def plan(source, output):
     except BaseException:
         shutil.rmtree(output)
         raise
+
+
+def export_blobs(source, output, files, environment):
+    """Read raw blobs without checkout filters, attributes, index flags or replacement objects."""
+    with subprocess.Popen(['/usr/bin/git', 'cat-file', '--batch'], cwd=source, env=environment,
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as process:
+        try:
+            count = 0
+            for item in files:
+                if not item:
+                    continue
+                count += 1
+                metadata, name = item.split(b'\t', 1)
+                mode, kind, oid, size_bytes = metadata.split()
+                size = int(size_bytes) if size_bytes.isdigit() else -1
+                relative = Path(os.fsdecode(name))
+                if (count > 100000 or mode not in (b'100644', b'100755') or kind != b'blob'
+                        or not 0 <= size <= MAX_FILE or relative.is_absolute()
+                        or '..' in relative.parts or relative.as_posix() == MANIFEST
+                        or re.fullmatch(b'[0-9a-f]{40}|[0-9a-f]{64}', oid) is None):
+                    raise InstallationError('restricted-source-entry-invalid')
+                process.stdin.write(oid + b'\n')
+                process.stdin.flush()
+                header = process.stdout.readline(256)
+                if header != oid + b' blob ' + str(size).encode() + b'\n':
+                    raise InstallationError('restricted-source-object-invalid')
+                target = output / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                checksum = hashlib.new('sha1' if len(oid) == 40 else 'sha256')
+                checksum.update(b'blob ' + str(size).encode() + b'\0')
+                remaining = size
+                with target.open('xb') as stream:
+                    while remaining:
+                        block = process.stdout.read(min(remaining, 1024 * 1024))
+                        if not block:
+                            raise InstallationError('restricted-source-object-truncated')
+                        stream.write(block)
+                        checksum.update(block)
+                        remaining -= len(block)
+                if process.stdout.read(1) != b'\n' or checksum.hexdigest().encode() != oid:
+                    raise InstallationError('restricted-source-object-substituted')
+                target.chmod(0o555 if mode == b'100755' else 0o444)
+            process.stdin.close()
+            if process.wait(timeout=30) != 0:
+                raise InstallationError('restricted-source-export-failed')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=30)
 
 
 def verify_bundle(bundle, expected, *, protected=True):

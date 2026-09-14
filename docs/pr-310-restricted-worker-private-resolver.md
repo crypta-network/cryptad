@@ -379,3 +379,16 @@ The dependency inventory now explicitly includes `systemd-sysusers` and `systemd
 the existing exact-byte and resolved-symlink-target checks. Older approval inventories missing
 either binary fail closed and require administrator review of a new inventory before installation.
 No provisioning is performed by these offline regressions.
+
+## Review correction: committed-object bundle provenance
+
+Planning captures one commit identity and exports that commit's tree and raw blob objects through
+Git, with replacement objects disabled. It no longer copies checkout bytes or uses index flags
+as evidence of their identity. The existing clean-status precondition remains an operator check.
+Executable modes come from the committed tree; blob object hashes are checked during export.
+Symlinks, submodules and unsupported entries reject the plan and remove its partial output.
+Checkout filters and archive attribute substitutions do not modify the exported source.
+
+Regressions cover hidden `assume-unchanged` modifications, content/mode changes after the status
+check, HEAD movement after revision capture, replacement blobs and committed symlinks. These
+checks establish source-bundle provenance, not administrator approval or deployed isolation.
