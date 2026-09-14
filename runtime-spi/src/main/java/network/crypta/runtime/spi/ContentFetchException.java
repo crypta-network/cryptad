@@ -68,6 +68,7 @@ public class ContentFetchException extends Exception {
   public ContentFetchException(String errorCode, String message) {
     super(message);
     this.errorCode = validateErrorCode(errorCode);
+    this.ownerTermination = null;
   }
 
   /**
@@ -83,6 +84,37 @@ public class ContentFetchException extends Exception {
   public ContentFetchException(String errorCode, String message, Throwable cause) {
     super(message, cause);
     this.errorCode = validateErrorCode(errorCode);
+    this.ownerTermination = null;
+  }
+
+  private final transient java.util.concurrent.CompletionStage<Void> ownerTermination;
+
+  /**
+   * Creates a failure whose asynchronous owner has not necessarily terminated.
+   *
+   * @param errorCode fixed failure code
+   * @param message diagnostic message
+   * @param cause underlying failure
+   * @param ownerTermination native owner completion acknowledgment, never caller cancellation
+   */
+  public ContentFetchException(
+      String errorCode,
+      String message,
+      Throwable cause,
+      java.util.concurrent.CompletionStage<Void> ownerTermination) {
+    super(message, cause);
+    this.errorCode = validateErrorCode(errorCode);
+    this.ownerTermination = Objects.requireNonNull(ownerTermination, "ownerTermination");
+  }
+
+  /**
+   * Returns native owner acknowledgment when return from the bounded wait is not terminal. A
+   * missing acknowledgment uses the existing synchronous port contract.
+   *
+   * @return completion acknowledgment, or null for synchronous failures
+   */
+  public java.util.concurrent.CompletionStage<Void> ownerTermination() {
+    return ownerTermination;
   }
 
   /**

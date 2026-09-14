@@ -194,3 +194,10 @@ unavailable storage from zero usage without changing the legacy tolerant `snapsh
 The measured journal can derive narrow scheduler/accounting/recovery components. The existing
 network-scale policy still requires its full Trust Graph/subscription cohort, original evidence
 and duration; a passing narrow component does not complete `app-budgets` or the RC soak summary.
+
+## Prospective composed Trust Graph accounting
+
+[PR-309's shared-budget runbook](pr-309-shared-app-network-budget-runtime.md) freezes direct,
+preview and URI charging boundaries and separates native fault tests from the finite packaged
+cohort. Causal import/fetch facts do not complete `app-budgets`, resource-baseline approval or
+long-duration soak requirements by themselves. Historical observations retain their prior scope.

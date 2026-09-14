@@ -507,7 +507,7 @@ public final class ContentSubscriptionService {
         write(skipped);
         return skipped;
       }
-      return fetchAndRecordResult(running, now, operation, budgetReservation.observationId());
+      return fetchAndRecordResult(running, now, operation, budgetReservation);
     }
   }
 
@@ -515,7 +515,8 @@ public final class ContentSubscriptionService {
       ContentSubscription running,
       Instant now,
       AppNetworkBudgetOperation operation,
-      long operationId) {
+      AppNetworkBudgetReservation budgetReservation) {
+    long operationId = budgetReservation.observationId();
     try {
       observation.recordEvent(
           RuntimeWorkObservation.Kind.FETCH_INVOKED, operation, 0, 0, operationId, 0);
@@ -567,6 +568,23 @@ public final class ContentSubscriptionService {
           success.nextCheckAt().getEpochSecond());
       return success;
     } catch (ContentFetchException exception) {
+      if (exception.ownerTermination() != null) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN, operation, 0, 0, operationId, 0);
+        var terminal =
+            exception
+                .ownerTermination()
+                .thenRun(
+                    () ->
+                        observation.recordEvent(
+                            RuntimeWorkObservation.Kind.FETCH_FAILED,
+                            operation,
+                            0,
+                            0,
+                            operationId,
+                            0));
+        budgetReservation.deferUntil(terminal);
+      }
       ContentSubscription failed =
           running.withFailure(
               now,
@@ -574,8 +592,10 @@ public final class ContentSubscriptionService {
               mappedFetchErrorCode(exception),
               "Subscription fetch failed.");
       write(failed);
-      observation.recordEvent(
-          RuntimeWorkObservation.Kind.FETCH_FAILED, operation, 0, 0, operationId, 0);
+      if (exception.ownerTermination() == null) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.FETCH_FAILED, operation, 0, 0, operationId, 0);
+      }
       observation.recordEvent(
           RuntimeWorkObservation.Kind.RETRY_SCHEDULED,
           operation,

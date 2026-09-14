@@ -1062,7 +1062,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:8762f1377eb6d93c20ddde5ac65a6e7249f737bbd5b2135449a93de9ccebc724",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
@@ -1077,7 +1077,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -1130,7 +1130,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:36e227a7652d30671376230df61c918d40015d60dc1cfebb4497c33709164b88",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -1294,7 +1294,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -1429,7 +1429,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2401,7 +2401,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:36e227a7652d30671376230df61c918d40015d60dc1cfebb4497c33709164b88",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2519,7 +2519,7 @@
         "sourceEvidence": [
           {
             "assertion": "Complete catalog-origin/channel/mirror/conflict/consent/rollback, scheduler/resource baselines and required migration/profile/Mail recovery directions before a long run.",
-            "digest": "sha256:bbac449d3ebbe29c7e674d9afafe3a78bcb4d601139b88b30488b6a29f14eb08",
+            "digest": "sha256:d8fd2e2735cb08f360e9d9f24ace37dc0a57a0b4509a4845ecd83d704bf6cfd1",
             "path": "tools/release-certification/cryptad_certification/cross_version_evidence.py"
           },
           {
@@ -2554,7 +2554,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:8762f1377eb6d93c20ddde5ac65a6e7249f737bbd5b2135449a93de9ccebc724",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
@@ -2569,7 +2569,7 @@
           },
           {
             "assertion": "PR-305 finite synthetic catalog-origin operations and original typed observation admission; broader runtime/maintenance directions remain blocked.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2604,7 +2604,7 @@
           },
           {
             "assertion": "PR-305 private selected-cohort admission and terminal native scope revocation through guarded operator routes, exact record comparison and retained authorization fences. Audited source is not protected runtime evidence.",
-            "digest": "sha256:8b2e13e62c552ec7d83bea8aa03ce3ad08eb6161c37e6192ee55dd58443b5993",
+            "digest": "sha256:ecd9e9f6c2b101d0ac7b13beb05e9ca4fb8915e5728d6344d0e9a45eef30a80b",
             "path": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java"
           },
           {
@@ -2692,7 +2692,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:36e227a7652d30671376230df61c918d40015d60dc1cfebb4497c33709164b88",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -2794,7 +2794,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify original measured journal/checkpoints/products for one qualifying continuous 72-hour epoch; never sum node-hours/disconnected segments or count fake-clock execution.",
-            "digest": "sha256:bbac449d3ebbe29c7e674d9afafe3a78bcb4d601139b88b30488b6a29f14eb08",
+            "digest": "sha256:d8fd2e2735cb08f360e9d9f24ace37dc0a57a0b4509a4845ecd83d704bf6cfd1",
             "path": "tools/release-certification/cryptad_certification/cross_version_evidence.py"
           }
         ],
@@ -2853,22 +2853,22 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate all nine measured maintenance/release-consumer rows from original products and journal; subcase labels cannot replace required adapters.",
-            "digest": "sha256:0b033b90a68e4e97bee3cb7750f9b00556535110b91d1efdee7c41826957d0df",
+            "digest": "sha256:d8198bdb796b29bce3695a670be21d997a1bb2fd777406dd99e912456e516895",
             "path": "tools/release-certification/protected/maintenance_runtime_projection.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:79466686c3440f4e1509659fa2735ce5b5053826bcd2b18cacb6000bc6e5ba83",
+            "digest": "sha256:ce770c57284a46bce961c7c3e7c9c9dc2c2f752bb98ee25e83d016e5976a02f8",
             "path": "tools/release-certification/protected/cross_version_supervisor_authority.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:355030859d3eb3ae2dca9065d6944507f5c4a804b8bbb9b905de8990d4c06ba8",
+            "digest": "sha256:8762f1377eb6d93c20ddde5ac65a6e7249f737bbd5b2135449a93de9ccebc724",
             "path": "tools/interop/cross_version_runtime.py"
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -2956,7 +2956,7 @@
           },
           {
             "assertion": "PR-304 original product/journal subject admission and derivation components; all nine parent rows retain missing adapter blockers.",
-            "digest": "sha256:bcaebc6f7495625a98425c55dd29de1faaf71ddefca6df4476b418858e67636e",
+            "digest": "sha256:35373690e74dcaf4ff811e1b05ff0a8181c1e8f57a636e5067ed0acdae498e16",
             "path": "tools/release-certification/protected/test_maintenance_runtime_projection.py"
           },
           {
@@ -2991,7 +2991,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:36e227a7652d30671376230df61c918d40015d60dc1cfebb4497c33709164b88",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3808,7 +3808,7 @@
           },
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:5928f14c757e7e12b487363574e6ee19b68d360ed8bbf6b9abdee8dc8baa1a05",
+            "digest": "sha256:d702ff912c90d43a25f8255f589110462106a09dc33bca976eaf3de542ef3a74",
             "path": "tools/release-certification/cryptad_certification/phase_12_runtime_adapters.py"
           },
           {
@@ -3908,7 +3908,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:247bfb82f10d4d73ab381347e228f842f0c9b479f83c82ba73d384ce4cc2b7d6",
+            "digest": "sha256:36e227a7652d30671376230df61c918d40015d60dc1cfebb4497c33709164b88",
             "path": ".github/workflows/ci.yml"
           },
           {

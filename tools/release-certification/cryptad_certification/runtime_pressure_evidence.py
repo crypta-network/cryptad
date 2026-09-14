@@ -58,8 +58,16 @@ def validate(value, *, workload_digest, observation_time=None):
               'series', 'policy', 'workEvents', 'contentFetchSamples', 'budgetValid', 'droppedEvents'}
     if isinstance(value, dict) and 'baseline' in value:
         fields.add('baseline')
+    version = value.get('schemaVersion') if isinstance(value, dict) else None
+    kinds = KINDS
+    if version == 2:
+        from .composed_budget_evidence import COMPOSED_KINDS
+        fields.add('collectorEpoch')
+        kinds = KINDS | COMPOSED_KINDS
+        if not re.fullmatch('[0-9a-f-]{36}', str(value.get('collectorEpoch'))):
+            raise RuntimeEvidenceError('runtime-evidence-collector-epoch-invalid')
     _closed(value, fields, 'runtime-evidence-fields-invalid')
-    if (type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2}
             or value['workloadDigest'] != workload_digest
             or any(not baseline.DIGEST.fullmatch(str(value[key])) for key in ('workloadDigest', 'collectorDigest', 'configurationDigest'))
             or type(value['budgetValid']) is not bool or not _number(value['droppedEvents'])):
@@ -88,7 +96,7 @@ def validate(value, *, workload_digest, observation_time=None):
     previous = None
     for event in events:
         _closed(event, EVENT_FIELDS, 'runtime-native-event-fields-invalid')
-        if (event['kind'] not in KINDS or event['operation'] not in OPERATIONS
+        if (event['kind'] not in kinds or event['operation'] not in OPERATIONS
                 or any(not _number(event[key]) for key in EVENT_FIELDS - {'observedAt', 'kind', 'operation', 'sourceEpoch'})
                 or event['sequence'] < 1
                 or event['sourceEpoch'] is not None and (not isinstance(event['sourceEpoch'], str) or not re.fullmatch(r'[a-zA-Z0-9._-]{1,96}', event['sourceEpoch']))):

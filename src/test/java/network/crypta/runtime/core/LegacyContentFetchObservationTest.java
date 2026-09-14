@@ -43,7 +43,7 @@ class LegacyContentFetchObservationTest {
   }
 
   @Test
-  void interruptCancelsNativeGetterAndReleasesObservedActivity() throws Exception {
+  void interruptKeepsObservedActivityUntilNativeCancellationAcknowledgment() throws Exception {
     NodeClientCore core = mock(NodeClientCore.class);
     HighLevelSimpleClient client =
         mock(HighLevelSimpleClient.class, withSettings().extraInterfaces(RequestClient.class));
@@ -54,9 +54,11 @@ class LegacyContentFetchObservationTest {
     when(core.makeClient(anyShort(), eq(false), eq(false))).thenReturn(client);
     when(client.getFetchContext()).thenReturn(fetchContext);
     CountDownLatch started = new CountDownLatch(1);
+    AtomicReference<ClientGetCallback> nativeCallback = new AtomicReference<>();
     when(client.fetch(any(FreenetURI.class), anyLong(), any(), any(), anyShort()))
         .thenAnswer(
-            _ -> {
+            invocation -> {
+              nativeCallback.set(invocation.getArgument(2));
               started.countDown();
               return getter;
             });
@@ -82,13 +84,28 @@ class LegacyContentFetchObservationTest {
       worker.interrupt();
       worker.join(5000);
       assertFalse(worker.isAlive());
-      assertInstanceOf(ContentFetchException.class, outcome.get());
+      var failure = assertInstanceOf(ContentFetchException.class, outcome.get());
+      verify(getter).cancel(context);
+      assertEquals(1, port.observation().inFlightOperations());
+      assertEquals(0, port.observation().failedOperations());
+      assertNotNull(failure.ownerTermination());
+      assertFalse(failure.ownerTermination().toCompletableFuture().isDone());
+
+      nativeCallback
+          .get()
+          .onFailure(new FetchException(FetchException.FetchExceptionMode.CANCELLED));
+
+      assertTrue(failure.ownerTermination().toCompletableFuture().isDone());
       assertEquals(0, port.observation().inFlightOperations());
       assertEquals(1, port.observation().failedOperations());
-      verify(getter).cancel(context);
     } finally {
       worker.interrupt();
       worker.join(5000);
+      if (nativeCallback.get() != null) {
+        nativeCallback
+            .get()
+            .onFailure(new FetchException(FetchException.FetchExceptionMode.CANCELLED));
+      }
     }
   }
 
@@ -122,20 +139,21 @@ class LegacyContentFetchObservationTest {
     NativeFixture fixture = new NativeFixture();
     fixture.completeSuccessfully();
     IOException failure = new IOException("write failed");
-    OutputStream destination =
+    try (OutputStream destination =
         new OutputStream() {
           @Override
           public void write(int value) throws IOException {
             throw failure;
           }
-        };
+        }) {
 
-    IOException actual =
-        assertThrows(
-            IOException.class, () -> fixture.port.fetchContent(fixture.request, destination));
+      IOException actual =
+          assertThrows(
+              IOException.class, () -> fixture.port.fetchContent(fixture.request, destination));
 
-    assertSame(failure, actual);
-    assertCompleted(fixture.port, false);
+      assertSame(failure, actual);
+      assertCompleted(fixture.port, false);
+    }
   }
 
   @Test

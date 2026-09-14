@@ -173,7 +173,23 @@ public final class AppNetworkBudgetService {
    */
   public synchronized AppNetworkBudgetDecision acquire(
       String appId, AppNetworkBudgetOperation operation) {
+    return acquire(appId, operation, null);
+  }
+
+  /**
+   * Performs native admission with an explicit composed parent.
+   *
+   * @param appId authenticated scope
+   * @param operation selected budget operation
+   * @param parent server-created parent, or null for independent work
+   * @return admission result
+   */
+  public synchronized AppNetworkBudgetDecision acquire(
+      String appId, AppNetworkBudgetOperation operation, RuntimeWorkObservation.Operation parent) {
     long operationId = observation.nextOperation();
+    if (parent != null) {
+      parent.child(operationId);
+    }
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
     AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
     observation.recordEvent(
@@ -201,7 +217,7 @@ public final class AppNetworkBudgetService {
         return concurrencyDecision;
       }
       AppNetworkBudgetDecision rateDecision =
-          rateDecision(normalizedAppId, checkedOperation, now, rateLimits);
+          rateDecision(normalizedAppId, checkedOperation, now, rateLimits, operationId);
       if (!rateDecision.allowed()) {
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
@@ -252,7 +268,7 @@ public final class AppNetworkBudgetService {
           normalizedAppId,
           checkedOperation,
           now,
-          new AppNetworkBudgetLease(() -> release(concurrencyLimits, operationId)));
+          new AppNetworkBudgetLease(() -> release(concurrencyLimits, operationId), operationId));
     } catch (IOException _) {
       observation.recordEvent(RuntimeWorkObservation.Kind.STORE_UNAVAILABLE);
       return AppNetworkBudgetDecision.denied(
@@ -314,7 +330,7 @@ public final class AppNetworkBudgetService {
         return concurrencyDecision;
       }
       AppNetworkBudgetDecision rateDecision =
-          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
+          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits, operationId);
       if (!rateDecision.allowed()) {
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
@@ -360,7 +376,23 @@ public final class AppNetworkBudgetService {
    */
   public synchronized AppNetworkBudgetReservation reserve(
       String appId, AppNetworkBudgetOperation operation) {
+    return reserve(appId, operation, null);
+  }
+
+  /**
+   * Performs native admission with an explicit composed parent.
+   *
+   * @param appId authenticated scope
+   * @param operation selected budget operation
+   * @param parent server-created parent, or null for independent work
+   * @return admission result
+   */
+  public synchronized AppNetworkBudgetReservation reserve(
+      String appId, AppNetworkBudgetOperation operation, RuntimeWorkObservation.Operation parent) {
     long operationId = observation.nextOperation();
+    if (parent != null) {
+      parent.child(operationId);
+    }
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
     AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
     observation.recordEvent(
@@ -388,7 +420,7 @@ public final class AppNetworkBudgetService {
         return deniedReservation(concurrencyDecision);
       }
       AppNetworkBudgetDecision rateDecision =
-          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
+          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits, operationId);
       if (!rateDecision.allowed()) {
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,
@@ -506,11 +538,22 @@ public final class AppNetworkBudgetService {
   }
 
   private AppNetworkBudgetDecision rateCheckDecision(
-      String appId, AppNetworkBudgetOperation operation, Instant now, List<RateLimit> rateLimits)
+      String appId,
+      AppNetworkBudgetOperation operation,
+      Instant now,
+      List<RateLimit> rateLimits,
+      long operationId)
       throws IOException {
     for (RateLimit limit : rateLimits) {
       AppNetworkBudgetUsage usage = usage(limit, now);
       if (usage.count() + pendingRateReservations(limit, usage.windowStart()) >= limit.limit()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_LIMIT_REACHED,
+            limit.operation(),
+            usage.windowStart().getEpochSecond(),
+            usage.count(),
+            operationId,
+            observation.scope(limit.appId()));
         Instant nextAvailableAt = usage.windowStart().plus(usage.window());
         return AppNetworkBudgetDecision.denied(
             429,
@@ -526,11 +569,22 @@ public final class AppNetworkBudgetService {
   }
 
   private AppNetworkBudgetDecision rateDecision(
-      String appId, AppNetworkBudgetOperation operation, Instant now, List<RateLimit> rateLimits)
+      String appId,
+      AppNetworkBudgetOperation operation,
+      Instant now,
+      List<RateLimit> rateLimits,
+      long operationId)
       throws IOException {
     for (RateLimit limit : rateLimits) {
       AppNetworkBudgetUsage usage = usage(limit, now);
       if (usage.count() + pendingRateReservations(limit, usage.windowStart()) >= limit.limit()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.RATE_LIMIT_REACHED,
+            limit.operation(),
+            usage.windowStart().getEpochSecond(),
+            usage.count(),
+            operationId,
+            observation.scope(limit.appId()));
         Instant nextAvailableAt = usage.windowStart().plus(usage.window());
         store.write(usage.deniedAt(now, "rate_limited", nextAvailableAt));
         return AppNetworkBudgetDecision.denied(
@@ -598,7 +652,8 @@ public final class AppNetworkBudgetService {
     }
     List<RateLimit> rateLimits = rateLimits(appId, operation);
     try {
-      AppNetworkBudgetDecision rateDecision = rateDecision(appId, operation, now, rateLimits);
+      AppNetworkBudgetDecision rateDecision =
+          rateDecision(appId, operation, now, rateLimits, operationId);
       if (!rateDecision.allowed()) {
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_RATE_DENIED,

@@ -33,6 +33,17 @@ PRODUCT_BYTES = 512 * 1024 * 1024
 MAX_DEPTH = 32
 
 
+def _budget_base_measurement(value):
+    """Inspect the historical owner beneath the closed composed wrapper without losing bytes."""
+    return value.get('composedBudgetBaseVersion', value.get('schemaVersion'))
+
+
+def _budget_base_report(value):
+    if value.get('schemaVersion') == 7:
+        return _budget_base_measurement(value['maintenanceMeasurements']) + 1
+    return value.get('schemaVersion')
+
+
 def _policy():
     value = json.loads((ROOT / profiles.POLICY).read_bytes())
     profiles.validate_policy(value)
@@ -464,16 +475,21 @@ def _measured(values, now, *, mail=False, measurements=False):
         owner = _protected("maintenance_runtime_projection")
         measured = owner.project(plan, events, checkpoint, values["products.json"], now=now)
         owner.validate(measured)
+        from .composed_budget_evidence import derive_journal
+        composed = derive_journal(plan, events)
+        if composed is not None:
+            result['measurements']['composedBudgetCoverage'] = composed
+            result['blockers'].append('composed-budget-original-operations-required')
         result["claims"] = ["p12-300-consumers"]
         result["coverage"] = {"required": sorted(row["id"] for row in measured["rows"]), "observed": []}
         result["blockers"].append("maintenance-required-consumer-adapters-incomplete")
-        if measured["schemaVersion"] in {2, 3, 4, 5}:
+        if measured["schemaVersion"] in {2, 3, 4, 5, 6}:
             result["components"] = {"subjectAdmission": measured["subjectAdmission"]["status"],
                                     "measurementDerivation": measured["measurementDerivation"]["status"],
                                     "originalAuthentication": "unverified",
                                     "maintenanceEligibility": measured["maintenanceEligibility"]}
             result["measurements"]["consumerComponents"] = dict(result["components"])
-            if measured["schemaVersion"] in {3, 4, 5} and measured.get("runtimeComponents") is not None:
+            if measured["schemaVersion"] in {3, 4, 5, 6} and measured.get("runtimeComponents") is not None:
                 result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
                 result["measurements"]["consumerComponents"] = dict(result["components"])
     return result
@@ -607,8 +623,8 @@ def _supervisor_relationships(authority, values, now, *, private_runtime=False):
             or final["checkpoint"] != {"sequence": checkpoint["sequence"], "tailDigest": checkpoint["tailDigest"],
                                        "digest": soak.digest(checkpoint), "status": checkpoint["status"]}):
         raise ValueError("phase12-runtime-supervisor-observation-substituted")
-    if (final["schemaVersion"] in {5, 6} or authorization["schemaVersion"] == 5) and (
-            final["schemaVersion"] not in ({4, 5, 6} if private_runtime else {5, 6}) or authorization["schemaVersion"] != 5
+    if (_budget_base_report(final) in {5, 6} or authorization["schemaVersion"] == 5) and (
+            _budget_base_report(final) not in ({4, 5, 6} if private_runtime else {5, 6}) or authorization["schemaVersion"] != 5
             or authorization["admittedProductsDigest"] != final["admittedProductsDigest"]):
         raise ValueError("phase12-runtime-supervisor-authorized-products-substituted")
     for row in chain[:-1]:
@@ -616,8 +632,8 @@ def _supervisor_relationships(authority, values, now, *, private_runtime=False):
         if (report["approvalOrigin"] != chain[-1]["origin"]
                 or report["approvalReportDigest"] != soak.digest(authorization)):
             raise ValueError("phase12-runtime-supervisor-approval-substituted")
-        if final["schemaVersion"] in {3, 4, 5, 6} and (
-                report["schemaVersion"] not in ({4, 5, 6} if final["schemaVersion"] == 6 or private_runtime else {final["schemaVersion"]})
+        if _budget_base_report(final) in {3, 4, 5, 6} and (
+                _budget_base_report(report) not in ({4, 5, 6} if _budget_base_report(final) == 6 or private_runtime else {_budget_base_report(final)})
                 or report["admittedProductsDigest"] != final["admittedProductsDigest"]):
             raise ValueError("phase12-runtime-supervisor-products-substituted")
     return final, observation
@@ -707,11 +723,11 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                 owner = _protected("maintenance_runtime_projection")
                 original = final["maintenanceMeasurements"]
                 evaluated = (dt.datetime.fromisoformat(original["evaluationCutoff"])
-                             if original["schemaVersion"] in {2, 3, 4, 5} else now)
+                             if original["schemaVersion"] in {2, 3, 4, 5, 6} else now)
                 if evaluated > now:
                     raise ValueError("maintenance-measurements-future-evaluation")
-                sealed = original["schemaVersion"] == 4 or original.get("runtimeBaselineBaseVersion") == 4
-                if sealed and (final.get("schemaVersion") not in {5, 6}
+                sealed = _budget_base_measurement(original) == 4 or original.get("runtimeBaselineBaseVersion") == 4
+                if sealed and (_budget_base_report(final) not in {5, 6}
                         or final.get("admittedProductsDigest") != soak.digest(values["products.json"])):
                     raise ValueError("maintenance-measurements-products-substituted")
                 private_products = authority.private_products() if sealed else None
@@ -721,7 +737,7 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                     return result
                 baseline_arguments = {}
                 uncompared_scope = None
-                if original["schemaVersion"] == 5:
+                if _budget_base_measurement(original) == 5:
                     if original['runtimeBaselineAdmission']['approvalAuthentication'] == 'missing':
                         if authority._runtime_observation is None:
                             result['blockers'].append('runtime-baseline-private-original-context-required')
@@ -745,19 +761,19 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                     **({"public_products": values["products.json"]} if private_products is not None else {}), **baseline_arguments)
                 if uncompared_scope is not None:
                     measured = owner.without_current_baseline(measured, uncompared_scope)
-                if final.get("schemaVersion") not in {2, 3, 4, 5, 6} or measured != original:
+                if final.get("schemaVersion") not in {2, 3, 4, 5, 6, 7} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
-                if original["schemaVersion"] in {2, 3, 4, 5}:
+                if original["schemaVersion"] in {2, 3, 4, 5, 6}:
                     if (final["schemaVersion"] != original["schemaVersion"] + 1
                             or final["admittedProductsDigest"] != soak.digest(values["products.json"])):
                         raise ValueError("maintenance-measurements-products-substituted")
                     result["components"]["originalAuthentication"] = "authenticated"
                     result["components"]["subjectAdmission"] = measured["subjectAdmission"]["status"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
-                if measured["schemaVersion"] in {3, 4, 5} and measured.get("runtimeComponents") is not None:
+                if measured["schemaVersion"] in {3, 4, 5, 6} and measured.get("runtimeComponents") is not None:
                     result["components"]["runtimeClaims"] = measured["runtimeComponents"]["claims"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
-                if measured["schemaVersion"] == 5:
+                if _budget_base_measurement(measured) == 5:
                     result["components"]["scopedRuntimeBaseline"] = measured["runtimeBaselineAdmission"]
                     result["measurements"]["consumerComponents"] = dict(result["components"])
                 result["dimensions"].update(runtimeExecution="partial", coverage="partial")
@@ -937,7 +953,7 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
                         soak.digest(values["plan.json"]), rows)
                     openings.callback(private_products.close)
                 runtime_baseline, baseline_binding, runtime_observation = None, None, None
-                if chain[0]["report"].get("schemaVersion") == 6:
+                if _budget_base_report(chain[0]["report"]) == 6:
                     baseline_owner = _protected("runtime_baseline_admission")
                     approval_owner = _protected("runtime_baseline_approval")
                     path = approval_owner.PRIVATE_STORE / 'observations' / (values['plan.json']['experimentId'] + '.json')

@@ -355,6 +355,18 @@ jobs:
               raise SystemExit(1)
           PY
 
+      - name: Exercise packaged shared app budgets and native Trust Graph stores
+        env:
+          PYTHONPATH: tools/interop:tools/release-certification:tools/release-certification/protected
+        run: |
+          python3 - <<'PYTHON'
+          import unittest
+          suite = unittest.defaultTestLoader.loadTestsFromName("test_app_budgets_packaged")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
+              raise SystemExit(1)
+          PYTHON
+
       - name: Exercise real scheduler pressure and bounded resource recovery
         env:
           PYTHONPATH: tools/interop:tools/release-certification:tools/release-certification/protected

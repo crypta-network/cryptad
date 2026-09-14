@@ -14,6 +14,7 @@ import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
 import network.crypta.platform.trustgraph.TrustAnchor;
 import network.crypta.platform.trustgraph.TrustDocumentTypes;
@@ -318,10 +319,24 @@ public final class TrustGraphApiHandler {
    */
   public Map<String, Object> importStatement(
       Map<String, List<String>> queryParameters, String appId) {
+    try (var operation =
+        observation()
+            .start(RuntimeWorkObservation.Kind.COMPOSED_DIRECT_IMPORT_START, budgetAppId(appId))) {
+      Map<String, Object> result = importStatementObserved(queryParameters, appId, operation);
+      operation.succeeded();
+      return result;
+    }
+  }
+
+  private Map<String, Object> importStatementObserved(
+      Map<String, List<String>> queryParameters,
+      String appId,
+      RuntimeWorkObservation.Operation operation) {
     try {
       String documentJson = PlatformApiParameters.requireString(queryParameters, PARAM_DOCUMENT);
-      try (var _ = acquireTrustGraphImportBudgetLease(appId)) {
-        TrustStatementDocument document = TrustStatementParser.parse(documentJson);
+      try (var _ = acquireTrustGraphImportBudgetLease(appId, operation)) {
+        TrustStatementDocument document = parseObserved(documentJson, operation);
+        operation.recordStage(RuntimeWorkObservation.Kind.GRAPH_STORE_ATTEMPT);
         TrustGraphImportResult result =
             store.importStatement(
                 document,
@@ -329,6 +344,7 @@ public final class TrustGraphApiHandler {
                 PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
                 PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
                 PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
+        observeStoreResult(result, operation);
         appendImportAudit("statement_imported", appId, result);
         return result.toJson();
       }
@@ -366,6 +382,48 @@ public final class TrustGraphApiHandler {
    */
   public Map<String, Object> previewImport(
       Map<String, List<String>> queryParameters, ContentFetchPort contentFetchPort, String appId) {
+    boolean uriPreview =
+        optionalNonBlankString(
+                    PlatformApiParameters.readOptionalString(queryParameters, PARAM_DOCUMENT))
+                == null
+            && PlatformApiParameters.readOptionalString(queryParameters, PARAM_URI) != null;
+    return previewImport(queryParameters, contentFetchPort, appId, uriPreview);
+  }
+
+  /**
+   * Previews with the fixed route identity supplied by the native router. The route flag is never
+   * read from request fields; legacy embeddings infer their processing path.
+   *
+   * @param queryParameters decoded preview fields
+   * @param contentFetchPort bounded runtime fetch port
+   * @param appId authenticated app scope, or null for the host
+   * @param uriPreview whether the native router selected the URI preview route
+   * @return redacted native preview summary
+   */
+  public Map<String, Object> previewImport(
+      Map<String, List<String>> queryParameters,
+      ContentFetchPort contentFetchPort,
+      String appId,
+      boolean uriPreview) {
+    try (var operation =
+        observation()
+            .start(
+                uriPreview
+                    ? RuntimeWorkObservation.Kind.COMPOSED_URI_PREVIEW_START
+                    : RuntimeWorkObservation.Kind.COMPOSED_PASTED_PREVIEW_START,
+                budgetAppId(appId))) {
+      Map<String, Object> result =
+          previewImportObserved(queryParameters, contentFetchPort, appId, operation);
+      operation.succeeded();
+      return result;
+    }
+  }
+
+  private Map<String, Object> previewImportObserved(
+      Map<String, List<String>> queryParameters,
+      ContentFetchPort contentFetchPort,
+      String appId,
+      RuntimeWorkObservation.Operation operation) {
     String uri = PlatformApiParameters.readOptionalString(queryParameters, PARAM_URI);
     String sourceUri = PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI);
     String documentJson =
@@ -373,21 +431,24 @@ public final class TrustGraphApiHandler {
             PlatformApiParameters.readOptionalString(queryParameters, PARAM_DOCUMENT));
     try {
       if (documentJson == null && uri != null) {
-        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
-          documentJson = fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri);
+        try (var importReservation = reserveTrustGraphImportBudget(appId, operation)) {
+          documentJson =
+              fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri, operation);
           sourceUri = uri;
-          verifyUriPreviewIsDirectStatement(documentJson);
+          parseObserved(documentJson, operation);
           commitTrustGraphImportBudget(importReservation);
           Map<String, Object> preview =
               buildImportPreview(queryParameters, sourceUri, documentJson);
+          operation.recordStage(RuntimeWorkObservation.Kind.PREVIEW_BUILT);
           appendPreviewAudit(appId, sourceUri, preview);
           return preview;
         }
       } else if (documentJson != null) {
-        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+        try (var importReservation = reserveTrustGraphImportBudget(appId, operation)) {
           commitTrustGraphImportBudget(importReservation);
           Map<String, Object> preview =
               buildImportPreview(queryParameters, sourceUri, documentJson);
+          operation.recordStage(RuntimeWorkObservation.Kind.PREVIEW_BUILT);
           appendPreviewAudit(appId, sourceUri, preview);
           return preview;
         }
@@ -437,6 +498,21 @@ public final class TrustGraphApiHandler {
    */
   public Map<String, Object> importUri(
       Map<String, List<String>> queryParameters, ContentFetchPort contentFetchPort, String appId) {
+    try (var operation =
+        observation()
+            .start(RuntimeWorkObservation.Kind.COMPOSED_URI_IMPORT_START, budgetAppId(appId))) {
+      Map<String, Object> result =
+          importUriObserved(queryParameters, contentFetchPort, appId, operation);
+      operation.succeeded();
+      return result;
+    }
+  }
+
+  private Map<String, Object> importUriObserved(
+      Map<String, List<String>> queryParameters,
+      ContentFetchPort contentFetchPort,
+      String appId,
+      RuntimeWorkObservation.Operation operation) {
     if (contentFetchPort == null) {
       throw new PlatformApiException(
           503, "content_fetch_failed", "Content fetch service is unavailable.");
@@ -444,7 +520,7 @@ public final class TrustGraphApiHandler {
     String uri = PlatformApiParameters.requireString(queryParameters, PARAM_URI);
     int maxBytes = readMaxBytes(queryParameters);
     try {
-      try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+      try (var importReservation = reserveTrustGraphImportBudget(appId, operation)) {
         Map<String, Object> fetched =
             new ContentApiHandler(
                     contentFetchPort,
@@ -460,7 +536,8 @@ public final class TrustGraphApiHandler {
                         List.of("text"),
                         "purpose",
                         List.of("trust-graph-import")),
-                    budgetAppId(appId));
+                    budgetAppId(appId),
+                    operation);
         Object contentText = fetched.get("contentText");
         if (!(contentText instanceof String documentJson)) {
           throw new PlatformApiException(
@@ -473,11 +550,13 @@ public final class TrustGraphApiHandler {
               "Fetched content exceeded the configured byte bound.");
         }
         commitTrustGraphImportBudget(importReservation);
-        TrustStatementDocument document = TrustStatementParser.parse(documentJson);
-        verifyExpectedDocumentFingerprint(
+        TrustStatementDocument document = parseObserved(documentJson, operation);
+        verifyExpectedDocumentFingerprintObserved(
+            operation,
             PlatformApiParameters.readOptionalString(
                 queryParameters, PARAM_EXPECTED_DOCUMENT_FINGERPRINT),
             document);
+        operation.recordStage(RuntimeWorkObservation.Kind.GRAPH_STORE_ATTEMPT);
         TrustGraphImportResult result =
             store.importStatement(
                 document,
@@ -485,6 +564,7 @@ public final class TrustGraphApiHandler {
                 uri,
                 PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
                 PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
+        observeStoreResult(result, operation);
         appendImportAudit("statement_imported_from_uri", appId, result);
         return result.toJson();
       }
@@ -501,7 +581,8 @@ public final class TrustGraphApiHandler {
       Map<String, List<String>> queryParameters,
       ContentFetchPort contentFetchPort,
       String appId,
-      String uri) {
+      String uri,
+      RuntimeWorkObservation.Operation operation) {
     if (contentFetchPort == null) {
       throw new PlatformApiException(
           503, "content_fetch_failed", "Content fetch service is unavailable.");
@@ -522,7 +603,8 @@ public final class TrustGraphApiHandler {
                     List.of("text"),
                     "purpose",
                     List.of("trust-graph-import-preview")),
-                budgetAppId(appId));
+                budgetAppId(appId),
+                operation);
     Object contentText = fetched.get("contentText");
     if (!(contentText instanceof String documentJson)) {
       throw new PlatformApiException(
@@ -533,10 +615,6 @@ public final class TrustGraphApiHandler {
           502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
     }
     return documentJson;
-  }
-
-  private static void verifyUriPreviewIsDirectStatement(String documentJson) {
-    TrustStatementParser.parse(documentJson);
   }
 
   private static void verifyExpectedDocumentFingerprint(
@@ -553,14 +631,15 @@ public final class TrustGraphApiHandler {
     }
   }
 
-  private AppNetworkBudgetReservation reserveTrustGraphImportBudget(String appId) {
+  private AppNetworkBudgetReservation reserveTrustGraphImportBudget(
+      String appId, RuntimeWorkObservation.Operation operation) {
     if (networkBudgetService == null) {
       return AppNetworkBudgetReservation.noop(
           budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT, clock.instant());
     }
     AppNetworkBudgetReservation reservation =
         networkBudgetService.reserve(
-            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT, operation);
     AppNetworkBudgetDecision decision = reservation.decision();
     if (!decision.allowed()) {
       throw new PlatformApiException(
@@ -577,18 +656,84 @@ public final class TrustGraphApiHandler {
     }
   }
 
-  private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(String appId) {
+  private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(
+      String appId, RuntimeWorkObservation.Operation operation) {
     if (networkBudgetService == null) {
       return AppNetworkBudgetLease.noop();
     }
     AppNetworkBudgetDecision decision =
         networkBudgetService.acquire(
-            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT, operation);
     if (!decision.allowed()) {
       throw new PlatformApiException(
           decision.statusCode(), decision.errorCode(), decision.message());
     }
     return decision.lease();
+  }
+
+  /**
+   * Records a capability denial for one fixed composed route without entering its handler.
+   * Authentication remains owned by the transport; this accepts only its established principal.
+   *
+   * @param route fixed route leaf selected by the router
+   * @param appId authenticated app scope
+   */
+  public void observeCapabilityDenied(String route, String appId) {
+    RuntimeWorkObservation.Kind kind =
+        switch (route) {
+          case "import" -> RuntimeWorkObservation.Kind.COMPOSED_DIRECT_IMPORT_START;
+          case "import-preview" -> RuntimeWorkObservation.Kind.COMPOSED_PASTED_PREVIEW_START;
+          case "import-preview-uri" -> RuntimeWorkObservation.Kind.COMPOSED_URI_PREVIEW_START;
+          case "import-uri" -> RuntimeWorkObservation.Kind.COMPOSED_URI_IMPORT_START;
+          default -> null;
+        };
+    if (kind != null) {
+      try (var operation = observation().start(kind, budgetAppId(appId))) {
+        operation.recordStage(RuntimeWorkObservation.Kind.CAPABILITY_DENIED);
+      }
+    }
+  }
+
+  private final RuntimeWorkObservation reducedObservation = new RuntimeWorkObservation();
+
+  private RuntimeWorkObservation observation() {
+    return networkBudgetService == null ? reducedObservation : networkBudgetService.observation();
+  }
+
+  private static TrustStatementDocument parseObserved(
+      String json, RuntimeWorkObservation.Operation operation) {
+    try {
+      TrustStatementDocument document = TrustStatementParser.parse(json);
+      operation.recordStage(RuntimeWorkObservation.Kind.PARSE_SUCCEEDED);
+      return document;
+    } catch (TrustGraphException failure) {
+      operation.recordStage(RuntimeWorkObservation.Kind.PARSE_FAILED);
+      throw failure;
+    }
+  }
+
+  private static void verifyExpectedDocumentFingerprintObserved(
+      RuntimeWorkObservation.Operation operation,
+      String expected,
+      TrustStatementDocument document) {
+    try {
+      verifyExpectedDocumentFingerprint(expected, document);
+      operation.recordStage(RuntimeWorkObservation.Kind.FINGERPRINT_ACCEPTED);
+    } catch (PlatformApiException failure) {
+      operation.recordStage(RuntimeWorkObservation.Kind.FINGERPRINT_REJECTED);
+      throw failure;
+    }
+  }
+
+  private static void observeStoreResult(
+      TrustGraphImportResult result, RuntimeWorkObservation.Operation operation) {
+    operation.recordStage(
+        result.imported()
+            ? RuntimeWorkObservation.Kind.GRAPH_STORE_IMPORTED
+            : RuntimeWorkObservation.Kind.GRAPH_STORE_DUPLICATE);
+    if (!result.signatureVerified()) {
+      operation.recordStage(RuntimeWorkObservation.Kind.GRAPH_STORE_UNVERIFIED);
+    }
   }
 
   private static String budgetAppId(String appId) {

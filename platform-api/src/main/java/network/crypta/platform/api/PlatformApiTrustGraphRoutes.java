@@ -156,7 +156,10 @@ final class PlatformApiTrustGraphRoutes {
             envelope(
                 "importPreview",
                 trustGraphApiHandler.previewImport(
-                    request.queryParameters(), contentFetchPort, optionalAppPrincipalId(request))));
+                    request.queryParameters(),
+                    contentFetchPort,
+                    optionalAppPrincipalId(request),
+                    false)));
       }
       case "import-preview-uri" -> {
         if (!METHOD_POST.equals(request.method())) {
@@ -168,7 +171,10 @@ final class PlatformApiTrustGraphRoutes {
             envelope(
                 "importPreview",
                 trustGraphApiHandler.previewImport(
-                    request.queryParameters(), contentFetchPort, optionalAppPrincipalId(request))));
+                    request.queryParameters(),
+                    contentFetchPort,
+                    optionalAppPrincipalId(request),
+                    true)));
       }
       case "import-uri" -> {
         if (!METHOD_POST.equals(request.method())) {

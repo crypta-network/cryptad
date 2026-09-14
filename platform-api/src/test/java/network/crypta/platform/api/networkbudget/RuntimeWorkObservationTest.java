@@ -5,10 +5,75 @@ import network.crypta.runtime.spi.ContentFetchObservation;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuntimeWorkObservationTest {
+  @Test
+  void ownerCallbackStagesRemainVisibleWhenSeveralThreadsCloseTheContext() throws Exception {
+    var recorder = new RuntimeWorkObservation();
+    try (var operation =
+        recorder.start(RuntimeWorkObservation.Kind.COMPOSED_URI_IMPORT_START, "private-a")) {
+      Thread owner =
+          Thread.ofPlatform()
+              .start(
+                  () -> {
+                    operation.recordStage(RuntimeWorkObservation.Kind.GRAPH_STORE_ATTEMPT);
+                    operation.recordStage(RuntimeWorkObservation.Kind.GRAPH_STORE_IMPORTED);
+                    operation.succeeded();
+                  });
+      owner.join();
+      var closers = new java.util.ArrayList<Thread>();
+      for (int index = 0; index < 8; index++) {
+        closers.add(Thread.ofPlatform().start(operation::close));
+      }
+      for (Thread closer : closers) {
+        closer.join();
+      }
+    }
+
+    var kinds =
+        recorder.snapshot().events().stream().map(RuntimeWorkObservation.Event::kind).toList();
+    assertEquals(
+        1,
+        kinds.stream()
+            .filter(kind -> kind == RuntimeWorkObservation.Kind.REQUEST_SUCCEEDED)
+            .count());
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.GRAPH_STORE_UNKNOWN));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.REQUEST_FAILED));
+  }
+
+  @Test
+  void nativeContextsCorrelateOverlappingParentsAndCloseOnlyOnce() {
+    var recorder = new RuntimeWorkObservation();
+    var first = recorder.start(RuntimeWorkObservation.Kind.COMPOSED_URI_IMPORT_START, "private-a");
+    var second = recorder.start(RuntimeWorkObservation.Kind.COMPOSED_URI_IMPORT_START, "private-b");
+    long firstChild = recorder.nextOperation();
+    long secondChild = recorder.nextOperation();
+
+    second.child(secondChild);
+    first.child(firstChild);
+    second.succeeded();
+    second.close();
+    first.close();
+    first.close();
+
+    var events = recorder.snapshot().events();
+    assertEquals(events.get(1).operationId(), events.get(2).value());
+    assertEquals(events.get(0).operationId(), events.get(3).value());
+    assertEquals(secondChild, events.get(2).operationId());
+    assertEquals(firstChild, events.get(3).operationId());
+    assertEquals(6, events.size());
+    assertEquals(RuntimeWorkObservation.Kind.REQUEST_SUCCEEDED, events.get(4).kind());
+    assertEquals(RuntimeWorkObservation.Kind.REQUEST_FAILED, events.get(5).kind());
+    assertFalse(recorder.snapshot().toString().contains("private-"));
+    assertNotEquals(
+        recorder.snapshot().collectorEpoch(),
+        new RuntimeWorkObservation().snapshot().collectorEpoch());
+  }
+
   @Test
   void pressurePreservesAdmittedOpaqueEpochsAndSourceCountersExactly() {
     for (String epoch :
@@ -62,13 +127,15 @@ class RuntimeWorkObservationTest {
   void scopeExhaustionMakesHistoryIncompleteWithoutPublishingIdentifiers() {
     var observation = new RuntimeWorkObservation();
     assertEquals(1, observation.scope(AppNetworkBudgetScope.GLOBAL));
+    assertEquals(2, observation.scope(AppNetworkBudgetScope.HOST_OPERATOR));
     for (int index = 0; index < 1024; index++) {
-      assertEquals(index + 2, observation.scope("app-" + index));
+      assertEquals(index + 3, observation.scope("app-" + index));
     }
 
     assertEquals(0, observation.scope("overflow-app"));
     assertEquals(Long.MAX_VALUE, observation.snapshot().dropped());
-    assertEquals(2, observation.scope("app-0"));
+    assertEquals(3, observation.scope("app-0"));
+    assertEquals(2, observation.scope(AppNetworkBudgetScope.HOST_OPERATOR));
   }
 
   @Test

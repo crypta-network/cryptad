@@ -42,6 +42,38 @@ class ContentSubscriptionServiceTest {
   private static final int SUBSCRIPTION_POLL_CONCURRENT_PER_APP = 1;
 
   @Test
+  void refreshTimeoutKeepsReservationConcurrencyUntilNativeTerminalAcknowledgment() {
+    var terminal = new java.util.concurrent.CompletableFuture<Void>();
+    ContentFetchPort fetch =
+        _ -> {
+          throw new ContentFetchException(
+              ContentFetchException.CATALOG_FETCH_TIMEOUT,
+              "synthetic timeout",
+              null,
+              terminal.minimalCompletionStage());
+        };
+    var budget = subscriptionBudget(10);
+    var service = service(fetch, config(2), budget);
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+
+    var response = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals("backoff", response.get("status"));
+    assertTrue(budget.diagnostics().activeFamilyLeases() > 0);
+    assertFalse(
+        budget.observation().snapshot().events().stream()
+            .anyMatch(event -> event.kind() == RuntimeWorkObservation.Kind.FETCH_FAILED));
+    terminal.complete(null);
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+    assertEquals(0, budget.diagnostics().reservedFamilyRates());
+    assertTrue(
+        budget.observation().snapshot().events().stream()
+            .anyMatch(event -> event.kind() == RuntimeWorkObservation.Kind.FETCH_FAILED));
+    assertTrue(budget.diagnostics().usage().stream().allMatch(row -> row.count() == 1));
+  }
+
+  @Test
   void create_whenSourceIsUsk_expectSafeScheduledSummary() {
     ContentSubscriptionService service = service(new RecordingFetchPort(), config(2));
 
@@ -463,12 +495,12 @@ class ContentSubscriptionServiceTest {
   }
 
   private static ContentSubscriptionService service(
-      RecordingFetchPort fetchPort, ContentSubscriptionSchedulerConfig config) {
+      ContentFetchPort fetchPort, ContentSubscriptionSchedulerConfig config) {
     return service(fetchPort, config, null);
   }
 
   private static ContentSubscriptionService service(
-      RecordingFetchPort fetchPort,
+      ContentFetchPort fetchPort,
       ContentSubscriptionSchedulerConfig config,
       AppNetworkBudgetService budgetService) {
     return service(new InMemoryContentSubscriptionStore(), fetchPort, config, budgetService);
@@ -476,7 +508,7 @@ class ContentSubscriptionServiceTest {
 
   private static ContentSubscriptionService service(
       ContentSubscriptionStore store,
-      RecordingFetchPort fetchPort,
+      ContentFetchPort fetchPort,
       ContentSubscriptionSchedulerConfig config,
       AppNetworkBudgetService budgetService) {
     return new ContentSubscriptionService(
