@@ -91,6 +91,53 @@ class InstallationArtifactTests(unittest.TestCase):
         self.assertFalse(output.exists())
 
 
+class HostAssetTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.bundle = self.root / 'current'
+        self.targets = []
+        for source, target in installation.host_assets(self.bundle):
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b'approved asset\n')
+            installed = self.root / target.relative_to('/')
+            installed.parent.mkdir(parents=True, exist_ok=True)
+            installed.write_bytes(source.read_bytes())
+            self.targets.append((source, installed))
+        secured = patch.object(installation, 'secured',
+            side_effect=lambda path: self.root / Path(path).relative_to('/'))
+        secured.start()
+        self.addCleanup(secured.stop)
+
+    def test_exact_installed_assets_pass_verification_and_upgrade_precondition(self):
+        installation.verify_host_assets(self.bundle)
+        installation.verify_host_assets(self.bundle, upgrading=True)
+
+    def test_modified_or_missing_sysusers_and_tmpfiles_fail_verification(self):
+        for source, target in self.targets[:2]:
+            with self.subTest(asset=target.name, directory=target.parent.name):
+                target.write_bytes(b'unapproved permissions\n')
+                with patch.object(installation, 'PREFIX', self.root), \
+                        patch.object(installation.subprocess, 'run') as systemctl:
+                    with self.assertRaisesRegex(installation.InstallationError, 'host-asset-content-mismatch'):
+                        installation.verify_units()
+                    systemctl.assert_not_called()
+                target.unlink()
+                with self.assertRaises(OSError):
+                    installation.verify_host_assets(self.bundle)
+                target.write_bytes(source.read_bytes())
+
+    def test_changed_bundle_assets_require_administrator_replacement_before_upgrade(self):
+        for source, target in self.targets:
+            with self.subTest(asset=source.name):
+                source.write_bytes(b'new approved definition\n')
+                with self.assertRaisesRegex(installation.InstallationError, 'host-asset-replacement-required'):
+                    installation.verify_host_assets(self.bundle, upgrading=True)
+                target.write_bytes(source.read_bytes())
+                installation.verify_host_assets(self.bundle, upgrading=True)
+
+
 class ControllerCapabilityTests(unittest.TestCase):
     def test_shipped_unit_retains_only_the_required_controller_capabilities(self):
         unit = Path(__file__).parent / 'systemd/cryptad-restricted.service'

@@ -348,3 +348,18 @@ checks cover missing/invalid revocation state, unrelated revocations and a dangl
 These are durable-state tests with explicit original-authority and ownership seams, not installed
 service-isolation evidence. Existing approval, native verification and original authentication
 requirements remain in force.
+
+## Review corrections: installed definitions and synthetic job identity
+
+Install, verify and upgrade now share the same five-asset inventory: the three service/socket
+units plus the sysusers and tmpfiles definitions. Verification compares installed bytes with the
+approved bundle. Upgrade rejects differing account, directory or unit definitions before changing
+revocation history or activating the new version; an administrator must review and replace them
+while stopped. Missing installed definitions also fail closed. These checks do not automatically
+apply account or directory migrations.
+
+The disposable preparation fixture now indexes the job name by `maintenance-prepare`, matching
+the worker's method-keyed policy. Its offline regression calls the real worker job-authentication
+function with synthetic upstream responses and also rejects a changed source identity. Installed
+asset tests cover missing/modified definitions and replacement requirements for a new bundle.
+The actual disposable CMS/socket and service/UID integration lane remains unexecuted.

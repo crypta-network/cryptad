@@ -310,14 +310,32 @@ def verify_controller_capabilities(value):
         raise InstallationError('restricted-effective-controller-capabilities-mismatch')
 
 
+HOST_ASSETS = (
+    ('cryptad-restricted.conf', '/usr/lib/sysusers.d/cryptad-restricted.conf'),
+    ('cryptad-restricted-tmpfiles.conf', '/usr/lib/tmpfiles.d/cryptad-restricted.conf'),
+    ('cryptad-restricted.service', '/etc/systemd/system/cryptad-restricted.service'),
+    ('cryptad-restricted.socket', '/etc/systemd/system/cryptad-restricted.socket'),
+    ('cryptad-cross-version-soak.service', '/etc/systemd/system/cryptad-cross-version-soak.service'),
+)
+
+
+def host_assets(bundle):
+    for name, target in HOST_ASSETS:
+        directory = ('tools/interop/systemd' if name == 'cryptad-cross-version-soak.service'
+                     else 'tools/release-certification/restricted/systemd')
+        yield bundle / directory / name, Path(target)
+
+
+def verify_host_assets(bundle, *, upgrading=False):
+    for source, target in host_assets(bundle):
+        if secured(target).read_bytes() != source.read_bytes():
+            raise InstallationError('restricted-upgrade-host-asset-replacement-required' if upgrading
+                                    else 'restricted-host-asset-content-mismatch')
+
+
 def verify_units():
-    assets = PREFIX / 'current/tools/release-certification/restricted/systemd'
+    verify_host_assets(PREFIX / 'current')
     for name in ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
-        installed = secured(Path('/etc/systemd/system') / name)
-        source = (PREFIX / 'current/tools/interop/systemd' / name
-                  if name == 'cryptad-cross-version-soak.service' else assets / name)
-        if installed.read_bytes() != source.read_bytes():
-            raise InstallationError('restricted-unit-content-mismatch')
         for root in ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system'):
             if (Path(root) / (name + '.d')).exists():
                 raise InstallationError('restricted-unit-dropin-unreviewed')
@@ -416,19 +434,11 @@ def install(bundle):
                     path.chmod(0o555 if path.stat().st_mode & 0o111 else 0o444)
             verify_bundle(staged, config['bundleIdentity'])
             os.rename(staged, destination)
-        assets = destination / 'tools/release-certification/restricted/systemd'
-        for name, target in (('cryptad-restricted.conf', '/usr/lib/sysusers.d/cryptad-restricted.conf'),
-                             ('cryptad-restricted-tmpfiles.conf', '/usr/lib/tmpfiles.d/cryptad-restricted.conf'),
-                             ('cryptad-restricted.service', '/etc/systemd/system/cryptad-restricted.service'),
-                             ('cryptad-restricted.socket', '/etc/systemd/system/cryptad-restricted.socket'),
-                             ('cryptad-cross-version-soak.service', '/etc/systemd/system/cryptad-cross-version-soak.service')):
-            path = Path(target)
+        for source, path in host_assets(destination):
             if path.exists():
                 raise InstallationError('restricted-existing-host-asset-requires-review')
             secured(path.parent)
             with path.open('xb') as stream:
-                source = (destination / 'tools/interop/systemd' / name
-                          if name == 'cryptad-cross-version-soak.service' else assets / name)
                 stream.write(source.read_bytes())
             path.chmod(0o644)
         environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}
@@ -505,12 +515,8 @@ def upgrade(bundle):
                     path.chmod(0o555 if path.stat().st_mode & 0o111 else 0o444)
             verify_bundle(stage, config['bundleIdentity'])
             os.rename(stage, destination)
-        # Unit changes require a separately reviewed administrator replacement while stopped.
-        for name in ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
-            asset = (destination / 'tools/interop/systemd' / name if name == 'cryptad-cross-version-soak.service'
-                     else destination / 'tools/release-certification/restricted/systemd' / name)
-            if secured(Path('/etc/systemd/system') / name).read_bytes() != asset.read_bytes():
-                raise InstallationError('restricted-upgrade-unit-replacement-required')
+        # Account, directory and unit changes require reviewed replacement while stopped.
+        verify_host_assets(destination, upgrading=True)
         secured(STATE)
         history = STATE / 'revocations.json'
         temporary = STATE / '.revocations-stage'

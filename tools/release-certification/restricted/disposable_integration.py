@@ -212,6 +212,26 @@ def hostile_native():
     return ['actual-keyless-host-uid-native-dispatch']
 
 
+def preparation_provider(context, timestamp, upstream):
+    """Synthetic upstream transport shared by the VM fixture and its offline contract test."""
+    import restricted_worker as worker
+    def provider(arguments, environment, **options):
+        prefix = 'repos/crypta-network/cryptad/actions/'
+        if arguments == ['api', prefix + 'runs/310']:
+            return {'run_attempt': 1}
+        if arguments == ['api', prefix + 'runs/310/attempts/1']:
+            return {'id': 310, 'run_attempt': 1,
+                'path': worker.POLICIES['maintenance-prepare'][0], 'head_sha': context['sourceCommit'],
+                'event': 'workflow_dispatch', 'repository': {'full_name': 'crypta-network/cryptad'},
+                'actor': {'login': 'leumor'}, 'triggering_actor': {'login': 'leumor'}}
+        if arguments == ['api', prefix + 'jobs/31001']:
+            return {'id': 31001, 'run_id': 310, 'run_attempt': 1,
+                'name': worker.JOB_NAMES['maintenance-prepare'], 'head_sha': context['sourceCommit'],
+                'status': 'in_progress', 'started_at': timestamp.isoformat()}
+        return upstream(arguments, environment, **options)
+    return provider
+
+
 def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root):
     """Run real preparation through the installed Worker with synthetic original provider I/O.
 
@@ -252,21 +272,7 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
     worker.CREDENTIAL.write_bytes(worker.encode({'token': 'SYNTHETIC-PROVIDER-CANARY',
         'expiresAt': (timestamp + dt.timedelta(minutes=30)).isoformat()}))
     worker.CREDENTIAL.chmod(0o600)
-    upstream = original._gh
-    def provider(arguments, environment, **options):
-        prefix = 'repos/crypta-network/cryptad/actions/'
-        if arguments == ['api', prefix + 'runs/310']:
-            return {'run_attempt': 1}
-        if arguments == ['api', prefix + 'runs/310/attempts/1']:
-            return {'id': 310, 'run_attempt': 1,
-                'path': worker.POLICIES['maintenance-prepare'][0], 'head_sha': context['sourceCommit'],
-                'event': 'workflow_dispatch', 'repository': {'full_name': 'crypta-network/cryptad'},
-                'actor': {'login': 'leumor'}, 'triggering_actor': {'login': 'leumor'}}
-        if arguments == ['api', prefix + 'jobs/31001']:
-            return {'id': 31001, 'run_id': 310, 'run_attempt': 1,
-                'name': worker.JOB_NAMES['freeze-and-validate'], 'head_sha': context['sourceCommit'],
-                'status': 'in_progress', 'started_at': timestamp.isoformat()}
-        return upstream(arguments, environment, **options)
+    provider = preparation_provider(context, timestamp, original._gh)
     call(['/usr/bin/systemctl', 'stop', 'cryptad-restricted.service', 'cryptad-restricted.socket'])
     endpoint = Path('/run/cryptad-restricted/control.sock')
     if endpoint.exists():

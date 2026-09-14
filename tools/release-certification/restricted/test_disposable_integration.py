@@ -2,6 +2,8 @@
 import contextlib
 import io
 import json
+import datetime as dt
+import sys
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -10,6 +12,22 @@ import disposable_integration as harness
 
 
 class DisposableHarnessTest(unittest.TestCase):
+    def test_synthetic_preparation_job_passes_real_worker_authentication(self):
+        with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
+            import restricted_worker as worker
+            import original_artifact_authentication as original
+        context = {'sourceCommit': 'a' * 40, 'runId': 310, 'runAttempt': 1, 'jobId': 31001}
+        timestamp = worker.now() - dt.timedelta(seconds=1)
+        def unexpected(*args, **kwargs):
+            self.fail('Unexpected upstream request')
+        provider = harness.preparation_provider(context, timestamp, unexpected)
+        record = {'context': context, 'method': 'maintenance-prepare',
+                  'notBefore': (timestamp - dt.timedelta(seconds=1)).isoformat()}
+        with patch.object(original, '_gh', side_effect=provider):
+            worker.authenticate_job(record, {})
+            with self.assertRaises(worker.BoundaryError):
+                worker.authenticate_job({**record, 'context': {**context, 'sourceCommit': 'b' * 40}}, {})
+
     def test_probe_always_reports_unexecuted_without_provisioning(self):
         output = io.StringIO()
         with patch('sys.argv', ['harness', '--probe']), \
