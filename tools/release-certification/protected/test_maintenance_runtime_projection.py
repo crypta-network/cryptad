@@ -18,6 +18,33 @@ from cryptad_certification.cross_version_evidence import digest
 
 
 class MaintenanceRuntimeProjectionTest(unittest.TestCase):
+    def test_composed_attachment_reaches_owner_without_changing_historical_baseline(self):
+        plan, events, checkpoint, products = self.scheduler_fixture()
+        event = next(event for event in events if 'runtimeEvidence' in event)
+        node = next(node for node in plan['nodes'] if node['role'] == event['role'])
+        event['composedBudgetEvidence'] = {
+            'schemaVersion': 2, 'collectorEpoch': '12345678-1234-1234-1234-123456789012',
+            'nodeEpoch': event['nodeEpoch'], 'workloadDigest': plan['workloadInputs']['scheduler'],
+            'sourceCommit': node['sourceCommit'], 'productDigest': node['artifactDigest'],
+            'appCohortDigest': digest(node['appDigests']), 'collectorDigest': 'sha256:' + '5' * 64,
+            'configurationDigest': 'sha256:' + '6' * 64, 'segments': []}
+        plan['composedBudgetInputs'] = {key: event['composedBudgetEvidence'][key]
+            for key in ('collectorDigest', 'configurationDigest')}
+        for row in events:
+            row['planDigest'] = digest(plan)
+        rechain(events)
+        checkpoint = checkpoint_for(plan, events)
+        result = self.project((plan, events, checkpoint, products))
+        self.assertEqual(6, result['schemaVersion'])
+        self.assertEqual(3, result['composedBudgetBaseVersion'])
+        self.assertEqual([], result['composedBudgetCoverage']['observedCases'])
+        self.assertEqual('not-observed', result['runtimeComponents']['fullAppBudgets'])
+        projection.validate(result)
+        rebound = copy.deepcopy(result)
+        rebound['composedBudgetCoverage']['fullAppBudgets'] = 'observed'
+        with self.assertRaises(projection.ProjectionError):
+            projection.validate(rebound)
+
     def fixture(self):
         plan = fixture_plan()
         plan['provenanceClass'] = 'production-artifact-comparison'

@@ -15,7 +15,9 @@ import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.RuntimeWorkObservation;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
@@ -136,23 +138,94 @@ public final class ContentApiHandler {
    *     decoding fails
    */
   public Map<String, Object> fetch(Map<String, List<String>> parameters, String appId) {
-    FetchRequest request = parseRequest(parameters);
-    try (var _ = acquireBudget(appId)) {
-      BoundedContentFetchResult result = fetchContent(request);
+    return fetch(parameters, appId, null);
+  }
+
+  /**
+   * Fetches with an explicit server-created composed request context.
+   *
+   * @param parameters validated route fields
+   * @param appId authenticated billing scope
+   * @param parent native parent context, absent for independent requests
+   * @return bounded response
+   */
+  public Map<String, Object> fetch(
+      Map<String, List<String>> parameters, String appId, RuntimeWorkObservation.Operation parent) {
+    return fetch(parameters, appId, parent, null);
+  }
+
+  /**
+   * Fetches while retaining a composed owner's reservation until native work terminates.
+   *
+   * @param parameters validated route fields
+   * @param appId authenticated billing scope
+   * @param parent native parent context, absent for independent requests
+   * @param reservation native outer reservation, absent for independent requests; the caller owns
+   *     closing and committing it
+   * @return bounded response
+   */
+  public Map<String, Object> fetch(
+      Map<String, List<String>> parameters,
+      String appId,
+      RuntimeWorkObservation.Operation parent,
+      AppNetworkBudgetReservation reservation) {
+    FetchRequest request;
+    try {
+      request = parseRequest(parameters);
+    } catch (PlatformApiException failure) {
+      if (parent != null
+          && ("invalid_content_uri".equals(failure.errorCode())
+              || "unsupported_content_source".equals(failure.errorCode()))) {
+        parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_URI_REJECTED);
+      }
+      throw failure;
+    }
+    try (var lease = acquireBudget(appId, parent)) {
+      BoundedContentFetchResult result;
+      observeFetch(RuntimeWorkObservation.Kind.FETCH_INVOKED, lease, appId);
+      result = fetchContent(request, lease, appId, parent, reservation);
+      observeFetch(RuntimeWorkObservation.Kind.FETCH_SUCCEEDED, lease, appId);
       byte[] bytes = result.bytes();
       if (bytes.length > request.maxBytes()) {
+        if (parent != null) {
+          parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_BYTES_REJECTED);
+        }
         throw new PlatformApiException(
             502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
       }
-      return responseBody(request, result, bytes);
+      try {
+        return responseBody(request, result, bytes);
+      } catch (PlatformApiException failure) {
+        if (parent != null && "unsupported_content_encoding".equals(failure.errorCode())) {
+          parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_UTF8_REJECTED);
+        }
+        throw failure;
+      }
     }
   }
 
-  private AppNetworkBudgetLease acquireBudget(String appId) {
+  private void observeFetch(
+      RuntimeWorkObservation.Kind kind, AppNetworkBudgetLease lease, String appId) {
+    if (networkBudgetService != null && lease.observationId() != 0) {
+      networkBudgetService
+          .observation()
+          .recordEvent(
+              kind,
+              budgetOperation,
+              0,
+              0,
+              lease.observationId(),
+              networkBudgetService.observation().scope(appId));
+    }
+  }
+
+  private AppNetworkBudgetLease acquireBudget(
+      String appId, RuntimeWorkObservation.Operation parent) {
     if (networkBudgetService == null || appId == null || appId.isBlank()) {
       return AppNetworkBudgetLease.noop();
     }
-    AppNetworkBudgetDecision decision = networkBudgetService.acquire(appId, budgetOperation);
+    AppNetworkBudgetDecision decision =
+        networkBudgetService.acquire(appId, budgetOperation, parent);
     if (!decision.allowed()) {
       throw new PlatformApiException(
           decision.statusCode(), decision.errorCode(), decision.message());
@@ -182,7 +255,12 @@ public final class ContentApiHandler {
         source.requestedUri(), source.runtimeUri(), maxBytes, timeoutMillis, format, purpose);
   }
 
-  private BoundedContentFetchResult fetchContent(FetchRequest request) {
+  private BoundedContentFetchResult fetchContent(
+      FetchRequest request,
+      AppNetworkBudgetLease lease,
+      String appId,
+      RuntimeWorkObservation.Operation parent,
+      AppNetworkBudgetReservation reservation) {
     try {
       return contentFetchPort.fetchContent(
           new BoundedContentFetchRequest(
@@ -191,8 +269,31 @@ public final class ContentApiHandler {
               Duration.ofMillis(request.timeoutMillis()),
               request.purpose()));
     } catch (ContentFetchException exception) {
+      if (parent != null
+          && ContentFetchException.CATALOG_FETCH_TIMEOUT.equals(exception.errorCode())) {
+        parent.recordStage(RuntimeWorkObservation.Kind.FETCH_TIMEOUT);
+      }
+      if (parent != null
+          && ContentFetchException.CATALOG_FETCH_TOO_LARGE.equals(exception.errorCode())) {
+        parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_BYTES_REJECTED);
+      }
+      if (exception.ownerTermination() != null) {
+        observeFetch(RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN, lease, appId);
+        var terminal =
+            exception
+                .ownerTermination()
+                .thenRun(
+                    () -> observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId));
+        lease.deferUntil(terminal);
+        if (reservation != null) {
+          reservation.deferUntil(terminal);
+        }
+      } else {
+        observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
+      }
       throw mappedFetchException(exception);
     } catch (RuntimeException _) {
+      observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
       throw new PlatformApiException(502, "content_fetch_failed", "Content fetch failed.");
     }
   }

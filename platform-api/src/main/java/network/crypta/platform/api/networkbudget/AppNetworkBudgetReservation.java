@@ -139,10 +139,37 @@ public final class AppNetworkBudgetReservation implements AutoCloseable {
     return result;
   }
 
+  private final Object terminationLock = new Object();
+  private java.util.concurrent.CompletionStage<Void> ownerTermination;
+
+  /**
+   * Defers transient hold release until the asynchronous native owner acknowledges termination.
+   * Must be called by the owning request before close; normal completion does not refund durable
+   * charges. Exceptional completion retains holds because owner termination remains unknown.
+   *
+   * @param terminal native terminal acknowledgment
+   */
+  public void deferUntil(java.util.concurrent.CompletionStage<Void> terminal) {
+    synchronized (terminationLock) {
+      if (closed.get()) {
+        throw new IllegalStateException("budget hold already closed");
+      }
+      ownerTermination = Objects.requireNonNull(terminal, "terminal");
+    }
+  }
+
   @Override
   public synchronized void close() {
     if (closed.compareAndSet(false, true)) {
-      closeAction.run();
+      java.util.concurrent.CompletionStage<Void> terminal;
+      synchronized (terminationLock) {
+        terminal = ownerTermination;
+      }
+      if (terminal == null) {
+        closeAction.run();
+      } else {
+        terminal.thenRun(closeAction);
+      }
     }
   }
 }

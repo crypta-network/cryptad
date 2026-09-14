@@ -215,6 +215,28 @@ class HttpAdapterTest(unittest.TestCase):
         self.supervisor.remaining.return_value = 1
         self.handle = runtime.AppHandle(self.supervisor, "candidate-sender", "mail-prototype")
 
+    def test_budget_queue_privacy_queries_are_fixed_and_host_only(self):
+        self.supervisor.app_budget_lane = True
+        for page in ('downloads', 'uploads'):
+            response = io.BytesIO(b'{}')
+            response.status = 200
+            with patch.object(self.handle.opener, 'open', return_value=response) as opened:
+                self.assertEqual((200, {}), self.handle.request('GET', '/api/v1/queue', {'page': page}))
+                self.assertEqual(self.handle.base + '/api/v1/queue?page=' + page,
+                                 opened.call_args.args[0].full_url)
+        self.handle.session, self.handle.origin = 'private-session', 'http://127.0.0.1:9001'
+        for enabled, principal, values in (
+                (False, 'host', {'page': 'downloads'}),
+                (True, 'app', {'page': 'downloads'}),
+                (True, 'host', {'page': 'arbitrary'}),
+                (True, 'host', {'page': 'downloads', 'uri': 'private-canary'})):
+            with self.subTest(enabled=enabled, principal=principal, values=values):
+                self.supervisor.app_budget_lane = enabled
+                with patch.object(self.handle.opener, 'open') as opened:
+                    with self.assertRaisesRegex(runtime.RuntimeFailure, 'app-query-not-approved'):
+                        self.handle.request('GET', '/api/v1/queue', values, principal=principal)
+                    opened.assert_not_called()
+
     def test_unselected_host_route_rejected_before_http(self):
         with patch.object(self.handle.opener, "open") as opened:
             with self.assertRaisesRegex(runtime.RuntimeFailure, "route-not-approved"):

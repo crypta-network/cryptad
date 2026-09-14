@@ -76,7 +76,7 @@ def _number(value, minimum, maximum, label):
 
 def validate_plan(plan):
     """Validate public identities and workload policy without admitting executable bytes."""
-    _closed(plan, {"schemaVersion", "kind", "experimentId", "profile", "topologyClass", "provenanceClass", "requestedSeconds", "probeIntervalSeconds", "policy", "requiredScenarios", "producer", "nodes"} | ({key for key in ("cohorts", "workloadInputs") if key in plan} if isinstance(plan, dict) else set()), "plan")
+    _closed(plan, {"schemaVersion", "kind", "experimentId", "profile", "topologyClass", "provenanceClass", "requestedSeconds", "probeIntervalSeconds", "policy", "requiredScenarios", "producer", "nodes"} | ({key for key in ("cohorts", "workloadInputs", "composedBudgetInputs") if key in plan} if isinstance(plan, dict) else set()), "plan")
     if type(plan["schemaVersion"]) is not int or plan["schemaVersion"] != 1 or plan["kind"] != KIND or not isinstance(plan["profile"], str) or plan["profile"] not in PROFILES:
         raise EvidenceError("plan-version-or-profile-invalid")
     if not isinstance(plan["experimentId"], str) or not IDENTIFIER.fullmatch(plan["experimentId"]) or plan["topologyClass"] != "single-host-independent-processes":
@@ -113,6 +113,11 @@ def validate_plan(plan):
     if (not isinstance(workload, dict) or not set(workload) <= {"budget", "catalog", "scheduler"}
             or any(not DIGEST.fullmatch(str(value)) for value in workload.values())):
         raise EvidenceError("workload-input-binding-invalid")
+    if 'composedBudgetInputs' in plan:
+        inputs = plan['composedBudgetInputs']
+        _closed(inputs, {'collectorDigest', 'configurationDigest'}, 'composed-budget-inputs')
+        if 'scheduler' not in workload or any(not DIGEST.fullmatch(str(value)) for value in inputs.values()):
+            raise EvidenceError('composed-budget-input-binding-invalid')
     cohorts = plan.get("cohorts", [])
     if not isinstance(cohorts, list) or len(cohorts) > 1:
         raise EvidenceError("recovery-cohort-roster-invalid")
@@ -320,7 +325,7 @@ class Journal:
             finally:
                 os.close(self._lock)
 
-    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None):
+    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None, composed_budget_evidence=None):
         if self.finished or len(self.events) >= self.plan["policy"]["maxEvents"]:
             raise EvidenceError("journal-closed-or-budget-exhausted")
         scope = (cohort, role)
@@ -345,6 +350,8 @@ class Journal:
             event["priorCheckpoint"] = prior_checkpoint
         if runtime_evidence is not None:
             event["runtimeEvidence"] = runtime_evidence
+        if composed_budget_evidence is not None:
+            event["composedBudgetEvidence"] = composed_budget_evidence
         _validate_event(event, self.plan)
         if "scheduler" in self.plan.get("workloadInputs", {}) and self._stream.tell() > 16 * 1024 * 1024 - event_byte_limit(self.plan):
             raise EvidenceError("journal-total-byte-budget-exceeded")
@@ -406,6 +413,26 @@ def _validate_event(event, plan):
                 or event["runtimeEvidence"]["series"]["evidenceClass"] !=
                    ("operational" if plan["profile"] == "protected-long-live" else "synthetic-local")):
             raise EvidenceError("runtime-evidence-exact-subject-mismatch")
+    if isinstance(event, dict) and "composedBudgetEvidence" in event:
+        fields.add("composedBudgetEvidence")
+        from .composed_budget_evidence import derive
+        binding = plan.get("workloadInputs", {}).get("scheduler")
+        if (binding is None or event.get("kind") != "operation"
+                or event.get("scenario") != "app-budgets" or event.get("role") != "candidate-sender"
+                or event.get("outcome") != "partial"):
+            raise EvidenceError("composed-budget-journal-binding-invalid")
+        selected = next(node for node in plan["nodes"] if node["role"] == event["role"])
+        inputs = plan.get("composedBudgetInputs")
+        if not isinstance(inputs, dict):
+            raise EvidenceError("composed-budget-original-input-binding-required")
+        try:
+            derive(event["composedBudgetEvidence"], workload_digest=binding,
+                   product_digest=selected["artifactDigest"], source_commit=selected["sourceCommit"],
+                   app_cohort_digest=digest(selected["appDigests"]), observation_time=event["wallTime"],
+                   node_epoch=event["nodeEpoch"], collector_digest=inputs["collectorDigest"],
+                   configuration_digest=inputs["configurationDigest"])
+        except (ValueError, TypeError, KeyError):
+            raise EvidenceError("composed-budget-journal-contract-invalid") from None
     _closed(event, fields, "event")
     if any(not isinstance(event[k], str) for k in ("kind", "outcome", "role", "scenario", "peerRole", "operation")):
         raise EvidenceError("event-enum-type-invalid")

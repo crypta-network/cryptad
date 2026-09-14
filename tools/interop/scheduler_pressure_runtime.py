@@ -422,8 +422,10 @@ class SchedulerLane(runtime.Supervisor):
                 'packageTarget': self.package_target, 'runtimeDigest': runtime.tree_digest(self.java),
                 'contractVersion': contract['contract']['contractVersion'],
                 'configDigest': self.prepared['candidate-sender'][4],
-                'appDigests': [runtime.digest_file(self.fixture / 'feed-reader.zip')]}],
+                'appDigests': [app['bundleDigest'] for app in self.private['nodes']['candidate-sender']['apps']]}],
             'workloadInputs': {'scheduler': self.fingerprint['workloadDigest']}}
+        if hasattr(self, 'composed_budget_inputs'):
+            self.plan['composedBudgetInputs'] = dict(self.composed_budget_inputs)
         self.journal = evidence.Journal(self.root / 'journal', self.plan)
         private_json(self.root / 'plan.json', self.plan)
         self.journal.append('start')
@@ -649,7 +651,14 @@ class SchedulerLane(runtime.Supervisor):
                 prior = events.setdefault(event['sequence'], event)
                 if prior != event:
                     raise runtime.RuntimeFailure('scheduler-event-sequence-substituted')
-        return {'schemaVersion': 1, 'workloadDigest': self.fingerprint['workloadDigest'],
+        work_snapshot = observations[-1]['work']
+        version = work_snapshot.get('version', 1)
+        if version == 2 and any(row['work'].get('collectorEpoch') != work_snapshot.get('collectorEpoch')
+                                or row['work'].get('version') != 2 for row in observations):
+            raise runtime.RuntimeFailure('scheduler-native-collector-epoch-substituted')
+        return {'schemaVersion': version,
+            **({'collectorEpoch': work_snapshot['collectorEpoch']} if version == 2 else {}),
+            'workloadDigest': self.fingerprint['workloadDigest'],
             'collectorDigest': self.fingerprint['collectorDigest'], 'configurationDigest': self.fingerprint['configurationDigest'],
             'series': self.epoch_series(epoch),
             'policy': self.policy,

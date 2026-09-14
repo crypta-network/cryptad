@@ -98,6 +98,7 @@ final class LegacyContentFetchPort implements ContentFetchPort {
       throws ContentFetchException {
     long token = activity.enter();
     boolean success = false;
+    boolean deferred = false;
     try {
       FetchOutcome outcome = fetchOutcome(request);
       byte[] bytes = materializeResult(request, outcome.result());
@@ -107,8 +108,16 @@ final class LegacyContentFetchPort implements ContentFetchPort {
               bytes, request.uri(), resolvedUri, "Fetched " + bytes.length + " bytes");
       success = true;
       return result;
+    } catch (ContentFetchException failure) {
+      if (failure.ownerTermination() != null) {
+        deferred = true;
+        failure.ownerTermination().thenRun(() -> activity.exit(token, false));
+      }
+      throw failure;
     } finally {
-      activity.exit(token, success);
+      if (!deferred) {
+        activity.exit(token, success);
+      }
     }
   }
 
@@ -126,12 +135,21 @@ final class LegacyContentFetchPort implements ContentFetchPort {
     Objects.requireNonNull(destination, "destination");
     long token = activity.enter();
     boolean success = false;
+    boolean deferred = false;
     try {
       FetchOutcome outcome = fetchOutcome(request);
       streamResult(request, outcome.result(), destination);
       success = true;
+    } catch (ContentFetchException failure) {
+      if (failure.ownerTermination() != null) {
+        deferred = true;
+        failure.ownerTermination().thenRun(() -> activity.exit(token, false));
+      }
+      throw failure;
     } finally {
-      activity.exit(token, success);
+      if (!deferred) {
+        activity.exit(token, success);
+      }
     }
   }
 
@@ -271,21 +289,25 @@ final class LegacyContentFetchPort implements ContentFetchPort {
       throws ContentFetchException, FetchException {
     long remainingNanos = remainingNanos(deadlineNanos);
     if (remainingNanos <= 0L) {
+      callback.abandon();
       getter.cancel(core.getClientContext());
-      throw timeoutException(request, null);
+      throw timeoutException(request, null, callback);
     }
     try {
       return callback.result().get(remainingNanos, TimeUnit.NANOSECONDS);
     } catch (TimeoutException exception) {
+      callback.abandon();
       getter.cancel(core.getClientContext());
-      throw timeoutException(request, exception);
+      throw timeoutException(request, exception, callback);
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
+      callback.abandon();
       getter.cancel(core.getClientContext());
       throw new ContentFetchException(
           ContentFetchException.CATALOG_FETCH_FAILED,
           "Interrupted while fetching " + request.purpose(),
-          exception);
+          exception,
+          callback.termination());
     } catch (ExecutionException exception) {
       Throwable cause = exception.getCause();
       if (cause instanceof FetchException fetchException) {
@@ -306,11 +328,12 @@ final class LegacyContentFetchPort implements ContentFetchPort {
    * @return content-fetch exception with {@code catalog_fetch_timeout}
    */
   private static ContentFetchException timeoutException(
-      BoundedContentFetchRequest request, Throwable cause) {
+      BoundedContentFetchRequest request, Throwable cause, FetchCompletionCallback callback) {
     return new ContentFetchException(
         ContentFetchException.CATALOG_FETCH_TIMEOUT,
         "Timed out fetching " + request.purpose(),
-        cause);
+        cause,
+        callback.termination());
   }
 
   /**
@@ -506,19 +529,25 @@ final class LegacyContentFetchPort implements ContentFetchPort {
    * FetchException}. Persistent resume is rejected because these fetches are deliberately
    * transient.
    */
-  private static final class FetchCompletionCallback implements ClientGetCallback {
+  static final class FetchCompletionCallback implements ClientGetCallback {
     /** Request-client identity returned to the high-level fetch scheduler. */
     private final RequestClient requestClient;
 
     /** Future completed exactly once by success or failure callbacks. */
     private final CompletableFuture<FetchResult> result = new CompletableFuture<>();
 
+    private final CompletableFuture<Void> terminal = new CompletableFuture<>();
+
+    java.util.concurrent.CompletionStage<Void> termination() {
+      return terminal.minimalCompletionStage();
+    }
+
     /**
      * Creates a callback bridge for one fetch attempt.
      *
      * @param requestClient request-client identity associated with the transient fetch
      */
-    private FetchCompletionCallback(RequestClient requestClient) {
+    FetchCompletionCallback(RequestClient requestClient) {
       this.requestClient = Objects.requireNonNull(requestClient);
     }
 
@@ -533,12 +562,46 @@ final class LegacyContentFetchPort implements ContentFetchPort {
 
     @Override
     public void onSuccess(FetchResult result, ClientGetter state) {
-      this.result.complete(result);
+      boolean discard;
+      synchronized (this) {
+        discard = abandoned || !this.result.complete(result);
+      }
+      if (discard) {
+        //noinspection EmptyTryBlock
+        try (var _ = result.asBucket()) {
+          // Closing releases the result that the waiter no longer owns.
+        }
+      }
+      terminal.complete(null);
+    }
+
+    private boolean abandoned;
+
+    /** Relinquishes result ownership when the bounded waiter exits without consuming it. */
+    void abandon() {
+      FetchResult completed = null;
+      synchronized (this) {
+        if (abandoned) {
+          return;
+        }
+        abandoned = true;
+        if (result.isDone() && !result.isCompletedExceptionally()) {
+          completed = result.getNow(null);
+        }
+      }
+      // Bucket disposal may perform I/O, so it must happen outside the callback lock.
+      if (completed != null) {
+        //noinspection EmptyTryBlock
+        try (var _ = completed.asBucket()) {
+          // Closing releases the completed result abandoned by the waiter.
+        }
+      }
     }
 
     @Override
     public void onFailure(FetchException exception) {
       result.completeExceptionally(exception);
+      terminal.complete(null);
     }
 
     @Override

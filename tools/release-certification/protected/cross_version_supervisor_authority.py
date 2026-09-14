@@ -223,27 +223,27 @@ def validate_report(report):
     }
     version = report.get('schemaVersion') if isinstance(report, dict) else None
     extra = {'maintenanceMeasurements'} if version == 2 else set()
-    if version in {3, 4, 5, 6}:
+    if version in {3, 4, 5, 6, 7}:
         extra = {'admittedProductsDigest'}
         if report.get('operation') in {'checkpoint', 'finish'}:
             extra.add('maintenanceMeasurements')
     if (not isinstance(report, dict) or report.get('operation') not in variants
             or set(report) != common | variants[report['operation']] | extra
-            or type(version) is not int or version not in {1, 2, 3, 4, 5, 6} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
-            or (version == 6 and report['operation'] not in {'checkpoint', 'finish'})
+            or type(version) is not int or version not in {1, 2, 3, 4, 5, 6, 7} or (version == 2 and report['operation'] not in {'checkpoint', 'finish'})
+            or (version in {6, 7} and report['operation'] not in {'checkpoint', 'finish'})
             or (version in {3, 4} and report['operation'] not in {'start', 'checkpoint', 'finish'})
             or report.get('kind') != 'cryptad-cross-version-supervisor'
             or report.get('purpose') != 'nonrelease-observed-experiment' or report.get('releaseEligible') is not False):
         raise AuthorityError('protected-supervisor-report-contract-invalid')
-    if version in {3, 4, 5, 6} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
+    if version in {3, 4, 5, 6, 7} and not re.fullmatch(r'sha256:[0-9a-f]{64}', str(report['admittedProductsDigest'])):
         raise AuthorityError('protected-supervisor-products-binding-invalid')
-    if version in {2, 3, 4, 5, 6} and report['operation'] in {'checkpoint', 'finish'}:
+    if version in {2, 3, 4, 5, 6, 7} and report['operation'] in {'checkpoint', 'finish'}:
         from maintenance_runtime_projection import validate
         measured = validate(report['maintenanceMeasurements'])
         if (measured['planDigest'] != report['planDigest'] or measured['producer'] != report['producer']
                 or measured['checkpointDigest'] != report['checkpoint']['digest']
                 or measured['schemaVersion'] != version - 1
-                or (version in {3, 4, 5, 6} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
+                or (version in {3, 4, 5, 6, 7} and measured['admittedProductsDigest'] != report['admittedProductsDigest'])):
             raise AuthorityError('protected-supervisor-measurements-binding-invalid')
     if report['operation'] == 'authorize':
         plan = validate_plan(report['plan'])
@@ -708,7 +708,10 @@ def control(operation):
     coordinates = read_json(secured(coordinates_path, private=True))
     with tempfile.TemporaryDirectory(prefix='cryptad-supervisor-auth-') as directory:
         previous, origin = authenticate_report(coordinates, Path(directory))
-    sealed_authorization = previous.get('schemaVersion') in {5, 6} or private_runtime
+    prior_version = previous.get('schemaVersion')
+    if prior_version == 7:
+        prior_version = previous['maintenanceMeasurements']['composedBudgetBaseVersion'] + 1
+    sealed_authorization = prior_version in {5, 6} or private_runtime
     report['selectionDigest'] = _runtime_authorization(bindings) if sealed_authorization else digest(bindings)
     if any(previous.get(key) != report[key] for key in ('experimentId', 'planDigest', 'producer', 'selectionDigest')):
         raise AuthorityError('protected-original-authorization-selection-mismatch')
@@ -816,7 +819,7 @@ def control(operation):
     if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
         bound_digest = digest(activation['products'])
         expected_version = 5 if sealed_authorization else (4 if 'scheduler' in plan.get('workloadInputs', {}) else 3)
-        if previous.get('schemaVersion') not in ({4, 5, 6} if private_runtime else {expected_version}) or previous.get('admittedProductsDigest') != bound_digest:
+        if prior_version not in ({4, 5, 6} if private_runtime else {expected_version}) or previous.get('admittedProductsDigest') != bound_digest:
             raise AuthorityError('protected-collection-products-substituted')
         report['admittedProductsDigest'] = bound_digest
     report['approvalOrigin'] = expected_origin

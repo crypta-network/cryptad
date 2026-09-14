@@ -310,3 +310,11 @@ python3 tools/perf/test_runtime_baseline.py
 | Parent maintenance/Phase 12 | Existing blockers and historical clocks remain authoritative | Shared budget matrix, durations, Mail/migration, independent review and publication remain separate |
 
 The next provisional slice is the complete shared app-network-budget cohort, especially Trust Graph import-by-URI reservation, fetch, commit, failure, restart, and scoped accounting. Reassess dependency order from the final implementation; do not fold Mail lifecycle work or scheduler redesign into that slice.
+
+## PR-309 successor scope
+
+The [prospective shared-budget implementation](pr-309-shared-app-network-budget-runtime.md)
+adds composed Trust Graph accounting work. It preserves this runbook's historical
+`fullAppBudgets=not-observed` resource-comparison contract. Changed app/cohort/collector fingerprints
+need their own later authorized baseline collection and approval; existing approvals cannot be
+rebound. The restricted private-resolver/key execution prerequisite remains unresolved.

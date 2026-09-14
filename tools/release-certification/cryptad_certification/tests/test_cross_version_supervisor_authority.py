@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
+from contextlib import nullcontext
 
 from cryptad_certification.cross_version_evidence import digest, Journal
 from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
@@ -23,6 +24,53 @@ SPEC.loader.exec_module(authority)
 
 @unittest.skipUnless(os.name == 'posix', 'Linux installed service authority')
 class SupervisorAuthorityTest(unittest.TestCase):
+    def test_checkpoint_wrapper_preserves_underlying_product_lineage_requirement(self):
+        for private_runtime in (False, True):
+            for base_version in (2, 3, 4, 5):
+                for wrapped in (False, True):
+                    with self.subTest(private_runtime=private_runtime, base_version=base_version, wrapped=wrapped):
+                        plan, private, auth = self.selection()
+                        plan.update(provenanceClass='production-artifact-comparison',
+                                    workloadInputs={'scheduler': 'sha256:' + 'a' * 64})
+                        if private_runtime:
+                            private['runtimeBaseline'] = {'scope': {}}
+                        bindings = {'serviceDigest': 'sha256:' + 'b' * 64}
+                        sealed = private_runtime or base_version + 1 in {5, 6}
+                        selection = 'sha256:' + 'c' * 64 if sealed else digest(bindings)
+                        products = [{'runtimeBinding': {'fixture': True}}]
+                        activation = self.activation(plan, private, auth)
+                        activation.update(schemaVersion=2 if sealed else 1, selectionDigest=selection,
+                                          products=products)
+                        previous = {'schemaVersion': 7 if wrapped else base_version + 1,
+                                    'maintenanceMeasurements': {'schemaVersion': 6 if wrapped else base_version},
+                                    'operation': 'checkpoint', 'experimentId': plan['experimentId'],
+                                    'planDigest': digest(plan), 'producer': plan['producer'],
+                                    'selectionDigest': selection, 'approvalOrigin': activation['approvalOrigin'],
+                                    'admittedProductsDigest': digest(products)}
+                        if wrapped:
+                            previous['maintenanceMeasurements']['composedBudgetBaseVersion'] = base_version
+                        allowed = base_version in ({3, 4, 5} if private_runtime else {3, 4})
+                        with (patch.object(authority.os, 'geteuid', return_value=0),
+                              patch.object(authority, 'selected_inputs', return_value=(plan, private, auth, os.getuid(), bindings)),
+                              patch.object(authority, 'run_identity', return_value={'sourceCommit': plan['producer']['sourceCommit']}),
+                              patch.object(authority, 'secured', side_effect=lambda path, **kw: path),
+                              patch.object(authority, 'read_json', return_value=activation),
+                              patch.object(authority, 'authenticate_report', return_value=(previous, {'artifactId': 1})),
+                              patch.object(authority, '_runtime_authorization', return_value=selection),
+                              patch.object(authority, '_service_state', return_value='running'),
+                              patch.object(authority.AuthenticatedRunner, 'product_admission', return_value=nullcontext()),
+                              patch.object(authority, 'snapshot', return_value={'maintenanceMeasurements': {'schemaVersion': 3}}) as snapshot,
+                              patch.object(authority.subprocess, 'run') as run):
+                            if allowed:
+                                result = authority.control('checkpoint')
+                                self.assertEqual(digest(products), result['admittedProductsDigest'])
+                                snapshot.assert_called_once()
+                            else:
+                                with self.assertRaisesRegex(authority.AuthorityError, 'protected-collection-products-substituted'):
+                                    authority.control('checkpoint')
+                                snapshot.assert_not_called()
+                            run.assert_not_called()
+
     def selection(self):
         plan = fixture_plan()
         plan.update(profile='protected-long-live', requestedSeconds=72 * 3600)

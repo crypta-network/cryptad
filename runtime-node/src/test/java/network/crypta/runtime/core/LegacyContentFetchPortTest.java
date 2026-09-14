@@ -23,6 +23,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class LegacyContentFetchPortTest {
   @Test
+  void abandonedWaiterFreesLateSuccessBucket() {
+    var callback =
+        new LegacyContentFetchPort.FetchCompletionCallback(
+            new network.crypta.node.RequestClientBuilder().build());
+    TrackingBucket bucket = new TrackingBucket(new byte[] {1});
+    callback.abandon();
+
+    callback.onSuccess(FetchResult.create(new ClientMetadata("text/plain"), bucket), null);
+
+    assertTrue(bucket.freed());
+  }
+
+  @Test
+  void timeoutRaceFreesAlreadyCompletedButUnconsumedBucket() {
+    var callback =
+        new LegacyContentFetchPort.FetchCompletionCallback(
+            new network.crypta.node.RequestClientBuilder().build());
+    TrackingBucket bucket = new TrackingBucket(new byte[] {1});
+    callback.onSuccess(FetchResult.create(new ClientMetadata("text/plain"), bucket), null);
+
+    callback.abandon();
+    callback.abandon();
+
+    assertTrue(bucket.freed());
+  }
+
+  @Test
   void redirectTarget_whenPermanentRedirectCarriesUri_expectUriReturned() {
     FreenetURI redirectUri = FreenetURI.EMPTY_CHK_URI;
     FetchException exception =

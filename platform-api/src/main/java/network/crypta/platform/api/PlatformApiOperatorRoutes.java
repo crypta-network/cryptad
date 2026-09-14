@@ -425,6 +425,8 @@ final class PlatformApiOperatorRoutes {
             true,
             "version",
             history.version(),
+            "collectorEpoch",
+            history.collectorEpoch(),
             "lastSequence",
             history.lastSequence(),
             "dropped",
@@ -442,7 +444,17 @@ final class PlatformApiOperatorRoutes {
             "activeFamilyLeases",
             diagnostics.activeFamilyLeases(),
             "reservedFamilyRates",
-            diagnostics.reservedFamilyRates()));
+            diagnostics.reservedFamilyRates(),
+            "rates",
+            diagnostics.usage().stream()
+                .map(
+                    row ->
+                        Map.of(
+                            "operation", row.operation().jsonValue(),
+                            "scope", budgets.observation().scope(row.appId()),
+                            "windowStartEpochSecond", row.windowStart().getEpochSecond(),
+                            "count", row.count()))
+                .toList()));
     result.put("budgetConfiguration", budgetConfiguration(budgets.configuration()));
     if (contentSubscriptionService != null) {
       var scheduler = contentSubscriptionService.configuration();

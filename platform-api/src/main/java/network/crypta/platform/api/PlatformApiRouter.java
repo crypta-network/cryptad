@@ -351,6 +351,15 @@ public final class PlatformApiRouter {
     PlatformApiAuthorizationDecision authorization =
         PlatformApiCapabilities.authorize(checkedRequest);
     if (!authorization.allowed()) {
+      if (checkedRequest.principal().isApp()
+          && "POST".equals(checkedRequest.method())
+          && checkedRequest.pathSegments().size() == 2
+          && "trust-graph".equals(checkedRequest.pathSegments().getFirst())) {
+        trustGraphRoutes
+            .trustGraphApiHandler()
+            .observeCapabilityDenied(
+                checkedRequest.pathSegments().get(1), checkedRequest.principal().appId());
+      }
       PlatformApiResponse response =
           PlatformApiResponse.error(
               403, "forbidden", "App principal lacks the required Platform API capability.");

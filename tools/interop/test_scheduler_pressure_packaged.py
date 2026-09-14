@@ -15,17 +15,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @contextmanager
-def retained_on_failure():
+def retained_on_failure(namespace='pr306'):
+    if namespace not in ('pr306', 'pr309'):
+        raise ValueError('packaged-test-namespace-invalid')
     retained = os.environ.get('CRYPTAD_SCHEDULER_RETAIN_TEST_OUTPUT') == '1'
-    storage = ROOT / 'build/pr306-private-runs' if retained else None
+    storage = ROOT / ('build/' + namespace + '-private-runs') if retained else None
     if storage is not None:
         storage.mkdir(mode=0o700, exist_ok=True)
-    root = Path(tempfile.mkdtemp(prefix='pr306-packaged-', dir=storage))
-    marker = ROOT / 'build/pr306-packaged-private-root.txt'
+    root = Path(tempfile.mkdtemp(prefix=namespace + '-packaged-', dir=storage))
+    marker = ROOT / ('build/' + namespace + '-packaged-private-root.txt')
     marker.write_text(str(root))
     marker.chmod(0o600)
     if retained:
-        inventory = ROOT / 'build/pr306-packaged-private-roots.json'
+        inventory = ROOT / ('build/' + namespace + '-packaged-private-roots.json')
         roots = json.loads(inventory.read_bytes()) if inventory.exists() else []
         roots.append(str(root))
         inventory.write_text(json.dumps(roots))

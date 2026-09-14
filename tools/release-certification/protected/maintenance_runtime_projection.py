@@ -378,12 +378,25 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None,
             for row in result["rows"]:
                 if row["id"] == PREFIX + "performance":
                     row["blockers"].remove("reviewed-runtime-baseline-missing")
+    from cryptad_certification.composed_budget_evidence import derive_journal
+    composed = derive_journal(plan, events)
+    if composed is not None:
+        result.update(composedBudgetBaseVersion=result['schemaVersion'], schemaVersion=6,
+                      composedBudgetCoverage=composed)
     return result
 
 
 def without_current_baseline(value, scope):
     """Keep terminal measurements public-safe without asserting current baseline authority."""
     validate(value)
+    if value['schemaVersion'] == 6:
+        historical = json.loads(json.dumps(value))
+        historical['schemaVersion'] = historical.pop('composedBudgetBaseVersion')
+        composed = historical.pop('composedBudgetCoverage')
+        result = without_current_baseline(historical, scope)
+        result.update(composedBudgetBaseVersion=result['schemaVersion'], schemaVersion=6,
+                      composedBudgetCoverage=composed)
+        return validate(result)
     if value['schemaVersion'] not in {2, 3, 4}:
         return value
     from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
@@ -407,6 +420,29 @@ def without_current_baseline(value, scope):
 
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if isinstance(value, dict) and value.get("schemaVersion") == 6:
+        from cryptad_certification.composed_budget_evidence import REQUIRED_CASES
+        historical = json.loads(json.dumps(value))
+        version = historical.pop('composedBudgetBaseVersion', None)
+        coverage = historical.pop('composedBudgetCoverage', None)
+        if type(version) is not int or version not in {2, 3, 4, 5}:
+            raise ProjectionError('maintenance-composed-budget-version-invalid')
+        historical['schemaVersion'] = version
+        validate(historical)
+        fields = {'schemaVersion', 'kind', 'requiredCases', 'observedCases', 'missingCases',
+                  'evidenceClass', 'originalAuthentication', 'fullAppBudgets', 'releaseEligible'}
+        if (not isinstance(coverage, dict) or set(coverage) != fields
+                or coverage['schemaVersion'] != 1 or coverage['kind'] != 'composed-budget-coverage'
+                or coverage['requiredCases'] != list(REQUIRED_CASES)
+                or not isinstance(coverage['observedCases'], list)
+                or any(case not in REQUIRED_CASES for case in coverage['observedCases'])
+                or coverage['observedCases'] != sorted(set(coverage['observedCases']))
+                or coverage['missingCases'] != sorted(set(REQUIRED_CASES) - set(coverage['observedCases']))
+                or coverage['evidenceClass'] != 'native-observation-local-consistency'
+                or coverage['originalAuthentication'] != 'not-established'
+                or coverage['fullAppBudgets'] != 'not-observed' or coverage['releaseEligible'] is not False):
+            raise ProjectionError('maintenance-composed-budget-coverage-invalid')
+        return value
     if isinstance(value, dict) and value.get("schemaVersion") == 5:
         from cryptad_certification.runtime_pressure_evidence import validate_authenticated_comparison
         if (type(value["schemaVersion"]) is not int
@@ -543,14 +579,14 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") not in {2, 3, 4, 5, 6} or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3, 4, 5, 6, 7} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
             or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
             or value["schemaVersion"] != report["schemaVersion"] - 1
-            or (value["schemaVersion"] in {2, 3, 4, 5} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
+            or (value["schemaVersion"] in {2, 3, 4, 5, 6} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
     if "sha256:" + hashlib.sha256(policy_bytes).hexdigest() != expected_policy_digest:
@@ -560,6 +596,6 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
     maximum_age = json.loads(policy_bytes)["evidenceWindows"]["maximumAgeDays"]
     if (now.tzinfo is None or now.utcoffset() is None or end is None or end > now
             or now - end > dt.timedelta(days=maximum_age)
-            or (value["schemaVersion"] in {2, 3, 4, 5} and parse_timestamp(value["evaluationCutoff"]) > now)):
+            or (value["schemaVersion"] in {2, 3, 4, 5, 6} and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

@@ -568,6 +568,17 @@ class AppHandle:
                         or re.fullmatch(r"/api/v1/content/subscriptions/[A-Za-z0-9-]{1,128}/(?:pause|resume)", path)))
                     or (method == "DELETE" and re.fullmatch(r"/api/v1/content/subscriptions/[A-Za-z0-9-]{1,128}", path))):
                 exact.add(path)
+        if getattr(self.supervisor, "app_budget_lane", False) and self.app_id in {
+                "feed-reader", "budget-importer", "budget-no-trust", "budget-no-fetch"}:
+            if principal == "app" and ((method == "POST" and path in {
+                    "/api/v1/trust-graph/import", "/api/v1/trust-graph/import-uri",
+                    "/api/v1/trust-graph/import-preview", "/api/v1/trust-graph/import-preview-uri",
+                    "/api/v1/content/fetch", "/api/v1/content/subscriptions"})
+                    or (method == "GET" and path in {"/api/v1/trust-graph/statements",
+                        "/api/v1/trust-graph/anchors", "/api/v1/trust-graph/audit", "/api/v1/content/subscriptions"})
+                    or (method == "POST" and re.fullmatch(
+                        r"/api/v1/content/subscriptions/[A-Za-z0-9-]{1,128}/(?:pause|resume|refresh)", path))):
+                exact.add(path)
         if principal == "host" and method == "GET" and path == "/api/v1/operator/runtime-observation":
             exact.add(path)
         if principal == "host" and getattr(self.supervisor, "catalog_prepared", None) is not None:
@@ -606,16 +617,28 @@ class AppHandle:
             headers["Content-Type"] = "application/x-www-form-urlencoded"
         query = ""
         if method == "GET" and values:
-            if (principal != "host" or path not in {"/api/v1/consent/install-preview",
-                                                    "/api/v1/consent/catalog-update-preview"}
-                    or set(values) != {"appId", "catalogId"} or values["appId"] != self.app_id):
+            consent_query = (path in {"/api/v1/consent/install-preview",
+                                     "/api/v1/consent/catalog-update-preview"}
+                             and set(values) == {"appId", "catalogId"}
+                             and values["appId"] == self.app_id)
+            budget_queue_query = (getattr(self.supervisor, "app_budget_lane", False)
+                                  and path == "/api/v1/queue" and set(values) == {"page"}
+                                  and values["page"] in {"downloads", "uploads"})
+            if principal != "host" or not (consent_query or budget_queue_query):
                 raise RuntimeFailure("app-query-not-approved")
             query = "?" + urllib.parse.urlencode(values)
         request = urllib.request.Request(self.base + path + query, data=data, headers=headers, method=method)
+        # URI Trust Graph routes retain the native 30-second fetch bound. This fixed lane waits
+        # long enough to observe its response instead of treating a shorter HTTP wait as cessation.
+        composed_uri = (getattr(self.supervisor, "app_budget_lane", False)
+                        and principal == "app" and method == "POST"
+                        and path in {"/api/v1/trust-graph/import-uri",
+                                     "/api/v1/trust-graph/import-preview-uri"})
+        response_timeout = 45 if composed_uri else 25
         try:
-            with absolute_deadline(self.supervisor.remaining(30)):
+            with absolute_deadline(self.supervisor.remaining(50 if composed_uri else 30)):
                 try:
-                    response = self.opener.open(request, timeout=25)
+                    response = self.opener.open(request, timeout=response_timeout)
                 except urllib.error.HTTPError as error:
                     response = error
                 with response:

@@ -503,3 +503,11 @@ refresh without changing the accepted scope digest, mandatory assertions or hist
 Narrow observed scheduler components remain separate from reviewed production resource bounds,
 original protected operation, default-profile/long-duration observation and all other Phase 12
 requirements. The encrypted selected-federation maintenance companion rejection remains intact.
+
+## PR-309 shared-budget implementation disposition
+
+The [PR-309 runbook](pr-309-shared-app-network-budget-runtime.md) records the merged PR-308 source,
+composed Trust Graph charging oracle and prospective causal accounting scope. Native or local
+synthetic evidence leaves original operational requirements and incomplete cohort directions
+explicitly missing. The historical repository-only 49 mandatory / 47 unresolved result, original
+cutoffs and immutable tracker bytes remain unchanged; no Phase 12 completion is implied.

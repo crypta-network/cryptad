@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import network.crypta.runtime.spi.ContentFetchObservation;
 
@@ -29,16 +30,92 @@ public final class RuntimeWorkObservation {
   private static final Pattern OWNER_EPOCH = Pattern.compile("[a-zA-Z0-9._-]{1,96}");
 
   private final ArrayDeque<Event> events = new ArrayDeque<>();
+  private final String collectorEpoch = UUID.randomUUID().toString();
   private final long originNanos = System.nanoTime();
   private long sequence;
   private long dropped;
   private long operationSequence;
   private final Map<String, Long> scopes = new LinkedHashMap<>();
 
-  /** Fixed causal event vocabulary; an empty completed tick is not a completed fetch. */
+  /**
+   * Fixed causal event vocabulary. Composed stage events use the parent request operation ID and
+   * authenticated opaque scope, with zero window/value unless documented otherwise. An empty
+   * completed tick is not a completed fetch.
+   */
   public enum Kind {
     /** The background executor invoked a pass; useful work is not implied. */
     EXECUTOR_TICK,
+    /** Native direct-import request start, after authentication; capability denial may follow. */
+    COMPOSED_DIRECT_IMPORT_START,
+    /**
+     * Native pasted-preview request start; routed requests bind the fixed route, not form fields.
+     */
+    COMPOSED_PASTED_PREVIEW_START,
+    /** Native URI-preview request start; its strict root parse precedes import quota commit. */
+    COMPOSED_URI_PREVIEW_START,
+    /**
+     * Native URI-import request start; import quota commit precedes strict parse and fingerprint.
+     */
+    COMPOSED_URI_IMPORT_START,
+    /**
+     * Native admission link: operationId is the child budget ID, value is the parent request ID,
+     * scope is the authenticated parent scope, and window is zero. Both reservation and fetch
+     * admissions are linked before their budget decision.
+     */
+    COMPOSED_CHILD,
+    /**
+     * The strict native direct-statement parser returned a document; signature validity is
+     * separate.
+     */
+    PARSE_SUCCEEDED,
+    /** A native preview summary was built; rejected candidates can be included. */
+    PREVIEW_BUILT,
+    /** Source URI validation rejected before child admission. */
+    CONTENT_URI_REJECTED,
+    /** Bounded fetch or response size check rejected bytes. */
+    CONTENT_BYTES_REJECTED,
+    /** Strict text decoding rejected fetched bytes. */
+    CONTENT_UTF8_REJECTED,
+    /** The bounded response wait expired, independent of owner termination. */
+    FETCH_TIMEOUT,
+    /** The strict native direct-statement parser rejected the document before any graph attempt. */
+    PARSE_FAILED,
+    /**
+     * No expected fingerprint was supplied, or native document fingerprint equality was accepted.
+     */
+    FINGERPRINT_ACCEPTED,
+    /**
+     * The supplied expected fingerprint differed; import quota is already committed on URI import.
+     */
+    FINGERPRINT_REJECTED,
+    /** The handler is about to invoke the native shared graph store with its parsed document. */
+    GRAPH_STORE_ATTEMPT,
+    /** The native store returned imported=true; verification and local scoring remain separate. */
+    GRAPH_STORE_IMPORTED,
+    /**
+     * The native store returned imported=false; this request still consumes its admitted budgets.
+     */
+    GRAPH_STORE_DUPLICATE,
+    /**
+     * The native result reports signatureVerified=false, following its retention/deduplication
+     * verdict.
+     */
+    GRAPH_STORE_UNVERIFIED,
+    /** A graph attempt lacked a returned native verdict; durable mutation may have occurred. */
+    GRAPH_STORE_UNKNOWN,
+    /**
+     * The handler returned after local cleanup; this does not prove HTTP delivery to the client.
+     */
+    REQUEST_SUCCEEDED,
+    /** The handler failed after local cleanup; a deferred child fetch may still hold capacity. */
+    REQUEST_FAILED,
+    /**
+     * The bounded waiter returned before native owner acknowledgment. Uses the child budget ID and
+     * selected operation; normal acknowledgment later records FETCH_FAILED before deferred release.
+     * Missing or exceptional acknowledgment remains unknown and retains holds.
+     */
+    FETCH_TERMINATION_UNKNOWN,
+
     /** An enabled pass acquired the no-overlap guard. */
     TICK_ENTERED,
     /** A pass reached final cleanup, including passes that failed or did no work. */
@@ -55,7 +132,10 @@ public final class RuntimeWorkObservation {
     DUE,
     /** Due work was skipped after reaching the per-tick fetch limit. */
     TICK_LIMIT,
-    /** Due work lacked an installed application with the required capabilities. */
+    /**
+     * Scheduled work lacked a capable installed app, or a composed parent was denied centrally. A
+     * composed denial retains its authenticated parent ID/scope and performs no admission.
+     */
     CAPABILITY_DENIED,
     /** The assessed signal was known clear; owner samples carry source metadata. */
     PRESSURE_KNOWN_CLEAR,
@@ -75,6 +155,12 @@ public final class RuntimeWorkObservation {
     BUDGET_ACQUIRE,
     /** An applicable fixed-window rate limit denied admission. */
     BUDGET_RATE_DENIED,
+    /**
+     * The actual denying family: operation is that family, scope is its app/global label, window is
+     * its fixed-window start, value is its durable count, and operationId is the admission ID.
+     * Pending rate holds may also contribute to denial; value is not an allowed-work charge.
+     */
+    RATE_LIMIT_REACHED,
     /** An applicable process-local concurrency limit denied admission. */
     BUDGET_CONCURRENCY_DENIED,
     /** All required family reservations were acquired. */
@@ -95,11 +181,19 @@ public final class RuntimeWorkObservation {
     CONCURRENCY_HELD,
     /** A family concurrency slot was released. */
     CONCURRENCY_RELEASED,
-    /** The subscription service is invoking the bounded content-fetch port. */
+    /**
+     * The owning service is invoking the bounded content-fetch port, under this budget operation
+     * ID.
+     */
     FETCH_INVOKED,
-    /** The subscription fetch succeeded. */
+    /**
+     * The owning fetch path returned successfully; foreground UTF-8/response checks may still fail.
+     */
     FETCH_SUCCEEDED,
-    /** The subscription fetch failed. */
+    /**
+     * The owning fetch failed terminally, or normal native acknowledgment ended a failed bounded
+     * wait.
+     */
     FETCH_FAILED,
     /** A failed or skipped poll recorded its next retry time. */
     RETRY_SCHEDULED,
@@ -124,11 +218,15 @@ public final class RuntimeWorkObservation {
    * Allocates bounded opaque scope labels. No app identifier or hash is emitted.
    *
    * @param appId private normalized scope
-   * @return one for global, two or greater for an application, zero on exhausted capacity
+   * @return one for global, two for host/operator, three or greater for an application, zero on
+   *     exhausted capacity
    */
   public synchronized long scope(String appId) {
     if (AppNetworkBudgetScope.GLOBAL.equals(appId)) {
       return 1;
+    }
+    if (AppNetworkBudgetScope.HOST_OPERATOR.equals(appId)) {
+      return 2;
     }
     Long existing = scopes.get(appId);
     if (existing != null) {
@@ -138,7 +236,7 @@ public final class RuntimeWorkObservation {
       dropped = Long.MAX_VALUE;
       return 0;
     }
-    long label = scopes.size() + 2L;
+    long label = scopes.size() + 3L;
     scopes.put(appId, label);
     return label;
   }
@@ -257,7 +355,7 @@ public final class RuntimeWorkObservation {
    * @return detached bounded history, with explicit cumulative truncation count
    */
   public synchronized Snapshot snapshot() {
-    return new Snapshot(1, sequence, dropped, List.copyOf(events));
+    return new Snapshot(2, sequence, dropped, List.copyOf(events), collectorEpoch);
   }
 
   /**
@@ -296,9 +394,16 @@ public final class RuntimeWorkObservation {
    * @param version collector format version
    * @param lastSequence last issued sequence
    * @param dropped cumulative overwritten records, saturating at the maximum long value
+   * @param collectorEpoch process-local collector identity, absent only in historical snapshots
    * @param events oldest-first retained events
    */
-  public record Snapshot(int version, long lastSequence, long dropped, List<Event> events) {
+  public record Snapshot(
+      int version, long lastSequence, long dropped, List<Event> events, String collectorEpoch) {
+    /** Preserves construction of historical snapshots without a collector epoch. */
+    public Snapshot(int version, long lastSequence, long dropped, List<Event> events) {
+      this(version, lastSequence, dropped, events, null);
+    }
+
     /**
      * Detaches event storage even when a caller constructs a snapshot from a mutable list.
      *
@@ -306,6 +411,81 @@ public final class RuntimeWorkObservation {
      */
     public Snapshot {
       events = List.copyOf(events);
+    }
+  }
+
+  /**
+   * Starts a native request observation after the owning route authenticates its principal.
+   *
+   * @param kind fixed route start
+   * @param appId authenticated private scope
+   * @return explicit context, safe to pass across asynchronous boundaries
+   */
+  public Operation start(Kind kind, String appId) {
+    Operation result = new Operation(nextOperation(), scope(appId));
+    result.recordStage(kind);
+    return result;
+  }
+
+  /**
+   * Native-created explicit request context; it carries no request content.
+   *
+   * <p>Stage flags are visible across owner callbacks and close is idempotent across threads. The
+   * owner must order terminal close after its processing stages; this context does not join
+   * asynchronous work. A premature close records an unknown or failed result, not future success.
+   */
+  public final class Operation implements AutoCloseable {
+    private final long id;
+    private final long scope;
+    private final java.util.concurrent.atomic.AtomicBoolean closed =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean succeeded;
+    private volatile boolean storeAttempted;
+    private volatile boolean storeKnown;
+
+    private Operation(long id, long scope) {
+      this.id = id;
+      this.scope = scope;
+    }
+
+    /**
+     * Records a fixed stage on this request.
+     *
+     * @param kind native stage
+     */
+    public void recordStage(Kind kind) {
+      if (kind == Kind.GRAPH_STORE_ATTEMPT) {
+        storeAttempted = true;
+      }
+      if (kind == Kind.GRAPH_STORE_IMPORTED || kind == Kind.GRAPH_STORE_DUPLICATE) {
+        storeKnown = true;
+      }
+      recordEvent(kind, null, 0, 0, id, scope);
+    }
+
+    /**
+     * Links a native budget operation.
+     *
+     * @param child native admission identifier
+     */
+    public void child(long child) {
+      recordEvent(Kind.COMPOSED_CHILD, null, 0, id, child, scope);
+    }
+
+    /** Marks successful handler completion, before HTTP delivery. */
+    public void succeeded() {
+      succeeded = true;
+    }
+
+    @Override
+    public void close() {
+      if (!closed.compareAndSet(false, true)) {
+        return;
+      }
+      if (storeAttempted && !storeKnown) {
+        recordStage(Kind.GRAPH_STORE_UNKNOWN);
+      }
+      recordStage(succeeded ? Kind.REQUEST_SUCCEEDED : Kind.REQUEST_FAILED);
     }
   }
 
