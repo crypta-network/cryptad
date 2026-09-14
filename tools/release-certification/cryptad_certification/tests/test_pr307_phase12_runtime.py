@@ -17,6 +17,8 @@ from cryptad_certification.tests.test_phase_12_runtime_adapters import AS_OF
 
 
 class EncryptedPhase12Tests(unittest.TestCase):
+    # macOS exposes its temporary root through /var -> /private/var. Resolve only fixture-owned
+    # paths before passing them to the owner, whose rejection of symlinked scratch is intentional.
     def product(self):
         owner = runtime._protected("cross_version_product_admission")
         import maintenance_runtime_companion as companion
@@ -49,7 +51,7 @@ class EncryptedPhase12Tests(unittest.TestCase):
         import maintenance_runtime_companion as companion
         with tempfile.TemporaryDirectory() as temporary, patch.object(owner, "authenticate_original") as collect, \
                 patch.object(companion, "open_companion") as opening:
-            result = runtime.verify("product-admission", inputs, AS_OF, Path(temporary))
+            result = runtime.verify("product-admission", inputs, AS_OF, Path(temporary).resolve())
         self.assertIn("product-encrypted-private-original-context-required", result["blockers"])
         self.assertIn("sealedRuntimeBinding", result)
         self.assertNotIn("runtimeBinding", result)
@@ -64,7 +66,7 @@ class EncryptedPhase12Tests(unittest.TestCase):
         proof = {"coordinates": selection["original"], "members": runtime.ORIGINAL_MEMBERS["product-admission"]}
         closed = []
         with tempfile.TemporaryDirectory() as temporary:
-            scratch = Path(temporary)
+            scratch = Path(temporary).resolve()
             local = runtime.verify("product-admission", inputs, AS_OF, scratch)
             row = {"sourceCommit": selection["node"]["sourceCommit"], "buildVersion": "301",
                    "artifactDigest": selection["node"]["artifactDigest"],
@@ -150,7 +152,7 @@ class EncryptedPhase12Tests(unittest.TestCase):
         authority = runtime._AuthenticatedSupervisor([], runtime._ORIGINAL_SUPERVISOR)
         with tempfile.TemporaryDirectory() as temporary, patch.object(runtime, "_supervisor_relationships", return_value=(final, observation)), \
                 patch.object(owner, "authenticate_maintenance_product") as collect:
-            result = runtime.verify_authenticated("maintenance-measurements", payloads, cutoff, Path(temporary), authority)
+            result = runtime.verify_authenticated("maintenance-measurements", payloads, cutoff, Path(temporary).resolve(), authority)
         self.assertIn("maintenance-encrypted-private-original-context-required", result["blockers"])
         collect.assert_not_called()
 
@@ -168,7 +170,7 @@ class EncryptedPhase12Tests(unittest.TestCase):
         final["admittedProductsDigest"] = runtime.soak.digest(values["products.json"])
         with tempfile.TemporaryDirectory() as temporary, patch.object(runtime, "_supervisor_relationships", return_value=(final, observation)), \
                 patch.object(owner, "authenticate_maintenance_product") as collect:
-            result = runtime.verify_authenticated("maintenance-measurements", payloads, cutoff, Path(temporary), authority)
+            result = runtime.verify_authenticated("maintenance-measurements", payloads, cutoff, Path(temporary).resolve(), authority)
         self.assertEqual("pass", result["components"]["subjectAdmission"])
         self.assertIn("maintenance-required-consumer-adapters-incomplete", result["blockers"])
         self.assertNotIn("runtimeBinding", json.dumps(result))

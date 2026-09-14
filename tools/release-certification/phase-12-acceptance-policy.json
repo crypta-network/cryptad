@@ -2943,7 +2943,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:9fc9064f85a3a557f3be1332a809b6a18c811eada7c6fb58ff2a9596caa07b62",
+            "digest": "sha256:43abd78fc2c07c1ffe66b2ca70da9f88b9a80f80b62318e84f635e96224fe225",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr307_phase12_runtime.py"
           }
         ]
