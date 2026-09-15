@@ -721,3 +721,60 @@ class RevocationApprovalTests(unittest.TestCase):
         (self.state / 'revocations.json').write_bytes(installation.encode(['b' * 64]))
         with self.assertRaisesRegex(installation.InstallationError, 'security-history-rollback'):
             installation.configuration()
+
+
+class VersionHistoryCapacityTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.versions = self.root / 'versions'
+        self.versions.mkdir()
+        for number in range(128):
+            (self.versions / f'{number:064x}').mkdir()
+
+    def test_existing_version_at_limit_can_be_reused(self):
+        installation.require_version_capacity(self.versions, f'{0:064x}')
+
+    def test_last_free_slot_accepts_new_version(self):
+        (self.versions / f'{0:064x}').rmdir()
+        installation.require_version_capacity(self.versions, 'f' * 64)
+
+    def test_full_and_overfull_history_reject_without_deleting_entries(self):
+        with self.assertRaisesRegex(installation.InstallationError, 'version-history-limit'):
+            installation.require_version_capacity(self.versions, 'f' * 64)
+        (self.versions / '.interrupted-stage').mkdir()
+        with self.assertRaisesRegex(installation.InstallationError, 'version-history-limit'):
+            installation.require_version_capacity(self.versions, f'{0:064x}')
+        self.assertEqual(129, len(list(self.versions.iterdir())))
+
+    def test_upgrade_at_limit_rejects_before_staging_or_mutating_history(self):
+        current = self.root / 'current'
+        current.mkdir()
+        raw = b'previous manifest'
+        (current / installation.MANIFEST).write_bytes(raw)
+        previous = installation.digest(raw)
+        state = self.root / 'state'
+        state.mkdir()
+        history = state / 'revocations.json'
+        history.write_bytes(b'[]')
+        config = {'bundleIdentity': 'f' * 64, 'revokedVersions': [previous]}
+        with patch.object(installation, 'PREFIX', self.root), \
+                patch.object(installation, 'STATE', state), \
+                patch.object(installation.os, 'geteuid', return_value=0), \
+                patch.object(installation, 'configuration', return_value=config), \
+                patch.object(installation, 'dependencies'), \
+                patch.object(installation, 'verify_profile'), \
+                patch.object(installation, 'verify_bundle'), \
+                patch.object(installation, 'required_entrypoints'), \
+                patch.object(installation, 'require_stopped_units'), \
+                patch.object(installation, 'secured', side_effect=lambda path: path), \
+                patch.object(installation.tempfile, 'mkdtemp') as stage, \
+                patch.object(installation, 'publish_execution_identity') as publish:
+            with self.assertRaisesRegex(installation.InstallationError, 'version-history-limit'):
+                installation.upgrade(self.root / 'candidate')
+        stage.assert_not_called()
+        publish.assert_not_called()
+        self.assertEqual(raw, (current / installation.MANIFEST).read_bytes())
+        self.assertEqual(b'[]', history.read_bytes())
+        self.assertEqual(128, len(list(self.versions.iterdir())))

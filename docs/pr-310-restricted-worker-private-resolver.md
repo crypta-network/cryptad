@@ -620,3 +620,13 @@ review and renewal; there is no compatibility fallback that accepts an unknown l
 Regressions cover added native/plugin/policy/TLS entries, empty directories, optional absences,
 and both dangling loader links and subsequently created targets. These remain offline checks;
 no target image or production boot was measured during this review fix.
+
+### Review correction: bounded retained version history
+
+Install and upgrade enforce the original-result consumer's 128-entry version-history limit
+under the administrator installation lock, before staging a new bundle. Every entry counts,
+including an interrupted staging directory. An existing version can be reused at the limit;
+a new version or already overfull history rejects without changing activation, revocations or
+execution identity. No automatic pruning or archival is performed. At capacity, further new
+versions require a separately reviewed provenance-preserving archival design; do not delete
+retained version trees to bypass the limit.

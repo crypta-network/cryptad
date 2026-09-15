@@ -599,6 +599,17 @@ def publish_execution_identity(result, config):
         os.close(descriptor)
 
 
+def require_version_capacity(versions, identity):
+    """Keep every directory entry within the original-result consumer's 128-entry bound.
+
+    Called under the administrator installation lock before staging or changing history.
+    Unknown/torn entries count too; recovery must not silently discard retained evidence.
+    """
+    entries = list(versions.iterdir())
+    if len(entries) + int(not any(entry.name == identity for entry in entries)) > 128:
+        raise InstallationError('restricted-version-history-limit')
+
+
 def install(bundle):
     """Explicit initial install only. Existing current/authority/history is never replaced."""
     if os.geteuid() != 0:
@@ -618,6 +629,7 @@ def install(bundle):
         versions = PREFIX / 'versions'
         versions.mkdir(exist_ok=True, mode=0o755)
         secured(versions)
+        require_version_capacity(versions, config['bundleIdentity'])
         destination = versions / config['bundleIdentity']
         if destination.exists():
             verify_bundle(destination, config['bundleIdentity'])
@@ -699,6 +711,7 @@ def upgrade(bundle):
         if digest((PREFIX / 'current' / MANIFEST).read_bytes()) != previous:
             raise InstallationError('restricted-upgrade-current-changed')
         versions = secured(PREFIX / 'versions')
+        require_version_capacity(versions, config['bundleIdentity'])
         destination = versions / config['bundleIdentity']
         if destination.exists():
             verify_bundle(destination, config['bundleIdentity'])
