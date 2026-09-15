@@ -160,6 +160,13 @@ class InstallationArtifactTests(unittest.TestCase):
 
 
 class ProvisioningDependencyTests(unittest.TestCase):
+    def setUp(self):
+        # These tests select one closure component; unrelated host inputs have separate tests.
+        for name, value in (('OPTIONAL_DEPENDENCY_PATHS', ()), ('LIBRARY_ALIASES', {})):
+            change = patch.object(installation, name, value)
+            change.start()
+            self.addCleanup(change.stop)
+
     def test_native_launcher_interpreter_utilities_and_targets_are_inventoried(self):
         names = ('/usr/bin/sh', '/usr/bin/ls', '/usr/bin/uname', '/usr/bin/xargs',
                  '/usr/bin/echo', '/usr/bin/sed', '/usr/bin/tr')
@@ -259,6 +266,76 @@ class ProvisioningDependencyTests(unittest.TestCase):
             records = {key: {} for key in installation.DEPENDENCY_FILES if key != name}
             with self.subTest(name=name), self.assertRaisesRegex(installation.InstallationError, 'closure-incomplete'):
                 installation.dependencies({'dependencies': records})
+
+
+class StartupDependencyTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.plugins = self.root / 'sudo'
+        self.plugins.mkdir(mode=0o755)
+        self.zip = self.root / 'python313.zip'
+        self.config = self.root / 'sudo.conf'
+        original_lstat = Path.lstat
+        def owned(path):
+            info = original_lstat(path)
+            return SimpleNamespace(st_uid=0, st_mode=info.st_mode)
+        for change in (patch.object(installation, 'DEPENDENCY_ROOTS', (str(self.plugins),)),
+                       patch.object(installation, 'DEPENDENCY_FILES', ()),
+                       patch.object(installation, 'TLS_ROOT_PATHS', ()),
+                       patch.object(installation, 'OPTIONAL_DEPENDENCY_PATHS', (str(self.zip), str(self.config))),
+                       patch.object(installation, 'LIBRARY_ALIASES', {}),
+                       patch.object(installation, 'secured', side_effect=lambda path: path),
+                       patch.object(Path, 'lstat', owned)):
+            change.start()
+            self.addCleanup(change.stop)
+
+    def write(self, path, raw):
+        path.write_bytes(raw)
+        path.chmod(0o644)
+
+    def test_zip_absence_addition_and_replacement_change_inventory(self):
+        absent = installation.dependency_inventory()
+        self.assertEqual({'absent': True}, absent[str(self.zip)])
+        self.write(self.zip, b'synthetic zip bytes')
+        present = installation.dependency_inventory()
+        self.assertNotEqual(absent, present)
+        self.assertEqual(installation.file_record(self.zip), present[str(self.zip)])
+        self.write(self.zip, b'replacement zip bytes')
+        self.assertNotEqual(present, installation.dependency_inventory())
+
+    def test_sudo_plugin_runtime_and_configuration_changes_are_bound(self):
+        baseline = installation.dependency_inventory()
+        for name in ('sudoers.so', 'libsudo_util.so'):
+            path = self.plugins / name
+            self.write(path, b'original plugin')
+            present = installation.dependency_inventory()
+            self.assertNotEqual(baseline, present)
+            self.write(path, b'modified plugin')
+            self.assertNotEqual(present, installation.dependency_inventory())
+        self.assertEqual({'absent': True}, baseline[str(self.config)])
+        self.write(self.config, b'Plugin sudoers_policy sudoers.so\n')
+        configured = installation.dependency_inventory()
+        self.write(self.config, b'changed plugin configuration\n')
+        self.assertNotEqual(configured, installation.dependency_inventory())
+
+    def test_redirected_library_alias_rejects_before_accepting_target_bytes(self):
+        target = self.root / 'lib'
+        target.mkdir(mode=0o755)
+        alias = self.root / 'alias'
+        alias.symlink_to(target)
+        with patch.object(installation, 'LIBRARY_ALIASES', {str(alias): str(target)}):
+            approved = installation.dependency_inventory()
+            self.assertEqual({'link': str(target), 'target': str(target)}, approved[str(alias)])
+            self.assertEqual({'directory': True}, approved[str(target)])
+            alternate = self.root / 'alternate'
+            alternate.mkdir(mode=0o755)
+            alias.unlink()
+            alias.symlink_to(alternate)
+            with self.assertRaisesRegex(installation.InstallationError, 'library-alias-unreviewed'):
+                installation.dependency_inventory()
 
 
 class HostAssetTests(unittest.TestCase):

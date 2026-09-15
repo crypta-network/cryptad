@@ -484,3 +484,22 @@ unexecuted handle to create an intent or mutate owner state. This job requiremen
 the existing stopped-workload collection rules and does not grant new execution approval.
 An already retained result remains available through exact retry or collection, subject to its
 existing collection window and revocations, without another owner invocation or active-job check.
+
+## Review corrections: Python zip, library aliases and sudo plugins
+
+The image inventory records `/usr/lib/python313.zip` and `/etc/sudo.conf` as exact files (with
+resolved targets where linked) or explicit approved absences. It recursively inventories
+`/usr/libexec/sudo`, including policy and utility modules, before relying on the sudo policy
+probe. Added, replaced or removed zip/configuration/plugin bytes invalidate an existing approval.
+Administrator review remains responsible for approving the selected plugin configuration.
+
+The reference requires `/lib` and `/lib64` to resolve to `/usr/lib` and `/usr/lib64`, respectively.
+Inventory binds their link text and target directories; redirection rejects verification. Library
+contents are covered by the selected recursive dependency roots. Verification does not recursively
+follow all of `/usr/lib`, which would include unrelated private data such as `ssl/private`.
+
+Python's zip import location participates in startup even with `-I -S`. Recording it closes an
+inventory gap, but a Python verifier cannot retroactively authenticate code that already ran
+during its own startup. Interpreter, loader and startup-path integrity remain part of the
+administrator-provisioned initial trusted computing base and must be checked out of band before
+execution. These offline regressions and read-only inventory checks do not prove deployed isolation.

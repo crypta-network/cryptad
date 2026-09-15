@@ -24,7 +24,9 @@ APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
 EXECUTION = Path('/etc/cryptad-certification/restricted-execution.json')
 MANIFEST = '.restricted-manifest.json'
 MAX_FILE = 512 * 1024 * 1024
-DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64')
+DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo')
+OPTIONAL_DEPENDENCY_PATHS = ('/usr/lib/python313.zip', '/etc/sudo.conf')
+LIBRARY_ALIASES = {'/lib': '/usr/lib', '/lib64': '/usr/lib64'}
 # Linux commands used by the reviewed Gradle-generated crypta-app launcher. xargs uses echo
 # when no command is supplied. Shell builtins are covered by sh's resolved interpreter bytes.
 NATIVE_LAUNCHER_FILES = ('/usr/bin/sh', '/usr/bin/ls', '/usr/bin/uname', '/usr/bin/xargs',
@@ -232,6 +234,24 @@ def dependencies(config):
         raise InstallationError('restricted-dependency-closure-changed')
 
 
+def inventory_library_aliases(records):
+    """Bind the reference usr-merge aliases without traversing unrelated /usr/lib data."""
+    for name, expected in LIBRARY_ALIASES.items():
+        path, target = Path(name), Path(expected)
+        info = path.lstat()
+        if (not stat.S_ISLNK(info.st_mode) or info.st_uid != 0
+                or path.resolve(strict=True) != target):
+            raise InstallationError('restricted-library-alias-unreviewed')
+        secured(path.parent)
+        secured(target)
+        if not target.is_dir():
+            raise InstallationError('restricted-library-alias-target-invalid')
+        records[name] = {'link': os.readlink(path), 'target': str(target)}
+        # Actual library contents remain recursively bound by DEPENDENCY_ROOTS. Following
+        # /usr/lib wholesale would also traverse unrelated private data (e.g. ssl/private).
+        records.setdefault(str(target), {'directory': True})
+
+
 def dependency_inventory():
     """Read-only full reference runtime closure, including additions and fixed distro links."""
     records = {}
@@ -256,7 +276,7 @@ def dependency_inventory():
             records[name] = file_record(path)
     for name in (*DEPENDENCY_ROOTS, *DEPENDENCY_FILES):
         add(Path(name))
-    for name in TLS_ROOT_PATHS:
+    for name in (*TLS_ROOT_PATHS, *OPTIONAL_DEPENDENCY_PATHS):
         path = Path(name)
         try:
             path.lstat()
@@ -264,6 +284,7 @@ def dependency_inventory():
             records[name] = {'absent': True}
         else:
             add(path)
+    inventory_library_aliases(records)
     # A loader hook is privileged code. The supported reference has none.
     if Path('/etc/ld.so.preload').exists():
         raise InstallationError('restricted-loader-preload-unsupported')
