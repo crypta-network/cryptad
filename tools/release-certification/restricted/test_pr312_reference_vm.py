@@ -103,5 +103,96 @@ class ReferenceDriverTest(unittest.TestCase):
             self.assertEqual(['installed-production-bootstrap-notify-ready'], integration.bootstrap_readiness())
 
 
+class PreparedImageIdentityTest(unittest.TestCase):
+    def test_nonstandalone_failure_is_reported_before_guest_boot(self):
+        import json
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            product = root / 'build/cryptad-dist/lib/cryptad.jar'
+            product.parent.mkdir(parents=True)
+            product.write_bytes(b'synthetic-product')
+            source = root / 'prepared.qcow2'
+            source.write_bytes(b'synthetic-overlay')
+            args = SimpleNamespace(attempt=root / 'attempt', source=root, qemu_root=root,
+                mode='native-slice', development_snapshot=True, product_source_commit='a' * 40,
+                prepared_image=source, prepared_image_digest=driver.sha256(source))
+            with patch.object(driver, 'command', side_effect=[SimpleNamespace(stdout=b''),
+                    SimpleNamespace(stdout=b'a' * 40), SimpleNamespace(stdout=b'b' * 40)]), \
+                    patch.object(driver, 'require_standalone_image',
+                        side_effect=ValueError('prepared-image-not-standalone')), \
+                    patch.object(driver.subprocess, 'Popen') as guest, patch('builtins.print'):
+                self.assertEqual(2, driver.run(args))
+            guest.assert_not_called()
+            report = json.loads((args.attempt / 'stage-report.json').read_text())
+            self.assertEqual(3, report['schemaVersion'])
+            self.assertEqual('prepared-image-identity', report['stage'])
+            self.assertFalse(report['executed'])
+            self.assertTrue(report['guestStopped'])
+            self.assertFalse(report['installedKeylessNativeAcceptanceSatisfied'])
+
+    def test_rejects_backing_and_external_data_metadata(self):
+        import json
+        for extra in ({'backing-filename': '/base'}, {'full-backing-filename': '/base'},
+                      {'backing-filename-format': 'qcow2'},
+                      {'format-specific': {'data': {'data-file': '/external'}}}):
+            with self.subTest(extra=extra), patch.object(driver, 'command', return_value=
+                    SimpleNamespace(stdout=json.dumps({'format': 'qcow2', **extra}).encode())):
+                with self.assertRaisesRegex(ValueError, 'not-standalone'):
+                    driver.require_standalone_image(Path('/image'), Path('/qemu-img'), {})
+
+    def test_copy_is_verified_and_detached_from_later_source_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, destination = root / 'source', root / 'copy'
+            source.write_bytes(b'expected-image')
+            expected = driver.sha256(source)
+            with patch.object(driver, 'require_standalone_image') as verify:
+                driver.verified_image_copy(source, destination, expected, Path('/qemu-img'), {})
+            verify.assert_called_once_with(destination, Path('/qemu-img'), {})
+            source.write_bytes(b'replacement')
+            self.assertEqual(expected, driver.sha256(destination))
+            with patch.object(driver, 'require_standalone_image') as verify:
+                with self.assertRaisesRegex(ValueError, 'identity-mismatch'):
+                    driver.verified_image_copy(source, root / 'bad', expected, Path('/qemu-img'), {})
+            verify.assert_not_called()
+
+    def test_real_backing_substitution_and_flattened_image_independence(self):
+        import os
+        import shutil
+        tool = os.environ.get('PR312_TEST_QEMU_IMG') or shutil.which('qemu-img')
+        if not tool:
+            self.skipTest('qemu-img unavailable; real storage test not executed')
+        environment = dict(os.environ)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            base, overlay, flat = root / 'base.raw', root / 'overlay.qcow2', root / 'flat.qcow2'
+            original = b'A' * (1024 * 1024)
+            base.write_bytes(original)
+            driver.command([tool, 'create', '-f', 'qcow2', '-F', 'raw', '-b', str(base),
+                            str(overlay)], env=environment, capture_output=True)
+            overlay_digest = driver.sha256(overlay)
+            import pr312_prepare_reference as prepare
+            flat_digest = prepare.flatten_image(overlay, flat, Path(tool), environment,
+                lambda arguments, **options: driver.command(arguments, env=environment,
+                                                            capture_output=True, **options))
+            base.write_bytes(b'B' * len(original))
+            self.assertEqual(overlay_digest, driver.sha256(overlay))
+            with self.assertRaisesRegex(ValueError, 'not-standalone'):
+                driver.verified_image_copy(overlay, root / 'rejected.qcow2', overlay_digest,
+                                           Path(tool), environment)
+            verified = driver.verified_image_copy(flat, root / 'verified.qcow2', flat_digest,
+                                                  Path(tool), environment)
+            base.unlink()
+            driver.command([tool, 'convert', '-f', 'qcow2', '-O', 'raw', str(verified),
+                            str(root / 'guest.raw')], env=environment, capture_output=True)
+            self.assertEqual(original, (root / 'guest.raw').read_bytes())
+            external = root / 'external.qcow2'
+            driver.command([tool, 'create', '-f', 'qcow2', '-o',
+                            'data_file=' + str(root / 'external.raw'), str(external), '1M'],
+                           env=environment, capture_output=True)
+            with self.assertRaisesRegex(ValueError, 'not-standalone'):
+                driver.require_standalone_image(external, Path(tool), environment)
+
+
 if __name__ == '__main__':
     unittest.main()

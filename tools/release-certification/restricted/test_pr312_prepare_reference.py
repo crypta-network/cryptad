@@ -9,6 +9,20 @@ import pr312_prepare_reference as prepare
 
 
 class PreparationTest(unittest.TestCase):
+    def test_flatten_failure_cannot_publish_prepared_digest(self):
+        import subprocess
+        for failure in ('conversion', 'verification'):
+            with self.subTest(failure=failure), patch.object(prepare, 'digest') as digest, \
+                    patch.object(prepare, 'require_standalone_image',
+                        side_effect=ValueError('not-standalone') if failure == 'verification' else None):
+                def call(*args, **kwargs):
+                    if failure == 'conversion':
+                        raise subprocess.CalledProcessError(1, 'qemu-img')
+                with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                    prepare.flatten_image(Path('/source'), Path('/prepared'),
+                                          Path('/qemu-img'), {}, call)
+                digest.assert_not_called()
+
     def test_preparation_uses_only_fresh_disk_and_loopback_control_without_host_shares(self):
         arguments = prepare.preparation_arguments(Path('/qemu'), Path('/new-attempt'),
             Path('/pinned-original'), Path('/private-seed.iso'), 23112)

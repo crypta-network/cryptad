@@ -4,6 +4,11 @@ PR-312 adds authenticated installed startup and a separate fixed service for the
 maintenance native verifiers. It does not implement long-running workload roles or complete
 Phase 12. Installed acceptance is recorded separately from source and offline tests below.
 
+Review correction: the earlier preparation/attempt reports hashed a QCOW2 overlay without
+authenticating its backing file. Their recorded prepared-image digests do not bind the complete
+guest filesystem. The observations below remain historical execution records, with this additional
+environment-identity limitation; they are not acceptance of the corrected driver.
+
 ## Integration and bounded scope
 
 The implementation starts from `develop` squash `e7ae58ef607c8073cd8db858f2366a387913572e`,
@@ -175,6 +180,23 @@ the pinned downloads are explicit prerequisites. Neither driver creates producti
 prepared image digest and original base image/JDK verification. TCG timing is not a performance
 baseline. A development snapshot has its own source identity and is not an authenticated later
 commit merely because the files appear similar.
+
+Schema-3 preparation now converts the stopped guest disk into a standalone QCOW2 image before
+publishing its digest. It retains the original guest overlay as private diagnostic material.
+Schema-3 attempts copy that standalone image into their new private directory, verify the copy's
+expected digest and reject backing-file or external-data-file metadata before creating the guest
+overlay. Only the private verified copy supplies backing bytes at boot. This costs one additional
+prepared-image copy per attempt; it prevents later replacement of the caller's image from changing
+the booted storage. Old backed prepared images are rejected even when their overlay digest matches.
+Prepare a new reference with the corrected tool; flattening an old failed attempt does not repair
+its historical evidence. No corrected full preparation or installed VM run has yet been observed.
+
+The focused real-QEMU storage regression uses tiny synthetic disks without booting a guest. It
+reproduces an unchanged overlay digest after backing-byte substitution, checks rejection, exercises
+the preparer's conversion, then deletes the original backing file and verifies that the standalone
+image still supplies the original bytes. It also rejects a real QCOW2 external data file. Run with
+`qemu-img` on `PATH`, or set `PR312_TEST_QEMU_IMG` to an existing extracted binary (with its required
+library environment); absent QEMU is an explicit skip, not executed storage coverage.
 The host driver's finite 3,600-second installation/test envelope does not extend the installed
 180-second startup limit, the existing 900-second owner request budget or either native bound.
 

@@ -107,6 +107,30 @@ def command(arguments, *, timeout=120, **options):
                           timeout=timeout, **options)
 
 
+def require_standalone_image(image, qemu_img, environment):
+    """A file digest binds guest storage only when QCOW2 has no external dependencies."""
+    result = command([str(qemu_img), 'info', '--output=json', '-f', 'qcow2', str(image)],
+                     env=environment, capture_output=True)
+    metadata = json.loads(result.stdout)
+    specific = metadata.get('format-specific', {})
+    data = specific.get('data', {})
+    if (metadata.get('format') != 'qcow2'
+            or any(key in metadata for key in ('backing-filename', 'full-backing-filename',
+                                               'backing-filename-format', 'data-file'))
+            or 'data-file' in data):
+        raise ValueError('prepared-image-not-standalone')
+
+
+def verified_image_copy(source, destination, expected_digest, qemu_img, environment):
+    """Boot from the private verified copy, never a subsequently replaced caller path."""
+    with Path(source).open('rb') as incoming, Path(destination).open('xb') as outgoing:
+        shutil.copyfileobj(incoming, outgoing)
+    if sha256(destination) != expected_digest:
+        raise ValueError('prepared-image-identity-mismatch')
+    require_standalone_image(destination, qemu_img, environment)
+    return destination
+
+
 def qemu_arguments(root, attempt, prepared, seed, port):
     """Fixed guest hardware/network; callers cannot supply units, mounts, or candidate commands."""
     return [str(root / 'usr/bin/qemu-system-x86_64'), '-name', 'pr312-disposable',
@@ -139,7 +163,7 @@ def run(args):
     attempt = args.attempt.absolute()
     attempt.mkdir(mode=0o700, parents=False, exist_ok=False)
     os.umask(0o077)
-    report = {'schemaVersion': 2, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
+    report = {'schemaVersion': 3, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
@@ -156,9 +180,12 @@ def run(args):
                       productSourceCommit=args.product_source_commit,
                       productDigest=sha256(source / 'build/cryptad-dist/lib/cryptad.jar'))
         report['stage'] = 'prepared-image-identity'
-        report['preparedImageDigest'] = sha256(args.prepared_image)
-        if report['preparedImageDigest'] != args.prepared_image_digest:
-            raise ValueError('prepared-image-identity-mismatch')
+        root = args.qemu_root.resolve(strict=True)
+        env = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib/x86_64-linux-gnu'),
+               'QEMU_MODULE_DIR': str(root / 'usr/lib/x86_64-linux-gnu/qemu')}
+        prepared = verified_image_copy(args.prepared_image, attempt / 'prepared.qcow2',
+            args.prepared_image_digest, root / 'usr/bin/qemu-img', env)
+        report['preparedImageDigest'] = args.prepared_image_digest
         report['sshHostKeyPinDigest'] = sha256(args.known_hosts)
         report['sshHostKeyPinOrigin'] = args.host_key_pin_origin
         shutil.copyfile(args.known_hosts, attempt / 'known_hosts')
@@ -176,14 +203,11 @@ def run(args):
         report['stage'] = 'source-archive'
         command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)
         report['sourceArchiveDigest'] = sha256(archive)
-        root = args.qemu_root.resolve(strict=True)
-        env = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib/x86_64-linux-gnu'),
-               'QEMU_MODULE_DIR': str(root / 'usr/lib/x86_64-linux-gnu/qemu')}
         report['stage'] = 'guest-overlay'
         command([str(root / 'usr/bin/qemu-img'), 'create', '-f', 'qcow2', '-F', 'qcow2',
-                 '-b', str(args.prepared_image.resolve(strict=True)), str(attempt / 'guest.qcow2')],
+                 '-b', str(prepared), str(attempt / 'guest.qcow2')],
                 env=env, stdout=log, stderr=log)
-        process = subprocess.Popen(qemu_arguments(root, attempt, args.prepared_image,
+        process = subprocess.Popen(qemu_arguments(root, attempt, prepared,
                                                   args.seed.resolve(strict=True), args.port),
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         report.update(executed=True, guestStopped=False, stage='guest-boot')
@@ -319,7 +343,7 @@ def main():
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--product-source-commit', required=True)
     parser.add_argument('--prepared-image-digest', required=True,
-                        help='Expected SHA-256 of the exact administrator-prepared image.')
+                        help='Expected SHA-256 of the standalone administrator-prepared QCOW2 image.')
     parser.add_argument('--mode', choices=('baseline', 'bootstrap-only', 'native-slice'), required=True)
     parser.add_argument('--port', type=int, default=23112)
     parser.add_argument('--timeout', type=int, default=1800)

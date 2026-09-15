@@ -17,7 +17,7 @@ import re
 import subprocess
 import time
 
-from pr312_reference_vm import ACCELERATOR, CPU_MODEL, qemu_arguments
+from pr312_reference_vm import ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image
 
 IMAGE_SHA512 = 'a733e7d49442a03e70d03e4eb5aaf3967f3efc69ef70952f9bb10fc1ee2c4876eb95956b5ad2d31350e5fada768feb651352535fb8cd1233f61998a5a7d2e93c'
 JDK_SHA256 = 'dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e'
@@ -123,13 +123,21 @@ def public_report(report):
     return result
 
 
+def flatten_image(source, prepared, qemu_img, environment, call):
+    """Publish a digest only after conversion and standalone-storage verification succeed."""
+    call([str(qemu_img), 'convert', '-f', 'qcow2', '-O', 'qcow2',
+          str(source), str(prepared)], timeout=300)
+    require_standalone_image(prepared, qemu_img, environment)
+    return digest(prepared)
+
+
 def run(args):
     os.umask(0o077)
     output = args.output.absolute()
     if any(character in str(output) for character in (',', '\n', '\r', '\x00')):
         raise ValueError('reference-output-path-invalid')
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
-    report = {'schemaVersion': 2, 'kind': 'pr312-reference-preparation', 'executed': False,
+    report = {'schemaVersion': 3, 'kind': 'pr312-reference-preparation', 'executed': False,
               'stage': 'input-verification', 'status': 'failed', 'guestStopped': True,
               'cpuModel': CPU_MODEL, 'accelerator': ACCELERATOR}
     process = None
@@ -193,10 +201,12 @@ def run(args):
             call([*ssh, 'sudo poweroff'], timeout=20)
             if process.wait(timeout=45) != 0:
                 raise ValueError('reference-guest-shutdown-failed')
-            # Retain a separately named prepared overlay only after clean guest shutdown.
+            # Flatten after clean shutdown: hashing an overlay alone cannot bind its backing bytes.
+            report['stage'] = 'image-flattening'
             prepared = output / 'prepared-pristine.qcow2'
-            (output / 'guest.qcow2').rename(prepared)
-            report.update(preparedImageSha256=digest(prepared), status='prepared', stage='complete')
+            prepared_digest = flatten_image(output / 'guest.qcow2', prepared,
+                root / 'usr/bin/qemu-img', tool_environment, call)
+            report.update(preparedImageSha256=prepared_digest, status='prepared', stage='complete')
         except (OSError, ValueError, subprocess.SubprocessError):
             report['status'] = 'failed'
         finally:
@@ -222,7 +232,7 @@ def main():
     try:
         return run(parser.parse_args())
     except (OSError, ValueError):
-        print(json.dumps(public_report({'schemaVersion': 2, 'kind': 'pr312-reference-preparation',
+        print(json.dumps(public_report({'schemaVersion': 3, 'kind': 'pr312-reference-preparation',
             'executed': False, 'stage': 'output-creation', 'status': 'failed', 'guestStopped': True})))
         return 2
 
