@@ -21,7 +21,7 @@ import tempfile
 PREFIX = Path('/opt/cryptad-cross-version')
 STATE = Path('/var/lib/cryptad-restricted')
 APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
-EXECUTION = Path('/etc/cryptad-certification/restricted-execution.json')
+EXECUTION = PREFIX / 'restricted-execution.json'
 MANIFEST = '.restricted-manifest.json'
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
@@ -565,6 +565,10 @@ def verify_execution(root=None):
 
 def publish_execution_identity(result, config):
     """Publish only after administrator installation verification; never called by a job."""
+    # This non-secret record must be reachable without traversing private configuration.
+    secured(EXECUTION.parent)
+    if any(path.stat().st_mode & 0o001 == 0 for path in (EXECUTION.parent, *EXECUTION.parent.parents)):
+        raise InstallationError('restricted-execution-parent-not-traversable')
     temporary = EXECUTION.with_name('.restricted-execution-stage')
     with temporary.open('xb') as stream:
         stream.write(encode({'schemaVersion': 1, 'bundleIdentity': result['bundleIdentity'],

@@ -90,6 +90,17 @@ def provision(source, stage):
     installation.APPROVAL.chmod(0o600)
     installation.install(bundle)
     installation.verify()
+    as_role('cryptad-soak', """import json,pathlib,sys
+record = pathlib.Path(sys.argv[1])
+assert json.loads(record.read_bytes())['schemaVersion'] == 1
+for path, mode in ((record, 'wb'), (pathlib.Path(sys.argv[2]), 'rb')):
+    try:
+        path.open(mode)
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError('observer access boundary failed')
+""", arguments=(str(installation.EXECUTION), str(installation.APPROVAL)))
     call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
     return identity
 

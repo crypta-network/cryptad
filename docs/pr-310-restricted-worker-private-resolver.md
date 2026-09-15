@@ -579,3 +579,24 @@ cannot repair it. A verified production boot chain remains unobserved.
 Offline regressions exercise exact comparison, malicious stdlib substitutions with non-executed
 canaries, additional modules/zip files, missing runtime records and confined absolute links.
 No real image was mounted or measured in this coding session.
+
+### Review correction: observer-readable execution identity
+
+The non-secret installed execution identity is published atomically as mode 0444 at
+`/opt/cryptad-cross-version/restricted-execution.json`, outside the private certification
+configuration directory. Publication requires root-controlled ancestors with traversal permission
+for the observer. Provision `/opt/cryptad-cross-version` as root-owned mode 0755 before installation
+if the administrator's umask would otherwise create a private directory; verification rejects
+inaccessible ancestors rather than widening permissions. The private approval, provider credential
+and `/etc/cryptad-certification` permissions remain unchanged.
+
+Administrator install/upgrade republishes the record only after the existing installation checks.
+The observer still checks the exact installed source and complete dependency inventory; this path
+change provides no operation authority and relaxes no dependency check. Upgrading from the old
+layout requires the normal stopped-host upgrade and publication at the new path. There is no
+fallback to the old private-directory record; any old copy can remain until administrator cleanup.
+
+Offline tests check public record mode, unchanged private-directory mode, rejection of inaccessible
+publication parents and continued rejection of changed dependencies. The disposable harness now
+also requires the actual soak UID to read the new identity while denying writes to it and reads of
+the private approval before starting the socket. That real-UID probe remains unexecuted here.

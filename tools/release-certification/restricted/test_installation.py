@@ -605,3 +605,41 @@ class PolkitTests(unittest.TestCase):
             with patch.object(installation.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, output)), \
                     self.assertRaisesRegex(installation.InstallationError, 'authority-unreviewed'):
                 installation.verify_polkit(self.runner)
+
+
+class ExecutionPublicationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.root.chmod(0o755)
+        self.public = self.root / 'installation'
+        self.public.mkdir(mode=0o755)
+        self.private = self.root / 'private-config'
+        self.private.mkdir(mode=0o700)
+        self.execution = self.public / 'restricted-execution.json'
+        self.result = {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40}
+        self.config = {'dependencies': {'fixture': {'sha256': 'c' * 64}}}
+        for change in (patch.object(installation, 'EXECUTION', self.execution),
+                       patch.object(installation, 'APPROVAL', self.private / 'approval.json'),
+                       patch.object(installation, 'secured', side_effect=lambda path: path)):
+            change.start()
+            self.addCleanup(change.stop)
+
+    def test_publication_preserves_private_directory_and_exact_verification(self):
+        installation.publish_execution_identity(self.result, self.config)
+        self.assertEqual(0o700, self.private.stat().st_mode & 0o777)
+        self.assertEqual(0o444, self.execution.stat().st_mode & 0o777)
+        with patch.object(installation, 'verify_bundle', return_value={'sourceCommit': 'b' * 40}), \
+                patch.object(installation, 'dependencies', side_effect=installation.InstallationError(
+                    'restricted-image-dependency-closure-changed')) as dependencies:
+            with self.assertRaisesRegex(installation.InstallationError, 'closure-changed'):
+                installation.verify_execution()
+        self.assertEqual(self.config['dependencies'], dependencies.call_args.args[0]['dependencies'])
+
+    def test_private_publication_parent_rejects_without_widening_permissions(self):
+        self.public.chmod(0o700)
+        with self.assertRaisesRegex(installation.InstallationError, 'parent-not-traversable'):
+            installation.publish_execution_identity(self.result, self.config)
+        self.assertFalse(self.execution.exists())
+        self.assertEqual(0o700, self.public.stat().st_mode & 0o777)
