@@ -3,14 +3,14 @@ name: Restricted worker isolation prerequisites
 on:
   pull_request:
     paths:
-      - 'tools/release-certification/protected/restricted_*.py'
-      - 'tools/release-certification/restricted/**'
+      - 'tools/release-certification/**'
+      - 'tools/interop/**'
       - '.github/workflows/restricted-worker-isolation.yml'
   push:
     branches: [develop]
     paths:
-      - 'tools/release-certification/protected/restricted_*.py'
-      - 'tools/release-certification/restricted/**'
+      - 'tools/release-certification/**'
+      - 'tools/interop/**'
       - '.github/workflows/restricted-worker-isolation.yml'
 
 permissions:
