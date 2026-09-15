@@ -175,7 +175,10 @@ python3 tools/release-certification/restricted/pr312_reference_vm.py \
 
 The preparer verifies the exact dated image/JDK bytes, provisions only its fresh selected guest,
 and generates a guest SSH host key before boot. The execution driver requires an explicit host
-key pin, disables agent forwarding, and ignores ambient SSH configuration. Extracted QEMU and
+key pin, disables agent forwarding, and ignores ambient SSH configuration. The private pin copy
+is read through one opened source descriptor and hashed after copying, so
+the reported pin digest identifies the file SSH actually uses even if the source path is replaced.
+Extracted QEMU and
 the pinned downloads are explicit prerequisites. Neither driver creates production approval. Preserve the
 prepared image digest and original base image/JDK verification. TCG timing is not a performance
 baseline. A development snapshot has its own source identity and is not an authenticated later

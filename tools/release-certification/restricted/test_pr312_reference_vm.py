@@ -11,6 +11,42 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_host_key_pin_replacement_cannot_change_opened_source_or_reported_bytes(self):
+        import hashlib
+        for kind in ('file', 'symlink'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                original, replacement = root / 'original', root / 'replacement'
+                original.write_bytes(b'original-host-key-pin\n')
+                replacement.write_bytes(b'replacement-host-key-pin\n')
+                source = root / 'selected'
+                if kind == 'symlink':
+                    source.symlink_to(original)
+                else:
+                    source.write_bytes(original.read_bytes())
+                destination = root / 'private-pin'
+                copy = driver.shutil.copyfileobj
+                def replace_after_open(incoming, outgoing):
+                    source.unlink()
+                    source.symlink_to(replacement)
+                    copy(incoming, outgoing)
+                with patch.object(driver.shutil, 'copyfileobj', side_effect=replace_after_open):
+                    digest = driver.copy_host_key_pin(source, destination)
+                self.assertEqual(replacement.read_bytes(), source.read_bytes())
+                self.assertEqual(original.read_bytes(), destination.read_bytes())
+                self.assertEqual(hashlib.sha256(destination.read_bytes()).hexdigest(), digest)
+                self.assertNotEqual(driver.sha256(source), digest)
+
+    def test_host_key_pin_copy_never_overwrites_existing_private_pin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, destination = root / 'source', root / 'private-pin'
+            source.write_bytes(b'new-pin')
+            destination.write_bytes(b'existing-pin')
+            with self.assertRaises(FileExistsError):
+                driver.copy_host_key_pin(source, destination)
+            self.assertEqual(b'existing-pin', destination.read_bytes())
+
     def test_guest_summary_exports_only_closed_stages_dimensions_and_digest(self):
         report = driver.public_report({'guestSummary': {'failedStage': 'native-cms-owning-consumer',
             'bundleIdentity': 'a' * 64, 'dimensions': ['installed-keyless-fixed-native-probe',

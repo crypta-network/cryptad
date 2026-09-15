@@ -131,6 +131,13 @@ def verified_image_copy(source, destination, expected_digest, qemu_img, environm
     return destination
 
 
+def copy_host_key_pin(source, destination):
+    """Bind the report to the private pin SSH reads, using one opened source inode."""
+    with Path(source).open('rb') as incoming, Path(destination).open('xb') as outgoing:
+        shutil.copyfileobj(incoming, outgoing)
+    return sha256(destination)
+
+
 def qemu_arguments(root, attempt, prepared, seed, port):
     """Fixed guest hardware/network; callers cannot supply units, mounts, or candidate commands."""
     return [str(root / 'usr/bin/qemu-system-x86_64'), '-name', 'pr312-disposable',
@@ -186,9 +193,8 @@ def run(args):
         prepared = verified_image_copy(args.prepared_image, attempt / 'prepared.qcow2',
             args.prepared_image_digest, root / 'usr/bin/qemu-img', env)
         report['preparedImageDigest'] = args.prepared_image_digest
-        report['sshHostKeyPinDigest'] = sha256(args.known_hosts)
+        report['sshHostKeyPinDigest'] = copy_host_key_pin(args.known_hosts, attempt / 'known_hosts')
         report['sshHostKeyPinOrigin'] = args.host_key_pin_origin
-        shutil.copyfile(args.known_hosts, attempt / 'known_hosts')
         clone = attempt / 'cryptad'
         report['stage'] = 'source-clone'
         command(['git', 'clone', '--no-hardlinks', '--no-checkout', str(source), str(clone)],
