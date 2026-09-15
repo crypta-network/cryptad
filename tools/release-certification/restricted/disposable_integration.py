@@ -34,6 +34,22 @@ STATE = Path('/var/lib/cryptad-restricted')
 TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 
 
+class BoundedPrivateLog:
+    """A test-owner diagnostic stream; private bytes never become a socket/public result."""
+    def __init__(self, stream, maximum=65536):
+        self.stream = stream
+        self.remaining = maximum
+
+    def write(self, value):
+        raw = value.encode('utf-8', errors='replace')[:self.remaining]
+        self.stream.write(raw)
+        self.remaining -= len(raw)
+        return len(value)
+
+    def flush(self):
+        self.stream.flush()
+
+
 def call(arguments, *, expected=0, environment=None, timeout=120):
     result = subprocess.run(arguments, stdin=subprocess.DEVNULL, capture_output=True,
                             env=environment or ENV, timeout=timeout)
@@ -47,6 +63,12 @@ def source_commit(value):
     if not isinstance(value, str) or re.fullmatch('[0-9a-f]{40}', value) is None:
         raise argparse.ArgumentTypeError('expected an exact 40-character source commit')
     return value
+
+
+def failure_code(failure):
+    """Keep fixed local error identifiers and discard exception paths or input excerpts."""
+    value = str(failure)
+    return value if re.fullmatch('restricted-[a-z-]{1,120}', value) else 'restricted-disposable-stage-failed'
 
 
 def test_source_identities(source, product_commit=None):
@@ -140,9 +162,11 @@ def install_test_kit(source):
         Path(directory).chmod(0o755)
 
 
-def provision(source, stage):
+def provision(source, stage, event=None):
     import installation
+    event = event or (lambda _stage, _status: None)
     bundle = stage / 'bundle'
+    event('installation-export', 'running')
     installation.plan(source, bundle)
     # Test native dependencies are explicitly included BEFORE approval and immutable installation.
     # No evaluated job may augment an installed helper this way.
@@ -154,13 +178,22 @@ def provision(source, stage):
     manifest['files'] = installation.inventory(bundle)
     (bundle / installation.MANIFEST).write_bytes(installation.encode(manifest))
     identity = installation.digest(installation.encode(manifest))
+    event('installation-export', 'complete')
+    event('dependency-profile-measurement', 'running')
     approval = installation.host_plan(identity)
     installation.APPROVAL.parent.mkdir(mode=0o700, parents=True, exist_ok=False)
     installation.APPROVAL.write_bytes(installation.encode(approval))
     installation.APPROVAL.chmod(0o600)
+    event('dependency-profile-measurement', 'complete')
+    event('installation-publication', 'running')
     installation.install(bundle)
+    event('installation-publication', 'complete')
+    event('installed-profile-verification', 'running')
     installation.verify()
+    event('installed-profile-verification', 'complete')
+    event('production-test-kit-separation', 'running')
     install_test_kit(source)
+    event('production-test-kit-separation', 'complete')
     as_role('cryptad-soak', """import json,pathlib,sys
 record = pathlib.Path(sys.argv[1])
 assert json.loads(record.read_bytes())['schemaVersion'] == 1
@@ -172,7 +205,9 @@ for path, mode in ((record, 'wb'), (pathlib.Path(sys.argv[2]), 'rb')):
     else:
         raise AssertionError('observer access boundary failed')
 """, arguments=(str(installation.EXECUTION), str(installation.APPROVAL)))
+    event('socket-listening', 'running')
     call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
+    event('socket-listening', 'complete')
     return identity
 
 
@@ -220,6 +255,35 @@ assert p.stderr == b'restricted-operation-unavailable\n'
 '''
     as_role('cryptad-runner', socket_script, arguments=(client,), timeout=950)
     return ['actual-role-dac-denials', 'actual-role-capability-denials', 'actual-socket-unknown-handle-denied']
+
+
+def bootstrap_readiness():
+    """Wait for the installed main process's manager-authenticated notification."""
+    call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.service'], timeout=190)
+    raw = call(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
+                '--property=Type,NotifyAccess,ActiveState,SubState,MainPID'], timeout=15)
+    properties = dict(line.split('=', 1) for line in raw.decode('ascii').splitlines())
+    if (properties.get('Type') != 'notify' or properties.get('NotifyAccess') != 'main'
+            or properties.get('ActiveState') != 'active' or properties.get('SubState') != 'running'
+            or not properties.get('MainPID', '').isdigit() or int(properties['MainPID']) <= 1):
+        raise ValueError('disposable-installed-bootstrap-not-ready')
+    return ['installed-production-bootstrap-notify-ready']
+
+
+def wrong_socket_uid():
+    """The actual excluded native UID must fail admission at the socket filesystem boundary."""
+    as_role('cryptad-native', r'''
+import socket
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+    client.settimeout(5)
+    try:
+        client.connect('/run/cryptad-restricted/control.sock')
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError('excluded native UID reached control socket')
+''', timeout=10)
+    return ['actual-socket-wrong-uid-denied']
 
 
 def controller_unit_probe(entrypoint):
@@ -474,6 +538,79 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         return json.loads((root / 'freeze.json').read_bytes())
 
 
+def native_package_api(jdk, identity, source, *, root=Path('/root/pr312-package-api')):
+    """Observe the exact installed product before unrelated signed-fixture preparation.
+
+    This synthetic archive/test owner creates no original release authority or frozen receipt.
+    The installed native adapter, package verifier and schemas execute unchanged.
+    """
+    import gzip
+    import io
+    import tarfile
+    import restricted_native as native
+    import maintenance_runtime_metadata as metadata
+    from pr312_native_faults import _fixture_jdk
+    selected = Path(source).resolve(strict=True) / 'build/cryptad-dist/lib/cryptad.jar'
+    product_digest = hashlib.sha256(metadata._regular(selected, 256 * 1024 * 1024)).hexdigest()
+    product = INSTALLED.resolve(strict=True) / 'build/cryptad-dist/lib/cryptad.jar'
+    raw = metadata._regular(product, 256 * 1024 * 1024)
+    if hashlib.sha256(raw).hexdigest() != product_digest:
+        raise ValueError('disposable-package-product-substituted')
+    root.mkdir(mode=0o700, exist_ok=False)
+    java = _fixture_jdk(jdk, root)
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode='w') as archive:
+        member = tarfile.TarInfo('lib/cryptad.jar')
+        member.mode, member.size = 0o644, len(raw)
+        member.uname = member.gname = 'root'
+        archive.addfile(member, io.BytesIO(raw))
+    package = root / 'synthetic-selected-product.tar.gz'
+    package.write_bytes(gzip.compress(archive_bytes.getvalue(), mtime=0))
+    context = {'operationId': secrets.token_hex(32),
+        'registrationDigest': 'sha256:' + hashlib.sha256(b'pr312-package-test-owner').hexdigest(),
+        'bundleIdentity': identity, 'deadlineMonotonic': time.monotonic() + 900}
+    with native.owning_boundary(context=context):
+        snapshot, registry, executable = metadata.observe_package(package, java, root)
+    metadata.verify_package_identity(package, {
+        'portable': metadata.identity(package, 1024 * 1024 * 1024), 'executable': executable})
+    if (executable['digest'] != 'sha256:' + product_digest
+            or metadata.validate_schema(metadata.read_json(snapshot),
+                'platform-api-contract-snapshot-envelope-v1.schema.json')
+            or metadata.validate_schema(metadata.read_json(registry),
+                'platform-api-1.x-baseline-registry-v1.schema.json')):
+        raise ValueError('disposable-package-owner-validation-failed')
+    (root / 'snapshot.json').write_bytes(snapshot)
+    (root / 'registry.json').write_bytes(registry)
+    (root / 'observation.json').write_text(json.dumps({
+        'kind': 'synthetic-installed-package-owner-observation', 'productionEligible': False,
+        'operationId': context['operationId'], 'productDigest': product_digest,
+        'packageDigest': hashlib.sha256(package.read_bytes()).hexdigest(),
+        'executable': executable}, sort_keys=True))
+    return ['installed-real-package-api-export-owner-validated']
+
+
+def installed_fixture_resources(fixture_module):
+    """Use canonical installed resources; Python fixtures remain in the separate test kit."""
+    resources = INSTALLED.resolve(strict=True)
+    if not resources.is_dir() or any(path.is_symlink() for path in (resources, *resources.parents)):
+        raise ValueError('disposable-installed-resource-root-invalid')
+    fixture_module.ROOT = resources
+
+
+def private_fixture_failure(stream, error):
+    """Write setup diagnostics only to the disposable administrator's bounded private stream."""
+    import traceback
+    stream.write(''.join(traceback.format_exception(type(error), error, error.__traceback__)))
+    if isinstance(error, subprocess.CalledProcessError):
+        for name in ('stdout', 'stderr'):
+            value = getattr(error, name, None)
+            if isinstance(value, bytes):
+                value = value[:65536].decode('utf-8', errors='replace')
+            if isinstance(value, str):
+                stream.write(name + ': ' + value[:65536] + '\n')
+    stream.flush()
+
+
 def cms_native_integration(source, product_source_commit):
     import unittest
     import restricted_native as native
@@ -486,6 +623,10 @@ def cms_native_integration(source, product_source_commit):
     cryptad_certification.__path__.append(str(TEST_KIT / 'tools/release-certification/cryptad_certification'))
     from cryptad_certification.tests import test_pr304_product_consumer_integration as legacy
     from cryptad_certification.tests import test_pr307_product_consumer_integration as integration
+    # The exporter/JDK owner correctly rejects symlink ancestors. The test kit's convenience
+    # links and installation's "current" selector must not become native resource identities.
+    # This changes only the excluded fixture's data root, never its Python import authority.
+    installed_fixture_resources(legacy)
     # The actual disposable root creates every synthetic key/policy. Remove inherited local
     # ownership test shims: real filesystem ownership checks run unchanged here.
     legacy.SelectedRootPolicy = Path
@@ -499,9 +640,42 @@ def cms_native_integration(source, product_source_commit):
     def through_socket(*args, **kwargs):
         companion._read = real_read
         return socket_preparation(real_seal, real_read, *args, **kwargs)
-    with open(os.devnull, 'w') as sink, native.owning_boundary(), \
+    import installation
+    # This root-owned disposable driver is a synthetic test owner, not the production controller.
+    # Only original provider transport is substituted; the installed launch adapter is unchanged.
+    native_context = {'operationId': secrets.token_hex(32),
+        'registrationDigest': 'sha256:' + hashlib.sha256(b'pr312-synthetic-test-owner').hexdigest(),
+        'bundleIdentity': installation.configuration()['bundleIdentity'],
+        'deadlineMonotonic': time.monotonic() + 900}
+    descriptor = os.open('/root/pr312-native-consumer.private.log',
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'wb') as private_log, native.owning_boundary(context=native_context), \
             patch.object(metadata, 'seal_private_freeze', side_effect=through_socket):
-        result = unittest.TextTestRunner(stream=sink).run(suite)
+        bounded_log = BoundedPrivateLog(private_log)
+        import bounded_process
+        original_bounded_run = bounded_process.run
+        def fixture_run(*arguments, **options):
+            # This excluded synthetic owner observes direct fixture-tool failures only. The
+            # real call retains its exact command, environment, deadline and output bounds.
+            captured = []
+            supplied_sink = options.pop('diagnostic_sink', None)
+            def capture(stdout, stderr):
+                captured[:] = [stdout, stderr]
+                if supplied_sink is not None:
+                    supplied_sink(stdout, stderr)
+            try:
+                return original_bounded_run(*arguments, **options, diagnostic_sink=capture)
+            except Exception:
+                if captured:
+                    for label, raw in zip(('fixture-stdout', 'fixture-stderr'), captured):
+                        bounded_log.write(label + ': ' + raw[:65536].decode('utf-8', errors='replace') + '\n')
+                    bounded_log.flush()
+                raise
+        with patch.object(integration.EncryptedProductConsumerIntegrationTest,
+                          'private_diagnostic_sink',
+                          staticmethod(lambda error: private_fixture_failure(bounded_log, error)),
+                          create=True), patch.object(bounded_process, 'run', side_effect=fixture_run):
+            result = unittest.TextTestRunner(stream=bounded_log).run(suite)
     if result.testsRun != 1 or not result.wasSuccessful() or result.skipped:
         raise ValueError('disposable-real-cms-native-consumer-failed')
     return ['real-maintenance-cms-signed-native-owning-consumer-with-synthetic-provider',
@@ -513,15 +687,21 @@ def main():
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--disposable-vm', action='store_true')
+    lane = parser.add_mutually_exclusive_group()
+    lane.add_argument('--bootstrap-only', action='store_true',
+                      help='Observe production readiness and actual socket denials only.')
+    lane.add_argument('--native-slice', action='store_true',
+                      help='Observe the finite installed native/CMS slice; workload acceptance stays false.')
     parser.add_argument('--product-source-commit', type=source_commit,
                         help='Test-only exact packaged source revision; defaults to helper source HEAD.')
     args = parser.parse_args()
     source = args.source.resolve()
     missing = prerequisites(source)
     if missing or args.probe or not args.disposable_vm:
-        print(json.dumps({'schemaVersion': 1, 'kind': 'restricted-disposable-isolation',
+        print(json.dumps({'schemaVersion': 2, 'kind': 'restricted-disposable-isolation',
             'executed': False, 'status': 'unexecuted', 'prerequisites': missing,
-            'provisioningRequested': False, 'mandatoryIsolationTestSatisfied': False}, sort_keys=True))
+            'provisioningRequested': False, 'mandatoryIsolationTestSatisfied': False,
+            'installedKeylessNativeAcceptanceSatisfied': False}, sort_keys=True))
         return 78
     if os.geteuid() != 0:
         raise ValueError('disposable-administrator-required')
@@ -537,20 +717,72 @@ def main():
     sys.dont_write_bytecode = True
     load_installation(source)
     dimensions = []
-    with tempfile.TemporaryDirectory(prefix='cryptad-disposable-', dir='/root') as temporary:
-        identity = provision(source, Path(temporary))
-        dimensions.append('installed-bundle-and-effective-profile-verified')
-        dimensions.extend(denial_probes())
-        dimensions.extend(baseline_workspace_unit_probe())
-        dimensions.extend(native_cleanup_unit_probe())
-        dimensions.extend(hostile_native())
-        dimensions.extend(cms_native_integration(source, identities['productSourceCommit']))
-        call(['/usr/bin/systemctl', 'restart', 'cryptad-restricted.service'])
-        dimensions.extend(denial_probes())
-    print(json.dumps({'schemaVersion': 1, 'kind': 'restricted-disposable-isolation',
+    identity = None
+    stage = 'installation'
+    def installation_event(name, status):
+        nonlocal stage
+        stage = name
+        if status == 'complete':
+            dimensions.append(name)
+    try:
+        with tempfile.TemporaryDirectory(prefix='cryptad-disposable-', dir='/root') as temporary:
+            identity = provision(source, Path(temporary), event=installation_event)
+            dimensions.append('installed-bundle-and-effective-profile-verified')
+            stage = 'production-bootstrap-readiness'
+            dimensions.extend(bootstrap_readiness())
+            stage = 'socket-admission'
+            dimensions.extend(wrong_socket_uid())
+            dimensions.extend(denial_probes())
+            if not args.bootstrap_only:
+                if not args.native_slice:
+                    stage = 'legacy-probes-unavailable'
+                    raise ValueError('disposable-legacy-probes-unavailable')
+                else:
+                    stage = 'installed-keyless-sandbox-probe'
+                    sys.path.insert(0, str(INSTALLED / 'tools/release-certification/protected'))
+                    import restricted_native
+                    if not Path(restricted_native.__file__).resolve().is_relative_to(INSTALLED.resolve()):
+                        raise ValueError('disposable-native-source-not-installed')
+                    restricted_native.probe(bundle_identity=identity)
+                    dimensions.append('installed-keyless-fixed-native-probe')
+                stage = 'installed-package-api-owner-validation'
+                dimensions.extend(native_package_api(javac.parent.parent, identity, source))
+                stage = 'installed-app-projection-owner-validation'
+                from pr312_app_projection import run as app_projection
+                dimensions.extend(app_projection(Path('/root/pr312-app-projection'),
+                    INSTALLED.resolve(strict=True), identity, Path('/root/pr312-package-api/jdk')))
+                stage = 'native-cms-owning-consumer'
+                dimensions.extend(cms_native_integration(source, identities['productSourceCommit']))
+                stage = 'installed-native-hostile-fixtures'
+                from pr312_native_faults import run as native_faults
+                dimensions.extend(native_faults(javac.parent.parent,
+                    Path('/root/pr312-native-faults'), identity))
+                stage = 'installed-projection-output-hostile-fixtures'
+                from pr312_output_faults import run as output_faults
+                dimensions.extend(output_faults(Path('/root/pr312-output-faults'), identity))
+                stage = 'production-restart-readiness'
+                call(['/usr/bin/systemctl', 'restart', 'cryptad-restricted.service'], timeout=190)
+                dimensions.extend(bootstrap_readiness())
+                dimensions.extend(denial_probes())
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as failure:
+        # Only the closed fixed identifier is retained; raw errors, paths and excerpts are dropped.
+        code = failure_code(failure)
+        diagnostic = Path('/root/pr312-installation-failure.json')
+        fd = os.open(diagnostic, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            json.dump({'stage': stage, 'code': code}, stream, sort_keys=True)
+        print(json.dumps({'schemaVersion': 2, 'kind': 'restricted-disposable-isolation',
+            'executed': True, 'status': 'failed', 'failedStage': stage, 'bundleIdentity': identity,
+            **identities, 'dimensions': sorted(set(dimensions)),
+            'productionAuthorityObserved': False, 'mandatoryIsolationTestSatisfied': False,
+            'installedKeylessNativeAcceptanceSatisfied': False}, sort_keys=True))
+        return 2
+    print(json.dumps({'schemaVersion': 2, 'kind': 'restricted-disposable-isolation',
         'executed': True, 'status': 'local-dimensions-executed', 'bundleIdentity': identity, **identities,
         'dimensions': sorted(set(dimensions)), 'productionAuthorityObserved': False,
         'mandatoryIsolationTestSatisfied': False,
+        'installedKeylessNativeAcceptanceSatisfied': False,
+        'installedNativePositiveExecuted': not args.bootstrap_only,
         'remainingMandatoryTests': ['installed-controller-owned-workload-positive',
             'primary-catalog-scheduler-app-budget-role-confinement',
             'sibling-admin-plane-and-storage-denials',
@@ -565,5 +797,6 @@ if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
-        print('{"kind":"restricted-disposable-isolation","status":"failed","mandatoryIsolationTestSatisfied":false}')
+        print('{"schemaVersion":2,"kind":"restricted-disposable-isolation","status":"failed",'
+              '"mandatoryIsolationTestSatisfied":false,"installedKeylessNativeAcceptanceSatisfied":false}')
         raise SystemExit(2) from None

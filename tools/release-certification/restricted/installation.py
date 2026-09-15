@@ -17,6 +17,7 @@ import select
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -27,7 +28,9 @@ EXECUTION = PREFIX / 'restricted-execution.json'
 MANIFEST = '.restricted-manifest.json'
 EXPORT_POLICY = 'production-without-test-seams-v1'
 TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name in (
-    'disposable_integration.py', 'baseline_workspace_probe.py', 'native_cleanup_probe.py'))
+    'disposable_integration.py', 'baseline_workspace_probe.py', 'native_cleanup_probe.py',
+    'pr312_reference_vm.py', 'pr312_native_faults.py', 'pr312_prepare_reference.py',
+    'pr312_output_faults.py', 'pr312_app_projection.py'))
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
                     '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
@@ -549,7 +552,7 @@ def verify_sudo_denial(result):
         raise InstallationError('restricted-runner-sudo-or-policy-unknown')
 
 
-def verify_profile(config):
+def verify_profile(config, *, native_probe=True):
     import pwd
     if 'VERSION_ID="13"' not in Path('/etc/os-release').read_text():
         raise InstallationError('restricted-host-profile-unsupported')
@@ -575,6 +578,11 @@ def verify_profile(config):
         if root.exists() and any(path.is_file() for path in root.rglob('*')):
             raise InstallationError('restricted-local-polkit-policy-unreviewed')
     verify_polkit(runner)
+    if not native_probe:
+        # Installed verification runs the same kernel prerequisite in the fixed manager-owned
+        # unit below, after its complete code/dependency/profile validation. A resolver child
+        # would inherit the intentionally incompatible resolver seccomp and proc mounts.
+        return runner
     native = pwd.getpwnam('cryptad-native')
     # Exercise the mandatory kernel user/mount/PID/network namespaces after a real host UID
     # drop. The only executable is the image-pinned true binary, and no private path is mounted.
@@ -642,6 +650,7 @@ HOST_ASSETS = (
     ('cryptad-restricted.conf', '/usr/lib/sysusers.d/cryptad-restricted.conf'),
     ('cryptad-restricted-tmpfiles.conf', '/usr/lib/tmpfiles.d/cryptad-restricted.conf'),
     ('cryptad-restricted.service', '/etc/systemd/system/cryptad-restricted.service'),
+    ('cryptad-restricted-native.service', '/etc/systemd/system/cryptad-restricted-native.service'),
     ('cryptad-restricted.socket', '/etc/systemd/system/cryptad-restricted.socket'),
     ('cryptad-cross-version-soak.service', '/etc/systemd/system/cryptad-cross-version-soak.service'),
 )
@@ -663,7 +672,8 @@ def verify_host_assets(bundle, *, upgrading=False):
 
 def verify_units():
     verify_host_assets(PREFIX / 'current')
-    for name in ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
+    for name in ('cryptad-restricted.service', 'cryptad-restricted-native.service',
+                 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
         for root in ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system',
                      '/etc/systemd/system.control', '/run/systemd/system.control'):
             if (Path(root) / (name + '.d')).exists():
@@ -675,7 +685,7 @@ def verify_units():
         if paths != {'FragmentPath': '/etc/systemd/system/' + name, 'DropInPaths': ''}:
             raise InstallationError('restricted-unit-load-path-unreviewed')
     result = subprocess.run(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
-        '--property=User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices,LimitCORE,FragmentPath,CapabilityBoundingSet,AmbientCapabilities',
+        '--property=User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices,LimitCORE,FragmentPath,CapabilityBoundingSet,AmbientCapabilities,Type,NotifyAccess,TimeoutStartUSec',
         '--no-pager'], check=True, capture_output=True, timeout=15,
         env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
     properties = dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
@@ -683,9 +693,29 @@ def verify_units():
     expected = {'User': 'root', 'Group': 'root', 'NoNewPrivileges': 'yes', 'ProtectSystem': 'strict',
                 'ProtectHome': 'yes', 'PrivateTmp': 'yes', 'PrivateDevices': 'yes', 'LimitCORE': '0',
                 'FragmentPath': '/etc/systemd/system/cryptad-restricted.service',
-                'AmbientCapabilities': 'cap_setuid'}
+                'AmbientCapabilities': 'cap_setuid', 'Type': 'notify', 'NotifyAccess': 'main',
+                'TimeoutStartUSec': '3min'}
     if properties != expected:
         raise InstallationError('restricted-effective-unit-mismatch')
+    verify_native_unit()
+
+
+def verify_native_unit():
+    """Bind the compatible construction profile independently of resolver confinement."""
+    expected = {'Type': 'exec', 'User': 'cryptad-native', 'Group': 'cryptad-native',
+        'NoNewPrivileges': 'yes', 'CapabilityBoundingSet': '', 'AmbientCapabilities': '',
+        'RestrictSUIDSGID': 'no', 'ProtectKernelTunables': 'no', 'ProtectControlGroups': 'no',
+        'KillMode': 'control-group', 'SendSIGKILL': 'yes', 'Restart': 'no',
+        'RemainAfterExit': 'yes', 'LimitCORE': '0', 'LimitNOFILE': '128',
+        'LimitFSIZE': '8388608', 'TasksMax': '256', 'MemoryMax': '4294967296',
+        'RuntimeMaxUSec': '3min 20s', 'TimeoutStopUSec': '20s',
+        'TemporaryFileSystem': '/run:rw,size=16M,nr_inodes=256,mode=1777 /tmp:rw,size=80M,nr_inodes=4096,mode=1777'}
+    result = subprocess.run(['/usr/bin/systemctl', 'show', 'cryptad-restricted-native.service',
+        '--property=' + ','.join(expected), '--no-pager'], check=True, capture_output=True,
+        timeout=15, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+    observed = dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
+    if observed != expected:
+        raise InstallationError('restricted-effective-native-unit-mismatch')
 
 
 def verify():
@@ -694,8 +724,17 @@ def verify():
     required_entrypoints(manifest)
     verify_bundle(PREFIX / 'versions' / config['bundleIdentity'], config['bundleIdentity'])
     dependencies(config)
-    verify_profile(config)
+    verify_profile(config, native_probe=False)
     verify_units()
+    # Imports below are keyless, verified installed code. Credential-using owner imports remain
+    # bootstrap-owned and occur only after this fixed kernel prerequisite succeeds.
+    protected = str(PREFIX / 'current/tools/release-certification/protected')
+    sys.path.insert(0, protected)
+    try:
+        from restricted_native import probe
+        probe(bundle_identity=config['bundleIdentity'])
+    finally:
+        sys.path.remove(protected)
     return {'bundleIdentity': config['bundleIdentity'], 'sourceCommit': manifest['sourceCommit'],
             'executionClosureDigest': 'sha256:' + digest(encode(config['dependencies'])),
             'status': 'installation-verified-no-operation-authority'}
@@ -817,7 +856,8 @@ def install(bundle):
 
 def require_stopped_units(environment):
     """Socket state has no MainPID; services must additionally have no remaining main process."""
-    for unit in ('cryptad-restricted.socket', 'cryptad-restricted.service', 'cryptad-cross-version-soak.service'):
+    for unit in ('cryptad-restricted.socket', 'cryptad-restricted.service',
+                 'cryptad-restricted-native.service', 'cryptad-cross-version-soak.service'):
         expected = {'ActiveState': 'inactive', 'SubState': 'dead'}
         if unit.endswith('.service'):
             expected['MainPID'] = '0'
@@ -911,7 +951,8 @@ def required_entrypoints(manifest):
                 ('installation.py', 'bootstrap.py', 'runtime_bootstrap.py')}
     required |= {'tools/release-certification/protected/' + name for name in
                  ('restricted_worker.py', 'restricted_client.py', 'restricted_protocol.py',
-                  'restricted_native.py', 'restricted_maintenance.py', 'restricted_registration.py')}
+                  'restricted_native.py', 'restricted_native_launcher.py',
+                  'restricted_maintenance.py', 'restricted_registration.py')}
     if not required <= manifest['files'].keys():
         raise InstallationError('restricted-bundle-entrypoints-incomplete')
 

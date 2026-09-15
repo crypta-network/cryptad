@@ -341,7 +341,7 @@ def _run_maintenance_native(arguments, root, exporter, tool_root, java_home):
                        'HOME': '/tmp', 'TMPDIR': '/tmp', 'JAVA_HOME': '/jdk',
                        'JAVA_OPTS': '-Xmx256m -XX:CompressedClassSpaceSize=64m -XX:ReservedCodeCacheSize=64m'}
         return run(['/usr/bin/prlimit', '--cpu=180', '--fsize=8388608', '--nofile=128', '--as=4294967296',
-                    '--', *sandbox, '--', *mapped], environment=environment, timeout=180, output_limit=32768)
+                    '--', *sandbox, '--', *mapped], environment=environment, timeout=180, output_limit=32768, operation='app-projection')
 
 
 def _canonical_digest(value: Any) -> str:

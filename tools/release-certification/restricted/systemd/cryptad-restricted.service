@@ -4,7 +4,9 @@ Requires=cryptad-restricted.socket
 After=network.target cryptad-restricted.socket
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=180
 User=root
 Group=root
 ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/restricted/bootstrap.py
@@ -17,8 +19,8 @@ StandardOutput=null
 StandardError=null
 Restart=no
 NoNewPrivileges=yes
-# The controller must signal its owned process groups after native children drop their host UID.
-# restricted_native removes every capability from those children before executing candidate code.
+# The controller retains existing fixed policy-probe and owned-process cleanup authority.
+# Finite native work starts in a separate manager-owned unit with empty host capabilities.
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_KILL
 # systemd 257 drops effective CAP_SETUID during seccomp setup unless explicitly ambient.
 # Preserve this already-bounded root authority; every non-root child clears all capability sets.
@@ -35,7 +37,7 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-ReadWritePaths=/var/lib/cryptad-restricted /var/lib/cryptad-cross-version-authority /var/lib/cryptad-runtime-baselines /var/lib/cryptad-cross-version /run/cryptad-restricted
+ReadWritePaths=/var/lib/cryptad-restricted /var/lib/cryptad-restricted-native /var/lib/cryptad-cross-version-authority /var/lib/cryptad-runtime-baselines /var/lib/cryptad-cross-version /run/cryptad-restricted
 InaccessiblePaths=/var/lib/cryptad-runner
 LimitCORE=0
 LimitNOFILE=512

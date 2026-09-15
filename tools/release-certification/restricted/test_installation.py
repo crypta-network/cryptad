@@ -550,7 +550,7 @@ class RoleGroupTests(unittest.TestCase):
 
 
 class UnitLoadPathTests(unittest.TestCase):
-    UNITS = ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service')
+    UNITS = ('cryptad-restricted.service', 'cryptad-restricted-native.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service')
 
     def verify(self, *, override=None, properties=None, ambient='cap_setuid'):
         def show(arguments, **kwargs):
@@ -565,10 +565,12 @@ class UnitLoadPathTests(unittest.TestCase):
                     'PrivateDevices': 'yes', 'LimitCORE': '0',
                     'FragmentPath': '/etc/systemd/system/cryptad-restricted.service',
                     'CapabilityBoundingSet': ' '.join(installation.CONTROLLER_CAPABILITIES),
-                    'AmbientCapabilities': ambient}
+                    'AmbientCapabilities': ambient, 'Type': 'notify', 'NotifyAccess': 'main',
+                    'TimeoutStartUSec': '3min'}
             return subprocess.CompletedProcess(arguments, 0,
                 stdout=''.join(key + '=' + value + '\n' for key, value in values.items()).encode())
         with patch.object(installation, 'verify_host_assets'), \
+                patch.object(installation, 'verify_native_unit'), \
                 patch.object(Path, 'exists', lambda path: str(path) == override), \
                 patch.object(installation.subprocess, 'run', side_effect=show):
             installation.verify_units()
@@ -655,7 +657,8 @@ class ControllerCapabilityTests(unittest.TestCase):
 
 class UpgradeShutdownTests(unittest.TestCase):
     def check_states(self, replacements=None):
-        states = {'cryptad-restricted.socket': b'ActiveState=inactive\nSubState=dead\n',
+        states = {'cryptad-restricted-native.service': b'ActiveState=inactive\nSubState=dead\nMainPID=0\n',
+                  'cryptad-restricted.socket': b'ActiveState=inactive\nSubState=dead\n',
                   'cryptad-restricted.service': b'ActiveState=inactive\nSubState=dead\nMainPID=0\n',
                   'cryptad-cross-version-soak.service': b'ActiveState=inactive\nSubState=dead\nMainPID=0\n'}
         states.update(replacements or {})
@@ -666,7 +669,7 @@ class UpgradeShutdownTests(unittest.TestCase):
             return subprocess.CompletedProcess(arguments, 0, stdout=states[unit])
         with patch.object(installation.subprocess, 'run', side_effect=show) as run:
             installation.require_stopped_units({'PATH': '/usr/bin:/bin', 'LANG': 'C'})
-        self.assertEqual(run.call_count, 3)
+        self.assertEqual(run.call_count, 4)
 
     def test_inactive_socket_without_main_pid_and_stopped_services_are_accepted(self):
         self.check_states()
@@ -678,7 +681,7 @@ class UpgradeShutdownTests(unittest.TestCase):
                 self.check_states({'cryptad-restricted.socket': output})
 
     def test_services_require_inactive_dead_and_zero_main_pid(self):
-        for unit in ('cryptad-restricted.service', 'cryptad-cross-version-soak.service'):
+        for unit in ('cryptad-restricted.service', 'cryptad-restricted-native.service', 'cryptad-cross-version-soak.service'):
             for output in (b'ActiveState=inactive\nSubState=dead\nMainPID=123\n',
                            b'ActiveState=inactive\nSubState=dead\n',
                            b'ActiveState=active\nSubState=running\nMainPID=0\n'):
@@ -993,3 +996,21 @@ class VersionHistoryCapacityTests(unittest.TestCase):
         self.assertEqual(raw, (current / installation.MANIFEST).read_bytes())
         self.assertEqual(b'[]', history.read_bytes())
         self.assertEqual(128, len(list(self.versions.iterdir())))
+
+
+class NativeUnitProfileTests(unittest.TestCase):
+    def test_missing_or_extra_native_authority_never_passes_effective_verification(self):
+        # An empty/malformed reply is never equivalent to the selected keyless profile.
+        for raw in (b'', b'User=cryptad-native\nNoNewPrivileges=yes\n',
+                    b'CapabilityBoundingSet=cap_sys_admin\n',
+                    b'User=root\nKillMode=process\n'):
+            with self.subTest(raw=raw), patch.object(installation.subprocess, 'run',
+                    return_value=subprocess.CompletedProcess([], 0, stdout=raw)):
+                with self.assertRaisesRegex(installation.InstallationError, 'native-unit-mismatch'):
+                    installation.verify_native_unit()
+
+    def test_query_failure_is_not_native_profile_denial_evidence(self):
+        with patch.object(installation.subprocess, 'run',
+                side_effect=subprocess.CalledProcessError(1, 'systemctl')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                installation.verify_native_unit()

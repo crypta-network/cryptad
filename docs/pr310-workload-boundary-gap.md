@@ -1,5 +1,10 @@
 # PR-310 workload isolation implementation gap
 
+The bounded [PR-312 installed/native remediation](pr-312-installed-resolver-keyless-native.md)
+addresses authenticated resolver readiness and finite keyless verification. It does not reopen
+the supervisor methods below. Controller-owned workload roles and sibling management-plane
+isolation are the prospective PR-313 slice; all twelve PR-309 consumer cases remain deferred.
+
 PR-310 does not yet separate the existing runtime observer from its candidate daemon processes.
 The restricted controller therefore rejects supervisor authorize, start and checkpoint through its
 new channel. This is an incomplete mandatory implementation requirement, not merely an unavailable
