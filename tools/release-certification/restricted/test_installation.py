@@ -663,3 +663,61 @@ class LoaderPreloadTests(unittest.TestCase):
             target.write_bytes(b'later-created config')
             with self.assertRaisesRegex(installation.InstallationError, 'preload-unsupported'):
                 installation.require_no_loader_preload(path)
+
+
+class RevocationApprovalTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.approval = self.root / 'approval.json'
+        self.state = self.root / 'state'
+        self.state.mkdir()
+        self.config = {'schemaVersion': 1, 'bundleIdentity': 'a' * 64, 'dependencies': {},
+                       'profile': 'debian13-systemd257-dedicated-v1', 'runnerUid': 62001,
+                       'runnerGroups': [62001, 62005], 'revokedVersions': []}
+        for change in (patch.object(installation, 'APPROVAL', self.approval),
+                       patch.object(installation, 'STATE', self.state),
+                       patch.object(installation, 'secured', side_effect=lambda path, **kwargs: path)):
+            change.start()
+            self.addCleanup(change.stop)
+
+    def save(self):
+        self.approval.write_bytes(installation.encode(self.config))
+
+    def test_empty_and_valid_digest_lists_are_accepted(self):
+        for value in ([], ['b' * 64], ['b' * 64, '0123456789abcdef' * 4]):
+            self.config['revokedVersions'] = value
+            self.save()
+            self.assertEqual(value, installation.configuration()['revokedVersions'])
+
+    def test_malformed_approval_rejects_before_installation_or_history_write(self):
+        for value in ('b' * 64, [None], [True], [1], [{}], [[]], [''], ['b' * 63],
+                      ['b' * 65], ['B' * 64], ['g' * 64], ['b' * 64 + '\n']):
+            self.config['revokedVersions'] = value
+            self.save()
+            with self.subTest(value=value), patch.object(installation.os, 'geteuid', return_value=0), \
+                    patch.object(installation, 'verify_bundle') as bundle, \
+                    self.assertRaisesRegex(installation.InstallationError, 'approval-invalid'):
+                installation.install(self.root / 'unexamined-bundle')
+            bundle.assert_not_called()
+            self.assertFalse((self.state / 'revocations.json').exists())
+
+    def test_malformed_history_rejects_with_closed_diagnostic(self):
+        self.save()
+        for value in ([{}], ['B' * 64], [None], 'b' * 64):
+            (self.state / 'revocations.json').write_bytes(installation.encode(value))
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    installation.InstallationError, 'security-history-rollback'):
+                installation.configuration()
+
+    def test_revoked_current_bundle_and_removed_history_remain_rejected(self):
+        self.config['revokedVersions'] = ['a' * 64]
+        self.save()
+        with self.assertRaisesRegex(installation.InstallationError, 'helper-revoked'):
+            installation.configuration()
+        self.config['revokedVersions'] = []
+        self.save()
+        (self.state / 'revocations.json').write_bytes(installation.encode(['b' * 64]))
+        with self.assertRaisesRegex(installation.InstallationError, 'security-history-rollback'):
+            installation.configuration()

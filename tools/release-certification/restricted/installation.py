@@ -317,6 +317,12 @@ def host_plan(bundle_identity):
             'runnerUid': 62001, 'runnerGroups': [62001, 62005], 'revokedVersions': []}
 
 
+def valid_revocations(value):
+    """Match the worker's retained revocation contract before approval can be persisted."""
+    return isinstance(value, list) and all(
+        isinstance(item, str) and re.fullmatch('[0-9a-f]{64}', item) is not None for item in value)
+
+
 def configuration():
     config = read_json(secured(APPROVAL, private=True))
     if (set(config) != {'schemaVersion', 'bundleIdentity', 'dependencies', 'profile', 'runnerUid',
@@ -324,14 +330,14 @@ def configuration():
             or config['schemaVersion'] != 1 or config['profile'] != 'debian13-systemd257-dedicated-v1'
             or type(config['runnerUid']) is not int or config['runnerUid'] <= 0
             or not isinstance(config['runnerGroups'], list)
-            or not isinstance(config['revokedVersions'], list)):
+            or not valid_revocations(config['revokedVersions'])):
         raise InstallationError('restricted-approval-invalid')
     if config['bundleIdentity'] in config['revokedVersions']:
         raise InstallationError('restricted-helper-revoked')
     history = STATE / 'revocations.json'
     if history.exists():
         retained = read_json(secured(history, private=True))
-        if (not isinstance(retained, list) or not set(retained) <= set(config['revokedVersions'])
+        if (not valid_revocations(retained) or not set(retained) <= set(config['revokedVersions'])
                 or config['bundleIdentity'] in retained):
             raise InstallationError('restricted-security-history-rollback')
     return config
