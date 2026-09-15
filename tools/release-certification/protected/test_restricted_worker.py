@@ -2,6 +2,7 @@
 from contextlib import ExitStack, contextmanager, nullcontext
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -74,6 +75,7 @@ class DurableWorkerTest(unittest.TestCase):
         self.assertTrue((self.root / 'intent.json').exists())
         self.assertFalse((self.root / 'result.json').exists())
 
+    @unittest.skipUnless(sys.platform == 'linux', 'native owning boundary requires Linux')
     def test_real_revocation_callback_stops_native_before_worker_result(self):
         """Local composition test: real worker/native callbacks, synthetic service manager."""
         import os
@@ -234,6 +236,7 @@ class DurableWorkerTest(unittest.TestCase):
             operation.assert_not_called()
         self.assertEqual(retained, (self.root / 'result.json').read_bytes())
 
+    @unittest.skipUnless(sys.platform == 'linux', 'native owning boundary requires Linux')
     def test_native_nested_owner_keeps_deadline_and_revocation_callback(self):
         import restricted_native as native
         import restricted_maintenance as maintenance

@@ -9,8 +9,7 @@ from unittest.mock import patch
 import restricted_native as native
 
 
-@unittest.skipUnless(sys.platform == 'linux', 'native execution boundary requires Linux')
-class RestrictedNativeTest(unittest.TestCase):
+class PlatformAdmissionTest(unittest.TestCase):
     def test_unsupported_platform_import_does_not_load_unix_account_modules(self):
         import importlib.util
         import builtins
@@ -21,12 +20,17 @@ class RestrictedNativeTest(unittest.TestCase):
             return original_import(name, *args, **kwargs)
         spec = importlib.util.spec_from_file_location('unsupported_native_boundary', native.__file__)
         module = importlib.util.module_from_spec(spec)
-        with patch.object(sys, 'platform', 'win32'), patch('builtins.__import__', side_effect=without_unix):
-            spec.loader.exec_module(module)
-            with self.assertRaises(module.NativeBoundaryError):
-                with module.owning_boundary():
-                    self.fail('unsupported platform entered owning boundary')
+        for platform in ('darwin', 'win32'):
+            with self.subTest(platform=platform), patch.object(sys, 'platform', platform), \
+                    patch('builtins.__import__', side_effect=without_unix):
+                spec.loader.exec_module(module)
+                with self.assertRaises(module.NativeBoundaryError):
+                    with module.owning_boundary():
+                        self.fail('unsupported platform entered owning boundary')
 
+
+@unittest.skipUnless(sys.platform == 'linux', 'native execution boundary requires Linux')
+class RestrictedNativeTest(unittest.TestCase):
     def test_installed_execution_cannot_fall_back_without_owning_context(self):
         with patch.object(native, '__file__', '/opt/cryptad-cross-version/current/protected/restricted_native.py'):
             with self.assertRaisesRegex(native.NativeBoundaryError, 'boundary-rejected'):
@@ -182,6 +186,7 @@ class FixedNativeContractTest(unittest.TestCase):
             with self.subTest(option=option), self.assertRaises(ValueError):
                 launcher.validate_spec({**spec, 'options': {**spec['options'], option: value}})
 
+    @unittest.skipUnless(sys.platform == 'linux', 'installed native lifecycle requires Linux')
     def test_descriptor_collection_rejects_replaced_ancestor(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -203,6 +208,7 @@ class FixedNativeContractTest(unittest.TestCase):
             with patch.object(native.os, 'read', side_effect=read), self.assertRaises(ValueError):
                 native._read_output(source, 32768)
 
+    @unittest.skipUnless(sys.platform == 'linux', 'installed native lifecycle requires Linux')
     def test_manager_timeout_retains_intent_and_stops_before_uid_reuse(self):
         import time
         from contextlib import ExitStack
@@ -239,6 +245,7 @@ class FixedNativeContractTest(unittest.TestCase):
             self.assertTrue((stages[0] / 'failure.json').exists())
             self.assertEqual(0o700, stages[0].stat().st_mode & 0o777)
 
+    @unittest.skipUnless(sys.platform == 'linux', 'installed native lifecycle requires Linux')
     def test_uncertain_cleanup_keeps_active_marker_and_private_evidence(self):
         import time
         from contextlib import ExitStack
@@ -262,6 +269,7 @@ class FixedNativeContractTest(unittest.TestCase):
             self.assertEqual(1, len(list(root.glob('*/failure.json'))))
 
 
+@unittest.skipUnless(sys.platform == 'linux', 'installed native lifecycle requires Linux')
 class NativeLifecycleTest(unittest.TestCase):
     """Controller lifecycle tests use a fake manager, never claim installed/kernel acceptance."""
 

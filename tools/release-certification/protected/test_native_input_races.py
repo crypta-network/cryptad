@@ -1,5 +1,6 @@
 """Real deterministic source races; local checks do not establish installed VM acceptance."""
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,8 @@ from unittest.mock import patch
 import restricted_native as native
 
 
+@unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'O_PATH'),
+                     'the installed input copier requires Linux O_PATH')
 class NativeInputRaceTest(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory(prefix='native-input-')
