@@ -1,0 +1,632 @@
+# Restricted worker and private resolver isolation — incomplete implementation
+
+PR-310 adds an installed local controller, private maintenance adapters and a distinct native
+verifier UID. **It does not yet satisfy the requested complete isolation boundary.** The runtime
+observer and candidate workload still share a UID; new supervisor authorize/start/checkpoint
+requests therefore reject. The mandatory installed service/UID positive lane has not executed.
+This remains Phase 12 remediation, not Phase 13 or deployment approval.
+
+## Source and audit
+
+Work started from clean `develop` commit `570e36af184c6491d8f275840fccb67ab52c5a6f`, tree
+`5d7e925f0338af5a4e7737c8ec097f40da4fbcd8`. Read-only GitHub inspection confirmed PR #1411's
+final head `be01ae2cae76a7c65410be7d03244f16092d5984` and merge time
+`2026-09-14T17:17:36Z`. The older embedded PR-body head was not used. At initial recheck,
+merge CodeQL `34873866000` had succeeded and merge Java CI `34873867793` was in progress.
+These checks identify the predecessor; they do not test this working tree.
+The final recheck found merge Java CI `34873867793` completed successfully on that exact squash.
+
+| Audited area | Reused owner | Change and remaining gap |
+| --- | --- | --- |
+| Private CMS | `maintenance_runtime_companion` | No crypto, recipient policy, five-member roster or freeze contract changes. |
+| Native export/admission | `maintenance_runtime_metadata`, `app_subject_projection` | Fixed native bridge copies only mapped inputs and drops actual host UID before bwrap. Real installed positive execution remains unverified. |
+| Private production/validation | `seal_private_freeze`, `original_context` | New fixed adapters call real owners; original verification and in-process capabilities remain required. |
+| Installation | Fixed `/opt/cryptad-cross-version/current` | Manifest bundle, dependency inventory, isolated bootstrap, explicit install/verify/upgrade; current remains a real directory. |
+| Request/retention | Existing original GitHub authentication | Fixed framed Unix socket, root registration, kernel UID check, original job check, durable intent/result; no runner paths or credentials. |
+| Baseline and terminal | Existing PR-308 owners | Structured adapters preserve actual reviewer decisions, ordered attempts, expiry and stopped-run checks. Socket lifecycle integration remains unexecuted. |
+| Workload observer | Existing `cryptad-soak` service | Bootstrap and hardening added; **candidate/observer UID and storage split is not implemented**. See the [specific gap map](pr310-workload-boundary-gap.md). |
+| CI/conformance | Existing native PR-307 fixture | Disposable harness exists; current CI records prerequisites and does not run the mandatory VM lane. |
+
+The initial inventory also found hosted `apt-get` packaging, hosted legacy cohort installation,
+four fixed supervisor sudo operations, baseline prepare/approve sudo calls, fixed systemctl
+show/start/stop, root activation/ledger writes, private CMS/selection reads and every native launch.
+The two scoped supervisor/baseline workflows now call the installed client. The old hosted
+selected-federation maintenance guards remain closed. No sudo wrapper was restored.
+
+## Threat model and reference profile
+
+The prospective reference is a dedicated Debian 13 Linux VM with systemd 257 and Python 3.13.
+Development discovery observed Debian 13.7, systemd 257.13, Python 3.13.5, OpenSSL 3.5.7 and
+OpenJDK 25.0.4.1. Those are observed tool versions, **not a tested VM image**. The development
+account has unrestricted sudo; this host is not the restricted reference. The disposable probe
+returns exit 78 here, without provisioning.
+
+Trust includes the host kernel/service manager, out-of-band administrator, externally measured complete Python runtime
+(interpreter, standard library, extension modules, zip paths and loader dependencies), reviewed immutable helper/dependency closure, original source authorities and required
+credential issuers. Host root and hypervisor compromise are outside the claim. Treat runner code,
+checkout/action/cache contents, artifacts, candidate Java, input JSON, filenames and child outputs
+as potentially hostile. An administrator-controlled image and runner group are prerequisites;
+no finite probe proves the absence of every escalation path.
+
+| Principal | Intended access | Current limitation |
+| --- | --- | --- |
+| `cryptad-runner` | Local socket; an exact pre-registered method/handle; bounded safe output | One dedicated job at a time is required. Peer UID cannot distinguish concurrent jobs sharing that UID. |
+| Root controller/resolver | Existing root-only private APIs; fixed lifecycle and original-provider reads | Parsing/crypto remain in the reviewed root TCB. This is not a fully reduced-privilege resolver. |
+| `cryptad-native` | Fresh copied inputs, approved materialized JDK/tools, one bounded projection | Scoped selection legitimately enters its intended verifier. Covert-channel freedom is not claimed. |
+| `cryptad-soak` | Tokenless observer and retained runtime inputs | Currently also launches candidate processes; new execution remains blocked. |
+| `cryptad-workload` | Reserved distinct workload role | Full launch/storage integration is missing. Creating this account alone establishes nothing. |
+| Collector | Existing retained terminal state and safe projection | Cannot launch new work or grant approval. |
+
+The installer rejects shared/root role UIDs, privileged runner groups, permitted sudo,
+unreviewed local Polkit rules, active runner capabilities, altered units/dependencies and missing
+native namespace support. Dedicated runner-group/workflow restrictions must be configured outside
+the evaluated job. This session did not inspect or change organization settings. No Docker,
+containerd, LXD, KVM or hypervisor control socket may be available to the runner.
+
+## Installation and immutable code
+
+The implementation is in
+[`tools/release-certification/restricted`](../tools/release-certification/restricted/installation.py).
+Default preparation and verification do not create users or install services. Use a separately
+reviewed clean committed checkout; local uncommitted changes cannot be an approved installation.
+Before any target-image Python execution, complete the offline runtime measurement below. Run
+`host-plan` only on an independently trusted golden image to prepare the administrator-reviewed
+reference inventory; regenerating approval from the image under investigation is not verification.
+
+```bash
+python3 -I -S tools/release-certification/restricted/installation.py plan \
+  --source "$PWD" --output /tmp/cryptad-reviewed-bundle
+python3 -I -S tools/release-certification/restricted/installation.py host-plan \
+  --bundle-identity REVIEWED_MANIFEST_SHA256 > /tmp/cryptad-image-review.json
+```
+
+`REVIEWED_MANIFEST_SHA256` is the exact `bundleIdentity` returned by plan, not a product SHA.
+Before review or any root execution, the administrator transfers the preparer's bundle as data
+into a new directory beneath root's private home, using the provisioned system tools. In the
+administrator shell on the dedicated host:
+
+```bash
+set -euo pipefail
+test ! -e /root/cryptad-reviewed-bundle
+test ! -L /root/cryptad-reviewed-bundle
+mkdir -m 0700 /root/cryptad-reviewed-bundle
+cp -R --no-preserve=ownership,mode /tmp/cryptad-reviewed-bundle/. /root/cryptad-reviewed-bundle/
+test -z "$(find /root/cryptad-reviewed-bundle ! -type f ! -type d -print -quit)"
+test -z "$(find /root/cryptad-reviewed-bundle ! -user root -print -quit)"
+chmod -R go-w /root/cryptad-reviewed-bundle
+sha256sum /root/cryptad-reviewed-bundle/.restricted-manifest.json
+```
+
+Do not execute code from the incoming `/tmp` bundle as root. The copied tree remains untrusted
+data until the administrator compares its manifest identity with the independently reviewed
+identity, verifies every file digest and executable mode against that manifest using trusted
+administrator tooling, and reviews the installer and its source. Perform this review on the
+root-controlled copy, not the preparer's mutable tree. The `/root` directory and its ancestors
+must be root-owned and inaccessible for modification by the preparer; do not reuse an existing
+destination. A failed transfer/check requires inspection before proceeding.
+
+An authorized administrator must review this protected copy, dependency inventory, host configuration,
+exclusive runner routing and original authority before separately installing the root-private
+approval as `/etc/cryptad-certification/restricted-installation.json`. This is an explicit
+administrative action, not a workflow step. No approval file or key was installed in this session.
+
+On that approved disposable/reference host, the administrator executes:
+
+```bash
+python3 -I -S /root/cryptad-reviewed-bundle/tools/release-certification/restricted/installation.py \
+  install --bundle /root/cryptad-reviewed-bundle
+python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/restricted/installation.py verify
+```
+
+The actual sysusers/tmpfiles/socket/service manifests are bundled. Installation verifies and
+creates version-addressed trees under `versions/<bundleIdentity>`, then a real `current` tree.
+It installs units but does not start the socket or workload. The administrator alone starts
+`cryptad-restricted.socket` after review. Never install the old supervisor sudoers grant for this
+profile. Never install keys in an ordinary PR runner environment.
+
+`-I -S` removes Python environment/user/site startup hooks; it cannot validate the interpreter
+before that interpreter runs or authenticate standard-library modules already imported. The
+entire externally measured Python runtime is initial TCB. Bootstrap checks the application
+verifier bytes before importing it, then checks helper source and dependency inventory before
+owner imports. These in-process checks cannot detect a malicious runtime that falsifies them. Environment and inherited descriptors are reset. The inventory
+includes fixed executables, Python and ELF/library trees, symlink targets and loader configuration.
+Approved JDK/tool identities remain independently checked by existing native owners; raw distro JDK
+symlink trees are not substitutes for the existing approved materialized JDK contract.
+
+Service settings include no-new-privileges, private temporary/device views, read-only system/code,
+bounded tasks/memory/CPU/I/O, no core dumps and an explicit capability set. Native `setpriv` removes
+groups and all capabilities before bwrap. JVM JIT remains available; no memory-execute prohibition
+is asserted. Effective settings must be verified on the actual supported VM.
+
+## Registration, execution and output
+
+The root-only installed
+[`restricted_registration.py`](../tools/release-certification/protected/restricted_registration.py)
+registers exact context and bounded input snapshots. It is not exposed through the socket.
+The administrator supplies method, original workflow source/run/attempt/job, authorization and
+collection intervals, and fixed configuration records. The helper binds its own installed version
+and fixed runner UID and chooses the random handle. Its reservation/binding commands permit a
+handle to be selected before the original job identity is known; reservation alone grants no work.
+
+```bash
+python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_registration.py \
+  --reserve maintenance-prepare
+python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_registration.py \
+  --handle RESERVED_HANDLE --context /root/reviewed-context.json --inputs /root/reviewed-inputs
+```
+
+The context has exactly `method`, `context`, `notBefore`, `expiresAt`, `collectUntil` and
+`configurationFiles`. The inner context contains `sourceCommit`, `runId`, `runAttempt` and `jobId`;
+configuration files are an administrator-selected list under `/etc/cryptad-certification`.
+Those workflow identities are checked against the provider before work; registration is not a
+substitute for that check. Existing supervisor/baseline owner source-equality rules remain in
+force; broader independent helper/workflow revision dispatch is not implemented by this patch.
+
+Private original-provider access uses only the fixed root-private
+`/etc/cryptad-certification/restricted-provider.json`, containing `token` and `expiresAt`.
+The controller requires an expiry within one hour. Provisioning must supply a minimal read
+credential through an existing trusted administrator/issuer channel; no new PAT or credential
+authority is created. The runner's token and `GITHUB_*` environment never enter the service.
+Existing PR-307 recipient/selection paths and root ownership checks remain unchanged.
+
+Requests are length-prefixed JSON, maximum 256 bytes, with exactly `method` and a 64-hex `handle`.
+Only fixed operation names and `collect` are accepted. Responses are bounded to 4 MiB. The serial
+daemon admits only the fixed runner UID, rate-limits requests and uses the configured socket
+backlog. Peer identity is combined with root registration and independent original GitHub job
+verification. Actual baseline reviewer checks remain in the owning approval implementation.
+
+| Method | Current route |
+| --- | --- |
+| `maintenance-prepare` | Authenticate selected originals, native generation under separate UID, seal five members once, retain exact freeze/descriptor/CMS. |
+| `maintenance-validate` | Original outer/member authentication before decryption, private inner/native revalidation, ordinary maintenance engine under the real owning context. |
+| `baseline-prepare`, `baseline-approve` | Existing proposal/reference/reviewer owners; positive socket integration not yet executed. |
+| `supervisor-finish` | Existing original lineage and stopped terminal owner; positive socket integration not yet executed. |
+| `supervisor-authorize`, `supervisor-start`, `supervisor-checkpoint` | Explicitly blocked by the missing workload/observer boundary. |
+| `collect` | Existing exact completed result only; no execution, decryption, approval or deadline reset. |
+
+Maintenance input filenames are fixed beneath `operations/<handle>/inputs`: `freeze.json`,
+`package.tar.gz`, and `projection-origin.json` for preparation; validation additionally uses the
+registered `manifest.json`, `runtime/` and the normal complete confined input set. Configuration,
+manifest and tool paths are administrator-owned selection, never request fields. Output stays
+within the private operation root. Native output cannot supply `_SEAL`, `AuthenticatedProducts`
+or a serialized Python capability.
+
+The controller writes and fsyncs intent before invoking an owner. Exact completed retries return
+the retained result; interrupted intent does not rerun encryption or launch. Torn records stay
+incomplete. Result-transfer failure leaves retained bytes for later collection. A receipt binds
+the operation/helper/result but is not independently sufficient authority. Original supervisor
+and baseline consumers first authenticate the original producer/member, then compare exact bytes
+with the matching root-retained result for sources governed by the installed contract, and still
+perform existing owning checks. Runner-reuploaded replacements cannot create an owning capability.
+
+Public results are constructed by the operation owner. Private selection/cohort values, private
+hashes, raw native output, private absolute paths, credentials and exception text are excluded.
+Errors on the socket are fixed unavailable responses. The shared redaction scanner is secondary;
+it does not make arbitrary native text safe. Ciphertext export/download integration into the
+hosted maintenance workflow remains incomplete; those hosted guards are intentionally retained.
+
+## Recovery, upgrades and removal
+
+Retain `registration.json`, `intent.json`, `result.json`, existing baseline/reference ledgers and
+activation records. Unknown or partly written state needs administrator investigation and cannot
+be repaired by deleting roots or retrying under a new operation to obtain clean evidence. Terminal
+collection does not reset execution or approval clocks. Per-operation `revoked.json` and the
+monotonic version revocation history reject reuse.
+
+`upgrade --bundle <reviewed-bundle>` requires the socket, controller and soak service stopped,
+new separately approved bytes/dependencies and revocation of the previous helper. It retains
+old trees and journals. Activation uses real-directory renames under an administrator lock;
+an interruption between renames leaves the service unavailable and both trees retained. Recover
+only after inspecting the exact approved identities. Rollback cannot erase recorded revocations.
+This conservative stopped-host procedure does not silently change code underneath an operation.
+Changed helper/dependency fingerprints require new applicable references and approval.
+
+Safe removal is also an administrator operation: stop/disable the fixed socket and services,
+verify their cgroups are empty, retain/reconcile all operation and security history, then remove
+only the reviewed installed unit/code assets. Do not recursively delete evidence roots, recipient
+keys or shared accounts to uninstall. No uninstallation was performed here.
+
+## Verification and residual acceptance
+
+The executable disposable harness refuses unsupported hosts and existing installations:
+
+```bash
+python3 tools/release-certification/restricted/disposable_integration.py --probe
+# Only as authorized root inside a fresh disposable Debian 13/systemd 257 VM:
+python3 tools/release-certification/restricted/disposable_integration.py \
+  --disposable-vm --source /root/cryptad
+```
+
+The harness contains actual service/socket and UID denial probes, a hostile native helper, and
+the real PR-307 CMS/native fixture with synthetic external-provider seams. Its positive worker is
+test-harness-launched so no production bootstrap exposes those seams. Production-bootstrap
+positive execution, baseline/terminal socket paths and the complete fault/adversarial matrix are
+still missing verification. This session's exit-78 probe is **unexecuted**, not a passed isolation
+lane. The new ordinary CI job reports that gap; it does not provide the required VM execution job.
+
+The retained before assessment is `build/pr310-phase12-before`, cutoff
+`2026-09-13T10:30:00Z`: 49 mandatory, 47 unresolved, `phaseComplete=false`. Updated assessments
+retain that cutoff and scope. Mutable implementation source pins may be refreshed to current
+bytes; historical tracker/policy/report bytes, assertions and requirement membership are not
+changed. Artifact tests, local native fixtures, installed isolation, deployed host, original
+protected observation, production approval and Phase 12 completion remain separate dimensions.
+
+Actual local verification logs are retained in `build/pr310-verification`. They are local test
+artifacts, not attested production evidence:
+
+| Executed command | Result |
+| --- | --- |
+| `./gradlew :platform-devtools:installDist assembleCryptadDist` | Passed in 1m 5s; 342 tasks, 91 executed. |
+| `./gradlew test` | Passed in 3m 40s; XML inventory 17,405 tests, zero failures/errors, 10 skips. |
+| `certify.py stable-maintenance --self-test` | 247 passed. |
+| `certify.py cross-version-soak --self-test` | 150 passed. |
+| `certify.py stable-platform-api-1x --self-test` | 88 passed. |
+| `certify.py phase-12-closeout --self-test` | Final 185 passed. Initial failures exposed changing source pins and an accidental historical tracker edit; the tracker was restored byte-for-byte, and only 14 mutable source digest entries were refreshed. |
+| `python3 -m unittest discover -s tools/release-certification/protected -p 'test_*.py'` | 287 tests, zero failures/errors, 50 existing prerequisite skips. |
+| `PYTHONPATH=tools/release-certification python3 -m unittest cryptad_certification.tests.test_pr307_product_consumer_integration` | One real CMS/native product-consumer fixture passed in 53.952s, no skips; not the installed multi-UID lane. |
+| `python3 -m unittest discover -s tools/release-certification/restricted -p 'test_*.py'` | 13 passed; artifact/harness contracts only. |
+| Focused PR-308/309 owner regressions | 74 composed/pressure/supervisor, 17 resource-budget, four sealed-measurement tests passed. Runtime/reference discovery ran 76 tests with 50 prerequisite skips. |
+| `actionlint` on the three changed workflows; `systemd-analyze verify` on all three units | Passed syntax/configuration checks; no effective running-service claim. |
+| Python compilation and relative-link/whitespace checks | Passed. |
+
+The Gradle test log has 103 compiler warning diagnostics in unchanged sources/tests, plus Gradle
+deprecation and JVM instrumentation notices. No new Java source was changed. No fresh SonarLint,
+SonarCloud or independent security assessment is claimed. The native bridge and durable protocol
+tests establish their specific local contracts; mocked authority seams do not count as actual
+root/peer/provider isolation. The final fixed-cutoff successor assessment is separately retained
+as `build/pr310-phase12-final`; `--require-complete` must reject it.
+
+The twelve PR-309 consumer cases remain incomplete: import/fetch concurrency, timeout,
+cancellation, retry, window crossing, partial rate write, graph store unavailable, graceful and
+abrupt restart, diagnostics unavailable and privacy. `fullAppBudgets` remains not observed.
+Mail lifecycle, independent review, migration/profile directions, long-run and publication
+obligations remain open. PR-311's tentative budget work must not hide these PR-310 boundary gaps.
+
+Mechanism references: [GitHub secure use](https://docs.github.com/en/actions/reference/security/secure-use),
+[compromised runners](https://docs.github.com/en/actions/concepts/security/compromised-runners),
+[Python isolated startup](https://docs.python.org/3/using/cmdline.html), and
+[systemd credentials](https://systemd.io/CREDENTIALS/). These describe mechanisms, not approval of
+this implementation. A protected environment is not OS isolation; neither DAC nor service
+credentials protects secrets from actual host root.
+
+## Review corrections: baseline workspace and stopped socket
+
+Baseline prepare/approve now allocate their temporary workspace beneath the existing root-private
+`/var/lib/cryptad-restricted/resolver` directory. Both entrypoints validate that directory's
+ownership and permissions before use. The directory is already provisioned mode 0700 and covered
+by the controller's narrow writable paths; `/run` remains read-only. Normal and exceptional owner
+exit clean up the temporary workspace. A service crash can leave private scratch for administrator
+reconciliation, as with the other resolver state.
+
+Upgrade checks socket `ActiveState=inactive` and `SubState=dead` without requesting `MainPID`.
+Both services still require those states and `MainPID=0`; missing state, a live PID, transitioning
+units or a failed systemctl query reject the upgrade before version activation.
+
+Two workspace regressions reach the prepare/approve owner configuration boundary and exercise
+real private file creation and cleanup. Four upgrade regressions cover stopped socket acceptance
+and rejection of active/transitioning sockets, nonzero or missing service PIDs, and query failure.
+The disposable harness additionally checks real stopped-unit output and temporarily replaces only
+the controller's ExecStart/Type to run the workspace regressions with its actual filesystem and
+capability settings. The test verifies `/run` is still read-only and restores the original unit
+configuration afterward. Upstream identity checks are test seams; these tests grant no approval.
+This actual-unit lane remains unexecuted here (`dedicated-disposable-vm-required`); it is not a
+production-bootstrap baseline approval or a completed full-upgrade integration test.
+
+Review-fix verification: protected discovery ran 289 tests with no failures/errors and the same
+50 prerequisite skips; restricted installation/harness discovery passed 17 tests; Phase 12
+self-tests passed all 185 tests. Unit syntax and Python compilation passed. Four mutable baseline
+implementation/test digest entries were refreshed without changing assertions or historical
+files. The retained successor `build/pr310-phase12-review-systemd` uses the unchanged cutoff,
+retains 47 unresolved requirements, and rejects `--require-complete` with exit 2.
+
+## Review correction: native failure cleanup
+
+The controller retains `CAP_KILL` so its existing bounded launcher can terminate the process group
+it created after the native child changes host UID. The kernel capability is broader than that
+group; the reviewed launcher limits the target to its own `Popen` process group and exposes no
+caller-selected PID or signal operation. Native children still clear their bounding, effective,
+permitted, inheritable and ambient capabilities. Installation verification now checks the exact
+effective controller capability bounding set and rejects a missing cleanup capability or any
+additional capability.
+
+The disposable harness runs a new fixed native-cleanup probe using the controller's actual unit
+settings and the normal native dispatch. A synthetic child records its unprivileged UID and zero
+capabilities, then either times out or exceeds the output bound. The probe requires actual group
+signaling, child reaping and return of the unit cgroup to its original membership before accepting
+cleanup. It does not accept wrapper exit alone. The probe's temporary ExecStart override does not
+change the unit's capability or filesystem restrictions.
+
+Local review verification passed 20 installation/harness tests, nine native-boundary tests and
+four bounded-process tests. Full protected discovery ran 289 tests with 50 prerequisite skips and
+no failures/errors; its duplicate ZIP-member warning comes from the malformed-container fixture.
+All 185 Phase 12 self-tests passed. Unit syntax, Python compilation and whitespace checks passed.
+These checks do not execute the new
+multi-UID controller-unit probe: the read-only harness probe still reports
+`dedicated-disposable-vm-required`. Effective service cleanup remains an explicit unexecuted
+verification requirement until that disposable lane runs. No host deployment or Phase 12
+completion is established by this correction.
+
+## Review correction: request-frame deadline
+
+Receiving a request now has one five-second monotonic deadline shared by the length prefix and
+payload. Each socket receive uses only the remaining budget; partial progress does not restart
+the deadline. Expiry follows the existing unavailable-response and connection-close path before
+any owner operation is invoked. The receiver restores the socket's prior timeout on both success
+and failure. Client response reception explicitly retains a 900-second total budget to accommodate
+the owning operation; the frame format and operation authorization are unchanged.
+
+Regression coverage includes real local sockets with trickled prefix and payload bytes, a
+controlled clock proving that prefix time consumes the payload budget, timeout restoration, and
+the longer response budget. These tests establish local framing behavior, not deployed service
+or multi-UID isolation.
+
+## Review correction: retained-result revocation
+
+Original-result admission now applies the same current operation and helper-bundle revocation
+check as controller execution and collection, before reading the matching retained result.
+Previously uploaded exact bytes therefore cannot bypass a later administrator revocation.
+Missing, malformed or unreadable global revocation state fails closed. Any operation revocation
+marker, including a dangling symlink, blocks admission. Revocations of unrelated operations or
+helper bundles do not invalidate an otherwise matching result. Historical sources without a
+matching restricted registration retain their existing historical scope.
+
+Consumer-side regressions complete and admit a retained result, then independently revoke its
+operation or bundle and require both original admission and collection to reject it. Additional
+checks cover missing/invalid revocation state, unrelated revocations and a dangling marker.
+These are durable-state tests with explicit original-authority and ownership seams, not installed
+service-isolation evidence. Existing approval, native verification and original authentication
+requirements remain in force.
+
+## Review corrections: installed definitions and synthetic job identity
+
+Install, verify and upgrade now share the same five-asset inventory: the three service/socket
+units plus the sysusers and tmpfiles definitions. Verification compares installed bytes with the
+approved bundle. Upgrade rejects differing account, directory or unit definitions before changing
+revocation history or activating the new version; an administrator must review and replace them
+while stopped. Missing installed definitions also fail closed. These checks do not automatically
+apply account or directory migrations.
+
+The disposable preparation fixture now indexes the job name by `maintenance-prepare`, matching
+the worker's method-keyed policy. Its offline regression calls the real worker job-authentication
+function with synthetic upstream responses and also rejects a changed source identity. Installed
+asset tests cover missing/modified definitions and replacement requirements for a new bundle.
+The actual disposable CMS/socket and service/UID integration lane remains unexecuted.
+
+## Review corrections: baseline configuration closure and provisioning dependencies
+
+Baseline registration requires an exact method-specific configuration roster. Prepare binds the
+fixed preparation descriptor and every referenced campaign, policy, request and observation
+bundle; approve binds its fixed original-proposal coordinates file. Missing and extra paths are
+rejected. Execution rechecks the roster and digests, and each baseline owner configuration read
+compares the bytes actually read with the registered identity. A change after preflight therefore
+fails rather than supplying unregistered configuration to the owner. The binding context is
+internal to the controller; original approval and retained-state authentication still apply.
+Other operation owners retain their existing snapshot and activation contracts.
+
+The dependency inventory now explicitly includes `systemd-sysusers` and `systemd-tmpfiles`, using
+the existing exact-byte and resolved-symlink-target checks. Older approval inventories missing
+either binary fail closed and require administrator review of a new inventory before installation.
+No provisioning is performed by these offline regressions.
+
+## Review correction: committed-object bundle provenance
+
+Planning captures one commit identity and exports that commit's tree and raw blob objects through
+Git, with replacement objects disabled. It no longer copies checkout bytes or uses index flags
+as evidence of their identity. The existing clean-status precondition remains an operator check.
+Executable modes come from the committed tree; blob object hashes are checked during export.
+Symlinks, submodules and unsupported entries reject the plan and remove its partial output.
+Checkout filters and archive attribute substitutions do not modify the exported source.
+
+Regressions cover hidden `assume-unchanged` modifications, content/mode changes after the status
+check, HEAD movement after revision capture, replacement blobs and committed symlinks. These
+checks establish source-bundle provenance, not administrator approval or deployed isolation.
+
+## Review corrections: first-install trust, TLS roots and service identity
+
+First-install review and execution use the administrator-controlled copy described above, never
+the preparer's mutable `/tmp` bundle. Copying it grants no approval: review and exact identity
+verification occur after transfer, before any bundle code runs as root.
+
+Dependency verification binds Debian's mandatory CA bundle, the certificate directories and
+fallback files used by [Go's Linux system-root loader](https://go.dev/src/crypto/x509/root_linux.go),
+including resolved link targets and explicit absence records. Certificate additions/replacements
+or newly present alternate stores invalidate the approved inventory. The controller's closed
+environment excludes caller TLS overrides. CA changes require new administrator review; these
+checks do not establish a live TLS-interception test or independent security assessment.
+
+For an installed restricted bundle, service observation first verifies installed identity and
+requires the exact `python3 -I -S .../runtime_bootstrap.py service` command, expected service UID
+and fixed cgroup. Historical installations retain their exact legacy command. Extra arguments,
+the `runtime` operation or failed installed verification reject observation. This correction does
+not enable the blocked restricted supervisor start path or close the workload/observer UID gap.
+
+## Review corrections: systemd control overrides and OpenSSL configuration
+
+Verification rejects per-unit override directories under both persistent and runtime
+`system.control` paths. It also queries `FragmentPath` and `DropInPaths` for the controller,
+socket and soak service, requiring each exact installed fragment and no loaded drop-ins.
+Overrides from another load path, missing properties or alternate fragments fail closed even
+when the ordinary drop-in directory scan finds nothing. Offline tests cover all three units;
+they do not establish effective systemd isolation on a deployed host.
+
+The dependency inventory requires both `/usr/lib/ssl/openssl.cnf` and `/etc/ssl/openssl.cnf`,
+including resolved link targets and exact bytes. Missing entries or changed configuration
+invalidate the approved image inventory before installation or private owner execution.
+Administrator review must still assess configuration contents and provider behavior; the
+inventory is an integrity check, not approval of arbitrary OpenSSL configuration.
+
+## Review correction: service-account group isolation
+
+Profile verification now requires each role's own distinct, non-root primary group. The runner
+may additionally belong to `cryptad-control`; native, workload and soak identities may have no
+other groups. This exact allowlist rejects privileged and unknown supplementary groups without
+depending on a list of known socket-group names. The socket group must be separate from every
+role's primary group. Verification does not modify existing account memberships.
+
+Already running processes for all four roles are checked for matching real/effective/saved/fs
+UIDs and GIDs, permitted supplementary groups and no effective/permitted/ambient/inheritable
+capabilities. A process retaining an old group after account cleanup therefore fails verification.
+The regressions use account/process fixtures; real disposable multi-UID conformance remains an
+unexecuted requirement.
+
+## Review correction: native launcher interpreter closure
+
+The dependency inventory includes the generated `crypta-app` launcher's Linux interpreter and
+external utilities: `sh`, `ls`, `uname`, `xargs`, `echo`, `sed` and `tr` under `/usr/bin`, plus
+resolved symlink targets. The native mount maps `/bin` to `/usr/bin`; `xargs` uses its default
+`echo` command, and shell builtins are covered by the interpreter identity. The selected Java
+runtime and tool tree remain subject to their existing independent identity checks.
+Missing or changed launcher dependencies reject the approved inventory. Future launcher changes
+require renewed review of this command list; these checks do not establish native isolation on
+a deployed host.
+
+## Review correction: active job required for terminal execution
+
+Every new owner invocation, including `supervisor-finish`, requires its independently queried
+workflow job to remain `in_progress`. A completed, failed, cancelled or queued job cannot use an
+unexecuted handle to create an intent or mutate owner state. This job requirement is separate from
+the existing stopped-workload collection rules and does not grant new execution approval.
+An already retained result remains available through exact retry or collection, subject to its
+existing collection window and revocations, without another owner invocation or active-job check.
+
+## Review corrections: Python zip, library aliases and sudo plugins
+
+The image inventory records `/usr/lib/python313.zip` and `/etc/sudo.conf` as exact files (with
+resolved targets where linked) or explicit approved absences. It recursively inventories
+`/usr/libexec/sudo`, including policy and utility modules, before relying on the sudo policy
+probe. Added, replaced or removed zip/configuration/plugin bytes invalidate an existing approval.
+Administrator review remains responsible for approving the selected plugin configuration.
+
+The reference requires `/lib` and `/lib64` to resolve to `/usr/lib` and `/usr/lib64`, respectively.
+Inventory binds their link text and target directories; redirection rejects verification. Library
+contents are covered by the selected recursive dependency roots. Verification does not recursively
+follow all of `/usr/lib`, which would include unrelated private data such as `ssl/private`.
+
+Python's zip import location participates in startup even with `-I -S`. Recording it closes an
+inventory gap, but a Python verifier cannot retroactively authenticate code that already ran
+during its own startup. The entire Python runtime, including all standard-library modules, extension modules, zip
+paths and loader dependencies, is initial trusted code and must be measured externally before
+execution using the procedure below. These offline regressions and read-only inventory checks do not prove deployed isolation.
+
+### Review correction: vendor Polkit policy and live authorization
+
+The approved image inventory now includes `/usr/share/polkit-1` (vendor rules and action
+policies), `/usr/lib/polkit-1`, the Polkit client and authentication helper, its vendor service
+unit and PAM configuration, and the D-Bus daemon/configuration and activation definitions.
+Local Polkit configuration, legacy authority state and service overrides have explicit
+presence/absence records. Changes require a new administrator-reviewed image inventory;
+existing local-policy rejection remains in force. The dedicated Debian 13 reference requires
+`polkitd` installed and running from `/usr/lib/polkit-1/polkitd` before verification.
+
+Verification queries the actual authority through `pkcheck` after dropping to the runner UID
+and provisioned groups. The live subject is identified by PID, kernel process start time and
+UID. It checks all actions in the installed systemd policy and explicit lifecycle verbs for
+the controller, socket and soak units. It does not invoke any unit lifecycle operation. Grants,
+unknown responses, missing authorities and timeouts block activation. Exit codes 1 (denied)
+and 2 (authentication required but unavailable without interaction) are accepted; the probe
+never enables interaction or an authentication agent. See the
+[Debian pkcheck contract](https://manpages.debian.org/trixie/polkitd/pkcheck.1.en.html) and
+[Debian Polkit package paths](https://packages.debian.org/trixie/amd64/polkitd/filelist).
+
+These are finite probes of the current subject and authority, not proof about every possible
+rule predicate or session. Out-of-band image review must exclude runner grants, alternate
+bus/authority routing, interactive login and credentials usable for administrator authentication.
+Administrators must restart the authority after approved runtime changes so its running code
+matches the reviewed image. No actual authority or multi-UID service probe was executed in the
+development container: offline regressions cover inventory mutations and the real probe loop's
+handling of synthetic denial, grant and error responses. The disposable VM lane remains required.
+
+
+### Review correction: externally measure the complete initial Python runtime
+
+`bootstrap.py` imports `hashlib`, `json`, `pathlib` and their dependencies before it can verify
+application code. Those imports are already privileged execution. The same limitation applies
+to installer and observer Python entrypoints. Their later inventory checks are not a defense
+against a substituted runtime and must never be presented as authenticating their own imports.
+
+The administrator must obtain the reviewed dependency inventory from an independently trusted
+golden image, preserve its independently approved identity outside the target image, and perform
+this check from separately trusted rescue media or an administrator VM. Shut down the target VM,
+mount its disk read-only at `/mnt/cryptad-image` (including any separate `/usr` filesystem), and
+keep the reviewed tool and inventory on the trusted measuring environment. Do not boot the target,
+chroot into it, use its Python/libraries, or provision provider credentials before this check.
+Disk attachment and mounting remain explicit administrator operations; the tool does neither.
+
+```bash
+/usr/bin/python3 -I -S /root/reviewed-tools/measure_runtime_image.py \
+  --image-root /mnt/cryptad-image \
+  --approved-inventory /root/approved/cryptad-image-review.json
+```
+
+The committed tool is
+[`measure_runtime_image.py`](../tools/release-certification/restricted/measure_runtime_image.py).
+It requires a separate read-only mount and no writable submounts. It compares every recorded
+runtime dependency's bytes, link text, type, ownership and executable mode using the measuring
+environment's runtime, checks recorded absences, and rejects additional entries in every recursively inventoried
+dependency directory (including native libraries, plugins, policies and the Python standard library). Image-absolute symlinks resolve inside the target image, not into
+the measuring host. The target's `hashlib` or other code is never imported. Any mismatch blocks
+the administrator's install/start procedure; investigate it rather than regenerating approval.
+
+Keep the measured runtime under administrator-only control from measurement through boot and
+operation; repeat offline measurement after image updates before provisioning credentials or
+restarting private services. The measuring OS, its complete runtime and tools, reviewed expected
+inventory, and custody of the stopped image are explicit initial trust prerequisites. This tool
+does not provide secure/measured boot, prevent an administrator from changing bytes after checking,
+or produce an activation capability. No job-supplied measurement flag grants access. Without
+that external trust and custody, the private-host deployment is unsupported; Python self-checks
+cannot repair it. A verified production boot chain remains unobserved.
+
+Offline regressions exercise exact comparison, malicious stdlib substitutions with non-executed
+canaries, additional modules/zip files, missing runtime records and confined absolute links.
+No real image was mounted or measured in this coding session.
+
+### Review correction: observer-readable execution identity
+
+The non-secret installed execution identity is published atomically as mode 0444 at
+`/opt/cryptad-cross-version/restricted-execution.json`, outside the private certification
+configuration directory. Publication requires root-controlled ancestors with traversal permission
+for the observer. Provision `/opt/cryptad-cross-version` as root-owned mode 0755 before installation
+if the administrator's umask would otherwise create a private directory; verification rejects
+inaccessible ancestors rather than widening permissions. The private approval, provider credential
+and `/etc/cryptad-certification` permissions remain unchanged.
+
+Administrator install/upgrade republishes the record only after the existing installation checks.
+The observer still checks the exact installed source and complete dependency inventory; this path
+change provides no operation authority and relaxes no dependency check. Upgrading from the old
+layout requires the normal stopped-host upgrade and publication at the new path. There is no
+fallback to the old private-directory record; any old copy can remain until administrator cleanup.
+
+Offline tests check public record mode, unchanged private-directory mode, rejection of inaccessible
+publication parents and continued rejection of changed dependencies. The disposable harness now
+also requires the actual soak UID to read the new identity while denying writes to it and reads of
+the private approval before starting the socket. That real-UID probe remains unexecuted here.
+
+
+### Review corrections: complete directory rosters and absent loader hook
+
+Offline image measurement now compares the immediate-child roster of every recursively
+inventoried directory. Checking each level closes the full tree, including empty directories,
+new `glibc-hwcaps` search directories, native libraries, sudo plugins, Polkit rules, TLS roots
+and resolved symlink-target directories. Recorded absent paths are not counted as existing
+children. `/usr/lib` itself remains the existing non-recursive usr-merge alias anchor; its
+selected dependency subtrees are closed without scanning unrelated private data there.
+
+The supported image forbids any `/etc/ld.so.preload` entry. Inventory uses `lstat()` so a dangling
+link is rejected even before its target exists, and records an explicit approved absence.
+External measurement requires that absence record and rejects any hook entry without executing
+target-image code. Older inventories lacking the absence record must undergo administrator
+review and renewal; there is no compatibility fallback that accepts an unknown loader hook.
+
+Regressions cover added native/plugin/policy/TLS entries, empty directories, optional absences,
+and both dangling loader links and subsequently created targets. These remain offline checks;
+no target image or production boot was measured during this review fix.
+
+### Review correction: bounded retained version history
+
+Install and upgrade enforce the original-result consumer's 128-entry version-history limit
+under the administrator installation lock, before staging a new bundle. Every entry counts,
+including an interrupted staging directory. An existing version can be reused at the limit;
+a new version or already overfull history rejects without changing activation, revocations or
+execution identity. No automatic pruning or archival is performed. At capacity, further new
+versions require a separately reviewed provenance-preserving archival design; do not delete
+retained version trees to bypass the limit.

@@ -119,6 +119,12 @@ def supervise(checkout, state):
                "--private-config", str(selected / "private-config.json"),
                "--authorization", str(selected / "authorization.json"), "--journal-root", str(root),
                "--out-dir", str(output)]
+    if (checkout / '.restricted-manifest.json').exists():
+        if checkout != CHECKOUT:
+            raise ServiceError('service-installed-snapshot-outside-fixed-root')
+        command = ['/usr/bin/python3', '-I', '-S',
+                   str(CHECKOUT / 'tools/release-certification/restricted/runtime_bootstrap.py'),
+                   'runtime']
     stop_requested = False
     child = None
     def stop(_signum, _frame):
@@ -131,7 +137,7 @@ def supervise(checkout, state):
     previous_handlers = {sig: signal.signal(sig, stop) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
         child = subprocess.Popen(command, cwd=checkout, env=child_environment(state), stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
         started = time.monotonic()
         stopping = None
         while child.poll() is None:

@@ -1,5 +1,12 @@
 # Authenticated runtime baselines and scoped admission
 
+The [PR-310 restricted boundary work](pr-310-restricted-worker-private-resolver.md) adds
+installed socket/maintenance/native adapters but remains **implementation-incomplete**. The
+observer/workload UID and storage split is missing, new supervisor execution is blocked, and the
+mandatory disposable service/UID positive lane has not executed. Its installer and offline tests
+do not establish a deployed protected host or reduce the retained 49 mandatory / 47 unresolved
+Phase 12 assessment. Hosted selected-federation maintenance guards remain in force.
+
 This runbook describes the original reference, detached approval, preselection, and scoped runtime comparison boundaries introduced for PR-308.
 
 This is Phase 12 remediation. A resource comparison does not complete the shared app-network-budget case matrix, the nine maintenance rows, a release, or Phase 12. The retained repository-only assessment remains 49 mandatory requirements and 47 unresolved at `2026-09-13T10:30:00Z`; preserve its exact cutoff and historical reports when evaluating a successor.

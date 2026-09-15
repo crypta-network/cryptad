@@ -151,13 +151,16 @@ def installed_identity():
             raise AuthorityError('protected-checkout-directory-link')
         for name in files:
             secured(path / name)
-    checked = subprocess.run(['/usr/bin/git', 'status', '--porcelain', '--untracked-files=normal'],
-                             cwd=CHECKOUT, capture_output=True, timeout=30, check=True,
-                             env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
-    if checked.stdout:
-        raise AuthorityError('protected-installed-checkout-not-exact-clean-source')
+    if not (CHECKOUT / '.restricted-manifest.json').exists():
+        checked = subprocess.run(['/usr/bin/git', 'status', '--porcelain', '--untracked-files=normal'],
+                                 cwd=CHECKOUT, capture_output=True, timeout=30, check=True,
+                                 env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
+        if checked.stdout:
+            raise AuthorityError('protected-installed-checkout-not-exact-clean-source')
     sys.path.insert(0, str(CHECKOUT / 'tools/interop'))
     from cross_version_runtime import implementation_identity
+    # The snapshot branch performs installation.verify(), including the pinned full dependency
+    # closure, before deriving identity. A manifest alone never authorizes a Git-less checkout.
     return implementation_identity()
 
 
@@ -272,6 +275,9 @@ def authenticate_report(coordinates, private_root):
                    '--source-digest', coordinates['sourceCommit'], '--signer-digest', coordinates['sourceCommit'], '--format', 'json'], _environment())
     if not isinstance(results, list) or not any(row.get('verificationResult', {}).get('signature', {}).get('certificate', {}).get('runInvocationURI') == invocation for row in results if isinstance(row, dict)):
         raise AuthorityError('protected-supervisor-attested-attempt-mismatch')
+    from restricted_results import verify_original
+    verify_original(payload, coordinates, {'supervisor-authorize', 'supervisor-start',
+                                           'supervisor-checkpoint', 'supervisor-finish'})
     report = read_json(member)
     if report.get('job') != {key: coordinates[key] for key in ('sourceCommit', 'runId', 'runAttempt')}:
         raise AuthorityError('protected-supervisor-report-original-job-mismatch')
@@ -324,7 +330,12 @@ def _service_state():
             raise AuthorityError('protected-service-runtime-identity-mismatch')
         command = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
         expected = [b'/usr/bin/python3', str(CHECKOUT / 'tools/interop/cross_version_service.py').encode()]
-        if command[:2] != expected or Path(f'/proc/{pid}').stat().st_uid != pwd.getpwnam('cryptad-soak').pw_uid:
+        if (CHECKOUT / '.restricted-manifest.json').exists():
+            installed_identity()  # Verify the approved installed source/dependency closure.
+            expected = [b'/usr/bin/python3', b'-I', b'-S',
+                        str(CHECKOUT / 'tools/release-certification/restricted/runtime_bootstrap.py').encode(),
+                        b'service']
+        if command != expected + [b''] or Path(f'/proc/{pid}').stat().st_uid != pwd.getpwnam('cryptad-soak').pw_uid:
             raise AuthorityError('protected-service-process-not-selected')
     return 'running' if active else 'stopped'
 
@@ -866,6 +877,45 @@ def control(operation):
     return report
 
 
+def execute_owned(operation):
+    """Execute one existing control operation and return its checked public projection.
+
+    The installed controller provides authenticated retained job context; no caller-supplied
+    environment or paths are accepted here. Original artifact, activation, deadline and stopped
+    service checks stay in ``control``. This result does not transfer an internal capability.
+    """
+    previous_umask = os.umask(0o077)
+    try:
+        result = control(operation)
+        if scan_value(result):
+            if result.get('operation') in {'start', 'checkpoint'} and result.get('serviceState') == 'running':
+                stop_owned_service()
+            raise AuthorityError('protected-supervisor-public-redaction-failed')
+        return result
+    finally:
+        os.umask(previous_umask)
+
+
+def dispatch_owned(method):
+    """Route the finite installed-controller methods to their existing owning implementations.
+
+    This internal adapter accepts no input paths, credentials, executable names or environment.
+    Caller admission, original request authentication and durable retry handling belong to the
+    installed controller before entry. Root and every existing owner check remain mandatory.
+    """
+    if os.geteuid() != 0:
+        raise AuthorityError('protected-control-fixed-root-operation-required')
+    supervisors = {'supervisor-authorize': 'authorize', 'supervisor-start': 'start',
+                   'supervisor-checkpoint': 'checkpoint', 'supervisor-finish': 'finish'}
+    baselines = {'baseline-prepare': 'prepare', 'baseline-approve': 'approve'}
+    if method in supervisors:
+        return execute_owned(supervisors[method])
+    if method in baselines:
+        from runtime_baseline_approval import execute_owned as baseline_execute
+        return baseline_execute(baselines[method])
+    raise AuthorityError('protected-operation-required')
+
+
 def main():
     previous_umask = os.umask(0o077)
     previous_path = os.environ.get('PATH')
@@ -873,12 +923,7 @@ def main():
         if len(sys.argv) != 2:
             raise AuthorityError('protected-operation-required')
         os.environ['PATH'] = '/usr/bin:/bin'
-        result = control(sys.argv[1])
-        # Constructed allowlist plus the shared fail-closed redaction gate.
-        if scan_value(result):
-            if result.get('operation') in {'start', 'checkpoint'} and result.get('serviceState') == 'running':
-                stop_owned_service()
-            raise AuthorityError('protected-supervisor-public-redaction-failed')
+        result = execute_owned(sys.argv[1])
         print(json.dumps(result, sort_keys=True, separators=(',', ':')))
         return 0
     except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, zipfile.BadZipFile):

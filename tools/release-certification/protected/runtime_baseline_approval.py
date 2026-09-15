@@ -32,6 +32,7 @@ JOB = 'approve-runtime-baseline'
 MEMBER = 'runtime-baseline-approval.json'
 PROPOSAL_MEMBER = 'runtime-baseline-proposal.json'
 PRIVATE_STORE = Path('/var/lib/cryptad-runtime-baselines')
+WORKSPACE = Path('/var/lib/cryptad-restricted/resolver')
 _AUTHORITY = object()
 REQUEST_FIELDS = {'schemaVersion', 'kind', 'proposalDigest', 'proposalByteDigest', 'proposalFinishedAt',
                   'policyDigest', 'scopeDigest', 'status', 'effectiveAt', 'expiresAt', 'producer'}
@@ -257,6 +258,8 @@ def _original_member(coordinates, private_root, member, family, job, reviewed_so
     invocation = f"https://github.com/{REPOSITORY}/actions/runs/{coordinates['runId']}/attempts/1"
     if not isinstance(proof, list) or not any(row.get('verificationResult', {}).get('signature', {}).get('certificate', {}).get('runInvocationURI') == invocation for row in proof if isinstance(row, dict)):
         raise ApprovalError('runtime-approval-attested-attempt-mismatch')
+    from restricted_results import verify_original
+    verify_original(raw, coordinates, {'baseline-prepare'} if member == PROPOSAL_MEMBER else {'baseline-approve'})
     return _decode(raw), original, digest(raw)
 
 
@@ -361,19 +364,24 @@ def _configuration(path, maximum=65536):
         observed = os.fstat(stream.fileno())
         if not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1 or observed.st_size > maximum:
             raise ApprovalError('runtime-approval-configuration-invalid')
-        return _decode(stream.read(maximum + 1), maximum)
+        from restricted_configuration import check_read
+        return _decode(check_read(selected, stream.read(maximum + 1)), maximum)
 
 
-def main(argv=None):
-    """Two installed fixed operations; no generic URLs, command dispatch, or path arguments."""
+def execute_owned(operation):
+    """Return the existing owner's closed result inside the installed controller.
+
+    The controller authenticates and supplies the original job context before calling this
+    function. This entrypoint retains all original source, job, proposal and reviewer checks;
+    its return value is data, never a transferable approval capability.
+    """
     from cross_version_supervisor_authority import installed_identity, run_identity
-    args = sys.argv[1:] if argv is None else argv
-    if os.geteuid() != 0 or args not in (['prepare'], ['approve']):
+    if os.geteuid() != 0 or operation not in ('prepare', 'approve'):
         raise ApprovalError('runtime-approval-fixed-operation-required')
     identity, producer = installed_identity(), run_identity()
     if identity['sourceCommit'] != producer['sourceCommit'] or producer['runAttempt'] != 1:
         raise ApprovalError('runtime-approval-installed-source-mismatch')
-    job_name = 'prepare-runtime-baseline' if args == ['prepare'] else JOB
+    job_name = 'prepare-runtime-baseline' if operation == 'prepare' else JOB
     if os.environ.get('GITHUB_JOB') != job_name:
         raise ApprovalError('runtime-approval-fixed-job-required')
     pages = _gh(['api', '--paginate', '--slurp',
@@ -382,8 +390,9 @@ def main(argv=None):
     if len(jobs) != 1 or jobs[0].get('head_sha') != producer['sourceCommit']:
         raise ApprovalError('runtime-approval-job-mismatch')
     producer['jobId'] = jobs[0]['id']
-    with tempfile.TemporaryDirectory(prefix='runtime-baseline-private-', dir='/run') as temporary:
-        if args == ['approve']:
+    with tempfile.TemporaryDirectory(prefix='runtime-baseline-private-',
+                                     dir=_private_directory(WORKSPACE)) as temporary:
+        if operation == 'approve':
             origin = _configuration('/etc/cryptad-certification/runtime-baseline-approval-origin.json')
             result = produce_approval(origin, Path(temporary))
         else:
@@ -410,8 +419,16 @@ def main(argv=None):
                 'producer': producer, 'scopeDigest': digest(_bytes(campaign['scope'])), 'proposalDigest': digest(raw), 'proposalByteDigest': digest(raw),
                 'proposalFinishedAt': proposal['finishedAt'], 'policyDigest': digest(_bytes(policy))}
             result = prepare_request(raw, request)
-        # Only these closed opaque anchor records cross the public workflow stdout boundary.
-        print(_bytes(result).decode())
+        return result
+
+
+def main(argv=None):
+    """Legacy fixed installed CLI; the restricted controller calls ``execute_owned`` directly."""
+    args = sys.argv[1:] if argv is None else argv
+    if args not in (['prepare'], ['approve']):
+        raise ApprovalError('runtime-approval-fixed-operation-required')
+    # Only these closed opaque anchor records cross the public workflow stdout boundary.
+    print(_bytes(execute_owned(args[0])).decode())
 
 
 if __name__ == '__main__':

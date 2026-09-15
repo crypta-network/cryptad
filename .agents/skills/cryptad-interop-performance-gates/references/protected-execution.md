@@ -138,3 +138,14 @@ bytes stay in the root-private store. Verify actual review history and the origi
 approval jobs; an environment success or list of configured reviewers is insufficient. Dedicated
 runner isolation and existing private-worker restrictions remain prerequisites; this helper does
 not authorize unrestricted sudo access to private production evidence.
+
+## PR-310 restricted execution status
+
+Read [the current restricted boundary runbook](../../../../docs/pr-310-restricted-worker-private-resolver.md)
+before changing the installed controller, private maintenance or native dispatch. Installation
+uses reviewed immutable source/dependency closure, a fixed local socket and administrator-bound
+operations; workflows do not inherit their credentials into the resolver. Root-only recipient
+and original capability checks remain unchanged. The workload/observer UID and storage split is
+still missing: new restricted supervisor authorize/start/checkpoint reject. Do not replace this
+block with a job flag or infer deployed isolation from unit syntax/offline fixtures. The
+mandatory disposable VM positive lane and full fault matrix are unexecuted; Phase 12 stays open.

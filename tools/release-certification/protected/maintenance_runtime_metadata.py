@@ -235,7 +235,7 @@ def _portable_budget(package: Path) -> None:
 def observe_package(package: Path, java_home: Path, private_root: Path, *,
                     historical_tool_root: Path | None = None) -> tuple[bytes, bytes, dict]:
     """Run only the package's fixed exporter, with no caller-selected class or inherited credentials."""
-    from bounded_process import run
+    from restricted_native import run
     before = identity(package, 1024 * 1024 * 1024)
     _portable_budget(package)
     if maintenance.archive_hygiene_errors(package):

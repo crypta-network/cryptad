@@ -24,6 +24,59 @@ SPEC.loader.exec_module(authority)
 
 @unittest.skipUnless(os.name == 'posix', 'Linux installed service authority')
 class SupervisorAuthorityTest(unittest.TestCase):
+    def service_process(self, command, *, installed=True, uid=62002, verified=True):
+        result = SimpleNamespace(stdout='ActiveState=active\nSubState=running\nMainPID=123\n'
+                                 'ControlGroup=/system.slice/' + authority.UNIT + '\n')
+        with patch.object(authority.subprocess, 'run', return_value=result), \
+                patch.object(Path, 'read_bytes', return_value=b'\0'.join(command) + b'\0'), \
+                patch.object(Path, 'exists', return_value=installed), \
+                patch.object(Path, 'stat', return_value=SimpleNamespace(st_uid=uid)), \
+                patch.object(authority.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=62002)), \
+                patch.object(authority, 'installed_identity',
+                    side_effect=None if verified else authority.AuthorityError('unverified')) as verify:
+            value = authority._service_state()
+            self.assertEqual(verify.call_count, int(installed))
+            return value
+
+    def test_installed_service_accepts_verified_exact_bootstrap_command(self):
+        command = [b'/usr/bin/python3', b'-I', b'-S',
+                   str(authority.CHECKOUT / 'tools/release-certification/restricted/runtime_bootstrap.py').encode(), b'service']
+        self.assertEqual('running', self.service_process(command))
+        for changed in (command + [b'extra'], command[:-1] + [b'runtime'], command[:1] + command[2:]):
+            with self.subTest(command=changed), self.assertRaises(authority.AuthorityError):
+                self.service_process(changed)
+        with self.assertRaises(authority.AuthorityError):
+            self.service_process(command, uid=62003)
+        with self.assertRaises(authority.AuthorityError):
+            self.service_process(command, verified=False)
+
+    def test_legacy_service_command_is_only_accepted_for_legacy_installation(self):
+        command = [b'/usr/bin/python3', str(authority.CHECKOUT / 'tools/interop/cross_version_service.py').encode()]
+        self.assertEqual('running', self.service_process(command, installed=False))
+        with self.assertRaises(authority.AuthorityError):
+            self.service_process(command)
+
+    def test_owned_dispatch_rejects_unprivileged_and_unknown_methods_before_owner_entry(self):
+        with patch.object(authority, 'execute_owned') as execute:
+            with patch.object(authority.os, 'geteuid', return_value=12345):
+                with self.assertRaisesRegex(authority.AuthorityError, 'fixed-root-operation-required'):
+                    authority.dispatch_owned('supervisor-start')
+            with patch.object(authority.os, 'geteuid', return_value=0):
+                for method in ('start', 'systemctl', 'supervisor-start /tmp/input', '../finish'):
+                    with self.subTest(method=method):
+                        with self.assertRaisesRegex(authority.AuthorityError, 'protected-operation-required'):
+                            authority.dispatch_owned(method)
+            execute.assert_not_called()
+
+    def test_owned_adapter_keeps_redaction_failure_and_owned_stop_before_return(self):
+        result = {'operation': 'start', 'serviceState': 'running'}
+        with patch.object(authority, 'control', return_value=result), \
+                patch.object(authority, 'scan_value', return_value=['private-canary']), \
+                patch.object(authority, 'stop_owned_service') as stop:
+            with self.assertRaisesRegex(authority.AuthorityError, 'public-redaction-failed'):
+                authority.execute_owned('start')
+            stop.assert_called_once_with()
+
     def test_checkpoint_wrapper_preserves_underlying_product_lineage_requirement(self):
         for private_runtime in (False, True):
             for base_version in (2, 3, 4, 5):

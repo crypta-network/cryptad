@@ -1,0 +1,15 @@
+[Unit]
+Description=Cryptad fixed restricted-operation request socket
+
+[Socket]
+ListenStream=/run/cryptad-restricted/control.sock
+SocketUser=root
+SocketGroup=cryptad-control
+SocketMode=0660
+DirectoryMode=0750
+Accept=no
+Backlog=16
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

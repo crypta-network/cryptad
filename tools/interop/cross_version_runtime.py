@@ -2328,8 +2328,12 @@ def runner_identity():
     root = Path(__file__).resolve().parents[2]
     # Protected installations are root-owned and read by the unprivileged service. Trust only
     # this executing checkout for this command, clearing any broader inherited safe-directory list.
-    commit = subprocess.check_output(["git", "-c", "safe.directory=", "-c", f"safe.directory={root}",
-                                      "rev-parse", "HEAD"], cwd=root, text=True, timeout=10).strip()
+    installed = installed_snapshot_identity(root)
+    if installed is None:
+        commit = subprocess.check_output(["git", "-c", "safe.directory=", "-c", f"safe.directory={root}",
+                                          "rev-parse", "HEAD"], cwd=root, text=True, timeout=10).strip()
+    else:
+        commit = installed['sourceCommit']
     names = ["tools/interop/cross_version_runtime.py", "tools/mail-prototype/two_node_demo.py",
              "tools/release-certification/cryptad_certification/cross_version_evidence.py",
              "tools/release-certification/cryptad_certification/cross_version_command.py",
@@ -2368,9 +2372,58 @@ def runner_identity():
                  if "tests" not in path.relative_to(certification).parts)
     names.extend(path.relative_to(root).as_posix() for path in (certification / "schemas").glob("*.json"))
     names.extend(path.relative_to(root).as_posix() for path in certification.glob("*.json"))
+    execution = [["@executing-python-runtime", runner_python_identity()]]
+    if installed is not None:
+        execution.extend([["@installed-bundle", installed['bundleIdentity']],
+                          ["@installed-execution-closure", installed['executionClosureDigest']]])
     return {"sourceCommit": commit,
-            "runnerDigest": canonical_digest([[name, digest_file(root / name)] for name in sorted(set(names))] + [["@executing-python-runtime", runner_python_identity()]]),
+            "runnerDigest": canonical_digest([[name, digest_file(root / name)] for name in sorted(set(names))] + execution),
             "adapterDigest": digest_file(Path(interop.__file__))}
+
+
+def installed_snapshot_identity(root):
+    """Authenticate the fixed installed snapshot; ordinary source checkouts still use Git.
+
+    Only administrator-approved installation verification may supply a Git-less source identity.
+    The verifier is itself checked against the root-owned immutable manifest before import. The
+    tokenless observer uses the installation's public execution closure; root controllers perform
+    the complete deployment verification. Neither result supplies workflow or product authority.
+    """
+    root = Path(root)
+    fixed = Path('/opt/cryptad-cross-version/current')
+    if root != fixed:
+        if (root / '.restricted-manifest.json').exists():
+            raise RuntimeFailure('runner-installed-snapshot-outside-fixed-root')
+        return None
+    manifest_path = fixed / '.restricted-manifest.json'
+    if not manifest_path.exists():
+        return None
+    verifier = fixed / 'tools/release-certification/restricted/installation.py'
+    for selected in (manifest_path, verifier):
+        for path in (selected, *selected.parents):
+            observed = path.lstat()
+            if (stat.S_ISLNK(observed.st_mode) or observed.st_uid != 0
+                    or observed.st_mode & 0o022):
+                raise RuntimeFailure('runner-installed-snapshot-untrusted')
+    if manifest_path.stat().st_size > 16 * 1024 * 1024:
+        raise RuntimeFailure('runner-installed-manifest-too-large')
+    manifest = json.loads(manifest_path.read_bytes())
+    relative = verifier.relative_to(fixed).as_posix()
+    try:
+        if digest_file(verifier) != 'sha256:' + manifest['files'][relative]['sha256']:
+            raise RuntimeFailure('runner-installation-verifier-substituted')
+        spec = importlib.util.spec_from_file_location('cryptad_installed_execution_verifier', verifier)
+        installation = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installation)
+        result = installation.verify() if os.geteuid() == 0 else installation.verify_execution()
+        if (result.get('bundleIdentity') != hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+                or result.get('sourceCommit') != manifest['sourceCommit']
+                or not re.fullmatch('[0-9a-f]{40}', result.get('sourceCommit', ''))
+                or not re.fullmatch('sha256:[0-9a-f]{64}', result.get('executionClosureDigest', ''))):
+            raise RuntimeFailure('runner-installed-source-mismatch')
+        return result
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        raise RuntimeFailure('runner-installed-execution-unverified') from error
 
 
 implementation_identity = runner_identity
