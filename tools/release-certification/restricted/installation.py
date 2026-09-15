@@ -25,12 +25,16 @@ EXECUTION = Path('/etc/cryptad-certification/restricted-execution.json')
 MANIFEST = '.restricted-manifest.json'
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64')
+# Linux commands used by the reviewed Gradle-generated crypta-app launcher. xargs uses echo
+# when no command is supplied. Shell builtins are covered by sh's resolved interpreter bytes.
+NATIVE_LAUNCHER_FILES = ('/usr/bin/sh', '/usr/bin/ls', '/usr/bin/uname', '/usr/bin/xargs',
+                         '/usr/bin/echo', '/usr/bin/sed', '/usr/bin/tr')
 DEPENDENCY_FILES = ('/usr/bin/python3', '/usr/bin/python3.13', '/usr/bin/openssl',
                     '/usr/bin/bwrap', '/usr/bin/prlimit', '/usr/bin/gh', '/usr/bin/git',
                     '/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles',
                     '/usr/bin/systemctl', '/usr/bin/sudo', '/usr/bin/setpriv', '/usr/bin/true', '/usr/lib/systemd/systemd',
                     '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ssl/certs/ca-certificates.crt',
-                    '/usr/lib/ssl/openssl.cnf', '/etc/ssl/openssl.cnf')
+                    '/usr/lib/ssl/openssl.cnf', '/etc/ssl/openssl.cnf', *NATIVE_LAUNCHER_FILES)
 # Go crypto/x509 Linux system roots: first available file plus all certificate directories.
 TLS_ROOT_PATHS = ('/etc/ssl/certs', '/etc/pki/tls/certs',
     '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem', '/etc/pki/tls/cacert.pem',

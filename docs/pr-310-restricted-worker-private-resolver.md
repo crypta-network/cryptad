@@ -464,3 +464,14 @@ UIDs and GIDs, permitted supplementary groups and no effective/permitted/ambient
 capabilities. A process retaining an old group after account cleanup therefore fails verification.
 The regressions use account/process fixtures; real disposable multi-UID conformance remains an
 unexecuted requirement.
+
+## Review correction: native launcher interpreter closure
+
+The dependency inventory includes the generated `crypta-app` launcher's Linux interpreter and
+external utilities: `sh`, `ls`, `uname`, `xargs`, `echo`, `sed` and `tr` under `/usr/bin`, plus
+resolved symlink targets. The native mount maps `/bin` to `/usr/bin`; `xargs` uses its default
+`echo` command, and shell builtins are covered by the interpreter identity. The selected Java
+runtime and tool tree remain subject to their existing independent identity checks.
+Missing or changed launcher dependencies reject the approved inventory. Future launcher changes
+require renewed review of this command list; these checks do not establish native isolation on
+a deployed host.

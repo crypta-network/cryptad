@@ -160,6 +160,33 @@ class InstallationArtifactTests(unittest.TestCase):
 
 
 class ProvisioningDependencyTests(unittest.TestCase):
+    def test_native_launcher_interpreter_utilities_and_targets_are_inventoried(self):
+        names = ('/usr/bin/sh', '/usr/bin/ls', '/usr/bin/uname', '/usr/bin/xargs',
+                 '/usr/bin/echo', '/usr/bin/sed', '/usr/bin/tr')
+        self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
+        with patch.object(installation, 'DEPENDENCY_ROOTS', ()), \
+                patch.object(installation, 'DEPENDENCY_FILES', names), \
+                patch.object(installation, 'TLS_ROOT_PATHS', ()):
+            records = installation.dependency_inventory()
+        for name in names:
+            with self.subTest(name=name):
+                self.assertIn(name, records)
+                target = Path(name).resolve(strict=True)
+                self.assertEqual(installation.file_record(target), records[str(target)])
+
+    def test_missing_or_modified_launcher_dependencies_reject_approval(self):
+        records = {name: {} for name in installation.DEPENDENCY_FILES}
+        records.update({'/usr/lib/python3.13/os.py': {}, '/lib/ld-linux-fixture': {}})
+        for name in installation.NATIVE_LAUNCHER_FILES:
+            with self.subTest(name=name):
+                incomplete = {key: value for key, value in records.items() if key != name}
+                with self.assertRaisesRegex(installation.InstallationError, 'closure-incomplete'):
+                    installation.dependencies({'dependencies': incomplete})
+                changed = {**records, name: {'sha256': 'changed'}}
+                with patch.object(installation, 'dependency_inventory', return_value=changed):
+                    with self.assertRaisesRegex(installation.InstallationError, 'closure-changed'):
+                        installation.dependencies({'dependencies': records})
+
     def test_openssl_configuration_and_resolved_target_are_required_and_inventoried(self):
         names = ('/usr/lib/ssl/openssl.cnf', '/etc/ssl/openssl.cnf')
         self.assertTrue(set(names) <= set(installation.DEPENDENCY_FILES))
