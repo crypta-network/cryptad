@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 import restricted_worker as worker
 
+AUTHENTICATE_JOB = worker.authenticate_job
+
 
 @unittest.skipIf(worker.pwd is None, 'Linux worker state semantics require pwd')
 class DurableWorkerTest(unittest.TestCase):
@@ -61,6 +63,56 @@ class DurableWorkerTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first, collected)
         owner.assert_called_once()
+
+    def finish_provider(self, status, conclusion=None):
+        self.record['method'] = 'supervisor-finish'
+        self.selected['method'] = 'supervisor-finish'
+        (self.root / 'registration.json').write_bytes(worker.encode(self.record))
+        context = self.record['context']
+        responses = {
+            'repos/crypta-network/cryptad/actions/runs/1': {'run_attempt': 1},
+            'repos/crypta-network/cryptad/actions/runs/1/attempts/1': {
+                'id': 1, 'run_attempt': 1, 'path': worker.POLICIES['supervisor-finish'][0],
+                'head_sha': context['sourceCommit'], 'event': 'workflow_dispatch',
+                'repository': {'full_name': 'crypta-network/cryptad'},
+                'actor': {'login': 'leumor'}, 'triggering_actor': {'login': 'leumor'}},
+            'repos/crypta-network/cryptad/actions/jobs/2': {
+                'id': 2, 'run_id': 1, 'run_attempt': 1,
+                'name': worker.POLICIES['supervisor-finish'][1], 'head_sha': context['sourceCommit'],
+                'status': status, 'conclusion': conclusion, 'started_at': self.record['notBefore']},
+        }
+        return lambda arguments, environment: responses[arguments[1]]
+
+    def test_finished_job_cannot_execute_terminal_owner_or_persist_intent(self):
+        import original_artifact_authentication as original
+        for status, conclusion in (('completed', 'success'), ('completed', 'failure'),
+                                   ('completed', 'cancelled'), ('queued', None)):
+            with self.subTest(status=status, conclusion=conclusion):
+                provider = self.finish_provider(status, conclusion)
+                with patch.object(original, '_gh', side_effect=provider), \
+                        patch.object(worker, 'authenticate_job', side_effect=AUTHENTICATE_JOB), \
+                        patch.object(worker, 'dispatch') as owner:
+                    with self.assertRaisesRegex(worker.BoundaryError, 'original-job-rejected'):
+                        self.client.process(self.selected, 62001)
+                owner.assert_not_called()
+                self.assertFalse((self.root / 'intent.json').exists())
+                self.assertFalse((self.root / 'result.json').exists())
+
+    def test_active_finish_executes_once_and_retained_result_survives_job_completion(self):
+        import original_artifact_authentication as original
+        with patch.object(original, '_gh', side_effect=self.finish_provider('in_progress')), \
+                patch.object(worker, 'authenticate_job', side_effect=AUTHENTICATE_JOB), \
+                patch.object(worker, 'dispatch', return_value={'status': 'stopped'}) as owner:
+            first = self.client.process(self.selected, 62001)
+            owner.assert_called_once()
+            with patch.object(original, '_gh', side_effect=self.finish_provider('completed', 'success')) as provider, \
+                    patch.object(worker, 'now', return_value=worker.utc(self.record['expiresAt']) + dt.timedelta(seconds=1)):
+                retried = worker.Worker('b' * 64).process(self.selected, 62001)
+                collected = self.client.process({'method': 'collect', 'handle': self.handle}, 62001)
+                provider.assert_not_called()
+            self.assertEqual(first, retried)
+            self.assertEqual(first, collected)
+            owner.assert_called_once()
 
     def test_lost_owner_response_leaves_intent_and_prevents_repeat(self):
         with patch.object(worker, 'dispatch', side_effect=OSError('synthetic disconnect')) as owner:

@@ -219,12 +219,11 @@ def authenticate_job(record, environment):
             or run.get('triggering_actor', {}).get('login') != 'leumor'):
         raise BoundaryError('restricted-original-job-rejected')
     job = _gh(['api', f'repos/{REPOSITORY}/actions/jobs/{context["jobId"]}'], environment)
-    terminal = record['method'] == 'supervisor-finish'
     if (job.get('id') != context['jobId'] or job.get('run_id') != context['runId']
             or job.get('run_attempt') != context['runAttempt']
             or job.get('name') != JOB_NAMES.get(record['method'], job_name)
             or job.get('head_sha') != context['sourceCommit']
-            or job.get('status') not in ({'in_progress', 'completed'} if terminal else {'in_progress'})
+            or job.get('status') != 'in_progress'
             or not utc(record['notBefore']) <= utc(job.get('started_at')) <= now()):
         raise BoundaryError('restricted-original-job-rejected')
 

@@ -475,3 +475,12 @@ runtime and tool tree remain subject to their existing independent identity chec
 Missing or changed launcher dependencies reject the approved inventory. Future launcher changes
 require renewed review of this command list; these checks do not establish native isolation on
 a deployed host.
+
+## Review correction: active job required for terminal execution
+
+Every new owner invocation, including `supervisor-finish`, requires its independently queried
+workflow job to remain `in_progress`. A completed, failed, cancelled or queued job cannot use an
+unexecuted handle to create an intent or mutate owner state. This job requirement is separate from
+the existing stopped-workload collection rules and does not grant new execution approval.
+An already retained result remains available through exact retry or collection, subject to its
+existing collection window and revocations, without another owner invocation or active-job check.
