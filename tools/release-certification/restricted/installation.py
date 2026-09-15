@@ -13,16 +13,21 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import shutil
 import stat
 import subprocess
 import tempfile
+import time
 
 PREFIX = Path('/opt/cryptad-cross-version')
 STATE = Path('/var/lib/cryptad-restricted')
 APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
 EXECUTION = PREFIX / 'restricted-execution.json'
 MANIFEST = '.restricted-manifest.json'
+EXPORT_POLICY = 'production-without-test-seams-v1'
+TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name in (
+    'disposable_integration.py', 'baseline_workspace_probe.py', 'native_cleanup_probe.py'))
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
                     '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
@@ -133,6 +138,26 @@ def inventory(root, *, protected=False):
     return result
 
 
+def production_member(name):
+    """Exclude executable test seams; Java test resources used by runtime adapters stay intact.
+
+    This fixed policy is part of the prospective manifest. It cannot be changed by a caller
+    selection or an include-tests option. A disposable test kit is a separate artifact.
+    """
+    path = Path(name)
+    return (path.as_posix() not in TEST_SEAMS
+            and not (path.name.startswith('test_') and path.suffix == '.py')
+            and 'tests' not in path.parts
+            and not (path.parts[:1] == ('tools',) and 'test' in path.parts))
+
+
+def require_current_export(manifest):
+    """New deployment requires physical seam exclusion; v1 remains historical-readable only."""
+    if (manifest.get('schemaVersion') != 2 or manifest.get('exportPolicy') != EXPORT_POLICY
+            or any(not production_member(name) for name in manifest.get('files', {}))):
+        raise InstallationError('restricted-production-export-policy-required')
+
+
 def plan(source, output):
     """Export a pinned committed Git tree for subsequent separate approval."""
     source, output = Path(source).resolve(), Path(output).absolute()
@@ -152,8 +177,8 @@ def plan(source, output):
     output.mkdir(mode=0o700)
     try:
         export_blobs(source, output, files, environment)
-        manifest = {'schemaVersion': 1, 'kind': 'cryptad-restricted-installation',
-                    'sourceCommit': revision, 'files': inventory(output)}
+        manifest = {'schemaVersion': 2, 'kind': 'cryptad-restricted-installation',
+                    'exportPolicy': EXPORT_POLICY, 'sourceCommit': revision, 'files': inventory(output)}
         (output / MANIFEST).write_bytes(encode(manifest))
         return {'bundleIdentity': digest(encode(manifest)), 'sourceCommit': revision,
                 'fileCount': len(manifest['files']), 'status': 'prepared-not-approved'}
@@ -181,6 +206,8 @@ def export_blobs(source, output, files, environment):
                         or '..' in relative.parts or relative.as_posix() == MANIFEST
                         or re.fullmatch(b'[0-9a-f]{40}|[0-9a-f]{64}', oid) is None):
                     raise InstallationError('restricted-source-entry-invalid')
+                if not production_member(relative):
+                    continue
                 process.stdin.write(oid + b'\n')
                 process.stdin.flush()
                 header = process.stdout.readline(256)
@@ -218,10 +245,19 @@ def verify_bundle(bundle, expected, *, protected=True):
     if digest(raw) != expected:
         raise InstallationError('restricted-bundle-identity-mismatch')
     manifest = read_json(bundle / MANIFEST)
-    if (set(manifest) != {'schemaVersion', 'kind', 'sourceCommit', 'files'}
-            or manifest['schemaVersion'] != 1 or manifest['kind'] != 'cryptad-restricted-installation'
+    fields = {'schemaVersion', 'kind', 'sourceCommit', 'files'}
+    if isinstance(manifest, dict) and manifest.get('schemaVersion') == 2:
+        fields.add('exportPolicy')
+    if (not isinstance(manifest, dict) or set(manifest) != fields
+            or type(manifest['schemaVersion']) is not int or manifest['schemaVersion'] not in {1, 2}
+            or manifest['kind'] != 'cryptad-restricted-installation'
+            or not isinstance(manifest['sourceCommit'], str)
+            or re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', manifest['sourceCommit']) is None
+            or not isinstance(manifest['files'], dict)
             or inventory(bundle, protected=protected) != manifest['files']):
         raise InstallationError('restricted-bundle-content-mismatch')
+    if manifest['schemaVersion'] == 2:
+        require_current_export(manifest)
     return manifest
 
 
@@ -391,6 +427,44 @@ def verify_role_processes(roles, allowed):
                 raise InstallationError('restricted-role-process-capabilities')
 
 
+def polkit_owned_subject(process, runner, groups):
+    """Derive a Polkit subject only from the direct owned, still-live runner probe."""
+    if process.poll() is not None:
+        raise InstallationError('restricted-polkit-subject-not-live')
+    root = Path('/proc') / str(process.pid)
+    before = (root / 'stat').read_text().rsplit(')', 1)[1].split()
+    status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines() if ':' in line)
+    after = (root / 'stat').read_text().rsplit(')', 1)[1].split()
+    ticks = before[19]
+    if (not ticks.isdecimal() or int(ticks) <= 0 or after[19] != ticks
+            or before[0] in {'Z', 'X'} or after[0] in {'Z', 'X'}
+            or [int(value) for value in status.get('Uid', '').split()] != [runner.pw_uid] * 4
+            or [int(value) for value in status.get('Gid', '').split()] != [runner.pw_gid] * 4
+            or {int(value) for value in status.get('Groups', '').split()} != groups
+            or status.get('NoNewPrivs', '').strip() != '1'
+            or any(status.get(field, '').strip() != '0000000000000000'
+                   for field in ('CapEff', 'CapPrm', 'CapAmb', 'CapInh', 'CapBnd'))
+            or process.poll() is not None):
+        raise InstallationError('restricted-polkit-subject-unreviewed')
+    return f'{process.pid},{ticks},{runner.pw_uid}'
+
+
+def stop_polkit_subject(process):
+    """Release and reap the fixed direct subject, escalating only against its owned Popen."""
+    try:
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+    finally:
+        process.stdout.close()
+
+
 def verify_polkit(runner):
     """Query the actual authority with a live runner-UID subject; never execute unit changes.
 
@@ -398,6 +472,9 @@ def verify_polkit(runner):
     prove denial for every possible rule predicate, session, unit name or future policy state.
     """
     import xml.etree.ElementTree as ET
+    if os.geteuid() != 0:
+        raise InstallationError('restricted-polkit-trusted-caller-required')
+    deadline = time.monotonic() + 60
     authority = subprocess.run(['/usr/bin/systemctl', 'show', 'polkit.service',
         '--property=ActiveState,MainPID,ExecStart'], capture_output=True, timeout=10, check=True,
         env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
@@ -416,29 +493,60 @@ def verify_polkit(runner):
         for verb in ('start', 'stop', 'restart', 'reload', 'try-restart', 'reload-or-restart', 'kill'):
             requests.append(['org.freedesktop.systemd1.manage-units', '--detail', 'unit', unit,
                              '--detail', 'verb', verb])
-    # Keep this subject alive while pkcheck queries PID,start-time,UID. No shell, agent,
-    # inherited environment or authentication interaction is involved.
-    script = """import json,os,pathlib,subprocess,sys
-start = pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19]
-subject = f'{os.getpid()},{start},{os.getuid()}'
-for request in json.loads(sys.argv[1]):
-    result = subprocess.run(['/usr/bin/pkcheck','--process',subject,'--action-id',*request],
-        stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-        env={'PATH':'/usr/bin:/bin','LANG':'C'},timeout=5)
-    if result.returncode not in (1,2):
-        sys.exit(1)
-"""
+    # Polkit accepts action details only from a trusted caller. Root queries authorization
+    # FOR this separately owned runner subject; it must never ask about root itself.
+    import grp
+    groups = {runner.pw_gid, grp.getgrnam('cryptad-control').gr_gid}
+    if (runner.pw_uid <= 0 or runner.pw_gid <= 0 or len(groups) != 2 or 0 in groups
+            or set(os.getgrouplist('cryptad-runner', runner.pw_gid)) != groups):
+        raise InstallationError('restricted-polkit-subject-unreviewed')
+    script = "import sys; sys.stdout.buffer.write(b'R'); sys.stdout.buffer.flush(); sys.stdin.buffer.read(1)"
+    process = None
     try:
-        result = subprocess.run(['/usr/bin/setpriv', '--reuid=' + str(runner.pw_uid),
-            '--regid=' + str(runner.pw_gid), '--init-groups', '--no-new-privs',
-            '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--',
-            '/usr/bin/python3', '-I', '-S', '-c', script, json.dumps(requests)],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, timeout=60)
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        process = subprocess.Popen(['/usr/bin/setpriv', '--reuid=' + str(runner.pw_uid),
+            '--regid=' + str(runner.pw_gid), '--groups=' + ','.join(map(str, sorted(groups))),
+            '--no-new-privs', '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--',
+            '/usr/bin/python3', '-I', '-S', '-c', script],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            close_fds=True, cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+        remaining = deadline - time.monotonic()
+        if (remaining <= 0 or not select.select([process.stdout], [], [], min(5, remaining))[0]
+                or os.read(process.stdout.fileno(), 1) != b'R'):
+            raise InstallationError('restricted-polkit-subject-readiness-failed')
+        subject = polkit_owned_subject(process, runner, groups)
+        for request in requests:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or polkit_owned_subject(process, runner, groups) != subject:
+                raise InstallationError('restricted-polkit-subject-lifetime-invalid')
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise InstallationError('restricted-polkit-subject-lifetime-invalid')
+            result = subprocess.run(['/usr/bin/pkcheck', '--process', subject, '--action-id', *request],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                close_fds=True, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, timeout=min(5, remaining))
+            if (result.returncode not in (1, 2) or time.monotonic() >= deadline
+                    or polkit_owned_subject(process, runner, groups) != subject):
+                raise InstallationError('restricted-runner-polkit-or-authority-unknown')
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired) as exc:
         raise InstallationError('restricted-runner-polkit-or-authority-unknown') from exc
-    if result.returncode != 0:
-        raise InstallationError('restricted-runner-polkit-or-authority-unknown')
+    finally:
+        if process is not None:
+            stop_polkit_subject(process)
+
+
+def verify_sudo_denial(result):
+    """Accept only an explicit denied-user listing from the image-pinned sudo policy engine.
+
+    On the reference Debian sudo, a successful administrator listing can return zero while
+    reporting that the selected user has no permissions. Exit status alone is not admission.
+    """
+    try:
+        diagnostic = result.stdout.decode('utf-8', errors='strict').strip()
+    except UnicodeError:
+        raise InstallationError('restricted-runner-sudo-or-policy-unknown') from None
+    if (result.returncode not in (0, 1) or result.stderr or re.fullmatch(
+            r'User cryptad-runner is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
+        raise InstallationError('restricted-runner-sudo-or-policy-unknown')
 
 
 def verify_profile(config):
@@ -460,10 +568,7 @@ def verify_profile(config):
     # sudo policy is evaluated by its actual policy engine, not by grepping one drop-in.
     probe = subprocess.run(['/usr/bin/sudo', '-n', '-l', '-U', runner.pw_name],
                            env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, timeout=15)
-    diagnostic = (probe.stdout + probe.stderr).decode('utf-8', errors='strict').strip()
-    if (probe.returncode != 1 or re.fullmatch(
-            r'User cryptad-runner is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
-        raise InstallationError('restricted-runner-sudo-or-policy-unknown')
+    verify_sudo_denial(probe)
     # The reviewed reference admits no local Polkit policy extending system-service control.
     for directory in ('/etc/polkit-1/rules.d', '/etc/polkit-1/localauthority'):
         root = Path(directory)
@@ -486,8 +591,45 @@ def verify_profile(config):
     return runner
 
 
-CONTROLLER_CAPABILITIES = frozenset({'cap_setuid', 'cap_setgid', 'cap_setpcap', 'cap_chown',
-                                    'cap_dac_override', 'cap_fowner', 'cap_kill'})
+CONTROLLER_CAPABILITY_NUMBERS = {'cap_chown': 0, 'cap_dac_override': 1, 'cap_fowner': 3,
+                                 'cap_kill': 5, 'cap_setgid': 6, 'cap_setuid': 7, 'cap_setpcap': 8}
+CONTROLLER_CAPABILITIES = frozenset(CONTROLLER_CAPABILITY_NUMBERS)
+
+
+def verify_controller_process():
+    """Check this bootstrap's actual kernel authority before privileged profile probes.
+
+    Ordinary administrator installation checks do not call this function. The fixed controller
+    bootstrap requires the effective reference state, not merely systemd's bounding property.
+    """
+    with open('/proc/self/status', 'rb') as stream:
+        raw = stream.read(65537)
+    if not 1 <= len(raw) <= 65536:
+        raise InstallationError('restricted-controller-kernel-state-invalid')
+    try:
+        fields = {}
+        for line in raw.decode('ascii').splitlines():
+            if ':' not in line:
+                continue
+            name, value = line.split(':', 1)
+            if name in fields:
+                raise ValueError()
+            fields[name] = value.strip()
+        full = sum(1 << number for number in CONTROLLER_CAPABILITY_NUMBERS.values())
+        ambient = 1 << CONTROLLER_CAPABILITY_NUMBERS['cap_setuid']
+        # systemd 257 also retains SETPCAP in inheritable while setting up seccomp.
+        inherited = ambient | (1 << CONTROLLER_CAPABILITY_NUMBERS['cap_setpcap'])
+        expected = {'CapEff': full, 'CapPrm': full, 'CapBnd': full,
+                    'CapAmb': ambient, 'CapInh': inherited}
+        if (fields.get('Uid', '').split() != ['0'] * 4
+                or fields.get('Gid', '').split() != ['0'] * 4
+                or fields.get('NoNewPrivs') != '1'
+                or any(re.fullmatch('[0-9a-f]{16}', fields.get(name, '')) is None
+                       or int(fields[name], 16) != value for name, value in expected.items())):
+            raise ValueError()
+    except (UnicodeError, ValueError, KeyError):
+        raise InstallationError('restricted-controller-kernel-state-invalid') from None
+
 
 
 def verify_controller_capabilities(value):
@@ -533,14 +675,15 @@ def verify_units():
         if paths != {'FragmentPath': '/etc/systemd/system/' + name, 'DropInPaths': ''}:
             raise InstallationError('restricted-unit-load-path-unreviewed')
     result = subprocess.run(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
-        '--property=User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices,LimitCORE,FragmentPath,CapabilityBoundingSet',
+        '--property=User,Group,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices,LimitCORE,FragmentPath,CapabilityBoundingSet,AmbientCapabilities',
         '--no-pager'], check=True, capture_output=True, timeout=15,
         env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
     properties = dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
     verify_controller_capabilities(properties.pop('CapabilityBoundingSet', None))
     expected = {'User': 'root', 'Group': 'root', 'NoNewPrivileges': 'yes', 'ProtectSystem': 'strict',
                 'ProtectHome': 'yes', 'PrivateTmp': 'yes', 'PrivateDevices': 'yes', 'LimitCORE': '0',
-                'FragmentPath': '/etc/systemd/system/cryptad-restricted.service'}
+                'FragmentPath': '/etc/systemd/system/cryptad-restricted.service',
+                'AmbientCapabilities': 'cap_setuid'}
     if properties != expected:
         raise InstallationError('restricted-effective-unit-mismatch')
 
@@ -763,6 +906,7 @@ def upgrade(bundle):
 
 
 def required_entrypoints(manifest):
+    require_current_export(manifest)
     required = {'tools/release-certification/restricted/' + name for name in
                 ('installation.py', 'bootstrap.py', 'runtime_bootstrap.py')}
     required |= {'tools/release-certification/protected/' + name for name in

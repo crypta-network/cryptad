@@ -14,6 +14,178 @@ import zipfile
 import cross_version_runtime as runtime
 
 
+@unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),
+                     'requires Linux O_PATH and genuine procfs')
+class PrivateProcessIdentityTest(unittest.TestCase):
+    def identity(self):
+        return {"supervisor": {"pid": 7}, "jvm": {"pid": 8}, "configDigest": "sha256:" + "1" * 64}
+
+    def test_new_record_ignores_forged_node_record_and_preserves_historical_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / "node/run/process-identity.json"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text(json.dumps({**self.identity(), "jvm": {"pid": 999}}))
+            legacy.chmod(0o600)
+            original = legacy.read_bytes()
+            runtime.write_process_identity(root, "previous", self.identity())
+
+            self.assertEqual(self.identity(), runtime.read_process_identity(root, "previous"))
+            historical = runtime.read_historical_process_identity(root / "node")
+            self.assertEqual("not-established", historical["isolation"])
+            self.assertEqual(1, historical["runtimeLayoutVersion"])
+            self.assertEqual({"pid": 999}, historical["identity"]["jvm"])
+            self.assertEqual(original, legacy.read_bytes())
+
+    def test_missing_new_record_never_falls_back_to_legacy_node_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / "node/run/process-identity.json"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text(json.dumps(self.identity()))
+            legacy.chmod(0o600)
+            with self.assertRaises(runtime.RuntimeFailure):
+                runtime.read_process_identity(root, "previous")
+
+    def test_ambiguous_and_nonfinite_expected_identity_json_is_rejected(self):
+        payloads = (
+            '{"supervisor":{"pid":7,"pid":999},"jvm":{"pid":8},"configDigest":"selected"}',
+            '{"supervisor":{"pid":7},"jvm":{"pid":NaN},"configDigest":"selected"}',
+            '{"supervisor":{"pid":7},"jvm":{"pid":Infinity},"configDigest":"selected"}',
+            '{"supervisor":{"pid":7},"jvm":{"pid":1e999},"configDigest":"selected"}',
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runtime.write_process_identity(root, "previous", self.identity())
+                (root / "runtime/control/processes/previous.json").write_text(payload)
+                with self.assertRaisesRegex(runtime.RuntimeFailure, "identity-json-invalid"):
+                    runtime.read_process_identity(root, "previous")
+
+    def test_link_fifo_hardlink_permissions_and_oversized_record_are_rejected(self):
+        for attack in ("symlink", "fifo", "hardlink", "permissions", "oversized"):
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runtime.write_process_identity(root, "previous", self.identity())
+                target = root / "runtime/control/processes/previous.json"
+                if attack == "symlink":
+                    target.rename(root / "outside")
+                    target.symlink_to(root / "outside")
+                elif attack == "fifo":
+                    target.unlink()
+                    os.mkfifo(target, 0o600)
+                elif attack == "hardlink":
+                    os.link(target, root / "alias")
+                elif attack == "permissions":
+                    target.chmod(0o644)
+                else:
+                    target.write_bytes(b"x" * 4097)
+                with self.assertRaises(runtime.RuntimeFailure):
+                    runtime.read_process_identity(root, "previous")
+
+    def test_symlinked_ancestor_cannot_redirect_reads_or_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime.write_process_identity(root, "previous", self.identity())
+            control = root / "runtime/control"
+            control.rename(root / "outside")
+            control.symlink_to(root / "outside", target_is_directory=True)
+            original = (root / "outside/processes/previous.json").read_bytes()
+            with self.assertRaises(runtime.RuntimeFailure):
+                runtime.read_process_identity(root, "previous")
+            with self.assertRaises(runtime.RuntimeFailure):
+                runtime.write_process_identity(root, "previous", self.identity())
+            self.assertEqual(original, (root / "outside/processes/previous.json").read_bytes())
+
+    def test_replacement_during_read_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime.write_process_identity(root, "previous", self.identity())
+            target = root / "runtime/control/processes/previous.json"
+            read = os.read
+
+            def replace_after_read(descriptor, maximum):
+                payload = read(descriptor, maximum)
+                target.rename(target.with_suffix(".old"))
+                target.write_bytes(payload)
+                target.chmod(0o600)
+                return payload
+
+            with patch.object(runtime.os, "read", side_effect=replace_after_read):
+                with self.assertRaisesRegex(runtime.RuntimeFailure, "file-replaced"):
+                    runtime.read_process_identity(root, "previous")
+
+    def test_ancestor_replacement_during_read_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime.write_process_identity(root, "previous", self.identity())
+            control = root / "runtime/control"
+            read = os.read
+
+            def replace_after_read(descriptor, maximum):
+                payload = read(descriptor, maximum)
+                control.rename(control.with_name("old-control"))
+                control.mkdir(mode=0o700)
+                return payload
+
+            with patch.object(runtime.os, "read", side_effect=replace_after_read):
+                with self.assertRaisesRegex(runtime.RuntimeFailure, "ancestor-replaced"):
+                    runtime.read_process_identity(root, "previous")
+
+    def test_private_directory_permission_change_during_read_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime.write_process_identity(root, "previous", self.identity())
+            read = os.read
+
+            def change_after_read(descriptor, maximum):
+                payload = read(descriptor, maximum)
+                (root / "runtime/control").chmod(0o777)
+                return payload
+
+            with patch.object(runtime.os, "read", side_effect=change_after_read):
+                with self.assertRaisesRegex(runtime.RuntimeFailure, "directory-changed"):
+                    runtime.read_process_identity(root, "previous")
+
+    def test_device_is_rejected_before_invoking_its_read_open(self):
+        directory = os.open('/dev', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            with patch.object(runtime.os, 'open', wraps=os.open) as opened:
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'identity-file-invalid'):
+                    runtime._read_identity_at(directory, 'null')
+            self.assertEqual(1, opened.call_count)
+            self.assertTrue(opened.call_args.args[1] & os.O_PATH)
+        finally:
+            os.close(directory)
+
+    def test_authorized_legacy_checkpoint_cannot_acquire_new_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "runtime/runtime-state.json"
+            path.parent.mkdir(mode=0o700)
+            path.write_text(json.dumps({"schemaVersion": 1}))
+            path.chmod(0o600)
+            original = path.read_bytes()
+            supervisor = runtime.Supervisor.__new__(runtime.Supervisor)
+            supervisor.root = root
+            supervisor.authorization = {"runtimeStateDigest": runtime.digest_file(path)}
+            with patch.object(runtime, "_ContinuedProcess") as attach:
+                with self.assertRaisesRegex(runtime.RuntimeFailure, "layout-not-admitted"):
+                    supervisor.resume_owned()
+                attach.assert_not_called()
+            self.assertEqual(original, path.read_bytes())
+
+
+class ProcessIdentityPlatformTest(unittest.TestCase):
+    def test_unsupported_platform_fails_before_opening_any_path(self):
+        with patch.dict(runtime.os.__dict__):
+            runtime.os.__dict__.pop('O_PATH', None)
+            with patch.object(runtime.os, 'open') as opened:
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'identity-linux-required'):
+                    runtime._read_identity_at(-1, 'unused')
+                opened.assert_not_called()
+
+
 class RuntimeSubjectBindingTest(unittest.TestCase):
     def test_contract_identity_is_checked_before_any_app_install(self):
         supervisor = runtime.Supervisor.__new__(runtime.Supervisor)
@@ -793,17 +965,18 @@ class BudgetIntegrationTest(unittest.TestCase):
         self.assertEqual(38, supervisor.emit.call_args.kwargs["counters"]["operations"])
         self.assertEqual(2, supervisor.sample_resources.call_count)
 
+    @unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),
+                         'requires Linux O_PATH and genuine procfs')
     def test_resource_sample_records_only_partial_numeric_counters_from_selected_jvm(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "node/run").mkdir(parents=True)
             (root / "java/bin").mkdir(parents=True)
             (root / "java/bin/java").write_bytes(b"selected java")
-            identity = {"supervisor": {"pid": 7}, "jvm": {"pid": 8}}
-            path = root / "node/run/process-identity.json"
-            path.write_text(json.dumps(identity))
-            path.chmod(0o600)
+            identity = {"supervisor": {"pid": 7}, "jvm": {"pid": 8}, "configDigest": "sha256:" + "1" * 64}
+            runtime.write_process_identity(root, "candidate-sender", identity)
             supervisor = self.supervisor()
+            supervisor.root = root
             del supervisor.sample_resources
             supervisor.resource_observations = {"sampleCount": 0, "initial": {}, "latest": {}}
             node = Mock()

@@ -20,7 +20,9 @@ NoNewPrivileges=yes
 # The controller must signal its owned process groups after native children drop their host UID.
 # restricted_native removes every capability from those children before executing candidate code.
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_KILL
-AmbientCapabilities=
+# systemd 257 drops effective CAP_SETUID during seccomp setup unless explicitly ambient.
+# Preserve this already-bounded root authority; every non-root child clears all capability sets.
+AmbientCapabilities=CAP_SETUID
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes

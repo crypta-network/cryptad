@@ -9,6 +9,15 @@ The existing tokenless `cryptad-soak` observer launches candidate code under its
 resolver/native-verifier isolation does not prevent that candidate from reaching observer-owned
 runtime state. No host `CAP_SYS_PTRACE`, broader sudo grant or caller assertion enables this path.
 
+## Prospective PR-311 dispositions
+
+[PR-311 preparation](pr-311-observer-workload-isolation.md) moves new expected process identities
+to observer control layout 2, updates all live runtime/scheduler readers, bounds catalog installed
+file observations and native output, excludes synthetic test seams from new production bundles,
+and repairs disposable controller/socket cleanup. Old run bytes remain historical. The daemon
+still shares the observer UID, and the controller-owned workload launch/network/lifecycle adapter
+is missing; these changes do not reopen restricted execution or establish installed acceptance.
+
 ## Required storage separation
 
 The following are current paths relative to the selected experiment root, not a new approved
@@ -19,7 +28,7 @@ semantics while separating writable workload data from retained observer authori
 | --- | --- | --- |
 | `lease`, journal/checkpoint state, `runtime/owner.json` | Retain exclusively under observer control; candidate cannot replace ownership or execution history. | [Runtime observer](../tools/interop/cross_version_runtime.py), `validate`, `prepare`, `save_state`, `resume` |
 | `runtime/runtime-state.json` | Retain observer-only. Contains process epochs, private operation state, canaries, admission observations and recovery state; it is not candidate input. | [Runtime observer](../tools/interop/cross_version_runtime.py), `save_state`, `resume` |
-| `runtime/<role>/node/run/process-identity.json` | Move out of candidate-writable node storage, including every consumer. Authenticate PID/start/executable identity through the trusted observer. | [Runtime observer](../tools/interop/cross_version_runtime.py), `start`, `sample_resources`; [scheduler observer](../tools/interop/scheduler_pressure_runtime.py), resource and measurement acquisition |
+| Historical `runtime/<role>/node/run/process-identity.json`; new `runtime/control/processes/<role>.json` | New live readers/writer use observer control layout 2, without a node-file fallback. Historical files remain unchanged. Distinct-UID kernel observation and physical separation are still missing. | [Runtime observer](../tools/interop/cross_version_runtime.py), `start`, `sample_resources`; [scheduler observer](../tools/interop/scheduler_pressure_runtime.py), resource and measurement acquisition |
 | `runtime/<role>/node/{config,data,cache,run,logs}` | Give only the selected workload the necessary writable subtree. Candidate-generated configuration, logs and process claims remain untrusted bounded inputs. | [Runtime observer](../tools/interop/cross_version_runtime.py), `prepare`, `start`, `resume` |
 | `runtime/<role>/package`, staged apps and public trust registries | Expose exact admitted code and the scoped verification material needed by that workload. Candidate must not replace the observer's retained expected digests or another role's package/input set. | [Runtime observer](../tools/interop/cross_version_runtime.py), `prepare`; [catalog runtime](../tools/interop/federated_catalog_runtime.py) |
 | Catalog `transport-operations.json` and operation intents | Keep observer-owned, separately from the catalog node and registry files modified by its lifecycle. | [Catalog runtime](../tools/interop/federated_catalog_runtime.py), `Journal`, `start`, `request`, registry selection |

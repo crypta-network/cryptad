@@ -514,7 +514,7 @@ class SchedulerLane(runtime.Supervisor):
         handle.refresh_session()
         self.handle = handle
         self.apps[('candidate-sender', 'feed-reader')] = handle
-        identity = json.loads((self.nodes['candidate-sender'].runtime.base_dir / 'run/process-identity.json').read_bytes())
+        identity = runtime.read_process_identity(self.root, 'candidate-sender')
         self.identity = identity['jvm']
         self.epochs.append(runtime.node_epoch(self.identity))
         self.previous_fetch = None
@@ -993,10 +993,7 @@ class BorrowedSchedulerLane(SchedulerLane):
         self.handle.password = existing.password
         self.handle.observe_worker()
         self.handle.refresh_session()
-        identity_path = node.runtime.base_dir / 'run/process-identity.json'
-        if identity_path.is_symlink() or identity_path.stat().st_mode & 0o077:
-            raise runtime.RuntimeFailure('scheduler-private-process-identity-invalid')
-        identity = json.loads(identity_path.read_bytes())
+        identity = runtime.read_process_identity(supervisor.root, 'candidate-sender')
         if identity['supervisor'] != node.identity:
             raise runtime.RuntimeFailure('scheduler-parent-process-identity-substituted')
         self.identity = identity['jvm']

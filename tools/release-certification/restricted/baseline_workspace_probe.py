@@ -10,10 +10,11 @@ import sys
 import unittest
 
 ROOT = Path('/opt/cryptad-cross-version/current')
+TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 
 
 def main():
-    if (os.geteuid() != 0 or Path(__file__) != ROOT / 'tools/release-certification/restricted/baseline_workspace_probe.py'
+    if (os.geteuid() != 0 or Path(__file__) != TEST_KIT / 'tools/release-certification/restricted/baseline_workspace_probe.py'
             or not any(line.endswith(':/system.slice/cryptad-restricted.service')
                        for line in Path('/proc/self/cgroup').read_text().splitlines())):
         raise ValueError('baseline-workspace-controller-unit-required')
@@ -30,6 +31,7 @@ def main():
     sys.path.insert(0, str(ROOT / 'tools/release-certification/protected'))
     import runtime_baseline_approval as approval
     approval._private_directory(approval.WORKSPACE)
+    sys.path.append(str(TEST_KIT / 'tools/release-certification/protected'))
     import test_runtime_baseline_workspace
     suite = unittest.defaultTestLoader.loadTestsFromModule(test_runtime_baseline_workspace)
     result = unittest.TextTestRunner().run(suite)

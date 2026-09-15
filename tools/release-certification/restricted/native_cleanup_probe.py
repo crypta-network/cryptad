@@ -14,6 +14,7 @@ import time
 from unittest.mock import patch
 
 ROOT = Path('/opt/cryptad-cross-version/current')
+TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 CGROUP = Path('/sys/fs/cgroup/system.slice/cryptad-restricted.service/cgroup.procs')
 
 HELPER = r'''
@@ -87,7 +88,7 @@ def exercise(mode):
 
 
 def main():
-    if (os.geteuid() != 0 or Path(__file__) != ROOT / 'tools/release-certification/restricted/native_cleanup_probe.py'
+    if (os.geteuid() != 0 or Path(__file__) != TEST_KIT / 'tools/release-certification/restricted/native_cleanup_probe.py'
             or not any(line.endswith(':/system.slice/cryptad-restricted.service')
                        for line in Path('/proc/self/cgroup').read_text().splitlines())):
         raise ValueError('native-cleanup-probe-controller-unit-required')
