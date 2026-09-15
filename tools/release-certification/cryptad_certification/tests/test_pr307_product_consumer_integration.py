@@ -10,6 +10,7 @@ import hashlib
 import copy
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import shutil
@@ -62,8 +63,15 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # The prospective package embeds the exact executable later launched by the dedicated
         # catalog role, not the API-only stand-in used by the older compatibility fixture.
         h.api_jars = [distribution / "lib/cryptad.jar"]
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=legacy.ROOT, check=True,
-                                capture_output=True, text=True).stdout.strip()
+        # The disposable helper snapshot can be newer than the genuinely built product.
+        # Only this excluded fixture accepts an explicit selection; owning production native
+        # admission still verifies the package's actual embedded source marker.
+        commit = getattr(self, 'product_source_commit', None)
+        if commit is None:
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=legacy.ROOT, check=True,
+                                    capture_output=True, text=True).stdout.strip()
+        if not isinstance(commit, str) or re.fullmatch('[0-9a-f]{40}', commit) is None:
+            raise AssertionError('pr307-fixture-product-source-invalid')
         fixture = h.work / "federated-fixture"
         classes = h.work / "fixture-classes"
         classes.mkdir()

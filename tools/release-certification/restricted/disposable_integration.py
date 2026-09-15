@@ -9,8 +9,10 @@ are real. A successful local dimension is neither production authority nor Phase
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import datetime as dt
 import grp
+import hashlib
 import secrets
 import signal
 import socket
@@ -19,14 +21,17 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': '/root'}
 INSTALLED = Path('/opt/cryptad-cross-version/current')
 STATE = Path('/var/lib/cryptad-restricted')
+TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 
 
 def call(arguments, *, expected=0, environment=None, timeout=120):
@@ -35,6 +40,21 @@ def call(arguments, *, expected=0, environment=None, timeout=120):
     if result.returncode != expected:
         raise ValueError('disposable-command-failed')
     return result.stdout
+
+
+def source_commit(value):
+    """Validate a test-only source selection; product authentication still verifies package bytes."""
+    if not isinstance(value, str) or re.fullmatch('[0-9a-f]{40}', value) is None:
+        raise argparse.ArgumentTypeError('expected an exact 40-character source commit')
+    return value
+
+
+def test_source_identities(source, product_commit=None):
+    """Keep installed helper provenance distinct from the selected packaged product provenance."""
+    helper = source_commit(call(['/usr/bin/git', '-C', str(source), 'rev-parse', '--verify',
+                                 'HEAD^{commit}']).decode().strip())
+    return {'helperSourceCommit': helper,
+            'productSourceCommit': helper if product_commit is None else source_commit(product_commit)}
 
 
 def prerequisites(source):
@@ -70,6 +90,56 @@ def load_installation(source):
     return module
 
 
+def install_test_kit(source):
+    """Materialize only committed test seams outside the immutable production installation."""
+    import installation
+    if TEST_KIT.exists() or TEST_KIT.is_symlink():
+        raise ValueError('disposable-test-kit-must-be-new')
+    environment = {**ENV, 'GIT_NO_REPLACE_OBJECTS': '1'}
+    prefix = ['/usr/bin/git', '-C', str(source)]
+    if call([*prefix, 'status', '--porcelain', '--untracked-files=normal'], environment=environment):
+        raise ValueError('disposable-test-kit-clean-source-required')
+    revision = call([*prefix, 'rev-parse', '--verify', 'HEAD^{commit}'], environment=environment).decode().strip()
+    manifest = installation.read_json(INSTALLED / installation.MANIFEST)
+    if revision != manifest['sourceCommit']:
+        raise ValueError('disposable-test-kit-source-mismatch')
+    entries = call([*prefix, 'ls-tree', '-r', '-z', '-l', '--full-tree', revision],
+                   environment=environment).split(b'\0')
+    TEST_KIT.mkdir(mode=0o755)
+    records = {}
+    for entry in entries:
+        if not entry:
+            continue
+        metadata, name = entry.split(b'\t', 1)
+        mode, kind, oid, size = metadata.split()
+        relative = Path(os.fsdecode(name))
+        if installation.production_member(relative):
+            continue
+        if (mode not in {b'100644', b'100755'} or kind != b'blob' or not size.isdigit()
+                or int(size) > installation.MAX_FILE or relative.is_absolute() or '..' in relative.parts):
+            raise ValueError('disposable-test-kit-entry-invalid')
+        raw = call([*prefix, 'cat-file', 'blob', oid.decode('ascii')], environment=environment)
+        checksum = hashlib.new('sha1' if len(oid) == 40 else 'sha256')
+        checksum.update(b'blob ' + str(len(raw)).encode() + b'\0' + raw)
+        if len(raw) != int(size) or checksum.hexdigest().encode() != oid:
+            raise ValueError('disposable-test-kit-blob-mismatch')
+        target = TEST_KIT / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        target.chmod(0o555 if mode == b'100755' else 0o444)
+        records[relative.as_posix()] = hashlib.sha256(raw).hexdigest()
+    # Fixture ROOT calculations stay within this test-only tree. These fixed references expose
+    # immutable installed products/source resources, never test code in the production tree.
+    for name in ('build', 'platform-devtools', 'platform-api', 'platform-appcatalog'):
+        (TEST_KIT / name).symlink_to(INSTALLED / name, target_is_directory=True)
+    identity = TEST_KIT / '.test-kit.json'
+    identity.write_text(json.dumps({'schemaVersion': 1, 'kind': 'synthetic-disposable-test-kit',
+        'sourceCommit': revision, 'productionEligible': False, 'files': records}, sort_keys=True))
+    identity.chmod(0o444)
+    for directory, _names, _files in os.walk(TEST_KIT, followlinks=False):
+        Path(directory).chmod(0o755)
+
+
 def provision(source, stage):
     import installation
     bundle = stage / 'bundle'
@@ -90,6 +160,7 @@ def provision(source, stage):
     installation.APPROVAL.chmod(0o600)
     installation.install(bundle)
     installation.verify()
+    install_test_kit(source)
     as_role('cryptad-soak', """import json,pathlib,sys
 record = pathlib.Path(sys.argv[1])
 assert json.loads(record.read_bytes())['schemaVersion'] == 1
@@ -165,7 +236,7 @@ def controller_unit_probe(entrypoint):
     selected = override / 'workspace-test.conf'
     try:
         selected.write_text('[Service]\nType=oneshot\nExecStart=\n'
-            'ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/'
+            'ExecStart=/usr/bin/python3 -I -S /opt/cryptad-restricted-test-kit/'
             'tools/release-certification/restricted/' + entrypoint + '\n')
         call(['/usr/bin/systemctl', 'daemon-reload'])
         call(['/usr/bin/systemctl', 'start', unit])
@@ -243,6 +314,84 @@ def preparation_provider(context, timestamp, upstream):
     return provider
 
 
+class PreparationChild:
+    """Own only the direct synthetic controller child, with bounded reap and escalation."""
+
+    def __init__(self):
+        self.pid = None
+
+    def start(self, entrypoint):
+        if self.pid is not None:
+            raise ValueError('disposable-child-already-owned')
+        pid = os.fork()
+        if pid == 0:
+            try:
+                entrypoint()
+            except BaseException:
+                os._exit(2)
+            os._exit(0)
+        self.pid = pid
+
+    def stop(self):
+        if self.pid is None:
+            return
+        # An unreaped child retains its PID. Clear ownership as soon as waitpid reaps it;
+        # never signal a saved PID after a successful wait or failed replacement fork.
+        for signum in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                waited, _status = os.waitpid(self.pid, os.WNOHANG)
+            except ChildProcessError:
+                self.pid = None
+                raise ValueError('disposable-child-ownership-lost') from None
+            if waited == self.pid:
+                self.pid = None
+                return
+            try:
+                os.kill(self.pid, signum)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                waited, _status = os.waitpid(self.pid, os.WNOHANG)
+                if waited == self.pid:
+                    self.pid = None
+                    return
+                time.sleep(0.05)
+        raise ValueError('disposable-child-reconciliation-required')
+
+
+@contextmanager
+def preparation_socket():
+    """Restore socket activation after setup failure; retain it stopped if reap fails."""
+    call(['/usr/bin/systemctl', 'stop', 'cryptad-restricted.service', 'cryptad-restricted.socket'])
+    endpoint = Path('/run/cryptad-restricted/control.sock')
+    listener = None
+    bound = False
+    child = PreparationChild()
+    try:
+        if endpoint.exists():
+            raise ValueError('disposable-existing-socket')
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(endpoint))
+        bound = True
+        os.chown(endpoint, 0, grp.getgrnam('cryptad-control').gr_gid)
+        endpoint.chmod(0o660)
+        listener.listen(16)
+        yield listener, child
+    finally:
+        try:
+            child.stop()
+        finally:
+            if listener is not None:
+                listener.close()
+        # Do not replace a socket while its controller might remain live. Keep unknown
+        # endpoints intact; only this context's successful bind owns unlink permission.
+        if child.pid is None:
+            if bound:
+                endpoint.unlink(missing_ok=True)
+            call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
+
+
 def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root):
     """Run real preparation through the installed Worker with synthetic original provider I/O.
 
@@ -267,7 +416,8 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         (inputs / name).chmod(0o400)
     timestamp = dt.datetime.now(dt.timezone.utc)
     identity = installation.configuration()['bundleIdentity']
-    context = {'sourceCommit': freeze['source']['commit'], 'runId': 310, 'runAttempt': 1, 'jobId': 31001}
+    context = {'sourceCommit': installation.read_json(INSTALLED / installation.MANIFEST)['sourceCommit'],
+               'runId': 310, 'runAttempt': 1, 'jobId': 31001}
     record = {'schemaVersion': 1, 'method': 'maintenance-prepare', 'handle': handle,
         'bundleIdentity': identity, 'callerUid': pwd.getpwnam('cryptad-runner').pw_uid,
         'context': context, 'notBefore': (timestamp - dt.timedelta(minutes=1)).isoformat(),
@@ -284,52 +434,34 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         'expiresAt': (timestamp + dt.timedelta(minutes=30)).isoformat()}))
     worker.CREDENTIAL.chmod(0o600)
     provider = preparation_provider(context, timestamp, original._gh)
-    call(['/usr/bin/systemctl', 'stop', 'cryptad-restricted.service', 'cryptad-restricted.socket'])
-    endpoint = Path('/run/cryptad-restricted/control.sock')
-    if endpoint.exists():
-        raise ValueError('disposable-existing-socket')
-    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    listener.bind(str(endpoint))
-    os.chown(endpoint, 0, grp.getgrnam('cryptad-control').gr_gid)
-    endpoint.chmod(0o660)
-    listener.listen(16)
-    child = None
-    def start():
-        pid = os.fork()
-        if pid == 0:
-            try:
-                metadata.seal_private_freeze = real_seal
-                companion._read = real_read  # no inherited ownership-relaxation fixture shim
-                original._gh = provider
-                descriptor = listener.detach()
-                if descriptor != 3:
-                    os.dup2(descriptor, 3)
-                    os.close(descriptor)
-                for name in os.listdir('/proc/self/fd'):
-                    if int(name) > 3:
-                        try: os.close(int(name))
-                        except OSError: pass
-                os.environ['LISTEN_PID'] = str(os.getpid())
-                os.environ['LISTEN_FDS'] = '1'
-                worker.main(bundle_identity=identity)
-            except BaseException:
-                os._exit(2)
-        return pid
+    def serve(listener):
+        metadata.seal_private_freeze = real_seal
+        companion._read = real_read  # no inherited ownership-relaxation fixture shim
+        original._gh = provider
+        descriptor = listener.detach()
+        if descriptor != 3:
+            os.dup2(descriptor, 3)
+            os.close(descriptor)
+        for name in os.listdir('/proc/self/fd'):
+            if int(name) > 3:
+                try: os.close(int(name))
+                except OSError: pass
+        os.environ['LISTEN_PID'] = str(os.getpid())
+        os.environ['LISTEN_FDS'] = '1'
+        worker.main(bundle_identity=identity)
     client = str(INSTALLED / 'tools/release-certification/protected/restricted_client.py')
     script = "import subprocess,sys; p=subprocess.run(['/usr/bin/python3','-I','-S',sys.argv[1],sys.argv[2],sys.argv[3]],capture_output=True,timeout=900); assert p.returncode==0; assert not p.stderr; sys.stdout.buffer.write(p.stdout)"
-    try:
-        child = start()
+    with preparation_socket() as (listener, child):
+        child.start(lambda: serve(listener))
         public = as_role('cryptad-runner', script, arguments=(client, 'maintenance-prepare', handle), timeout=950)
         ciphertext = {p.name: p.read_bytes() for p in (root / 'runtime').iterdir()}
         retained = (root / 'result.json').read_bytes()
-        os.kill(child, signal.SIGTERM)
-        os.waitpid(child, 0)
-        child = start()
+        child.stop()
+        child.start(lambda: serve(listener))
         retried = as_role('cryptad-runner', script, arguments=(client, 'maintenance-prepare', handle), timeout=950)
         assert retried == public
-        os.kill(child, signal.SIGTERM)
-        os.waitpid(child, 0)
-        child = start()
+        child.stop()
+        child.start(lambda: serve(listener))
         collected = as_role('cryptad-runner', script, arguments=(client, 'collect', handle), timeout=950)
         assert collected == public
         assert retained == (root / 'result.json').read_bytes()
@@ -340,23 +472,18 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         # The fixture's later owning consumer reauthenticates/decrypts it; JSON is not authority.
         shutil.copytree(root / 'runtime', runtime_root)
         return json.loads((root / 'freeze.json').read_bytes())
-    finally:
-        if child is not None:
-            try: os.kill(child, signal.SIGTERM)
-            except ProcessLookupError: pass
-            os.waitpid(child, 0)
-        listener.close()
-        endpoint.unlink(missing_ok=True)
-        call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
 
 
-def cms_native_integration(source):
+def cms_native_integration(source, product_source_commit):
     import unittest
     import restricted_native as native
     import maintenance_runtime_metadata as metadata
     import maintenance_runtime_companion as companion
     from unittest.mock import patch
     sys.path.insert(0, str(INSTALLED / 'tools/release-certification'))
+    sys.path.append(str(TEST_KIT / 'tools/release-certification/protected'))
+    import cryptad_certification
+    cryptad_certification.__path__.append(str(TEST_KIT / 'tools/release-certification/cryptad_certification'))
     from cryptad_certification.tests import test_pr304_product_consumer_integration as legacy
     from cryptad_certification.tests import test_pr307_product_consumer_integration as integration
     # The actual disposable root creates every synthetic key/policy. Remove inherited local
@@ -365,6 +492,9 @@ def cms_native_integration(source):
     integration.fixtures._SyntheticRootOwnedPath = Path
     os.environ['GIT_DIR'] = str(source / '.git')  # fixture package source identity only
     suite = unittest.defaultTestLoader.loadTestsFromModule(integration)
+    for case in suite:
+        for selected in case:
+            selected.product_source_commit = source_commit(product_source_commit)
     real_seal, real_read = metadata.seal_private_freeze, companion._read
     def through_socket(*args, **kwargs):
         companion._read = real_read
@@ -383,6 +513,8 @@ def main():
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--disposable-vm', action='store_true')
+    parser.add_argument('--product-source-commit', type=source_commit,
+                        help='Test-only exact packaged source revision; defaults to helper source HEAD.')
     args = parser.parse_args()
     source = args.source.resolve()
     missing = prerequisites(source)
@@ -394,8 +526,10 @@ def main():
     if os.geteuid() != 0:
         raise ValueError('disposable-administrator-required')
     # Fail before creating users/services on any existing installation/security domain.
-    if any(path.exists() for path in (INSTALLED.parent, STATE, Path('/etc/cryptad-certification'))):
+    if any(path.exists() or path.is_symlink()
+           for path in (INSTALLED.parent, STATE, TEST_KIT, Path('/etc/cryptad-certification'))):
         raise ValueError('disposable-fresh-vm-required')
+    identities = test_source_identities(source, args.product_source_commit)
     javac = Path(shutil.which('javac')).resolve()
     os.environ.clear()
     os.environ.update(ENV, PATH=str(javac.parent) + ':/usr/bin:/bin',
@@ -410,14 +544,18 @@ def main():
         dimensions.extend(baseline_workspace_unit_probe())
         dimensions.extend(native_cleanup_unit_probe())
         dimensions.extend(hostile_native())
-        dimensions.extend(cms_native_integration(source))
+        dimensions.extend(cms_native_integration(source, identities['productSourceCommit']))
         call(['/usr/bin/systemctl', 'restart', 'cryptad-restricted.service'])
         dimensions.extend(denial_probes())
     print(json.dumps({'schemaVersion': 1, 'kind': 'restricted-disposable-isolation',
-        'executed': True, 'status': 'local-dimensions-executed', 'bundleIdentity': identity,
+        'executed': True, 'status': 'local-dimensions-executed', 'bundleIdentity': identity, **identities,
         'dimensions': sorted(set(dimensions)), 'productionAuthorityObserved': False,
         'mandatoryIsolationTestSatisfied': False,
-        'remainingMandatoryTests': ['production-bootstrap-maintenance-socket-positive',
+        'remainingMandatoryTests': ['installed-controller-owned-workload-positive',
+            'primary-catalog-scheduler-app-budget-role-confinement',
+            'sibling-admin-plane-and-storage-denials',
+            'workload-cgroup-restart-cancellation-terminal-reconciliation',
+            'production-bootstrap-maintenance-socket-positive',
             'baseline-approval-and-stopped-supervisor-through-socket',
             'fault-injection-and-full-adversarial-matrix']}, sort_keys=True))
     return 0

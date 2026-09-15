@@ -18,8 +18,27 @@ import time
 
 import cross_version_runtime as runtime
 import cross_version_catalog as catalog
+import runtime_snapshot
 from catalog_origin_fixture_server import FixtureServer
 from catalog_origin_lifecycle import Driver, Journal, LifecycleFailure, Subject, digest
+from bounded_process import run as bounded_run
+
+
+def native_json(arguments, environment, *, timeout, output_limit, error):
+    """Bound both native pipes before parsing; never expose candidate stderr on failure.
+
+    The owning caller still authenticates selected inputs and the native result. This finite
+    transport bound does not establish workload UID or descendant isolation.
+    """
+    try:
+        raw = bounded_run(arguments, environment=environment, timeout=timeout,
+                          output_limit=output_limit)
+        result = json.loads(raw)
+        if not isinstance(result, dict):
+            raise ValueError()
+        return result
+    except (OSError, ValueError, RecursionError, subprocess.SubprocessError):
+        raise LifecycleFailure(error) from None
 
 
 def port():
@@ -34,13 +53,11 @@ def raw_digest(value):
 
 def installed_content_tree(root):
     """Compare every installed byte, independent of native versus ZIP extraction permissions."""
-    rows = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink() or not (path.is_dir() or path.is_file()):
-            raise LifecycleFailure("catalog-owned-installed-special-file")
-        if path.is_file():
-            rows.append([path.relative_to(root).as_posix(), runtime.digest_file(path)])
-    if not rows or len(rows) > 4096:
+    try:
+        rows = runtime_snapshot.content_tree(root)
+    except (OSError, ValueError):
+        raise LifecycleFailure("catalog-owned-installed-snapshot-unavailable") from None
+    if not rows:
         raise LifecycleFailure("catalog-owned-installed-tree-invalid")
     return digest(rows)
 
@@ -821,13 +838,10 @@ def execute(root, distribution, java, tool, fixture_root, *, source_commit, maxi
     if raw_digest(metadata["bootstrapManifestDigest"]) != raw_digest(runtime.digest_file(fixture_root / "bootstrap/bootstrap.properties")):
         raise LifecycleFailure("catalog-owned-bootstrap-manifest-substituted")
     runtime.packaged_daemon_identity(distribution, source_commit)
-    exported = subprocess.run([str(java / "bin/java"), "-cp", str(distribution / "lib/*"),
-        "network.crypta.platform.api.PackagedApiExport"], capture_output=True,
-        timeout=remaining_budget(budget, 60), check=False,
-        env=java_environment)
-    if exported.returncode != 0 or len(exported.stdout) > 16 * 1024 * 1024:
-        raise LifecycleFailure("catalog-owned-packaged-api-export-failed")
-    contract = json.loads(exported.stdout)
+    contract = native_json([str(java / "bin/java"), "-cp", str(distribution / "lib/*"),
+        "network.crypta.platform.api.PackagedApiExport"], java_environment,
+        timeout=remaining_budget(budget, 60), output_limit=16 * 1024 * 1024,
+        error="catalog-owned-packaged-api-export-failed")
     if contract.get("kind") != "packaged-platform-api-export" or contract.get("schemaVersion") != 1:
         raise LifecycleFailure("catalog-owned-packaged-api-export-invalid")
     (root / "contract.json").write_text(contract["contractSnapshot"])
@@ -897,13 +911,11 @@ def execute(root, distribution, java, tool, fixture_root, *, source_commit, maxi
     setup.value["operations"].append({"operation": "scope-bootstrap", "status": "started",
                                       "bootstrapManifestDigest": runtime.digest_file(fixture_root / "bootstrap/bootstrap.properties")})
     setup.save()
-    result = subprocess.run([str(java / "bin/java"), "-cp", str(tool / "lib/*"),
+    policies = native_json([str(java / "bin/java"), "-cp", str(tool / "lib/*"),
         "network.crypta.platform.appcatalog.FederatedCatalogScopeBootstrap", str(node_root / "data/node/apps"),
         str(fixture_root / "bootstrap"), raw_digest(runtime.digest_file(fixture_root / "bootstrap/bootstrap.properties"))],
-        capture_output=True, timeout=remaining_budget(budget, 60), check=False, env=java_environment)
-    if result.returncode != 0 or len(result.stdout) > 65536:
-        raise LifecycleFailure("catalog-owned-scope-bootstrap-failed")
-    policies = json.loads(result.stdout)
+        java_environment, timeout=remaining_budget(budget, 60), output_limit=65536,
+        error="catalog-owned-scope-bootstrap-failed")
     scoped = {row["catalogId"]: row for row in policies["catalogs"]}
     for native in projections.values():
         if any(raw_digest(scoped[native["catalogId"]][field + "Sha256"]) !=
@@ -964,13 +976,11 @@ def execute_secondary_role(root, role, distribution, java, tool, fixture_root, m
     setup = Journal(root / "setup.json", plan_digest)
     setup.value["operations"].append({"operation": "scope-bootstrap", "role": role, "status": "started"})
     setup.save()
-    native = subprocess.run([str(java / "bin/java"), "-cp", str(tool / "lib/*"),
+    policies = native_json([str(java / "bin/java"), "-cp", str(tool / "lib/*"),
         "network.crypta.platform.appcatalog.FederatedCatalogScopeBootstrap", str(node_root / "data/node/apps"),
         str(fixture_root / "bootstrap"), raw_digest(runtime.digest_file(fixture_root / "bootstrap/bootstrap.properties"))],
-        capture_output=True, timeout=remaining_budget(budget, 60), check=False, env=java_environment)
-    if native.returncode != 0 or len(native.stdout) > 65536:
-        raise LifecycleFailure("catalog-owned-scope-bootstrap-failed")
-    policies = json.loads(native.stdout)
+        java_environment, timeout=remaining_budget(budget, 60), output_limit=65536,
+        error="catalog-owned-scope-bootstrap-failed")
     if policies != expected_policies:
         raise LifecycleFailure("catalog-owned-secondary-scoped-policy-substituted")
     setup.value["operations"][0].update(status="complete", resultDigest=digest(policies))

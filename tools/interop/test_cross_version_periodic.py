@@ -79,18 +79,19 @@ class PeriodicObservationTest(unittest.TestCase):
         supervisor.plan = {'nodes': [{'role': 'candidate-sender', 'appDigests': []}]}
         supervisor.private = {'nodes': {'candidate-sender': {'apps': []}}}
         root = Path(directory)
+        supervisor.root = root
         (root / 'node/run').mkdir(parents=True)
         (root / 'java/bin').mkdir(parents=True)
         (root / 'java/bin/java').write_bytes(b'selected java')
-        identity = {'supervisor': {'pid': 7}, 'jvm': {'pid': 8}}
-        path = root / 'node/run/process-identity.json'
-        path.write_text(json.dumps(identity))
-        path.chmod(0o600)
+        identity = {'supervisor': {'pid': 7}, 'jvm': {'pid': 8}, 'configDigest': 'sha256:' + '1' * 64}
+        runtime.write_process_identity(root, 'candidate-sender', identity)
         node = SimpleNamespace(runtime=SimpleNamespace(config_file=root / 'node/config/cryptad.ini'),
                                identity=identity['supervisor'], java_home=root / 'java')
         supervisor.nodes = {'candidate-sender': node}
         return supervisor
 
+    @unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),
+                         'requires Linux O_PATH and genuine procfs')
     def test_resource_sample_is_collected_without_optional_budget_stress_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             supervisor = self.resource_fixture(directory)
@@ -102,6 +103,8 @@ class PeriodicObservationTest(unittest.TestCase):
             self.assertEqual(1, supervisor.resource_observations['sampleCount'])
             self.assertEqual(7, supervisor.observed_operations)
 
+    @unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),
+                         'requires Linux O_PATH and genuine procfs')
     def test_missing_or_zero_required_metric_stays_partial_without_eligible_sample(self):
         for missing in (None, 0):
             with tempfile.TemporaryDirectory() as directory:

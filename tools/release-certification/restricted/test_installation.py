@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, mock_open, patch
 
 SPEC = importlib.util.spec_from_file_location('installation', Path(__file__).with_name('installation.py'))
 installation = importlib.util.module_from_spec(SPEC)
@@ -26,6 +26,52 @@ class InstallationArtifactTests(unittest.TestCase):
     def test_exact_bundle_survives_verification(self):
         result = installation.verify_bundle(self.root, self.identity, protected=False)
         self.assertEqual(self.manifest, result)
+
+    def test_historical_manifest_with_test_seam_remains_readable_but_cannot_be_deployed(self):
+        (self.root / 'test_legacy.py').write_text('LEGACY = True\n')
+        manifest = {**self.manifest, 'files': installation.inventory(self.root)}
+        raw = installation.encode(manifest)
+        (self.root / installation.MANIFEST).write_bytes(raw)
+        verified = installation.verify_bundle(self.root, installation.digest(raw), protected=False)
+        self.assertEqual(manifest, verified)
+        with self.assertRaisesRegex(installation.InstallationError, 'production-export-policy-required'):
+            installation.required_entrypoints(verified)
+
+    def test_current_manifest_cannot_admit_a_declared_test_seam(self):
+        for name in sorted(installation.TEST_SEAMS | {'test_hook.py', 'package/tests/helper.py',
+                                                       'tools/probe/test/helper.py'}):
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                bundle = Path(temporary)
+                member = bundle / name
+                member.parent.mkdir(parents=True, exist_ok=True)
+                member.write_text('SYNTHETIC_PROVIDER = True\n')
+                manifest = {'schemaVersion': 2, 'kind': 'cryptad-restricted-installation',
+                            'exportPolicy': installation.EXPORT_POLICY, 'sourceCommit': 'a' * 40,
+                            'files': installation.inventory(bundle)}
+                raw = installation.encode(manifest)
+                (bundle / installation.MANIFEST).write_bytes(raw)
+                with self.assertRaisesRegex(installation.InstallationError, 'production-export-policy-required'):
+                    installation.verify_bundle(bundle, installation.digest(raw), protected=False)
+
+    def test_current_manifest_rejects_unknown_export_policy(self):
+        manifest = {**self.manifest, 'schemaVersion': 2, 'exportPolicy': 'include-test-seams'}
+        raw = installation.encode(manifest)
+        (self.root / installation.MANIFEST).write_bytes(raw)
+        with self.assertRaisesRegex(installation.InstallationError, 'production-export-policy-required'):
+            installation.verify_bundle(self.root, installation.digest(raw), protected=False)
+
+    def test_install_and_upgrade_reject_historical_bundle_before_host_mutation(self):
+        config = {'bundleIdentity': self.identity}
+        for operation in (installation.install, installation.upgrade):
+            with self.subTest(operation=operation.__name__), \
+                    patch.object(installation.os, 'geteuid', return_value=0), \
+                    patch.object(installation, 'configuration', return_value=config), \
+                    patch.object(installation, 'dependencies'), \
+                    patch.object(installation, 'verify_profile'), \
+                    patch.object(installation, 'host_assets') as assets:
+                with self.assertRaisesRegex(installation.InstallationError, 'production-export-policy-required'):
+                    operation(self.root)
+                assets.assert_not_called()
 
     def test_modified_import_is_rejected(self):
         (self.root / 'module.py').write_text('VALUE = 2\n')
@@ -83,6 +129,34 @@ class InstallationArtifactTests(unittest.TestCase):
         self.assertEqual(result['sourceCommit'], verified['sourceCommit'])
         self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
         self.assertFalse((output / '.git').exists())
+
+    def test_plan_excludes_committed_test_seams_without_changing_selected_blob_bytes(self):
+        source = self.committed_source()
+        excluded = sorted(installation.TEST_SEAMS | {'test_module.py', 'package/tests/helper.py',
+                                                      'tools/example/test/provider.py'})
+        resource = 'platform-devtools/src/test/resources/runtime.db'
+        for name in [*excluded, resource]:
+            path = source / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'REVIEWED-FIXTURE\x00\xff')
+        subprocess.run(['git', 'add', '.'], cwd=source, check=True)
+        subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '--quiet', '-m', 'seam fixtures'], cwd=source, check=True)
+        revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source).decode().strip()
+        # A clean-looking working-tree substitution must not enter the selected production blob.
+        subprocess.run(['git', 'update-index', '--assume-unchanged', 'module.py'], cwd=source, check=True)
+        (source / 'module.py').write_bytes(b'UNREVIEWED')
+        output = self.root / 'bundle'
+        result = installation.plan(source, output)
+        manifest = installation.verify_bundle(output, result['bundleIdentity'], protected=False)
+        self.assertEqual(2, manifest['schemaVersion'])
+        self.assertEqual(installation.EXPORT_POLICY, manifest['exportPolicy'])
+        self.assertEqual(revision, manifest['sourceCommit'])
+        self.assertEqual({'module.py', resource}, set(manifest['files']))
+        self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
+        self.assertEqual(b'REVIEWED-FIXTURE\x00\xff', (output / resource).read_bytes())
+        for name in excluded:
+            self.assertFalse((output / name).exists(), name)
 
     def test_assume_unchanged_substitution_does_not_enter_bundle(self):
         source = self.committed_source()
@@ -359,6 +433,25 @@ class StartupDependencyTests(unittest.TestCase):
                 installation.dependency_inventory()
 
 
+class SudoPolicyDenialTests(unittest.TestCase):
+    def test_explicit_denial_survives_administrator_listing_exit_status_difference(self):
+        message = b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n'
+        for status in (0, 1):
+            with self.subTest(status=status):
+                installation.verify_sudo_denial(subprocess.CompletedProcess([], status, message, b''))
+
+    def test_success_grants_mixed_output_and_unknown_failures_are_not_denials(self):
+        message = b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n'
+        for status, output, error in ((0, b'', b''), (1, b'', message), (2, message, b''),
+                (0, message + b'    (ALL) NOPASSWD: ALL\n', b''),
+                (0, b'User cryptad-runner may run the following commands\n', b''),
+                (0, message, b'sudo: policy error\n'), (0, b'\xff', b''),
+                (0, message.replace(b'cryptad-runner', b'other-user'), b'')):
+            with self.subTest(status=status, output=output, error=error), \
+                    self.assertRaisesRegex(installation.InstallationError, 'sudo-or-policy-unknown'):
+                installation.verify_sudo_denial(subprocess.CompletedProcess([], status, output, error))
+
+
 class HostAssetTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -459,7 +552,7 @@ class RoleGroupTests(unittest.TestCase):
 class UnitLoadPathTests(unittest.TestCase):
     UNITS = ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service')
 
-    def verify(self, *, override=None, properties=None):
+    def verify(self, *, override=None, properties=None, ambient='cap_setuid'):
         def show(arguments, **kwargs):
             unit = arguments[2]
             if arguments[3] == '--property=FragmentPath,DropInPaths':
@@ -471,7 +564,8 @@ class UnitLoadPathTests(unittest.TestCase):
                     'ProtectSystem': 'strict', 'ProtectHome': 'yes', 'PrivateTmp': 'yes',
                     'PrivateDevices': 'yes', 'LimitCORE': '0',
                     'FragmentPath': '/etc/systemd/system/cryptad-restricted.service',
-                    'CapabilityBoundingSet': ' '.join(installation.CONTROLLER_CAPABILITIES)}
+                    'CapabilityBoundingSet': ' '.join(installation.CONTROLLER_CAPABILITIES),
+                    'AmbientCapabilities': ambient}
             return subprocess.CompletedProcess(arguments, 0,
                 stdout=''.join(key + '=' + value + '\n' for key, value in values.items()).encode())
         with patch.object(installation, 'verify_host_assets'), \
@@ -481,6 +575,12 @@ class UnitLoadPathTests(unittest.TestCase):
 
     def test_exact_loaded_fragments_without_dropins_pass(self):
         self.verify()
+
+    def test_missing_or_extra_controller_ambient_authority_is_rejected(self):
+        for value in ('', 'cap_setuid cap_sys_ptrace', 'cap_setpcap'):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    installation.InstallationError, 'effective-unit-mismatch'):
+                self.verify(ambient=value)
 
     def test_persistent_and_runtime_control_overrides_reject_every_unit(self):
         for unit in self.UNITS:
@@ -506,6 +606,41 @@ class ControllerCapabilityTests(unittest.TestCase):
         value = next(line.split('=', 1)[1] for line in unit.read_text().splitlines()
                      if line.startswith('CapabilityBoundingSet='))
         installation.verify_controller_capabilities(value.lower())
+
+    def test_shipped_controller_retains_only_setuid_in_ambient(self):
+        unit = Path(__file__).parent / 'systemd/cryptad-restricted.service'
+        values = [line for line in unit.read_text().splitlines() if line.startswith('AmbientCapabilities=')]
+        self.assertEqual(['AmbientCapabilities=CAP_SETUID'], values)
+
+    def kernel_state(self, **changes):
+        fields = {'Name': 'python3', 'Uid': '0 0 0 0', 'Gid': '0 0 0 0', 'NoNewPrivs': '1',
+                  'CapEff': '00000000000001eb', 'CapPrm': '00000000000001eb',
+                  'CapBnd': '00000000000001eb', 'CapAmb': '0000000000000080',
+                  'CapInh': '0000000000000180'}
+        fields.update(changes)
+        return ''.join(name + ':\t' + value + '\n' for name, value in fields.items()).encode()
+
+    def test_observed_reference_kernel_state_is_accepted(self):
+        with patch('builtins.open', mock_open(read_data=self.kernel_state())) as opened:
+            installation.verify_controller_process()
+        opened.assert_called_once_with('/proc/self/status', 'rb')
+        opened().read.assert_called_once_with(65537)
+
+    def test_bounding_only_authority_and_altered_kernel_credentials_are_rejected(self):
+        for changes in ({'CapEff': '000000000000016b'}, {'CapPrm': '000000000000016b'},
+                {'CapBnd': '00000000002001eb'}, {'CapAmb': '0000000000000000'},
+                {'CapInh': '0000000000000080'}, {'Uid': '0 62001 0 0'},
+                {'Gid': '0 62001 0 0'}, {'NoNewPrivs': '0'}):
+            with self.subTest(changes=changes), \
+                    patch('builtins.open', mock_open(read_data=self.kernel_state(**changes))), \
+                    self.assertRaisesRegex(installation.InstallationError, 'kernel-state-invalid'):
+                installation.verify_controller_process()
+
+    def test_malformed_duplicate_and_oversized_kernel_state_is_rejected(self):
+        for raw in (b'', b'x' * 65537, b'\xff', self.kernel_state() + b'Uid: 0 0 0 0\n'):
+            with self.subTest(size=len(raw)), patch('builtins.open', mock_open(read_data=raw)), \
+                    self.assertRaisesRegex(installation.InstallationError, 'kernel-state-invalid'):
+                installation.verify_controller_process()
 
     def test_missing_cleanup_capability_rejects_activation(self):
         value = ' '.join(installation.CONTROLLER_CAPABILITIES - {'cap_kill'})
@@ -574,21 +709,48 @@ class PolkitTests(unittest.TestCase):
             change.start()
             self.addCleanup(change.stop)
 
-    def probe(self, code):
+    def probe(self, code, *, readiness=b'R', changed_subject=False, query_error=None):
+        import grp
+        from types import SimpleNamespace
         authority = subprocess.CompletedProcess([], 0, b'ActiveState=active\nMainPID=123\nExecStart={ path=/usr/lib/polkit-1/polkitd ; }\n')
-        # Exercise the actual runner-side loop with a synthetic pkcheck executable. This is
-        # a result-handling regression, not a systemd/UID isolation claim.
-        helper = self.root / 'pkcheck'
-        helper.write_text('#!/usr/bin/python3\nimport sys\nsys.exit(' + str(code) + ')\n')
-        helper.chmod(0o755)
-        real_run = subprocess.run
+        process = Mock(pid=4321)
+        process.poll.return_value = None
+        process.stdout.fileno.return_value = 42
+        self.process = process
+        self.queries = []
         def dispatch(args, **kwargs):
             if args[0] == '/usr/bin/systemctl':
                 return authority
-            script = args[args.index('-c') + 1].replace('/usr/bin/pkcheck', str(helper))
-            return real_run(['/usr/bin/python3', '-I', '-S', '-c', script, args[-1]], **kwargs)
-        with patch.object(installation.subprocess, 'run', side_effect=dispatch):
-            installation.verify_polkit(self.runner)
+            self.assertEqual('/usr/bin/pkcheck', args[0])
+            self.assertEqual(['--process', '4321,12345,62001'], args[1:3])
+            self.assertNotIn('--allow-user-interaction', args)
+            self.assertLessEqual(kwargs['timeout'], 5)
+            self.queries.append(args)
+            if query_error:
+                raise query_error
+            return subprocess.CompletedProcess(args, code)
+        subjects = ['4321,12345,62001', '4321,12346,62001'] if changed_subject else None
+        with patch.object(installation.os, 'geteuid', return_value=0), \
+                patch.object(installation.os, 'getgrouplist', return_value=[62001, 62005]), \
+                patch.object(grp, 'getgrnam', return_value=SimpleNamespace(gr_gid=62005)), \
+                patch.object(installation.subprocess, 'Popen', return_value=process) as launch, \
+                patch.object(installation.subprocess, 'run', side_effect=dispatch), \
+                patch.object(installation.select, 'select', return_value=([process.stdout], [], [])), \
+                patch.object(installation.os, 'read', return_value=readiness), \
+                patch.object(installation, 'polkit_owned_subject', side_effect=subjects,
+                             return_value='4321,12345,62001'):
+            try:
+                installation.verify_polkit(self.runner)
+            finally:
+                process.stdin.close.assert_called_once_with()
+                process.wait.assert_called_once_with(timeout=2)
+                process.stdout.close.assert_called_once_with()
+                command = launch.call_args.args[0]
+                self.assertEqual('/usr/bin/setpriv', command[0])
+                self.assertIn('--reuid=62001', command)
+                self.assertIn('--groups=62001,62005', command)
+                self.assertIn('--bounding-set=-all', command)
+                self.assertNotIn('/usr/bin/pkcheck', command)
 
     def test_authority_denial_and_authentication_required_pass_without_interaction(self):
         for code in (1, 2):
@@ -603,9 +765,62 @@ class PolkitTests(unittest.TestCase):
 
     def test_stopped_or_replaced_authority_rejects(self):
         for output in (b'ActiveState=inactive\nMainPID=0\n', b'ActiveState=active\nMainPID=123\nExecStart={ path=/unreviewed/polkitd ; }\n'):
-            with patch.object(installation.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, output)), \
+            with patch.object(installation.os, 'geteuid', return_value=0), \
+                    patch.object(installation.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, output)), \
                     self.assertRaisesRegex(installation.InstallationError, 'authority-unreviewed'):
                 installation.verify_polkit(self.runner)
+
+    def test_readiness_failure_reaps_subject_before_any_query(self):
+        with self.assertRaisesRegex(installation.InstallationError, 'polkit-or-authority-unknown'):
+            self.probe(2, readiness=b'')
+        self.assertEqual([], self.queries)
+
+    def test_changed_subject_is_rejected_before_query(self):
+        with self.assertRaisesRegex(installation.InstallationError, 'polkit-or-authority-unknown'):
+            self.probe(2, changed_subject=True)
+        self.assertEqual([], self.queries)
+
+    def test_query_exception_reaps_subject(self):
+        with self.assertRaisesRegex(installation.InstallationError, 'polkit-or-authority-unknown'):
+            self.probe(2, query_error=subprocess.TimeoutExpired('pkcheck', 5))
+
+    def test_overall_deadline_rejects_before_queries_and_reaps_subject(self):
+        with patch.object(installation.time, 'monotonic', side_effect=[0, 61]), \
+                self.assertRaisesRegex(installation.InstallationError, 'polkit-or-authority-unknown'):
+            self.probe(2)
+        self.assertEqual([], self.queries)
+
+    def test_nonroot_caller_rejected_before_starting_process(self):
+        with patch.object(installation.os, 'geteuid', return_value=62001), \
+                patch.object(installation.subprocess, 'Popen') as launch, \
+                self.assertRaisesRegex(installation.InstallationError, 'trusted-caller-required'):
+            installation.verify_polkit(self.runner)
+        launch.assert_not_called()
+
+    def subject(self, *, uid=62001, after_ticks='12345', live=True):
+        process = Mock(pid=4321)
+        process.poll.return_value = None if live else 0
+        status = f'Uid: {uid} {uid} {uid} {uid}\nGid: 62001 62001 62001 62001\nGroups: 62001 62005\nNoNewPrivs: 1\n'
+        status += ''.join(field + ': 0000000000000000\n' for field in
+                          ('CapEff', 'CapPrm', 'CapAmb', 'CapInh', 'CapBnd'))
+        def stat(ticks):
+            return '4321 (python3) ' + ' '.join(['S', *(['0'] * 18), ticks])
+        with patch.object(Path, 'read_text', side_effect=[stat('12345'), status, stat(after_ticks)]):
+            return installation.polkit_owned_subject(process, self.runner, {62001, 62005})
+
+    def test_kernel_subject_binds_owned_pid_ticks_and_runner_uid(self):
+        self.assertEqual('4321,12345,62001', self.subject())
+        for options in ({'uid': 0}, {'after_ticks': '12346'}, {'live': False}):
+            with self.subTest(options=options), self.assertRaises(installation.InstallationError):
+                self.subject(**options)
+
+    def test_subject_cleanup_escalates_only_owned_process_after_timeout(self):
+        process = Mock()
+        process.wait.side_effect = [subprocess.TimeoutExpired('subject', 2), 0]
+        installation.stop_polkit_subject(process)
+        process.kill.assert_called_once_with()
+        self.assertEqual(2, process.wait.call_count)
+        process.stdout.close.assert_called_once_with()
 
 
 class ExecutionPublicationTests(unittest.TestCase):

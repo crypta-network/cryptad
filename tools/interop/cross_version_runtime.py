@@ -40,6 +40,7 @@ MAX_FILES = 30000
 MAX_EXPANDED = 8 * 1024**3
 MAX_LOG_BYTES = 64 * 1024**2
 MEASUREMENT_CLEANUP_HEADROOM_SECONDS = 240
+RUNTIME_LAYOUT_VERSION = 2
 
 _mail_spec = importlib.util.spec_from_file_location("cryptad_mail_demo", Path(__file__).resolve().parents[1] / "mail-prototype/two_node_demo.py")
 mail_demo = importlib.util.module_from_spec(_mail_spec)
@@ -48,6 +49,143 @@ _mail_spec.loader.exec_module(mail_demo)
 
 class RuntimeFailure(Exception):
     """A fixed public error code; never include private exception text."""
+
+
+@contextmanager
+def _identity_directory(path, *, private_from=None, create=False):
+    """Pin every directory component and reject replaced or symlinked ancestors."""
+    path = Path(path).absolute()
+    if ".." in path.parts:
+        raise RuntimeFailure("private-process-identity-path-invalid")
+    descriptors = []
+    links = []
+    try:
+        descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(descriptor)
+        current = Path(path.anchor)
+        for name in path.parts[1:]:
+            current /= name
+            private = private_from is not None and current.is_relative_to(private_from)
+            if private and create:
+                try:
+                    os.mkdir(name, mode=0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            descriptors.append(child)
+            info = os.fstat(child)
+            if private and (info.st_uid != os.geteuid() or info.st_mode & 0o077):
+                raise RuntimeFailure("private-process-identity-directory-invalid")
+            links.append((descriptor, name, info.st_dev, info.st_ino,
+                          (info.st_uid, info.st_gid, info.st_mode) if private else None))
+            descriptor = child
+        yield descriptor
+        for parent, name, device, inode, private_metadata in links:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != (device, inode):
+                raise RuntimeFailure("private-process-identity-ancestor-replaced")
+            if private_metadata is not None and (info.st_uid, info.st_gid, info.st_mode) != private_metadata:
+                raise RuntimeFailure("private-process-identity-directory-changed")
+    except OSError:
+        raise RuntimeFailure("private-process-identity-unavailable") from None
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _read_identity_at(directory, name):
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate-identity-key")
+            result[key] = value
+        return result
+
+    def reject_number(value):
+        raise ValueError("noninteger-identity-number")
+
+    if not hasattr(os, "O_PATH"):
+        raise RuntimeFailure("private-process-identity-linux-required")
+    # Pin without invoking a device's open method. Only a validated regular leaf may be
+    # reopened through our own descriptor on the reference profile's genuine procfs.
+    pinned = os.open(name, os.O_PATH | os.O_NOFOLLOW, dir_fd=directory)
+    descriptor = None
+    try:
+        before = os.fstat(pinned)
+        if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                or before.st_uid != os.geteuid() or before.st_mode & 0o077
+                or not 1 <= before.st_size <= 4096):
+            raise RuntimeFailure("private-process-identity-file-invalid")
+        fields = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                               info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        descriptor = os.open("/proc/self/fd/" + str(pinned), os.O_RDONLY | os.O_NONBLOCK)
+        if fields(before) != fields(os.fstat(descriptor)):
+            raise RuntimeFailure("private-process-identity-file-replaced")
+        payload = os.read(descriptor, 4097)
+        after = os.fstat(descriptor)
+        retained = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        if fields(before) != fields(after) or fields(after) != fields(retained) or len(payload) != before.st_size:
+            raise RuntimeFailure("private-process-identity-file-replaced")
+        try:
+            value = json.loads(payload, object_pairs_hook=unique_object,
+                               parse_constant=reject_number, parse_float=reject_number)
+        except (ValueError, UnicodeError, RecursionError):
+            raise RuntimeFailure("private-process-identity-json-invalid") from None
+        if (not isinstance(value, dict) or set(value) != {"supervisor", "jvm", "configDigest"}
+                or not isinstance(value["supervisor"], dict) or not isinstance(value["jvm"], dict)
+                or not isinstance(value["configDigest"], str)):
+            raise RuntimeFailure("private-process-identity-shape-invalid")
+        return value
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(pinned)
+
+
+def read_process_identity(root, role):
+    """Read expected identity exclusively from the prospective observer control layout."""
+    if role not in ROLES:
+        raise RuntimeFailure("private-process-identity-role-invalid")
+    runtime_root = Path(root).absolute() / "runtime"
+    with _identity_directory(runtime_root / "control/processes", private_from=runtime_root) as directory:
+        return _read_identity_at(directory, role + ".json")
+
+
+def write_process_identity(root, role, identity):
+    """Atomically retain an observer-created expectation outside node-owned storage.
+
+    This layout alone makes no claim of UID or network isolation.
+    """
+    if role not in ROLES:
+        raise RuntimeFailure("private-process-identity-role-invalid")
+    payload = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    if len(payload) > 4096:
+        raise RuntimeFailure("private-process-identity-size-invalid")
+    runtime_root = Path(root).absolute() / "runtime"
+    with _identity_directory(runtime_root / "control/processes", private_from=runtime_root, create=True) as directory:
+        temporary = role + "-" + uuid.uuid4().hex + ".new"
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(payload)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, role + ".json", src_dir_fd=directory, dst_dir_fd=directory)
+            os.fsync(directory)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+
+
+def read_historical_process_identity(node_root):
+    """Read legacy bytes for source comparison only; never use this for live continuation."""
+    with _identity_directory(Path(node_root) / "run") as directory:
+        identity = _read_identity_at(directory, "process-identity.json")
+    return {"runtimeLayoutVersion": 1, "isolation": "not-established", "identity": identity}
 
 
 def digest_file(path):
@@ -1223,9 +1361,7 @@ class Supervisor:
                 raise RuntimeFailure("owned-java-process-identity-unobserved")
         node.identity = process_identity(process.pid)
         private_identity = {"supervisor": node.identity, "jvm": descendants[0], "configDigest": config_digest}
-        path = node_root / "run/process-identity.json"
-        path.write_text(json.dumps(private_identity, sort_keys=True), encoding="utf-8")
-        path.chmod(0o600)
+        write_process_identity(self.root, role, private_identity)
         self.save_state()
         return node
 
@@ -1262,7 +1398,8 @@ class Supervisor:
                            "reference": node.reference, "configDigest": node.config_digest,
                            "configFileDigest": digest_file(node.runtime.config_file),
                            "packageTreeDigest": self.package_identities[role]}
-        state = {"schemaVersion": 1, "experimentId": self.plan["experimentId"],
+        state = {"schemaVersion": 1, "runtimeLayoutVersion": RUNTIME_LAYOUT_VERSION,
+                 "experimentId": self.plan["experimentId"],
                  "planDigest": canonical_digest(self.plan), "ownerNonce": self.owner_nonce,
                  "nodes": nodes, "outcomes": self.outcomes, "operations": self.operations,
                  "observedOperations": self.observed_operations,
@@ -1290,6 +1427,8 @@ class Supervisor:
                 or digest_file(path) != self.authorization["runtimeStateDigest"]):
             raise RuntimeFailure("runtime-continuation-state-mismatch")
         state = json.loads(path.read_text())
+        if type(state.get("runtimeLayoutVersion")) is not int or state["runtimeLayoutVersion"] != RUNTIME_LAYOUT_VERSION:
+            raise RuntimeFailure("runtime-continuation-layout-not-admitted")
         owner = json.loads((self.root / "runtime/owner.json").read_text())
         if (state.get("experimentId") != self.plan["experimentId"]
                 or state.get("planDigest") != canonical_digest(self.plan)
@@ -1850,10 +1989,7 @@ class Supervisor:
         with fixed_helper_imports():
             module = fixed_helper("cross_version_budget")
             for role, node in self.nodes.items():
-                path = node.runtime.config_file.parent.parent / "run/process-identity.json"
-                if path.is_symlink() or path.stat().st_mode & 0o077 or path.stat().st_uid != os.getuid() or path.stat().st_size > 4096:
-                    raise RuntimeFailure("resource-private-jvm-identity-invalid")
-                identity = json.loads(path.read_bytes())
+                identity = read_process_identity(self.root, role)
                 if identity.get("supervisor") != node.identity:
                     raise RuntimeFailure("resource-private-supervisor-substituted")
                 measured[role] = module.measure_resources(identity["jvm"], self.apps.get((role, "feed-reader")),
@@ -2335,6 +2471,7 @@ def runner_identity():
     else:
         commit = installed['sourceCommit']
     names = ["tools/interop/cross_version_runtime.py", "tools/mail-prototype/two_node_demo.py",
+             "tools/interop/runtime_snapshot.py",
              "tools/release-certification/cryptad_certification/cross_version_evidence.py",
              "tools/release-certification/cryptad_certification/cross_version_command.py",
              "tools/interop/cross_version_app_scenarios.py",

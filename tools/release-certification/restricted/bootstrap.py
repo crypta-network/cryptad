@@ -57,6 +57,7 @@ def main():
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(verifier.parent))
     import installation
+    installation.verify_controller_process()
     result = installation.verify()
     sys.path.insert(0, str(ROOT / 'tools/release-certification/protected'))
     import restricted_worker
