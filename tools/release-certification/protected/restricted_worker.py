@@ -7,6 +7,7 @@ are never accepted back as authority. Unknown intent is retained and never autom
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 import datetime as dt
 import hashlib
 import os
@@ -35,6 +36,7 @@ STATE = Path('/var/lib/cryptad-restricted')
 OPERATIONS = STATE / 'operations'
 CREDENTIAL = Path('/etc/cryptad-certification/restricted-provider.json')
 MAX_RECORD = 1024 * 1024
+_DEADLINE = ContextVar('restricted_request_deadline', default=None)
 POLICIES = {
     'maintenance-prepare': ('.github/workflows/stable-1.0-maintenance-release.yml', 'freeze-and-validate'),
     'maintenance-validate': ('.github/workflows/stable-1.0-maintenance-release.yml', 'freeze-and-validate'),
@@ -229,15 +231,23 @@ def authenticate_job(record, environment):
 
 
 def dispatch(record, root):
+    if record['method'] in {'supervisor-authorize', 'supervisor-start', 'supervisor-checkpoint'}:
+        raise BoundaryError('restricted-workload-observer-boundary-unavailable')
     from restricted_native import owning_boundary
-    with owning_boundary():
+    deadline = _DEADLINE.get()
+    if deadline is None:
+        raise BoundaryError('restricted-operation-deadline-required')
+    def check():
+        require_not_revoked(root, record)
+        if time.monotonic() >= deadline or now() >= utc(record['expiresAt']):
+            raise BoundaryError('restricted-operation-expired')
+    context = {'operationId': record['handle'],
+               'registrationDigest': digest(read(root / 'registration.json')),
+               'bundleIdentity': record['bundleIdentity'], 'deadlineMonotonic': deadline}
+    with owning_boundary(context=context, check=check):
         if record['method'].startswith('maintenance-'):
             from restricted_maintenance import dispatch as maintenance
             return maintenance(record['method'], root)
-        if record['method'] in {'supervisor-authorize', 'supervisor-start', 'supervisor-checkpoint'}:
-            # The inherited workload still shares its observer's host UID and writable journal.
-            # Do not grant new restricted execution until that separate boundary is implemented.
-            raise BoundaryError('restricted-workload-observer-boundary-unavailable')
         from cross_version_supervisor_authority import dispatch_owned
         return dispatch_owned(record['method'])
 
@@ -248,12 +258,14 @@ def operation_deadline():
     def expired(_signal, _frame):
         raise BoundaryError('restricted-operation-deadline')
     previous = signal.signal(signal.SIGALRM, expired)
+    token = _DEADLINE.set(time.monotonic() + 900)
     signal.setitimer(signal.ITIMER_REAL, 900)
     try:
         yield
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+        _DEADLINE.reset(token)
 
 
 def require_not_revoked(root, record):
@@ -322,22 +334,37 @@ class Worker:
             from restricted_configuration import owning_configuration
             with owning_configuration(record):
                 public = dispatch(record, root)
-        # No payload controls arbitrary public fields: each owner constructs its closed projection.
-        raw = encode(public)
-        if len(raw) > MAX_RESULT - 2048:
-            raise BoundaryError('restricted-result-limit')
-        from cryptad_certification.redaction import scan_value
-        if scan_value(public):
-            raise BoundaryError('restricted-public-projection-rejected')
-        receipt = {'schemaVersion': 1, 'kind': 'restricted-owner-result',
-                   'operationId': record['handle'], 'method': record['method'],
-                   'bundleIdentity': self.bundle_identity, 'resultDigest': digest(raw)}
-        persist(result_path, {'registrationDigest': digest(record_raw), 'receipt': receipt,
-                             'result': public})
-        return {'status': 'complete', 'receipt': receipt, 'result': public}
+            # Revocation and input replacement during work must never become new retained
+            # authority. Native teardown is owned separately and remains permitted on failure.
+            require_not_revoked(root, record)
+            if now() >= utc(record['expiresAt']):
+                raise BoundaryError('restricted-operation-expired')
+            if read(root / 'registration.json') != record_raw:
+                raise BoundaryError('restricted-registration-substituted')
+            check_inputs(record, root)
+            # No payload controls arbitrary public fields: each owner constructs its closed projection.
+            raw = encode(public)
+            if len(raw) > MAX_RESULT - 2048:
+                raise BoundaryError('restricted-result-limit')
+            from cryptad_certification.redaction import scan_value
+            if scan_value(public):
+                raise BoundaryError('restricted-public-projection-rejected')
+            receipt = {'schemaVersion': 1, 'kind': 'restricted-owner-result',
+                       'operationId': record['handle'], 'method': record['method'],
+                       'bundleIdentity': self.bundle_identity, 'resultDigest': digest(raw)}
+            # Revalidate after potentially lengthy input/semantic checks, immediately before
+            # durable authority. This is a local recheck, not atomic serialization with admin writes.
+            require_not_revoked(root, record)
+            deadline = _DEADLINE.get()
+            if (deadline is None or time.monotonic() >= deadline
+                    or now() >= utc(record['expiresAt'])):
+                raise BoundaryError('restricted-operation-expired')
+            persist(result_path, {'registrationDigest': digest(record_raw), 'receipt': receipt,
+                                 'result': public})
+            return {'status': 'complete', 'receipt': receipt, 'result': public}
 
 
-def main(*, bundle_identity):
+def main(*, bundle_identity, ready=None):
     """Systemd socket activation only; no caller-selected bind path or command options."""
     if (pwd is None or fcntl is None or os.geteuid() != 0 or os.environ.get('LISTEN_PID') != str(os.getpid())
             or os.environ.get('LISTEN_FDS') != '1'):
@@ -350,8 +377,14 @@ def main(*, bundle_identity):
     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     worker = Worker(bundle_identity)
     listener = socket.socket(fileno=3)
-    if listener.family != socket.AF_UNIX or listener.getsockname() != '/run/cryptad-restricted/control.sock':
+    if (listener.family != socket.AF_UNIX
+            or listener.getsockname() != '/run/cryptad-restricted/control.sock'
+            or listener.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM
+            or listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1
+            or os.get_inheritable(3)):
         raise BoundaryError('restricted-socket-activation-required')
+    if ready is not None:
+        ready()
     # One in-flight owner operation, backlog configured by the socket unit, no worker pool.
     last_request = 0.0
     while True:

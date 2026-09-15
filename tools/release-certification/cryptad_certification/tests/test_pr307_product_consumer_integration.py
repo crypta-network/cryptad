@@ -7,6 +7,8 @@ import io
 import datetime as dt
 import zipfile
 import hashlib
+import gzip
+import tarfile
 import copy
 import json
 import os
@@ -31,8 +33,24 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             legacy.ProductConsumerIntegrationTest.setUpClass()
         except unittest.SkipTest:
             raise AssertionError("PR307 native lane prerequisites unavailable") from None
-        except Exception:
-            raise AssertionError("pr307-product-integration-prerequisite-failed") from None
+        except Exception as error:
+            sink = getattr(cls, 'private_diagnostic_sink', None)
+            if sink is not None:
+                sink(error)
+            locations = []
+            for _ in range(8):
+                trace = error.__traceback__
+                if trace is None:
+                    break
+                while trace.tb_next is not None:
+                    trace = trace.tb_next
+                locations.append(type(error).__name__ + ":" + Path(trace.tb_frame.f_code.co_filename).name
+                                 + ":" + str(trace.tb_lineno))
+                error = error.__cause__ or error.__context__
+                if error is None:
+                    break
+            raise AssertionError("pr307-product-integration-prerequisite-failed:"
+                                 + ",".join(locations)) from None
         cls.addClassCleanup(legacy.ProductConsumerIntegrationTest.tearDownClass)
 
     def test_real_native_producer_cms_handoff_and_private_product_consumer(self):
@@ -43,6 +61,9 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             self.addCleanup(harness.tearDown)
             self._execute(harness)
         except Exception as error:
+            sink = getattr(type(self), 'private_diagnostic_sink', None)
+            if sink is not None:
+                sink(error)
             locations = []
             for _ in range(8):
                 trace = error.__traceback__
@@ -127,6 +148,36 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         with patch.object(h, "cohort", return_value=base_inputs):
             freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
 
+        self._stage = "native-wrong-product-rejection"
+        # Export a genuinely different compiled API implementation through the exact package
+        # native operation. Its valid output cannot be rebound to the selected product archive.
+        # This package is synthetic hostile input, not an authenticated original product.
+        wrong_package = h.work / "wrong-selected-product.tar.gz"
+        tar_bytes = io.BytesIO()
+        with tarfile.open(fileobj=tar_bytes, mode="w") as archive:
+            member = tarfile.TarInfo("lib/cryptad.jar")
+            member.mode, member.size = 0o644, len(h.previous_api)
+            member.uname = member.gname = "root"
+            archive.addfile(member, io.BytesIO(h.previous_api))
+        wrong_package.write_bytes(gzip.compress(tar_bytes.getvalue(), mtime=0))
+        import restricted_native
+        with patch.object(restricted_native, "run", wraps=restricted_native.run) as native_attempt:
+            wrong_snapshot, _wrong_registry, wrong_executable = legacy.metadata.observe_package(
+                wrong_package, h.java, h.work)
+        native_attempt.assert_called_once()
+        self.assertEqual("package-api", native_attempt.call_args.kwargs["operation"])
+        selected_snapshot = (package.parent / "runtime" / legacy.metadata.MEMBER_NAMES["snapshot"]).read_bytes()
+        self.assertNotEqual(legacy.metadata.read_json(selected_snapshot)["contract"],
+                            legacy.metadata.read_json(wrong_snapshot)["contract"])
+        # Keep the selected archive's exact public identity, while attempting to substitute
+        # the other executable's native observation. The unmodified owning verifier reopens
+        # the selected archive and rejects this relationship before any capability is minted.
+        with self.assertRaisesRegex(legacy.metadata.RuntimeMetadataError,
+                                    "^runtime-metadata-executable-substituted$"):
+            legacy.metadata.verify_package_identity(package, {
+                "portable": legacy.metadata.identity(package, 1024 * 1024 * 1024),
+                "executable": wrong_executable})
+
         def cohort():
             base_value, path, _inventory, _origin, product_root = base_inputs
             value = copy.deepcopy(base_value)
@@ -162,6 +213,27 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
 
         self._stage = "private-projection"
         _cohort, policy_path, inventory, projection_origin, _products = cohort()
+        # The exact signed A1 bytes and scoped public keys are valid; selecting a different
+        # app must still fail through the real Java verifier and production Python owner.
+        # This synthetic original transport does not supply a production registration/receipt.
+        self._stage = "native-wrong-app-rejection"
+        with patch.object(legacy.projection, "_run_maintenance_native",
+                wraps=legacy.projection._run_maintenance_native) as native_attempt, \
+                self.assertRaises(legacy.projection.ProjectionFailure):
+            legacy.projection.produce(h.fetch(source, h.work), {
+                "catalog": "A1/catalog.properties", "catalogSignature": "A1/cryptad-app-catalog.signature",
+                "bundle": "A1/bundle.zip", "submission": "A1/submission.zip"},
+                exporter=h.tool / "bin/crypta-app",
+                exporter_digest=legacy.products.file_digest(h.tool / "bin/crypta-app"),
+                app_id="wrong-app", catalog_key_id="catalog-a",
+                catalog_keys=fixture / "catalog-keys.properties",
+                publisher_keys=fixture / "publisher-keys.properties",
+                reviewer_keys=fixture / "reviewer-keys.properties",
+                private_root=h.work, java_home=h.java, maintenance_tool_root=h.tool,
+                contract_path=snapshot, baseline_registry_path=registry,
+                federation_selection=authenticated, selection_id="a1",
+                source=next(row for row in _cohort["sources"] if row["appId"] == "pr305-fixture"))
+        native_attempt.assert_called_once()
         from test_maintenance_runtime_companion import CompanionTransportTest
         import maintenance_runtime_companion as companion
         from maintenance_runtime_transfer import copy_runtime

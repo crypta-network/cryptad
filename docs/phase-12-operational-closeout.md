@@ -1,5 +1,10 @@
 # Phase 12 acceptance audit and operational closeout
 
+The bounded [PR-312 installed/native remediation](pr-312-installed-resolver-keyless-native.md)
+records startup and finite-verifier work separately from the full observer/workload boundary.
+Its local and disposable observations do not change mandatory requirement membership, the
+reviewed cutoff, original evidence requirements or the retained incomplete Phase 12 decision.
+
 The [PR-310 restricted boundary work](pr-310-restricted-worker-private-resolver.md) adds
 installed socket/maintenance/native adapters but remains **implementation-incomplete**. The
 observer/workload UID and storage split is missing, new supervisor execution is blocked, and the

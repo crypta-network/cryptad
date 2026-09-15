@@ -1239,7 +1239,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify original v2 signed-artifact declarations for complete current-eight/historical-seven cohort with publisher/catalog/review/API/product bindings; broad v1 summaries are insufficient.",
-            "digest": "sha256:a0ac4a1ccd0134a5eee8ce297f55eeea97874cfc5c2367716ceb15c6d2483bcc",
+            "digest": "sha256:6cd144d8be822808a20424bbb76bc444bd281991fe01bc9d8e0a431e7e2a7a09",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           },
           {
@@ -1269,7 +1269,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:a1030f5edc71b1ebcc2d015e2829ed5e04184e24f322c2b0bf7790756d26366a",
+            "digest": "sha256:cbb937fc507b1a28bd1aab29d6d65cb6d1181495bdd59aec540d84945c595634",
             "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
           },
           {
@@ -1374,7 +1374,7 @@
         "sourceEvidence": [
           {
             "assertion": "Implement and authenticate selected federation signed-artifact projection under scoped installed-origin and trust authority; selected projection is currently unsupported.",
-            "digest": "sha256:a0ac4a1ccd0134a5eee8ce297f55eeea97874cfc5c2367716ceb15c6d2483bcc",
+            "digest": "sha256:6cd144d8be822808a20424bbb76bc444bd281991fe01bc9d8e0a431e7e2a7a09",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           },
           {
@@ -1404,7 +1404,7 @@
           },
           {
             "assertion": "PR-305 native scoped selected subject and independently authenticated private original inventory; v2/v3 authority semantics and full required cohort retained.",
-            "digest": "sha256:a1030f5edc71b1ebcc2d015e2829ed5e04184e24f322c2b0bf7790756d26366a",
+            "digest": "sha256:cbb937fc507b1a28bd1aab29d6d65cb6d1181495bdd59aec540d84945c595634",
             "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
           },
           {
@@ -2283,7 +2283,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:a1030f5edc71b1ebcc2d015e2829ed5e04184e24f322c2b0bf7790756d26366a",
+            "digest": "sha256:cbb937fc507b1a28bd1aab29d6d65cb6d1181495bdd59aec540d84945c595634",
             "path": "tools/release-certification/protected/maintenance_runtime_metadata.py"
           },
           {
@@ -2293,7 +2293,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:a0ac4a1ccd0134a5eee8ce297f55eeea97874cfc5c2367716ceb15c6d2483bcc",
+            "digest": "sha256:6cd144d8be822808a20424bbb76bc444bd281991fe01bc9d8e0a431e7e2a7a09",
             "path": "tools/release-certification/protected/app_subject_projection.py"
           },
           {
@@ -2461,7 +2461,7 @@
           },
           {
             "assertion": "PR-307 exact sealed-runtime transport, original/native authority and private consumer boundary. Source/test bytes establish a reviewable implementation, not original protected execution or phase completion.",
-            "digest": "sha256:60d7f964c65df02cd1135504587c9ce8180aa9fd6033766e265f740ecebc6160",
+            "digest": "sha256:383dd26f284bf25c642936376d94db317e90ea0c633db75e6261dd3cd9217e13",
             "path": "tools/release-certification/cryptad_certification/tests/test_pr307_product_consumer_integration.py"
           },
           {
