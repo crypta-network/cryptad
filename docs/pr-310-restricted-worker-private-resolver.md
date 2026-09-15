@@ -503,3 +503,31 @@ inventory gap, but a Python verifier cannot retroactively authenticate code that
 during its own startup. Interpreter, loader and startup-path integrity remain part of the
 administrator-provisioned initial trusted computing base and must be checked out of band before
 execution. These offline regressions and read-only inventory checks do not prove deployed isolation.
+
+### Review correction: vendor Polkit policy and live authorization
+
+The approved image inventory now includes `/usr/share/polkit-1` (vendor rules and action
+policies), `/usr/lib/polkit-1`, the Polkit client and authentication helper, its vendor service
+unit and PAM configuration, and the D-Bus daemon/configuration and activation definitions.
+Local Polkit configuration, legacy authority state and service overrides have explicit
+presence/absence records. Changes require a new administrator-reviewed image inventory;
+existing local-policy rejection remains in force. The dedicated Debian 13 reference requires
+`polkitd` installed and running from `/usr/lib/polkit-1/polkitd` before verification.
+
+Verification queries the actual authority through `pkcheck` after dropping to the runner UID
+and provisioned groups. The live subject is identified by PID, kernel process start time and
+UID. It checks all actions in the installed systemd policy and explicit lifecycle verbs for
+the controller, socket and soak units. It does not invoke any unit lifecycle operation. Grants,
+unknown responses, missing authorities and timeouts block activation. Exit codes 1 (denied)
+and 2 (authentication required but unavailable without interaction) are accepted; the probe
+never enables interaction or an authentication agent. See the
+[Debian pkcheck contract](https://manpages.debian.org/trixie/polkitd/pkcheck.1.en.html) and
+[Debian Polkit package paths](https://packages.debian.org/trixie/amd64/polkitd/filelist).
+
+These are finite probes of the current subject and authority, not proof about every possible
+rule predicate or session. Out-of-band image review must exclude runner grants, alternate
+bus/authority routing, interactive login and credentials usable for administrator authentication.
+Administrators must restart the authority after approved runtime changes so its running code
+matches the reviewed image. No actual authority or multi-UID service probe was executed in the
+development container: offline regressions cover inventory mutations and the real probe loop's
+handling of synthetic denial, grant and error responses. The disposable VM lane remains required.

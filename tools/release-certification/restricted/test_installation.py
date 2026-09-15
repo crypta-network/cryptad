@@ -321,6 +321,26 @@ class StartupDependencyTests(unittest.TestCase):
         self.write(self.config, b'changed plugin configuration\n')
         self.assertNotEqual(configured, installation.dependency_inventory())
 
+    def test_polkit_vendor_rule_and_authority_mutations_change_inventory(self):
+        vendor = self.root / 'vendor'
+        vendor.mkdir(mode=0o755)
+        runtime = self.root / 'polkitd'
+        self.write(runtime, b'reviewed daemon')
+        rule = vendor / '50-default.rules'
+        self.write(rule, b'reviewed vendor rule')
+        with patch.object(installation, 'DEPENDENCY_ROOTS', (str(vendor),)), \
+                patch.object(installation, 'DEPENDENCY_FILES', (str(runtime),)):
+            approved = installation.dependency_inventory()
+            self.write(rule, b'grant manage-units to runner')
+            self.assertNotEqual(approved, installation.dependency_inventory())
+            self.write(rule, b'reviewed vendor rule')
+            self.assertEqual(approved, installation.dependency_inventory())
+            self.write(runtime, b'replacement authority')
+            self.assertNotEqual(approved, installation.dependency_inventory())
+            self.write(runtime, b'reviewed daemon')
+            self.write(vendor / '99-grant.rules', b'new grant')
+            self.assertNotEqual(approved, installation.dependency_inventory())
+
     def test_redirected_library_alias_rejects_before_accepting_target_bytes(self):
         target = self.root / 'lib'
         target.mkdir(mode=0o755)
@@ -537,3 +557,51 @@ class UpgradeShutdownTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PolkitTests(unittest.TestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.policy = self.root / 'systemd.policy'
+        self.policy.write_text('<policyconfig><action id="org.freedesktop.systemd1.manage-units"/>'
+                               '<action id="org.freedesktop.systemd1.manage-unit-files"/></policyconfig>')
+        self.runner = SimpleNamespace(pw_uid=62001, pw_gid=62001)
+        for change in (patch.object(installation, 'POLKIT_POLICY', self.policy),):
+            change.start()
+            self.addCleanup(change.stop)
+
+    def probe(self, code):
+        authority = subprocess.CompletedProcess([], 0, b'ActiveState=active\nMainPID=123\nExecStart={ path=/usr/lib/polkit-1/polkitd ; }\n')
+        # Exercise the actual runner-side loop with a synthetic pkcheck executable. This is
+        # a result-handling regression, not a systemd/UID isolation claim.
+        helper = self.root / 'pkcheck'
+        helper.write_text('#!/usr/bin/python3\nimport sys\nsys.exit(' + str(code) + ')\n')
+        helper.chmod(0o755)
+        real_run = subprocess.run
+        def dispatch(args, **kwargs):
+            if args[0] == '/usr/bin/systemctl':
+                return authority
+            script = args[args.index('-c') + 1].replace('/usr/bin/pkcheck', str(helper))
+            return real_run(['/usr/bin/python3', '-I', '-S', '-c', script, args[-1]], **kwargs)
+        with patch.object(installation.subprocess, 'run', side_effect=dispatch):
+            installation.verify_polkit(self.runner)
+
+    def test_authority_denial_and_authentication_required_pass_without_interaction(self):
+        for code in (1, 2):
+            with self.subTest(code=code):
+                self.probe(code)
+
+    def test_grant_and_unknown_authority_responses_reject_activation(self):
+        for code in (0, 3, 126, 127):
+            with self.subTest(code=code), self.assertRaisesRegex(
+                    installation.InstallationError, 'polkit-or-authority-unknown'):
+                self.probe(code)
+
+    def test_stopped_or_replaced_authority_rejects(self):
+        for output in (b'ActiveState=inactive\nMainPID=0\n', b'ActiveState=active\nMainPID=123\nExecStart={ path=/unreviewed/polkitd ; }\n'):
+            with patch.object(installation.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, output)), \
+                    self.assertRaisesRegex(installation.InstallationError, 'authority-unreviewed'):
+                installation.verify_polkit(self.runner)

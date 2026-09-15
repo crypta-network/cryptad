@@ -24,14 +24,24 @@ APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
 EXECUTION = Path('/etc/cryptad-certification/restricted-execution.json')
 MANIFEST = '.restricted-manifest.json'
 MAX_FILE = 512 * 1024 * 1024
-DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo')
-OPTIONAL_DEPENDENCY_PATHS = ('/usr/lib/python313.zip', '/etc/sudo.conf')
+DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
+                    '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
+OPTIONAL_DEPENDENCY_PATHS = ('/usr/lib/python313.zip', '/etc/sudo.conf',
+    '/etc/polkit-1', '/var/lib/polkit-1/localauthority', '/etc/pam.d/polkit-1',
+    '/etc/systemd/system/polkit.service', '/run/systemd/system/polkit.service',
+    *(root + '/polkit.service.d' for root in ('/etc/systemd/system', '/run/systemd/system',
+        '/usr/lib/systemd/system', '/etc/systemd/system.control', '/run/systemd/system.control')))
+POLKIT_POLICY = Path('/usr/share/polkit-1/actions/org.freedesktop.systemd1.policy')
 LIBRARY_ALIASES = {'/lib': '/usr/lib', '/lib64': '/usr/lib64'}
 # Linux commands used by the reviewed Gradle-generated crypta-app launcher. xargs uses echo
 # when no command is supplied. Shell builtins are covered by sh's resolved interpreter bytes.
 NATIVE_LAUNCHER_FILES = ('/usr/bin/sh', '/usr/bin/ls', '/usr/bin/uname', '/usr/bin/xargs',
                          '/usr/bin/echo', '/usr/bin/sed', '/usr/bin/tr')
 DEPENDENCY_FILES = ('/usr/bin/python3', '/usr/bin/python3.13', '/usr/bin/openssl',
+                    '/usr/bin/dbus-daemon', '/usr/bin/pkcheck', '/usr/lib/systemd/system/polkit.service',
+                    '/usr/share/dbus-1/system-services/org.freedesktop.PolicyKit1.service',
+                    '/usr/share/dbus-1/system.d/org.freedesktop.PolicyKit1.conf',
+                    '/usr/lib/pam.d/polkit-1', '/usr/libexec/polkit-agent-helper-1',
                     '/usr/bin/bwrap', '/usr/bin/prlimit', '/usr/bin/gh', '/usr/bin/git',
                     '/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles',
                     '/usr/bin/systemctl', '/usr/bin/sudo', '/usr/bin/setpriv', '/usr/bin/true', '/usr/lib/systemd/systemd',
@@ -366,6 +376,56 @@ def verify_role_processes(roles, allowed):
                 raise InstallationError('restricted-role-process-capabilities')
 
 
+def verify_polkit(runner):
+    """Query the actual authority with a live runner-UID subject; never execute unit changes.
+
+    Finite probes supplement the administrator's review of the inventoried rules. They cannot
+    prove denial for every possible rule predicate, session, unit name or future policy state.
+    """
+    import xml.etree.ElementTree as ET
+    authority = subprocess.run(['/usr/bin/systemctl', 'show', 'polkit.service',
+        '--property=ActiveState,MainPID,ExecStart'], capture_output=True, timeout=10, check=True,
+        env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+    state = dict(line.split('=', 1) for line in authority.stdout.decode().splitlines() if '=' in line)
+    pid = state.get('MainPID', '')
+    if (state.get('ActiveState') != 'active' or not pid.isdecimal() or int(pid) <= 0
+            or not state.get('ExecStart', '').startswith('{ path=/usr/lib/polkit-1/polkitd ; ')
+            or state['ExecStart'].count('path=') != 1):
+        raise InstallationError('restricted-polkit-authority-unreviewed')
+    actions = sorted({item.attrib['id'] for item in ET.fromstring(POLKIT_POLICY.read_bytes()).findall('action')})
+    if (not actions or len(actions) > 64 or 'org.freedesktop.systemd1.manage-units' not in actions
+            or any(not re.fullmatch(r'org\.freedesktop\.systemd1\.[a-z-]+', action) for action in actions)):
+        raise InstallationError('restricted-polkit-actions-unknown')
+    requests = [[action] for action in actions]
+    for unit in ('cryptad-restricted.service', 'cryptad-restricted.socket', 'cryptad-cross-version-soak.service'):
+        for verb in ('start', 'stop', 'restart', 'reload', 'try-restart', 'reload-or-restart', 'kill'):
+            requests.append(['org.freedesktop.systemd1.manage-units', '--detail', 'unit', unit,
+                             '--detail', 'verb', verb])
+    # Keep this subject alive while pkcheck queries PID,start-time,UID. No shell, agent,
+    # inherited environment or authentication interaction is involved.
+    script = """import json,os,pathlib,subprocess,sys
+start = pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19]
+subject = f'{os.getpid()},{start},{os.getuid()}'
+for request in json.loads(sys.argv[1]):
+    result = subprocess.run(['/usr/bin/pkcheck','--process',subject,'--action-id',*request],
+        stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+        env={'PATH':'/usr/bin:/bin','LANG':'C'},timeout=5)
+    if result.returncode not in (1,2):
+        sys.exit(1)
+"""
+    try:
+        result = subprocess.run(['/usr/bin/setpriv', '--reuid=' + str(runner.pw_uid),
+            '--regid=' + str(runner.pw_gid), '--init-groups', '--no-new-privs',
+            '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--',
+            '/usr/bin/python3', '-I', '-S', '-c', script, json.dumps(requests)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise InstallationError('restricted-runner-polkit-or-authority-unknown') from exc
+    if result.returncode != 0:
+        raise InstallationError('restricted-runner-polkit-or-authority-unknown')
+
+
 def verify_profile(config):
     import pwd
     if 'VERSION_ID="13"' not in Path('/etc/os-release').read_text():
@@ -394,6 +454,7 @@ def verify_profile(config):
         root = Path(directory)
         if root.exists() and any(path.is_file() for path in root.rglob('*')):
             raise InstallationError('restricted-local-polkit-policy-unreviewed')
+    verify_polkit(runner)
     native = pwd.getpwnam('cryptad-native')
     # Exercise the mandatory kernel user/mount/PID/network namespaces after a real host UID
     # drop. The only executable is the image-pinned true binary, and no private path is mounted.
