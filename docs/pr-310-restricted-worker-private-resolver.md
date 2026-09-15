@@ -562,8 +562,8 @@ The committed tool is
 [`measure_runtime_image.py`](../tools/release-certification/restricted/measure_runtime_image.py).
 It requires a separate read-only mount and no writable submounts. It compares every recorded
 runtime dependency's bytes, link text, type, ownership and executable mode using the measuring
-environment's runtime, checks recorded absences, and rejects additional files in the complete
-Python standard-library tree. Image-absolute symlinks resolve inside the target image, not into
+environment's runtime, checks recorded absences, and rejects additional entries in every recursively inventoried
+dependency directory (including native libraries, plugins, policies and the Python standard library). Image-absolute symlinks resolve inside the target image, not into
 the measuring host. The target's `hashlib` or other code is never imported. Any mismatch blocks
 the administrator's install/start procedure; investigate it rather than regenerating approval.
 
@@ -600,3 +600,23 @@ Offline tests check public record mode, unchanged private-directory mode, reject
 publication parents and continued rejection of changed dependencies. The disposable harness now
 also requires the actual soak UID to read the new identity while denying writes to it and reads of
 the private approval before starting the socket. That real-UID probe remains unexecuted here.
+
+
+### Review corrections: complete directory rosters and absent loader hook
+
+Offline image measurement now compares the immediate-child roster of every recursively
+inventoried directory. Checking each level closes the full tree, including empty directories,
+new `glibc-hwcaps` search directories, native libraries, sudo plugins, Polkit rules, TLS roots
+and resolved symlink-target directories. Recorded absent paths are not counted as existing
+children. `/usr/lib` itself remains the existing non-recursive usr-merge alias anchor; its
+selected dependency subtrees are closed without scanning unrelated private data there.
+
+The supported image forbids any `/etc/ld.so.preload` entry. Inventory uses `lstat()` so a dangling
+link is rejected even before its target exists, and records an explicit approved absence.
+External measurement requires that absence record and rejects any hook entry without executing
+target-image code. Older inventories lacking the absence record must undergo administrator
+review and renewal; there is no compatibility fallback that accepts an unknown loader hook.
+
+Regressions cover added native/plugin/policy/TLS entries, empty directories, optional absences,
+and both dangling loader links and subsequently created targets. These remain offline checks;
+no target image or production boot was measured during this review fix.

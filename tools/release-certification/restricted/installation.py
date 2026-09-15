@@ -296,9 +296,18 @@ def dependency_inventory():
             add(path)
     inventory_library_aliases(records)
     # A loader hook is privileged code. The supported reference has none.
-    if Path('/etc/ld.so.preload').exists():
-        raise InstallationError('restricted-loader-preload-unsupported')
+    require_no_loader_preload(Path('/etc/ld.so.preload'))
+    records['/etc/ld.so.preload'] = {'absent': True}
     return records
+
+
+def require_no_loader_preload(path):
+    """Reject any loader-hook entry, including a link whose target does not yet exist."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    raise InstallationError('restricted-loader-preload-unsupported')
 
 
 def host_plan(bundle_identity):

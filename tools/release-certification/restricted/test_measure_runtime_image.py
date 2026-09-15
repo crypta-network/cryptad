@@ -21,6 +21,7 @@ class RuntimeImageTests(unittest.TestCase):
             (self.root / name[1:]).mkdir(parents=True, mode=0o755)
             self.records[name] = {'directory': True}
         self.records[measurement.ZIP] = {'absent': True}
+        self.records[measurement.PRELOAD] = {'absent': True}
         for name in ('/usr/lib/python3.13/hashlib.py', '/usr/lib/python3.13/json.py',
                      '/usr/bin/python3.13'):
             self.write(name, b'approved fixture; never executed\n')
@@ -98,3 +99,38 @@ class RuntimeImageTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, 'separate-measuring-environment-required'):
             measurement.main()
         mounts.assert_not_called()
+
+    def test_added_native_library_plugin_policy_and_empty_directory_reject(self):
+        for directory in ('/usr/lib/x86_64-linux-gnu', '/usr/libexec/sudo',
+                          '/usr/share/polkit-1/rules.d', '/etc/ssl/certs'):
+            path = self.root / directory[1:]
+            path.mkdir(parents=True, mode=0o755)
+            self.records[directory] = {'directory': True}
+            measurement.measure(self.root, self.records)
+            addition = path / 'glibc-hwcaps'
+            addition.mkdir(mode=0o755)
+            for populated in (False, True):
+                if populated:
+                    (addition / 'unapproved.so').write_bytes(b'unapproved native code')
+                with self.subTest(directory=directory, populated=populated), self.assertRaisesRegex(
+                        ValueError, 'directory-roster-mismatch'):
+                    measurement.measure(self.root, self.records)
+            (addition / 'unapproved.so').unlink()
+            addition.rmdir()
+
+    def test_absent_optional_entries_do_not_count_as_directory_children(self):
+        directory = self.root / 'etc'
+        directory.mkdir(mode=0o755)
+        self.records['/etc'] = {'directory': True}
+        measurement.measure(self.root, self.records)
+
+    def test_dangling_loader_hook_and_later_target_creation_reject(self):
+        (self.root / 'etc').mkdir(mode=0o755)
+        hook = self.root / 'etc/ld.so.preload'
+        hook.symlink_to('/tmp/runner-preload')
+        with self.assertRaises(ValueError):
+            measurement.measure(self.root, self.records)
+        (self.root / 'tmp').mkdir(mode=0o755)
+        (self.root / 'tmp/runner-preload').write_bytes(b'unapproved loader config')
+        with self.assertRaises(ValueError):
+            measurement.measure(self.root, self.records)

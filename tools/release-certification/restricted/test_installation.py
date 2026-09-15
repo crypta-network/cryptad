@@ -298,6 +298,7 @@ class StartupDependencyTests(unittest.TestCase):
 
     def test_zip_absence_addition_and_replacement_change_inventory(self):
         absent = installation.dependency_inventory()
+        self.assertEqual({'absent': True}, absent['/etc/ld.so.preload'])
         self.assertEqual({'absent': True}, absent[str(self.zip)])
         self.write(self.zip, b'synthetic zip bytes')
         present = installation.dependency_inventory()
@@ -643,3 +644,22 @@ class ExecutionPublicationTests(unittest.TestCase):
             installation.publish_execution_identity(self.result, self.config)
         self.assertFalse(self.execution.exists())
         self.assertEqual(0o700, self.public.stat().st_mode & 0o777)
+
+
+class LoaderPreloadTests(unittest.TestCase):
+    def test_absence_passes_but_regular_and_dangling_entries_reject(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'ld.so.preload'
+            installation.require_no_loader_preload(path)
+            path.write_bytes(b'loader config')
+            with self.assertRaisesRegex(installation.InstallationError, 'preload-unsupported'):
+                installation.require_no_loader_preload(path)
+            path.unlink()
+            target = Path(directory) / 'runner-controlled'
+            path.symlink_to(target)
+            self.assertFalse(path.exists())
+            with self.assertRaisesRegex(installation.InstallationError, 'preload-unsupported'):
+                installation.require_no_loader_preload(path)
+            target.write_bytes(b'later-created config')
+            with self.assertRaisesRegex(installation.InstallationError, 'preload-unsupported'):
+                installation.require_no_loader_preload(path)

@@ -15,6 +15,7 @@ import sys
 
 PYTHON_ROOT = '/usr/lib/python3.13'
 ZIP = '/usr/lib/python313.zip'
+PRELOAD = '/etc/ld.so.preload'
 
 
 def image_path(root, name):
@@ -52,9 +53,10 @@ def image_path(root, name):
 
 def measure(root, records):
     """Compare approved dependency bytes using only the measuring environment's runtime."""
-    required = {PYTHON_ROOT, ZIP, '/usr/bin/python3', '/usr/bin/python3.13'}
+    required = {PYTHON_ROOT, ZIP, PRELOAD, '/usr/bin/python3', '/usr/bin/python3.13'}
     if (not isinstance(records, dict) or not required <= records.keys()
-            or records[PYTHON_ROOT] != {'directory': True}):
+            or records[PYTHON_ROOT] != {'directory': True}
+            or records[PRELOAD] != {'absent': True}):
         raise ValueError('runtime-image-inventory-incomplete')
     for name, expected in records.items():
         path = image_path(root, name)
@@ -82,15 +84,22 @@ def measure(root, records):
                     raise ValueError('runtime-image-file-mismatch')
         else:
             raise ValueError('runtime-image-record-mismatch')
-    # Additional importable files must fail, even if every previously recorded hash matches.
-    python = image_path(root, PYTHON_ROOT)
-    actual = {PYTHON_ROOT}
-    for directory, dirs, files in os.walk(python, followlinks=False):
-        for name in dirs + files:
-            actual.add('/' + (Path(directory) / name).relative_to(root).as_posix())
-    expected = {name for name in records if name == PYTHON_ROOT or name.startswith(PYTHON_ROOT + '/')}
-    if actual != expected:
-        raise ValueError('runtime-image-python-roster-mismatch')
+    # Each inventoried directory is recursively closed by installation.add(). Compare its
+    # immediate children: doing this for every directory covers every level, including empty
+    # directories and resolved link targets, without following links into the measuring host.
+    # /usr/lib alone is a non-recursive usr-merge alias anchor (inventory_library_aliases).
+    # Its selected subtrees remain closed; unrelated /usr/lib data was never inventoried.
+    children = {}
+    for name, record in records.items():
+        if record == {'absent': True}:
+            continue
+        children.setdefault(str(Path(name).parent), set()).add(Path(name).name)
+    for name, expected in records.items():
+        if expected != {'directory': True} or name == '/usr/lib':
+            continue
+        actual = {entry.name for entry in image_path(root, name).iterdir()}
+        if actual != children.get(name, set()):
+            raise ValueError('runtime-image-directory-roster-mismatch')
 
 
 def main():
