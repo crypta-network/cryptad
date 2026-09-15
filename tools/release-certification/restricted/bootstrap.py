@@ -1,7 +1,9 @@
 #!/usr/bin/python3
-"""Trusted -I -S bootstrap; the administrator-provisioned interpreter/loader is initial TCB.
+"""Trusted -I -S bootstrap; the ENTIRE externally measured Python runtime is initial TCB.
 
-Verify the installed verifier itself before importing it. Its complete source/dependency checks
+All stdlib imports below already execute trusted code, before any local verification.
+The offline measure_runtime_image.py procedure must precede starting this image.
+Verify the installed application verifier itself before importing it. Its complete source/dependency checks
 then precede imports of credential-using owners. No checkout or caller environment supplies code.
 """
 import hashlib

@@ -1,5 +1,8 @@
 #!/usr/bin/python3
-"""Fixed tokenless observer bootstrap; verify the installed closure before owner imports.
+"""Fixed tokenless observer bootstrap; the entire Python runtime is initial trusted code.
+
+Offline image measurement must precede startup; these imports cannot verify themselves.
+Verify the installed application closure before owner imports.
 
 This entrypoint grants no workload isolation or operation authority. The existing root activation,
 original evidence and service cgroup checks still admit the selected observer execution.

@@ -41,8 +41,8 @@ OpenJDK 25.0.4.1. Those are observed tool versions, **not a tested VM image**. T
 account has unrestricted sudo; this host is not the restricted reference. The disposable probe
 returns exit 78 here, without provisioning.
 
-Trust includes the host kernel/service manager, out-of-band administrator, provisioned interpreter
-and loader, reviewed immutable helper/dependency closure, original source authorities and required
+Trust includes the host kernel/service manager, out-of-band administrator, externally measured complete Python runtime
+(interpreter, standard library, extension modules, zip paths and loader dependencies), reviewed immutable helper/dependency closure, original source authorities and required
 credential issuers. Host root and hypervisor compromise are outside the claim. Treat runner code,
 checkout/action/cache contents, artifacts, candidate Java, input JSON, filenames and child outputs
 as potentially hostile. An administrator-controlled image and runner group are prerequisites;
@@ -69,6 +69,9 @@ The implementation is in
 [`tools/release-certification/restricted`](../tools/release-certification/restricted/installation.py).
 Default preparation and verification do not create users or install services. Use a separately
 reviewed clean committed checkout; local uncommitted changes cannot be an approved installation.
+Before any target-image Python execution, complete the offline runtime measurement below. Run
+`host-plan` only on an independently trusted golden image to prepare the administrator-reviewed
+reference inventory; regenerating approval from the image under investigation is not verification.
 
 ```bash
 python3 -I -S tools/release-certification/restricted/installation.py plan \
@@ -122,9 +125,10 @@ It installs units but does not start the socket or workload. The administrator a
 profile. Never install keys in an ordinary PR runner environment.
 
 `-I -S` removes Python environment/user/site startup hooks; it cannot validate the interpreter
-before that interpreter runs. The provisioned interpreter/loader is initial TCB. Bootstrap checks
-the verifier bytes before import, then the complete helper source and approved runtime dependency
-inventory before sensitive imports. Environment and inherited descriptors are reset. The inventory
+before that interpreter runs or authenticate standard-library modules already imported. The
+entire externally measured Python runtime is initial TCB. Bootstrap checks the application
+verifier bytes before importing it, then checks helper source and dependency inventory before
+owner imports. These in-process checks cannot detect a malicious runtime that falsifies them. Environment and inherited descriptors are reset. The inventory
 includes fixed executables, Python and ELF/library trees, symlink targets and loader configuration.
 Approved JDK/tool identities remain independently checked by existing native owners; raw distro JDK
 symlink trees are not substitutes for the existing approved materialized JDK contract.
@@ -500,9 +504,9 @@ follow all of `/usr/lib`, which would include unrelated private data such as `ss
 
 Python's zip import location participates in startup even with `-I -S`. Recording it closes an
 inventory gap, but a Python verifier cannot retroactively authenticate code that already ran
-during its own startup. Interpreter, loader and startup-path integrity remain part of the
-administrator-provisioned initial trusted computing base and must be checked out of band before
-execution. These offline regressions and read-only inventory checks do not prove deployed isolation.
+during its own startup. The entire Python runtime, including all standard-library modules, extension modules, zip
+paths and loader dependencies, is initial trusted code and must be measured externally before
+execution using the procedure below. These offline regressions and read-only inventory checks do not prove deployed isolation.
 
 ### Review correction: vendor Polkit policy and live authorization
 
@@ -531,3 +535,47 @@ Administrators must restart the authority after approved runtime changes so its 
 matches the reviewed image. No actual authority or multi-UID service probe was executed in the
 development container: offline regressions cover inventory mutations and the real probe loop's
 handling of synthetic denial, grant and error responses. The disposable VM lane remains required.
+
+
+### Review correction: externally measure the complete initial Python runtime
+
+`bootstrap.py` imports `hashlib`, `json`, `pathlib` and their dependencies before it can verify
+application code. Those imports are already privileged execution. The same limitation applies
+to installer and observer Python entrypoints. Their later inventory checks are not a defense
+against a substituted runtime and must never be presented as authenticating their own imports.
+
+The administrator must obtain the reviewed dependency inventory from an independently trusted
+golden image, preserve its independently approved identity outside the target image, and perform
+this check from separately trusted rescue media or an administrator VM. Shut down the target VM,
+mount its disk read-only at `/mnt/cryptad-image` (including any separate `/usr` filesystem), and
+keep the reviewed tool and inventory on the trusted measuring environment. Do not boot the target,
+chroot into it, use its Python/libraries, or provision provider credentials before this check.
+Disk attachment and mounting remain explicit administrator operations; the tool does neither.
+
+```bash
+/usr/bin/python3 -I -S /root/reviewed-tools/measure_runtime_image.py \
+  --image-root /mnt/cryptad-image \
+  --approved-inventory /root/approved/cryptad-image-review.json
+```
+
+The committed tool is
+[`measure_runtime_image.py`](../tools/release-certification/restricted/measure_runtime_image.py).
+It requires a separate read-only mount and no writable submounts. It compares every recorded
+runtime dependency's bytes, link text, type, ownership and executable mode using the measuring
+environment's runtime, checks recorded absences, and rejects additional files in the complete
+Python standard-library tree. Image-absolute symlinks resolve inside the target image, not into
+the measuring host. The target's `hashlib` or other code is never imported. Any mismatch blocks
+the administrator's install/start procedure; investigate it rather than regenerating approval.
+
+Keep the measured runtime under administrator-only control from measurement through boot and
+operation; repeat offline measurement after image updates before provisioning credentials or
+restarting private services. The measuring OS, its complete runtime and tools, reviewed expected
+inventory, and custody of the stopped image are explicit initial trust prerequisites. This tool
+does not provide secure/measured boot, prevent an administrator from changing bytes after checking,
+or produce an activation capability. No job-supplied measurement flag grants access. Without
+that external trust and custody, the private-host deployment is unsupported; Python self-checks
+cannot repair it. A verified production boot chain remains unobserved.
+
+Offline regressions exercise exact comparison, malicious stdlib substitutions with non-executed
+canaries, additional modules/zip files, missing runtime records and confined absolute links.
+No real image was mounted or measured in this coding session.

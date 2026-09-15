@@ -30,6 +30,7 @@ jobs:
       - name: Verify offline installation and native boundary contracts
         run: |
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_installation.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_measure_runtime_image.py'
           python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_native.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_disposable_integration.py'
       - name: Record mandatory reference VM prerequisite gap
