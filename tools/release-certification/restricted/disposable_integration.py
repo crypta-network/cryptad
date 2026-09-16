@@ -688,7 +688,37 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
     for case in suite:
         for selected in case:
             selected.product_source_commit = source_commit(product_source_commit)
-    windows, cms_binding = {}, {}
+    windows, cms_binding, consumer_phases = {}, {}, []
+    active_phase = {}
+    # Trusted fixture preparation is outside these independently bounded real owner phases.
+    # A phase owns one deadline through all native calls and its context cleanup.
+    @contextmanager
+    def owner_phase(phase):
+        allowed = ('ordinary-freeze', 'wrong-product', 'wrong-app', 'product-admission',
+                   'substituted-validation', 'original-validation')
+        if phase not in allowed or active_phase:
+            raise ValueError('disposable-owner-phase-invalid')
+        context = {'operationId': secrets.token_hex(32),
+            'registrationDigest': 'sha256:' + hashlib.sha256(b'pr313-synthetic-test-owner').hexdigest(),
+            'bundleIdentity': installation.configuration()['bundleIdentity'],
+            'deadlineMonotonic': time.monotonic() + 900}
+        active_phase.update(context)
+        from pr313_observations import InvocationWindow, quiescent
+        quiescent()
+        window = InvocationWindow() if observe is not None and phase in allowed[3:] else None
+        try:
+            with native.owning_boundary(context=context):
+                yield
+            if time.monotonic() > context['deadlineMonotonic']:
+                raise ValueError('disposable-owner-phase-budget-expired')
+            if window is not None:
+                consumer_phases.append(window.consumer_phase(phase, context['operationId']))
+        finally:
+            try:
+                quiescent()
+            finally:
+                active_phase.clear()
+    integration.EncryptedProductConsumerIntegrationTest.owner_phase = staticmethod(owner_phase)
     if observe is not None:
         from pr313_observations import InvocationWindow, owner
         def begin(case):
@@ -698,13 +728,23 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
             return windows[case].started
         def owned_observation(row):
             operation = row['attackWitness']['operation']
-            if operation == 'maintenance-prepare':
+            if row['caseId'] == 'product-selection-native-consumers':
+                if [item['phase'] for item in consumer_phases] != [
+                        'product-admission', 'substituted-validation', 'original-validation']:
+                    raise ValueError('disposable-consumer-phases-unobserved')
+                last = consumer_phases[-1]
+                package = next(item for item in last['invocations'] if item['operation'] == 'package-api')
+                binding = {**package, 'operationId': last['operationId'],
+                    'startedMonotonicNs': last['startedMonotonicNs'],
+                    'finishedMonotonicNs': last['finishedMonotonicNs']}
+                row = {**row, 'attackWitness': {**row['attackWitness'], 'consumerPhases': consumer_phases}}
+            elif operation == 'maintenance-prepare':
                 if not cms_binding:
                     raise ValueError('disposable-cms-native-context-unobserved')
                 binding = cms_binding
             else:
                 binding = windows.pop(row['caseId']).finish(operation,
-                    owner_operation=native_context['operationId'])
+                    owner_operation=active_phase['operationId'])
             # Closing the exact invocation window is part of observing this assertion.
             row = {**row, 'attackWitness': {**row['attackWitness'],
                 'finishedMonotonicNs': time.monotonic_ns()}}
@@ -724,13 +764,9 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
     import installation
     # This root-owned disposable driver is a synthetic test owner, not the production controller.
     # Only original provider transport is substituted; the installed launch adapter is unchanged.
-    native_context = {'operationId': secrets.token_hex(32),
-        'registrationDigest': 'sha256:' + hashlib.sha256(b'pr312-synthetic-test-owner').hexdigest(),
-        'bundleIdentity': installation.configuration()['bundleIdentity'],
-        'deadlineMonotonic': time.monotonic() + 900}
     descriptor = os.open('/root/pr312-native-consumer.private.log',
                          os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, 'wb') as private_log, native.owning_boundary(context=native_context), \
+    with os.fdopen(descriptor, 'wb') as private_log, \
             patch.object(metadata, 'seal_private_freeze', side_effect=through_socket):
         bounded_log = BoundedPrivateLog(private_log)
         import bounded_process

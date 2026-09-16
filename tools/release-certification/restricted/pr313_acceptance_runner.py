@@ -118,11 +118,15 @@ def groups():
     output = [name for name in acceptance.CASES if name.startswith('hostile-output-')]
     assigned.update(native + output)
     positive = [name for name in acceptance.CASES if name not in assigned]
-    return [('positive', None, positive), ('native-hostile', None, native),
+    selected = [('positive', None, positive), ('native-hostile', None, native),
             ('output-hostile', None, output),
             *(('fault', name, [name]) for name in faults.CASES),
             *(('worker', name, [name]) for name in worker_faults.CASES),
             *(('public', name, [name]) for name in public_faults.CASES)]
+    # Run independent, reclaimable cases before recovery guests whose disks must remain.
+    # This fixed order improves bounded diagnostic progress without dropping any requirement.
+    return ([row for row in selected if row[1] not in RECOVERY_CASES]
+            + [row for row in selected if row[1] in RECOVERY_CASES])
 
 
 def private_json(path):

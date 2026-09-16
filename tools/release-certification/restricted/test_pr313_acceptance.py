@@ -12,6 +12,21 @@ def synthetic_identity():
             for key in acceptance.IDENTITY_FIELDS}
 
 
+def synthetic_consumer_phases():
+    phases = []
+    for index, name in enumerate(acceptance.CONSUMER_PHASES):
+        invocations = [dict(managerInvocationId=f'{index * 10 + 1:032x}', operation='package-api',
+                            stdoutDigest='b' * 64, appId=None)]
+        invocations += [dict(managerInvocationId=f'{index * 10 + number + 2:032x}',
+            operation='app-projection', stdoutDigest='c' * 64, appId=app)
+            for number, app in enumerate(sorted(acceptance.CONSUMER_APPS))]
+        phases.append(dict(phase=name, operationId=f'{index + 1:064x}',
+            startedMonotonicNs=index * 3 + 1, finishedMonotonicNs=index * 3 + 3,
+            invocations=invocations, quiescent=dict(activeState='inactive',
+                cgroupPopulated=False, activeRecordPresent=False)))
+    return phases
+
+
 def synthetic_observation(name, identity):
     """A complete isolated synthetic record; never exported as an installed result."""
     case = acceptance.CASES[name]
@@ -79,9 +94,14 @@ def synthetic_observation(name, identity):
                        semanticOwner='rejected', workerResultPresent=False,
                        publicArtifactNames=['client.log', 'report.json', 'summary.md'],
                        privateCanary='absent', failedArtifacts='private-only')
+    if name == 'product-selection-native-consumers':
+        witness['consumerPhases'] = synthetic_consumer_phases()
+        witness['finishedMonotonicNs'] = 10
     native = kind not in ('reference', 'installation', 'readiness', 'socket') and name not in ('death-active', 'completed-revocation-retry') and not name.startswith(('input-', 'worker-death-'))
     return dict(caseId=name, phase=case.phase, outcome=case.outcome,
-                managerInvocationId='d' * 32 if native else None, attackWitness=witness,
+                managerInvocationId=(witness['consumerPhases'][-1]['invocations'][0]['managerInvocationId']
+                    if name == 'product-selection-native-consumers' else 'd' * 32 if native else None),
+                attackWitness=witness,
                 quiescent=dict(activeState='inactive', cgroupPopulated=False,
                                activeRecordPresent=case.cleanup == 'owned-stop-and-retained-active'))
 
@@ -105,6 +125,51 @@ class FiniteAcceptanceTest(unittest.TestCase):
         self.assertFalse(result['mandatoryIsolationTestSatisfied'])
         self.assertFalse(result['productionAuthorityObserved'])
         self.assertFalse(result['phase12Complete'])
+
+    def test_consumers_require_all_three_independent_bounded_owner_windows(self):
+        identity = synthetic_identity()
+        original = synthetic_observation('product-selection-native-consumers', identity)
+        self.assertEqual('passed', acceptance.observation_status(original, identity))
+        mutations = {
+            'borrow-worker-binding': lambda row: row['attackWitness'].pop('consumerPhases'),
+            'missing-phase': lambda row: row['attackWitness']['consumerPhases'].pop(),
+            'wrong-phase': lambda row: row['attackWitness']['consumerPhases'][0].update(phase='worker-cms'),
+            'reused-owner': lambda row: row['attackWitness']['consumerPhases'][1].update(operationId='1'.zfill(64)),
+            'reused-manager': lambda row: row['attackWitness']['consumerPhases'][1]['invocations'][0].update(
+                managerInvocationId='1'.zfill(32)),
+            'earlier-manager': lambda row: row.update(managerInvocationId='1'.zfill(32)),
+            'earlier-output': lambda row: row['attackWitness'].update(stdoutDigest='e' * 64),
+            'missing-app': lambda row: row['attackWitness']['consumerPhases'][0]['invocations'].pop(),
+            'wrong-app': lambda row: row['attackWitness']['consumerPhases'][1]['invocations'][1].update(appId='external-app'),
+            'duplicate-app': lambda row: row['attackWitness']['consumerPhases'][1]['invocations'][1].update(
+                appId=row['attackWitness']['consumerPhases'][1]['invocations'][2]['appId']),
+            'wrong-operation': lambda row: row['attackWitness']['consumerPhases'][1]['invocations'][0].update(operation='probe'),
+            'overlapping-windows': lambda row: row['attackWitness']['consumerPhases'][1].update(startedMonotonicNs=2),
+            'outside-owner-window': lambda row: row['attackWitness']['consumerPhases'][2].update(finishedMonotonicNs=11),
+            'running-cgroup': lambda row: row['attackWitness']['consumerPhases'][2]['quiescent'].update(cgroupPopulated=True),
+            'private-extra': lambda row: row['attackWitness']['consumerPhases'][0].update(private='PRIVATE-CANARY'),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                changed = copy.deepcopy(original)
+                mutate(changed)
+                self.assertEqual('inconclusive', acceptance.observation_status(changed, identity))
+                attempt = synthetic_attempt()
+                attempt['observations'] = [changed if row['caseId'] == changed['caseId'] else row
+                                           for row in attempt['observations']]
+                result = self.evaluate(attempt)
+                self.assertFalse(result['installedKeylessNativeAcceptanceSatisfied'])
+                self.assertNotIn('PRIVATE-CANARY', json.dumps(result))
+
+    def test_consumer_owner_budget_is_bounded_per_phase(self):
+        record = synthetic_observation('product-selection-native-consumers', synthetic_identity())
+        for index, phase in enumerate(record['attackWitness']['consumerPhases']):
+            phase.update(startedMonotonicNs=1 + index * 901_000_000_000,
+                         finishedMonotonicNs=1 + index * 901_000_000_000 + 900_000_000_000)
+        record['attackWitness']['finishedMonotonicNs'] = 2_703_000_000_000
+        self.assertEqual('passed', acceptance.observation_status(record, synthetic_identity()))
+        record['attackWitness']['consumerPhases'][0]['finishedMonotonicNs'] += 1
+        self.assertEqual('inconclusive', acceptance.observation_status(record, synthetic_identity()))
 
     def test_every_required_case_remains_required_and_visible(self):
         for name in acceptance.CASES:

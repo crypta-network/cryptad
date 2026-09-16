@@ -20,6 +20,12 @@ class AcceptanceRunnerTest(unittest.TestCase):
         self.assertEqual(set(acceptance.CASES), set(rows))
         self.assertEqual(len(rows), len(set(rows)))
 
+    def test_fixed_plan_keeps_all_recovery_guests_after_independent_reclaimable_cases(self):
+        groups = runner.groups()
+        first = next(index for index, row in enumerate(groups) if row[1] in runner.RECOVERY_CASES)
+        self.assertTrue(all(row[1] in runner.RECOVERY_CASES for row in groups[first:]))
+        self.assertEqual(runner.RECOVERY_CASES, {row[1] for row in groups[first:]})
+
     def test_root_rejected_before_any_creation_or_guest(self):
         with patch.object(runner.os, 'geteuid', return_value=0), patch.object(runner.Path, 'mkdir') as mkdir, \
                 patch.object(runner.reference, 'run') as launch:

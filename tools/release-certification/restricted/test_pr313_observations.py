@@ -22,13 +22,13 @@ class ObservationTest(unittest.TestCase):
             _read_output=lambda path, maximum, allow_empty: path.read_bytes())
         self.enterContext(patch.dict(sys.modules, {'restricted_native': self.native}))
 
-    def stage(self, name, *, operation='package-api', owner='a' * 64, manager='b' * 32, stdout=b'actual stdout'):
+    def stage(self, name, *, operation='package-api', owner='a' * 64, manager='b' * 32, stdout=b'actual stdout', app_id=None):
         stage = self.root / name
         stage.mkdir()
         (stage / 'diagnostics').mkdir()
         (stage / 'diagnostics/stdout').write_bytes(stdout)
         (stage / 'invocation.json').write_text(json.dumps({'invocation': name,
-            'owner': {'operationId': owner}, 'spec': {'operation': operation}}))
+            'owner': {'operationId': owner}, 'spec': {'operation': operation, 'options': {'--app-id': app_id}}}))
         (stage / 'manager.json').write_text(json.dumps({'invocationId': manager,
             'controlGroup': self.native.CGROUP}))
         return stage
@@ -87,3 +87,57 @@ class ObservationTest(unittest.TestCase):
         self.state['ActiveState'] = 'active'
         with self.assertRaisesRegex(ValueError, 'quiescence-unobserved'):
             observations.quiescent()
+
+    def consumer_stages(self, *, owner='a' * 64, prefix=''):
+        manager_base = int(owner[:16], 16) * 16 if not prefix else len(list(self.root.iterdir())) * 16
+        self.stage(prefix + 'package', owner=owner, manager=f'{manager_base:032x}')
+        apps = ('queue-manager', 'publisher', 'site-publisher', 'profile-publisher',
+                'social-inbox', 'feed-reader', 'trust-graph', 'mail-prototype', 'pr305-fixture')
+        for index, app in enumerate(apps, 1):
+            self.stage(prefix + app, operation='app-projection', app_id=app, owner=owner, manager=f'{manager_base + index:032x}')
+
+    def test_consumer_phase_binds_every_real_stage_and_complete_signed_app_roster(self):
+        self.stage('stale-worker', owner='c' * 64)
+        window = observations.InvocationWindow()
+        self.consumer_stages()
+        result = window.consumer_phase('product-admission', 'a' * 64)
+        self.assertEqual(10, len(result['invocations']))
+        self.assertEqual('a' * 64, result['operationId'])
+        self.assertFalse(result['quiescent']['activeRecordPresent'])
+        self.assertNotIn('operationId', result['invocations'][0])
+
+    def test_consumer_phase_rejects_missing_signed_app_and_prior_worker_owner(self):
+        window = observations.InvocationWindow()
+        self.consumer_stages()
+        manifest = self.root / 'pr305-fixture/invocation.json'
+        original = json.loads(manifest.read_bytes())
+        changed = json.loads(manifest.read_bytes())
+        changed['spec']['options']['--app-id'] = 'publisher'
+        manifest.write_text(json.dumps(changed))
+        with self.assertRaisesRegex(ValueError, 'roster-invalid'):
+            window.consumer_phase('product-admission', 'a' * 64)
+        original['owner']['operationId'] = 'c' * 64
+        manifest.write_text(json.dumps(original))
+        with self.assertRaisesRegex(ValueError, 'substituted'):
+            window.consumer_phase('product-admission', 'a' * 64)
+
+    def test_whole_consumer_phase_cannot_refresh_its_elapsed_budget(self):
+        window = observations.InvocationWindow()
+        self.consumer_stages()
+        with patch.object(observations.time, 'monotonic_ns', return_value=window.started + 900_000_000_001):
+            with self.assertRaisesRegex(ValueError, 'budget-expired'):
+                window.consumer_phase('original-validation', 'a' * 64)
+
+    def test_three_consumer_windows_each_bind_only_their_own_ten_invocations(self):
+        phases = []
+        for index, phase in enumerate(('product-admission', 'substituted-validation', 'original-validation')):
+            window = observations.InvocationWindow()
+            owner = f'{index + 1:064x}'
+            self.consumer_stages(owner=owner, prefix=phase + '-')
+            phases.append(window.consumer_phase(phase, owner))
+        self.assertEqual(3, len({phase['operationId'] for phase in phases}))
+        for phase in phases:
+            self.assertEqual(1, sum(row['operation'] == 'package-api' for row in phase['invocations']))
+            self.assertEqual(9, sum(row['operation'] == 'app-projection' for row in phase['invocations']))
+        for first, second in zip(phases, phases[1:]):
+            self.assertLess(first['finishedMonotonicNs'], second['startedMonotonicNs'])

@@ -34,11 +34,10 @@ class InvocationWindow:
         self.started = time.monotonic_ns()
         self.finished = None
 
-    def finish(self, operation, *, owner_operation=None):
-        quiescent()
+    def _records(self, owner_operation=None):
+        state = quiescent()
         self.finished = time.monotonic_ns()
-        created = set(self.native.ROOT.iterdir()) - self.before
-        stages = sorted(path for path in created if path.is_dir())
+        stages = sorted(path for path in set(self.native.ROOT.iterdir()) - self.before if path.is_dir())
         if not stages:
             raise ValueError('pr313-owner-native-invocation-unobserved')
         selected = []
@@ -49,17 +48,36 @@ class InvocationWindow:
                     or re.fullmatch('[0-9a-f]{32}', str(manager['invocationId'])) is None
                     or (owner_operation is not None and record['owner']['operationId'] != owner_operation)):
                 raise ValueError('pr313-owner-native-invocation-substituted')
-            if record['spec']['operation'] == operation:
-                selected.append((stage, record, manager))
-        if len(selected) != 1 or (owner_operation is None and len(stages) != 1):
+            raw = self.native._read_output(stage / 'diagnostics/stdout', 8 * 1024 * 1024, allow_empty=True)
+            selected.append({'managerInvocationId': manager['invocationId'],
+                'operationId': record['owner']['operationId'], 'operation': record['spec']['operation'],
+                'stdoutDigest': hashlib.sha256(raw).hexdigest(),
+                'appId': record['spec'].get('options', {}).get('--app-id')})
+        return selected, state
+
+    def finish(self, operation, *, owner_operation=None):
+        records, _state = self._records(owner_operation)
+        selected = [record for record in records if record['operation'] == operation]
+        if len(selected) != 1 or (owner_operation is None and len(records) != 1):
             raise ValueError('pr313-owner-native-invocation-ambiguous')
-        stage, record, manager = selected[0]
-        # The launcher retains this bounded real stdout on success and native rejection alike.
-        raw = self.native._read_output(stage / 'diagnostics/stdout', 8 * 1024 * 1024, allow_empty=True)
-        return {'managerInvocationId': manager['invocationId'],
-            'operationId': record['owner']['operationId'], 'operation': operation,
-            'stdoutDigest': hashlib.sha256(raw).hexdigest(),
-            'startedMonotonicNs': self.started, 'finishedMonotonicNs': self.finished}
+        binding = {key: value for key, value in selected[0].items() if key != 'appId'}
+        return {**binding, 'startedMonotonicNs': self.started, 'finishedMonotonicNs': self.finished}
+
+    def consumer_phase(self, phase, owner_operation):
+        records, state = self._records(owner_operation)
+        expected = {'queue-manager', 'publisher', 'site-publisher', 'profile-publisher',
+                    'social-inbox', 'feed-reader', 'trust-graph', 'mail-prototype', 'pr305-fixture'}
+        package = [row for row in records if row['operation'] == 'package-api' and row['appId'] is None]
+        apps = [row['appId'] for row in records if row['operation'] == 'app-projection']
+        if (len(package) != 1 or len(records) != 10 or len(apps) != 9 or set(apps) != expected
+                or len({row['managerInvocationId'] for row in records}) != len(records)):
+            raise ValueError('pr313-consumer-native-roster-invalid')
+        if self.finished - self.started > 900 * 1_000_000_000:
+            raise ValueError('pr313-consumer-native-budget-expired')
+        return {'phase': phase, 'operationId': owner_operation,
+            'startedMonotonicNs': self.started, 'finishedMonotonicNs': self.finished,
+            'invocations': [{key: value for key, value in row.items() if key != 'operationId'}
+                            for row in records], 'quiescent': state}
 
 
 def owner(row, binding):

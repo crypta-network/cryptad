@@ -179,6 +179,51 @@ def _stat(value):
             and value['ino'] > 0 and value['nlink'] > 0)
 
 
+# Fixed synthetic PR-307 cohort, including the selected federation fixture. This roster is
+# local acceptance policy and cannot be supplied by candidate output or a guest verdict.
+CONSUMER_PHASES = ('product-admission', 'substituted-validation', 'original-validation')
+CONSUMER_APPS = frozenset(('queue-manager', 'publisher', 'site-publisher', 'profile-publisher',
+    'social-inbox', 'feed-reader', 'trust-graph', 'mail-prototype', 'pr305-fixture'))
+
+
+def _consumer_phases(witness):
+    phases = witness.get('consumerPhases')
+    if not isinstance(phases, list) or len(phases) != len(CONSUMER_PHASES):
+        return False
+    owners, managers = set(), set()
+    previous_end = witness['startedMonotonicNs']
+    for name, phase in zip(CONSUMER_PHASES, phases):
+        if not (_closed(phase, ('phase', 'operationId', 'startedMonotonicNs',
+                                'finishedMonotonicNs', 'invocations', 'quiescent'))
+                and phase['phase'] == name and _digest(phase['operationId'])
+                and phase['operationId'] not in owners and _timing(phase)
+                and previous_end <= phase['startedMonotonicNs']
+                and phase['finishedMonotonicNs'] <= witness['finishedMonotonicNs']
+                and phase['finishedMonotonicNs'] - phase['startedMonotonicNs'] <= 900_000_000_000
+                and _quiescent(phase['quiescent'])):
+            return False
+        owners.add(phase['operationId'])
+        previous_end = phase['finishedMonotonicNs']
+        invocations = phase['invocations']
+        if not isinstance(invocations, list) or len(invocations) != len(CONSUMER_APPS) + 1:
+            return False
+        roster = set()
+        for invocation in invocations:
+            if not (_closed(invocation, ('managerInvocationId', 'operation', 'stdoutDigest', 'appId'))
+                    and _digest(invocation['managerInvocationId'], 32)
+                    and invocation['managerInvocationId'] not in managers
+                    and _digest(invocation['stdoutDigest'])
+                    and isinstance(invocation['operation'], str)
+                    and (invocation['appId'] is None or isinstance(invocation['appId'], str))):
+                return False
+            managers.add(invocation['managerInvocationId'])
+            roster.add((invocation['operation'], invocation['appId']))
+        if roster != {('package-api', None)} | {('app-projection', app) for app in CONSUMER_APPS}:
+            return False
+    package = next(row for row in phases[-1]['invocations'] if row['operation'] == 'package-api')
+    return witness['stdoutDigest'] == package['stdoutDigest']
+
+
 def _witness(name, case, value, identity):
     """Interpret fixed observer facts, never a guest 'accepted' or 'passed' flag."""
     if not isinstance(value, dict):
@@ -208,10 +253,13 @@ def _witness(name, case, value, identity):
             and value['stderrClassification'] == ('dac-permission-denied' if name == 'socket-wrong-uid'
                                                    else 'restricted-operation-unavailable'))
     if kind in ('owner', 'native'):
-        return (_closed(value, ('operation', 'operationMarker', 'ownerOutcome', 'stdoutDigest',
-                                'startedMonotonicNs', 'finishedMonotonicNs'))
+        consumer = name == 'product-selection-native-consumers'
+        fields = ('operation', 'operationMarker', 'ownerOutcome', 'stdoutDigest',
+                  'startedMonotonicNs', 'finishedMonotonicNs') + (('consumerPhases',) if consumer else ())
+        return (_closed(value, fields)
             and value['operation'] == case.operation and value['operationMarker'] == name
-            and value['ownerOutcome'] == case.outcome and _digest(value['stdoutDigest']) and _timing(value))
+            and value['ownerOutcome'] == case.outcome and _digest(value['stdoutDigest']) and _timing(value)
+            and (not consumer or _consumer_phases(value)))
     if kind == 'mutation':
         mutation = name.split('-', 1)[1]
         if not (_closed(value, ('mutation', 'barrier', 'before', 'after'))
@@ -322,7 +370,14 @@ def observation_status(record, identity):
         return 'failed'
     if not _quiescent(record['quiescent'], case.cleanup == 'owned-stop-and-retained-active'):
         return 'failed'
-    return 'passed' if _witness(name, case, record['attackWitness'], identity) else 'inconclusive'
+    if not _witness(name, case, record['attackWitness'], identity):
+        return 'inconclusive'
+    if name == 'product-selection-native-consumers':
+        last = record['attackWitness']['consumerPhases'][-1]['invocations']
+        package = next(row for row in last if row['operation'] == 'package-api')
+        if invocation != package['managerInvocationId']:
+            return 'inconclusive'
+    return 'passed'
 
 
 def verify_attempts(expected_identity, attempts):

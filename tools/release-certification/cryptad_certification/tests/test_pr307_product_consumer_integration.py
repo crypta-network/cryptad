@@ -4,6 +4,7 @@ Selection transport and provider authority are test seams; maintenance CMS, sign
 subjects, exact package export and private consumer revalidation execute real implementations.
 """
 import io
+from contextlib import nullcontext
 import datetime as dt
 import zipfile
 import hashlib
@@ -77,6 +78,11 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
                     break
             raise AssertionError("pr307-product-consumer-integration-failed:" + self._stage + ":"
                                  + ",".join(locations)) from None
+
+    def _owner_phase(self, phase):
+        """The excluded installed harness bounds each whole independent owner operation."""
+        hook = getattr(type(self), "owner_phase", None)
+        return hook(phase) if hook is not None else nullcontext()
 
     def _start_observation(self, case_id):
         begin = getattr(type(self), 'acceptance_begin', None)
@@ -163,41 +169,43 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # Freeze only the ordinary cohort that the maintenance publication format supports.
         self._stage = "ordinary-maintenance-product"
         base_inputs = h.cohort("stable-1.0-maintenance-302", commit)
-        with patch.object(h, "cohort", return_value=base_inputs):
-            freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
+        with self._owner_phase("ordinary-freeze"):
+            with patch.object(h, "cohort", return_value=base_inputs):
+                freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
 
         self._stage = "native-wrong-product-rejection"
-        wrong_product_started = self._start_observation('wrong-product')
-        # Export a genuinely different compiled API implementation through the exact package
-        # native operation. Its valid output cannot be rebound to the selected product archive.
-        # This package is synthetic hostile input, not an authenticated original product.
-        wrong_package = h.work / "wrong-selected-product.tar.gz"
-        tar_bytes = io.BytesIO()
-        with tarfile.open(fileobj=tar_bytes, mode="w") as archive:
-            member = tarfile.TarInfo("lib/cryptad.jar")
-            member.mode, member.size = 0o644, len(h.previous_api)
-            member.uname = member.gname = "root"
-            archive.addfile(member, io.BytesIO(h.previous_api))
-        wrong_package.write_bytes(gzip.compress(tar_bytes.getvalue(), mtime=0))
-        import restricted_native
-        with patch.object(restricted_native, "run", wraps=restricted_native.run) as native_attempt:
-            wrong_snapshot, _wrong_registry, wrong_executable = legacy.metadata.observe_package(
-                wrong_package, h.java, h.work)
-        native_attempt.assert_called_once()
-        self.assertEqual("package-api", native_attempt.call_args.kwargs["operation"])
-        selected_snapshot = (package.parent / "runtime" / legacy.metadata.MEMBER_NAMES["snapshot"]).read_bytes()
-        self.assertNotEqual(legacy.metadata.read_json(selected_snapshot)["contract"],
-                            legacy.metadata.read_json(wrong_snapshot)["contract"])
-        # Keep the selected archive's exact public identity, while attempting to substitute
-        # the other executable's native observation. The unmodified owning verifier reopens
-        # the selected archive and rejects this relationship before any capability is minted.
-        with self.assertRaisesRegex(legacy.metadata.RuntimeMetadataError,
-                                    "^runtime-metadata-executable-substituted$") as rejected_product:
-            legacy.metadata.verify_package_identity(package, {
-                "portable": legacy.metadata.identity(package, 1024 * 1024 * 1024),
-                "executable": wrong_executable})
-        self._observe('wrong-product', 'package-api', 'rejected', wrong_product_started,
-            str(rejected_product.exception).encode())
+        with self._owner_phase("wrong-product"):
+            wrong_product_started = self._start_observation('wrong-product')
+            # Export a genuinely different compiled API implementation through the exact package
+            # native operation. Its valid output cannot be rebound to the selected product archive.
+            # This package is synthetic hostile input, not an authenticated original product.
+            wrong_package = h.work / "wrong-selected-product.tar.gz"
+            tar_bytes = io.BytesIO()
+            with tarfile.open(fileobj=tar_bytes, mode="w") as archive:
+                member = tarfile.TarInfo("lib/cryptad.jar")
+                member.mode, member.size = 0o644, len(h.previous_api)
+                member.uname = member.gname = "root"
+                archive.addfile(member, io.BytesIO(h.previous_api))
+            wrong_package.write_bytes(gzip.compress(tar_bytes.getvalue(), mtime=0))
+            import restricted_native
+            with patch.object(restricted_native, "run", wraps=restricted_native.run) as native_attempt:
+                wrong_snapshot, _wrong_registry, wrong_executable = legacy.metadata.observe_package(
+                    wrong_package, h.java, h.work)
+            native_attempt.assert_called_once()
+            self.assertEqual("package-api", native_attempt.call_args.kwargs["operation"])
+            selected_snapshot = (package.parent / "runtime" / legacy.metadata.MEMBER_NAMES["snapshot"]).read_bytes()
+            self.assertNotEqual(legacy.metadata.read_json(selected_snapshot)["contract"],
+                                legacy.metadata.read_json(wrong_snapshot)["contract"])
+            # Keep the selected archive's exact public identity, while attempting to substitute
+            # the other executable's native observation. The unmodified owning verifier reopens
+            # the selected archive and rejects this relationship before any capability is minted.
+            with self.assertRaisesRegex(legacy.metadata.RuntimeMetadataError,
+                                        "^runtime-metadata-executable-substituted$") as rejected_product:
+                legacy.metadata.verify_package_identity(package, {
+                    "portable": legacy.metadata.identity(package, 1024 * 1024 * 1024),
+                    "executable": wrong_executable})
+            self._observe('wrong-product', 'package-api', 'rejected', wrong_product_started,
+                str(rejected_product.exception).encode())
 
         def cohort():
             base_value, path, _inventory, _origin, product_root = base_inputs
@@ -238,26 +246,27 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # app must still fail through the real Java verifier and production Python owner.
         # This synthetic original transport does not supply a production registration/receipt.
         self._stage = "native-wrong-app-rejection"
-        wrong_app_started = self._start_observation('wrong-app')
-        with patch.object(legacy.projection, "_run_maintenance_native",
-                wraps=legacy.projection._run_maintenance_native) as native_attempt, \
-                self.assertRaises(legacy.projection.ProjectionFailure) as rejected_app:
-            legacy.projection.produce(h.fetch(source, h.work), {
-                "catalog": "A1/catalog.properties", "catalogSignature": "A1/cryptad-app-catalog.signature",
-                "bundle": "A1/bundle.zip", "submission": "A1/submission.zip"},
-                exporter=h.tool / "bin/crypta-app",
-                exporter_digest=legacy.products.file_digest(h.tool / "bin/crypta-app"),
-                app_id="wrong-app", catalog_key_id="catalog-a",
-                catalog_keys=fixture / "catalog-keys.properties",
-                publisher_keys=fixture / "publisher-keys.properties",
-                reviewer_keys=fixture / "reviewer-keys.properties",
-                private_root=h.work, java_home=h.java, maintenance_tool_root=h.tool,
-                contract_path=snapshot, baseline_registry_path=registry,
-                federation_selection=authenticated, selection_id="a1",
-                source=next(row for row in _cohort["sources"] if row["appId"] == "pr305-fixture"))
-        native_attempt.assert_called_once()
-        self._observe('wrong-app', 'app-projection', 'rejected', wrong_app_started,
-            str(rejected_app.exception).encode())
+        with self._owner_phase("wrong-app"):
+            wrong_app_started = self._start_observation('wrong-app')
+            with patch.object(legacy.projection, "_run_maintenance_native",
+                    wraps=legacy.projection._run_maintenance_native) as native_attempt, \
+                    self.assertRaises(legacy.projection.ProjectionFailure) as rejected_app:
+                legacy.projection.produce(h.fetch(source, h.work), {
+                    "catalog": "A1/catalog.properties", "catalogSignature": "A1/cryptad-app-catalog.signature",
+                    "bundle": "A1/bundle.zip", "submission": "A1/submission.zip"},
+                    exporter=h.tool / "bin/crypta-app",
+                    exporter_digest=legacy.products.file_digest(h.tool / "bin/crypta-app"),
+                    app_id="wrong-app", catalog_key_id="catalog-a",
+                    catalog_keys=fixture / "catalog-keys.properties",
+                    publisher_keys=fixture / "publisher-keys.properties",
+                    reviewer_keys=fixture / "reviewer-keys.properties",
+                    private_root=h.work, java_home=h.java, maintenance_tool_root=h.tool,
+                    contract_path=snapshot, baseline_registry_path=registry,
+                    federation_selection=authenticated, selection_id="a1",
+                    source=next(row for row in _cohort["sources"] if row["appId"] == "pr305-fixture"))
+            native_attempt.assert_called_once()
+            self._observe('wrong-app', 'app-projection', 'rejected', wrong_app_started,
+                str(rejected_app.exception).encode())
         from test_maintenance_runtime_companion import CompanionTransportTest
         import maintenance_runtime_companion as companion
         from maintenance_runtime_transfer import copy_runtime
@@ -354,36 +363,37 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         def attest(arguments, environment):
             member_attestations.append(Path(arguments[2]).name)
             return original_attestation_transport(arguments, environment)
-        with patch.object(legacy.projection, "COHORT_FILE", policy_path), \
-                patch.object(legacy.products, "_gh", side_effect=attest):
-            admitted = legacy.products.authenticate_maintenance_product(selected_product, node, h.work / "sealed-admitted")
-        self.assertEqual([legacy.products.maintenance.CANDIDATE_FREEZE_FILE, "checksums.txt", package.name,
-                          companion.DESCRIPTOR, companion.CIPHERTEXT], member_attestations)
-        try:
-            self.assertTrue(admitted["appMatrix"])
-            self.assertNotIn("pr305-fixture", admitted["requiredAppIds"])
-            private_inventory = legacy.metadata.read_json((admitted["runtimeRoot"] / "projection-inventory.json").read_bytes())
-            self.assertEqual(4, private_inventory["schemaVersion"])
-            self.assertIn("pr305-fixture", private_inventory["requiredAppIds"])
-            private_native = legacy.metadata.read_json((admitted["runtimeRoot"] / "native-admissions.json").read_bytes())
-            scoped = next(row for row in private_native if row["appId"] == "pr305-fixture")
-            self.assertEqual(3, scoped["schemaVersion"])
-            self.assertEqual("accepted", scoped["nativeAdmission"])
-            public = json.dumps(legacy.products.public_product_identity(admitted)).encode()
-            for canary in (b"pr305-fixture", private_inventory["cohortDigest"].encode(),
-                           legacy.products.file_digest(admitted["runtimeRoot"] / "projection-inventory.json").encode()):
-                self.assertNotIn(canary, public)
-            authority = legacy.products.AuthenticatedProducts(legacy.products._SEAL, legacy.products.digest({"test": 307}),
-                                                             {node["role"]: admitted})
-            contract = legacy.metadata.read_json((admitted["runtimeRoot"] / "snapshot.json").read_bytes())
-            self.assertTrue(authority.verify_runtime_contract(node["role"], contract))
-            with self.assertRaises(legacy.products.ProductAdmissionError):
-                authority.verify_runtime_contract(node["role"], {"contract": {"contractVersion": 0}})
-        finally:
-            opened = admitted["runtimeRoot"]
-            legacy.products.close_runtime_context(admitted)
-        self.assertFalse(opened.exists())
-        self.assertEqual(committed, {path.name: path.read_bytes() for path in transfer.iterdir()})
+        with self._owner_phase("product-admission"):
+            with patch.object(legacy.projection, "COHORT_FILE", policy_path), \
+                    patch.object(legacy.products, "_gh", side_effect=attest):
+                admitted = legacy.products.authenticate_maintenance_product(selected_product, node, h.work / "sealed-admitted")
+            self.assertEqual([legacy.products.maintenance.CANDIDATE_FREEZE_FILE, "checksums.txt", package.name,
+                              companion.DESCRIPTOR, companion.CIPHERTEXT], member_attestations)
+            try:
+                self.assertTrue(admitted["appMatrix"])
+                self.assertNotIn("pr305-fixture", admitted["requiredAppIds"])
+                private_inventory = legacy.metadata.read_json((admitted["runtimeRoot"] / "projection-inventory.json").read_bytes())
+                self.assertEqual(4, private_inventory["schemaVersion"])
+                self.assertIn("pr305-fixture", private_inventory["requiredAppIds"])
+                private_native = legacy.metadata.read_json((admitted["runtimeRoot"] / "native-admissions.json").read_bytes())
+                scoped = next(row for row in private_native if row["appId"] == "pr305-fixture")
+                self.assertEqual(3, scoped["schemaVersion"])
+                self.assertEqual("accepted", scoped["nativeAdmission"])
+                public = json.dumps(legacy.products.public_product_identity(admitted)).encode()
+                for canary in (b"pr305-fixture", private_inventory["cohortDigest"].encode(),
+                               legacy.products.file_digest(admitted["runtimeRoot"] / "projection-inventory.json").encode()):
+                    self.assertNotIn(canary, public)
+                authority = legacy.products.AuthenticatedProducts(legacy.products._SEAL, legacy.products.digest({"test": 307}),
+                                                                 {node["role"]: admitted})
+                contract = legacy.metadata.read_json((admitted["runtimeRoot"] / "snapshot.json").read_bytes())
+                self.assertTrue(authority.verify_runtime_contract(node["role"], contract))
+                with self.assertRaises(legacy.products.ProductAdmissionError):
+                    authority.verify_runtime_contract(node["role"], {"contract": {"contractVersion": 0}})
+            finally:
+                opened = admitted["runtimeRoot"]
+                legacy.products.close_runtime_context(admitted)
+            self.assertFalse(opened.exists())
+            self.assertEqual(committed, {path.name: path.read_bytes() for path in transfer.iterdir()})
         self._stage = "protected-original-validation-context"
         import maintenance_runtime_validation as validation
         source_path = h.work / "runtime-validation-source.json"
@@ -393,14 +403,16 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             validation.require_context(sealed, transfer, package)
         with patch.object(validation, "SOURCE", source_path), patch.object(legacy.projection, "COHORT_FILE", policy_path):
             substituted = {**sealed, "runtimeMetadata": {**sealed["runtimeMetadata"], "digest": "sha256:" + "f" * 64}}
-            with self.assertRaises(validation.RuntimeValidationError):
-                with validation.original_context(substituted, package, freeze_digest=selected_product["freezeDigest"]):
-                    self.fail("caller freeze acquired unrelated original authority")
-            self.assertIsNone(validation._ACTIVE.get())
-            with validation.original_context(sealed, package, freeze_digest=selected_product["freezeDigest"]):
-                validation.require_context(sealed, transfer, package)
+            with self._owner_phase("substituted-validation"):
                 with self.assertRaises(validation.RuntimeValidationError):
-                    validation.require_context({**sealed, "releaseId": "other"}, transfer, package)
+                    with validation.original_context(substituted, package, freeze_digest=selected_product["freezeDigest"]):
+                        self.fail("caller freeze acquired unrelated original authority")
+            self.assertIsNone(validation._ACTIVE.get())
+            with self._owner_phase("original-validation"):
+                with validation.original_context(sealed, package, freeze_digest=selected_product["freezeDigest"]):
+                    validation.require_context(sealed, transfer, package)
+                    with self.assertRaises(validation.RuntimeValidationError):
+                        validation.require_context({**sealed, "releaseId": "other"}, transfer, package)
         with self.assertRaises(validation.RuntimeValidationError):
             validation.require_context(sealed, transfer, package)
         self._observe('product-selection-native-consumers', 'maintenance-prepare', 'owner-validated',

@@ -20,6 +20,10 @@ before conversion. Its standalone QCOW2 SHA-256 is
 The preparation used extracted QEMU `10.0.13`, CPU `qemu64`, accelerator `tcg,thread=multi`, four
 vCPUs, 5632 MiB, and the fixed `pc,smm=off` machine. The retained private inventory records actual
 installed distro packages, copied ELF dependencies/modules, firmware and boot inputs.
+The fresh preparation recorded kernel `6.12.107+deb13-amd64`, systemd `257.13-1~deb13u1`,
+Python `3.13.5-1`, bubblewrap `0.12.0-1~deb13u1`, libc `2.41-12+deb13u4`, OpenSSL
+`3.5.7-1~deb13u2`, polkit `126-2`, dbus `1.16.2-2`, sudo `1.9.16p2-3+deb13u2`,
+Git `1:2.47.3-0+deb13u1`, and GitHub CLI `2.46.0-3`.
 
 | Pinned input or retained executable | Verified identity |
 | --- | --- |
@@ -34,7 +38,7 @@ A content digest identifies bytes; it does not confer supply-chain authenticity 
 approval. Current apt packages must match the preparer's explicit checks; changed repositories
 fail preparation instead of silently selecting new versions.
 
-**Installed acceptance of the final PR-313 source is not yet executed.** A stopped standalone
+**Complete installed acceptance of the final PR-313 source has not been recorded.** A stopped standalone
 reference is preparation evidence only. The historical trusted-fixture SIGILL remains undiagnosed;
 no CPU-model change or successful local fixture preparation establishes a QEMU/JDK remedy.
 Actual in-service Java and CMS operations must still pass under the selected guest profile.
@@ -73,6 +77,19 @@ the required non-inheritable FD and tests both original and moved listener descr
 the real Worker activation checks. This test-only correction does not diagnose the JVM crash
 or make the incomplete comparison accepted. The queued `ce1de26641` suite was stopped before
 any guest launched so its obsolete driver would not be run knowingly.
+
+The subsequent suite at `0015f41b89e65a87a9a4f68df6c184fa4c807250` lost its execution context
+during its first guest. On continuation, neither its controller nor emulator remained and no
+terminal attempt report existed. The disk and logs are retained unchanged, with a separate
+interruption record dated 2026-09-16; orderly guest shutdown is not inferred. Its partial
+observations cannot satisfy acceptance.
+
+Further review corrected the synthetic owner scopes and final consumer evidence. Trusted
+fixture preparation no longer consumes a deadline spanning the entire unittest. Six fixed
+independent owner operations each receive one 900-second budget, including assertions and
+cleanup; the actual Worker request retains its existing budget. The final consumer case requires
+three separately witnessed consumer windows, each with its own package export and exact nine-app
+projection roster. It cannot borrow the preceding Worker's package invocation.
 
 ## Fixed contract and separate execution layers
 
@@ -113,6 +130,8 @@ It records the exact file hashes and sizes in a private disposal intent before r
 the reports, observations, diagnostics and boot inventories. Failed, incomplete, inconclusive,
 death/recovery and revocation attempts retain their disks. This cleanup never clears guest
 active or retained-result state to make another case pass.
+The fixed plan runs independently reclaimable groups before the recovery groups; all required
+cases remain in the plan if capacity prevents a later launch.
 
 ## Reproducible preparation and execution
 
@@ -181,6 +200,32 @@ cleanup can satisfy `installedKeylessNativeAcceptanceSatisfied`. Offline positiv
 exercise a reachable contract; they do not fabricate installed observations. Hosted prerequisites
 remain offline/exit-78 when a VM is unavailable. Never upload private attempt roots, disks, seeds,
 raw diagnostics or prepared signing material, including after failure.
+
+## Local verification
+
+The local verification below ran on 2026-09-16. Counts describe these commands, not unique
+security requirements or installed coverage. The prepared PR-307 invocation explicitly selected
+the separate product commit; an earlier invocation without that binding failed setup and was
+retained. Native fault Java source also compiled with the actual Java 25 compiler.
+
+| Check | Observed result |
+| --- | --- |
+| Restricted Python discovery, with extracted real `qemu-img` selected | 249 tests passed, no skips |
+| Protected `test_restricted_*.py` discovery | 73 tests passed |
+| Protected `test_native_*races.py` discovery | 21 tests, three root-only skips on the unprivileged host |
+| `stable-maintenance --self-test` | 247 tests passed |
+| `cross-version-soak --self-test` | 152 tests passed |
+| `stable-platform-api-1x --self-test` | 88 tests passed |
+| `phase-12-closeout --self-test` | 185 tests passed |
+| Real prepared-input PR-307 integration at `ce1de26641` | One test passed in 44.561 seconds |
+| Local PR-307 integration with independent owner-phase hooks | One test passed in 47.970 seconds; all six phase lifetimes observed |
+| `./gradlew :platform-devtools:installDist assembleCryptadDist` | Successful; 342 tasks, 307 executed and 35 up-to-date |
+
+The build was **not analyzer-clean**: its log contained 329 Error Prone warnings, including
+86 `ReferenceEquality`, 77 `EffectivelyPrivate`, 55 `ExposedPrivateType`, 34 `PreferThrowsTag`,
+29 `AlmostJavadoc`, and 48 other warnings. The Gradle problems report contained 66 warnings
+(36 deprecation, 15 Kotlin and 15 compilation). No independent security review, standalone
+Sonar/SpotBugs result, final-source hosted CI result or protected workflow execution is claimed.
 
 ## Preserved limits and PR-314 handoff
 
