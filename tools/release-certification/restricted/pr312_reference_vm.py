@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 
 
@@ -148,6 +149,28 @@ def snapshot_products(source, clone):
     return sha256(clone / 'build/cryptad-dist/lib/cryptad.jar')
 
 
+def verify_product_source(source, clone, commit, expected_digest):
+    """Check local Git and the copied package marker; this is not build/release attestation."""
+    if not isinstance(commit, str) or re.fullmatch('[0-9a-f]{40}', commit) is None:
+        raise ValueError('reference-product-source-invalid')
+    resolved = command(['git', '-C', str(source), 'rev-parse', '--verify', commit + '^{commit}'],
+                       capture_output=True).stdout.decode().strip()
+    if resolved != commit:
+        raise ValueError('reference-product-source-mismatch')
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
+    try:
+        import cross_version_runtime as runtime
+        try:
+            observed = runtime.packaged_daemon_identity(clone / 'build/cryptad-dist', resolved)
+        except runtime.RuntimeFailure:
+            raise ValueError('reference-product-source-mismatch') from None
+    finally:
+        sys.path.pop(0)
+    if observed != 'sha256:' + expected_digest:
+        raise ValueError('reference-product-digest-mismatch')
+    return resolved
+
+
 def snapshot_executables(sources, output):
     directory = output / 'tools'
     directory.mkdir(mode=0o700)
@@ -177,7 +200,8 @@ def qemu_arguments(root, attempt, prepared, seed, port):
 def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
-              'helperSourceTree', 'productSourceCommit', 'productDigest', 'sourceArchiveDigest',
+              'helperSourceTree', 'productSourceCommit', 'productSourceVerification',
+              'productDigest', 'sourceArchiveDigest',
               'preparedImageDigest', 'seedDigest', 'qemuSha256', 'qemuImgSha256',
               'guestExitCode', 'guestStopped', 'mode', 'developmentSnapshot',
               'sshHostKeyPinDigest', 'sshHostKeyPinOrigin', 'cpuModel', 'accelerator')
@@ -197,7 +221,7 @@ def run(args):
         raise ValueError('reference-output-path-invalid')
     attempt.mkdir(mode=0o700, parents=False, exist_ok=False)
     os.umask(0o077)
-    report = {'schemaVersion': 5, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
+    report = {'schemaVersion': 6, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
@@ -210,8 +234,7 @@ def run(args):
         if git('status', '--porcelain', '--untracked-files=normal'):
             raise ValueError('exact-clean-source-required')
         report.update(helperSourceCommit=git('rev-parse', 'HEAD'),
-                      helperSourceTree=git('rev-parse', 'HEAD^{tree}'),
-                      productSourceCommit=args.product_source_commit)
+                      helperSourceTree=git('rev-parse', 'HEAD^{tree}'))
         report['stage'] = 'prepared-image-identity'
         root = args.qemu_root.resolve(strict=True)
         env = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib/x86_64-linux-gnu'),
@@ -236,6 +259,10 @@ def run(args):
         command(['git', '-C', str(clone), 'checkout', '--detach', report['helperSourceCommit']],
                 stdout=log, stderr=log)
         report['productDigest'] = snapshot_products(source, clone)
+        report['stage'] = 'product-source-verification'
+        report['productSourceCommit'] = verify_product_source(source, clone,
+            args.product_source_commit, report['productDigest'])
+        report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         archive = attempt / 'source.tar.gz'
         report['stage'] = 'source-archive'
         command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)

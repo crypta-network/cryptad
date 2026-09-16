@@ -217,6 +217,14 @@ rejects root execution and comma, newline, carriage-return or NUL characters in 
 before creating the attempt or invoking helpers. Earlier attempt reports do not establish these
 tool-identity and host-admission checks. No corrected installed run is claimed by these changes.
 
+Schema-6 attempts report `productSourceCommit` only after the full selected commit resolves to a
+commit in local Git and the existing packaged-daemon verifier matches that commit against the
+copied JAR's embedded revision. The verifier's JAR digest must also match the copied product digest.
+This runs before archiving or boot in every mode, including baseline. The report labels the check
+`productSourceVerification: local-git-and-embedded-marker-v1`. The embedded revision is a package
+claim checked for consistency, not authenticated original-provider/build provenance; production
+authority remains false. Earlier reports did not establish this host-side source-marker check.
+
 The focused real-QEMU storage regression uses tiny synthetic disks without booting a guest. It
 reproduces an unchanged overlay digest after backing-byte substitution, checks rejection, exercises
 the preparer's conversion, then deletes the original backing file and verifies that the standalone

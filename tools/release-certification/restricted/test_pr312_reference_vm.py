@@ -11,6 +11,33 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_copied_product_source_must_match_real_commit_and_embedded_marker(self):
+        import subprocess
+        import zipfile
+        repository = Path(__file__).resolve().parents[3]
+        selected = driver.command(['git', '-C', str(repository), 'rev-parse', 'HEAD'],
+                                  capture_output=True).stdout.decode().strip()
+        with tempfile.TemporaryDirectory() as temporary:
+            clone = Path(temporary)
+            jar = clone / 'build/cryptad-dist/lib/cryptad.jar'
+            jar.parent.mkdir(parents=True)
+            with zipfile.ZipFile(jar, 'w') as archive:
+                archive.writestr('META-INF/MANIFEST.MF',
+                    'Manifest-Version: 1.0\r\nImplementation-Version: 3 ' + selected[:10] + '\r\n\r\n')
+            digest = driver.sha256(jar)
+            self.assertEqual(selected, driver.verify_product_source(repository, clone, selected, digest))
+            with self.assertRaises(subprocess.CalledProcessError):
+                driver.verify_product_source(repository, clone, '0' * 40, digest)
+            with self.assertRaisesRegex(ValueError, 'product-digest-mismatch'):
+                driver.verify_product_source(repository, clone, selected, '0' * 64)
+            for manifest in ('Manifest-Version: 1.0\r\n\r\n',
+                             'Manifest-Version: 1.0\r\nImplementation-Version: 3 0000000000\r\n\r\n',
+                             'Manifest-Version: 1.0\r\nImplementation-Version: 3 unknown\r\n\r\n'):
+                with zipfile.ZipFile(jar, 'w') as archive:
+                    archive.writestr('META-INF/MANIFEST.MF', manifest)
+                with self.assertRaisesRegex(ValueError, 'product-source-mismatch'):
+                    driver.verify_product_source(repository, clone, selected, driver.sha256(jar))
+
     def test_root_execution_is_rejected_before_attempt_creation_or_helpers(self):
         with patch.object(driver.os, 'geteuid', return_value=0), \
                 patch.object(driver.Path, 'mkdir') as mkdir, \
@@ -239,7 +266,7 @@ class PreparedImageIdentityTest(unittest.TestCase):
                 self.assertEqual(2, driver.run(args))
             guest.assert_not_called()
             report = json.loads((args.attempt / 'stage-report.json').read_text())
-            self.assertEqual(5, report['schemaVersion'])
+            self.assertEqual(6, report['schemaVersion'])
             for name, field in (('qemu-img', 'qemuImgSha256'), ('qemu-system-x86_64', 'qemuSha256')):
                 retained = args.attempt / 'tools' / name
                 self.assertEqual(driver.sha256(retained), report[field])
