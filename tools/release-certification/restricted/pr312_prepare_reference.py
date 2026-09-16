@@ -17,6 +17,8 @@ import re
 import subprocess
 import time
 
+import pr313_boot_inputs as boot
+
 from pr312_reference_vm import (ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image,
                                 snapshot_file, snapshot_executables)
 
@@ -68,7 +70,7 @@ def preparation_arguments(root, output, image, seed, port):
     arguments = qemu_arguments(root, output, image, seed, port)
     # Apt is deliberately enabled only for this trusted fresh-guest preparation stage.
     arguments[arguments.index('-netdev') + 1] = f'user,id=net0,hostfwd=tcp:127.0.0.1:{port}-:22'
-    return arguments + ['-no-user-config']
+    return arguments
 
 
 def cloud_config(login_public, host_public, host_private):
@@ -153,7 +155,7 @@ def run(args):
     if any(character in str(output) for character in (',', '\n', '\r', '\x00')):
         raise ValueError('reference-output-path-invalid')
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
-    report = {'schemaVersion': 4, 'kind': 'pr312-reference-preparation', 'executed': False,
+    report = {'schemaVersion': 5, 'kind': 'pr312-reference-preparation', 'executed': False,
               'stage': 'input-verification', 'status': 'failed', 'guestStopped': True,
               'cpuModel': CPU_MODEL, 'accelerator': ACCELERATOR}
     process = None
@@ -161,7 +163,7 @@ def run(args):
     tool_environment = dict(environment)
     with (output / 'prepare.private.log').open('xb') as log:
         def call(arguments, timeout=120, **options):
-            return subprocess.run(arguments, check=True, timeout=timeout,
+            return subprocess.run(boot.invocation(arguments, tool_environment), check=True, timeout=timeout,
                 env=tool_environment if Path(arguments[0]).is_absolute() else environment,
                 stdout=log, stderr=log, **({'stdin': subprocess.DEVNULL} if 'input' not in options and 'stdin' not in options else {}), **options)
         try:
@@ -172,6 +174,11 @@ def run(args):
             qemu_img = executables['qemu-img']
             qemu = executables['qemu-system-x86_64']
             seed_tool = executables['genisoimage']
+            root, tool_environment = boot.snapshot_runtime(root, output, executables)
+            retained_jdk = output / 'jdk25.tar.gz'
+            if snapshot_file(jdk, retained_jdk) != JDK_SHA256:
+                raise ValueError('reference-pinned-input-mismatch')
+            jdk = retained_jdk
             report['stage'] = 'base-image-snapshot'
             image = snapshot_base_image(image, output, qemu_img, tool_environment)
             report.update(referenceImageSha512=IMAGE_SHA512, jdkSha256=JDK_SHA256,
@@ -193,7 +200,12 @@ def run(args):
             call([str(qemu_img), 'resize', str(output / 'guest.qcow2'), '24G'])
             arguments = preparation_arguments(root, output, image, seed, args.port)
             arguments[0] = str(qemu)
-            process = subprocess.Popen(arguments,
+            boot.record_private_inputs(output, seedDigest=digest(seed),
+                sshHostKeyPinDigest=digest(output / "known_hosts"),
+                sshKeyDigest=digest(output / "guest-key"), jdkSha256=digest(jdk),
+                cpuModel=CPU_MODEL, accelerator=ACCELERATOR,
+                machine="pc,smm=off", vcpus=4, memoryMiB=5632, emulatorArguments=arguments)
+            process = subprocess.Popen(boot.invocation(arguments, tool_environment),
                 env=tool_environment, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
             report.update(executed=True, guestStopped=False, stage='guest-boot')
             ssh = ssh_arguments(output, args.port)
@@ -231,7 +243,9 @@ def run(args):
             prepared_digest = flatten_image(output / 'guest.qcow2', prepared,
                 qemu_img, tool_environment, call)
             report.update(preparedImageSha256=prepared_digest, status='prepared', stage='complete')
-        except (OSError, ValueError, subprocess.SubprocessError):
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            log.write((type(error).__name__ + ': ' + str(error)[:4096] + '\n').encode())
+            log.flush()
             report['status'] = 'failed'
         finally:
             if process is not None:
@@ -256,7 +270,7 @@ def main():
     try:
         return run(parser.parse_args())
     except (OSError, ValueError):
-        print(json.dumps(public_report({'schemaVersion': 4, 'kind': 'pr312-reference-preparation',
+        print(json.dumps(public_report({'schemaVersion': 5, 'kind': 'pr312-reference-preparation',
             'executed': False, 'stage': 'output-creation', 'status': 'failed', 'guestStopped': True})))
         return 2
 

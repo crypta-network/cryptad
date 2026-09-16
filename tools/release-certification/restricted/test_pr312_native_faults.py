@@ -16,6 +16,38 @@ import restricted_native
 
 
 class NativeFixtureTest(unittest.TestCase):
+    def test_deadline_before_candidate_marker_cannot_be_counted_as_timeout_attack(self):
+        with patch.object(restricted_native, '_read_output', return_value=b''):
+            with self.assertRaisesRegex(ValueError, 'attack-not-observed'):
+                fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'timeout')
+        with patch.object(restricted_native, '_read_output', return_value=b'fixture-mode-started:timeout\n'):
+            fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'timeout')
+
+    def test_descendant_requires_marker_after_actual_child_start(self):
+        raw = b'fixture-mode-started:descendant\n'
+        with patch.object(restricted_native, '_read_output', return_value=raw):
+            with self.assertRaisesRegex(ValueError, 'descendant-not-observed'):
+                fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'descendant')
+        with patch.object(restricted_native, '_read_output', return_value=raw + b'fixture-descendant-started\n'):
+            fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'descendant')
+
+    def test_observer_records_exact_manager_diagnostics_and_fixed_case_contract(self):
+        import hashlib
+        import pr313_acceptance as acceptance
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary)
+            (stage / 'manager.json').write_text(json.dumps({'invocationId': 'a' * 32}))
+            rows = []
+            stdout, stderr = b'fixture-pass\n', b'fixture-mode-started:positive\n'
+            with patch.object(restricted_native, '_read_output', side_effect=[stdout, stderr]), \
+                    patch.object(restricted_native, '_manager', return_value={'ActiveState': 'inactive'}), \
+                    patch.object(fixtures, '_quiescent'):
+                fixtures.emit_observations(restricted_native, stage, ('hostile-setid',), 1, rows.append)
+            self.assertEqual('a' * 32, rows[0]['managerInvocationId'])
+            self.assertEqual(hashlib.sha256(len(stdout).to_bytes(8, 'big') + stdout + stderr).hexdigest(),
+                             rows[0]['attackWitness']['stdoutDigest'])
+            self.assertEqual('passed', acceptance.observation_status(rows[0], {}))
+
     def test_fixture_owner_is_physically_excluded_from_production_export(self):
         name = 'tools/release-certification/restricted/pr312_native_faults.py'
         self.assertIn(name, installation.TEST_SEAMS)

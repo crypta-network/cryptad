@@ -76,8 +76,9 @@ class ReferenceDriverTest(unittest.TestCase):
             arguments = driver.qemu_arguments(root, root, root / 'prepared', seed, 23112)
             report = driver.public_report({'seedDigest': digest})
             self.assertEqual(b'original-seed', seed.read_bytes())
-            self.assertEqual(driver.sha256(seed), report['seedDigest'])
-            self.assertNotEqual(driver.sha256(source), report['seedDigest'])
+            self.assertEqual(driver.sha256(seed), digest)
+            self.assertNotEqual(driver.sha256(source), digest)
+            self.assertNotIn('seedDigest', report)
             self.assertIn(f'file={seed},media=cdrom,format=raw,readonly=on', arguments)
             self.assertNotIn(str(source), ' '.join(arguments))
 
@@ -203,6 +204,7 @@ class ReferenceDriverTest(unittest.TestCase):
         report = driver.public_report({'schemaVersion': 1, 'status': 'failed',
             'stage': 'installed-native-slice', 'rawException': 'PRIVATE-CANARY',
             'guestOutput': 'PRIVATE-CANARY', 'providerToken': 'PRIVATE-CANARY',
+            'seedDigest': 'PRIVATE-CANARY', 'sshHostKeyPinDigest': 'PRIVATE-CANARY',
             'cpuModel': 'PRIVATE-CANARY', 'accelerator': 'PRIVATE-CANARY',
             'mandatoryIsolationTestSatisfied': True, 'productionAuthorityObserved': True,
             'installedKeylessNativeAcceptanceSatisfied': True})
@@ -262,11 +264,12 @@ class PreparedImageIdentityTest(unittest.TestCase):
                     SimpleNamespace(stdout=b'a' * 40), SimpleNamespace(stdout=b'b' * 40)]), \
                     patch.object(driver, 'require_standalone_image',
                         side_effect=ValueError('prepared-image-not-standalone')), \
+                    patch.object(driver.boot, 'snapshot_runtime', return_value=(root, {})), \
                     patch.object(driver.subprocess, 'Popen') as guest, patch('builtins.print'):
                 self.assertEqual(2, driver.run(args))
             guest.assert_not_called()
             report = json.loads((args.attempt / 'stage-report.json').read_text())
-            self.assertEqual(6, report['schemaVersion'])
+            self.assertEqual(7, report['schemaVersion'])
             for name, field in (('qemu-img', 'qemuImgSha256'), ('qemu-system-x86_64', 'qemuSha256')):
                 retained = args.attempt / 'tools' / name
                 self.assertEqual(driver.sha256(retained), report[field])

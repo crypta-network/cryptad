@@ -37,6 +37,8 @@ jobs:
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_disposable_integration.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_bootstrap.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_reference_vm.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr313_acceptance*.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr313*_faults.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_native_faults.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_prepare_reference.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_output_faults.py'
@@ -69,6 +71,8 @@ jobs:
           services, recipients or an approved private worker.
 
           Installed keyless-native acceptance is a separate unexecuted dimension here.
+          The PR-313 fixed case verifier has a synthetic offline positive test; that test
+          does not execute this installed lane or authenticate original provider authority.
           The local `pr312_reference_vm.py` driver creates a fresh disposable guest from
           the pinned prepared reference; its bootstrap/native stages retain failures and
           never promote this exit-78 prerequisite result to installed acceptance.

@@ -17,6 +17,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import unittest
+import time
 from unittest.mock import patch
 
 from cryptad_certification.tests import test_pr304_product_consumer_integration as legacy
@@ -77,6 +78,15 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             raise AssertionError("pr307-product-consumer-integration-failed:" + self._stage + ":"
                                  + ",".join(locations)) from None
 
+    def _observe(self, case_id, operation, outcome, started, output):
+        """Only the excluded administrator test driver consumes these causal owner observations."""
+        observer = getattr(type(self), 'acceptance_observer', None)
+        if observer is not None:
+            observer({'caseId': case_id, 'phase': 'native-complete', 'outcome': outcome,
+                'attackWitness': {'operation': operation, 'operationMarker': case_id,
+                    'ownerOutcome': outcome, 'stdoutDigest': hashlib.sha256(output).hexdigest(),
+                    'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns()}})
+
     def _execute(self, h):
         self._stage = "fixture-preparation"
         distribution = h.work / "packaged-daemon"
@@ -97,12 +107,16 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         classes = h.work / "fixture-classes"
         classes.mkdir()
         cp = str(h.tool / "lib/*")
-        subprocess.run([str(h.java / "bin/javac"), "-cp", cp, "-d", str(classes), str(
-            legacy.ROOT / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java")],
-            check=True, capture_output=True, timeout=60)
-        subprocess.run([str(h.java / "bin/java"), "-cp", str(classes) + os.pathsep + cp,
-            "network.crypta.platform.appcatalog.Pr305SignedCatalogFixture", str(fixture)],
-            check=True, capture_output=True, timeout=60)
+        prepared = getattr(type(h), "prepared_inputs", None)
+        if prepared is None:
+            subprocess.run([str(h.java / "bin/javac"), "-cp", cp, "-d", str(classes), str(
+                legacy.ROOT / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/Pr305SignedCatalogFixture.java")],
+                check=True, capture_output=True, timeout=60)
+            subprocess.run([str(h.java / "bin/java"), "-cp", str(classes) + os.pathsep + cp,
+                "network.crypta.platform.appcatalog.Pr305SignedCatalogFixture", str(fixture)],
+                check=True, capture_output=True, timeout=60)
+        else:
+            shutil.copytree(prepared / "federated", fixture)
         exported = subprocess.run([str(h.java / "bin/java"), "-cp", cp,
             "network.crypta.platform.api.PackagedApiExport"], check=True, capture_output=True, timeout=60)
         contract = json.loads(exported.stdout)
@@ -149,6 +163,7 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
 
         self._stage = "native-wrong-product-rejection"
+        wrong_product_started = time.monotonic_ns()
         # Export a genuinely different compiled API implementation through the exact package
         # native operation. Its valid output cannot be rebound to the selected product archive.
         # This package is synthetic hostile input, not an authenticated original product.
@@ -173,10 +188,12 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # the other executable's native observation. The unmodified owning verifier reopens
         # the selected archive and rejects this relationship before any capability is minted.
         with self.assertRaisesRegex(legacy.metadata.RuntimeMetadataError,
-                                    "^runtime-metadata-executable-substituted$"):
+                                    "^runtime-metadata-executable-substituted$") as rejected_product:
             legacy.metadata.verify_package_identity(package, {
                 "portable": legacy.metadata.identity(package, 1024 * 1024 * 1024),
                 "executable": wrong_executable})
+        self._observe('wrong-product', 'package-api', 'rejected', wrong_product_started,
+            str(rejected_product.exception).encode())
 
         def cohort():
             base_value, path, _inventory, _origin, product_root = base_inputs
@@ -217,9 +234,10 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # app must still fail through the real Java verifier and production Python owner.
         # This synthetic original transport does not supply a production registration/receipt.
         self._stage = "native-wrong-app-rejection"
+        wrong_app_started = time.monotonic_ns()
         with patch.object(legacy.projection, "_run_maintenance_native",
                 wraps=legacy.projection._run_maintenance_native) as native_attempt, \
-                self.assertRaises(legacy.projection.ProjectionFailure):
+                self.assertRaises(legacy.projection.ProjectionFailure) as rejected_app:
             legacy.projection.produce(h.fetch(source, h.work), {
                 "catalog": "A1/catalog.properties", "catalogSignature": "A1/cryptad-app-catalog.signature",
                 "bundle": "A1/bundle.zip", "submission": "A1/submission.zip"},
@@ -234,6 +252,8 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
                 federation_selection=authenticated, selection_id="a1",
                 source=next(row for row in _cohort["sources"] if row["appId"] == "pr305-fixture"))
         native_attempt.assert_called_once()
+        self._observe('wrong-app', 'app-projection', 'rejected', wrong_app_started,
+            str(rejected_app.exception).encode())
         from test_maintenance_runtime_companion import CompanionTransportTest
         import maintenance_runtime_companion as companion
         from maintenance_runtime_transfer import copy_runtime
@@ -244,6 +264,7 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         h.stack.enter_context(patch.object(legacy.metadata, "datetime", dt.datetime))
         transfer = crypto.root / "sealed-runtime"
         self._stage = "native-private-freeze"
+        cms_started = time.monotonic_ns()
         with patch.object(legacy.projection, "COHORT_FILE", policy_path):
             sealed = legacy.metadata.seal_private_freeze(freeze, package, transfer,
                 projection_origin=projection_origin, private_root=h.work)
@@ -254,6 +275,54 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         self.assertEqual({companion.DESCRIPTOR, companion.CIPHERTEXT}, set(committed))
         for canary in (b"pr305-fixture", inventory["cohortDigest"].encode(), b"federationSelection"):
             self.assertNotIn(canary, b"".join(committed.values()))
+        with companion.open_companion(sealed, transfer, crypto.root) as opened:
+            self.assertEqual(companion.MEMBERS, {path.name for path in opened.iterdir()})
+            opened_bytes = b''.join((opened / name).read_bytes() for name in sorted(companion.MEMBERS))
+        self.assertFalse(opened.exists())
+        self._observe('cms-five-member-context', 'maintenance-prepare', 'owner-validated',
+            cms_started, opened_bytes)
+        # Separate tampered transfers preserve the exact accepted ciphertext and original key.
+        wrong_key = crypto.root / 'wrong-recipient.key'
+        subprocess.run(['/usr/bin/openssl', 'genpkey', '-algorithm', 'RSA',
+            '-pkeyopt', 'rsa_keygen_bits:2048', '-out', str(wrong_key)],
+            check=True, capture_output=True, timeout=30)
+        wrong_key.chmod(0o600)
+        attack_started = time.monotonic_ns()
+        with patch.object(companion, 'RECIPIENT_KEY', wrong_key), \
+                patch.object(companion, '_openssl', wraps=companion._openssl) as attempted_crypto, \
+                self.assertRaises(companion.CompanionError) as rejection:
+            with companion.open_companion(sealed, transfer, crypto.root):
+                self.fail('wrong recipient yielded plaintext')
+        self.assertTrue(any('-decrypt' in call.args[0] for call in attempted_crypto.call_args_list))
+        self.assertFalse(list(crypto.root.glob('runtime-open-*')))
+        self._observe('cms-wrong-recipient', 'maintenance-prepare', 'rejected', attack_started,
+            str(rejection.exception).encode())
+        tampered = crypto.root / 'tampered-transfer'
+        shutil.copytree(transfer, tampered)
+        raw = (tampered / companion.CIPHERTEXT).read_bytes()
+        raw = raw[:-1] + bytes([raw[-1] ^ 1])
+        (tampered / companion.CIPHERTEXT).write_bytes(raw)
+        descriptor = companion._json((tampered / companion.DESCRIPTOR).read_bytes())
+        descriptor['ciphertext'] = companion._identity(companion.CIPHERTEXT, raw)
+        descriptor_raw = companion._bytes(descriptor)
+        (tampered / companion.DESCRIPTOR).write_bytes(descriptor_raw)
+        tampered_freeze = {**sealed, 'runtimeMetadata': companion._identity(companion.DESCRIPTOR, descriptor_raw)}
+        attack_started = time.monotonic_ns()
+        with patch.object(companion, '_openssl', wraps=companion._openssl) as attempted_crypto, \
+                self.assertRaises(companion.CompanionError) as rejection:
+            with companion.open_companion(tampered_freeze, tampered, crypto.root):
+                self.fail('tampered envelope yielded plaintext')
+        self.assertTrue(any('-decrypt' in call.args[0] for call in attempted_crypto.call_args_list))
+        self.assertFalse(list(crypto.root.glob('runtime-open-*')))
+        self._observe('cms-tampered-envelope', 'maintenance-prepare', 'rejected', attack_started,
+            str(rejection.exception).encode())
+        attack_started = time.monotonic_ns()
+        with self.assertRaises(companion.CompanionError) as rejection:
+            with companion.open_companion({**sealed, 'releaseId': 'synthetic-substitution'}, transfer, crypto.root):
+                self.fail('substituted subject yielded plaintext')
+        self.assertFalse(list(crypto.root.glob('runtime-open-*')))
+        self._observe('cms-subject-substitution', 'maintenance-prepare', 'rejected', attack_started,
+            str(rejection.exception).encode())
         self._stage = "exact-handoffs"
         for name in ("prepared", "validated", "retry"):
             destination = crypto.root / name
@@ -275,6 +344,7 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             sourceCommit=commit, contractVersion=ordinary["contractVersion"],
             appDigests=sorted(by_id[app]["bundleDigest"] for app in ordinary["rolePolicy"]["candidate-sender"]))
         self._stage = "original-authenticated-private-native-admission"
+        consumer_started = time.monotonic_ns()
         member_attestations = []
         original_attestation_transport = legacy.products._gh
         def attest(arguments, environment):
@@ -329,3 +399,5 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
                     validation.require_context({**sealed, "releaseId": "other"}, transfer, package)
         with self.assertRaises(validation.RuntimeValidationError):
             validation.require_context(sealed, transfer, package)
+        self._observe('product-selection-native-consumers', 'maintenance-prepare', 'owner-validated',
+            consumer_started, legacy.metadata.canonical_bytes(private_native))

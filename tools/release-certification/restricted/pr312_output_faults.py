@@ -135,7 +135,7 @@ def _validate_observation(native, mode, stage, work, rejected, result):
         raise ValueError('output-fixture-hostile-output-accepted')
 
 
-def run(root, identity):
+def run(root, identity, *, observe=None):
     """Return fixed coverage names only after every executed case and quiescence check passes."""
     import restricted_native as native
     if (os.geteuid() != 0 or not Path(native.__file__).resolve().is_relative_to('/opt')
@@ -172,6 +172,7 @@ def run(root, identity):
                    'bundleIdentity': identity, 'deadlineMonotonic': time.monotonic() + 60}
         rejected, result = False, b''
         started = time.monotonic()
+        started_ns = time.monotonic_ns()
         try:
             with native.owning_boundary(context=context):
                 result = native.run(_command(jdk, tools, work, inputs), environment=ENVIRONMENT,
@@ -184,6 +185,10 @@ def run(root, identity):
         if len(stages) != 1 or not (stages[0] / 'manager.json').exists():
             raise ValueError('output-fixture-not-launched')
         _validate_observation(native, mode, stages[0], work, rejected, result)
+        if observe is not None and mode != 'control':
+            from pr312_native_faults import emit_observations
+            case_id = 'hostile-output-' + ('open-timeout' if mode == 'open-output-timeout' else mode)
+            emit_observations(native, stages[0], (case_id,), started_ns, observe)
         (work / 'observation.json').write_text(json.dumps({'mode': mode, 'rejected': rejected,
             'quiescent': True, 'elapsedSeconds': time.monotonic() - started,
             'javaAppValidation': False, 'productionAuthority': False}, sort_keys=True))
