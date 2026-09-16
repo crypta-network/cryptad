@@ -124,12 +124,72 @@ def command_record(arguments, environment, timeout, phase):
 def classify_diagnostic(raw, additional=b''):
     def encoded(value):
         return value.encode() if isinstance(value, str) else (value or b'')
-    raw = (encoded(raw) + encoded(additional))[:65536]
+    raw = encoded(raw)[:65536] + encoded(additional)[:65536]
     return {'diagnosticSha256': hashlib.sha256(raw).hexdigest(),
-        'fatalSignal': 'SIGILL' if b'SIGILL' in raw else 'unclassified',
-        'failureClass': 'jvm-sigill' if b'SIGILL' in raw else 'producer-command-failed',
+        'fatalSignal': 'SIGILL' if b'SIGILL' in raw else 'SIGSEGV' if b'SIGSEGV' in raw else 'unclassified',
+        'failureClass': 'jvm-sigill' if b'SIGILL' in raw else
+            'jvm-sigsegv' if b'SIGSEGV' in raw else 'producer-command-failed',
         'fatalFrame': 'split-constant-pool-entry' if b'SplitConstantPool.entryByIndex' in raw else
-            'regex-branch-match' if b'Pattern$Branch.match' in raw else 'unclassified'}
+            'regex-branch-match' if b'Pattern$Branch.match' in raw else
+            'long-rotate-right' if b'java.lang.Long.rotateRight' in raw else 'unclassified'}
+
+
+
+class PrivateCommandDiagnostics:
+    """Bounded private failed-command records, saved while temporary JDK/tool bytes still exist."""
+    MAX_ROWS = 128
+    MAX_SIZE = 256 * 1024
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.record = {'schemaVersion': 1, 'kind': 'pr313-guest-trusted-fixture-commands',
+            'productionEligible': False, 'commands': [], 'rawHsErrRetained': False}
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            info = os.fstat(fd)
+            self.identity = (info.st_dev, info.st_ino)
+        finally:
+            os.close(fd)
+        self.save()
+
+    def save(self):
+        raw = (json.dumps(self.record, sort_keys=True, allow_nan=False) + '\n').encode()
+        if len(raw) > self.MAX_SIZE:
+            raise ValueError('fixture-diagnostic-bound-exceeded')
+        fd = os.open(self.path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.geteuid() or info.st_mode & 0o077
+                    or (info.st_dev, info.st_ino) != self.identity):
+                raise ValueError('fixture-diagnostic-file-substituted')
+            with os.fdopen(fd, 'wb', closefd=False) as stream:
+                stream.write(raw)
+                stream.truncate()
+                stream.flush()
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def failed(self, arguments, options, fixture, phase, started, captured):
+        if len(self.record['commands']) >= self.MAX_ROWS:
+            raise ValueError('fixture-diagnostic-bound-exceeded')
+        row = command_record(arguments, options['environment'], options.get('timeout', 180), phase)
+        row.update(status='failed', elapsedSeconds=round(time.monotonic() - started, 3),
+            outputLimit=options.get('output_limit', 32768),
+            **classify_diagnostic(*(captured or [b'', b''])))
+        if 'context' not in self.record:
+            # These precomputed whole-tree identities belong to the actual staged fixture JDK
+            # and installed exporter. Individual executable/JAR bytes are reopened before cleanup.
+            java = fixture.java / 'bin/java'
+            jars = sorted((fixture.tool / 'lib').glob('*.jar'))
+            if len(jars) > 128 or sum(path.stat().st_size for path in jars) > 512 * 1024 * 1024:
+                raise ValueError('fixture-diagnostic-tool-bound-exceeded')
+            self.record['context'] = {'jdkIdentity': fixture.java_digest,
+                'javaExecutableSha256': digest(java), 'toolIdentity': fixture.tool_digest,
+                'toolJars': [{'name': path.name, 'sha256': digest(path)} for path in jars]}
+        self.record['commands'].append(row)
+        self.save()
 
 
 def prepare(source, output, product_commit):

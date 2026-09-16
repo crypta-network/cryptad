@@ -11,6 +11,18 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_fixture_public_classification_excludes_private_fields_and_unknown_text(self):
+        allowed = {'fatalSignal': 'SIGSEGV', 'failureClass': 'jvm-sigsegv',
+                   'fatalFrame': 'long-rotate-right'}
+        private = dict(allowed, argumentsDigest='private-commitment', phase='private-path',
+                       message='harmless-private-prose')
+        rows = {'commands': [private, private, dict(private, fatalFrame='private-frame'),
+                             {'fatalSignal': []}, 'private-text']}
+        report = driver.public_report({'fixtureDiagnostics': rows})
+        self.assertEqual([allowed], report['trustedFixtureDiagnostics'])
+        self.assertNotIn('private', str(report))
+        self.assertFalse(report['installedKeylessNativeAcceptanceSatisfied'])
+
     def test_copied_product_source_must_match_real_commit_and_embedded_marker(self):
         import subprocess
         import zipfile

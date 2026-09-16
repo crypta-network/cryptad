@@ -8,8 +8,10 @@ in the full inventory, including when all implemented guest groups happen to exi
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import shutil
@@ -184,9 +186,120 @@ def collect_attempt(directory, declared):
                                   and report['guestExitCode'] == 0))
 
 
+DISPOSABLE_FILES = ('guest.qcow2', 'prepared.qcow2', 'source.tar.gz')
+DISPOSABLE_DIRECTORIES = ('expected-bundle', 'cryptad')
+RECOVERY_CASES = frozenset(('death-active', 'death-running', 'death-output', 'worker-death-intent',
+    'worker-death-result', 'owner-revocation-running', 'worker-revocation-running', 'completed-revocation-retry'))
+
+
+def dispose_successful_attempt(suite, directory, attempt, expected_identity):
+    """Reclaim only this completed disposable guest's generated large objects.
+
+    Failed/inconclusive cases and recovery guests keep their disks. All reports, observations,
+    diagnostic logs, tool snapshots, seeds and trust inputs remain. An immutable private intent
+    records exact file hashes before the first unlink; a separate completion records progress.
+    """
+    if (not acceptance._identity(expected_identity) or attempt.get('identity') != expected_identity
+            or attempt.get('attemptCompleted') is not True or attempt.get('guestStopped') is not True):
+        return 'retained'
+    declared, observations = attempt.get('declaredCases'), attempt.get('observations')
+    if (not isinstance(declared, list) or not declared or len(set(declared)) != len(declared)
+            or RECOVERY_CASES.intersection(declared) or not isinstance(observations, list)
+            or len(observations) != len(declared)):
+        return 'retained'
+    try:
+        names = [row['caseId'] for row in observations]
+        if (sorted(names) != sorted(declared) or any(
+                acceptance.observation_status(row, expected_identity) != 'passed' for row in observations)):
+            return 'retained'
+    except (KeyError, ValueError, TypeError):
+        return 'retained'
+    suite, directory = Path(suite).absolute(), Path(directory).absolute()
+    try:
+        if (directory.parent != suite or re.fullmatch('attempt-[0-9]{2}', directory.name) is None
+                or directory.resolve(strict=True) != directory or suite.resolve(strict=True) != suite
+                or not shutil.rmtree.avoids_symlink_attacks):
+            return 'retained'
+        for path in (suite, directory):
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                return 'retained'
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return 'retained'
+    files, identities, removed = [], {}, []
+    try:
+        # Complete every preflight before writing intent or changing any generated object.
+        for name in DISPOSABLE_FILES:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+            try:
+                before = os.fstat(fd)
+                if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                        or before.st_uid != os.geteuid()):
+                    return 'retained'
+                with os.fdopen(fd, 'rb', closefd=False) as stream:
+                    digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+                after = os.fstat(fd)
+                if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                        after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                    return 'retained'
+                identities[name] = (before.st_dev, before.st_ino)
+                files.append({'name': name, 'sha256': digest, 'sizeBytes': before.st_size})
+            finally:
+                os.close(fd)
+        report = private_json(directory / 'attempt.private.json')
+        expected_files = {'prepared.qcow2': expected_identity['preparedImageDigest'],
+                          'source.tar.gz': report.get('sourceArchiveDigest')}
+        if any(row['sha256'] != expected_files[row['name']] for row in files if row['name'] in expected_files):
+            return 'retained'
+        for name in DISPOSABLE_DIRECTORIES:
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid():
+                return 'retained'
+            identities[name] = (info.st_dev, info.st_ino)
+        _save(directory / 'disposal.private.json', {'schemaVersion': 1,
+            'kind': 'completed-disposable-guest-removal-intent', 'contract': acceptance.CONTRACT,
+            'caseIds': declared, 'identity': expected_identity, 'files': files,
+            'directories': list(DISPOSABLE_DIRECTORIES)})
+        (directory / 'disposal.private.json').chmod(0o400)
+        for name in (*DISPOSABLE_FILES, *DISPOSABLE_DIRECTORIES):
+            info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if (info.st_dev, info.st_ino) != identities[name]:
+                raise ValueError('pr313-disposal-object-changed')
+            if name in DISPOSABLE_FILES:
+                os.unlink(name, dir_fd=descriptor)
+            else:
+                shutil.rmtree(name, dir_fd=descriptor)
+            removed.append(name)
+    except (OSError, ValueError, KeyError, TypeError):
+        if not (directory / 'disposal.private.json').exists():
+            return 'retained'
+        _save(directory / 'disposal-complete.private.json', {'status': 'partial', 'removed': removed})
+        (directory / 'disposal-complete.private.json').chmod(0o400)
+        return 'partial'
+    finally:
+        os.close(descriptor)
+    _save(directory / 'disposal-complete.private.json', {'status': 'complete', 'removed': removed})
+    (directory / 'disposal-complete.private.json').chmod(0o400)
+    return 'disposed'
+
+
+def verify_executing_source(source):
+    """Bind host-side grouping and verdict code to the same selected clean helper source."""
+    source = Path(source).resolve(strict=True)
+    executing = (Path(__file__), *(Path(module.__file__) for module in
+        (reference, acceptance, faults, worker_faults, public_faults)))
+    for actual in executing:
+        actual = actual.resolve(strict=True)
+        expected = source / 'tools/release-certification/restricted' / actual.name
+        if actual.suffix != '.py' or expected.is_symlink() or reference.sha256(actual) != reference.sha256(expected):
+            raise ValueError('executing-acceptance-source-mismatch')
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
+    verify_executing_source(args.source)
     os.umask(0o077)
     output = args.output.absolute()
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
@@ -217,7 +330,8 @@ def run(args):
                 expected = attempt['identity']
             attempts.append(attempt)
             history.append({'group': group, 'caseId': case, 'exitCode': exit_code,
-                            'status': 'observations-retained'})
+                            'status': 'observations-retained',
+                            'disposal': dispose_successful_attempt(output, directory, attempt, expected)})
         except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             attempts.append(dict(contract=acceptance.CONTRACT, identity=None, declaredCases=declared,
                 observations=[{'caseId': name, 'status': 'setup-failed'} for name in declared], guestStopped=False, attemptCompleted=False))

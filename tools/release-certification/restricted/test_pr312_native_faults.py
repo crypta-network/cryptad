@@ -31,6 +31,24 @@ class NativeFixtureTest(unittest.TestCase):
         with patch.object(restricted_native, '_read_output', return_value=raw + b'fixture-descendant-started\n'):
             fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'descendant')
 
+    def test_unexpected_output_requires_successful_write_before_roster_denial(self):
+        entry = b'fixture-mode-started:unexpected-output\n'
+        completed = entry + b'fixture-unexpected-output-written\n'
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary)
+            with patch.object(restricted_native, '_read_output', return_value=entry):
+                with self.assertRaisesRegex(ValueError, 'output-roster-attack-not-observed'):
+                    fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+            with patch.object(restricted_native, '_read_output', side_effect=[completed, b'fixture-pass\n']):
+                fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+            # A marker followed by native timeout/failure is not the successful exporter exit
+            # needed to isolate the launcher's output-roster rejection.
+            (stage / 'output').mkdir()
+            (stage / 'output/failure.json').write_text('{"stage":"deadline"}')
+            with patch.object(restricted_native, '_read_output', side_effect=[completed, b'fixture-pass\n']):
+                with self.assertRaisesRegex(ValueError, 'output-roster-attack-not-observed'):
+                    fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+
     def test_observer_records_exact_manager_diagnostics_and_fixed_case_contract(self):
         import hashlib
         import pr313_acceptance as acceptance

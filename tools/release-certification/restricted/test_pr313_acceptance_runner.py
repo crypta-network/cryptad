@@ -1,4 +1,6 @@
 """Offline execution-lane contracts. No QEMU or guest acceptance is implied."""
+import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,6 +27,35 @@ class AcceptanceRunnerTest(unittest.TestCase):
                 runner.run(SimpleNamespace())
             mkdir.assert_not_called()
             launch.assert_not_called()
+
+    def test_every_executing_grouping_or_verdict_module_must_match_selected_source(self):
+        modules = (runner, runner.reference, acceptance, runner.faults, runner.worker_faults, runner.public_faults)
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            directory = source / 'tools/release-certification/restricted'
+            directory.mkdir(parents=True)
+            for module in modules:
+                actual = Path(module.__file__)
+                runner.shutil.copyfile(actual, directory / actual.name)
+            runner.verify_executing_source(source)
+            for module in modules:
+                target = directory / Path(module.__file__).name
+                original = target.read_bytes()
+                target.write_bytes(original + b'\n# source drift\n')
+                with self.subTest(module=target.name), self.assertRaisesRegex(ValueError, 'executing-acceptance-source-mismatch'):
+                    runner.verify_executing_source(source)
+                target.write_bytes(original)
+
+    def test_source_mismatch_rejected_before_suite_creation_or_guest_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'suite'
+            with patch.object(runner.os, 'geteuid', return_value=os.geteuid() or 1000), \
+                    patch.object(runner, 'verify_executing_source', side_effect=ValueError('executing-acceptance-source-mismatch')), \
+                    patch.object(runner.reference, 'run') as launch:
+                with self.assertRaisesRegex(ValueError, 'executing-acceptance-source-mismatch'):
+                    runner.run(SimpleNamespace(source=Path(temporary), output=output))
+                launch.assert_not_called()
+                self.assertFalse(output.exists())
 
     def test_strict_private_input_rejects_symlink_duplicate_keys_and_public_permissions(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -83,6 +114,86 @@ class AcceptanceRunnerTest(unittest.TestCase):
                 self.assertFalse(result['attemptCompleted'])
                 self.assertTrue(result['guestStopped'])
 
+    def disposable_fixture(self, root):
+        suite = root / 'suite'
+        suite.mkdir(mode=0o700)
+        attempt = suite / 'attempt-01'
+        attempt.mkdir(mode=0o700)
+        for name in runner.DISPOSABLE_FILES:
+            (attempt / name).write_bytes(('generated-' + name).encode())
+        for name in runner.DISPOSABLE_DIRECTORIES:
+            (attempt / name).mkdir()
+            (attempt / name / 'generated').write_bytes(b'generated source')
+        for name in ('seed.iso', 'known_hosts', 'diagnostics.private.log', 'pr313-observation.private.json'):
+            (attempt / name).write_bytes(b'preserved private material')
+        identity = synthetic_identity()
+        identity['preparedImageDigest'] = hashlib.sha256((attempt / 'prepared.qcow2').read_bytes()).hexdigest()
+        runner._save(attempt / 'attempt.private.json', {
+            'sourceArchiveDigest': hashlib.sha256((attempt / 'source.tar.gz').read_bytes()).hexdigest()})
+        record = dict(contract=acceptance.CONTRACT, identity=identity, declaredCases=['input-inode'],
+                      observations=[synthetic_observation('input-inode', identity)],
+                      guestStopped=True, attemptCompleted=True)
+        return suite, attempt, identity, record
+
+    def test_only_completed_exact_owned_generated_objects_are_disposed_with_prior_hash_audit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            suite, attempt, identity, record = self.disposable_fixture(root)
+            original = root / 'failed-original.qcow2'
+            original.write_bytes(b'failed original')
+            (attempt / 'arbitrary.qcow2').write_bytes(b'not an allowed generated name')
+            self.assertEqual('disposed', runner.dispose_successful_attempt(suite, attempt, record, identity))
+            self.assertTrue(all(not (attempt / name).exists() for name in
+                                (*runner.DISPOSABLE_FILES, *runner.DISPOSABLE_DIRECTORIES)))
+            for name in ('seed.iso', 'known_hosts', 'diagnostics.private.log', 'pr313-observation.private.json',
+                         'attempt.private.json', 'arbitrary.qcow2'):
+                self.assertTrue((attempt / name).is_file())
+            self.assertEqual(b'failed original', original.read_bytes())
+            audit = json.loads((attempt / 'disposal.private.json').read_bytes())
+            self.assertEqual(set(runner.DISPOSABLE_FILES), {row['name'] for row in audit['files']})
+            for row in audit['files']:
+                self.assertEqual(hashlib.sha256(('generated-' + row['name']).encode()).hexdigest(), row['sha256'])
+            self.assertEqual('complete', json.loads((attempt / 'disposal-complete.private.json').read_bytes())['status'])
+
+    def test_missing_failed_inconclusive_unstopped_or_unverified_record_prevents_disposal(self):
+        mutations = [lambda row: row.update(observations=[]),
+            lambda row: row.update(observations=[{'caseId': 'input-inode', 'status': 'failed'}]),
+            lambda row: row.update(observations=[{'caseId': 'input-inode', 'status': 'inconclusive'}]),
+            lambda row: row.update(guestStopped=False), lambda row: row.update(attemptCompleted=False),
+            lambda row: row['identity'].update(productDigest='e' * 64)]
+        for mutate in mutations:
+            with tempfile.TemporaryDirectory() as temporary:
+                suite, attempt, identity, record = self.disposable_fixture(Path(temporary))
+                record = copy.deepcopy(record)
+                mutate(record)
+                self.assertEqual('retained', runner.dispose_successful_attempt(suite, attempt, record, identity))
+                self.assertTrue(all((attempt / name).is_file() for name in runner.DISPOSABLE_FILES))
+                self.assertFalse((attempt / 'disposal.private.json').exists())
+
+    def test_recovery_and_symlinked_generated_objects_always_retained(self):
+        for variant in ('recovery', 'disk-link', 'directory-link', 'outside-suite'):
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                suite, attempt, identity, record = self.disposable_fixture(root)
+                outside = root / 'outside'
+                outside.mkdir()
+                (outside / 'valuable').write_bytes(b'unchanged')
+                if variant == 'recovery':
+                    record['declaredCases'] = ['death-active']
+                    record['observations'] = [synthetic_observation('death-active', identity)]
+                elif variant == 'disk-link':
+                    (attempt / 'guest.qcow2').unlink()
+                    (attempt / 'guest.qcow2').symlink_to(outside / 'valuable')
+                elif variant == 'directory-link':
+                    runner.shutil.rmtree(attempt / 'cryptad')
+                    (attempt / 'cryptad').symlink_to(outside, target_is_directory=True)
+                else:
+                    suite = outside
+                self.assertEqual('retained', runner.dispose_successful_attempt(suite, attempt, record, identity))
+                self.assertTrue((attempt / 'prepared.qcow2').is_file())
+                self.assertEqual(b'unchanged', (outside / 'valuable').read_bytes())
+                self.assertFalse((attempt / 'disposal.private.json').exists())
+
     def test_reached_fault_without_complete_record_is_inconclusive(self):
         report = {'guestSummary': {'failedStage': 'installed-pr313-fault'}}
         self.assertEqual('inconclusive', runner.missing_status(report, ['input-inode'], 'input-inode'))
@@ -113,7 +224,7 @@ class AcceptanceRunnerTest(unittest.TestCase):
                     patch.object(runner, 'required_attempt_bytes', return_value=100), \
                     patch.object(runner.shutil, 'disk_usage', return_value=SimpleNamespace(free=99)), \
                     patch.object(runner.reference, 'run') as launch, patch('builtins.print'):
-                self.assertEqual(2, runner.run(SimpleNamespace(output=output)))
+                self.assertEqual(2, runner.run(SimpleNamespace(output=output, source=Path(__file__).resolve().parents[3])))
             launch.assert_not_called()
             self.assertEqual(b'failed-original-immutable', original.read_bytes())
             self.assertFalse((output / 'attempt-01').exists())
@@ -140,7 +251,7 @@ class AcceptanceRunnerTest(unittest.TestCase):
     def test_failed_attempt_has_closed_public_matrix_and_no_upload_or_private_canary(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / 'suite'
-            args = SimpleNamespace(output=root)
+            args = SimpleNamespace(output=root, source=Path(__file__).resolve().parents[3])
             original_uid = os.geteuid()
             with patch.object(runner.os, 'geteuid', return_value=original_uid or 1000), \
                     patch.object(runner, 'groups', return_value=[('positive', None, list(acceptance.CASES))]), \

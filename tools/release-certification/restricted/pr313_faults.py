@@ -348,8 +348,9 @@ def lifecycle(case, root, identity):
     command = _command(jdk, tools, work, inputs)
     if case == 'owner-revocation-running':
         executable = tools / 'bin/crypta-app'
-        executable.write_text("#!/usr/bin/python3\nfrom pathlib import Path\nimport time\n"
-                              "Path('/output/started').write_bytes(b'candidate-started')\ntime.sleep(120)\n")
+        executable.write_text("#!/usr/bin/python3\nimport ctypes,time\n"
+                              "assert ctypes.CDLL(None).prctl(15, b'pr313-revoke', 0, 0, 0) == 0\n"
+                              "time.sleep(120)\n")
         record = {'bundleIdentity': identity}
         worker.persist(root / 'registration.json', record)
         if not (worker.STATE / 'revocations.json').exists():
@@ -360,11 +361,13 @@ def lifecycle(case, root, identity):
                 deadline = time.monotonic() + 40
                 while time.monotonic() < deadline:
                     stages = [p for p in native.ROOT.iterdir() if p.is_dir() and not (p / 'complete.json').exists()]
-                    if len(stages) == 1 and (stages[0] / 'output/started').is_file() and (stages[0] / 'manager.json').is_file():
+                    if len(stages) == 1 and (stages[0] / 'manager.json').is_file():
                         manager = json.loads((stages[0] / 'manager.json').read_bytes())
                         state = native._manager('show')
-                        if (state['InvocationID'] == manager['invocationId'] and
+                        candidate = candidate_process(native)
+                        if (candidate is not None and state['InvocationID'] == manager['invocationId'] and
                                 state['ControlGroup'] == native.CGROUP and state['SubState'] == 'running'):
+                            manager['candidateProcess'] = candidate
                             worker.persist(root / 'revoked.json', {'reason': 'synthetic-fixed-case'})
                             (root / 'revocation-witness.json').write_text(json.dumps(manager))
                             os._exit(0)
@@ -511,3 +514,41 @@ def require_output_ready(native, stage):
             or native._read_output(output / 'stdout', 8192) != b'pr313-output-ready\n'
             or native._read_output(output / 'projection.json', 32768) != CONTROL_BYTES):
         raise ValueError('native-successful-output-not-ready')
+
+
+def candidate_process(native, *, proc=Path('/proc'), cgroup=None):
+    """Observe the fixed candidate's own process-name marker in only the owned cgroup.
+
+    The candidate's private /output is not visible at the retained stage while it runs. Its
+    successful PR_SET_NAME is an observable execution barrier without adding a sandbox mount.
+    """
+    cgroup = Path('/sys/fs/cgroup' + native.CGROUP) if cgroup is None else Path(cgroup)
+    try:
+        processes = (cgroup / 'cgroup.procs').read_text().split()
+    except FileNotFoundError:
+        return None
+    expected_uid = str(native._native_identity()[0])
+    matches = []
+    for pid in processes:
+        if not pid.isdecimal() or int(pid) <= 0:
+            raise ValueError('invalid-owned-cgroup-process')
+        root = proc / pid
+        try:
+            before = (root / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+            if (root / 'comm').read_text().strip() != 'pr313-revoke':
+                continue
+            arguments = (root / 'cmdline').read_bytes().split(b'\0')
+            if arguments[:2] != [b'/usr/bin/python3', b'/tools/bin/crypta-app']:
+                continue
+            status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines()
+                          if ':' in line)
+            if status.get('Uid', '').split() != [expected_uid] * 4:
+                continue
+            after = (root / 'stat').read_text().rsplit(')', 1)[1].split()[19]
+            if before == after and before.isdecimal() and int(before) > 0:
+                matches.append({'pid': int(pid), 'startTime': int(before), 'marker': 'pr313-revoke'})
+        except FileNotFoundError:
+            continue
+    if len(matches) > 1:
+        raise ValueError('ambiguous-owned-candidate-process')
+    return matches[0] if matches else None

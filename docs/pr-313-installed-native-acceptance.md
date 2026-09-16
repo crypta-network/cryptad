@@ -97,6 +97,14 @@ A denial is credited only after its attack executed at the required phase. Setup
 not-executed, inconclusive, rejected input and failed assertions retain distinct meanings.
 Expected reconciliation-required state is never deleted merely to make a later case run.
 
+Each launch checks available space for its private copies and a bounded guest-write reserve.
+After a successful attempt has stopped and every declared causal record and identity verifies,
+the runner can remove its generated disks, source archive and extracted source/bundle copies.
+It records the exact file hashes and sizes in a private disposal intent before removal and keeps
+the reports, observations, diagnostics and boot inventories. Failed, incomplete, inconclusive,
+death/recovery and revocation attempts retain their disks. This cleanup never clears guest
+active or retained-result state to make another case pass.
+
 ## Reproducible preparation and execution
 
 Build using the supported tasks, then select a clean source revision containing the exact helper
@@ -139,6 +147,12 @@ modified API fixture under an explicitly recorded local Java 25+ runtime. The cl
 excludes producer signing keys. This removes repeated trusted producer work from the guest;
 installed export/signature verification and real CMS/consumers still execute there. Producer
 inputs contain no precomputed acceptance verdict.
+
+Failed trusted guest fixture commands produce a bounded private record of the actual executable,
+JDK/tool identities, argument/environment digests, phase, deadline, elapsed time and fixed fatal
+signal/frame classifications before fixture teardown. Raw `hs_err` files are not retained by this
+recorder; that limitation is explicit. The attempt driver retrieves at most 256 KiB privately.
+Neither this record nor private canaries are included in the public assessment.
 
 Preparation schema 5 snapshots the base image, JDK, tools, resolved ELF dependencies/modules and
 firmware. Attempt schema 7 snapshots its standalone backing, seed, SSH key and trust file before

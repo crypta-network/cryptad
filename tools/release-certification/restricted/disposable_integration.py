@@ -713,9 +713,15 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
         bounded_log = BoundedPrivateLog(private_log)
         import bounded_process
         original_bounded_run = bounded_process.run
+        from pr313_fixtures import PrivateCommandDiagnostics
+        command_diagnostics = PrivateCommandDiagnostics(Path('/root/pr313-fixture-commands.private.json'))
+        diagnostic_pid = os.getpid()
         def fixture_run(*arguments, **options):
             # This excluded synthetic owner observes direct fixture-tool failures only. The
             # real call retains its exact command, environment, deadline and output bounds.
+            if os.getpid() != diagnostic_pid:
+                return original_bounded_run(*arguments, **options)
+            started = time.monotonic()
             captured = []
             supplied_sink = options.pop('diagnostic_sink', None)
             def capture(stdout, stderr):
@@ -725,6 +731,9 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
             try:
                 return original_bounded_run(*arguments, **options, diagnostic_sink=capture)
             except Exception:
+                # Preserve command identity before unittest teardown removes the temporary JDK.
+                command_diagnostics.failed(arguments[0], options, legacy.ProductConsumerIntegrationTest,
+                    getattr(selected, '_stage', 'fixture-setup'), started, captured)
                 if captured:
                     for label, raw in zip(('fixture-stdout', 'fixture-stderr'), captured):
                         bounded_log.write(label + ': ' + raw[:65536].decode('utf-8', errors='replace') + '\n')

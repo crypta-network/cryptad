@@ -201,6 +201,25 @@ def qemu_arguments(root, attempt, prepared, seed, port):
             '-monitor', 'none', '-no-user-config']
 
 
+def fixture_summary(value):
+    """Export only fixed diagnostic classifications, never private command identities."""
+    if not isinstance(value, dict) or not isinstance(value.get('commands'), list):
+        return []
+    allowed = {'fatalSignal': {'SIGILL', 'SIGSEGV', 'unclassified'},
+               'failureClass': {'jvm-sigill', 'jvm-sigsegv', 'producer-command-failed'},
+               'fatalFrame': {'split-constant-pool-entry', 'regex-branch-match',
+                              'long-rotate-right', 'unclassified'}}
+    rows = []
+    for record in value['commands'][:128]:
+        if not isinstance(record, dict):
+            continue
+        row = {key: record[key] for key, choices in allowed.items()
+               if isinstance(record.get(key), str) and record[key] in choices}
+        if len(row) == len(allowed) and row not in rows:
+            rows.append(row)
+    return rows
+
+
 def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
@@ -211,6 +230,7 @@ def public_report(report):
               'sshHostKeyPinOrigin', 'cpuModel', 'accelerator')
     output = {key: report[key] for key in fields if key in report}
     output.update(guest_summary(report.get('guestSummary')))
+    output['trustedFixtureDiagnostics'] = fixture_summary(report.get('fixtureDiagnostics'))
     output.update(productionAuthorityObserved=False, mandatoryIsolationTestSatisfied=False,
                   installedKeylessNativeAcceptanceSatisfied=False,
                   cpuModel=CPU_MODEL, accelerator=ACCELERATOR)
@@ -335,6 +355,9 @@ def run(args):
             seedDigest=report['seedDigest'], sshHostKeyPinDigest=report['sshHostKeyPinDigest'],
             sshKeyDigest=key_digest, cpuModel=CPU_MODEL, accelerator=ACCELERATOR,
             machine='pc,smm=off', vcpus=4, memoryMiB=5632)
+        for name in ('pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py'):
+            if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
+                raise ValueError('executing-reference-source-mismatch')
         clone = attempt / 'cryptad'
         report['stage'] = 'source-clone'
         command(['git', 'clone', '--no-hardlinks', '--no-checkout', str(source), str(clone)],
@@ -443,6 +466,7 @@ print(json.dumps(records))
                      'sudo head -c 1024 /root/pr312-installation-failure.json'],
                     stdout=stream, stderr=log, timeout=15)
         for label, remote, maximum in (
+                ('fixture-commands.private.json', '/root/pr313-fixture-commands.private.json', 262144),
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),
                 ('execution.private.json', '/opt/cryptad-cross-version/restricted-execution.json', 8388608),
@@ -460,6 +484,10 @@ print(json.dumps(records))
         verification_script = ("import sys,json; from pathlib import Path; "
             "sys.path.insert(0,str(Path('/opt/cryptad-cross-version/current').resolve()/'tools/release-certification/restricted')); "
             "import installation; print(json.dumps(installation.verify_execution(),sort_keys=True))")
+        diagnostic_path = attempt / 'fixture-commands.private.json'
+        if diagnostic_path.stat().st_size:
+            import installation
+            report['fixtureDiagnostics'] = installation.read_json(diagnostic_path)
         with (attempt / 'installed-verification.private.json').open('xb') as stream:
             subprocess.run([*ssh, 'sudo /usr/bin/python3 -I -S -B -'], input=verification_script.encode(),
                            stdout=stream, stderr=log, check=True, timeout=120, env=boot.ENVIRONMENT)

@@ -5,6 +5,8 @@ import os
 import subprocess
 import tempfile
 import unittest
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pr313_fixtures as fixtures
@@ -103,6 +105,66 @@ class FixtureInputsTest(unittest.TestCase):
             {'PATH': '/usr/bin', 'SECRET': 'private-canary'}, 60, 'java-producers')
         self.assertNotIn('private-canary', str(record))
         self.assertEqual(fixtures.digest(Path('/usr/bin/true')), record['executableSha256'])
+
+    def test_sigsegv_has_distinct_signal_and_frame_classification(self):
+        observed = fixtures.classify_diagnostic(b'private-canary SIGSEGV',
+            b'# C1 java.lang.Long.rotateRight')
+        self.assertEqual('SIGSEGV', observed['fatalSignal'])
+        self.assertEqual('jvm-sigsegv', observed['failureClass'])
+        self.assertEqual('long-rotate-right', observed['fatalFrame'])
+        self.assertNotIn('private-canary', str(observed))
+        self.assertEqual('SIGSEGV', fixtures.classify_diagnostic(b'x' * 65536, b'SIGSEGV')['fatalSignal'])
+
+    def test_guest_failure_identity_is_saved_before_fixture_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            java = root / 'jdk/bin/java'
+            java.parent.mkdir(parents=True)
+            java.write_bytes(b'java-byte-identity')
+            jar = root / 'tool/lib/fixture.jar'
+            jar.parent.mkdir(parents=True)
+            jar.write_bytes(b'jar-byte-identity')
+            fixture = SimpleNamespace(java=java.parent.parent, tool=jar.parent.parent,
+                java_digest='sha256:' + 'c' * 64, tool_digest='sha256:' + 'd' * 64)
+            path = root / 'commands.private.json'
+            diagnostics = fixtures.PrivateCommandDiagnostics(path)
+            diagnostics.failed(['/usr/bin/true', 'private-argument'],
+                {'environment': {'PATH': '/usr/bin', 'PRIVATE': 'private-canary'},
+                    'timeout': 60, 'output_limit': 32768}, fixture, 'ordinary-maintenance-product',
+                time.monotonic(), [b'SIGSEGV java.lang.Long.rotateRight', b'private-canary'])
+            java.unlink()
+            jar.unlink()
+            value = json.loads(path.read_bytes())
+            self.assertEqual('ordinary-maintenance-product', value['commands'][0]['phase'])
+            self.assertEqual('jvm-sigsegv', value['commands'][0]['failureClass'])
+            self.assertEqual(fixtures.hashlib.sha256(b'java-byte-identity').hexdigest(),
+                value['context']['javaExecutableSha256'])
+            self.assertEqual(fixtures.hashlib.sha256(b'jar-byte-identity').hexdigest(),
+                value['context']['toolJars'][0]['sha256'])
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            self.assertNotIn('private-canary', path.read_text())
+            self.assertNotIn('private-argument', path.read_text())
+            self.assertFalse(value['rawHsErrRetained'])
+            self.assertLess(path.stat().st_size, 256 * 1024)
+
+    def test_private_diagnostic_bounds_and_file_replacement_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / 'commands.private.json'
+            diagnostics = fixtures.PrivateCommandDiagnostics(path)
+            with patch.object(diagnostics, 'MAX_ROWS', 0):
+                with self.assertRaisesRegex(ValueError, 'bound-exceeded'):
+                    diagnostics.failed([], {}, None, 'setup', time.monotonic(), [])
+            with patch.object(diagnostics, 'MAX_SIZE', 1):
+                with self.assertRaisesRegex(ValueError, 'bound-exceeded'):
+                    diagnostics.save()
+            replacement = root / 'replacement'
+            replacement.write_text('untouched')
+            replacement.chmod(0o600)
+            os.replace(replacement, path)
+            with self.assertRaisesRegex(ValueError, 'file-substituted'):
+                diagnostics.save()
+            self.assertEqual('untouched', path.read_text())
 
     def test_ambient_jvm_options_fail_before_preparation(self):
         with tempfile.TemporaryDirectory() as temporary:

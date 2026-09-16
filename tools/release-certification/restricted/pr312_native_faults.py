@@ -49,6 +49,8 @@ public final class PackagedApiExport {
     }
     if (mode.equals("unexpected-output")) {
       Files.writeString(Path.of("/output/forged.json"), "{\"accepted\":true}");
+      require(Files.readString(Path.of("/output/forged.json")).equals("{\"accepted\":true}"));
+      System.err.println("fixture-unexpected-output-written"); System.err.flush();
       System.out.println("fixture-pass"); return;
     }
     if (mode.equals("cross-operation")) {
@@ -473,3 +475,8 @@ def validate_attack_marker(native, stage, mode):
         raise ValueError('native-fixture-attack-not-observed')
     if mode == 'descendant' and b'fixture-descendant-started\n' not in diagnostic:
         raise ValueError('native-fixture-descendant-not-observed')
+    if mode == 'unexpected-output':
+        if (b'fixture-unexpected-output-written\n' not in diagnostic
+                or native._read_output(stage / 'diagnostics/stdout', 8192, allow_empty=True) != b'fixture-pass\n'
+                or (stage / 'output/failure.json').exists()):
+            raise ValueError('native-fixture-output-roster-attack-not-observed')

@@ -113,6 +113,30 @@ class ExternalRaceTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'native-successful-output-not-ready'):
                 faults.require_output_ready(native, stage)
 
+    def test_candidate_execution_marker_requires_owned_uid_command_and_birth(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            group, proc = root / 'cgroup', root / 'proc'
+            group.mkdir()
+            child = proc / '123'
+            child.mkdir(parents=True)
+            (group / 'cgroup.procs').write_text('123\n')
+            (child / 'stat').write_text('123 (pr313-revoke) ' + ' '.join(['S'] + ['0'] * 18 + ['987']))
+            (child / 'comm').write_text('pr313-revoke\n')
+            (child / 'cmdline').write_bytes(b'/usr/bin/python3\0/tools/bin/crypta-app\0subject-projection\0')
+            (child / 'status').write_text('Uid:\t61002\t61002\t61002\t61002\n')
+            fixed = SimpleNamespace(_native_identity=lambda: (61002, 61002))
+            self.assertEqual({'pid': 123, 'startTime': 987, 'marker': 'pr313-revoke'},
+                             faults.candidate_process(fixed, proc=proc, cgroup=group))
+            (child / 'comm').write_text('python3\n')
+            self.assertIsNone(faults.candidate_process(fixed, proc=proc, cgroup=group))
+            (child / 'comm').write_text('pr313-revoke\n')
+            (child / 'status').write_text('Uid:\t0\t0\t0\t0\n')
+            self.assertIsNone(faults.candidate_process(fixed, proc=proc, cgroup=group))
+            (child / 'status').write_text('Uid:\t61002\t61002\t61002\t61002\n')
+            (child / 'cmdline').write_bytes(b'/usr/bin/python3\0/unrelated.py\0')
+            self.assertIsNone(faults.candidate_process(fixed, proc=proc, cgroup=group))
+
     def test_case_contract_is_closed(self):
         self.assertEqual(12, len(faults.RACE_CASES))
         with self.assertRaisesRegex(ValueError, 'unknown-fixed-case'):
