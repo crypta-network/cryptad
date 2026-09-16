@@ -9,6 +9,36 @@ import pr312_prepare_reference as prepare
 
 
 class PreparationTest(unittest.TestCase):
+    def test_snapshotted_tools_execute_recorded_bytes_after_source_replacement(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binaries = root / 'usr/bin'
+            binaries.mkdir(parents=True)
+            output = root / 'private'
+            output.mkdir()
+            expected = {}
+            for name in ('qemu-img', 'qemu-system-x86_64', 'genisoimage'):
+                source = binaries / name
+                source.write_text('#!/bin/sh\nprintf "' + name + '\\n"\n')
+                source.chmod(0o755)
+                expected[name] = prepare.digest(source)
+            copy = prepare.shutil.copyfileobj
+            def replace_after_open(incoming, outgoing):
+                path = Path(incoming.name)
+                path.unlink()
+                path.write_text('#!/bin/sh\nprintf "replacement\\n"\n')
+                path.chmod(0o755)
+                copy(incoming, outgoing)
+            with patch.object(prepare.shutil, 'copyfileobj', side_effect=replace_after_open):
+                tools = prepare.snapshot_tools(root, binaries / 'genisoimage', output)
+            for name, executable in tools.items():
+                self.assertEqual(expected[name], prepare.digest(executable))
+                self.assertNotEqual(expected[name], prepare.digest(binaries / name))
+                result = subprocess.run([str(executable)], check=True, capture_output=True, timeout=5)
+                self.assertEqual((name + '\n').encode(), result.stdout)
+                self.assertEqual(0o500, executable.stat().st_mode & 0o7777)
+
     def test_flatten_failure_cannot_publish_prepared_digest(self):
         import subprocess
         for failure in ('conversion', 'verification'):

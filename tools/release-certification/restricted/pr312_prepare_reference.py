@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 
@@ -131,6 +132,22 @@ def flatten_image(source, prepared, qemu_img, environment, call):
     return digest(prepared)
 
 
+def snapshot_tools(root, seed_tool, output):
+    """Retain the exact executable copies used for preparation, without copying source modes."""
+    directory = output / 'tools'
+    directory.mkdir(mode=0o700)
+    sources = {'qemu-system-x86_64': root / 'usr/bin/qemu-system-x86_64',
+               'qemu-img': root / 'usr/bin/qemu-img', 'genisoimage': seed_tool}
+    result = {}
+    for name, source in sources.items():
+        destination = directory / name
+        with source.open('rb') as incoming, destination.open('xb') as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+        destination.chmod(0o500)
+        result[name] = destination
+    return result
+
+
 def run(args):
     os.umask(0o077)
     output = args.output.absolute()
@@ -152,9 +169,13 @@ def run(args):
             root, image, jdk, seed_tool = validate_inputs(args)
             tool_environment.update(LD_LIBRARY_PATH=str(root / 'usr/lib/x86_64-linux-gnu'),
                                QEMU_MODULE_DIR=str(root / 'usr/lib/x86_64-linux-gnu/qemu'))
+            executables = snapshot_tools(root, seed_tool, output)
+            qemu_img = executables['qemu-img']
+            qemu = executables['qemu-system-x86_64']
+            seed_tool = executables['genisoimage']
             report.update(referenceImageSha512=IMAGE_SHA512, jdkSha256=JDK_SHA256,
-                qemuSha256=digest(root / 'usr/bin/qemu-system-x86_64'),
-                qemuImgSha256=digest(root / 'usr/bin/qemu-img'), seedToolSha256=digest(seed_tool))
+                qemuSha256=digest(qemu),
+                qemuImgSha256=digest(qemu_img), seedToolSha256=digest(seed_tool))
             report['stage'] = 'synthetic-seed'
             for name in ('guest-key', 'guest-host-key'):
                 call(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'pr312-reference', '-f', str(output / name)])
@@ -166,10 +187,12 @@ def run(args):
             seed = output / 'seed.iso'
             call([str(seed_tool), '-output', str(seed), '-volid', 'cidata', '-joliet', '-rock',
                   str(output / 'user-data'), str(output / 'meta-data')])
-            call([str(root / 'usr/bin/qemu-img'), 'create', '-f', 'qcow2', '-F', 'qcow2',
+            call([str(qemu_img), 'create', '-f', 'qcow2', '-F', 'qcow2',
                   '-b', str(image), str(output / 'guest.qcow2')])
-            call([str(root / 'usr/bin/qemu-img'), 'resize', str(output / 'guest.qcow2'), '24G'])
-            process = subprocess.Popen(preparation_arguments(root, output, image, seed, args.port),
+            call([str(qemu_img), 'resize', str(output / 'guest.qcow2'), '24G'])
+            arguments = preparation_arguments(root, output, image, seed, args.port)
+            arguments[0] = str(qemu)
+            process = subprocess.Popen(arguments,
                 env=tool_environment, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
             report.update(executed=True, guestStopped=False, stage='guest-boot')
             ssh = ssh_arguments(output, args.port)
@@ -205,7 +228,7 @@ def run(args):
             report['stage'] = 'image-flattening'
             prepared = output / 'prepared-pristine.qcow2'
             prepared_digest = flatten_image(output / 'guest.qcow2', prepared,
-                root / 'usr/bin/qemu-img', tool_environment, call)
+                qemu_img, tool_environment, call)
             report.update(preparedImageSha256=prepared_digest, status='prepared', stage='complete')
         except (OSError, ValueError, subprocess.SubprocessError):
             report['status'] = 'failed'

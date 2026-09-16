@@ -138,6 +138,15 @@ def copy_host_key_pin(source, destination):
     return sha256(destination)
 
 
+def snapshot_products(source, clone):
+    """Record the product bytes in the private tree that will enter the guest archive."""
+    for relative in PRODUCTS:
+        destination = clone / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source / relative, destination, symlinks=False)
+    return sha256(clone / 'build/cryptad-dist/lib/cryptad.jar')
+
+
 def qemu_arguments(root, attempt, prepared, seed, port):
     """Fixed guest hardware/network; callers cannot supply units, mounts, or candidate commands."""
     return [str(root / 'usr/bin/qemu-system-x86_64'), '-name', 'pr312-disposable',
@@ -184,8 +193,7 @@ def run(args):
             raise ValueError('exact-clean-source-required')
         report.update(helperSourceCommit=git('rev-parse', 'HEAD'),
                       helperSourceTree=git('rev-parse', 'HEAD^{tree}'),
-                      productSourceCommit=args.product_source_commit,
-                      productDigest=sha256(source / 'build/cryptad-dist/lib/cryptad.jar'))
+                      productSourceCommit=args.product_source_commit)
         report['stage'] = 'prepared-image-identity'
         root = args.qemu_root.resolve(strict=True)
         env = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib/x86_64-linux-gnu'),
@@ -201,10 +209,7 @@ def run(args):
                 stdout=log, stderr=log)
         command(['git', '-C', str(clone), 'checkout', '--detach', report['helperSourceCommit']],
                 stdout=log, stderr=log)
-        for relative in PRODUCTS:
-            destination = clone / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(source / relative, destination, symlinks=False)
+        report['productDigest'] = snapshot_products(source, clone)
         archive = attempt / 'source.tar.gz'
         report['stage'] = 'source-archive'
         command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)

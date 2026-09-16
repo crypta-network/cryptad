@@ -11,6 +11,37 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_product_digest_identifies_archived_copy_after_live_build_changes(self):
+        import tarfile
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, clone = root / 'source', root / 'cryptad'
+            for relative in driver.PRODUCTS:
+                (source / relative).mkdir(parents=True)
+            jar = source / 'build/cryptad-dist/lib/cryptad.jar'
+            jar.parent.mkdir()
+            jar.write_bytes(b'earlier-build')
+            old_digest = driver.sha256(jar)
+            copy = driver.shutil.copytree
+            def concurrent_build(incoming, destination, *args, **options):
+                if incoming == source / driver.PRODUCTS[0]:
+                    jar.write_bytes(b'copied-build')
+                result = copy(incoming, destination, *args, **options)
+                if incoming == source / driver.PRODUCTS[0]:
+                    jar.write_bytes(b'later-build')
+                return result
+            with patch.object(driver.shutil, 'copytree', side_effect=concurrent_build):
+                recorded = driver.snapshot_products(source, clone)
+            archive = root / 'source.tar.gz'
+            with tarfile.open(archive, 'w:gz') as stream:
+                stream.add(clone, arcname='cryptad')
+            with tarfile.open(archive) as stream:
+                raw = stream.extractfile('cryptad/build/cryptad-dist/lib/cryptad.jar').read()
+            self.assertEqual(b'copied-build', raw)
+            self.assertEqual(driver.hashlib.sha256(raw).hexdigest(), recorded)
+            self.assertNotEqual(old_digest, recorded)
+            self.assertNotEqual(driver.sha256(jar), recorded)
+
     def test_host_key_pin_replacement_cannot_change_opened_source_or_reported_bytes(self):
         import hashlib
         for kind in ('file', 'symlink'):

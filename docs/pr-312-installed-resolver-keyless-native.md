@@ -178,6 +178,13 @@ and generates a guest SSH host key before boot. The execution driver requires an
 key pin, disables agent forwarding, and ignores ambient SSH configuration. The private pin copy
 is read through one opened source descriptor and hashed after copying, so
 the reported pin digest identifies the file SSH actually uses even if the source path is replaced.
+The product digest likewise comes from the copied JAR in the private archive tree, after all
+product trees have been copied, rather than from the live build directory. This binds the reported
+JAR bytes, not an atomic snapshot of a concurrently changing build. Preparation copies its three
+reported executables (QEMU, qemu-img and genisoimage) through opened descriptors into private
+mode-0500 files, then hashes and executes those copies. These executable hashes do not authenticate
+the host loader, shared libraries, QEMU modules or firmware. Historical reports predating these
+copy-before-hash fixes retain the corresponding source-replacement limitation.
 Extracted QEMU and
 the pinned downloads are explicit prerequisites. Neither driver creates production approval. Preserve the
 prepared image digest and original base image/JDK verification. TCG timing is not a performance
