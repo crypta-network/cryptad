@@ -131,11 +131,12 @@ def verified_image_copy(source, destination, expected_digest, qemu_img, environm
     return destination
 
 
-def copy_host_key_pin(source, destination):
-    """Bind the report to the private pin SSH reads, using one opened source inode."""
+def snapshot_file(source, destination, algorithm='sha256'):
+    """Copy one opened source inode and identify the private bytes actually consumed."""
     with Path(source).open('rb') as incoming, Path(destination).open('xb') as outgoing:
         shutil.copyfileobj(incoming, outgoing)
-    return sha256(destination)
+    with Path(destination).open('rb') as retained:
+        return hashlib.file_digest(retained, algorithm).hexdigest()
 
 
 def snapshot_products(source, clone):
@@ -165,7 +166,7 @@ def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
               'helperSourceTree', 'productSourceCommit', 'productDigest', 'sourceArchiveDigest',
-              'preparedImageDigest', 'guestExitCode', 'guestStopped', 'mode', 'developmentSnapshot',
+              'preparedImageDigest', 'seedDigest', 'guestExitCode', 'guestStopped', 'mode', 'developmentSnapshot',
               'sshHostKeyPinDigest', 'sshHostKeyPinOrigin', 'cpuModel', 'accelerator')
     output = {key: report[key] for key in fields if key in report}
     output.update(guest_summary(report.get('guestSummary')))
@@ -179,7 +180,7 @@ def run(args):
     attempt = args.attempt.absolute()
     attempt.mkdir(mode=0o700, parents=False, exist_ok=False)
     os.umask(0o077)
-    report = {'schemaVersion': 3, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
+    report = {'schemaVersion': 4, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
@@ -201,8 +202,11 @@ def run(args):
         prepared = verified_image_copy(args.prepared_image, attempt / 'prepared.qcow2',
             args.prepared_image_digest, root / 'usr/bin/qemu-img', env)
         report['preparedImageDigest'] = args.prepared_image_digest
-        report['sshHostKeyPinDigest'] = copy_host_key_pin(args.known_hosts, attempt / 'known_hosts')
+        report['sshHostKeyPinDigest'] = snapshot_file(args.known_hosts, attempt / 'known_hosts')
         report['sshHostKeyPinOrigin'] = args.host_key_pin_origin
+        report['stage'] = 'seed-snapshot'
+        seed = attempt / 'seed.iso'
+        report['seedDigest'] = snapshot_file(args.seed, seed)
         clone = attempt / 'cryptad'
         report['stage'] = 'source-clone'
         command(['git', 'clone', '--no-hardlinks', '--no-checkout', str(source), str(clone)],
@@ -219,7 +223,7 @@ def run(args):
                  '-b', str(prepared), str(attempt / 'guest.qcow2')],
                 env=env, stdout=log, stderr=log)
         process = subprocess.Popen(qemu_arguments(root, attempt, prepared,
-                                                  args.seed.resolve(strict=True), args.port),
+                                                  seed, args.port),
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         report.update(executed=True, guestStopped=False, stage='guest-boot')
         ssh = ['ssh', '-F', '/dev/null', '-i', str(args.ssh_key.resolve(strict=True)), '-p', str(args.port),

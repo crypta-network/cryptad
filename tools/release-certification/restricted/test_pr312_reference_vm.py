@@ -11,6 +11,26 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_seed_snapshot_digest_identifies_only_the_retained_boot_medium(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, seed = root / 'caller.iso', root / 'seed.iso'
+            source.write_bytes(b'original-seed')
+            copy = driver.shutil.copyfileobj
+            def replace(incoming, outgoing):
+                source.unlink()
+                source.write_bytes(b'replacement-seed')
+                copy(incoming, outgoing)
+            with patch.object(driver.shutil, 'copyfileobj', side_effect=replace):
+                digest = driver.snapshot_file(source, seed)
+            arguments = driver.qemu_arguments(root, root, root / 'prepared', seed, 23112)
+            report = driver.public_report({'seedDigest': digest})
+            self.assertEqual(b'original-seed', seed.read_bytes())
+            self.assertEqual(driver.sha256(seed), report['seedDigest'])
+            self.assertNotEqual(driver.sha256(source), report['seedDigest'])
+            self.assertIn(f'file={seed},media=cdrom,format=raw,readonly=on', arguments)
+            self.assertNotIn(str(source), ' '.join(arguments))
+
     def test_product_digest_identifies_archived_copy_after_live_build_changes(self):
         import tarfile
         with tempfile.TemporaryDirectory() as temporary:
@@ -62,7 +82,7 @@ class ReferenceDriverTest(unittest.TestCase):
                     source.symlink_to(replacement)
                     copy(incoming, outgoing)
                 with patch.object(driver.shutil, 'copyfileobj', side_effect=replace_after_open):
-                    digest = driver.copy_host_key_pin(source, destination)
+                    digest = driver.snapshot_file(source, destination)
                 self.assertEqual(replacement.read_bytes(), source.read_bytes())
                 self.assertEqual(original.read_bytes(), destination.read_bytes())
                 self.assertEqual(hashlib.sha256(destination.read_bytes()).hexdigest(), digest)
@@ -75,7 +95,7 @@ class ReferenceDriverTest(unittest.TestCase):
             source.write_bytes(b'new-pin')
             destination.write_bytes(b'existing-pin')
             with self.assertRaises(FileExistsError):
-                driver.copy_host_key_pin(source, destination)
+                driver.snapshot_file(source, destination)
             self.assertEqual(b'existing-pin', destination.read_bytes())
 
     def test_guest_summary_exports_only_closed_stages_dimensions_and_digest(self):
@@ -191,7 +211,7 @@ class PreparedImageIdentityTest(unittest.TestCase):
                 self.assertEqual(2, driver.run(args))
             guest.assert_not_called()
             report = json.loads((args.attempt / 'stage-report.json').read_text())
-            self.assertEqual(3, report['schemaVersion'])
+            self.assertEqual(4, report['schemaVersion'])
             self.assertEqual('prepared-image-identity', report['stage'])
             self.assertFalse(report['executed'])
             self.assertTrue(report['guestStopped'])

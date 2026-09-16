@@ -9,6 +9,35 @@ import pr312_prepare_reference as prepare
 
 
 class PreparationTest(unittest.TestCase):
+    def test_base_snapshot_pins_opened_bytes_and_rejects_changed_content(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'base.qcow2'
+            source.write_bytes(b'approved-base')
+            expected = hashlib.sha512(source.read_bytes()).hexdigest()
+            output = root / 'attempt'
+            output.mkdir()
+            copy = prepare.shutil.copyfileobj
+            def replace(incoming, outgoing):
+                source.unlink()
+                source.write_bytes(b'changed-base')
+                copy(incoming, outgoing)
+            with patch.object(prepare, 'IMAGE_SHA512', expected), \
+                    patch.object(prepare.shutil, 'copyfileobj', side_effect=replace), \
+                    patch.object(prepare, 'require_standalone_image') as standalone:
+                retained = prepare.snapshot_base_image(source, output, Path('/qemu-img'), {})
+            standalone.assert_called_once_with(retained, Path('/qemu-img'), {})
+            self.assertEqual(b'approved-base', retained.read_bytes())
+            self.assertEqual(expected, prepare.digest(retained, 'sha512'))
+            second = root / 'second'
+            second.mkdir()
+            with patch.object(prepare, 'IMAGE_SHA512', expected), \
+                    patch.object(prepare, 'require_standalone_image') as standalone:
+                with self.assertRaisesRegex(ValueError, 'pinned-input-mismatch'):
+                    prepare.snapshot_base_image(source, second, Path('/qemu-img'), {})
+            standalone.assert_not_called()
+
     def test_snapshotted_tools_execute_recorded_bytes_after_source_replacement(self):
         import subprocess
         with tempfile.TemporaryDirectory() as temporary:

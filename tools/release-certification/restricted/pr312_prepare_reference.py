@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import time
 
-from pr312_reference_vm import ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image
+from pr312_reference_vm import ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image, snapshot_file
 
 IMAGE_SHA512 = 'a733e7d49442a03e70d03e4eb5aaf3967f3efc69ef70952f9bb10fc1ee2c4876eb95956b5ad2d31350e5fada768feb651352535fb8cd1233f61998a5a7d2e93c'
 JDK_SHA256 = 'dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e'
@@ -148,13 +148,21 @@ def snapshot_tools(root, seed_tool, output):
     return result
 
 
+def snapshot_base_image(source, output, qemu_img, environment):
+    image = output / 'reference-base.qcow2'
+    if snapshot_file(source, image, 'sha512') != IMAGE_SHA512:
+        raise ValueError('reference-pinned-input-mismatch')
+    require_standalone_image(image, qemu_img, environment)
+    return image
+
+
 def run(args):
     os.umask(0o077)
     output = args.output.absolute()
     if any(character in str(output) for character in (',', '\n', '\r', '\x00')):
         raise ValueError('reference-output-path-invalid')
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
-    report = {'schemaVersion': 3, 'kind': 'pr312-reference-preparation', 'executed': False,
+    report = {'schemaVersion': 4, 'kind': 'pr312-reference-preparation', 'executed': False,
               'stage': 'input-verification', 'status': 'failed', 'guestStopped': True,
               'cpuModel': CPU_MODEL, 'accelerator': ACCELERATOR}
     process = None
@@ -173,6 +181,8 @@ def run(args):
             qemu_img = executables['qemu-img']
             qemu = executables['qemu-system-x86_64']
             seed_tool = executables['genisoimage']
+            report['stage'] = 'base-image-snapshot'
+            image = snapshot_base_image(image, output, qemu_img, tool_environment)
             report.update(referenceImageSha512=IMAGE_SHA512, jdkSha256=JDK_SHA256,
                 qemuSha256=digest(qemu),
                 qemuImgSha256=digest(qemu_img), seedToolSha256=digest(seed_tool))
@@ -255,7 +265,7 @@ def main():
     try:
         return run(parser.parse_args())
     except (OSError, ValueError):
-        print(json.dumps(public_report({'schemaVersion': 3, 'kind': 'pr312-reference-preparation',
+        print(json.dumps(public_report({'schemaVersion': 4, 'kind': 'pr312-reference-preparation',
             'executed': False, 'stage': 'output-creation', 'status': 'failed', 'guestStopped': True})))
         return 2
 

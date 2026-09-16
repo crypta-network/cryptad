@@ -201,6 +201,14 @@ the booted storage. Old backed prepared images are rejected even when their over
 Prepare a new reference with the corrected tool; flattening an old failed attempt does not repair
 its historical evidence. No corrected full preparation or installed VM run has yet been observed.
 
+Schema-4 preparation additionally copies the base image through one opened source descriptor,
+verifies the private copy against the pinned SHA-512 and checks that it is standalone before using
+it as the guest overlay's backing file. Schema-4 attempts retain the caller's seed through the
+same descriptor-copy mechanism, publish `seedDigest` for that retained file, and mount only that
+copy. This identifies the boot medium; it does not approve arbitrary cloud-init configuration.
+Earlier reports do not establish these base-snapshot and seed-identity guarantees. The extra base
+and seed copies remain private, and the base snapshot requires additional local disk capacity.
+
 The focused real-QEMU storage regression uses tiny synthetic disks without booting a guest. It
 reproduces an unchanged overlay digest after backing-byte substitution, checks rejection, exercises
 the preparer's conversion, then deletes the original backing file and verifies that the standalone
