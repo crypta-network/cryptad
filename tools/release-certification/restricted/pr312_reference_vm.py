@@ -148,6 +148,18 @@ def snapshot_products(source, clone):
     return sha256(clone / 'build/cryptad-dist/lib/cryptad.jar')
 
 
+def snapshot_executables(sources, output):
+    directory = output / 'tools'
+    directory.mkdir(mode=0o700)
+    result = {}
+    for name, source in sources.items():
+        destination = directory / name
+        snapshot_file(source, destination)
+        destination.chmod(0o500)
+        result[name] = destination
+    return result
+
+
 def qemu_arguments(root, attempt, prepared, seed, port):
     """Fixed guest hardware/network; callers cannot supply units, mounts, or candidate commands."""
     return [str(root / 'usr/bin/qemu-system-x86_64'), '-name', 'pr312-disposable',
@@ -166,7 +178,8 @@ def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
               'helperSourceTree', 'productSourceCommit', 'productDigest', 'sourceArchiveDigest',
-              'preparedImageDigest', 'seedDigest', 'guestExitCode', 'guestStopped', 'mode', 'developmentSnapshot',
+              'preparedImageDigest', 'seedDigest', 'qemuSha256', 'qemuImgSha256',
+              'guestExitCode', 'guestStopped', 'mode', 'developmentSnapshot',
               'sshHostKeyPinDigest', 'sshHostKeyPinOrigin', 'cpuModel', 'accelerator')
     output = {key: report[key] for key in fields if key in report}
     output.update(guest_summary(report.get('guestSummary')))
@@ -177,10 +190,14 @@ def public_report(report):
 
 
 def run(args):
+    if getattr(os, 'geteuid', lambda: 0)() == 0:
+        raise ValueError('reference-unprivileged-host-required')
     attempt = args.attempt.absolute()
+    if any(character in str(attempt) for character in (',', '\n', '\r', '\x00')):
+        raise ValueError('reference-output-path-invalid')
     attempt.mkdir(mode=0o700, parents=False, exist_ok=False)
     os.umask(0o077)
-    report = {'schemaVersion': 4, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
+    report = {'schemaVersion': 5, 'kind': 'pr312-reference-vm-attempt', 'executed': False,
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
@@ -199,8 +216,13 @@ def run(args):
         root = args.qemu_root.resolve(strict=True)
         env = {**os.environ, 'LD_LIBRARY_PATH': str(root / 'usr/lib/x86_64-linux-gnu'),
                'QEMU_MODULE_DIR': str(root / 'usr/lib/x86_64-linux-gnu/qemu')}
+        executables = snapshot_executables({name: root / 'usr/bin' / name
+            for name in ('qemu-img', 'qemu-system-x86_64')}, attempt)
+        qemu_img = executables['qemu-img']
+        qemu = executables['qemu-system-x86_64']
+        report.update(qemuSha256=sha256(qemu), qemuImgSha256=sha256(qemu_img))
         prepared = verified_image_copy(args.prepared_image, attempt / 'prepared.qcow2',
-            args.prepared_image_digest, root / 'usr/bin/qemu-img', env)
+            args.prepared_image_digest, qemu_img, env)
         report['preparedImageDigest'] = args.prepared_image_digest
         report['sshHostKeyPinDigest'] = snapshot_file(args.known_hosts, attempt / 'known_hosts')
         report['sshHostKeyPinOrigin'] = args.host_key_pin_origin
@@ -219,11 +241,12 @@ def run(args):
         command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)
         report['sourceArchiveDigest'] = sha256(archive)
         report['stage'] = 'guest-overlay'
-        command([str(root / 'usr/bin/qemu-img'), 'create', '-f', 'qcow2', '-F', 'qcow2',
+        command([str(qemu_img), 'create', '-f', 'qcow2', '-F', 'qcow2',
                  '-b', str(prepared), str(attempt / 'guest.qcow2')],
                 env=env, stdout=log, stderr=log)
-        process = subprocess.Popen(qemu_arguments(root, attempt, prepared,
-                                                  seed, args.port),
+        arguments = qemu_arguments(root, attempt, prepared, seed, args.port)
+        arguments[0] = str(qemu)
+        process = subprocess.Popen(arguments,
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         report.update(executed=True, guestStopped=False, stage='guest-boot')
         ssh = ['ssh', '-F', '/dev/null', '-i', str(args.ssh_key.resolve(strict=True)), '-p', str(args.port),

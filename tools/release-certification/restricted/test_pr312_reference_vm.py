@@ -11,6 +11,29 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_root_execution_is_rejected_before_attempt_creation_or_helpers(self):
+        with patch.object(driver.os, 'geteuid', return_value=0), \
+                patch.object(driver.Path, 'mkdir') as mkdir, \
+                patch.object(driver, 'command') as command, \
+                patch.object(driver.subprocess, 'Popen') as guest:
+            with self.assertRaisesRegex(ValueError, 'unprivileged-host-required'):
+                driver.run(SimpleNamespace())
+        mkdir.assert_not_called()
+        command.assert_not_called()
+        guest.assert_not_called()
+
+    def test_attempt_option_delimiters_are_rejected_before_files_or_helpers(self):
+        for suffix in (',file=/other', '\ninvalid', '\rinvalid', '\x00invalid'):
+            with self.subTest(suffix=suffix), patch.object(driver.os, 'geteuid', return_value=1000), \
+                    patch.object(driver.Path, 'mkdir') as mkdir, \
+                    patch.object(driver, 'command') as command, \
+                    patch.object(driver.subprocess, 'Popen') as guest:
+                with self.assertRaisesRegex(ValueError, 'output-path-invalid'):
+                    driver.run(SimpleNamespace(attempt=Path('/private/attempt' + suffix)))
+            mkdir.assert_not_called()
+            command.assert_not_called()
+            guest.assert_not_called()
+
     def test_seed_snapshot_digest_identifies_only_the_retained_boot_medium(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -200,10 +223,15 @@ class PreparedImageIdentityTest(unittest.TestCase):
             product.write_bytes(b'synthetic-product')
             source = root / 'prepared.qcow2'
             source.write_bytes(b'synthetic-overlay')
+            binaries = root / 'usr/bin'
+            binaries.mkdir(parents=True)
+            for name in ('qemu-img', 'qemu-system-x86_64'):
+                (binaries / name).write_bytes(name.encode())
             args = SimpleNamespace(attempt=root / 'attempt', source=root, qemu_root=root,
                 mode='native-slice', development_snapshot=True, product_source_commit='a' * 40,
                 prepared_image=source, prepared_image_digest=driver.sha256(source))
-            with patch.object(driver, 'command', side_effect=[SimpleNamespace(stdout=b''),
+            with patch.object(driver.os, 'geteuid', return_value=1000), \
+                    patch.object(driver, 'command', side_effect=[SimpleNamespace(stdout=b''),
                     SimpleNamespace(stdout=b'a' * 40), SimpleNamespace(stdout=b'b' * 40)]), \
                     patch.object(driver, 'require_standalone_image',
                         side_effect=ValueError('prepared-image-not-standalone')), \
@@ -211,7 +239,11 @@ class PreparedImageIdentityTest(unittest.TestCase):
                 self.assertEqual(2, driver.run(args))
             guest.assert_not_called()
             report = json.loads((args.attempt / 'stage-report.json').read_text())
-            self.assertEqual(4, report['schemaVersion'])
+            self.assertEqual(5, report['schemaVersion'])
+            for name, field in (('qemu-img', 'qemuImgSha256'), ('qemu-system-x86_64', 'qemuSha256')):
+                retained = args.attempt / 'tools' / name
+                self.assertEqual(driver.sha256(retained), report[field])
+                self.assertEqual(0o500, retained.stat().st_mode & 0o7777)
             self.assertEqual('prepared-image-identity', report['stage'])
             self.assertFalse(report['executed'])
             self.assertTrue(report['guestStopped'])

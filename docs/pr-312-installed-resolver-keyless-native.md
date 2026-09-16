@@ -209,6 +209,14 @@ copy. This identifies the boot medium; it does not approve arbitrary cloud-init 
 Earlier reports do not establish these base-snapshot and seed-identity guarantees. The extra base
 and seed copies remain private, and the base snapshot requires additional local disk capacity.
 
+Schema-5 attempt reports add `qemuSha256` and `qemuImgSha256` from retained private executable
+copies, which are used for image verification, overlay creation and guest execution. Preparation
+and attempts share the executable-copy mechanism; these hashes do not assert equality with the
+preparation toolchain or authenticate shared libraries, modules or firmware. The attempt driver
+rejects root execution and comma, newline, carriage-return or NUL characters in its output path
+before creating the attempt or invoking helpers. Earlier attempt reports do not establish these
+tool-identity and host-admission checks. No corrected installed run is claimed by these changes.
+
 The focused real-QEMU storage regression uses tiny synthetic disks without booting a guest. It
 reproduces an unchanged overlay digest after backing-byte substitution, checks rejection, exercises
 the preparer's conversion, then deletes the original backing file and verifies that the standalone

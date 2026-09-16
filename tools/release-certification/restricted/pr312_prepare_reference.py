@@ -14,11 +14,11 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import time
 
-from pr312_reference_vm import ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image, snapshot_file
+from pr312_reference_vm import (ACCELERATOR, CPU_MODEL, qemu_arguments, require_standalone_image,
+                                snapshot_file, snapshot_executables)
 
 IMAGE_SHA512 = 'a733e7d49442a03e70d03e4eb5aaf3967f3efc69ef70952f9bb10fc1ee2c4876eb95956b5ad2d31350e5fada768feb651352535fb8cd1233f61998a5a7d2e93c'
 JDK_SHA256 = 'dbb698396d478e7fa2b1e50f4103324b2a99b90569ee27c33f2261f9215cf41e'
@@ -134,18 +134,9 @@ def flatten_image(source, prepared, qemu_img, environment, call):
 
 def snapshot_tools(root, seed_tool, output):
     """Retain the exact executable copies used for preparation, without copying source modes."""
-    directory = output / 'tools'
-    directory.mkdir(mode=0o700)
     sources = {'qemu-system-x86_64': root / 'usr/bin/qemu-system-x86_64',
                'qemu-img': root / 'usr/bin/qemu-img', 'genisoimage': seed_tool}
-    result = {}
-    for name, source in sources.items():
-        destination = directory / name
-        with source.open('rb') as incoming, destination.open('xb') as outgoing:
-            shutil.copyfileobj(incoming, outgoing)
-        destination.chmod(0o500)
-        result[name] = destination
-    return result
+    return snapshot_executables(sources, output)
 
 
 def snapshot_base_image(source, output, qemu_img, environment):

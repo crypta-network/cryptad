@@ -1,6 +1,7 @@
 """Offline preparation contracts; these tests neither boot guests nor provision a host."""
 from pathlib import Path
 import tempfile
+import shutil
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -18,13 +19,13 @@ class PreparationTest(unittest.TestCase):
             expected = hashlib.sha512(source.read_bytes()).hexdigest()
             output = root / 'attempt'
             output.mkdir()
-            copy = prepare.shutil.copyfileobj
+            copy = shutil.copyfileobj
             def replace(incoming, outgoing):
                 source.unlink()
                 source.write_bytes(b'changed-base')
                 copy(incoming, outgoing)
             with patch.object(prepare, 'IMAGE_SHA512', expected), \
-                    patch.object(prepare.shutil, 'copyfileobj', side_effect=replace), \
+                    patch.object(shutil, 'copyfileobj', side_effect=replace), \
                     patch.object(prepare, 'require_standalone_image') as standalone:
                 retained = prepare.snapshot_base_image(source, output, Path('/qemu-img'), {})
             standalone.assert_called_once_with(retained, Path('/qemu-img'), {})
@@ -52,14 +53,14 @@ class PreparationTest(unittest.TestCase):
                 source.write_text('#!/bin/sh\nprintf "' + name + '\\n"\n')
                 source.chmod(0o755)
                 expected[name] = prepare.digest(source)
-            copy = prepare.shutil.copyfileobj
+            copy = shutil.copyfileobj
             def replace_after_open(incoming, outgoing):
                 path = Path(incoming.name)
                 path.unlink()
                 path.write_text('#!/bin/sh\nprintf "replacement\\n"\n')
                 path.chmod(0o755)
                 copy(incoming, outgoing)
-            with patch.object(prepare.shutil, 'copyfileobj', side_effect=replace_after_open):
+            with patch.object(shutil, 'copyfileobj', side_effect=replace_after_open):
                 tools = prepare.snapshot_tools(root, binaries / 'genisoimage', output)
             for name, executable in tools.items():
                 self.assertEqual(expected[name], prepare.digest(executable))
