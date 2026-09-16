@@ -128,7 +128,7 @@ def public_report(report):
 
 def flatten_image(source, prepared, qemu_img, environment, call):
     """Publish a digest only after conversion and standalone-storage verification succeed."""
-    call([str(qemu_img), 'convert', '-f', 'qcow2', '-O', 'qcow2',
+    call([str(qemu_img), 'convert', '-c', '-f', 'qcow2', '-O', 'qcow2',
           str(source), str(prepared)], timeout=300)
     require_standalone_image(prepared, qemu_img, environment)
     return digest(prepared)

@@ -89,7 +89,7 @@ def synthetic_observation(name, identity):
 def synthetic_attempt():
     identity = synthetic_identity()
     return dict(contract=acceptance.CONTRACT, identity=identity,
-                declaredCases=list(acceptance.CASES), guestStopped=True,
+                declaredCases=list(acceptance.CASES), guestStopped=True, attemptCompleted=True,
                 observations=[synthetic_observation(name, identity) for name in acceptance.CASES])
 
 
@@ -132,6 +132,14 @@ class FiniteAcceptanceTest(unittest.TestCase):
             attempt = synthetic_attempt()
             attempt['observations'][6] = record
             self.assertFalse(self.evaluate(attempt)['installedKeylessNativeAcceptanceSatisfied'])
+
+    def test_terminal_driver_failure_rejects_even_complete_causal_rows_and_stopped_guest(self):
+        attempt = synthetic_attempt()
+        attempt['attemptCompleted'] = False
+        result = self.evaluate(attempt)
+        self.assertFalse(result['installedKeylessNativeAcceptanceSatisfied'])
+        self.assertFalse(result['recordContractValid'])
+        self.assertTrue(attempt['guestStopped'])
 
     def test_identity_drift_and_unstopped_guest_reject_even_complete_rows(self):
         for key in acceptance.IDENTITY_FIELDS:
@@ -238,6 +246,7 @@ class FiniteAcceptanceTest(unittest.TestCase):
                     owning_boundary=lambda **kwargs: nullcontext(), _quiesce=lambda: None,
                     _manager=lambda action: {'InvocationID': 'a' * 32, 'SubState': 'running', 'ActiveState': 'inactive'})
                 native._write = lambda path, value, **kwargs: Path(path).write_text(json.dumps(value))
+                native._read_output = lambda path, maximum: Path(path).read_bytes()
                 def execute(*args, **kwargs):
                     if (root / 'active.json').exists():
                         raise ValueError('restricted-native-execution-failed')
@@ -245,6 +254,12 @@ class FiniteAcceptanceTest(unittest.TestCase):
                     stage.mkdir()
                     native._write(root / 'active.json', {'invocation': stage.name})
                     native._write(stage / 'manager.json', {'invocationId': 'a' * 32})
+                    from pr312_output_faults import CONTROL_BYTES
+                    output = stage / 'output'
+                    output.mkdir()
+                    (output / 'stdout').write_bytes(b'pr313-output-ready\n')
+                    (output / 'projection.json').write_bytes(CONTROL_BYTES)
+                    native._write(output / 'complete.json', {'invocation': stage.name, 'status': 'complete'})
                     native._quiesce()
                 native.run = execute
                 record = pr313_faults._death(name, root, native, [], {})

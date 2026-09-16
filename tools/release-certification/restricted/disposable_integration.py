@@ -456,7 +456,7 @@ def preparation_socket():
             call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
 
 
-def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root, observe=None):
+def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root, observe=None, bind_context=None):
     """Run real preparation through the installed Worker with synthetic original provider I/O.
 
     Only this root-owned test harness substitutes upstream transport. Production bootstrap has
@@ -520,9 +520,18 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         worker.main(bundle_identity=identity)
     client = str(INSTALLED / 'tools/release-certification/protected/restricted_client.py')
     script = "import subprocess,sys; p=subprocess.run(['/usr/bin/python3','-I','-S',sys.argv[1],sys.argv[2],sys.argv[3]],capture_output=True,timeout=900); assert p.returncode==0; assert not p.stderr; sys.stdout.buffer.write(p.stdout)"
+    native_window = None
+    if observe is not None or bind_context is not None:
+        from pr313_observations import InvocationWindow
+        native_window = InvocationWindow()
     with preparation_socket() as (listener, child):
         child.start(lambda: serve(listener))
         public = as_role('cryptad-runner', script, arguments=(client, 'maintenance-prepare', handle), timeout=950)
+        binding = None
+        if native_window is not None:
+            binding = native_window.finish('package-api', owner_operation=handle)
+            if bind_context is not None:
+                bind_context(binding)
         ciphertext = {p.name: p.read_bytes() for p in (root / 'runtime').iterdir()}
         retained = (root / 'result.json').read_bytes()
         import restricted_native as native
@@ -544,10 +553,8 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         assert reads_before == int(read_counter.read_text())
         if observe is not None:
             from pr313_observations import quiescent
-            stages = [p for p in native.ROOT.iterdir() if p.is_dir() and (p / 'manager.json').is_file()]
-            last = max(stages, key=lambda p: (p / 'manager.json').stat().st_mtime_ns)
             observe({'caseId': 'retained-exact-retry', 'phase': 'completed-retry', 'outcome': 'exact-retry',
-                'managerInvocationId': json.loads((last / 'manager.json').read_bytes())['invocationId'],
+                'managerInvocationId': binding['managerInvocationId'],
                 'quiescent': quiescent(), 'attackWitness': {
                     'retainedDigest': hashlib.sha256(public).hexdigest(),
                     'responseDigest': hashlib.sha256(retried).hexdigest(),
@@ -659,10 +666,29 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
     for case in suite:
         for selected in case:
             selected.product_source_commit = source_commit(product_source_commit)
+    windows, cms_binding = {}, {}
     if observe is not None:
-        from pr313_observations import owner
-        integration.EncryptedProductConsumerIntegrationTest.acceptance_observer = staticmethod(
-            lambda row: observe(owner(row)))
+        from pr313_observations import InvocationWindow, owner
+        def begin(case):
+            if case not in ('wrong-app', 'wrong-product') or case in windows:
+                raise ValueError('disposable-owner-observation-interval-invalid')
+            windows[case] = InvocationWindow()
+            return windows[case].started
+        def owned_observation(row):
+            operation = row['attackWitness']['operation']
+            if operation == 'maintenance-prepare':
+                if not cms_binding:
+                    raise ValueError('disposable-cms-native-context-unobserved')
+                binding = cms_binding
+            else:
+                binding = windows.pop(row['caseId']).finish(operation,
+                    owner_operation=native_context['operationId'])
+            # Closing the exact invocation window is part of observing this assertion.
+            row = {**row, 'attackWitness': {**row['attackWitness'],
+                'finishedMonotonicNs': time.monotonic_ns()}}
+            observe(owner(row, binding))
+        integration.EncryptedProductConsumerIntegrationTest.acceptance_begin = staticmethod(begin)
+        integration.EncryptedProductConsumerIntegrationTest.acceptance_observer = staticmethod(owned_observation)
     real_seal, real_read = metadata.seal_private_freeze, companion._read
     def through_socket(*args, **kwargs):
         companion._read = real_read
@@ -671,7 +697,8 @@ def cms_native_integration(source, product_source_commit, prepared_inputs=None, 
             observed = run(worker_case, real_seal, real_read, *args, **kwargs)
             Path('/root/pr313-observation.private.json').write_text(json.dumps(observed, sort_keys=True))
             raise ValueError('disposable-selected-worker-case-complete')
-        return socket_preparation(real_seal, real_read, *args, **kwargs, observe=observe)
+        return socket_preparation(real_seal, real_read, *args, **kwargs, observe=observe,
+            bind_context=cms_binding.update if observe is not None else None)
     import installation
     # This root-owned disposable driver is a synthetic test owner, not the production controller.
     # Only original provider transport is substituted; the installed launch adapter is unchanged.
@@ -798,7 +825,7 @@ def main():
             dimensions.append('installed-bundle-and-effective-profile-verified')
             stage = 'production-bootstrap-readiness'
             dimensions.extend(bootstrap_readiness())
-            from pr313_observations import baseline, completed
+            from pr313_observations import InvocationWindow, baseline, completed
             raw_state = call(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
                 '--property=Type,NotifyAccess,ActiveState,SubState,MainPID'], timeout=15)
             state = dict(line.split('=', 1) for line in raw_state.decode('ascii').splitlines())
@@ -823,17 +850,17 @@ def main():
                     if not Path(restricted_native.__file__).resolve().is_relative_to(INSTALLED.resolve()):
                         raise ValueError('disposable-native-source-not-installed')
                     if args.case_group != 'fault':
-                        probe_started = time.monotonic_ns()
+                        probe_window = InvocationWindow()
                         restricted_native.probe(bundle_identity=identity)
                         if args.case_group in (None, 'positive'):
-                            observe(completed('construction-probe', 'bootstrap-probe', 'accepted', probe_started, b'fixed-probe'))
+                            observe(completed('construction-probe', 'bootstrap-probe', 'accepted', probe_window.finish('probe')))
                         dimensions.append('installed-keyless-fixed-native-probe')
                 if args.case_group in (None, 'positive'):
                     stage = 'installed-package-api-owner-validation'
-                    package_started = time.monotonic_ns()
+                    package_window = InvocationWindow()
                     dimensions.extend(native_package_api(javac.parent.parent, identity, source))
-                    observe(completed('package-api', 'package-api', 'owner-validated', package_started,
-                        Path('/root/pr312-package-api/snapshot.json').read_bytes()))
+                    observe(completed('package-api', 'package-api', 'owner-validated',
+                        package_window.finish('package-api')))
                     stage = 'installed-app-projection-owner-validation'
                     from pr312_app_projection import run as app_projection
                     app_started = time.monotonic_ns()

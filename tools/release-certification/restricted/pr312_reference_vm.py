@@ -29,6 +29,7 @@ PRODUCTS = ('build/cryptad-dist', 'platform-devtools/build/install/crypta-app',
 # installed service's security profile. A single-thread TCG cohort exceeded its fixed deadline.
 CPU_MODEL = 'qemu64'
 ACCELERATOR = 'tcg,thread=multi'
+PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
     'production-test-kit-separation', 'socket-listening', 'production-bootstrap-readiness',
@@ -254,10 +255,12 @@ def verified_attempt_identity(report, attempt, expected_bundle, expected_kit):
                 'executionClosureDigest': 'sha256:' + installation.digest(installation.encode(execution['dependencies']))}):
         raise ValueError('installed-identity-substituted')
     boot_record = installation.read_json(attempt / 'boot-inputs.private.json')
-    closure = {'files': boot_record['files'], 'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
+    closure = {'files': boot_record['files'],
+               'privateInputs': {key: boot_record['bootInputs'][key] for key in
+                   ('seedDigest', 'sshHostKeyPinDigest', 'sshKeyDigest')}, 'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
                'accelerator': ACCELERATOR, 'vcpus': 4, 'memoryMiB': 5632}
     return {key: report[key] for key in ('helperSourceCommit', 'helperSourceTree', 'productSourceCommit',
-        'productDigest', 'preparedImageDigest')} | {
+        'productDigest', 'preparedImageDigest', 'fixtureManifestDigest')} | {
         'bundleIdentity': expected_bundle, 'testKitDigest': expected_kit,
         'profileDigest': installation.digest(installation.encode(execution['dependencies'])),
         'bootClosureDigest': installation.digest(installation.encode(closure))}
@@ -280,6 +283,11 @@ def identity_observations(identity):
 
 
 def run(args):
+    global ACCELERATOR
+    selected_profile = getattr(args, 'profile', 'tcg-multi')
+    if selected_profile not in PROFILES:
+        raise ValueError('reference-profile-invalid')
+    ACCELERATOR = PROFILES[selected_profile]
     if getattr(os, 'geteuid', lambda: 0)() == 0:
         raise ValueError('reference-unprivileged-host-required')
     attempt = args.attempt.absolute()
@@ -453,16 +461,17 @@ print(json.dumps(records))
             "sys.path.insert(0,str(Path('/opt/cryptad-cross-version/current').resolve()/'tools/release-certification/restricted')); "
             "import installation; print(json.dumps(installation.verify_execution(),sort_keys=True))")
         with (attempt / 'installed-verification.private.json').open('xb') as stream:
-            subprocess.run([*ssh, 'sudo /usr/bin/python3 -I -S -'], input=verification_script.encode(),
-                           stdout=stream, stderr=log, check=True, timeout=120)
-        report['hostVerifiedIdentity'] = verified_attempt_identity(report, attempt, expected_bundle, expected_kit)
-        if getattr(args, 'case_group', None) == 'positive':
-            evidence_path = attempt / 'pr313-observation.private.json'
-            rows = json.loads(evidence_path.read_bytes())
-            if not isinstance(rows, list):
-                raise ValueError('invalid-case-observations')
-            rows = identity_observations(report['hostVerifiedIdentity']) + rows
-            evidence_path.write_text(json.dumps(rows, sort_keys=True) + '\n')
+            subprocess.run([*ssh, 'sudo /usr/bin/python3 -I -S -B -'], input=verification_script.encode(),
+                           stdout=stream, stderr=log, check=True, timeout=120, env=boot.ENVIRONMENT)
+        if args.prepared_fixtures is not None:
+            report['hostVerifiedIdentity'] = verified_attempt_identity(report, attempt, expected_bundle, expected_kit)
+            if getattr(args, 'case_group', None) == 'positive':
+                evidence_path = attempt / 'pr313-observation.private.json'
+                rows = json.loads(evidence_path.read_bytes())
+                if not isinstance(rows, list):
+                    raise ValueError('invalid-case-observations')
+                rows = identity_observations(report['hostVerifiedIdentity']) + rows
+                evidence_path.write_text(json.dumps(rows, sort_keys=True) + '\n')
         native_diagnostics = """import base64,json,os,pathlib,stat
 root=pathlib.Path('/var/lib/cryptad-restricted-native'); result=[]; remaining=1048576
 if root.is_dir():
@@ -526,6 +535,8 @@ def main():
     parser.add_argument('--prepared-image-digest', required=True,
                         help='Expected SHA-256 of the standalone administrator-prepared QCOW2 image.')
     parser.add_argument('--mode', choices=('baseline', 'bootstrap-only', 'native-slice'), required=True)
+    parser.add_argument('--profile', choices=tuple(PROFILES), default='tcg-multi',
+                        help='Explicit fixed TCG profile; no automatic fallback or JVM overrides.')
     parser.add_argument('--port', type=int, default=23112)
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--development-snapshot', action='store_true',

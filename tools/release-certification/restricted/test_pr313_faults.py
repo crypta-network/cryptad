@@ -70,6 +70,7 @@ class ExternalRaceTest(unittest.TestCase):
                     Path(path).write_text(json.dumps(value))
                 fixed._write = write
                 fixed._quiesce = lambda: None
+                fixed._read_output = native._read_output
                 fixed._manager = lambda action: {'InvocationID': 'a' * 32,
                                                  'SubState': 'running', 'ActiveState': 'inactive'}
                 def execute(*args, **kwargs):
@@ -79,6 +80,12 @@ class ExternalRaceTest(unittest.TestCase):
                     stage.mkdir()
                     fixed._write(root / 'active.json', {'invocation': stage.name})
                     fixed._write(stage / 'manager.json', {'invocationId': 'a' * 32})
+                    output = stage / 'output'
+                    output.mkdir()
+                    (output / 'stdout').write_bytes(b'pr313-output-ready\n')
+                    from pr312_output_faults import CONTROL_BYTES
+                    (output / 'projection.json').write_bytes(CONTROL_BYTES)
+                    (output / 'complete.json').write_text(json.dumps({'invocation': stage.name, 'status': 'complete'}))
                     fixed._quiesce()
                 fixed.run = execute
                 observed = faults._death(case, root, fixed, [], {})
@@ -87,6 +94,24 @@ class ExternalRaceTest(unittest.TestCase):
                                  observed['attackWitness']['activeRecordDigestAfter'])
                 self.assertTrue((root / 'active.json').exists())
                 self.assertGreater(observed['attackWitness']['pidStartTime'], 0)
+
+    def test_exceptional_quiescence_is_not_successful_output(self):
+        from pr312_output_faults import CONTROL_BYTES
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary) / ('a' * 64)
+            output = stage / 'output'
+            output.mkdir(parents=True)
+            (output / 'stdout').write_bytes(b'pr313-output-ready\n')
+            (output / 'projection.json').write_bytes(CONTROL_BYTES)
+            (output / 'complete.json').write_text(json.dumps({'invocation': stage.name, 'status': 'complete'}))
+            faults.require_output_ready(native, stage)
+            (stage / 'failure.json').write_text('{"status":"reconciliation-required"}')
+            with self.assertRaisesRegex(ValueError, 'native-successful-output-not-ready'):
+                faults.require_output_ready(native, stage)
+            (stage / 'failure.json').unlink()
+            (output / 'complete.json').write_text('{"invocation":"substituted","status":"complete"}')
+            with self.assertRaisesRegex(ValueError, 'native-successful-output-not-ready'):
+                faults.require_output_ready(native, stage)
 
     def test_case_contract_is_closed(self):
         self.assertEqual(12, len(faults.RACE_CASES))

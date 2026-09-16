@@ -202,6 +202,10 @@ def run(case, real_seal, real_read, freeze, package, runtime_root, *, projection
               'managerInvocationId': None,
               'quiescent': {'activeState': native._manager('show')['ActiveState'],
                             'cgroupPopulated': False, 'activeRecordPresent': False}}
+    if case == 'completed-revocation-retry':
+        result['attackWitness'].update(
+            registrationDigest=_digest((root / 'registration.json').read_bytes()),
+            revokedDigest=_digest((root / 'revoked.json').read_bytes()), retryAndCollect='revoked')
     (evidence / 'observation.json').write_text(json.dumps(result, sort_keys=True))
     return result
 

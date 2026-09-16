@@ -9,6 +9,22 @@ authenticating its backing file. Their recorded prepared-image digests do not bi
 guest filesystem. The observations below remain historical execution records, with this additional
 environment-identity limitation; they are not acceptance of the corrected driver.
 
+## PR-313 successor disposition — 2026-09-16
+
+[PR-313 installed native acceptance](pr-313-installed-native-acceptance.md) is the current
+finite-service verification procedure. Preparation schema 5 and attempt schema 7 retain private
+boot snapshots and source-owned observations; the fixed case contract and suite runner derive a
+scoped result. A fresh standalone reference preparation completed on 2026-09-16. Installed
+acceptance of the final PR-313 source has not yet executed; reference preparation alone does not
+satisfy it. The dated development attempts and schema evolution below retain their original
+meaning and limitations.
+
+The successor separates immutable signed test inputs from guest verification, implements fixed
+administrator-only race/lifecycle/public-output drivers, and keeps independent case groups in
+fresh guests. Its inventory never drops required cases after setup failure. Read its execution
+status before using the older single-attempt command below. The next long-running boundary is
+PR-314, `controller-owned-workload-role-isolation`; the finite service does not satisfy that work.
+
 ## Integration and bounded scope
 
 The implementation starts from `develop` squash `e7ae58ef607c8073cd8db858f2366a387913572e`,
@@ -199,7 +215,8 @@ overlay. Only the private verified copy supplies backing bytes at boot. This cos
 prepared-image copy per attempt; it prevents later replacement of the caller's image from changing
 the booted storage. Old backed prepared images are rejected even when their overlay digest matches.
 Prepare a new reference with the corrected tool; flattening an old failed attempt does not repair
-its historical evidence. No corrected full preparation or installed VM run has yet been observed.
+its historical evidence. At the PR-312 cutoff, no corrected full preparation or installed VM run had been observed.
+The versioned PR-313 successor above records later preparation separately.
 
 Schema-4 preparation additionally copies the base image through one opened source descriptor,
 verifies the private copy against the pinned SHA-512 and checks that it is standalone before using
@@ -546,7 +563,8 @@ reference, approval or historical freeze is rewritten.
 Retain all 49 mandatory IDs and the existing 47 unresolved assertions at cutoff
 `2026-09-13T10:30:00Z`. Fresh before/after assessments and their verifier establish local
 consistency only. Long-running observer/workload storage, role launch, bounded observation and
-sibling management-plane separation remain the PR-313 prerequisite. Then resume the twelve
+sibling management-plane separation remain required. The PR-313 successor completes the finite
+acceptance path first; PR-314 owns that long-running boundary. Then resume the twelve
 PR-309 consumer cases in an explicitly selected follow-up; they are deferred, not deleted or
 relabeled as operations-only debt. Mail, long observations, independent review, original protected
 operations and publication obligations retain their existing scope and clocks.

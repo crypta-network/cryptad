@@ -456,6 +456,8 @@ def _death(case, root, native, command, context):
             raise ValueError('active-native-intent-unwitnessed')
         manager = stages[0] / 'manager.json'
         manager_id = json.loads(manager.read_bytes())['invocationId'] if manager.exists() else None
+        if case == 'death-output':
+            require_output_ready(native, stages[0])
         if case == 'death-running':
             state = native._manager('show')
             if state['InvocationID'] != manager_id or state['SubState'] != 'running':
@@ -495,3 +497,17 @@ def _death(case, root, native, command, context):
             native._quiesce()
         os.close(ready_read)
         os.close(release_write)
+
+
+def require_output_ready(native, stage):
+    """A cleanup quiescence callback is not evidence that native output completed."""
+    from pr312_output_faults import CONTROL_BYTES
+    stage = Path(stage)
+    output = stage / 'output'
+    if ((stage / 'failure.json').exists() or (output / 'failure.json').exists()
+            or set(path.name for path in output.iterdir()) != {'stdout', 'complete.json', 'projection.json'}
+            or json.loads(native._read_output(output / 'complete.json', 4096)) != {
+                'invocation': stage.name, 'status': 'complete'}
+            or native._read_output(output / 'stdout', 8192) != b'pr313-output-ready\n'
+            or native._read_output(output / 'projection.json', 32768) != CONTROL_BYTES):
+        raise ValueError('native-successful-output-not-ready')

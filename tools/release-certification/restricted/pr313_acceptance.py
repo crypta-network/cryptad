@@ -14,7 +14,7 @@ import re
 CONTRACT = 'pr313-finite-native-v1'
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSourceCommit',
                    'productDigest', 'bundleIdentity', 'testKitDigest', 'profileDigest',
-                   'bootClosureDigest', 'preparedImageDigest')
+                   'bootClosureDigest', 'preparedImageDigest', 'fixtureManifestDigest')
 STATUSES = frozenset(('passed', 'failed', 'setup-failed', 'not-executed', 'inconclusive'))
 
 
@@ -337,13 +337,13 @@ def verify_attempts(expected_identity, attempts):
     valid = _identity(expected_identity) and isinstance(attempts, list) and 0 < len(attempts) <= len(CASES)
     if isinstance(attempts, list) and len(attempts) <= len(CASES):
         for attempt in attempts:
-            if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations', 'guestStopped'))
+            if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations', 'guestStopped', 'attemptCompleted'))
                     and attempt['contract'] == CONTRACT and isinstance(attempt['declaredCases'], list)
                     and isinstance(attempt['observations'], list)):
                 valid = False
                 continue
             admitted = (_identity(expected_identity) and attempt['identity'] == expected_identity
-                        and attempt['guestStopped'] is True)
+                        and attempt['guestStopped'] is True and attempt['attemptCompleted'] is True)
             if not admitted:
                 valid = False
             declared, observations = attempt['declaredCases'], attempt['observations']

@@ -146,7 +146,8 @@ def run(root, installed_root, identity, java_home, prepared_inputs=None, observe
                 'managerInvocationId': manager['invocationId'], 'quiescent': quiescent(),
                 'attackWitness': {'operation': 'app-projection', 'operationMarker': case,
                     'ownerOutcome': outcome, 'stdoutDigest': hashlib.sha256(
-                        (stages[0] / 'invocation.json').read_bytes()).hexdigest(),
+                        native._read_output(stages[0] / 'diagnostics/stdout',
+                            8 * 1024 * 1024, allow_empty=True)).hexdigest(),
                     'startedMonotonicNs': started_ns, 'finishedMonotonicNs': time.monotonic_ns()}})
         operations.append(context['operationId'])
     (root / 'observation.json').write_text(json.dumps({'kind': 'synthetic-installed-signed-app-observation',

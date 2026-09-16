@@ -78,6 +78,10 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             raise AssertionError("pr307-product-consumer-integration-failed:" + self._stage + ":"
                                  + ",".join(locations)) from None
 
+    def _start_observation(self, case_id):
+        begin = getattr(type(self), 'acceptance_begin', None)
+        return begin(case_id) if begin is not None else time.monotonic_ns()
+
     def _observe(self, case_id, operation, outcome, started, output):
         """Only the excluded administrator test driver consumes these causal owner observations."""
         observer = getattr(type(self), 'acceptance_observer', None)
@@ -163,7 +167,7 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
             freeze, package, _legacy_inventory, selected = h.freeze(302, commit)
 
         self._stage = "native-wrong-product-rejection"
-        wrong_product_started = time.monotonic_ns()
+        wrong_product_started = self._start_observation('wrong-product')
         # Export a genuinely different compiled API implementation through the exact package
         # native operation. Its valid output cannot be rebound to the selected product archive.
         # This package is synthetic hostile input, not an authenticated original product.
@@ -234,7 +238,7 @@ class EncryptedProductConsumerIntegrationTest(unittest.TestCase):
         # app must still fail through the real Java verifier and production Python owner.
         # This synthetic original transport does not supply a production registration/receipt.
         self._stage = "native-wrong-app-rejection"
-        wrong_app_started = time.monotonic_ns()
+        wrong_app_started = self._start_observation('wrong-app')
         with patch.object(legacy.projection, "_run_maintenance_native",
                 wraps=legacy.projection._run_maintenance_native) as native_attempt, \
                 self.assertRaises(legacy.projection.ProjectionFailure) as rejected_app:

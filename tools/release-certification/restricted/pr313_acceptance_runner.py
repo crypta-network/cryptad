@@ -12,6 +12,9 @@ import json
 import os
 from pathlib import Path
 import stat
+import shutil
+import subprocess
+import time
 from types import SimpleNamespace
 
 import pr312_reference_vm as reference
@@ -21,6 +24,87 @@ import pr313_worker_faults as worker_faults
 import pr313_public_faults as public_faults
 
 MAX_PRIVATE_RECORD = 256 * 1024
+# Reserve bounded guest write space plus room to retain terminal reports before another copy.
+# This is a conservative launch prerequisite, not a disk quota or permission to remove history.
+GUEST_WRITE_RESERVE = 4 * 1024**3
+REPORT_RESERVE = 256 * 1024**2
+CASE_FAILURE_STAGES = {
+    'installed-pr313-fault': frozenset(faults.CASES),
+    'installed-pr313-worker-fault': frozenset(worker_faults.CASES),
+    'installed-pr313-public-fault': frozenset(public_faults.CASES),
+    'installed-keyless-sandbox-probe': frozenset(('construction-probe',)),
+    'production-bootstrap-readiness': frozenset(('bootstrap-ready',)),
+    'socket-admission': frozenset(('socket-wrong-uid', 'socket-unknown-handle')),
+    'installed-package-api-owner-validation': frozenset(('package-api',)),
+    'installed-app-projection-owner-validation': frozenset(('signed-app',)),
+    'native-cms-owning-consumer': frozenset(('wrong-product', 'wrong-app', 'cms-five-member-context',
+        'cms-wrong-recipient', 'cms-tampered-envelope', 'cms-subject-substitution',
+        'product-selection-native-consumers', 'retained-exact-retry')),
+    'installed-native-hostile-fixtures': frozenset(name for name in acceptance.CASES
+        if name.startswith('hostile-') and not name.startswith('hostile-output-')) | {'openat2-safe'},
+    'installed-projection-output-hostile-fixtures': frozenset(name for name in acceptance.CASES
+        if name.startswith('hostile-output-')),
+    'production-restart-readiness': frozenset(('restart-ready',)),
+}
+SETUP_FAILURE_STAGES = frozenset(('installation', 'installation-export', 'dependency-profile-measurement',
+    'installation-publication', 'installed-profile-verification', 'production-test-kit-separation',
+    'socket-listening', 'prepared-fixture-verification'))
+
+
+def missing_status(report, declared, case):
+    """A stage can conservatively classify missing evidence; it can never grant a pass."""
+    guest = report.get('guestSummary')
+    if not isinstance(guest, dict):
+        return 'setup-failed' if report.get('executed') is False else 'not-executed'
+    stage = guest.get('failedStage')
+    if not isinstance(stage, str):
+        return 'not-executed'
+    if stage in SETUP_FAILURE_STAGES:
+        return 'setup-failed'
+    if case in CASE_FAILURE_STAGES.get(stage, ()):
+        # The selected driver was reached, but no complete causal result survived. Do not
+        # invent either a successful denial or a claim that its attack never happened.
+        return 'inconclusive'
+    if len(declared) == 1 and stage in CASE_FAILURE_STAGES:
+        return 'setup-failed'
+    return 'not-executed'
+
+
+def _tree_bytes(path):
+    total, count = 0, 0
+    deadline = time.monotonic() + 30
+    if Path(path).is_file():
+        return Path(path).stat().st_size
+    for directory, _directories, files in os.walk(path, followlinks=False):
+        for name in files:
+            count += 1
+            if count > 500000 or time.monotonic() >= deadline:
+                raise ValueError('pr313-capacity-inventory-limit')
+            selected = Path(directory) / name
+            info = selected.stat()
+            if stat.S_ISREG(info.st_mode):
+                total += info.st_size
+    return total
+
+
+def required_attempt_bytes(args):
+    """Bound copied image/tool/source inputs plus fixed guest/report reserve before launch."""
+    source = args.source.resolve(strict=True)
+    tracked = reference.command(['git', '-C', str(source), 'ls-tree', '-r', '-z', '-l', 'HEAD'],
+                                capture_output=True).stdout
+    source_bytes = 0
+    for entry in tracked.split(b'\0'):
+        if entry:
+            metadata, _name = entry.split(b'\t', 1)
+            size = metadata.split()[-1]
+            if not size.isdigit():
+                raise ValueError('pr313-capacity-source-invalid')
+            source_bytes += int(size)
+    copied = source_bytes + _tree_bytes(source / '.git')
+    copied += sum(_tree_bytes(source / relative) for relative in reference.PRODUCTS)
+    copied += _tree_bytes(args.prepared_fixtures)
+    return (args.prepared_image.stat().st_size + 3 * copied + _tree_bytes(args.qemu_root)
+            + args.seed.stat().st_size + GUEST_WRITE_RESERVE + REPORT_RESERVE)
 
 
 def groups():
@@ -91,9 +175,13 @@ def collect_attempt(directory, declared):
     if len(set(observed)) != len(observed):
         raise ValueError('pr313-group-observation-duplicate')
     # Missing fixture/observer code does not become infrastructure success or a denial.
-    observations.extend({'caseId': name, 'status': 'not-executed'} for name in declared if name not in observed)
+    observations.extend({'caseId': name, 'status': missing_status(report, declared, name)}
+                        for name in declared if name not in observed)
     return dict(contract=acceptance.CONTRACT, identity=identity, declaredCases=declared,
-                observations=observations, guestStopped=report.get('guestStopped') is True)
+                observations=observations, guestStopped=report.get('guestStopped') is True,
+                attemptCompleted=(report.get('status') == 'guest-report-retained'
+                                  and type(report.get('guestExitCode')) is int
+                                  and report['guestExitCode'] == 0))
 
 
 def run(args):
@@ -107,6 +195,7 @@ def run(args):
         {'group': group, 'caseId': case, 'declaredCases': declared}
         for group, case, declared in groups()]})
     expected = None
+    capacity_exhausted = False
     for index, (group, case, declared) in enumerate(groups()):
         directory = output / ('attempt-' + str(index + 1).zfill(2))
         selected = SimpleNamespace(**vars(args))
@@ -114,6 +203,14 @@ def run(args):
         selected.mode = 'native-slice'
         selected.case_group, selected.fault_case = group, case
         try:
+            if capacity_exhausted or shutil.disk_usage(output).free < required_attempt_bytes(args):
+                capacity_exhausted = True
+                attempts.append(dict(contract=acceptance.CONTRACT, identity=expected, declaredCases=declared,
+                    observations=[{'caseId': name, 'status': 'setup-failed'} for name in declared], guestStopped=True, attemptCompleted=False))
+                history.append({'group': group, 'caseId': case, 'status': 'setup-failed',
+                                'reason': 'external-capacity-unavailable'})
+                _save(output / ('history-' + str(index + 1).zfill(2) + '.private.json'), history)
+                continue
             exit_code = reference.run(selected)
             attempt = collect_attempt(directory, declared)
             if expected is None and acceptance._identity(attempt['identity']):
@@ -121,9 +218,9 @@ def run(args):
             attempts.append(attempt)
             history.append({'group': group, 'caseId': case, 'exitCode': exit_code,
                             'status': 'observations-retained'})
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             attempts.append(dict(contract=acceptance.CONTRACT, identity=None, declaredCases=declared,
-                observations=[{'caseId': name, 'status': 'setup-failed'} for name in declared], guestStopped=False))
+                observations=[{'caseId': name, 'status': 'setup-failed'} for name in declared], guestStopped=False, attemptCompleted=False))
             history.append({'group': group, 'caseId': case, 'status': 'setup-failed'})
         # Preserve incremental state on interruption; each uniquely named snapshot is immutable.
         _save(output / ('history-' + str(index + 1).zfill(2) + '.private.json'), history)
@@ -142,6 +239,7 @@ def main():
         parser.add_argument('--' + name, required=True, type=Path)
     for name in ('product-source-commit', 'prepared-image-digest', 'fixture-manifest-digest'):
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--profile', choices=tuple(reference.PROFILES), default='tcg-multi')
     parser.add_argument('--port', type=int, default=23112)
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--development-snapshot', action='store_true')
