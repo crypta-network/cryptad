@@ -523,6 +523,26 @@ print(json.dumps(result))
         with (attempt / 'native-diagnostics.private.json').open('xb') as stream:
             subprocess.run([*ssh, 'sudo /usr/bin/python3 -I -S -'], input=native_diagnostics.encode(),
                            stdout=stream, stderr=log, check=True, timeout=15, env=boot.ENVIRONMENT)
+        controller_diagnostics = """import json,os,pathlib,stat
+root=pathlib.Path('/var/lib/cryptad-restricted/operations'); rows=[]
+if root.is_dir():
+ for path in sorted(root.iterdir())[:65]:
+  if path.is_symlink() or not path.is_dir(): continue
+  try: fd=os.open(path/'controller-failure.private.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+  except FileNotFoundError: continue
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_size>1024: continue
+   value=json.loads(os.read(fd,1024))
+   if value.get('phase')!='synthetic-worker-main': continue
+   if value.get('category') not in ('socket-activation-rejected','controller-failed'): continue
+   rows.append({'operationId':path.name,'phase':'synthetic-worker-main','category':value['category']})
+  finally: os.close(fd)
+print(json.dumps(rows))
+"""
+        with (attempt / 'controller-failures.private.json').open('xb') as stream:
+            subprocess.run([*ssh, 'sudo /usr/bin/python3 -I -S -B -'], input=controller_diagnostics.encode(),
+                           stdout=stream, stderr=log, check=True, timeout=15, env=boot.ENVIRONMENT)
         # Completion of transport is separate from bootstrap/native acceptance in the guest report.
         report['status'] = 'guest-report-retained' if result.returncode == 0 else 'guest-operation-failed'
         subprocess.run([*ssh, 'sudo poweroff'], stdin=subprocess.DEVNULL, stdout=log, stderr=log, timeout=20, env=boot.ENVIRONMENT)

@@ -1,6 +1,8 @@
 """Read-only harness checks, not substitutes for its VM/service/UID execution."""
 import contextlib
 import io
+import os
+import socket
 import json
 import datetime as dt
 import sys
@@ -15,6 +17,69 @@ import disposable_integration as harness
 
 
 class DisposableHarnessTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
+                         'socket activation requires Linux fork')
+    def test_real_forked_listener_passes_worker_activation_with_noninheritable_fd(self):
+        with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
+            import restricted_worker as worker
+        for placement in ('already-three', 'different-descriptor'):
+            with self.subTest(placement=placement), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                operations = root / 'operations'
+                operations.mkdir(mode=0o700)
+                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.addCleanup(listener.close)
+                listener.bind(str(root / 'control.sock'))
+                listener.listen(1)
+                child = os.fork()
+                if child == 0:
+                    try:
+                        actual_socket = socket.socket
+                        original = listener.detach()
+                        chosen = 3 if placement == 'already-three' else 10
+                        if original != chosen:
+                            os.dup2(original, chosen, inheritable=True)
+                            os.close(original)
+                        else:
+                            os.set_inheritable(chosen, True)
+                        supplied = actual_socket(fileno=chosen)
+                        harness.activate_test_listener(supplied)
+                        if os.get_inheritable(3):
+                            os._exit(3)
+                        class ActivatedSocket:
+                            # Only map the fixed installed pathname to this disposable temp
+                            # listener. Family/type/listening/inheritability checks remain real.
+                            def __init__(self, fileno):
+                                self.actual = actual_socket(fileno=fileno)
+                            def getsockname(self):
+                                return '/run/cryptad-restricted/control.sock'
+                            def __getattr__(self, name):
+                                return getattr(self.actual, name)
+                        class ReadyObserved(Exception):
+                            pass
+                        def ready():
+                            raise ReadyObserved()
+                        with contextlib.ExitStack() as patches:
+                            # An unprivileged developer can test real activation by substituting
+                            # only the root/state prerequisites, never the FD/socket checks.
+                            if os.geteuid() != 0:
+                                patches.enter_context(patch.object(worker.os, 'geteuid', return_value=0))
+                                patches.enter_context(patch.object(worker, 'secure', side_effect=lambda path: path))
+                            patches.enter_context(patch.object(worker, 'STATE', root))
+                            patches.enter_context(patch.object(worker, 'OPERATIONS', operations))
+                            patches.enter_context(patch.object(worker.socket, 'socket', side_effect=ActivatedSocket))
+                            try:
+                                worker.main(bundle_identity='a' * 64, ready=ready)
+                            except ReadyObserved:
+                                os._exit(0)
+                        os._exit(4)
+                    except BaseException:
+                        os._exit(5)
+                _, status = os.waitpid(child, 0)
+                self.assertTrue(os.WIFEXITED(status))
+                self.assertEqual(0, os.WEXITSTATUS(status))
+                listener.close()
+
     def test_synthetic_preparation_job_passes_real_worker_authentication(self):
         with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
             import restricted_worker as worker

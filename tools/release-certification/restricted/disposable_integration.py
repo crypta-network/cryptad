@@ -456,6 +456,24 @@ def preparation_socket():
             call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
 
 
+def activate_test_listener(listener):
+    """Match the installed socket activation FD contract in the synthetic controller child."""
+    descriptor = listener.detach()
+    if descriptor != 3:
+        os.dup2(descriptor, 3, inheritable=False)
+        os.close(descriptor)
+    # A listener already on descriptor 3 may have been made inheritable by its caller.
+    os.set_inheritable(3, False)
+    for name in os.listdir('/proc/self/fd'):
+        if int(name) > 3:
+            try:
+                os.close(int(name))
+            except OSError:
+                pass
+    os.environ['LISTEN_PID'] = str(os.getpid())
+    os.environ['LISTEN_FDS'] = '1'
+
+
 def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root, observe=None, bind_context=None):
     """Run real preparation through the installed Worker with synthetic original provider I/O.
 
@@ -507,17 +525,21 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         metadata.seal_private_freeze = real_seal
         companion._read = counted_read  # Count real reads, preserving the installed owner.
         original._gh = provider
-        descriptor = listener.detach()
-        if descriptor != 3:
-            os.dup2(descriptor, 3)
-            os.close(descriptor)
-        for name in os.listdir('/proc/self/fd'):
-            if int(name) > 3:
-                try: os.close(int(name))
-                except OSError: pass
-        os.environ['LISTEN_PID'] = str(os.getpid())
-        os.environ['LISTEN_FDS'] = '1'
-        worker.main(bundle_identity=identity)
+        try:
+            activate_test_listener(listener)
+            worker.main(bundle_identity=identity)
+        except Exception as failure:
+            # Fixed classifications only; retain no exception text, credential or fixture bytes.
+            category = ('socket-activation-rejected' if isinstance(failure, worker.BoundaryError)
+                        and str(failure) == 'restricted-socket-activation-required' else 'controller-failed')
+            diagnostic = root / 'controller-failure.private.json'
+            try:
+                descriptor = os.open(diagnostic, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, 'w') as stream:
+                    json.dump({'phase': 'synthetic-worker-main', 'category': category}, stream, sort_keys=True)
+            except OSError:
+                pass
+            raise
     client = str(INSTALLED / 'tools/release-certification/protected/restricted_client.py')
     script = "import subprocess,sys; p=subprocess.run(['/usr/bin/python3','-I','-S',sys.argv[1],sys.argv[2],sys.argv[3]],capture_output=True,timeout=900); assert p.returncode==0; assert not p.stderr; sys.stdout.buffer.write(p.stdout)"
     native_window = None

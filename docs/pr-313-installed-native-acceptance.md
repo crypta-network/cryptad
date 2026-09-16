@@ -65,6 +65,15 @@ no automatic fallback and no per-run JVM override. Both fixed profiles retain `q
 vCPUs and 5632 MiB. Single-threaded TCG remains a compatibility hypothesis until actual
 verification completes; the historical shorter timeout is not rewritten.
 
+That comparison at helper `337ae5d3f8025a99171f2c9f60798840b2f83721` reached wrong-product
+rejection, then exposed a separate synthetic-controller setup bug: the harness duplicated its
+listener onto FD 3 as inheritable, which the unchanged Worker correctly rejects. A private live
+process observation recorded the exited child while the client waited. The successor supplies
+the required non-inheritable FD and tests both original and moved listener descriptors through
+the real Worker activation checks. This test-only correction does not diagnose the JVM crash
+or make the incomplete comparison accepted. The queued `ce1de26641` suite was stopped before
+any guest launched so its obsolete driver would not be run knowingly.
+
 ## Fixed contract and separate execution layers
 
 The authoritative inventory is
