@@ -32,7 +32,19 @@ jobs:
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_installation.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_measure_runtime_image.py'
           python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_native.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_native_output_races.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_native_input_races.py'
           python3 -m unittest discover -s tools/release-certification/restricted -p 'test_disposable_integration.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_bootstrap.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_reference_vm.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_native_faults.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_prepare_reference.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_output_faults.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_native_package_api.py'
+          python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr312_app_projection.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_worker.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_bounded_process.py'
+          python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_readiness.py'
       - name: Record mandatory reference VM prerequisite gap
         shell: bash
         run: |
@@ -48,12 +60,18 @@ jobs:
           value = json.loads(Path('build/restricted-isolation-public/reference-prerequisites.json').read_text())
           assert value['executed'] is False
           assert value['mandatoryIsolationTestSatisfied'] is False
+          assert value['installedKeylessNativeAcceptanceSatisfied'] is False
           assert value['status'] == 'unexecuted'
           PY
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF_SUMMARY'
           Mandatory service/UID integration is **unexecuted**, not passed. This job verifies
           offline contracts and records host prerequisites. It does not provision users,
           services, recipients or an approved private worker.
+
+          Installed keyless-native acceptance is a separate unexecuted dimension here.
+          The local `pr312_reference_vm.py` driver creates a fresh disposable guest from
+          the pinned prepared reference; its bootstrap/native stages retain failures and
+          never promote this exit-78 prerequisite result to installed acceptance.
 
           Execute the committed harness in a fresh disposable Debian 13 / systemd 257 VM,
           with JDK 25, the declared runtime dependencies and the supported distribution build:

@@ -280,7 +280,7 @@ def observe_package(package: Path, java_home: Path, private_root: Path, *,
                        "network.crypta.platform.devtools.HistoricalPackagedApiExport", "/work/cryptad.jar"]
         try:
             output = run(["/usr/bin/prlimit", "--cpu=60", "--fsize=8388608", "--nofile=128", "--", *sandbox, "--", *command],
-                         environment=environment, timeout=60, output_limit=4 * 1024 * 1024)
+                         environment=environment, timeout=60, output_limit=4 * 1024 * 1024, operation='package-api')
         except ValueError:
             raise RuntimeMetadataError("runtime-metadata-packaged-exporter-unsupported") from None
         result = read_json(output)

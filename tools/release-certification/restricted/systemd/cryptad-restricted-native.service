@@ -1,0 +1,36 @@
+[Unit]
+Description=Cryptad fixed keyless finite native verification
+
+[Service]
+Type=exec
+User=cryptad-native
+Group=cryptad-native
+ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_native_launcher.py
+WorkingDirectory=/
+UMask=0077
+StandardInput=null
+StandardOutput=null
+StandardError=null
+Restart=no
+RemainAfterExit=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+# Do not inherit the resolver's openat2-denying seccomp rule or locked proc submounts.
+# Trusted keyless Python constructs bwrap before candidate execution. The candidate sees
+# only read-only runtime/input mounts, a new proc/PID/user/network namespace, and private
+# bounded scratch/output. Empty host capabilities plus NNP forbid set-ID/file-cap gains.
+TemporaryFileSystem=/run:rw,size=16M,nr_inodes=256,mode=1777 /tmp:rw,size=80M,nr_inodes=4096,mode=1777
+LockPersonality=yes
+RestrictRealtime=yes
+LimitCORE=0
+LimitNOFILE=128
+LimitFSIZE=8M
+TasksMax=256
+MemoryMax=4G
+CPUQuota=200%
+RuntimeMaxSec=200
+TimeoutStartSec=20
+TimeoutStopSec=20
+KillMode=control-group
+SendSIGKILL=yes
