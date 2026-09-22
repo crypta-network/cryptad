@@ -1,0 +1,41 @@
+[Unit]
+Description=Cryptad controller-owned isolated role %i
+BindsTo=cryptad-workload-controller.service
+After=cryptad-workload-controller.service
+
+[Service]
+Type=exec
+Slice=system.slice
+User=cryptad-role-%i
+Group=cryptad-role-%i
+ExecStartPre=+/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_workload_mark.py %i
+ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_workload_launcher.py %i
+NetworkNamespacePath=/run/netns/cryptad-role-%i
+WorkingDirectory=/
+UMask=0077
+StandardInput=null
+StandardOutput=null
+StandardError=null
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+# The unprivileged launcher constructs the outer mount/PID boundary. Do not inherit
+# resolver proc locks or disable descendant user namespaces needed by real AppHost.
+LockPersonality=yes
+RestrictRealtime=yes
+Delegate=no
+LimitCORE=0
+LimitNOFILE=1024
+# The fixed 64 MiB datastore needs roughly 30 MiB per CHK backing file.
+# Keep a finite per-file ceiling; the role's 512 MiB tmpfs bounds total writable bytes.
+LimitFSIZE=64M
+TasksMax=512
+MemoryMax=1G
+MemorySwapMax=0
+CPUQuota=100%
+RuntimeMaxSec=3600
+TimeoutStartSec=20
+TimeoutStopSec=20
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no

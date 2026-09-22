@@ -33,7 +33,7 @@ TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name
     'pr312_output_faults.py', 'pr312_app_projection.py', 'pr313_boot_inputs.py',
     'pr313_fixtures.py', 'pr313_faults.py', 'pr313_worker_faults.py',
     'pr313_acceptance.py', 'pr313_acceptance_runner.py', 'pr313_observations.py',
-    'pr313_public_faults.py'))
+    'pr313_public_faults.py', 'pr314_acceptance.py', 'pr314_workload_driver.py'))
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
                     '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
@@ -54,6 +54,8 @@ DEPENDENCY_FILES = ('/usr/bin/python3', '/usr/bin/python3.13', '/usr/bin/openssl
                     '/usr/share/dbus-1/system.d/org.freedesktop.PolicyKit1.conf',
                     '/usr/lib/pam.d/polkit-1', '/usr/libexec/polkit-agent-helper-1',
                     '/usr/bin/bwrap', '/usr/bin/prlimit', '/usr/bin/gh', '/usr/bin/git',
+                    '/usr/sbin/ip', '/usr/sbin/nft', '/usr/bin/mount', '/usr/bin/umount',
+                    '/usr/bin/env', '/usr/bin/bash', '/usr/bin/dirname', '/usr/bin/dpkg', '/usr/bin/getconf',
                     '/usr/bin/systemd-sysusers', '/usr/bin/systemd-tmpfiles',
                     '/usr/bin/systemctl', '/usr/bin/sudo', '/usr/bin/setpriv', '/usr/bin/true', '/usr/lib/systemd/systemd',
                     '/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ssl/certs/ca-certificates.crt',
