@@ -456,8 +456,16 @@ class InstalledWorkloadAdapter:
     def stop(self, role):
         # Stop remains usable after observer deadline; controller ownership scopes it.
         value = self.control.request('stop', self.handles[role])
-        if value.get('state') != 'quiescent' or value.get('handle') != self.handles[role]:
+        unlaunched = (value.get('state') == 'prepared' and role not in self.nodes
+                      and role not in self._journal_started_roles
+                      and set(value) == {'handle', 'state', 'generation', 'managerInvocation', 'bootId'}
+                      and value['generation'] is None and value['managerInvocation'] is None
+                      and re.fullmatch('[a-f0-9-]{36}', str(value['bootId'])) is not None)
+        if (value.get('state') != 'quiescent' and not unlaunched
+                or value.get('handle') != self.handles[role]):
             fail('role-quiescence-unestablished')
+        if role in self.nodes:
+            self._bound(role, value)
         if role in self._journal_started_roles:
             self.emit('node-stop', role=role)
             self._journal_started_roles.remove(role)

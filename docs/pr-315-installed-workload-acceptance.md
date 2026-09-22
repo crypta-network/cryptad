@@ -541,7 +541,9 @@ overall shutdown, preserving its generation and original deadline. Admission the
 launches; ownership-only stop remains available. A replacement controller distinguishes initial
 preparation from an interrupted launched campaign and fences the latter before reconciliation.
 Ordinary role stop remains restartable and archives the prior exact stop receipt before issuing
-a new role generation. Current and preceding receipt projections are retained with bounded
+a new role generation. Partial-launch cleanup preserves an explicitly never-launched prepared
+role as distinct from a stopped invocation; its observer adapter accepts that result only when
+it has no observed role epoch. Replies for observed roles must match that recorded epoch. Current and preceding receipt projections are retained with bounded
 private diagnostics. These changes still require actual systemd, restart and loss validation.
 Host-observed guest stop is a separate condition used for disposable disk cleanup; it does not
 supply the missing per-case acceptance witnesses. The private snapshot explicitly does not

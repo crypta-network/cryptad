@@ -76,6 +76,34 @@ class ScopedWorkerTests(unittest.TestCase):
 
 
 class ObserverPolicyTests(unittest.TestCase):
+    def stop_adapter(self, response, started=False):
+        adapter = workload.InstalledWorkloadAdapter.__new__(workload.InstalledWorkloadAdapter)
+        adapter.handles = {'candidate-sender': HANDLE}
+        adapter.nodes = {'candidate-sender': dict(EPOCH)} if started else {}
+        adapter._journal_started_roles = set()
+        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value=response))
+        adapter.emit = mock.Mock()
+        return adapter
+
+    def test_partial_cleanup_preserves_explicit_never_launched_state(self):
+        response = {**EPOCH, 'state': 'prepared', 'generation': None, 'managerInvocation': None}
+        adapter = self.stop_adapter(response)
+        self.assertEqual(response, adapter.stop('candidate-sender'))
+        adapter.emit.assert_not_called()
+        for changed in ({'generation': 'e' * 64}, {'managerInvocation': 'e' * 32}, {'handle': 'e' * 64}):
+            adapter.control.request.return_value = {**response, **changed}
+            with self.subTest(changed=changed), self.assertRaises(workload.runtime.RuntimeFailure):
+                adapter.stop('candidate-sender')
+        with self.assertRaises(workload.runtime.RuntimeFailure):
+            self.stop_adapter(response, started=True).stop('candidate-sender')
+
+    def test_stopped_reply_must_match_observed_launch_epoch(self):
+        adapter = self.stop_adapter({**EPOCH, 'state': 'quiescent'}, started=True)
+        adapter.stop('candidate-sender')
+        adapter.control.request.return_value = {**EPOCH, 'state': 'quiescent', 'generation': 'e' * 64}
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-invocation-changed'):
+            adapter.stop('candidate-sender')
+
     def test_every_session_refresh_uses_controller_even_with_candidate_origin(self):
         supervisor = types.SimpleNamespace(
             private={'nodes': {'candidate-sender': {'httpPort': 19402}}},
@@ -153,11 +181,13 @@ class ObserverPolicyTests(unittest.TestCase):
     def test_unstarted_role_cleanup_does_not_forge_node_epoch_event(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
+        adapter.nodes = {}
         adapter._journal_started_roles = set()
-        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value={'state': 'quiescent', 'handle': HANDLE}))
+        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value={**EPOCH, 'state': 'quiescent'}))
         adapter.emit = mock.Mock()
         adapter.stop('candidate-sender')
         adapter.emit.assert_not_called()
+        adapter.nodes['candidate-sender'] = dict(EPOCH)
         adapter._journal_started_roles.add('candidate-sender')
         adapter.stop('candidate-sender')
         adapter.emit.assert_called_once_with('node-stop', role='candidate-sender')
