@@ -8,7 +8,7 @@ not installed observations and must never be published as such.
 from dataclasses import dataclass
 import re
 
-CONTRACT = 'pr314-workload-roles-v4'
+CONTRACT = 'pr314-workload-roles-v5'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
@@ -149,6 +149,12 @@ def _targets(targets, principals, declared):
             and len({targets[name]['probeDigest'] for name in names}) == len(names))
 
 
+def _case_commitments(commitments, declared):
+    names = {name for name in declared if CASES[name].witness in ('exchange', 'lifecycle')}
+    return (_closed(commitments, names) and all(_hex(commitments[name]) for name in names)
+            and len(set(commitments.values())) == len(names))
+
+
 def _resources(witness, principals):
     if not (_closed(witness, ('source', 'measurements')) and witness['source'] == 'cgroup-v2'
             and _principals(principals) and isinstance(witness['measurements'], list)
@@ -193,7 +199,7 @@ def _witness(case, witness, identity, principals):
                 and witness['invocationId'] == next(row['invocationId'] for row in principals['roles']
                                                     if row['role'] == witness['role']))
     if kind == 'exchange':
-        return (_closed(witness, ('requestDigest', 'expectedResponseDigest', 'responseDigest',
+        return (_closed(witness, ('caseId', 'operationDigest', 'requestDigest', 'expectedResponseDigest', 'responseDigest',
                                  'serverInvocationId', 'serverRequests'))
                 and all(_hex(witness[key]) for key in ('requestDigest', 'expectedResponseDigest', 'responseDigest'))
                 and witness['responseDigest'] == witness['expectedResponseDigest']
@@ -233,7 +239,7 @@ def _witness(case, witness, identity, principals):
                 and _hex(witness['unrelatedStateBefore'])
                 and witness['unrelatedStateBefore'] == witness['unrelatedStateAfter'])
     if kind == 'lifecycle':
-        return (_closed(witness, ('triggerStartedNs', 'terminalObservedNs', 'roles',
+        return (_closed(witness, ('caseId', 'triggerDigest', 'triggerStartedNs', 'terminalObservedNs', 'roles',
                                  'populatedCgroups', 'remainingDescendants', 'retention'))
                 and _positive(witness['triggerStartedNs']) and _positive(witness['terminalObservedNs'])
                 and witness['triggerStartedNs'] < witness['terminalObservedNs']
@@ -251,7 +257,7 @@ def inventory(statuses=None):
             for name, case in CASES.items()]
 
 
-def observation_status(record, identity, principals=None, targets=None):
+def observation_status(record, identity, principals=None, targets=None, case_commitments=None):
     if not isinstance(record, dict) or not isinstance(record.get('caseId'), str) or record['caseId'] not in CASES:
         raise ValueError('workload-case-invalid')
     if record.get('status') != 'passed':
@@ -267,6 +273,13 @@ def observation_status(record, identity, principals=None, targets=None):
             and record['startedMonotonicNs'] < record['finishedMonotonicNs']
             and _witness(case, record['witness'], identity, principals)):
         raise ValueError('workload-observation-invalid')
+    if case.witness in ('exchange', 'lifecycle'):
+        field = 'operationDigest' if case.witness == 'exchange' else 'triggerDigest'
+        if not (record['witness']['caseId'] == record['caseId']
+                and isinstance(case_commitments, dict) and record['caseId'] in case_commitments
+                and _hex(record['witness'][field])
+                and record['witness'][field] == case_commitments[record['caseId']]):
+            raise ValueError('workload-case-commitment-mismatch')
     if case.witness == 'denial':
         target = record['witness']['targetIdentity']
         if not (isinstance(targets, dict) and record['caseId'] in targets
@@ -290,6 +303,8 @@ def verify_attempts(expected_identity, attempts):
     expected_identity.admittedAppDigest must come from the authenticated selection's exact
     installed-app projection, never from the observed app. Targets are independently measured
     active services; probeDigest commits to the endpoint/object and operation for that case.
+    caseCommitments independently binds each exchange operation and measured lifecycle trigger;
+    the driver must not derive this expected context by copying the submitted witness.
     """
     statuses = {}
     probe_commitments = set()
@@ -297,25 +312,31 @@ def verify_attempts(expected_identity, attempts):
     for attempt in attempts if isinstance(attempts, list) and len(attempts) <= len(CASES) else ():
         try:
             if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations',
-                                     'guestStopped', 'attemptCompleted', 'principals', 'targets'))
+                                     'guestStopped', 'attemptCompleted', 'principals', 'targets', 'caseCommitments'))
                     and attempt['contract'] == CONTRACT and attempt['identity'] == expected_identity
                     and _principals(attempt['principals'])
                     and attempt['guestStopped'] is True and attempt['attemptCompleted'] is True
                     and isinstance(attempt['declaredCases'], list) and attempt['declaredCases']
                     and all(isinstance(name, str) and name in CASES for name in attempt['declaredCases'])
                     and _targets(attempt['targets'], attempt['principals'], attempt['declaredCases'])
+                    and _case_commitments(attempt['caseCommitments'], attempt['declaredCases'])
                     and len(set(attempt['declaredCases'])) == len(attempt['declaredCases'])
                     and not set(attempt['declaredCases']) & set(statuses)
                     and isinstance(attempt['observations'], list)
                     and len(attempt['observations']) == len(attempt['declaredCases'])):
                 raise ValueError('workload-attempt-invalid')
             attempt_probes = {target['probeDigest'] for target in attempt['targets'].values()}
+            operations = set(attempt['caseCommitments'].values())
+            if attempt_probes & operations:
+                raise ValueError('workload-commitment-reused')
+            attempt_probes |= operations
             if probe_commitments & attempt_probes:
                 raise ValueError('workload-probe-reused-across-attempts')
             probe_commitments.update(attempt_probes)
             observed = {}
             for row in attempt['observations']:
-                status = observation_status(row, expected_identity, attempt['principals'], attempt['targets'])
+                status = observation_status(row, expected_identity, attempt['principals'], attempt['targets'],
+                                            attempt['caseCommitments'])
                 if row['caseId'] in observed:
                     raise ValueError('workload-duplicate-observation')
                 observed[row['caseId']] = status

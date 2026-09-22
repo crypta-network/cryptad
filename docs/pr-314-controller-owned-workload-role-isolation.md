@@ -370,6 +370,14 @@ and cross-case witness reuse reject. Context shape and
 digest equality do not authenticate its measurements or execute an attack; those remain explicit
 installed-driver obligations. Previous contract revisions cannot satisfy v4.
 
+Contract `pr314-workload-roles-v5` extends this binding to positive exchanges and lifecycle
+faults. Their witnesses name the case and carry an operation or trigger digest matching the
+attempt's independently measured `caseCommitments`. The driver must construct those commitments
+from the selected operation or actual trigger, rather than copying witness claims. Commitments
+are unique across the entire assessment, including denial probes and separate attempts. Copying
+one management exchange into the bootstrap case, or one terminal event across fault cases,
+cannot satisfy the contract. These remain evidence consistency rules, not proof of execution.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.
