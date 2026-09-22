@@ -365,7 +365,8 @@ control response and a case-specific probe digest committing to the endpoint/obj
 Witness targets must equal this context; role-backed targets also match the measured roster.
 Sibling targets use `candidate-recipient`; own-app/input/outer-role/cgroup targets use
 `candidate-sender`. Control-side targets cannot alias workload invocations or cgroups. Missing
-targets, duplicate probe commitments and cross-case witness reuse reject. Context shape and
+targets, duplicate probe commitments across the entire assessment (including separate attempts),
+and cross-case witness reuse reject. Context shape and
 digest equality do not authenticate its measurements or execute an attack; those remain explicit
 installed-driver obligations. Previous contract revisions cannot satisfy v4.
 

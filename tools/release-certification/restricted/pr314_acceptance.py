@@ -292,6 +292,7 @@ def verify_attempts(expected_identity, attempts):
     active services; probeDigest commits to the endpoint/object and operation for that case.
     """
     statuses = {}
+    probe_commitments = set()
     valid = _identity(expected_identity) and isinstance(attempts, list) and 0 < len(attempts) <= len(CASES)
     for attempt in attempts if isinstance(attempts, list) and len(attempts) <= len(CASES) else ():
         try:
@@ -308,6 +309,10 @@ def verify_attempts(expected_identity, attempts):
                     and isinstance(attempt['observations'], list)
                     and len(attempt['observations']) == len(attempt['declaredCases'])):
                 raise ValueError('workload-attempt-invalid')
+            attempt_probes = {target['probeDigest'] for target in attempt['targets'].values()}
+            if probe_commitments & attempt_probes:
+                raise ValueError('workload-probe-reused-across-attempts')
+            probe_commitments.update(attempt_probes)
             observed = {}
             for row in attempt['observations']:
                 status = observation_status(row, expected_identity, attempt['principals'], attempt['targets'])

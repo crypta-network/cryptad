@@ -65,6 +65,24 @@ def attempt():
 
 
 class WorkloadAcceptanceTest(unittest.TestCase):
+    def test_probe_commitments_are_unique_across_all_attempts(self):
+        attempts = []
+        for name in a.CASES:
+            value = attempt()
+            value['declaredCases'] = [name]
+            value['observations'] = [row for row in value['observations'] if row['caseId'] == name]
+            value['targets'] = {name: value['targets'][name]} if name in value['targets'] else {}
+            attempts.append(value)
+        self.assertTrue(a.verify_attempts(identity(), attempts)['installedWorkloadAcceptanceSatisfied'])
+        for value in attempts:
+            for selected in value['targets'].values():
+                selected['probeDigest'] = 'f'*64
+                value['observations'][0]['witness']['targetIdentity']['probeDigest'] = 'f'*64
+        for ordered in (attempts, list(reversed(attempts))):
+            result = a.verify_attempts(identity(), ordered)
+            self.assertFalse(result['recordContractValid'])
+            self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+
     def test_app_digest_must_match_expected_admitted_identity(self):
         value = attempt()
         row = next(row for row in value['observations'] if row['caseId'] == 'signed-apphost-child')
