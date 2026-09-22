@@ -25,7 +25,11 @@ MAX_OUTPUT = 64 * 1024
 MAX_WRAPPER_LOG = 2 * 1024 * 1024
 WRAPPER_TAIL = 4096
 CAMPAIGN_FIELDS = ('generation', 'bootId', 'state', 'deadlineMonotonicNs', 'usedOperations')
-ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIdentity', 'stopReason')
+ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIdentity', 'stopReason',
+               'previousStopGeneration')
+STOP_FIELDS = ('schemaVersion', 'role', 'campaign', 'generation', 'bootId', 'managerInvocation',
+               'cgroupIdentity', 'helperPid', 'helperStartTimeTicks', 'startedMonotonicNs',
+               'observedMonotonicNs', 'membership', 'descendantCgroups')
 
 
 def _digest(raw):
@@ -239,6 +243,14 @@ def _capture(root, expected, cleanup_complete):
             ('version', 'bootId', 'phase', 'pending'), deadline)
         for role in ROLES:
             result['controllerRecords'][role] = _record(root / 'authority', role + '.json', ROLE_FIELDS, deadline)
+        result['stopReceipts'] = {}
+        for role in ROLES:
+            receipts = {'current': _record(root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
+            previous = result['controllerRecords'][role].get('record', {}).get('previousStopGeneration')
+            if isinstance(previous, str) and re.fullmatch('[0-9a-f]{64}', previous):
+                receipts['previous'] = _record(root / 'authority', role + '-stop-' + previous + '.json',
+                                               STOP_FIELDS, deadline)
+            result['stopReceipts'][role] = receipts
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

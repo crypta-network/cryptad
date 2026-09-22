@@ -469,10 +469,15 @@ request. Allocate that time before preparation; never extend the original campai
 Lost-response and descendant tests need fixed synchronization barriers at observed transitions.
 Late children and setsid processes must remain owned by the original service cgroup until stop.
 
-The existing cleanup path treats a missing cgroup as quiescent, and its inactive/failed early
-branch does not independently establish unchanged retained invocation identity. The cleanup-race
-driver must test those transitions before claiming that missing/replaced cgroups prove safe
-completion. This is a code-audit concern, not an observed installed failure or a completed fix.
+The suite-15 diagnostic demonstrated the disappearance transition that the former cleanup
+path treated as quiescent without an exact terminal receipt. The replacement implementation
+uses a fixed root manager `ExecStopPost` receipt: the helper must positively observe only itself
+in the original role cgroup, no descendant cgroup, and unchanged process epoch and group identity.
+A successful stop-post invocation alone is insufficient; systemd can reach that phase after a
+kill timeout. The owner additionally requires matching start/stop identities, completed manager
+state, and an absent original group or the same empty group. A replacement or missing receipt
+retains reconciliation-required state. These checks have offline regressions but await installed
+execution; the cleanup-race driver remains unimplemented.
 
 ## Records, budgets and private evidence
 
@@ -509,14 +514,17 @@ unbounded growth. Retained QCOW2 does not preserve tmpfs after shutdown. A priva
 snapshot is not a runtime restore format or continuation of the same epoch. Guest crashes may
 make volatile evidence unavailable; record that limitation without manufacturing a snapshot.
 
-The current driver's `cleanup=completed` is a reported teardown result, not the contract's
-exact-owned terminal witness. Its inactive-service path accepts a missing or empty expected
-cgroup without fully binding the terminal observation to the retained invocation. An inactive
-replacement or removed cgroup therefore remains an acceptance gap. Controller `BindsTo`, fixed
-units and launch receipts constrain operations, but a causal stopping record and controlled
-future-launch state still need installed verification. Host-observed guest stop is a separate
-condition used for disposable disk cleanup; it does not repair those missing role witnesses.
-The private snapshot explicitly does not independently establish quiescence.
+Historical attempts' `cleanup=completed` remains a reported teardown result, not the contract's
+exact-owned terminal witness. The new implementation persists a terminalizing campaign before
+overall shutdown, preserving its generation and original deadline. Admission then rejects new
+launches; ownership-only stop remains available. A replacement controller distinguishes initial
+preparation from an interrupted launched campaign and fences the latter before reconciliation.
+Ordinary role stop remains restartable and archives the prior exact stop receipt before issuing
+a new role generation. Current and preceding receipt projections are retained with bounded
+private diagnostics. These changes still require actual systemd, restart and loss validation.
+Host-observed guest stop is a separate condition used for disposable disk cleanup; it does not
+supply the missing per-case acceptance witnesses. The private snapshot explicitly does not
+independently establish quiescence.
 
 Public output includes only approved classifications, counts, case IDs and tool/product
 identifiers. Actual actor IDs, endpoints, raw output, selections, credentials and correlatable
@@ -552,6 +560,11 @@ passed 26 with eight root-peer transport skips. The focused workload subset pass
 new dependency mock in the offline terminal-publication fixture; after correction all 61 tests
 passed. The four certification self-tests again passed with 152, 247, 88 and 185 tests.
 These results test implementation and policy binding only, not installed hostile/lifecycle cases.
+
+The stop-receipt and terminal-fence changes passed protected discovery with 510 tests and 74
+skips, restricted discovery with 389 tests and one skip, and interop discovery with 215 tests
+and eight skips. The focused workload subset passed 145 with 21 skips; the new marker has 18
+offline tests and evidence extraction has 26. Synthetic manager observations remain unit tests.
 
 Earlier in this implementation, the Gradle wrapper completed
 `:platform-devtools:installDist assembleCryptadDist`, candidate Mail staging/portable assembly,

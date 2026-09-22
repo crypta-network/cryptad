@@ -233,7 +233,7 @@ def main():
         startup_checkpoint(stage, started, reached)
         observer = pwd.getpwnam('cryptad-soak')
         if (workload.ROOT / 'campaign.json').exists():
-            workload.reconcile()
+            workload.recover_controller()
         stage = 'reconciled'
         startup_checkpoint(stage, started, reached)
         if SOCKET.exists() or SOCKET.is_symlink():
@@ -258,6 +258,7 @@ def main():
                     if time.monotonic() - last_observer > 240:
                         workload.reject('observer-lost')
                 except ValueError:
+                    workload.fence_campaign()
                     workload.reconcile()
                     return 1
             ready, _, _ = select.select([server], [], [], 1)
@@ -269,6 +270,7 @@ def main():
                     last_observer = time.monotonic()
     finally:
         server.close()
+        workload.fence_campaign()
         workload.reconcile()
         SOCKET.unlink()
 

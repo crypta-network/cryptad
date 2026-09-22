@@ -66,7 +66,7 @@ class CleanupTest(unittest.TestCase):
                 self.assertEqual({'status': 'unavailable-not-quiescence-proof'},
                                  driver.controller_startup_snapshot(workload))
 
-    def test_controller_stop_releases_busy_lease_before_reconciliation(self):
+    def test_terminal_fence_waits_for_owner_transaction_before_controller_stop(self):
         events = []
         with tempfile.TemporaryDirectory() as directory:
             lease = Path(directory) / 'lease'
@@ -87,7 +87,8 @@ class CleanupTest(unittest.TestCase):
                     self.assertEqual(['/usr/bin/systemctl', 'stop',
                                       'cryptad-workload-controller.service'], command)
                     self.assertTrue(kwargs['check'])
-                    self.assertEqual(110, kwargs['timeout'])
+                    self.assertGreater(kwargs['timeout'], 0)
+                    self.assertLessEqual(kwargs['timeout'], 110)
                     events.append('controller-stop')
                     fcntl.flock(controller, fcntl.LOCK_UN)
 
@@ -95,20 +96,34 @@ class CleanupTest(unittest.TestCase):
                     with locked():
                         events.append('reconcile')
 
+                calls = 0
+                def fence():
+                    nonlocal calls
+                    calls += 1
+                    if calls == 1:
+                        raise BlockingIOError('owner transaction in progress')
+                    fcntl.flock(controller, fcntl.LOCK_UN)
+                    events.append('owner-request-completed')
+                    with locked():
+                        events.append('fence')
+
                 workload = SimpleNamespace(ROLES=('sender', 'recipient'), locked=locked,
-                    reconcile=reconcile, quiescent=lambda role: events.append(role) or True)
+                    fence_campaign=fence, reconcile=reconcile, quiescent=lambda role: events.append(role) or True)
                 network = SimpleNamespace(teardown=lambda: events.append('teardown'))
                 with patch.object(driver.subprocess, 'run', side_effect=stop), \
                         patch.dict('sys.modules', {'restricted_workload_network': network}):
                     driver.cleanup(workload)
-        self.assertEqual(['controller-stop', 'reconcile', 'sender', 'recipient', 'teardown'], events)
+        self.assertEqual(['owner-request-completed', 'fence', 'controller-stop', 'reconcile',
+                          'sender', 'recipient', 'teardown'], events)
 
     def test_uncertain_shutdown_retains_network_and_state(self):
         from contextlib import nullcontext
-        for failure in ('stop', 'reconcile', 'quiescence'):
+        for failure in ('fence', 'stop', 'reconcile', 'quiescence'):
             workload = SimpleNamespace(ROLES=('sender',), locked=nullcontext,
-                reconcile=Mock(), quiescent=Mock(return_value=failure != 'quiescence'))
+                fence_campaign=Mock(), reconcile=Mock(), quiescent=Mock(return_value=failure != 'quiescence'))
             network = SimpleNamespace(teardown=Mock())
+            if failure == 'fence':
+                workload.fence_campaign.side_effect = ValueError('fence failed')
             if failure == 'reconcile':
                 workload.reconcile.side_effect = BlockingIOError('lease still busy')
             with self.subTest(failure=failure), \
@@ -118,7 +133,7 @@ class CleanupTest(unittest.TestCase):
                 with self.assertRaises((subprocess.TimeoutExpired, BlockingIOError, ValueError)):
                     driver.cleanup(workload)
                 network.teardown.assert_not_called()
-                if failure == 'stop':
+                if failure in {'fence', 'stop'}:
                     workload.reconcile.assert_not_called()
 
 

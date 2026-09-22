@@ -56,9 +56,23 @@ def prerequisites():
 
 
 def cleanup(workload):
-    """Stop the lease owner before acquiring its nonblocking reconciliation lease."""
-    subprocess.run(['/usr/bin/systemctl', 'stop', 'cryptad-workload-controller.service'],
-                   check=True, timeout=110, env=ENV)
+    """Fence launch before terminal owner shutdown, within the existing stop budget."""
+    deadline = time.monotonic() + 110
+    fence_deadline = time.monotonic() + 35
+    try:
+        while True:
+            try:
+                workload.fence_campaign()
+                break
+            except BlockingIOError:
+                if time.monotonic() >= fence_deadline:
+                    raise ValueError('workload-terminal-fence-timeout') from None
+                time.sleep(.05)
+    finally:
+        # A failed fence must still attempt exact installed owner shutdown. It must
+        # not fall through to network deletion or a successful terminal record.
+        subprocess.run(['/usr/bin/systemctl', 'stop', 'cryptad-workload-controller.service'],
+                       check=True, timeout=max(.001, deadline - time.monotonic()), env=ENV)
     workload.reconcile()
     with workload.locked():
         if not all(workload.quiescent(role) for role in workload.ROLES):

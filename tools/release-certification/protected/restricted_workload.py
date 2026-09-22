@@ -258,6 +258,9 @@ def start(handle):
             if tree_identity(inputs / name, deadline=campaign['deadlineMonotonicNs'] / 1e9) != identity:
                 reject('input-substituted')
         current(campaign)
+        if record['state'] == 'quiescent':
+            archive_stop(role, record)
+            record['previousStopGeneration'] = record['generation']
         record.update(state='launching', generation=secrets.token_hex(32), managerInvocation=None,
                       cgroupIdentity=None, stopReason=None)
         write(ROOT / 'authority' / (role + '.json'), record)
@@ -283,9 +286,118 @@ def summary(role, record):
     return {key: record[key] for key in ('handle', 'state', 'generation', 'managerInvocation', 'bootId')}
 
 
+def stop_receipt(role, record):
+    """Validate the manager-only terminal membership observation for this launch."""
+    receipt = read(ROOT / 'authority' / (role + '-stop.json'))
+    fields = {'schemaVersion', 'role', 'campaign', 'generation', 'bootId', 'managerInvocation',
+              'cgroupIdentity', 'helperPid', 'helperStartTimeTicks', 'startedMonotonicNs',
+              'observedMonotonicNs', 'membership', 'descendantCgroups'}
+    if (not isinstance(receipt, dict) or set(receipt) != fields or type(receipt['schemaVersion']) is not int
+            or receipt['schemaVersion'] != 1 or receipt['role'] != role
+            or any(type(receipt[key]) is not type(record.get(key)) or receipt[key] != record.get(key) for key in
+                   ('campaign', 'generation', 'bootId', 'managerInvocation', 'cgroupIdentity'))
+            or not isinstance(receipt['cgroupIdentity'], list) or len(receipt['cgroupIdentity']) != 2
+            or any(type(value) is not int or value < 0 for value in receipt['cgroupIdentity'])
+            or record['bootId'] != boot() or not record.get('managerInvocation')
+            or receipt['membership'] != 'only-stop-helper'
+            or type(receipt['descendantCgroups']) is not int or receipt['descendantCgroups'] != 0
+            or any(type(receipt[key]) is not int or receipt[key] <= 0 for key in
+                   ('helperPid', 'helperStartTimeTicks', 'startedMonotonicNs', 'observedMonotonicNs'))
+            or not receipt['startedMonotonicNs'] <= receipt['observedMonotonicNs'] <= time.monotonic_ns()):
+        reject('stop-receipt-mismatch')
+    marker = read(ROOT / 'authority' / (role + '-start.json'))
+    if any(marker.get(key) != record.get(key) for key in
+           ('generation', 'bootId', 'managerInvocation', 'cgroupIdentity')):
+        reject('stop-start-receipt-mismatch')
+    return receipt
+
+
+def terminal_role(role, record, state):
+    """Removal counts only after a matched trusted helper and manager completion."""
+    if (state['ActiveState'] not in {'inactive', 'failed'}
+            or state['SubState'] not in {'dead', 'failed'} or state['MainPID'] != '0'):
+        reject('descendants-not-quiescent')
+    receipt = stop_receipt(role, record)
+    if state['InvocationID'] not in {'', record['managerInvocation']}:
+        reject('invocation-changed-reconciliation-required')
+    if state['ControlGroup'] not in {'', '/system.slice/' + unit(role)}:
+        reject('cgroup-changed-reconciliation-required')
+    try:
+        info = group(role).stat()
+    except FileNotFoundError:
+        # systemd may remove the original cgroup before the owner can observe zero.
+        # The exact stop receipt is the positive membership premise, not this absence.
+        pass
+    else:
+        if [info.st_dev, info.st_ino] != record['cgroupIdentity']:
+            reject('cgroup-changed-reconciliation-required')
+        if not quiescent(role):
+            reject('descendants-not-quiescent')
+    if manager(role, 'show') != state or stop_receipt(role, record) != receipt:
+        reject('terminal-observation-changed')
+    return receipt
+
+
+def archive_stop(role, record):
+    """Keep the preceding invocation witness before reusing the fixed receipt slot."""
+    receipt = terminal_role(role, record, manager(role, 'show'))
+    generation = record.get('generation')
+    if not isinstance(generation, str) or re.fullmatch('[0-9a-f]{64}', generation) is None:
+        reject('stop-generation-invalid')
+    archive = ROOT / 'authority' / (role + '-stop-' + generation + '.json')
+    if archive.exists():
+        if read(archive) != receipt:
+            reject('stop-history-changed')
+    else:
+        write(archive, receipt, create=True)
+
+
+def fence_campaign():
+    """Persist terminal launch admission under the existing ownership lease."""
+    with locked():
+        campaign = read(ROOT / 'campaign.json')
+        if campaign['bootId'] != boot():
+            reject('boot-changed-reconciliation-required')
+        if campaign.get('state') == 'prepared':
+            campaign['state'] = 'terminalizing'
+            write(ROOT / 'campaign.json', campaign)
+
+
+def recover_controller():
+    """An initial prepared roster is distinct from a controller's interrupted campaign."""
+    with locked():
+        campaign = read(ROOT / 'campaign.json')
+        records = [retained(campaign['handles'][role])[2] for role in ROLES]
+        if any(record.get('generation') is not None or record['state'] != 'prepared'
+               for record in records):
+            if campaign['bootId'] != boot():
+                reject('boot-changed-reconciliation-required')
+            if campaign.get('state') == 'prepared':
+                campaign['state'] = 'terminalizing'
+                write(ROOT / 'campaign.json', campaign)
+    reconcile()
+
+
 def _stop(role, record, reason):
     state = manager(role, 'show')
-    if state['ActiveState'] in {'inactive', 'failed'} and quiescent(role):
+    if record['state'] == 'prepared' and record.get('generation') is None:
+        if (state['ActiveState'] not in {'inactive', 'failed'} or state['InvocationID']
+                or state['ControlGroup'] or not quiescent(role)):
+            reject('unlaunched-role-slot-busy')
+        # Never-launched authority remains distinct from a terminal launched epoch.
+        return summary(role, record)
+    if state['ActiveState'] in {'inactive', 'failed'}:
+        if record['state'] == 'launching':
+            marker = read(ROOT / 'authority' / (role + '-start.json'))
+            if any(marker.get(key) != record.get(key) for key in ('generation', 'bootId')):
+                reject('launch-reconciliation-required')
+            record.update(managerInvocation=marker['managerInvocation'], cgroupIdentity=marker['cgroupIdentity'])
+        try:
+            terminal_role(role, record, state)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            record.update(state='reconciliation-required', stopReason=reason)
+            write(ROOT / 'authority' / (role + '.json'), record)
+            raise
         record.update(state='quiescent', stopReason=reason)
         write(ROOT / 'authority' / (role + '.json'), record)
         return summary(role, record)
@@ -296,10 +408,12 @@ def _stop(role, record, reason):
     write(ROOT / 'authority' / (role + '.json'), record)
     manager(role, 'stop')
     after = manager(role, 'show')
-    if after['ActiveState'] not in {'inactive', 'failed'} or not quiescent(role):
+    try:
+        terminal_role(role, record, after)
+    except (OSError, ValueError, subprocess.SubprocessError):
         record['state'] = 'reconciliation-required'
         write(ROOT / 'authority' / (role + '.json'), record)
-        reject('descendants-not-quiescent')
+        raise
     record['state'] = 'quiescent'
     write(ROOT / 'authority' / (role + '.json'), record)
     return summary(role, record)

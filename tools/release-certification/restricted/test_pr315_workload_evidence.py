@@ -56,6 +56,26 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertGreaterEqual(result['finishedMonotonicNs'], result['startedMonotonicNs'])
         self.assertNotIn('private-topology-not-exported', json.dumps(result))
 
+    def test_stop_receipts_preserve_current_and_previous_epoch_with_fixed_projection(self):
+        role = 'candidate-sender'
+        authority = self.root / 'authority'
+        record = json.loads((authority / (role + '.json')).read_text())
+        record['previousStopGeneration'] = 'b' * 64
+        (authority / (role + '.json')).write_text(json.dumps(record))
+        for suffix, generation in (('-stop.json', 'c' * 64), ('-stop-' + 'b' * 64 + '.json', 'b' * 64)):
+            (authority / (role + suffix)).write_text(json.dumps({
+                'generation': generation, 'membership': 'only-stop-helper', 'helperPid': 123,
+                'privateExtra': 'must-not-copy'}))
+        result = evidence._capture(self.root, self.expected, True)
+        receipts = result['stopReceipts'][role]
+        self.assertEqual('c' * 64, receipts['current']['record']['generation'])
+        self.assertEqual('b' * 64, receipts['previous']['record']['generation'])
+        self.assertNotIn('must-not-copy', json.dumps(result))
+        self.assertFalse(result['quiescenceIndependentlyEstablished'])
+        record['previousStopGeneration'] = '../../arbitrary'
+        (authority / (role + '.json')).write_text(json.dumps(record))
+        self.assertNotIn('previous', evidence._capture(self.root, self.expected, True)['stopReceipts'][role])
+
     def test_no_read_without_literal_completed_cleanup(self):
         with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('must not read')):
             for cleanup in (False, None, 1, 'true'):

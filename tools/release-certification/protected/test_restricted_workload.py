@@ -86,6 +86,7 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
             stack.enter_context(patch.object(workload, 'ROOT', Path(directory)))
             stack.enter_context(patch.object(workload, 'write', side_effect=write))
             stack.enter_context(patch.object(workload, 'reconcile'))
+            stack.enter_context(patch.object(workload, 'fence_campaign'))
             stack.enter_context(patch.object(controller.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1, pw_gid=1)))
             stack.enter_context(patch.object(controller, 'SOCKET', endpoint))
             stack.enter_context(patch.object(controller.socket, 'socket'))
@@ -355,9 +356,10 @@ class LifecycleTest(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.record = dict(handle=HANDLE, state='prepared', generation=None, bootId=BOOT,
-                           managerInvocation=None, cgroupIdentity=None, stopReason=None)
+                           managerInvocation=None, cgroupIdentity=None, stopReason=None, campaign='d' * 64)
         self.campaign = dict(deadlineMonotonicNs=10**20, maxOperations=100)
         self.marker = None
+        self.stop_marker = None
         self.writes = []
         self.calls = []
         self.state = manager_state('inactive')
@@ -376,6 +378,10 @@ class LifecycleTest(unittest.TestCase):
         self.manager = self.stack.enter_context(patch.object(workload, 'manager', side_effect=self.operation))
 
     def read(self, path):
+        if path.name.endswith('-stop.json'):
+            if self.stop_marker is None:
+                raise FileNotFoundError('no-stop-receipt')
+            return copy.deepcopy(self.stop_marker)
         if path.name.endswith('-start.json'):
             if self.marker is None:
                 raise FileNotFoundError('no-manager-receipt')
@@ -399,7 +405,13 @@ class LifecycleTest(unittest.TestCase):
                                managerInvocation=INVOCATION, cgroupIdentity=[1, 99])
         elif operation == 'stop':
             self.assertEqual('stopping', self.record['state'])
-            self.state = manager_state('inactive')
+            self.stop_marker = dict(schemaVersion=1, role=ROLE, campaign=self.record['campaign'],
+                generation=self.record['generation'], bootId=BOOT, managerInvocation=INVOCATION,
+                cgroupIdentity=[1, 99], helperPid=42, helperStartTimeTicks=3,
+                startedMonotonicNs=1, observedMonotonicNs=2,
+                membership='only-stop-helper', descendantCgroups=0)
+            self.state = manager_state('inactive', invocation='')
+            self.state.update(ControlGroup='', MainPID='0', SubState='dead')
         elif operation == 'show':
             return copy.deepcopy(self.state)
 
@@ -517,6 +529,103 @@ class LifecycleTest(unittest.TestCase):
                 workload.start(HANDLE)
         self.assertEqual([], self.writes)
         self.assertNotIn('start', self.calls)
+
+    def test_removed_inactive_group_without_receipt_retains_uncertainty(self):
+        self.running()
+        self.state = manager_state('inactive', invocation='')
+        self.state.update(ControlGroup='', MainPID='0', SubState='dead')
+        self.group.stat.side_effect = FileNotFoundError('removed')
+        with self.assertRaisesRegex(FileNotFoundError, 'no-stop-receipt'):
+            workload.stop(HANDLE)
+        self.assertEqual('reconciliation-required', self.record['state'])
+        self.assertNotIn('stop', self.calls)
+
+    def test_removed_group_requires_exact_preceding_stop_observation(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.calls.clear()
+        self.group.stat.side_effect = FileNotFoundError('removed')
+        self.assertEqual('quiescent', workload.stop(HANDLE)['state'])
+        self.assertNotIn('stop', self.calls)
+        for key, value in (('generation', 'e' * 64), ('managerInvocation', 'f' * 32),
+                           ('cgroupIdentity', [1, 100]), ('campaign', 'e' * 64),
+                           ('bootId', 'other-boot'), ('helperPid', True),
+                           ('observedMonotonicNs', 10**30), ('descendantCgroups', True)):
+            original = copy.deepcopy(self.stop_marker)
+            with self.subTest(field=key):
+                self.stop_marker[key] = value
+                with self.assertRaisesRegex(workload.WorkloadError, 'stop-receipt-mismatch'):
+                    workload.stop(HANDLE)
+                self.assertNotIn('stop', self.calls)
+            self.stop_marker = original
+
+    def test_terminal_receipt_cannot_adopt_replacement_cgroup(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.calls.clear()
+        self.group.stat.return_value = SimpleNamespace(st_dev=1, st_ino=100)
+        with self.assertRaisesRegex(workload.WorkloadError, 'cgroup-changed'):
+            workload.stop(HANDLE)
+        self.assertNotIn('stop', self.calls)
+
+    def test_manager_changes_during_terminal_observation_fail_closed(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.manager.side_effect = [copy.deepcopy(self.state), manager_state(invocation='c' * 32)]
+        with self.assertRaisesRegex(workload.WorkloadError, 'terminal-observation-changed'):
+            workload.stop(HANDLE)
+        self.assertEqual('reconciliation-required', self.record['state'])
+
+    def test_restart_archives_old_epoch_before_new_intent_without_new_deadline(self):
+        self.running()
+        workload.stop(HANDLE)
+        old_generation = self.record['generation']
+        deadline = self.campaign['deadlineMonotonicNs']
+        def archived(role, record):
+            self.assertEqual(ROLE, role)
+            self.assertEqual(old_generation, record['generation'])
+            self.assertEqual('quiescent', self.record['state'])
+        with patch.object(workload, 'archive_stop', side_effect=archived) as archive:
+            workload.start(HANDLE)
+        archive.assert_called_once()
+        self.assertNotEqual(old_generation, self.record['generation'])
+        self.assertEqual(old_generation, self.record['previousStopGeneration'])
+        self.assertEqual(deadline, self.campaign['deadlineMonotonicNs'])
+
+
+class TerminalCampaignTest(unittest.TestCase):
+    def test_terminal_fence_keeps_generation_deadline_and_rejects_admission(self):
+        campaign = dict(state='prepared', generation='a' * 64, bootId=BOOT,
+                        deadlineMonotonicNs=123456789)
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'boot', return_value=BOOT), \
+                patch.object(workload, 'read', return_value=campaign), \
+                patch.object(workload, 'write') as write:
+            workload.fence_campaign()
+            self.assertEqual('terminalizing', campaign['state'])
+            self.assertEqual(123456789, campaign['deadlineMonotonicNs'])
+            self.assertEqual('a' * 64, campaign['generation'])
+            with self.assertRaisesRegex(workload.WorkloadError, 'preparation-incomplete'):
+                workload.current(campaign)
+            workload.fence_campaign()
+            self.assertEqual(1, write.call_count)
+
+    def test_controller_recovery_fences_prior_launch_but_not_initial_preparation(self):
+        for launched in (False, True):
+            campaign = dict(state='prepared', generation='a' * 64, bootId=BOOT,
+                            handles={role: HANDLE for role in workload.ROLES})
+            record = {'state': 'prepared', 'generation': None}
+            if launched:
+                record.update(state='launching', generation='b' * 64)
+            with self.subTest(launched=launched), \
+                    patch.object(workload, 'locked', side_effect=nullcontext), \
+                    patch.object(workload, 'boot', return_value=BOOT), \
+                    patch.object(workload, 'read', return_value=campaign), \
+                    patch.object(workload, 'retained', return_value=(campaign, ROLE, record)), \
+                    patch.object(workload, 'write'), patch.object(workload, 'reconcile') as reconcile:
+                workload.recover_controller()
+                self.assertEqual('terminalizing' if launched else 'prepared', campaign['state'])
+                reconcile.assert_called_once_with()
 
 
 class FakeConnection:
