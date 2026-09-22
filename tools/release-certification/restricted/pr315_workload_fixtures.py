@@ -327,6 +327,7 @@ def prepare(args):
             portable_bound(archive)
             checksum = runtime.digest_file(archive)
             package = runtime.extract_package(archive, stage / name, checksum, archive.stat().st_size)
+            preparation.verify_wrapper_options(package)
             commit = getattr(args, name + '_commit')
             daemon = runtime.packaged_daemon_identity(package, commit)
             implementation = daemon_implementation_identity(package / 'lib/cryptad.jar')

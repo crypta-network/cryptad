@@ -653,6 +653,27 @@ class ControllerRequestTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_reserved_logging_option_never_overwrites_or_skips_product_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'conf').mkdir()
+            config = root / 'conf/wrapper.conf'
+            original = ''.join('wrapper.java.additional.' + str(i) + '=-Dtest.option=' + str(i) + '\n'
+                               for i in range(1, 10))
+            config.write_text(original)
+            launcher.verify_wrapper_options(root)
+            self.assertEqual(original, config.read_text())
+            for changed in (original + 'wrapper.java.additional.10=-Dproduct.required=true\n',
+                            original.replace('wrapper.java.additional.9=', 'wrapper.java.additional.11='),
+                            original + 'wrapper.java.additional.1=-Dduplicate=true\n',
+                            original + '#include other.conf\n',
+                            original + 'wrapper.java.additional.9.scope=app_only\n'):
+                with self.subTest(configuration=changed):
+                    config.write_text(changed)
+                    with self.assertRaisesRegex(ValueError, 'workload-wrapper-options-unsupported'):
+                        launcher.verify_wrapper_options(root)
+
+
     def test_wrapper_logging_is_fixed_bounded_and_inside_role_state(self):
         for role in workload.ROLES:
             command, _environment = launcher.command(role)
@@ -661,6 +682,7 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual('2M', properties['wrapper.logfile.maxsize'])
             self.assertEqual('3', properties['wrapper.logfile.maxfiles'])
             self.assertEqual('256', properties['wrapper.java.maxmemory'])
+            self.assertEqual('-Dcrypta.log.dir=/node/logs', properties['wrapper.java.additional.10'])
             self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
             self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])
 

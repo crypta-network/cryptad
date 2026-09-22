@@ -242,6 +242,22 @@ not authenticated severity or acceptance. Immediate Python exception causes now 
 bounded private observer response; the public result remains unchanged. No deadline, CPU,
 JDK or memory limit was increased.
 
+The twelfth attempt at helper `18bdbd327d` retained two concrete startup observations:
+early Logback initialization tried to create files under read-only `/package/logs`, and the
+wrapper subsequently timed out waiting for its JVM startup signal and requested termination.
+The log reached `WrapperManager: Initializing...` shortly before that timeout. These messages
+explain that observed wrapper termination, not the earlier abnormal bootstrap exit or historical
+SIGILL/SIGSEGV. No matching fatal-error file was found in the fixed inspected directory. The
+observer reached its original readiness deadline; no positive case completed, and the guest stopped.
+
+The next launcher supplies the existing `crypta.log.dir` property at JVM creation, pointing only
+to `/node/logs`, so early logging need not write into immutable package inputs. The fixture
+producer and installed preparation both require the finite package's existing nine contiguous
+additional JVM options; duplicates, gaps, includes and a conflicting tenth option are rejected.
+The fixed tenth option therefore cannot overwrite a selected product option. Package bytes,
+JDK, CPU, wrapper watchdog, role memory and campaign deadlines remain unchanged. This fix
+addresses the demonstrated directory mismatch; startup timing still requires an installed rerun.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing

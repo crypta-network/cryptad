@@ -3,12 +3,34 @@
 import os
 from pathlib import Path
 import pwd
+import re
 import subprocess
 import sys
 import time
 
 ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
+
+
+def verify_wrapper_options(package):
+    """Reserve one fixed JVM option without overwriting a selected product's options."""
+    with (Path(package) / 'conf/wrapper.conf').open('rb') as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('workload-wrapper-options-unsupported')
+    indexes = set()
+    for line in raw.decode('utf-8').splitlines():
+        line = line.strip()
+        if line.startswith('#include') or line.endswith('\\'):
+            raise ValueError('workload-wrapper-options-unsupported')
+        if not line.startswith('wrapper.java.additional.'):
+            continue
+        match = re.fullmatch(r'wrapper\.java\.additional\.([1-9][0-9]*)=.*', line)
+        if match is None or int(match[1]) in indexes:
+            raise ValueError('workload-wrapper-options-unsupported')
+        indexes.add(int(match[1]))
+    if indexes != set(range(1, 10)):
+        raise ValueError('workload-wrapper-options-unsupported')
 
 
 def command(role):
@@ -28,7 +50,8 @@ def command(role):
     # The administrator snapshots only a small safe tail after owned quiescence.
     child = ['/package/bin/cryptad', 'wrapper.java.maxmemory=256',
              'wrapper.logfile=/node/logs/wrapper.log',
-             'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3']
+             'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
+             'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]

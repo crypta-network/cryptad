@@ -17,6 +17,7 @@ import time
 
 import restricted_workload as workload
 from restricted_workload_storage import copy_tree
+from restricted_workload_launcher import verify_wrapper_options
 from restricted_native_launcher import tree_identity
 
 
@@ -162,6 +163,7 @@ def prepare(plan, private, authorization):
             staging.mkdir(mode=0o700)
             package = runtime.extract_package(row['archivePath'], staging / 'package',
                                               selected['artifactDigest'], selected['artifactSize'])
+            verify_wrapper_options(package)
             daemon_digests[role] = runtime.packaged_daemon_identity(package, selected['sourceCommit'])
             runtime.require_native_target(package, selected['packageTarget'], row['javaHome'])
             if runtime.tree_digest(row['javaHome']) != selected['runtimeDigest']:
