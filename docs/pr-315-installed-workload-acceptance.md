@@ -127,6 +127,17 @@ is fabricated. Under the user's renewed instruction to remove failed VM disks af
 diagnostics, its two stopped, dependency-checked disks were removed, reclaiming 4,161,605,632
 allocated bytes. Its failure, source/tool snapshots, logs and unit-state diagnostics remain.
 
+The fifth attempt at helper `237cbf86d21d897d9976219c0335d55ec94114cf` reproduced the fabric
+failure and retained the exact command: the kernel rejected the first peer route because its
+output device was not yet up. Network setup now activates the already-filtered role links
+before installing their peer routes; the switch bridge remains down until all roles are ready.
+DROP policies and the fixed peer matrix are unchanged. Offline command-order regression checks
+cover filter-before-link and link-before-route ordering; installed confirmation follows in a
+fresh guest. The fifth attempt captured bounded controller projections after cleanup, explicitly
+marked its sentinel not prepared, stopped its guest, and retained the failed result. Private
+error capture also now preserves bounded setup/cleanup propagation diagnostics separately and
+enforces its serialized byte cap for non-BMP text.
+
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing
 closed protocol, and writes its terminal positive report only after cleanup. Its parent wait

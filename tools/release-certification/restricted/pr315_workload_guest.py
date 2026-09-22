@@ -66,28 +66,79 @@ def installed(manifest_digest, product_commit):
     return driver.execute(), 0
 
 
+def _bounded_text(value, maximum):
+    """Limit the actual ASCII-escaped JSON bytes, including surrogate pairs."""
+    value = value[:maximum]
+    while len(json.dumps(value).encode('ascii')) > maximum:
+        value = value[:max(0, len(value) - max(1, len(value) // 4))]
+    return value
+
+
 def retain_failure(error):
     """Bounded private setup diagnostics; never copy this exception into public output."""
     if os.geteuid() != 0:
         return
-    value = {'stage': STAGE, 'exceptionType': type(error).__name__,
-             'privateDetail': str(error)[:1024], 'installedAcceptance': False}
-    diagnostic = getattr(error, 'private_diagnostics', None)
-    if (isinstance(diagnostic, dict) and set(diagnostic) == {'arguments', 'stderr', 'failureClass'}
+    value = {'stage': _bounded_text(STAGE, 128),
+             'exceptionType': _bounded_text(type(error).__name__, 128),
+             'privateDetail': _bounded_text(str(error), 1024), 'installedAcceptance': False,
+             'exceptionChainMeaning': 'observed-python-propagation-not-causal-acceptance',
+             'exceptionChain': [], 'networkFailures': [], 'networkFailuresOmitted': 0}
+    seen, current, relationship = set(), error, 'top-level'
+    for depth in range(4):
+        if id(current) in seen:
+            value['exceptionChainEnd'] = 'cycle'
+            break
+        seen.add(id(current))
+        value['exceptionChain'].append({'depth': depth, 'relationship': relationship,
+            'exceptionType': _bounded_text(type(current).__name__, 128),
+            'privateDetail': _bounded_text(str(current), 512)})
+        diagnostic = getattr(current, 'private_diagnostics', None)
+        if (isinstance(diagnostic, dict)
+            and set(diagnostic) == {'arguments', 'stderr', 'failureClass'}
             and isinstance(diagnostic['arguments'], list) and len(diagnostic['arguments']) <= 32
             and all(isinstance(argument, str) for argument in diagnostic['arguments'])
             and sum(len(argument) for argument in diagnostic['arguments']) <= 2048
             and isinstance(diagnostic['stderr'], str) and len(diagnostic['stderr']) <= 2048
             and isinstance(diagnostic['failureClass'], str) and len(diagnostic['failureClass']) <= 128):
-        value['networkCommand'] = diagnostic
+            arguments, remaining = [], 1024
+            for argument in diagnostic['arguments']:
+                if remaining < 2:
+                    break
+                selected = _bounded_text(argument, remaining)
+                arguments.append(selected)
+                remaining -= len(json.dumps(selected).encode('ascii'))
+            value['networkFailures'].append({'source': {'depth': depth, 'relationship': relationship},
+                'command': {'arguments': arguments,
+                    'stderr': _bounded_text(diagnostic['stderr'], 512),
+                    'failureClass': _bounded_text(diagnostic['failureClass'], 128)}})
+            # Prefer the earliest reachable failures over additional wrapping/cleanup
+            # failures. These are propagation relationships, not inferred temporal proof.
+            if len(value['networkFailures']) > 2:
+                value['networkFailures'].pop(0)
+                value['networkFailuresOmitted'] += 1
+        if current.__cause__ is not None:
+            current, relationship = current.__cause__, 'explicit-cause'
+        elif current.__context__ is not None:
+            relationship = 'suppressed-context' if current.__suppress_context__ else 'context'
+            current = current.__context__
+        else:
+            value['exceptionChainEnd'] = 'complete'
+            break
+    else:
+        value['exceptionChainEnd'] = 'depth-limit'
+    raw = json.dumps(value, sort_keys=True)
+    # Keep both bounded network failures while trimming redundant propagation details first.
+    while len(raw.encode('ascii')) + 1 > 8000 and value['exceptionChain']:
+        value['exceptionChain'].pop()
+        value['exceptionChainEnd'] = 'byte-limit'
+        raw = json.dumps(value, sort_keys=True)
+    while len(raw.encode('ascii')) + 1 > 8000 and value['networkFailures']:
+        value['networkFailures'].pop(0)
+        value['networkFailuresOmitted'] += 1
+        raw = json.dumps(value, sort_keys=True)
     try:
         descriptor = os.open(FAILURE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(descriptor, 'w') as stream:
-            # ASCII escaping can expand private text; enforce the transport's byte cap.
-            raw = json.dumps(value, sort_keys=True)
-            if len(raw.encode()) > 8000:
-                value.pop('networkCommand', None)
-                raw = json.dumps(value, sort_keys=True)
             stream.write(raw)
             stream.write('\n')
     except OSError:
