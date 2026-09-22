@@ -116,9 +116,23 @@ class AppBindingTests(unittest.TestCase):
         with self.assertRaises(app.workload.WorkloadError):
             app.require_app_listener(ROLE, RUNTIME, 22000)
 
-    def test_app_java_cannot_substitute_for_outer_apphost_worker_pid(self):
-        with self.assertRaises(app.workload.WorkloadError):
-            app.require_app_listener(ROLE, {**RUNTIME, 'pid': 10}, 22000)
+    def test_interpreter_descendant_hint_resolves_nested_init_or_java(self):
+        for namespace_pid, host_pid in ((9, 120), (10, 130)):
+            self.called.clear()
+            with self.subTest(pid=namespace_pid):
+                result = app.require_app_listener(ROLE, {**RUNTIME, 'pid': namespace_pid}, 22000)
+                self.assertEqual(result['worker']['hostPid'], host_pid)
+                self.assertEqual(result['appJvm']['hostPid'], 130)
+                for pid in self.processes:
+                    self.assertEqual(self.called.count(pid), 2)
+
+    def test_nested_hint_cannot_bind_unrelated_java_or_outer_namespace(self):
+        for field, value in (('hostParentPid', 90), ('pidNamespace', 'pid:[5000]')):
+            original = self.processes[130][field]
+            self.processes[130][field] = value
+            with self.subTest(field=field), self.assertRaises(app.workload.WorkloadError):
+                app.require_app_listener(ROLE, {**RUNTIME, 'pid': 10}, 22000)
+            self.processes[130][field] = original
 
     def test_missing_deeper_java_rejects_reported_bubblewrap_success(self):
         del self.processes[130]

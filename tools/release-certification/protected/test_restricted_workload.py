@@ -8,6 +8,7 @@ import stat
 import threading
 import struct
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,37 @@ import restricted_workload_prepare as preparation
 
 
 class ProspectiveConfigurationTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux resource limits required')
+    def test_service_file_limit_allows_configured_store_and_remains_finite(self):
+        unit = Path(__file__).resolve().parents[1] / 'restricted/systemd/cryptad-workload@.service'
+        settings = dict(line.split('=', 1) for line in unit.read_text().splitlines()
+                        if '=' in line and not line.startswith('#'))
+        limit = settings['LimitFSIZE']
+        self.assertTrue(limit.endswith('M'))
+        limit_bytes = int(limit[:-1]) * 1024**2
+        config = dict(line.split('=', 1) for line in preparation.configuration(workload.ROLES[0]).splitlines()
+                      if '=' in line)
+        # An entire configured store is an upper bound on each CHK backing file.
+        store_bytes = int(config['node.storeSize'])
+        with tempfile.TemporaryDirectory() as temporary:
+            result = subprocess.run([sys.executable, '-c', '''
+import errno, os, resource, signal, sys
+limit, required = map(int, sys.argv[1:3])
+resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+with open(sys.argv[3], 'wb') as stream:
+    os.ftruncate(stream.fileno(), required)
+    assert os.fstat(stream.fileno()).st_size == required
+    try:
+        os.ftruncate(stream.fileno(), limit + 1)
+    except OSError as failure:
+        assert failure.errno == errno.EFBIG
+    else:
+        raise AssertionError('file size limit not enforced')
+''', str(limit_bytes), str(store_bytes), str(Path(temporary) / 'store.hd')],
+                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_role_configuration_keeps_management_loopback_and_distinct_data_plane(self):
         from restricted_workload_network import address
         identities = set()

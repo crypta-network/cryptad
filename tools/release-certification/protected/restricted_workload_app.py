@@ -172,9 +172,11 @@ def require_app_listener(role, runtime_dict, port):
         if len(workers) != 1:
             _reject()
         worker = workers[0]
+        # AppHost may report its outer launcher or an interpreter-managed descendant.
+        # Both hints use the daemon-visible PID (NSpid[1]), including nested processes.
+        outer_worker = len(worker['namespacePids']) == 2
         if (worker['hostPid'] == daemon['hostPid']
-                or len(worker['namespacePids']) != 2
-                or worker['pidNamespace'] != daemon['pidNamespace']
+                or (worker['pidNamespace'] == daemon['pidNamespace']) != outer_worker
                 or not _descendant(worker['hostPid'], daemon['hostPid'], processes)):
             _reject()
         app_jvms = [value for value in processes.values()

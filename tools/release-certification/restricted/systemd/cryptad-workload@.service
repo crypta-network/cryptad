@@ -26,7 +26,9 @@ RestrictRealtime=yes
 Delegate=no
 LimitCORE=0
 LimitNOFILE=1024
-LimitFSIZE=16M
+# The fixed 64 MiB datastore needs roughly 30 MiB per CHK backing file.
+# Keep a finite per-file ceiling; the role's 512 MiB tmpfs bounds total writable bytes.
+LimitFSIZE=64M
 TasksMax=512
 MemoryMax=1G
 MemorySwapMax=0

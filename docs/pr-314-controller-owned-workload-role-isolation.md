@@ -401,6 +401,14 @@ It must match the independently supplied target context, so changing target meta
 relabel a copied denial, and recomputing modified evidence cannot replace the expected context.
 Actual attack measurement remains an installed-driver obligation, not a property of a hash.
 
+The Mail process binding accepts AppHost's daemon-visible PID hint for either the outer
+launcher or an interpreter-managed nested descendant. It still requires the owned cgroup,
+daemon ancestry, a nested admitted-JDK JVM, current process epochs and the daemon-owned
+loopback listener. The role service permits files up to 64 MiB so the configured 64 MiB
+datastore can initialize its CHK backing files; the 512 MiB role tmpfs remains the total
+writable-storage bound. Synthetic process regressions and a local kernel file-limit check
+cover these corrections, not installed AppHost or content-exchange acceptance.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.
