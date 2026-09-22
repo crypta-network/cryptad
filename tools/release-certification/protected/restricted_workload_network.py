@@ -10,11 +10,11 @@ import array
 import json
 import os
 from pathlib import Path
-import select
 import signal
 import socket
 import stat
 import subprocess
+import time
 
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 # Only this controller authority directory is private. Its workload-layout parent may be
@@ -238,24 +238,11 @@ def teardown():
     for name, identity in state['namespaces'].items():
         if _namespace_identity(name) != identity:
             _reject()
-        # Avoid unbounded stdout capture: any byte means a live member, regardless of PID count.
-        with subprocess.Popen([IP, 'netns', 'pids', name], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL,
-                              env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'}) as process:
-            try:
-                if not select.select([process.stdout], [], [], 15)[0]:
-                    process.kill()
-                    _reject()
-                occupied = bool(process.stdout.read(1))
-                if occupied:
-                    process.kill()
-                code = process.wait(timeout=15)
-                if occupied or code != 0:
-                    _reject()
-            except BaseException:
-                process.kill()
-                process.wait()
-                raise
+        # Any output means a live member. Reuse the existing bounded helper so EOF,
+        # failed exit and timeout all retain ownership without an unbounded wait().
+        # Flooded output fails under the same finite pipe budget before any deletion.
+        if _run([IP, 'netns', 'pids', name]):
+            _reject()
     state['phase'] = 'stopping'
     _save(state)
     for name in list(reversed(state['namespaces'])):
@@ -283,6 +270,18 @@ def connect(role, endpoint):
     return _connect_port(role, ENDPOINTS[endpoint])
 
 
+def _wait_connector_child(pid, deadline):
+    """Reap only the exact fork child; an elapsed deadline is not proof of termination."""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise NetworkBoundaryError('restricted-workload-connect-child-reconciliation-required')
+        child, status = os.waitpid(pid, os.WNOHANG)
+        if child == pid:
+            return status
+        time.sleep(min(.01, remaining))
+
+
 def _connect_port(role, port):
     """Internal transport for controller-resolved app bootstrap, never an RPC selector.
 
@@ -308,7 +307,7 @@ def _connect_port(role, port):
     pid = None
     transferred = []
     try:
-        parent.settimeout(12)
+        deadline = time.monotonic() + 12
         pid = os.fork()
         if pid == 0:
             try:
@@ -322,6 +321,10 @@ def _connect_port(role, port):
             except BaseException:
                 os._exit(1)
         child.close()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise NetworkBoundaryError('restricted-workload-connect-deadline')
+        parent.settimeout(remaining)
         body, controls, flags, _ = parent.recvmsg(1, socket.CMSG_SPACE(array.array('i').itemsize),
                                                  socket.MSG_CMSG_CLOEXEC)
         for level, kind, raw in controls:
@@ -330,7 +333,12 @@ def _connect_port(role, port):
             values = array.array('i')
             values.frombytes(raw)
             transferred.extend(values)
-        _, status = os.waitpid(pid, 0)
+        try:
+            status = _wait_connector_child(pid, deadline)
+        except ChildProcessError:
+            # Ownership has already been lost; never signal a potentially reused PID.
+            pid = None
+            raise NetworkBoundaryError('restricted-workload-connect-child-ownership-unavailable') from None
         pid = None
         if body != b'1' or flags & socket.MSG_CTRUNC or len(transferred) != 1 or status != 0:
             _reject()
@@ -342,14 +350,16 @@ def _connect_port(role, port):
     except (OSError, ValueError):
         raise NetworkBoundaryError('restricted-workload-connect-failed') from None
     finally:
-        if pid is not None and pid > 0:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            os.waitpid(pid, 0)
-        for received in transferred:
-            os.close(received)
-        parent.close()
-        child.close()
-        os.close(descriptor)
+        try:
+            if pid is not None and pid > 0:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                _wait_connector_child(pid, time.monotonic() + 2)
+        finally:
+            for received in transferred:
+                os.close(received)
+            parent.close()
+            child.close()
+            os.close(descriptor)
