@@ -14,10 +14,11 @@ environment-identity limitation; they are not acceptance of the corrected driver
 [PR-313 installed native acceptance](pr-313-installed-native-acceptance.md) is the current
 finite-service verification procedure. Preparation schema 5 and attempt schema 7 retain private
 boot snapshots and source-owned observations; the fixed case contract and suite runner derive a
-scoped result. A fresh standalone reference preparation completed on 2026-09-16. Installed
-acceptance of the final PR-313 source has not yet executed; reference preparation alone does not
-satisfy it. The dated development attempts and schema evolution below retain their original
-meaning and limitations.
+scoped result. A fresh standalone reference preparation and the 17-case installed positive
+group completed on 2026-09-16 at helper `19983163e4`. The suite was interrupted during its next
+guest after disk-capacity concerns; complete finite acceptance remains unsatisfied. The successor
+records exact source identities and execution limits. The dated development attempts and schema
+evolution below retain their original meaning and limitations.
 
 The successor separates immutable signed test inputs from guest verification, implements fixed
 administrator-only race/lifecycle/public-output drivers, and keeps independent case groups in

@@ -91,6 +91,33 @@ cleanup; the actual Worker request retains its existing budget. The final consum
 three separately witnessed consumer windows, each with its own package export and exact nine-app
 projection roster. It cannot borrow the preceding Worker's package invocation.
 
+A separate `input-inode` diagnostic at `0015f41b89e65a87a9a4f68df6c184fa4c807250` completed
+under `tcg-single`: the installed input-acquisition mutation was witnessed and rejected, its
+installation identity verified, and the guest stopped. Reports and a private hash audit were
+retained before removing that successful disposable attempt's disk copies and source archive.
+Failed and interrupted attempts were not modified. This case is not pooled into acceptance of
+the later consumer correction.
+
+The fresh fixed suite at helper `19983163e45e2cc55eaac10ee458c1177bd60286`, tree
+`e7c55b2cf770c8907957cfe9e25854829dbaf8d3`, completed its positive guest on 2026-09-16.
+It used the compressed standalone reference and explicitly selected `tcg-single`, with fixture
+manifest `27289182ee7e59e6b7e6283973228f5a31805f71ceab190be7a9df2ab5d105f3` and installed bundle
+`2cb93990e5a46a7a44d6dca5f93adb2ec97c794b6c42e335c1f6c6c6a6349c22`. Product source and JAR
+identity remain those recorded above. Host verification and owned guest shutdown completed.
+The fixed verifier passed all 17 assigned cases: reference and installed identity, readiness,
+both socket denials, construction probe, package export, signed app, wrong app/product, retained
+exact retry, all four CMS cases, product/selection/native consumers and restart readiness.
+The three consumer phases each supplied their exact package-plus-nine-app invocation roster.
+This is actual synthetic-provenance installed positive evidence; it neither diagnoses the
+earlier JVM crashes nor completes the hostile/lifecycle suite. After the operator raised disk
+capacity concerns, the runner was interrupted during the second (`native-hostile`) guest.
+The runner's cleanup confirmed that its owned emulator stopped; that guest's partial state and
+a separate interruption record were retained. No later group launched, and no complete finite
+acceptance result is claimed. At the pause, the task directory occupied approximately 22 GiB
+and the shared 79 GiB filesystem had approximately 33 GiB available. The per-attempt space
+reserve is not a suite-wide storage quota; remaining execution needs an explicit total storage
+bound before another launch.
+
 ## Fixed contract and separate execution layers
 
 The authoritative inventory is
@@ -217,8 +244,9 @@ retained. Native fault Java source also compiled with the actual Java 25 compile
 | `cross-version-soak --self-test` | 152 tests passed |
 | `stable-platform-api-1x --self-test` | 88 tests passed |
 | `phase-12-closeout --self-test` | 185 tests passed |
-| Real prepared-input PR-307 integration at `ce1de26641` | One test passed in 44.561 seconds |
+| Real prepared-input PR-307 integration at `19983163e4` | One test passed in 45.677 seconds with exact fixture/source verification |
 | Local PR-307 integration with independent owner-phase hooks | One test passed in 47.970 seconds; all six phase lifetimes observed |
+| Real PR-307 consumer-roster observation at `19983163e4` | One test passed in 47.145 seconds; each of three consumer phases executed one package export and nine app projections |
 | `./gradlew :platform-devtools:installDist assembleCryptadDist` | Successful; 342 tasks, 307 executed and 35 up-to-date |
 
 The build was **not analyzer-clean**: its log contained 329 Error Prone warnings, including
