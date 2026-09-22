@@ -356,6 +356,19 @@ requiring a changed invocation/epoch, preserved state digest and unchanged deadl
 contract versions cannot satisfy this revised witness format. These checks establish record
 consistency; actual measurements and causal restart execution remain installed-driver obligations.
 
+Contract `pr314-workload-roles-v4` additionally binds the app witness to `admittedAppDigest` in
+the independently supplied expected identity. The administrator driver must derive that value
+from the authenticated selection's exact installed-app projection, not the observed installation.
+Each attempt also carries measured denial targets keyed by its declared denial cases. A target
+binds case, target kind, optional fixed workload role, service invocation, cgroup, boot identity,
+control response and a case-specific probe digest committing to the endpoint/object and operation.
+Witness targets must equal this context; role-backed targets also match the measured roster.
+Sibling targets use `candidate-recipient`; own-app/input/outer-role/cgroup targets use
+`candidate-sender`. Control-side targets cannot alias workload invocations or cgroups. Missing
+targets, duplicate probe commitments and cross-case witness reuse reject. Context shape and
+digest equality do not authenticate its measurements or execute an attack; those remain explicit
+installed-driver obligations. Previous contract revisions cannot satisfy v4.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.

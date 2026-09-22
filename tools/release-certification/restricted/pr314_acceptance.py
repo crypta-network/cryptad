@@ -8,12 +8,12 @@ not installed observations and must never be published as such.
 from dataclasses import dataclass
 import re
 
-CONTRACT = 'pr314-workload-roles-v3'
+CONTRACT = 'pr314-workload-roles-v4'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
                    'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
-                   'preparedImageDigest', 'fixtureManifestDigest')
+                   'preparedImageDigest', 'fixtureManifestDigest', 'admittedAppDigest')
 STATUSES = frozenset(('passed', 'failed', 'setup-failed', 'not-executed', 'inconclusive'))
 
 
@@ -120,6 +120,35 @@ def _actor_uid(actor, principals):
     return principals[actor + 'Uid']
 
 
+TARGET_ROLES = {'sibling-data': 'candidate-recipient', 'sibling-fcp': 'candidate-recipient',
+                'sibling-http': 'candidate-recipient', 'sibling-app': 'candidate-recipient',
+                'own-app': 'candidate-sender', 'immutable-inputs': 'candidate-sender',
+                'outer-role': 'candidate-sender', 'owned-cgroups': 'candidate-sender'}
+
+
+def _target(name, target, principals):
+    case = CASES[name]
+    if not (_closed(target, ('caseId', 'target', 'role', 'invocationId', 'cgroupDigest',
+                             'bootId', 'probeDigest', 'controlResponseDigest'))
+            and target['caseId'] == name and target['target'] == case.target
+            and target['role'] == TARGET_ROLES.get(case.target) and _principals(principals)
+            and _hex(target['invocationId'], 32) and _hex(target['cgroupDigest'])
+            and _hex(target['probeDigest']) and _hex(target['controlResponseDigest'])
+            and target['bootId'] == principals['roles'][0]['bootId']):
+        return False
+    if target['role'] is not None:
+        expected = next(row for row in principals['roles'] if row['role'] == target['role'])
+        return all(target[key] == expected[key] for key in ('invocationId', 'cgroupDigest', 'bootId'))
+    return (target['invocationId'] not in {row['invocationId'] for row in principals['roles']}
+            and target['cgroupDigest'] not in {row['cgroupDigest'] for row in principals['roles']})
+
+
+def _targets(targets, principals, declared):
+    names = {name for name in declared if CASES[name].witness == 'denial'}
+    return (_closed(targets, names) and all(_target(name, targets[name], principals) for name in names)
+            and len({targets[name]['probeDigest'] for name in names}) == len(names))
+
+
 def _resources(witness, principals):
     if not (_closed(witness, ('source', 'measurements')) and witness['source'] == 'cgroup-v2'
             and _principals(principals) and isinstance(witness['measurements'], list)
@@ -159,6 +188,7 @@ def _witness(case, witness, identity, principals):
                 and witness['role'] == 'candidate-sender' and witness['provider'] == 'bubblewrap'
                 and all(_positive(witness[key]) for key in ('hostPid', 'namespacePid', 'processEpoch'))
                 and _hex(witness['invocationId'], 32) and _hex(witness['installedAppDigest'])
+                and witness['installedAppDigest'] == identity['admittedAppDigest']
                 and _principals(principals)
                 and witness['invocationId'] == next(row['invocationId'] for row in principals['roles']
                                                     if row['role'] == witness['role']))
@@ -190,7 +220,7 @@ def _witness(case, witness, identity, principals):
     if kind == 'denial':
         return (_closed(witness, ('actorUid', 'attackStartedNs', 'targetActiveBeforeNs',
                                  'targetActiveAfterNs', 'controlResponseDigest', 'denialSource',
-                                 'denialCode', 'unrelatedStateBefore', 'unrelatedStateAfter'))
+                                 'denialCode', 'unrelatedStateBefore', 'unrelatedStateAfter', 'targetIdentity'))
                 and _positive(witness['actorUid'])
                 and _principals(principals)
                 and witness['actorUid'] == _actor_uid(case.actor, principals)
@@ -221,7 +251,7 @@ def inventory(statuses=None):
             for name, case in CASES.items()]
 
 
-def observation_status(record, identity, principals=None):
+def observation_status(record, identity, principals=None, targets=None):
     if not isinstance(record, dict) or not isinstance(record.get('caseId'), str) or record['caseId'] not in CASES:
         raise ValueError('workload-case-invalid')
     if record.get('status') != 'passed':
@@ -237,6 +267,13 @@ def observation_status(record, identity, principals=None):
             and record['startedMonotonicNs'] < record['finishedMonotonicNs']
             and _witness(case, record['witness'], identity, principals)):
         raise ValueError('workload-observation-invalid')
+    if case.witness == 'denial':
+        target = record['witness']['targetIdentity']
+        if not (isinstance(targets, dict) and record['caseId'] in targets
+                and _target(record['caseId'], target, principals)
+                and target == targets[record['caseId']]
+                and record['witness']['controlResponseDigest'] == target['controlResponseDigest']):
+            raise ValueError('workload-denial-target-mismatch')
     for key in ('attackStartedNs', 'targetActiveBeforeNs', 'targetActiveAfterNs',
                 'triggerStartedNs', 'terminalObservedNs'):
         if key in record['witness'] and not (
@@ -250,18 +287,22 @@ def verify_attempts(expected_identity, attempts):
 
     UID equality binds the host account, not proof of app sandbox execution. The installed
     driver must capture the actual probe process under its current role/app invocation.
+    expected_identity.admittedAppDigest must come from the authenticated selection's exact
+    installed-app projection, never from the observed app. Targets are independently measured
+    active services; probeDigest commits to the endpoint/object and operation for that case.
     """
     statuses = {}
     valid = _identity(expected_identity) and isinstance(attempts, list) and 0 < len(attempts) <= len(CASES)
     for attempt in attempts if isinstance(attempts, list) and len(attempts) <= len(CASES) else ():
         try:
             if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations',
-                                     'guestStopped', 'attemptCompleted', 'principals'))
+                                     'guestStopped', 'attemptCompleted', 'principals', 'targets'))
                     and attempt['contract'] == CONTRACT and attempt['identity'] == expected_identity
                     and _principals(attempt['principals'])
                     and attempt['guestStopped'] is True and attempt['attemptCompleted'] is True
                     and isinstance(attempt['declaredCases'], list) and attempt['declaredCases']
                     and all(isinstance(name, str) and name in CASES for name in attempt['declaredCases'])
+                    and _targets(attempt['targets'], attempt['principals'], attempt['declaredCases'])
                     and len(set(attempt['declaredCases'])) == len(attempt['declaredCases'])
                     and not set(attempt['declaredCases']) & set(statuses)
                     and isinstance(attempt['observations'], list)
@@ -269,7 +310,7 @@ def verify_attempts(expected_identity, attempts):
                 raise ValueError('workload-attempt-invalid')
             observed = {}
             for row in attempt['observations']:
-                status = observation_status(row, expected_identity, attempt['principals'])
+                status = observation_status(row, expected_identity, attempt['principals'], attempt['targets'])
                 if row['caseId'] in observed:
                     raise ValueError('workload-duplicate-observation')
                 observed[row['caseId']] = status
