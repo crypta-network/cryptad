@@ -103,6 +103,16 @@ role cgroups, JVMs or AppHost, so actual four-role demand and volatile role snap
 unobserved. The stored QCOW2 files do not establish preservation of nonexistent or later
 lost tmpfs state.
 
+The user subsequently authorized removal of failed guests where safe while retaining the
+40 GiB cap. After confirming stopped state, no live disk descriptors, and no retained backing
+dependencies, the six per-attempt guest/base disk files were removed. The private disposal
+records preserve their exact hashes, allocated sizes, backing metadata and the authorization.
+This reclaimed 7,869,190,144 allocated bytes. All original failure reports, private logs,
+source/tool snapshots, fixtures and the reusable standalone reference remain retained; no
+failure verdict was changed. Full failed guest filesystems are no longer available for forensic
+inspection. This explicit retention change resolves the capacity block without increasing
+the task cap or changing guest limits; each future allocation still requires a fresh check.
+
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing
 closed protocol, and writes its terminal positive report only after cleanup. Its parent wait
