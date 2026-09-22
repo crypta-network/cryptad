@@ -135,7 +135,10 @@ def _witness(case, witness, identity, principals):
                                  'processEpoch', 'invocationId', 'installedAppDigest'))
                 and witness['role'] == 'candidate-sender' and witness['provider'] == 'bubblewrap'
                 and all(_positive(witness[key]) for key in ('hostPid', 'namespacePid', 'processEpoch'))
-                and _hex(witness['invocationId'], 32) and _hex(witness['installedAppDigest']))
+                and _hex(witness['invocationId'], 32) and _hex(witness['installedAppDigest'])
+                and _principals(principals)
+                and witness['invocationId'] == next(row['invocationId'] for row in principals['roles']
+                                                    if row['role'] == witness['role']))
     if kind == 'exchange':
         return (_closed(witness, ('requestDigest', 'expectedResponseDigest', 'responseDigest',
                                  'serverInvocationId', 'serverRequests'))

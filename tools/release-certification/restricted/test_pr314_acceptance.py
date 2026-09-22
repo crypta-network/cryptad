@@ -50,6 +50,20 @@ def attempt():
 
 
 class WorkloadAcceptanceTest(unittest.TestCase):
+    def test_app_witness_must_match_active_sender_invocation(self):
+        for invocation in (roles()[1]['invocationId'], 'f' * 32):
+            value = attempt()
+            row = next(row for row in value['observations'] if row['caseId'] == 'signed-apphost-child')
+            row['witness']['invocationId'] = invocation
+            with self.subTest(invocation=invocation):
+                result = a.verify_attempts(identity(), [value])
+                self.assertFalse(result['recordContractValid'])
+                self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+
+    def test_app_witness_requires_principal_context(self):
+        with self.assertRaises(ValueError):
+            a.observation_status(observation('signed-apphost-child'), identity())
+
     def test_denials_require_the_declared_installed_principal(self):
         for name, case in a.CASES.items():
             if case.witness != 'denial':
