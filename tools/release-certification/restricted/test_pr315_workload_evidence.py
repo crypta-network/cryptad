@@ -84,6 +84,45 @@ class VolatileEvidenceTest(unittest.TestCase):
                 self.assertTrue(all(row == {'status': 'not-captured-cleanup-unverified'}
                                     for row in result['wrapperLogs'].values()))
 
+    def test_fatal_sections_stop_at_nonhex_and_exclude_adjacent_private_sections(self):
+        raw = (b'Instructions: (pc=0x123)\n0x123: 0f 0b 90\n'
+               b'Registers: secret-registers\n0x456: 11 22\n'
+               b'CPU: total 4 avx sse2\nCPU Features: avx2\n'
+               b'Environment Variables: SECRET=value\n')
+        result = evidence._fatal_sections(raw, float('inf'))
+        self.assertEqual(b'Instructions:\n0x123: 0f 0b 90\n',
+                         base64.b64decode(result['instructions']['contentBase64']))
+        self.assertEqual(b'CPU: total 4 avx sse2\nCPU Features: avx2\n',
+                         base64.b64decode(result['cpu']['contentBase64']))
+        self.assertFalse(any(row['truncated'] for row in result.values()))
+
+    def test_fatal_sections_have_independent_caps_and_explicit_missing(self):
+        raw = b'Instructions:\n' + b'0x123: 90 90\n' * 300 + b'CPU: ' + b'x' * 2000 + b'\n'
+        result = evidence._fatal_sections(raw, float('inf'))
+        for name, limit in (('instructions', 2048), ('cpu', 1024)):
+            self.assertEqual(limit, result[name]['sizeBytes'])
+            self.assertTrue(result[name]['truncated'])
+        missing = evidence._fatal_sections(b'Environment Variables: secret\n', float('inf'))
+        self.assertTrue(all(row['status'] == 'not-found' and row['sizeBytes'] == 0
+                            for row in missing.values()))
+
+    def test_fatal_snapshot_selects_sections_beyond_retained_header(self):
+        directory = self.fatal_directory()
+        raw = b'H' * 5000 + b'\nInstructions: (pc=0x123)\n0x123: 0f 0b\n\nCPU: synthetic\n'
+        (directory / 'hs_err_pid1.log').write_bytes(raw)
+        result = evidence._capture(self.root, self.expected, True)
+        row = result['fatalLogs']['candidate-sender']['files'][0]
+        self.assertEqual(b'H' * 4096, base64.b64decode(row['headBase64']))
+        self.assertIn(b'0f 0b', base64.b64decode(row['sections']['instructions']['contentBase64']))
+        self.assertLessEqual(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
+                             evidence.MAX_OUTPUT)
+
+    def test_fatal_sections_deadline_does_not_select_later_bytes(self):
+        with patch.object(evidence.time, 'monotonic', return_value=2):
+            result = evidence._fatal_sections(b'CPU: hidden\n', 1)
+        self.assertTrue(all(row['status'] == 'capture-deadline' and row['sizeBytes'] == 0
+                            for row in result.values()))
+
     def fatal_directory(self):
         directory = self.state / 'tmp'
         directory.mkdir(exist_ok=True)

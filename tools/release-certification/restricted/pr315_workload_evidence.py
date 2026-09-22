@@ -180,6 +180,45 @@ def _wrapper_log(root, role, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _fatal_sections(raw, deadline):
+    """Select instruction hex rows and explicitly labelled CPU lines, never adjacent sections."""
+    selected = {'instructions': bytearray(), 'cpu': bytearray()}
+    limits = {'instructions': 2048, 'cpu': 1024}
+    truncated = {key: False for key in selected}
+    expired = False
+    in_instructions = False
+    offset = 0
+    while offset < len(raw):
+        if time.monotonic() >= deadline:
+            expired = True
+            break
+        end = raw.find(b'\n', offset)
+        end = len(raw) if end < 0 else end + 1
+        line = raw[offset:end]
+        offset = end
+        key = None
+        if line.startswith(b'Instructions:'):
+            in_instructions = True
+            # Retain only the fixed header label; arbitrary header suffixes are not selected.
+            line = b'Instructions:\n'
+            key = 'instructions'
+        elif in_instructions:
+            if re.fullmatch(rb'0x[0-9a-fA-F]+: *(?:[0-9a-fA-F]{2}[ \t]*)+\r?\n?', line):
+                key = 'instructions'
+            else:
+                in_instructions = False
+        if key is None and line.startswith((b'CPU:', b'CPU Description:', b'CPU Features:')):
+            key = 'cpu'
+        if key is not None:
+            available = limits[key] - len(selected[key])
+            selected[key].extend(line[:available])
+            truncated[key] |= len(line) > available
+    return {key: {'status': 'capture-deadline' if expired else 'captured' if value else 'not-found',
+                  'sizeBytes': len(value), 'truncated': truncated[key] or expired,
+                  'contentBase64': base64.b64encode(value).decode('ascii')}
+            for key, value in selected.items()}
+
+
 def _fatal_logs(root, role, deadline):
     """Inspect only the fixed possible JVM fallback directory, not an asserted crash location."""
     if time.monotonic() >= deadline:
@@ -212,7 +251,8 @@ def _fatal_logs(root, role, deadline):
                         header = raw[:4096]
                         row.update(status='captured', sizeBytes=len(raw), headBytes=len(header),
                                    truncated=len(header) < len(raw),
-                                   headBase64=base64.b64encode(header).decode('ascii'))
+                                   headBase64=base64.b64encode(header).decode('ascii'),
+                                   sections=_fatal_sections(raw, deadline))
                     except (OSError, ValueError):
                         row['status'] = 'unavailable-or-unsafe'
                 result['files'].append(row)

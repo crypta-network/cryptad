@@ -9,6 +9,7 @@ controller readiness. The eighth observed readiness in a startup-only diagnostic
 through thirteenth reached first-role startup but failed daemon readiness; no four-role positive
 run has completed. The fourteenth reached both candidate daemons, then failed predecessor readiness.
 The fifteenth reached all four daemons, then exposed an incorrect peer-wait helper call.
+The sixteenth failed first-role wrapper bootstrap with a JVM illegal-instruction crash.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -321,6 +322,26 @@ synthetic FCP endpoints, including rejection of a one-sided connection. The orig
 peer wait and 180-second outer bound remain. This attempt did not verify connected FNP peers,
 AppHost startup, remote content or restart persistence. Its stopped disposable disks were
 removed after retaining private diagnostics and checking ownership and backing dependencies.
+
+The sixteenth attempt used the corrected peer caller with unchanged daemon products, JDK,
+CPU/accelerator and explicit launcher policy. Its first role failed wrapper bootstrap before
+FCP readiness. A bounded private JVM fatal header recorded `SIGILL` in compiled Java code;
+this does not establish a cause for this or earlier fatal signals. The retained header did not
+include instruction bytes, limiting further diagnosis after guest shutdown. Across 49 periodic
+samples, observed controller and role memory peaked near 27 and 33 MiB; no sampled cgroup OOM
+event was recorded, and minimum observed guest available memory exceeded 4.6 GiB. These are
+sampled diagnostics, not attribution of the signal or resource acceptance. Reported teardown
+completed, the retained synthetic sentinel matched, and host-observed guest stop completed.
+No peer, app, content, restart or hostile/lifecycle assertion passed. Its stopped disks and
+verified redundant expanded copies were removed while retaining private diagnostics, manifests
+and original archives. Two older fixture payloads also exactly matched an original archive;
+their differing manifests were preserved separately before redundant payload disposal.
+
+The diagnostic successor retains at most 2 KiB of instruction hex rows and 1 KiB of explicitly
+labelled CPU lines from already safely read crash logs, in addition to the existing 4 KiB header.
+The same 15-second capture deadline and 64 KiB overall private evidence limit remain. Adjacent
+environment sections and unrecognized formats are omitted. Thirty focused descriptor/evidence
+tests pass; these candidate-origin excerpts do not authenticate CPU features or diagnose SIGILL.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by
