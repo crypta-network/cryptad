@@ -168,13 +168,29 @@ was changed.
 `--startup-measurement` now selects a fixed administrator diagnostic in a fresh copied guest.
 It prepares the same campaign/fabric and starts the actual controller, but stops before any
 role start. Its prospective 120-second observation ceiling is clamped to the original retained
-campaign deadline. The ordinary positive driver's 30-second poll remains unchanged. A served
+campaign deadline. At this diagnostic revision the ordinary positive driver's poll remained
+30 seconds. A served
 root-peer response is required; checkpoint or socket existence alone never establishes readiness.
 The private checkpoint's prospective version 2 retains only the four fixed stage timestamps
 within one startup epoch. Private samples additionally capture actual cgroup CPU quota and
 usage/throttling counters. A diagnostic result cannot set installed positive execution, and all
 45 workload case statuses remain unexecuted. A later operational polling change requires review
 of the measured result under a new exact test-kit identity; this is not a campaign-clock reset.
+
+The eighth attempt, a startup-only diagnostic at helper
+`c474663f9ba0c9514649fb23f65875d8a46753d7`, completed installation verification,
+reconciliation and an actual root-peer readiness exchange inside its diagnostic ceiling, after
+the old 30-second poll would have expired. Exact stage times, CPU quota/throttling counters and
+memory observations remain private. No workload role was launched. Cleanup completed and the
+guest stopped; all 45 workload cases remain unexecuted for this diagnostic. This is not a full
+performance baseline or a diagnosis of the historical JVM fatal signals.
+
+Based on that measurement, the next positive test-kit revision prospectively uses a fixed
+90-second readiness poll, capped by the original campaign deadline. The retained one-hour
+campaign limit, QEMU selection and all production controller/role resource limits remain
+unchanged. This is a narrow administrator observation-budget change, not a retry or extension
+of an existing campaign. It requires fresh exact fixtures and a fresh installed positive run;
+the successful startup diagnostic cannot be borrowed as workload acceptance.
 
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path

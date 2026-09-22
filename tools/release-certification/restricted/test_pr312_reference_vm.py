@@ -11,6 +11,26 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_fixed_workload_command_preserves_measurement_selection(self):
+        import shlex
+        base = ['sudo', '/usr/bin/python3',
+            '/root/cryptad/tools/release-certification/restricted/pr315_workload_guest.py',
+            '--fixture-manifest-digest', 'a' * 64, '--product-source-commit', 'b' * 40]
+        outputs = ['>', '/home/vmadmin/report.json', '2>/home/vmadmin/driver.private.log']
+        for measurement in (False, True):
+            args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+                product_source_commit='b' * 40, startup_measurement=measurement)
+            self.assertEqual(base + (['--startup-measurement'] if measurement else []) + outputs,
+                             shlex.split(driver.workload_guest_command(args)))
+
+    def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
+        for field in ('fixture_manifest_digest', 'product_source_commit'):
+            args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+                product_source_commit='b' * 40, startup_measurement=True)
+            setattr(args, field, '; unselected-command')
+            with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+                driver.workload_guest_command(args)
+
     def test_fixture_public_classification_excludes_private_fields_and_unknown_text(self):
         allowed = {'fatalSignal': 'SIGSEGV', 'failureClass': 'jvm-sigsegv',
                    'fatalFrame': 'long-rotate-right'}

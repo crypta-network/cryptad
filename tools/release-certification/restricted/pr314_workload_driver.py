@@ -31,6 +31,9 @@ DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 STARTUP_MEASUREMENT_SECONDS = 120
+# Prospective administrator observation budget after the installed startup measurement.
+# Production limits and the retained campaign deadline remain unchanged.
+READINESS_SECONDS = 90
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
 
 
@@ -170,7 +173,7 @@ def controller_startup_snapshot(workload):
 
 def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False):
     """Prospective diagnostic observation never extends the retained execution deadline."""
-    seconds = STARTUP_MEASUREMENT_SECONDS if startup_measurement else 30
+    seconds = STARTUP_MEASUREMENT_SECONDS if startup_measurement else READINESS_SECONDS
     return min(campaign_deadline_ns / 10**9, started + seconds)
 
 

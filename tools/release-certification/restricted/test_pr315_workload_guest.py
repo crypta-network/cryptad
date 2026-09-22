@@ -167,5 +167,47 @@ class GuestImportTest(unittest.TestCase):
                         installation.verify_bundle(bundle, hashlib.sha256(raw).hexdigest(), protected=False)
 
 
+class StartupTransportTests(unittest.TestCase):
+    def test_guest_reexec_preserves_startup_flag_and_exact_fixture_bindings(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        integration = SimpleNamespace(load_installation=Mock(), provision=Mock(), ENV={'LANG': 'C'})
+        fixtures = SimpleNamespace(verify=Mock())
+        driver = SimpleNamespace(prerequisites=lambda: ['fixed-installed-source-required',
+                                                      'separate-measured-test-kit-required'])
+        modules = {'disposable_integration': integration, 'pr315_workload_fixtures': fixtures,
+                   'pr314_workload_driver': driver}
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, modules), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40, startup_measurement=True))
+        self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B',
+            str(guest.KIT / 'pr315_workload_guest.py'), '--installed',
+            '--fixture-manifest-digest', 'a' * 64, '--product-source-commit', 'b' * 40,
+            '--startup-measurement'], run.call_args.args[0])
+        fixtures.verify.assert_called_once_with(guest.FIXTURES, 'a' * 64, guest.SOURCE, 'b' * 40)
+
+    def test_installed_guest_passes_measurement_to_driver_without_changing_selection(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        selection = {'fixed': 'private-selection'}
+        fixtures = SimpleNamespace(verify=Mock(), materialize_selection=Mock(return_value=selection))
+        driver = SimpleNamespace(SELECTION=Path('/root/pr314-workload-selection.json'),
+            execute=Mock(return_value={'installedPositiveExecuted': False}))
+        workload = SimpleNamespace(write=Mock())
+        with patch.dict(sys.modules, {'pr315_workload_fixtures': fixtures,
+                'pr314_workload_driver': driver, 'restricted_workload': workload}), \
+                patch.object(guest.sys, 'path', list(sys.path)), \
+                patch.object(guest, 'KIT', Path(guest.__file__).resolve().parent):
+            result, code = guest.installed('a' * 64, 'b' * 40, startup_measurement=True)
+        driver.execute.assert_called_once_with(startup_measurement=True)
+        fixtures.materialize_selection.assert_called_once_with(guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
+        workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
+        self.assertFalse(result['installedPositiveExecuted'])
+        self.assertEqual(0, code)
+
+
 if __name__ == '__main__':
     unittest.main()

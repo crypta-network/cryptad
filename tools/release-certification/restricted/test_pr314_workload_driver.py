@@ -17,7 +17,7 @@ import pr314_workload_driver as driver
 
 class CleanupTest(unittest.TestCase):
     def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):
-        self.assertEqual(130, driver.readiness_deadline(999 * 10**9, 100))
+        self.assertEqual(190, driver.readiness_deadline(999 * 10**9, 100))
         self.assertEqual(220, driver.readiness_deadline(999 * 10**9, 100, True))
         self.assertEqual(115, driver.readiness_deadline(115 * 10**9, 100, True))
         self.assertEqual(90, driver.readiness_deadline(90 * 10**9, 100, True))
@@ -317,6 +317,51 @@ class MemoryDiagnosticsTest(unittest.TestCase):
             (group / 'memory.current').symlink_to('/proc/meminfo')
             snapshot = driver.memory_snapshot()['services'][group.name]
         self.assertEqual({'status': 'unavailable'}, snapshot)
+
+
+class CpuObservationFailureTests(unittest.TestCase):
+    def make_group(self, root):
+        group = root / 'cryptad-workload@candidate-sender.service'
+        group.mkdir()
+        for name, value in {'memory.current': '123', 'memory.max': '1073741824',
+                'memory.swap.max': '0', 'pids.current': '8', 'pids.max': '512',
+                'memory.events': 'oom 0\n', 'cgroup.events': 'populated 1\n',
+                'cpu.stat': 'usage_usec 15\nthrottled_usec 4\n', 'cpu.max': '50000 100000'}.items():
+            (group / name).write_text(value)
+        return group
+
+    def test_missing_and_malformed_cpu_metrics_never_become_zero(self):
+        for kind in ('missing', 'malformed', 'invalid-period'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                group = self.make_group(root)
+                if kind == 'missing':
+                    (group / 'cpu.stat').unlink()
+                elif kind == 'malformed':
+                    (group / 'cpu.stat').write_text('usage_usec unknown\n')
+                else:
+                    (group / 'cpu.max').write_text('50000 0')
+                with patch.object(driver, 'CGROUP_ROOT', root):
+                    result = driver.memory_snapshot()['services'][group.name]
+                self.assertIn(result['status'], ('unavailable', 'absent-or-removed-not-quiescence-proof'))
+                self.assertNotIn('cpu.stat', result)
+                self.assertNotIn('cpu.max', result)
+
+    def test_replaced_cgroup_during_cpu_read_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            group = self.make_group(root)
+            original = driver._kernel_read
+            def replace_after_cpu_read(path):
+                raw = original(path)
+                if path == group / 'cpu.max':
+                    group.rename(root / 'retained-original')
+                    group.mkdir()
+                return raw
+            with patch.object(driver, 'CGROUP_ROOT', root), \
+                    patch.object(driver, '_kernel_read', side_effect=replace_after_cpu_read):
+                result = driver.memory_snapshot()['services'][group.name]
+            self.assertEqual({'status': 'unavailable'}, result)
 
 
 if __name__ == '__main__':

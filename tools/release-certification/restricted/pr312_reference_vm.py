@@ -311,6 +311,19 @@ def identity_observations(identity):
     return rows
 
 
+def workload_guest_command(args):
+    """One fixed administrator-kit invocation; no arbitrary command or shell selection."""
+    if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
+            or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None):
+        raise ValueError('workload-guest-command-identity-invalid')
+    return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
+            'pr315_workload_guest.py --fixture-manifest-digest '
+            + args.fixture_manifest_digest + ' --product-source-commit '
+            + args.product_source_commit
+            + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
+            + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
+
+
 def run(args):
     global ACCELERATOR
     selected_profile = getattr(args, 'profile', 'tcg-multi')
@@ -439,12 +452,7 @@ def run(args):
         if args.mode == 'baseline':
             script += "sudo /usr/bin/python3 - <<'PR312_DRIVER' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n" + BASELINE + '\nPR312_DRIVER\n'
         elif args.mode == 'workload-positive':
-            script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
-                       'pr315_workload_guest.py --fixture-manifest-digest '
-                       + args.fixture_manifest_digest + ' --product-source-commit '
-                       + args.product_source_commit
-                       + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
-                       + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
+            script += workload_guest_command(args)
         else:
             script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/disposable_integration.py '
                        '--disposable-vm --source /root/cryptad --product-source-commit '

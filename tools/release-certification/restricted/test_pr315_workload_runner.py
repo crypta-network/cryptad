@@ -95,5 +95,47 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse((args.output / 'attempt-01').exists())
 
 
+class StartupPurposeTests(unittest.TestCase):
+    def test_host_startup_selection_rejects_forged_successful_guest_aggregate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, startup_measurement=True,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-single')
+            report = {'mode': 'workload-positive', 'workloadPurpose': 'positive',
+                'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0,
+                'hostVerifiedIdentity': {'bundleIdentity': 'a' * 64, 'helperSourceCommit': 'b' * 40}}
+            forged = {'identity': {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40},
+                'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
+                'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+                'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
+            self.assertTrue(runner.positive_executed(report, forged))
+            selections = []
+            def fake_transport(selected):
+                selections.append(selected)
+                selected.attempt.mkdir(mode=0o700)
+                for name, value in (('attempt.private.json', report),
+                    ('pr314-workload-observation.private.json', forged)):
+                    runner.native_runner._save(selected.attempt / name, value)
+                return 0
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertTrue(selections[0].startup_measurement)
+            value = json.loads((args.output / 'assessment.json').read_text())
+            self.assertFalse(value['installedPositiveExecuted'])
+            self.assertFalse(value['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual({'not-executed'}, {row['status'] for row in value['cases']})
+
+
 if __name__ == '__main__':
     unittest.main()
