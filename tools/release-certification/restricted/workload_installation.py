@@ -24,7 +24,7 @@ ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'}
 
 def verify():
     identity = installation.verify_execution()
-    users = [pwd.getpwnam('cryptad-role-' + role) for role in ROLES]
+    users = [pwd.getpwnam('cryptad-wl-' + role) for role in ROLES]
     existing = [pwd.getpwnam('cryptad-' + name) for name in ('runner', 'native', 'workload', 'soak')]
     if (len({user.pw_uid for user in users + existing}) != 8
             or len({user.pw_gid for user in users + existing}) != 8

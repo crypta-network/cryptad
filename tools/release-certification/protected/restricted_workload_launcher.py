@@ -39,7 +39,7 @@ def main():
     if len(sys.argv) != 2 or sys.argv[1] not in ROLES or not sys.flags.isolated or not sys.flags.no_site:
         raise ValueError('workload-fixed-entry-required')
     role = sys.argv[1]
-    user = pwd.getpwnam('cryptad-role-' + role)
+    user = pwd.getpwnam('cryptad-wl-' + role)
     status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
     if (os.getuid() != user.pw_uid or os.geteuid() != user.pw_uid or os.getgid() != user.pw_gid
             or os.getegid() != user.pw_gid or set(os.getgroups()) - {user.pw_gid}

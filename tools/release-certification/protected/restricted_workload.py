@@ -119,7 +119,7 @@ def unit(role):
 
 def account(role):
     unit(role)
-    row = pwd.getpwnam('cryptad-role-' + role)
+    row = pwd.getpwnam('cryptad-wl-' + role)
     if row.pw_uid == 0 or row.pw_gid == 0 or row.pw_shell != '/usr/sbin/nologin':
         reject('role-account-invalid')
     return row

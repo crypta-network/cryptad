@@ -3,6 +3,7 @@ from contextlib import ExitStack, nullcontext
 import copy
 import json
 import os
+import shlex
 import shutil
 import socket
 import stat
@@ -37,6 +38,25 @@ class MarkerImportTest(unittest.TestCase):
 
 
 class ProspectiveConfigurationTest(unittest.TestCase):
+    def test_fixed_accounts_fit_systemd_strict_names_and_match_role_lookup(self):
+        assets = Path(__file__).resolve().parents[1] / 'restricted/systemd'
+        rows = [shlex.split(line) for line in (assets / 'cryptad-workload.conf').read_text().splitlines()
+                if line and not line.startswith('#')]
+        settings = dict(line.split('=', 1) for line in (assets / 'cryptad-workload@.service').read_text().splitlines()
+                        if '=' in line and not line.startswith('#'))
+        self.assertEqual(len(workload.ROLES), len(rows))
+        for role, row in zip(workload.ROLES, rows):
+            name = row[1]
+            # systemd v257 strict validation reserves one byte in utmpx.ut_user.
+            self.assertLessEqual(len(name.encode('ascii')), 31)
+            self.assertRegex(name, r'^[A-Za-z_][A-Za-z0-9_-]*$')
+            self.assertEqual(name, settings['User'].replace('%i', role))
+            self.assertEqual(name, settings['Group'].replace('%i', role))
+            user = SimpleNamespace(pw_uid=1001, pw_gid=1001, pw_shell='/usr/sbin/nologin')
+            with patch.object(workload.pwd, 'getpwnam', return_value=user) as lookup:
+                self.assertIs(user, workload.account(role))
+                lookup.assert_called_once_with(name)
+
     @unittest.skipUnless(sys.platform == 'linux', 'Linux resource limits required')
     def test_service_file_limit_allows_configured_store_and_remains_finite(self):
         unit = Path(__file__).resolve().parents[1] / 'restricted/systemd/cryptad-workload@.service'

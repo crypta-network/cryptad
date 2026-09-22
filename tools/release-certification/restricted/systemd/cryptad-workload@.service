@@ -6,8 +6,8 @@ After=cryptad-workload-controller.service
 [Service]
 Type=exec
 Slice=system.slice
-User=cryptad-role-%i
-Group=cryptad-role-%i
+User=cryptad-wl-%i
+Group=cryptad-wl-%i
 ExecStartPre=+/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_workload_mark.py %i
 ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_workload_launcher.py %i
 NetworkNamespacePath=/run/netns/cryptad-role-%i
