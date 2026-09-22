@@ -8,6 +8,7 @@ two failed network setup. The sixth and seventh prepared the fabric but timed ou
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
 through thirteenth reached first-role startup but failed daemon readiness; no four-role positive
 run has completed. The fourteenth reached both candidate daemons, then failed predecessor readiness.
+The fifteenth reached all four daemons, then exposed an incorrect peer-wait helper call.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -310,6 +311,30 @@ unchanged. It does change the historical role's initial wrapper watchdog, so thi
 unchanged-profile retry. Fresh exact fixture preparation and installed execution are required;
 no campaign is resumed or extended. The earlier abnormal dry-run exits and fatal signals remain
 undiagnosed.
+
+The fifteenth attempt used the prospective launcher policy and reached FCP readiness for all
+four packaged daemons. It then failed with a `TypeError` because the installed adapter called
+the existing two-client peer waiter with the wrong argument list. The corrected caller supplies
+both clients and their exact node identities; the shared runtime connect, restart and rejoin
+callers received the same correction. Regression tests exercise the real peer waiter over
+synthetic FCP endpoints, including rejection of a one-sided connection. The original 150-second
+peer wait and 180-second outer bound remain. This attempt did not verify connected FNP peers,
+AppHost startup, remote content or restart persistence. Its stopped disposable disks were
+removed after retaining private diagnostics and checking ownership and backing dependencies.
+
+A separate bounded, read-only administrator observation during that attempt followed an already
+open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by
+`ENODEV` and an absent path; it did not observe `populated=0`. The stopped manager subsequently
+cleared its invocation and cgroup properties. This demonstrates why missing-path success and a
+post-stop manager query cannot supply the required retained-invocation cleanup witness. The
+measurement remains private diagnostic evidence, not an accepted lifecycle case; the existing
+cleanup gap remains open.
+
+For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
+discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
+certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
+unexecuted installed checks. The candidate portable remains the startup-fixed source build;
+this Python adapter change does not require rebuilding or relabeling the daemon product.
 
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path

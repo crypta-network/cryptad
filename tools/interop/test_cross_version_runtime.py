@@ -7,11 +7,97 @@ from pathlib import Path
 import signal
 import tarfile
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
 import cross_version_runtime as runtime
+
+
+class PeerConnectionCompatibilityTest(unittest.TestCase):
+    def supervisor(self):
+        supervisor = object.__new__(runtime.Supervisor)
+        supervisor.nodes = {role: SimpleNamespace(role=role, reference={'identity': role + '-identity'})
+                            for role in runtime.ROLES}
+        supervisor.apps, supervisor.outcomes = {}, {}
+        supervisor.remaining = Mock(side_effect=lambda seconds: seconds)
+        supervisor.next_operation = Mock(return_value='operation')
+        for name in ('scan_private_process_logs', 'stop', 'start', 'save_state', 'emit'):
+            setattr(supervisor, name, Mock())
+        clients = {}
+        for role in runtime.ROLES:
+            client = Mock(name=role)
+            peers = [other for other in runtime.ROLES if other != role and
+                     (role == 'relay-no-apps' or other == 'relay-no-apps')]
+
+            def send(name, fields, *, endpoint=client, identities=peers):
+                self.assertEqual('ListPeers', name)
+                self.assertEqual({'Identifier', 'WithMetadata', 'WithVolatile'}, set(fields))
+                endpoint.read_message.side_effect = [
+                    *(runtime.interop.FcpFrame('Peer', {'identity': peer + '-identity',
+                                                      'volatile.status': 'CONNECTED'}) for peer in identities),
+                    runtime.interop.FcpFrame('EndListPeers', {})]
+
+            client.send.side_effect = send
+            clients[role] = client
+        supervisor.client = Mock(side_effect=lambda role: contextlib.nullcontext(clients[role]))
+        return supervisor, clients
+
+    def test_connect_uses_real_two_sided_helper_for_each_relay_edge(self):
+        supervisor, clients = self.supervisor()
+        with patch.object(runtime.interop, 'add_peer') as add_peer, \
+                patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                patch.object(runtime.interop, 'wait_for_peer_connection',
+                             wraps=runtime.interop.wait_for_peer_connection) as wait:
+            supervisor.connect()
+        self.assertEqual(6, add_peer.call_count)
+        self.assertEqual(3, wait.call_count)
+        for call, role in zip(wait.call_args_list, runtime.ROLES[:-1]):
+            self.assertEqual((clients[role], clients['relay-no-apps'], role + '-identity',
+                              'relay-no-apps-identity', 150), call.args)
+        self.assertEqual([180] * 3, [call.args[0] for call in supervisor.remaining.call_args_list])
+        self.assertEqual(3, clients['relay-no-apps'].send.call_count)
+
+    def test_restart_checks_both_endpoints_for_leaf_and_relay(self):
+        for restarted in ('candidate-recipient', 'relay-no-apps'):
+            with self.subTest(restarted=restarted):
+                supervisor, clients = self.supervisor()
+                with patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                        patch.object(runtime.interop, 'wait_for_peer_connection',
+                                     wraps=runtime.interop.wait_for_peer_connection) as wait:
+                    supervisor.restart_node(restarted)
+                peers = runtime.ROLES[:-1] if restarted == 'relay-no-apps' else ('relay-no-apps',)
+                self.assertEqual(len(peers), wait.call_count)
+                for call, peer in zip(wait.call_args_list, peers):
+                    self.assertEqual((clients[restarted], clients[peer], restarted + '-identity',
+                                      peer + '-identity', 150), call.args)
+                    self.assertGreater(clients[peer].send.call_count, 0)
+                supervisor.stop.assert_called_once_with(restarted)
+                supervisor.start.assert_called_once_with(restarted)
+
+    def test_partition_rejoin_checks_both_endpoints_before_content_recovery(self):
+        supervisor, clients = self.supervisor()
+        captured = {}
+
+        def put(_sender, _identifier, _uri, payload, _content_type, **_kwargs):
+            captured['payload'] = payload
+            return 'CHK@synthetic'
+
+        with patch.object(runtime.interop, 'modify_peer') as modify, \
+                patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=put), \
+                patch.object(runtime, 'observe_partition_denial', return_value=True), \
+                patch.object(runtime.interop, 'fetch_direct', side_effect=lambda *_args, **_kwargs: captured['payload']), \
+                patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                patch.object(runtime.interop, 'wait_for_peer_connection',
+                             wraps=runtime.interop.wait_for_peer_connection) as wait:
+            supervisor.partition_rejoin()
+        wait.assert_called_once_with(clients['candidate-recipient'], clients['relay-no-apps'],
+                                     'candidate-recipient-identity', 'relay-no-apps-identity', 150)
+        self.assertEqual(4, modify.call_count)
+        self.assertEqual('observed', supervisor.outcomes['partition-rejoin'])
+        self.assertEqual(1, clients['candidate-recipient'].send.call_count)
+        self.assertEqual(1, clients['relay-no-apps'].send.call_count)
 
 
 @unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),

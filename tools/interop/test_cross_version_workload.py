@@ -245,6 +245,67 @@ class ReadinessDeadlineTests(unittest.TestCase):
                 self.assertFalse(thread.is_alive())
 
 
+class PeerConnectionTests(unittest.TestCase):
+    def adapter(self, relay_connected=True):
+        frame = workload.runtime.interop.FcpFrame
+        endpoints = {}
+        for role in workload.runtime.ROLES:
+            endpoint = mock.Mock(name=role)
+            endpoint.references = {}
+            endpoint.frames = []
+
+            def add(name, fields, expected, selected=endpoint):
+                self.assertEqual('AddPeer', name)
+                self.assertEqual({'Peer'}, expected)
+                selected.references[fields['identity']] = dict(fields)
+                return frame('Peer', dict(fields))
+
+            def send(name, fields, selected=endpoint, selected_role=role):
+                self.assertEqual('ListPeers', name)
+                self.assertEqual('true', fields['WithVolatile'])
+                status = 'CONNECTED' if relay_connected or selected_role != 'relay-no-apps' else 'CONNECTING'
+                selected.frames = [frame('Peer', {'identity': identity, 'volatile.status': status})
+                                   for identity in selected.references]
+                selected.frames.append(frame('EndListPeers', {}))
+
+            endpoint.read_until_after_send.side_effect = add
+            endpoint.send.side_effect = send
+            endpoint.read_message.side_effect = lambda _timeout, selected=endpoint: selected.frames.pop(0)
+            endpoints[role] = endpoint
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {role: {'reference': {'identity': role}} for role in workload.runtime.ROLES}
+        adapter.deadline = time.monotonic() + 180
+
+        @contextmanager
+        def client(role):
+            yield endpoints[role]
+
+        adapter.client = client
+        return adapter, endpoints
+
+    def test_real_peer_helper_checks_both_endpoints_of_each_fixed_link(self):
+        adapter, endpoints = self.adapter()
+        original_deadline = adapter.deadline
+        adapter.connect()
+        self.assertEqual(original_deadline, adapter.deadline)
+        self.assertEqual(3, endpoints['relay-no-apps'].send.call_count)
+        for role in workload.runtime.ROLES[:-1]:
+            endpoints[role].send.assert_called_once()
+            self.assertEqual({'relay-no-apps'}, set(endpoints[role].references))
+        self.assertEqual(set(workload.runtime.ROLES[:-1]), set(endpoints['relay-no-apps'].references))
+
+    def test_one_sided_connected_status_is_not_peer_connection_success(self):
+        adapter, endpoints = self.adapter(relay_connected=False)
+        now = [0]
+        clock = types.SimpleNamespace(monotonic=lambda: now[0], sleep=lambda _: now.__setitem__(0, 150))
+        with mock.patch.object(workload.runtime.interop, 'time', clock), \
+                self.assertRaisesRegex(workload.runtime.interop.InteropFailure, 'CONNECTED on both nodes'):
+            adapter.connect()
+        endpoints['candidate-sender'].send.assert_called_once()
+        endpoints['relay-no-apps'].send.assert_called_once()
+        endpoints['candidate-recipient'].send.assert_not_called()
+
+
 @unittest.skipUnless(os.geteuid() == 0, 'actual UNIX controller peer must be root')
 class TransportTests(unittest.TestCase):
     def setUp(self):

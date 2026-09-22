@@ -1386,8 +1386,8 @@ class Supervisor:
             with absolute_deadline(self.remaining(180)), self.client(role) as client, self.client(relay.role) as peer:
                 interop.add_peer(client, "peer-add", relay.reference)
                 interop.add_peer(peer, "peer-add", node.reference)
-                interop.wait_for_peer_connection(client, "peer-check", relay.reference["identity"], 150)
-                interop.wait_for_peer_connection(peer, "peer-check", node.reference["identity"], 150)
+                interop.wait_for_peer_connection(client, peer, node.reference["identity"],
+                                                 relay.reference["identity"], 150)
 
     def save_state(self):
         if not self.prepared or self.resume_pending_roles:
@@ -2252,8 +2252,9 @@ class Supervisor:
         self.start(role)
         peers = ROLES[:-1] if role == "relay-no-apps" else ("relay-no-apps",)
         for peer in peers:
-            with absolute_deadline(self.remaining(180)), self.client(role) as client:
-                interop.wait_for_peer_connection(client, "restart-peer", self.nodes[peer].reference["identity"], 150)
+            with absolute_deadline(self.remaining(180)), self.client(role) as client, self.client(peer) as peer_client:
+                interop.wait_for_peer_connection(client, peer_client, self.nodes[role].reference["identity"],
+                                                 self.nodes[peer].reference["identity"], 150)
         for (app_role, app_id), handle in self.apps.items():
             if app_role != role:
                 continue
@@ -2299,7 +2300,8 @@ class Supervisor:
             with absolute_deadline(self.remaining(180)), self.client(relay) as control, self.client(role) as recipient:
                 interop.modify_peer(control, "rejoin", self.nodes[role].reference["identity"], {"IsDisabled": "false"})
                 interop.modify_peer(recipient, "rejoin", self.nodes[relay].reference["identity"], {"IsDisabled": "false"})
-                interop.wait_for_peer_connection(recipient, "rejoin-peer", self.nodes[relay].reference["identity"], 150)
+                interop.wait_for_peer_connection(recipient, control, self.nodes[role].reference["identity"],
+                                                 self.nodes[relay].reference["identity"], 150)
         with absolute_deadline(self.remaining(120)), self.client(role) as receiver:
             if interop.fetch_direct(receiver, operation + "-recover", reference, 90, ignore_ds=True) != payload:
                 raise RuntimeFailure("partition-recovery-content-mismatch")

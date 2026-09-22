@@ -425,8 +425,7 @@ class InstalledWorkloadAdapter:
                 relay, node = self.nodes['relay-no-apps']['reference'], self.nodes[role]['reference']
                 runtime.interop.add_peer(client, 'peer-add', relay)
                 runtime.interop.add_peer(peer, 'peer-add', node)
-                runtime.interop.wait_for_peer_connection(client, 'peer-check', relay['identity'], 150)
-                runtime.interop.wait_for_peer_connection(peer, 'peer-check', node['identity'], 150)
+                runtime.interop.wait_for_peer_connection(client, peer, node['identity'], relay['identity'], 150)
 
     def provision_apps(self):
         for role in runtime.ROLES:
