@@ -17,6 +17,67 @@ import disposable_integration as harness
 
 
 class DisposableHarnessTest(unittest.TestCase):
+    def test_cli_positive_flag_requires_completed_positive_operations(self):
+        import pr312_app_projection as app
+        import pr312_native_faults as hostile
+        import pr312_output_faults as output
+        import pr313_faults as faults
+        import pr313_worker_faults as workers
+        import pr313_public_faults as public
+        import pr313_observations as observations
+        native = Mock(__file__=str(harness.INSTALLED / 'restricted_native.py'))
+        choices = [(None, None), ('positive', None), ('native-hostile', None),
+                   ('output-hostile', None), ('fault', faults.CASES[0]),
+                   ('worker', workers.CASES[0]), ('public', public.CASES[0]),
+                   ('bootstrap', None)]
+        for group, case in choices:
+            with self.subTest(group=group), contextlib.ExitStack() as patches:
+                args = ['driver', '--disposable-vm',
+                        '--bootstrap-only' if group == 'bootstrap' else '--native-slice']
+                if group not in (None, 'bootstrap'):
+                    args += ['--case-group', group]
+                if case:
+                    args += ['--fault-case', case]
+                patches.enter_context(patch.object(sys, 'argv', args))
+                patches.enter_context(patch.object(sys, 'path', list(sys.path)))
+                patches.enter_context(patch.object(sys, 'dont_write_bytecode', True))
+                patches.enter_context(patch.dict(sys.modules, restricted_native=native))
+                patches.enter_context(patch.dict(os.environ))
+                patches.enter_context(patch.object(harness.os, 'geteuid', return_value=0))
+                for name in ('exists', 'is_symlink'):
+                    patches.enter_context(patch.object(Path, name, return_value=False))
+                patches.enter_context(patch.object(Path, 'write_text'))
+                patches.enter_context(patch.object(Path, 'resolve', lambda path, **kwargs: path.absolute()))
+                patches.enter_context(patch.object(harness.tempfile, 'TemporaryDirectory',
+                    return_value=contextlib.nullcontext('/unused')))
+                patches.enter_context(patch.object(harness.shutil, 'which', return_value='/usr/bin/javac'))
+                patches.enter_context(patch.object(harness, 'prerequisites', return_value=[]))
+                patches.enter_context(patch.object(harness, 'test_source_identities',
+                    return_value={'productSourceCommit': 'a' * 40}))
+                patches.enter_context(patch.object(harness, 'load_installation'))
+                patches.enter_context(patch.object(harness, 'provision', return_value='b' * 64))
+                patches.enter_context(patch.object(harness, 'call', return_value=b'MainPID=1\n'))
+                calls = {}
+                for name in ('bootstrap_readiness', 'wrong_socket_uid', 'denial_probes',
+                             'native_package_api', 'cms_native_integration'):
+                    calls[name] = patches.enter_context(patch.object(harness, name, return_value=[]))
+                for module in (app, hostile, output):
+                    patches.enter_context(patch.object(module, 'run', return_value=[]))
+                for module in (faults, public):
+                    patches.enter_context(patch.object(module, 'run', return_value={'caseId': 'fixture'}))
+                patches.enter_context(patch.object(observations, 'InvocationWindow'))
+                for name in ('baseline', 'completed'):
+                    patches.enter_context(patch.object(observations, name,
+                        side_effect=lambda case, *args: {'caseId': case}))
+                printed = patches.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                self.assertEqual(0, harness.main())
+                report = json.loads(printed.getvalue())
+                expected = group in (None, 'positive')
+                self.assertEqual(expected, report['installedNativePositiveExecuted'])
+                self.assertEqual(expected, calls['native_package_api'].called)
+                self.assertFalse(report['installedKeylessNativeAcceptanceSatisfied'])
+                self.assertFalse(report['productionAuthorityObserved'])
+
     @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
                          'socket activation requires Linux fork')
     def test_socket_activation_also_isolates_temporary_state_when_uid_is_root(self):

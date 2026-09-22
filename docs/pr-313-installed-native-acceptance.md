@@ -126,6 +126,12 @@ started for the correction. Local restricted discovery passed 254 tests with the
 `qemu-img` selected and no skips; the image regression does not boot a VM. Workflow validation
 with `actionlint` and `git diff --check` also passed.
 
+A subsequent report correction sets `installedNativePositiveExecuted` only after the positive
+package/app/CMS sequence completes. Successful fault-only and bootstrap-only guests report false.
+Offline CLI coverage exercises all eight selections with external operations mocked; full
+restricted discovery passed 255 tests with real `qemu-img` selected and no skips. This correction
+also has no new installed execution and does not rewrite earlier guest reports.
+
 ## Fixed contract and separate execution layers
 
 The authoritative inventory is

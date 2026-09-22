@@ -880,6 +880,7 @@ def main():
             observations.append(row)
             Path('/root/pr313-observation.private.json').write_text(json.dumps(observations, sort_keys=True))
     identity = None
+    positive_executed = False
     stage = 'installation'
     def installation_event(name, status):
         nonlocal stage
@@ -937,6 +938,7 @@ def main():
                     stage = 'native-cms-owning-consumer'
                     dimensions.extend(cms_native_integration(source, identities['productSourceCommit'],
                                                              prepared_inputs=prepared_inputs, observe=observe))
+                    positive_executed = True
                 if args.case_group in (None, 'native-hostile'):
                     stage = 'installed-native-hostile-fixtures'
                     from pr312_native_faults import run as native_faults
@@ -988,7 +990,7 @@ def main():
         'dimensions': sorted(set(dimensions)), 'productionAuthorityObserved': False,
         'mandatoryIsolationTestSatisfied': False,
         'installedKeylessNativeAcceptanceSatisfied': False,
-        'installedNativePositiveExecuted': not args.bootstrap_only,
+        'installedNativePositiveExecuted': positive_executed,
         'remainingMandatoryTests': ['installed-controller-owned-workload-positive',
             'primary-catalog-scheduler-app-budget-role-confinement',
             'sibling-admin-plane-and-storage-denials',
