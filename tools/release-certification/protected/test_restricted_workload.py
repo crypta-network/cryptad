@@ -23,6 +23,81 @@ import restricted_workload_launcher as launcher
 import restricted_workload_prepare as preparation
 
 
+class ControllerStartupDiagnosticsTest(unittest.TestCase):
+    def test_fixed_runtime_record_is_private_and_excludes_exception_message(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(controller, 'STARTUP', Path(directory) / 'startup.json'), \
+                patch.object(workload, 'secured', side_effect=lambda path, **_kwargs: path):
+            controller.startup_checkpoint('entry', 123, ValueError('sensitive detail'))
+            record = json.loads(controller.STARTUP.read_text())
+            self.assertEqual(0o600, stat.S_IMODE(controller.STARTUP.stat().st_mode))
+        self.assertEqual('private-runtime-diagnostic-not-acceptance', record['classification'])
+        self.assertEqual(os.getpid(), record['pid'])
+        self.assertEqual(workload.boot(), record['bootId'])
+        self.assertEqual(123, record['startedMonotonicNs'])
+        self.assertGreater(record['observedMonotonicNs'], 123)
+        self.assertEqual('entry', record['stage'])
+        self.assertEqual('ValueError', record['exceptionType'])
+        self.assertNotIn('sensitive detail', json.dumps(record))
+
+    def test_invalid_stage_and_diagnostic_write_failure_cannot_change_control_behavior(self):
+        with patch.object(workload, 'write', side_effect=OSError('disk unavailable')) as write:
+            controller.startup_checkpoint('arbitrary-stage', 1)
+            write.assert_not_called()
+            controller.startup_checkpoint('entry', 1)
+            write.assert_called_once()
+
+    def run_startup(self, verification_error=None):
+        records, events = [], []
+        def write(path, record, **kwargs):
+            self.assertEqual(controller.STARTUP, path)
+            self.assertEqual({'mode': 0o600}, kwargs)
+            records.append(record)
+            events.append(record['stage'])
+        def verify():
+            events.append('verify-called')
+            if verification_error is not None:
+                raise verification_error
+        endpoint = Mock()
+        endpoint.exists.return_value = endpoint.is_symlink.return_value = False
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            stack.enter_context(patch.object(controller.sys, 'argv', ['fixed-controller']))
+            stack.enter_context(patch.object(controller.sys, 'flags', SimpleNamespace(isolated=True, no_site=True)))
+            stack.enter_context(patch.object(controller.sys, 'path', list(sys.path)))
+            stack.enter_context(patch.object(controller.os, 'geteuid', return_value=0))
+            stack.enter_context(patch.object(controller.os, 'umask'))
+            stack.enter_context(patch.object(controller.os, 'environ', {}))
+            stack.enter_context(patch.object(workload, 'secured'))
+            stack.enter_context(patch.object(workload, 'ROOT', Path(directory)))
+            stack.enter_context(patch.object(workload, 'write', side_effect=write))
+            stack.enter_context(patch.object(workload, 'reconcile'))
+            stack.enter_context(patch.object(controller.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1, pw_gid=1)))
+            stack.enter_context(patch.object(controller, 'SOCKET', endpoint))
+            stack.enter_context(patch.object(controller.socket, 'socket'))
+            stack.enter_context(patch.object(controller.os, 'chown'))
+            stack.enter_context(patch.object(controller.select, 'select', side_effect=RuntimeError('stop test loop')))
+            stack.enter_context(patch.dict(sys.modules, {'installation': SimpleNamespace(verify_execution=verify)}))
+            with self.assertRaises((ValueError, RuntimeError)) as raised:
+                controller.main()
+        return records, events, raised.exception
+
+    def test_entry_precedes_verification_and_failure_retains_original_exception(self):
+        failure = ValueError('private verification detail')
+        records, events, raised = self.run_startup(failure)
+        self.assertIs(failure, raised)
+        self.assertEqual(['entry', 'verify-called', 'entry'], events)
+        self.assertEqual('ValueError', records[-1]['exceptionType'])
+        self.assertEqual(records[0]['startedMonotonicNs'], records[1]['startedMonotonicNs'])
+        self.assertNotIn('private verification detail', json.dumps(records))
+
+    def test_successful_startup_records_all_fixed_stages_before_request_loop(self):
+        records, events, _raised = self.run_startup()
+        self.assertEqual(['entry', 'verify-called', 'installation-verified', 'reconciled', 'listening'], events)
+        self.assertEqual(1, len({row['startedMonotonicNs'] for row in records}))
+        self.assertEqual(1, len({row['pid'] for row in records}))
+        self.assertTrue(all('exceptionType' not in row for row in records))
+
+
 class MarkerImportTest(unittest.TestCase):
     def test_rejected_manager_entry_does_not_mutate_installed_module_tree(self):
         source = Path(__file__).parent

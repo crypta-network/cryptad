@@ -25,6 +25,8 @@ if __package__ in (None, ''):
 import restricted_workload as workload
 
 SOCKET = Path('/run/cryptad-workload/control.sock')
+STARTUP = Path('/run/cryptad-workload/startup.json')
+STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp', 'connect-http', 'bootstrap-mail'})
 
 
@@ -188,26 +190,58 @@ def handle_request(connection, observer_uid):
         return False
 
 
+def startup_checkpoint(stage, started, error=None):
+    """Best-effort root-private latest runtime state, never history or acceptance authority.
+
+    Fixed internal stages expose no command, candidate output, exception message or private
+    selection. The administrator can snapshot this before systemd removes RuntimeDirectory.
+    Diagnostic failure must not change controller behavior or replace the original failure.
+    """
+    try:
+        if stage not in STARTUP_STAGES:
+            return
+        record = {'schemaVersion': 1, 'classification': 'private-runtime-diagnostic-not-acceptance',
+            'pid': os.getpid(), 'bootId': workload.boot(), 'startedMonotonicNs': started,
+            'observedMonotonicNs': time.monotonic_ns(), 'stage': stage}
+        if error is not None:
+            record['exceptionType'] = type(error).__name__[:128]
+        workload.write(STARTUP, record, mode=0o600)
+    except Exception:
+        pass
+
+
 def main():
     if len(sys.argv) != 1 or not sys.flags.isolated or not sys.flags.no_site or os.geteuid() != 0:
         workload.reject('fixed-entry-required')
-    os.environ.clear()
-    os.umask(0o077)
-    workload.secured(Path(__file__))
-    # Verify the same immutable installed code/dependency closure as the existing resolver.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'restricted'))
-    import installation
-    installation.verify_execution()
-    observer = pwd.getpwnam('cryptad-soak')
-    if (workload.ROOT / 'campaign.json').exists():
-        workload.reconcile()
-    if SOCKET.exists() or SOCKET.is_symlink():
-        workload.reject('socket-reconciliation-required')
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind(str(SOCKET))
-    SOCKET.chmod(0o600)
-    os.chown(SOCKET, observer.pw_uid, observer.pw_gid)
-    server.listen(8)
+    started, stage = time.monotonic_ns(), 'entry'
+    startup_checkpoint(stage, started)
+    try:
+        os.environ.clear()
+        os.umask(0o077)
+        workload.secured(Path(__file__))
+        # Verify the same immutable installed code/dependency closure as the existing resolver.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'restricted'))
+        import installation
+        installation.verify_execution()
+        stage = 'installation-verified'
+        startup_checkpoint(stage, started)
+        observer = pwd.getpwnam('cryptad-soak')
+        if (workload.ROOT / 'campaign.json').exists():
+            workload.reconcile()
+        stage = 'reconciled'
+        startup_checkpoint(stage, started)
+        if SOCKET.exists() or SOCKET.is_symlink():
+            workload.reject('socket-reconciliation-required')
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(str(SOCKET))
+        SOCKET.chmod(0o600)
+        os.chown(SOCKET, observer.pw_uid, observer.pw_gid)
+        server.listen(8)
+        stage = 'listening'
+        startup_checkpoint(stage, started)
+    except Exception as error:
+        startup_checkpoint(stage, started, error)
+        raise
     last_observer = time.monotonic()
     try:
         while True:

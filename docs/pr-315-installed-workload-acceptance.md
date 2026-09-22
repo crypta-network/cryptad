@@ -3,8 +3,9 @@
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
 **Implementation is incomplete; no installed workload case has a valid acceptance witness in
-this revision's audit.** The first three installed attempts failed before role staging; a fourth
-staged all four roles but failed network setup before any controller or role service started.
+this revision's audit.** The first three installed attempts failed before role staging; the next
+two failed network setup. A sixth prepared the fabric but timed out waiting for controller
+readiness, before any role service was observed running.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -137,6 +138,22 @@ fresh guest. The fifth attempt captured bounded controller projections after cle
 marked its sentinel not prepared, stopped its guest, and retained the failed result. Private
 error capture also now preserves bounded setup/cleanup propagation diagnostics separately and
 enforces its serialized byte cap for non-BMP text.
+
+The sixth attempt at helper `1e255e56a78faacfe3594659919818c7e8eeb360` passed the corrected
+network setup, created its synthetic sentinel and started the controller. The observer's fixed
+30-second readiness window expired. Six sampled observations found the controller alive, with
+about 21 MiB peak observed memory and zero observed cgroup OOM events; no role service was
+observed running. These samples do not establish the controller's startup phase or full guest
+memory demand. Cleanup completed, the sentinel matched, bounded controller projections were
+captured, and the guest stopped. A fixed private runtime checkpoint now distinguishes entry,
+installation verification, reconciliation and socket listening; the administrator snapshots it
+before service stop removes the runtime directory. This is diagnostic state, not retained
+authority, readiness proof or acceptance. No timeout or resource cap was increased.
+
+The fifth and sixth stopped guests' disk pairs were subsequently removed under the user's
+continuing authorization, after descriptor and backing-dependency checks. Their diagnostics,
+failure verdicts and source/tool snapshots remain retained. Each new attempt still requires
+the same task-wide 40 GiB budget and 8 GiB reserve check.
 
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing

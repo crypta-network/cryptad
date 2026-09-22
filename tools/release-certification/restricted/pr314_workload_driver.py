@@ -152,6 +152,21 @@ def _kernel_read(path):
         os.close(descriptor)
 
 
+def controller_startup_snapshot(workload):
+    """Capture the fixed root-private startup diagnostic before systemd removes it.
+
+    This latest runtime checkpoint is neither an acceptance witness nor retained lifecycle
+    authority. Its absence does not establish whether the controller ran or stopped.
+    """
+    try:
+        value = workload.read(Path('/run/cryptad-workload/startup.json'))
+        return {'status': 'captured', 'record': value,
+                'observedMonotonicNs': time.monotonic_ns(),
+                'classification': 'private-startup-diagnostic-not-acceptance'}
+    except (OSError, ValueError):
+        return {'status': 'unavailable-not-quiescence-proof'}
+
+
 def memory_snapshot():
     """Fixed private kernel metrics; absent cgroups never establish owned quiescence."""
     snapshot = {'observedMonotonicNs': time.monotonic_ns(), 'guest': {}, 'services': {}}
@@ -325,6 +340,7 @@ def execute():
                 stop_child(pid)
         finally:
             try:
+                diagnostics['controllerStartup'] = controller_startup_snapshot(workload)
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
             finally:

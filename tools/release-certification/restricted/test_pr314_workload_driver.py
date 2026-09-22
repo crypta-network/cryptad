@@ -16,6 +16,21 @@ import pr314_workload_driver as driver
 
 
 class CleanupTest(unittest.TestCase):
+    def test_startup_capture_uses_only_fixed_private_record(self):
+        workload = SimpleNamespace(read=Mock(return_value={'stage': 'entry'}))
+        value = driver.controller_startup_snapshot(workload)
+        workload.read.assert_called_once_with(Path('/run/cryptad-workload/startup.json'))
+        self.assertEqual('captured', value['status'])
+        self.assertEqual({'stage': 'entry'}, value['record'])
+        self.assertEqual('private-startup-diagnostic-not-acceptance', value['classification'])
+
+    def test_startup_capture_failure_does_not_prevent_cleanup(self):
+        for error in (FileNotFoundError(), ValueError('untrusted record')):
+            with self.subTest(error=type(error).__name__):
+                workload = SimpleNamespace(read=Mock(side_effect=error))
+                self.assertEqual({'status': 'unavailable-not-quiescence-proof'},
+                                 driver.controller_startup_snapshot(workload))
+
     def test_controller_stop_releases_busy_lease_before_reconciliation(self):
         events = []
         with tempfile.TemporaryDirectory() as directory:
