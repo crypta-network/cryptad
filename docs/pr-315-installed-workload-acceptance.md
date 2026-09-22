@@ -2,8 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; all 45 installed workload cases remain unexecuted in this
-revision's audit.** Fixture preparation, offline tests, and a positive aggregate do not establish
+**Implementation is incomplete; no installed workload case has a valid acceptance witness in
+this revision's audit.** Two installed attempts reached setup failures before role staging.
+Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
 The starting commit is `64a1708c17ebf02460d19ab66bfd7c8ed6b70700`, with tree
@@ -29,6 +30,11 @@ inventory. It does not create original published-product provenance. Build the t
 revisions with `distTarCryptad`; stage Mail with `:apps:mail-prototype:stageApp`, then use the
 ordinary `crypta-app keys`, `sign`, `verify` and `pack` commands on a private copy. Keep the
 synthetic signing material private. Fixture preparation requires a clean exact helper checkout.
+Private fixture schema 2 additionally binds and recomputes a canonical daemon class digest,
+excluding the generated `Version.class` and archive metadata. Marker-only predecessor differences
+are rejected. This proves a conservative class-byte distinction, not semantic equivalence or
+original publication; resource-only changes are insufficient. Earlier fixture schemas require
+fresh preparation.
 
 The separate installed guest entry materializes the fixed selection only after production/test-kit
 installation and binds the actual installed `runner_identity()`. `pr315_workload_runner.py`
@@ -59,6 +65,25 @@ by `--help`. The recreated reference preparation selects `qemu64`, `tcg-multi`, 
 results cannot be pooled. Preparation now installs pinned `nftables=1.1.3-1` and
 `iproute2=6.15.0-1`, which the installed execution closure already requires but the old reference
 producer omitted. The prepared image and effective closure must be measured anew.
+
+The recreated standalone reference completed preparation and stopped successfully. Its private
+records retain the prepared image, copied boot closure, seed, SSH credentials/host pin, and guest
+identities. Observed versions include kernel 6.12.107, systemd 257.13, bubblewrap 0.12,
+nftables 1.1.3, iproute2 6.15 and Temurin 25.0.4.1. These are preparation observations, not
+workload acceptance. Only obsolete successful preparation copies were removed after exact
+stopped ownership and standalone backing checks; failed attempts remain retained.
+
+The first installed attempt failed immutable bundle verification after privileged Python imports
+created bytecode files. Fixed installed entrypoints now suppress bytecode writes; a regression
+reproduces the inventory mismatch and verifies byte-exact imports. The second attempt passed
+base installation/test-kit provisioning but failed workload account creation: the recipient's
+original account name exceeded systemd v257's strict 31-byte limit. The fixed account prefix is
+now `cryptad-wl-` in the sysusers file, role unit and lookups. Role IDs and network namespace
+names remain unchanged. Offline regression checks validate every account against the limit and
+its unit/lookup binding; an installed rerun is still required. Both attempts stopped their guests
+and retain private diagnostics. Neither reached a role campaign or yielded workload witnesses.
+Their initial predecessor had only a generated-version class difference, so neither attempt can
+establish distinct-product acceptance even independently of its setup failure.
 
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing

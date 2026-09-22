@@ -1,8 +1,10 @@
 """Offline fixture admission tests; no daemon launch or installed acceptance."""
 import hashlib
+import io
 import os
 from pathlib import Path
 import tempfile
+import tarfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -14,6 +16,7 @@ import pr315_workload_fixtures as fixtures
 def products():
     return {name: {'sourceCommit': marker * 40, 'artifactDigest': 'sha256:' + marker * 64,
         'artifactSize': 100, 'daemonDigest': 'sha256:' + marker * 64, 'packageTarget': 'linux-x64',
+        'daemonImplementationDigest': 'sha256:' + marker * 64,
         'contractVersion': 26, 'classification': 'historical-source-build' if name == 'previous' else 'source-build'}
         for name, marker in (('candidate', 'a'), ('previous', 'b'))}
 
@@ -52,6 +55,81 @@ class AdmissionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'selection-invalid'):
                     fixtures.prepare(args)
                 self.assertFalse(output.exists())
+
+
+class ImplementationIdentityTests(unittest.TestCase):
+    def jar(self, path, revision, implementation=b'\xca\xfe\xba\xbe implementation-a', *, reverse=False):
+        rows = [('META-INF/MANIFEST.MF', ('Implementation-Version: ' + revision).encode()),
+                (fixtures.GENERATED_VERSION, b'\xca\xfe\xba\xbe revision-' + revision.encode()),
+                ('network/crypta/node/Node.class', implementation)]
+        with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED if reverse else zipfile.ZIP_STORED) as jar:
+            jar.comment = revision.encode()
+            for name, raw in reversed(rows) if reverse else rows:
+                entry = zipfile.ZipInfo(name, (2026 if reverse else 2025, 1, 1, 0, 0, 0))
+                entry.compress_type = zipfile.ZIP_DEFLATED if reverse else zipfile.ZIP_STORED
+                jar.writestr(entry, raw)
+
+    def test_marker_and_archive_metadata_only_difference_cannot_prove_two_products(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate, previous = Path(directory) / 'candidate.jar', Path(directory) / 'previous.jar'
+            self.jar(candidate, 'candidate')
+            self.jar(previous, 'previous', reverse=True)
+            self.assertNotEqual(candidate.read_bytes(), previous.read_bytes())
+            rows = products()
+            for name, path in (('candidate', candidate), ('previous', previous)):
+                rows[name]['daemonDigest'] = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+                rows[name]['daemonImplementationDigest'] = fixtures.daemon_implementation_identity(path)
+            self.assertEqual(rows['candidate']['daemonImplementationDigest'], rows['previous']['daemonImplementationDigest'])
+            with self.assertRaisesRegex(ValueError, 'previous-not-distinct'):
+                fixtures.validate_roster(rows)
+
+    def test_substantive_class_bytes_distinguish_products(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate, previous = Path(directory) / 'candidate.jar', Path(directory) / 'previous.jar'
+            self.jar(candidate, 'candidate')
+            self.jar(previous, 'previous', b'\xca\xfe\xba\xbe implementation-b')
+            rows = products()
+            for name, path in (('candidate', candidate), ('previous', previous)):
+                rows[name]['daemonImplementationDigest'] = fixtures.daemon_implementation_identity(path)
+            self.assertNotEqual(rows['candidate']['daemonImplementationDigest'], rows['previous']['daemonImplementationDigest'])
+            fixtures.validate_roster(rows)
+
+    def test_portable_identity_is_recomputed_from_actual_daemon_member(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jar = root / 'daemon.jar'
+            self.jar(jar, 'candidate')
+            portable = root / 'product.tar.gz'
+            with tarfile.open(portable, 'w:gz') as archive:
+                archive.add(jar, arcname='cryptad/lib/cryptad.jar')
+            self.assertEqual(fixtures.daemon_implementation_identity(jar),
+                             fixtures.portable_implementation_identity(portable))
+
+    def test_marker_only_jar_has_no_implementation(self):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as jar:
+            jar.writestr(fixtures.GENERATED_VERSION, b'marker')
+        stream.seek(0)
+        with self.assertRaisesRegex(ValueError, 'implementation-empty'):
+            fixtures._implementation_identity(stream)
+
+    def test_duplicate_class_is_rejected_instead_of_selecting_one(self):
+        import warnings
+        stream = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            with zipfile.ZipFile(stream, 'w') as jar:
+                jar.writestr('Node.class', b'first')
+                jar.writestr('Node.class', b'second')
+        stream.seek(0)
+        with self.assertRaisesRegex(ValueError, 'entry-invalid'):
+            fixtures._implementation_identity(stream)
+
+    def test_legacy_product_roster_cannot_omit_implementation_binding(self):
+        value = products()
+        del value['previous']['daemonImplementationDigest']
+        with self.assertRaisesRegex(ValueError, 'products-invalid'):
+            fixtures.validate_roster(value)
 
 
 class FileTests(unittest.TestCase):

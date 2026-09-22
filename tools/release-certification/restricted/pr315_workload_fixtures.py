@@ -18,6 +18,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[3]
 if ROOT == Path('/opt/cryptad-restricted-test-kit'):
@@ -36,6 +37,114 @@ FIXED_GUEST_ROOT = Path('/root/cryptad/build/pr315-inputs')
 MAX_BYTES = 2 * 1024**3
 MAX_FILES = 32768
 CLASSIFICATION = 'synthetic-source-build-not-original-authority'
+IMPLEMENTATION_DOMAIN = b'pr315-daemon-class-implementation-v1\0'
+GENERATED_VERSION = 'network/crypta/node/Version.class'
+MAX_DAEMON_BYTES = 512 * 1024**2
+
+
+def _implementation_identity(stream):
+    """Conservative class-byte distinction, independent of generated revision/archive metadata.
+
+    This does not prove semantic behavior differs or authenticate original publication.
+    Resource-only changes deliberately cannot establish a second daemon implementation.
+    """
+    deadline = time.monotonic() + 60
+    checksum = hashlib.sha256(IMPLEMENTATION_DOMAIN)
+    with zipfile.ZipFile(stream) as archive:
+        entries = archive.infolist()
+        if not 1 <= len(entries) <= 30000:
+            raise ValueError('workload-daemon-entry-limit')
+        names = set()
+        total = count = 0
+        for entry in sorted(entries, key=lambda entry: entry.filename):
+            name = entry.filename
+            if (not name or name in names or name.startswith('/') or '\\' in name
+                    or '..' in name.split('/') or entry.flag_bits & 1):
+                raise ValueError('workload-daemon-entry-invalid')
+            names.add(name)
+            total += entry.file_size
+            if total > MAX_DAEMON_BYTES or time.monotonic() >= deadline:
+                raise ValueError('workload-daemon-expansion-limit')
+            if entry.is_dir() or not name.endswith('.class') or name == GENERATED_VERSION:
+                continue
+            if not 0 < entry.file_size <= 16 * 1024**2:
+                raise ValueError('workload-daemon-class-size-invalid')
+            encoded = name.encode('utf-8')
+            checksum.update(len(encoded).to_bytes(4, 'big'))
+            checksum.update(encoded)
+            checksum.update(entry.file_size.to_bytes(8, 'big'))
+            observed = 0
+            with archive.open(entry) as member:
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise ValueError('workload-daemon-read-deadline')
+                    block = member.read(min(65536, entry.file_size - observed + 1))
+                    if not block:
+                        break
+                    observed += len(block)
+                    if observed > entry.file_size:
+                        raise ValueError('workload-daemon-class-size-invalid')
+                    checksum.update(block)
+            if observed != entry.file_size:
+                raise ValueError('workload-daemon-class-size-invalid')
+            count += 1
+    if count == 0:
+        raise ValueError('workload-daemon-implementation-empty')
+    return 'sha256:' + checksum.hexdigest()
+
+
+def daemon_implementation_identity(path):
+    """Pin one real admitted daemon JAR before canonical class acquisition."""
+    from runtime_snapshot import _directory, _unchanged
+    path = Path(path).absolute()
+    with _directory(path.parent) as parent:
+        pinned = os.open(path.name, os.O_PATH | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            before = os.fstat(pinned)
+            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= MAX_DAEMON_BYTES:
+                raise ValueError('workload-daemon-file-invalid')
+            descriptor = os.open('/proc/self/fd/' + str(pinned), os.O_RDONLY | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as stream:
+                _unchanged(before, os.fstat(stream.fileno()))
+                result = _implementation_identity(stream)
+                _unchanged(before, os.fstat(stream.fileno()))
+            _unchanged(before, os.stat(path.name, dir_fd=parent, follow_symlinks=False))
+            return result
+        finally:
+            os.close(pinned)
+
+
+def portable_implementation_identity(path):
+    """Recompute from exact portable bytes; never accept a caller-authored class digest."""
+    total = count = found = 0
+    result = None
+    deadline = time.monotonic() + 60
+    with tarfile.open(path, 'r:*') as archive:
+        for member in archive:
+            total += member.size
+            count += 1
+            if total > MAX_DAEMON_BYTES or count > 30000 or time.monotonic() >= deadline:
+                raise ValueError('workload-fixture-package-too-large')
+            if not member.name.endswith('/lib/cryptad.jar') and member.name != 'lib/cryptad.jar':
+                continue
+            found += 1
+            if found != 1 or not member.isfile() or not 0 < member.size <= MAX_DAEMON_BYTES:
+                raise ValueError('workload-fixture-daemon-member-invalid')
+            with archive.extractfile(member) as source, tempfile.SpooledTemporaryFile(max_size=8 * 1024**2) as jar:
+                remaining = member.size
+                while remaining:
+                    if time.monotonic() >= deadline:
+                        raise ValueError('workload-fixture-daemon-copy-deadline')
+                    raw = source.read(min(65536, remaining))
+                    if not raw:
+                        raise ValueError('workload-fixture-daemon-member-invalid')
+                    jar.write(raw)
+                    remaining -= len(raw)
+                jar.seek(0)
+                result = _implementation_identity(jar)
+    if found != 1:
+        raise ValueError('workload-fixture-daemon-member-invalid')
+    return result
 
 
 def digest(path):
@@ -111,18 +220,18 @@ def validate_roster(products):
     if not isinstance(products, dict) or set(products) != {'candidate', 'previous'}:
         raise ValueError('workload-fixture-products-invalid')
     for name, value in products.items():
-        if (set(value) != {'sourceCommit', 'artifactDigest', 'artifactSize', 'daemonDigest',
+        if (set(value) != {'sourceCommit', 'artifactDigest', 'artifactSize', 'daemonDigest', 'daemonImplementationDigest',
                           'packageTarget', 'contractVersion', 'classification'}
                 or not re.fullmatch('[0-9a-f]{40}', str(value['sourceCommit']))
                 or value['packageTarget'] != 'linux-x64'
                 or value['classification'] != ('historical-source-build' if name == 'previous' else 'source-build')
                 or any(not re.fullmatch('sha256:[0-9a-f]{64}', str(value[key]))
-                       for key in ('artifactDigest', 'daemonDigest'))
+                       for key in ('artifactDigest', 'daemonDigest', 'daemonImplementationDigest'))
                 or type(value['artifactSize']) is not int or not 0 < value['artifactSize'] <= 512 * 1024**2
                 or type(value['contractVersion']) is not int or not 25 <= value['contractVersion'] <= 10000):
             raise ValueError('workload-fixture-products-invalid')
     if any(products['candidate'][key] == products['previous'][key]
-           for key in ('sourceCommit', 'artifactDigest', 'daemonDigest')):
+           for key in ('sourceCommit', 'artifactDigest', 'daemonDigest', 'daemonImplementationDigest')):
         raise ValueError('workload-fixture-previous-not-distinct')
 
 
@@ -166,6 +275,7 @@ def prepare(args):
             package = runtime.extract_package(archive, stage / name, checksum, archive.stat().st_size)
             commit = getattr(args, name + '_commit')
             daemon = runtime.packaged_daemon_identity(package, commit)
+            implementation = daemon_implementation_identity(package / 'lib/cryptad.jar')
             runtime.require_native_target(package, 'linux-x64', output / 'jdk')
             snapshot, _registry, executable = metadata.observe_package(archive, output / 'jdk', stage)
             if executable['digest'] != daemon:
@@ -173,6 +283,7 @@ def prepare(args):
             (output / (name + '-contract.json')).write_bytes(snapshot)
             products[name] = {'sourceCommit': commit, 'artifactDigest': checksum,
                 'artifactSize': archive.stat().st_size, 'daemonDigest': daemon, 'packageTarget': 'linux-x64',
+                'daemonImplementationDigest': implementation,
                 'contractVersion': json.loads(snapshot)['contract']['contractVersion'],
                 'classification': 'historical-source-build' if name == 'previous' else 'source-build'}
         validate_roster(products)
@@ -191,7 +302,7 @@ def prepare(args):
         manifest = (stage / 'mail/cryptad-app.properties').read_text()
         if re.findall(r'(?m)^app\.id\s*=\s*(\S+)\s*$', manifest) != ['mail-prototype']:
             raise ValueError('workload-fixture-mail-identity-invalid')
-    value = {'schemaVersion': 1, 'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
+    value = {'schemaVersion': 2, 'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
         'sourceCommit': subprocess.check_output(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
                                               text=True, timeout=10).strip(),
         'products': products, 'roles': list(ROLES), 'runtimeDigest': runtime.tree_digest(output / 'jdk'),
@@ -219,7 +330,7 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
     if (set(value) != {'schemaVersion', 'kind', 'classification', 'sourceCommit', 'products', 'roles',
                       'runtimeDigest', 'jdkClosureDigest', 'mailDigest', 'trustDigest', 'verifierDigest',
                       'maxSeconds', 'maxOperations', 'members'}
-            or value['schemaVersion'] != 1 or value['kind'] != 'pr315-workload-fixtures'
+            or value['schemaVersion'] != 2 or value['kind'] != 'pr315-workload-fixtures'
             or value['classification'] != CLASSIFICATION or value['roles'] != list(ROLES)
             or type(value['maxSeconds']) is not int or not 30 <= value['maxSeconds'] <= 3600
             or type(value['maxOperations']) is not int or not 1 <= value['maxOperations'] <= 10000
@@ -234,6 +345,8 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
         archive = root / (name + '.tar.gz')
         if runtime.digest_file(archive) != product['artifactDigest'] or archive.stat().st_size != product['artifactSize']:
             raise ValueError('workload-fixture-product-mismatch')
+        if portable_implementation_identity(archive) != product['daemonImplementationDigest']:
+            raise ValueError('workload-fixture-daemon-implementation-mismatch')
     if (runtime.tree_digest(root / 'jdk') != value['runtimeDigest']
             or runtime.digest_file(root / 'mail.zip') != value['mailDigest']
             or runtime.digest_file(root / 'trusted-app-keys.properties') != value['trustDigest']
@@ -290,7 +403,8 @@ def main():
     args = parser.parse_args()
     try:
         prepare(args)
-    except (OSError, ValueError, runtime.RuntimeFailure, subprocess.SubprocessError):
+    except (OSError, ValueError, zipfile.BadZipFile, tarfile.TarError,
+            runtime.RuntimeFailure, subprocess.SubprocessError):
         print(json.dumps({'status': 'fixture-preparation-failed', 'installedPositiveExecuted': False}))
         return 2
     print(json.dumps({'status': 'fixtures-prepared', 'installedPositiveExecuted': False}))
