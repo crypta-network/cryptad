@@ -422,7 +422,8 @@ def execute(*, startup_measurement=False):
             finally:
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
-                volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed')
+                volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed',
+                                            observer_root=root)
                 workload.write(VOLATILE, volatile, create=True)
                 if (sentinel is not None and diagnostics['cleanup'] == 'completed'
                         and volatile['sentinel']['status'] != 'matched'):

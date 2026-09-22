@@ -1770,7 +1770,7 @@ class Supervisor:
             raise RuntimeFailure("operation-budget-exceeded")
         return "op-" + uuid.uuid4().hex
 
-    def content(self, source, recipient, scenario="network-chk"):
+    def content(self, source, recipient, scenario="network-chk", *, verify_local_source=False):
         operation = self.next_operation()
         payload = ("PUBLIC SYNTHETIC CROSS-VERSION " + uuid.uuid4().hex).encode("ascii")
         uri = "CHK@"
@@ -1783,6 +1783,18 @@ class Supervisor:
                     uri = interop.usk_from_ssk(insert, operation, 0)
             reference = interop.put_and_wait_for_success(sender, operation + "-insert", uri, payload, "text/plain",
                                                          local_request_only=True)
+            if verify_local_source:
+                # PutSuccessful does not independently establish local availability.
+                # DSOnly is the normal ClientGet local-only field; never seed the
+                # recipient or extend the surrounding operation/campaign deadline.
+                control_id = operation + "-source-control"
+                fields = interop.build_client_get_fields(control_id, reference)
+                fields.update(DSOnly="true", MaxRetries="0", WriteToClientCache="false")
+                sender.send("ClientGet", fields)
+                control = sender.read_until(30, {"AllData", "GetFailed"})
+                if (control.name != "AllData" or control.fields.get("Identifier") != control_id
+                        or control.payload != payload):
+                    raise RuntimeFailure("local-content-control-not-established")
             actual = interop.fetch_direct(receiver, operation + "-fetch", reference, 120, ignore_ds=True)
             if actual != payload:
                 raise RuntimeFailure("cross-node-content-mismatch")

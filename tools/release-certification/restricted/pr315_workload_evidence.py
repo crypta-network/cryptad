@@ -24,6 +24,9 @@ MAX_RECORD = 32768
 MAX_OUTPUT = 64 * 1024
 MAX_WRAPPER_LOG = 2 * 1024 * 1024
 WRAPPER_TAIL = 4096
+OBSERVER_EXPERIMENTS = Path('/var/lib/cryptad-cross-version/experiments')
+MAX_OBSERVER_FCP_LOG = 16 * 1024 * 1024
+OBSERVER_FCP_TAIL = 2048
 CAMPAIGN_FIELDS = ('generation', 'bootId', 'state', 'deadlineMonotonicNs', 'usedOperations')
 ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIdentity', 'stopReason',
                'previousStopGeneration')
@@ -261,7 +264,23 @@ def _fatal_logs(root, role, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
-def _capture(root, expected, cleanup_complete):
+def _observer_fcp_log(root, role, deadline):
+    """Read only one fixed observer transcript; its content is never acceptance authority."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root, 'fcp-' + role + '.log', maximum=MAX_OBSERVER_FCP_LOG,
+                                 timeout=min(2, remaining))
+        tail = raw[-OBSERVER_FCP_TAIL:]
+        return {'status': 'captured', 'classification': 'observer-origin-private-diagnostic-not-acceptance',
+                'sizeBytes': len(raw), 'tailBytes': len(tail), 'truncated': len(tail) < len(raw),
+                'tailBase64': base64.b64encode(tail).decode('ascii')}
+    except (OSError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
+def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
             or re.fullmatch('sha256:[0-9a-f]{64}', expected) is None):
@@ -274,6 +293,8 @@ def _capture(root, expected, cleanup_complete):
         'quiescenceIndependentlyEstablished': False,
         'snapshotLimitations': 'fixed-files-not-atomic-not-runtime-continuation',
         'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {},
+        'observerFcpLogs': ({} if observer_root is None else
+                            {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
         'fatalLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}}
     if cleanup_complete is True:
@@ -305,6 +326,12 @@ def _capture(root, expected, cleanup_complete):
                                       'expectedDigest': expected, 'observedDigest': actual, 'sizeBytes': len(raw)}
             except (OSError, ValueError):
                 result['sentinel'] = {'status': 'unavailable-or-unsafe', 'expectedDigest': expected}
+        # The fixed observer transcripts precede lower-priority candidate log snapshots.
+        if observer_root is not None:
+            for role in ROLES:
+                result['observerFcpLogs'][role] = _observer_fcp_log(observer_root, role, deadline)
+                if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
+                    result['observerFcpLogs'][role] = {'status': 'not-captured-output-budget'}
         # Controller projections and the selected sentinel take precedence. The same absolute
         # capture deadline covers logs; reserve the final timestamp and per-role status space.
         for role in ROLES:
@@ -325,7 +352,12 @@ def _capture(root, expected, cleanup_complete):
     return result
 
 
-def capture(workload, expected, cleanup_complete):
+def capture(workload, expected, cleanup_complete, *, observer_root=None):
     """After trusted cleanup: return private bounded observations, never infer acceptance."""
     _installed(workload)
-    return _capture(ROOT, expected, cleanup_complete)
+    if observer_root is not None:
+        observer_root = Path(observer_root)
+        if (not observer_root.is_absolute() or observer_root.parent != OBSERVER_EXPERIMENTS
+                or observer_root.name in {'', '.', '..'}):
+            raise ValueError('workload-evidence-observer-root-invalid')
+    return _capture(ROOT, expected, cleanup_complete, observer_root=observer_root)

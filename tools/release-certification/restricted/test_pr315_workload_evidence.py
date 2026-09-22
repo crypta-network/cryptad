@@ -253,6 +253,139 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual(b'WARN | wrapper | first\n', base64.b64decode(excerpt['contentBase64']))
         self.assertTrue(excerpt['truncated'])
 
+    def observer(self):
+        root = self.root / 'observer'
+        root.mkdir(exist_ok=True)
+        return root
+
+    def test_observer_logs_capture_exact_leaves_and_tails_before_candidate_logs(self):
+        observer = self.observer()
+        raw = b'private FCP transcript\n' * 200
+        for role in evidence.ROLES:
+            (observer / ('fcp-' + role + '.log')).write_bytes(raw)
+        (observer / 'not-selected.log').write_text('must-not-copy')
+        (observer / 'nested').mkdir()
+        (observer / 'nested/fcp-previous.log').write_text('must-not-copy')
+        reads = []
+        original = evidence.snapshot.read_file
+        def read(root, name, **kwargs):
+            reads.append((root, name))
+            return original(root, name, **kwargs)
+        with patch.object(evidence.snapshot, 'read_file', side_effect=read):
+            result = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual(['fcp-' + role + '.log' for role in evidence.ROLES],
+                         [name for root, name in reads if root == observer])
+        names = [name for _root, name in reads]
+        self.assertLess(names.index(evidence.SENTINEL), names.index('fcp-candidate-sender.log'))
+        self.assertLess(names.index('fcp-relay-no-apps.log'), names.index('wrapper.log'))
+        for row in result['observerFcpLogs'].values():
+            self.assertEqual('captured', row['status'])
+            self.assertEqual('observer-origin-private-diagnostic-not-acceptance', row['classification'])
+            self.assertEqual(raw[-2048:], base64.b64decode(row['tailBase64']))
+            self.assertEqual(len(raw), row['sizeBytes'])
+            self.assertEqual(2048, row['tailBytes'])
+            self.assertTrue(row['truncated'])
+        self.assertLessEqual(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()), evidence.MAX_OUTPUT)
+
+    def test_observer_root_omission_and_nonliteral_cleanup_never_read_transcripts(self):
+        with patch.object(evidence, '_observer_fcp_log') as read:
+            result = evidence._capture(self.root, self.expected, True)
+            self.assertEqual({}, result['observerFcpLogs'])
+            read.assert_not_called()
+        for cleanup in (False, None, 1, 'true'):
+            with self.subTest(cleanup=cleanup), patch.object(evidence.snapshot, 'read_file') as read:
+                result = evidence._capture(self.root, self.expected, cleanup, observer_root=self.observer())
+                self.assertTrue(all(row == {'status': 'not-captured-cleanup-unverified'}
+                                    for row in result['observerFcpLogs'].values()))
+                read.assert_not_called()
+
+    def test_observer_log_missing_special_hardlinked_and_oversized_files_are_unavailable(self):
+        observer = self.observer()
+        path = observer / 'fcp-candidate-sender.log'
+        other = observer / 'other'
+        other.write_bytes(b'private')
+        for kind in ('missing', 'symlink', 'fifo', 'hardlink', 'oversized'):
+            with self.subTest(kind=kind):
+                if kind == 'symlink':
+                    path.symlink_to(other)
+                elif kind == 'fifo':
+                    os.mkfifo(path)
+                elif kind == 'hardlink':
+                    os.link(other, path)
+                elif kind == 'oversized':
+                    with path.open('wb') as stream:
+                        stream.truncate(evidence.MAX_OBSERVER_FCP_LOG + 1)
+                self.assertEqual({'status': 'unavailable-or-unsafe'},
+                    evidence._observer_fcp_log(observer, 'candidate-sender', float('inf')))
+                if kind != 'missing':
+                    path.unlink()
+
+    def test_observer_transcript_replacement_or_growth_during_read_is_not_exported(self):
+        observer = self.observer()
+        path = observer / 'fcp-candidate-sender.log'
+        original = os.read
+        for attack in ('replacement', 'growth'):
+            with self.subTest(attack=attack):
+                path.write_bytes(b'fixed FCP output')
+                changed = []
+                def mutate(fd, maximum):
+                    value = original(fd, maximum)
+                    if value == b'fixed FCP output' and not changed:
+                        changed.append(True)
+                        if attack == 'replacement':
+                            replacement = observer / 'replacement'
+                            replacement.write_bytes(value)
+                            os.replace(replacement, path)
+                        else:
+                            with path.open('ab') as stream:
+                                stream.write(b'growth')
+                    return value
+                with patch.object(evidence.snapshot.os, 'read', side_effect=mutate):
+                    result = evidence._observer_fcp_log(observer, 'candidate-sender', float('inf'))
+                self.assertTrue(changed)
+                self.assertEqual({'status': 'unavailable-or-unsafe'}, result)
+
+    def test_observer_transcript_read_shares_global_deadline_and_fixed_input_cap(self):
+        observer = self.observer()
+        with patch.object(evidence.time, 'monotonic', return_value=10), \
+                patch.object(evidence.snapshot, 'read_file', return_value=b'x') as read:
+            self.assertEqual({'status': 'capture-deadline'},
+                             evidence._observer_fcp_log(observer, 'previous', 9))
+            read.assert_not_called()
+            row = evidence._observer_fcp_log(observer, 'previous', 10.25)
+            read.assert_called_once_with(observer, 'fcp-previous.log', maximum=16 * 1024 * 1024, timeout=.25)
+            self.assertEqual(b'x', base64.b64decode(row['tailBase64']))
+            self.assertFalse(row['truncated'])
+            evidence._observer_fcp_log(observer, 'previous', 20)
+            self.assertEqual(2, read.call_args.kwargs['timeout'])
+
+    def test_observer_output_budget_keeps_higher_priority_controller_and_sentinel(self):
+        observer = self.observer()
+        for role in evidence.ROLES:
+            (observer / ('fcp-' + role + '.log')).write_bytes(b'x' * 4096)
+        baseline = evidence._capture(self.root, self.expected, True)
+        cap = len(json.dumps(baseline, sort_keys=True, allow_nan=False).encode()) + 1500
+        with patch.object(evidence, 'MAX_OUTPUT', cap):
+            result = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual('matched', result['sentinel']['status'])
+        self.assertEqual('captured', result['controllerRecords']['campaign']['status'])
+        self.assertTrue(all(row == {'status': 'not-captured-output-budget'}
+                            for row in result['observerFcpLogs'].values()))
+        self.assertLessEqual(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()), cap)
+
+    def test_public_observer_selection_only_accepts_direct_experiment_child(self):
+        allowed = evidence.OBSERVER_EXPERIMENTS / 'fixed-experiment'
+        with patch.object(evidence, '_installed'), patch.object(evidence, '_capture', return_value={}) as capture:
+            evidence.capture(object(), None, True, observer_root=allowed)
+            capture.assert_called_once_with(evidence.ROOT, None, True, observer_root=allowed)
+            capture.reset_mock()
+            for root in (Path('/tmp/other'), evidence.OBSERVER_EXPERIMENTS,
+                         evidence.OBSERVER_EXPERIMENTS / '..', allowed / 'nested',
+                         Path('relative/experiment')):
+                with self.subTest(root=root), self.assertRaisesRegex(ValueError, 'observer-root-invalid'):
+                    evidence.capture(object(), None, True, observer_root=root)
+            capture.assert_not_called()
+
     def wrapper(self, role='candidate-sender'):
         logs = self.root / 'state' / role / 'logs'
         logs.mkdir(parents=True, exist_ok=True)

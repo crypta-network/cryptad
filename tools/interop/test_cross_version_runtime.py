@@ -631,6 +631,67 @@ class SupervisorBehaviorTest(unittest.TestCase):
         instance.journal.append.assert_not_called()
         self.assertEqual({}, instance.outcomes)
 
+    def test_installed_content_checks_source_locally_before_actual_remote_fetch(self):
+        instance = self.supervisor()
+        sender, receiver = Mock(), Mock()
+        captured = {}
+        @contextlib.contextmanager
+        def client(role):
+            yield sender if role == 'candidate-sender' else receiver
+        instance.client = client
+        def inserted(_client, _operation, _uri, payload, _type, **kwargs):
+            captured['payload'] = payload
+            return 'CHK@private-reference'
+        def control(_timeout, names):
+            fields = sender.send.call_args.args[1]
+            self.assertEqual({'AllData', 'GetFailed'}, names)
+            self.assertEqual('true', fields['DSOnly'])
+            self.assertEqual('false', fields['WriteToClientCache'])
+            self.assertEqual('0', fields['MaxRetries'])
+            self.assertNotIn('IgnoreDS', fields)
+            return SimpleNamespace(name='AllData', fields={'Identifier': fields['Identifier']},
+                                   payload=captured['payload'])
+        sender.read_until.side_effect = control
+        def fetched(selected, operation, _reference, timeout, **kwargs):
+            self.assertIs(receiver, selected)
+            sender.read_until.assert_called_once_with(30, {'AllData', 'GetFailed'})
+            self.assertTrue(operation.endswith('-fetch'))
+            self.assertEqual(120, timeout)
+            self.assertEqual({'ignore_ds': True}, kwargs)
+            return captured['payload']
+        with patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=inserted), \
+                patch.object(runtime.interop, 'fetch_direct', side_effect=fetched):
+            instance.content('candidate-sender', 'previous', verify_local_source=True)
+        self.assertEqual('observed', instance.outcomes['network-chk'])
+        instance.remaining.assert_called_once_with(180)
+
+    def test_failed_local_source_control_cannot_be_reported_as_remote_success(self):
+        for outcome in ('failed', 'wrong-bytes', 'wrong-identifier'):
+            with self.subTest(outcome=outcome):
+                instance = self.supervisor()
+                sender, receiver = Mock(), Mock()
+                captured = {}
+                @contextlib.contextmanager
+                def client(role):
+                    yield sender if role == 'candidate-sender' else receiver
+                instance.client = client
+                def inserted(_client, _operation, _uri, payload, _type, **kwargs):
+                    captured['payload'] = payload
+                    return 'CHK@private-reference'
+                def control(*_args):
+                    identifier = sender.send.call_args.args[1]['Identifier']
+                    return SimpleNamespace(name='GetFailed' if outcome == 'failed' else 'AllData',
+                        fields={'Identifier': 'other' if outcome == 'wrong-identifier' else identifier},
+                        payload=b'wrong' if outcome == 'wrong-bytes' else captured['payload'])
+                sender.read_until.side_effect = control
+                with patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=inserted), \
+                        patch.object(runtime.interop, 'fetch_direct') as fetched:
+                    with self.assertRaisesRegex(runtime.RuntimeFailure, 'local-content-control-not-established'):
+                        instance.content('candidate-sender', 'previous', verify_local_source=True)
+                fetched.assert_not_called()
+                instance.journal.append.assert_not_called()
+                self.assertEqual({}, instance.outcomes)
+
     def test_action_budget_denies_before_network(self):
         instance = self.supervisor()
         instance.authorization["maxOperations"] = 0

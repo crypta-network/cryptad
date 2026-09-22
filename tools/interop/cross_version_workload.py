@@ -524,13 +524,13 @@ class InstalledWorkloadAdapter:
                 self.start(role)
             self.connect()
             self.provision_apps()
-            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient')
+            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
             before = dict(self.nodes['candidate-sender'])
             after = self.restart('candidate-sender')
             new_epoch = (before['generation'] != after['generation']
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
-            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient')
+            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
             return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,

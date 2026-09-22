@@ -272,9 +272,12 @@ class TerminalPublicationTest(unittest.TestCase):
             events.append('cleanup')
             if failure == 'cleanup':
                 raise ValueError('cleanup-failure')
+        def capture(*args, observer_root):
+            self.assertEqual(Path(selection['private']['root']), observer_root)
+            return {'sentinel': {'status': 'matched'}}
         modules = {'installation': installation, 'restricted_workload': workload,
             'pr315_workload_evidence': SimpleNamespace(prepare_sentinel=lambda _: 'sha256:' + 'a' * 64,
-                capture=lambda *args: {'sentinel': {'status': 'matched'}}),
+                capture=capture),
             'workload_installation': SimpleNamespace(install=lambda: None),
             'restricted_workload_prepare': SimpleNamespace(prepare=prepare),
             'restricted_workload_launcher': SimpleNamespace(launcher_policy=lambda: {'revision': 'offline-test'}),

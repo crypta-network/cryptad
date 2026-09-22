@@ -14,6 +14,8 @@ The seventeenth passed four-daemon readiness and two-sided peer connection waits
 host bootstrap before app installation.
 The eighteenth again reached all four daemons, then hit a bounded operation deadline; the
 retained failure does not identify the expired operation, and no content retrieval completed.
+The nineteenth reached recipient CHK retrieval after peer, signed AppHost and bootstrap checks,
+then timed out waiting for the FCP fetch response. The full positive sequence remains incomplete.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -380,6 +382,35 @@ diagnosis, not a trusted per-case acceptance witness, and does not increase oper
 At the eighteenth helper cutoff, complete protected discovery passed 519 tests with 74 skips,
 restricted discovery passed 393 with one skip, and interop discovery passed 220 with eight
 skips. The four certification self-tests passed 152, 247, 88 and 185 tests respectively.
+
+The nineteenth attempt's retained code locations identify the first `fetch_direct()` call in
+the content operation, ending in a socket timeout while awaiting an FCP frame. This call follows
+all three two-sided relay waits and normal installation, worker binding and controller-bound
+bootstrap of both signed Mail children. Those steps completed in the installed execution, but
+their complete per-case causal records are still absent. No byte-checked remote result was obtained and no
+role restart was reached. The configuration correction therefore passed the previously failing
+bootstrap point; it did not resolve the content-path failure. All four stop receipts were captured,
+the sentinel matched, cleanup was reported complete and host-observed guest stop completed.
+
+`LocalRequestOnly` insertion is intended to write the shared CHK cache, but the existing storage
+method can log a write failure and return. The retained wrapper excerpts contained neither of
+the fixed storage-error messages; their absence in bounded excerpts does not rule out a failure.
+The next driver therefore performs a byte-checked sender `DSOnly` read after local insertion,
+before the recipient's unchanged `IgnoreDS` fetch. This control never preloads the recipient,
+does not replace remote success and shares the existing 180-second operation deadline. A failed
+local control stops the transfer rather than producing a passing result. No cache, routing,
+guest or timeout limit was raised.
+
+Future terminal diagnostics also retain at most 2 KiB from each of the four fixed observer FCP
+logs. Safe descriptor reads reject unsafe leaves, replacement, excessive size and growth. The
+same 15-second capture deadline and 64 KiB total private-output limit apply; controller records
+and the sentinel take precedence. These private, non-atomic tails are not acceptance witnesses.
+They cannot recover the unretained transcripts from attempts eighteen or nineteen. Their stopped
+disks and verified redundant expansions were removed after retaining the available diagnostics.
+Older expected-bundle copies were removed only after byte/identity verification and retention
+of their unique files and complete path/type/mode inventories alongside the original archives.
+The source-control and transcript changes passed 222 interop tests with eight skips, 401
+restricted tests with one skip and the 152-test cross-version soak self-test.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by
