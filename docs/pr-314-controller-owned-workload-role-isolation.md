@@ -401,6 +401,17 @@ It must match the independently supplied target context, so changing target meta
 relabel a copied denial, and recomputing modified evidence cannot replace the expected context.
 Actual attack measurement remains an installed-driver obligation, not a property of a hash.
 
+Contract `pr314-workload-roles-v8` requires independent `restartContext` snapshots before
+and after the sender restart. Each binds the full role identity, measured durable-state
+digest, controller deadline and monotonic observation time. Both witness identities must
+match these snapshots; the terminal identity must also match the current role roster.
+The invocation must change and the process epoch advance without changing the role's
+account, boot, cgroup scope, network namespace, durable state or deadline. Samples must
+fall within the case interval and before the deadline. Older contracts cannot establish
+this binding. Drivers must capture both snapshots independently, not reconstruct the
+pre-restart context from a witness. This contract correction is not installed execution
+or original-authority evidence; the installed restart acceptance remains outstanding.
+
 The Mail process binding accepts AppHost's daemon-visible PID hint for either the outer
 launcher or an interpreter-managed nested descendant. It still requires the owned cgroup,
 daemon ancestry, a nested admitted-JDK JVM, current process epochs and the daemon-owned
