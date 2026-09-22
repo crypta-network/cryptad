@@ -96,6 +96,9 @@ public class NodeStarter implements WrapperListener {
    * @param args command-line arguments forwarded to the application
    */
   public static void main(String[] args) {
+    // Initialize the wrapper backend before priority/provider setup can delay its first handshake.
+    WrapperManager.isControlledByNativeWrapper();
+
     // Enter background mode early so class loading also uses reduced priority.
     ProcessPriority.enterBackgroundMode();
 

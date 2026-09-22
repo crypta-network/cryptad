@@ -17,6 +17,7 @@ import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.CryptoRandoms;
 import network.crypta.crypt.DummyRandomSource;
+import network.crypta.crypt.JceLoader;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.DNSRequester;
 import network.crypta.node.Node;
@@ -24,6 +25,7 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.PeerManager;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.core.SSL;
+import network.crypta.support.ProcessPriority;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.AfterEach;
@@ -67,6 +69,59 @@ class NodeStarterTest {
   @Test
   void isTestingVM_whenNotStarted_throws() {
     assertThrows(IllegalStateException.class, NodeStarter::isTestingVM);
+  }
+
+  @Test
+  void main_whenStarting_initializesWrapperBeforePriorityAndCryptoProviders() {
+    // Arrange
+    String[] args = {"--config-file", "cryptad.ini"};
+    List<String> calls = new ArrayList<>();
+    AtomicReference<NodeStarter> listener = new AtomicReference<>();
+    AtomicReference<String[]> forwardedArgs = new AtomicReference<>();
+
+    try (MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
+        MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class);
+        MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class)) {
+      wrapper
+          .when(WrapperManager::isControlledByNativeWrapper)
+          .thenAnswer(
+              _ -> {
+                calls.add("wrapper-initialized");
+                return false;
+              });
+      priority
+          .when(ProcessPriority::enterBackgroundMode)
+          .thenAnswer(
+              _ -> {
+                calls.add("priority");
+                return true;
+              });
+      providers
+          .when(JceLoader::dumpLoaded)
+          .thenAnswer(
+              _ -> {
+                calls.add("providers");
+                return null;
+              });
+      wrapper
+          .when(() -> WrapperManager.start(Mockito.any(NodeStarter.class), Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                calls.add("start");
+                listener.set(invocation.getArgument(0));
+                forwardedArgs.set(invocation.getArgument(1));
+                return null;
+              });
+
+      // Act
+      NodeStarter.main(args);
+
+      // Assert
+      assertEquals(List.of("wrapper-initialized", "priority", "providers", "start"), calls);
+      assertNotNull(listener.get());
+      assertSame(args, forwardedArgs.get());
+      wrapper.verify(() -> WrapperManager.start(listener.get(), args), times(1));
+    }
   }
 
   @Test

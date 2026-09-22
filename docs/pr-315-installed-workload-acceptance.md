@@ -6,8 +6,8 @@ installed verification required for the finite four-role source-build profile.
 this revision's audit.** The first three installed attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
-and tenth reached first-role startup but failed daemon readiness; no four-role positive run
-has completed.
+through thirteenth reached first-role startup but failed daemon readiness; no four-role positive
+run has completed.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -258,6 +258,23 @@ The fixed tenth option therefore cannot overwrite a selected product option. Pac
 JDK, CPU, wrapper watchdog, role memory and campaign deadlines remain unchanged. This fix
 addresses the demonstrated directory mismatch; startup timing still requires an installed rerun.
 
+The thirteenth attempt at helper `e57825155f` no longer emitted the read-only logging-directory
+errors, but the wrapper still terminated JVMs that had not sent their startup signal in time.
+Its private log orders priority adjustment and crypto-provider initialization before
+`WrapperManager: Initializing...`. A separate abnormal dry-run exit remains undiagnosed.
+The first role never became ready, the remaining roles were not launched, teardown was reported
+completed, and the guest stopped. Its failed disks and archive-verified duplicate expanded inputs
+were removed under the continuing authorization; bounded diagnostics and original archives remain.
+
+The Java entrypoint now explicitly initializes the wrapper backend before priority adjustment
+and constructor-driven provider initialization. A regression failed on the original ordering
+and passed with the change; standalone argument forwarding and the existing listener remain
+unchanged. Backend threads can now be created before the main thread lowers its priority, so
+their scheduling need not inherit that later adjustment. Existing role cgroup limits still
+apply. The static logger still initializes before `main`, and this ordering fix alone does not
+prove a successful native handshake. The wrapper watchdog and all campaign/guest caps are
+unchanged. A rebuilt candidate, exact fresh fixture and installed retry are required.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing
@@ -471,7 +488,15 @@ Earlier in this implementation, the Gradle wrapper completed
 `:platform-devtools:installDist assembleCryptadDist`, candidate Mail staging/portable assembly,
 and historical predecessor portable assembly. Existing compiler/ErrorProne warnings and Gradle
 deprecation findings remain; task success does not establish analyzer cleanliness. No Java
-behavior was edited, no full Java test suite was run, and no final-source hosted CI was dispatched.
+behavior had been edited at that earlier cutoff. The subsequent wrapper startup ordering fix
+passed all 28 focused startup, CLI and priority tests. `./gradlew test` then passed 17,406 tests
+with zero failures/errors and ten skips: disabled benchmark, platform/provider preconditions,
+and Windows-only paths. The JCE algorithm test is explicitly enabled only on Java 21–23 and
+did not run on Java 25. Compiler analysis emitted 128 warnings in untouched code, including
+BooleanLiteral, EffectivelyPrivate and ReferenceEquality findings; no touched-file compiler
+warning was reported. Focused SonarLint reported no production-file findings and eight
+informational static-import suggestions on unchanged test lines, none in the new regression.
+No final-source hosted CI was dispatched.
 None of these results grants installed workload acceptance.
 
 | Assessment dimension | Audit verdict |
