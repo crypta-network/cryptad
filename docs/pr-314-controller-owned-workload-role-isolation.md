@@ -378,6 +378,17 @@ are unique across the entire assessment, including denial probes and separate at
 one management exchange into the bootstrap case, or one terminal event across fault cases,
 cannot satisfy the contract. These remain evidence consistency rules, not proof of execution.
 
+Contract `pr314-workload-roles-v6` recomputes exchange/lifecycle commitments from canonical
+case, target and complete witness payload (excluding only the commitment field), then compares
+the result with independently supplied `caseCommitments`. Request/response digests, invocation,
+request counts, trigger and terminal times, terminal roster and quiescence fields are covered.
+Lifecycle witnesses include the trigger kind and measured event digest. Changing only case ID
+and commitment cannot relabel an existing payload; recomputing a modified witness cannot replace
+the independent expected commitment. App witnesses must equal a separate kernel-measured
+`appProcess` context, including host PID, namespace PID and start epoch; host PID 1 is invalid.
+Drivers must acquire this context independently, never copy candidate-reported identifiers.
+Canonical hashing provides consistency only, not authentic execution or trusted measurement.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.

@@ -35,7 +35,8 @@ def observation(name):
         'app': dict(role='candidate-sender', provider='bubblewrap', hostPid=101, namespacePid=2,
                     processEpoch=100, invocationId='0'*31+'1', installedAppDigest=identity()['admittedAppDigest']),
         'exchange': dict(caseId=name, operationDigest=f'{1000+list(a.CASES).index(name):064x}',
-                         requestDigest=digest, expectedResponseDigest=digest, responseDigest=digest,
+                         requestDigest=f'{1000+list(a.CASES).index(name):064x}',
+                         expectedResponseDigest=digest, responseDigest=digest,
                          serverInvocationId='0'*31+('2' if name == 'fnp-content-retrieval' else '1'), serverRequests=1),
         'resources': dict(source='cgroup-v2', measurements=[{
             **{key: row[key] for key in ('role', 'invocationId', 'processEpoch', 'bootId', 'cgroupDigest')},
@@ -50,25 +51,70 @@ def observation(name):
                        targetActiveAfterNs=4, controlResponseDigest=digest, denialSource='kernel',
                        denialCode='EACCES', unrelatedStateBefore=digest, unrelatedStateAfter=digest),
         'lifecycle': dict(caseId=name, triggerDigest=f'{1000+list(a.CASES).index(name):064x}',
+                          trigger=dict(kind=name, eventDigest=f'{2000+list(a.CASES).index(name):064x}'),
                           triggerStartedNs=2, terminalObservedNs=4, roles=roles(),
                           populatedCgroups=[], remainingDescendants=0, retention='retained'),
     }
+    witness = witnesses[case.witness]
+    if case.witness in ('exchange', 'lifecycle'):
+        field = 'operationDigest' if case.witness == 'exchange' else 'triggerDigest'
+        witness[field] = a.payload_commitment(name, witness)
     return dict(caseId=name, status='passed', actor=case.actor, target=case.target,
                 outcome=case.outcome, startedMonotonicNs=1, finishedMonotonicNs=5,
-                witness=witnesses[case.witness])
+                witness=witness)
 
 
 def attempt():
     return dict(contract=a.CONTRACT, identity=identity(), declaredCases=list(a.CASES),
                 principals=dict(observerUid=1000, runnerUid=1001, roles=roles()),
                 targets={name: target(name) for name, case in a.CASES.items() if case.witness == 'denial'},
-                caseCommitments={name: f'{1000+list(a.CASES).index(name):064x}' for name, case in a.CASES.items()
+                caseCommitments={name: a.payload_commitment(name, observation(name)['witness']) for name, case in a.CASES.items()
                                  if case.witness in ('exchange', 'lifecycle')},
+                appProcess=observation('signed-apphost-child')['witness'],
                 observations=[observation(name) for name in a.CASES],
                 guestStopped=True, attemptCompleted=True)
 
 
 class WorkloadAcceptanceTest(unittest.TestCase):
+    def test_relabel_and_replace_commitment_cannot_copy_payload(self):
+        for source, destination in (('own-management', 'dynamic-app-bootstrap'),
+                                     ('deadline', 'observer-death')):
+            for recompute in (False, True):
+                value = attempt()
+                row = next(row for row in value['observations'] if row['caseId'] == destination)
+                row['witness'] = observation(source)['witness']
+                row['witness']['caseId'] = destination
+                field = 'operationDigest' if a.CASES[destination].witness == 'exchange' else 'triggerDigest'
+                row['witness'][field] = (a.payload_commitment(destination, row['witness']) if recompute
+                                        else value['caseCommitments'][destination])
+                with self.subTest(destination=destination, recompute=recompute):
+                    self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+
+    def test_commitment_covers_exchange_and_terminal_payload(self):
+        for name, field, replacement in (('own-management', 'requestDigest', 'f'*64),
+                ('own-management', 'responseDigest', 'f'*64), ('own-management', 'serverRequests', 2),
+                ('deadline', 'terminalObservedNs', 5), ('deadline', 'retention', 'cleaned-after-quiescence'),
+                ('deadline', 'trigger', {'kind': 'deadline', 'eventDigest': 'f'*64})):
+            value = attempt()
+            row = next(row for row in value['observations'] if row['caseId'] == name)
+            row['witness'][field] = replacement
+            if field == 'responseDigest':
+                row['witness']['expectedResponseDigest'] = replacement
+            with self.subTest(case=name, field=field):
+                self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+
+    def test_app_process_identity_must_match_independent_observation(self):
+        for field, replacement in (('hostPid', 1), ('hostPid', 999), ('namespacePid', 99), ('processEpoch', 999)):
+            value = attempt()
+            row = next(row for row in value['observations'] if row['caseId'] == 'signed-apphost-child')
+            row['witness'][field] = replacement
+            with self.subTest(field=field, replacement=replacement):
+                self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+        for replacement in (None, {}, {**observation('signed-apphost-child')['witness'], 'hostPid': 1}):
+            value = attempt()
+            value['appProcess'] = replacement
+            self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+
     def test_exchange_and_lifecycle_witnesses_cannot_be_relabelled(self):
         for kind in ('exchange', 'lifecycle'):
             names = [name for name, case in a.CASES.items() if case.witness == kind]
@@ -97,6 +143,8 @@ class WorkloadAcceptanceTest(unittest.TestCase):
                 for name in a.CASES:
                     part = copy.deepcopy(value)
                     part['declaredCases'] = [name]
+                    if name != 'signed-apphost-child':
+                        part['appProcess'] = None
                     part['observations'] = [row for row in part['observations'] if row['caseId'] == name]
                     for key in ('targets', 'caseCommitments'):
                         part[key] = {name: part[key][name]} if name in part[key] else {}
@@ -119,6 +167,8 @@ class WorkloadAcceptanceTest(unittest.TestCase):
         for name in a.CASES:
             value = attempt()
             value['declaredCases'] = [name]
+            if name != 'signed-apphost-child':
+                value['appProcess'] = None
             value['observations'] = [row for row in value['observations'] if row['caseId'] == name]
             value['targets'] = {name: value['targets'][name]} if name in value['targets'] else {}
             value['caseCommitments'] = {name: value['caseCommitments'][name]} if name in value['caseCommitments'] else {}
@@ -197,7 +247,7 @@ class WorkloadAcceptanceTest(unittest.TestCase):
             else:
                 value['witness'] = dict(source='cgroup-v2', memoryCurrentBytes=1024, pidsCurrent=4, cpuUsageUsec=2)
             with self.subTest(change=change), self.assertRaises(ValueError):
-                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
         with self.assertRaises(ValueError):
             a.observation_status(observation('kernel-resource-scope'), identity())
 
@@ -214,7 +264,7 @@ class WorkloadAcceptanceTest(unittest.TestCase):
             a.observation_status(observation('restart-durable-state'), identity())
 
     def test_previous_contract_versions_cannot_supply_new_witnesses(self):
-        for version in ('pr314-workload-roles-v1', 'pr314-workload-roles-v2', 'pr314-workload-roles-v3', 'pr314-workload-roles-v4'):
+        for version in ('pr314-workload-roles-v1', 'pr314-workload-roles-v2', 'pr314-workload-roles-v3', 'pr314-workload-roles-v4', 'pr314-workload-roles-v5'):
             value = attempt()
             value['contract'] = version
             self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
@@ -326,7 +376,7 @@ class WorkloadAcceptanceTest(unittest.TestCase):
                 value = observation('sibling-fcp')
                 value['witness'][field] = replacement
                 with self.assertRaises(ValueError):
-                    a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+                    a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
 
     def test_four_roles_have_distinct_uids_and_namespaces(self):
         for field in ('uid', 'gid', 'invocationId', 'networkNamespace', 'cgroupDigest', 'role'):
@@ -334,13 +384,13 @@ class WorkloadAcceptanceTest(unittest.TestCase):
                 value = observation('four-role-start')
                 value['witness']['roles'][1][field] = value['witness']['roles'][0][field]
                 with self.assertRaises(ValueError):
-                    a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+                    a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
 
     def test_observer_uid_cannot_own_candidate(self):
         value = observation('four-role-start')
         value['witness']['observerUid'] = value['witness']['roles'][0]['uid']
         with self.assertRaises(ValueError):
-            a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+            a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
 
     def test_remaining_descendant_or_populated_cgroup_prevents_terminal_pass(self):
         for field, replacement in (('remainingDescendants', 1), ('remainingDescendants', False),
@@ -348,7 +398,7 @@ class WorkloadAcceptanceTest(unittest.TestCase):
             value = observation('late-child')
             value['witness'][field] = replacement
             with self.assertRaises(ValueError):
-                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
 
     def test_duplicate_attempt_cannot_hide_failed_attempt(self):
         failed = attempt()
@@ -381,7 +431,7 @@ class WorkloadAcceptanceTest(unittest.TestCase):
             value = copy.deepcopy(observation('restart-durable-state'))
             value['witness'][field] = replacement
             with self.assertRaises(ValueError):
-                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'])
+                a.observation_status(value, identity(), attempt()['principals'], attempt()['targets'], attempt()['caseCommitments'], attempt()['appProcess'])
 
 
 if __name__ == '__main__':

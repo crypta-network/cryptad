@@ -6,9 +6,11 @@ report-import CLI or production approval API. Contract tests use synthetic recor
 not installed observations and must never be published as such.
 """
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 
-CONTRACT = 'pr314-workload-roles-v5'
+CONTRACT = 'pr314-workload-roles-v6'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
@@ -177,7 +179,28 @@ def _resources(witness, principals):
     return observed == set(ROLES)
 
 
-def _witness(case, witness, identity, principals):
+def payload_commitment(name, witness):
+    """Canonical payload binding, not authentication; compare to independent driver context."""
+    field = 'operationDigest' if CASES[name].witness == 'exchange' else 'triggerDigest'
+    payload = {key: value for key, value in witness.items() if key != field}
+    raw = json.dumps({'domain': CONTRACT, 'caseId': name, 'target': CASES[name].target,
+                      'payload': payload}, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _app_process(value, identity, principals):
+    return (_closed(value, ('role', 'provider', 'hostPid', 'namespacePid',
+                           'processEpoch', 'invocationId', 'installedAppDigest'))
+            and value['role'] == 'candidate-sender' and value['provider'] == 'bubblewrap'
+            and all(_positive(value[key]) for key in ('hostPid', 'namespacePid', 'processEpoch'))
+            and value['hostPid'] > 1 and value['hostPid'] != value['namespacePid']
+            and value['installedAppDigest'] == identity['admittedAppDigest']
+            and _principals(principals)
+            and value['invocationId'] == next(row['invocationId'] for row in principals['roles']
+                                               if row['role'] == value['role']))
+
+
+def _witness(case, witness, identity, principals, app_process):
     kind = case.witness
     if kind == 'identity':
         return witness == {'profile': PROFILE, 'bundleIdentity': identity['bundleIdentity'],
@@ -189,15 +212,8 @@ def _witness(case, witness, identity, principals):
                 and (principals is None or (witness['observerUid'] == principals['observerUid']
                      and witness['roles'] == principals['roles'])))
     if kind == 'app':
-        return (_closed(witness, ('role', 'provider', 'hostPid', 'namespacePid',
-                                 'processEpoch', 'invocationId', 'installedAppDigest'))
-                and witness['role'] == 'candidate-sender' and witness['provider'] == 'bubblewrap'
-                and all(_positive(witness[key]) for key in ('hostPid', 'namespacePid', 'processEpoch'))
-                and _hex(witness['invocationId'], 32) and _hex(witness['installedAppDigest'])
-                and witness['installedAppDigest'] == identity['admittedAppDigest']
-                and _principals(principals)
-                and witness['invocationId'] == next(row['invocationId'] for row in principals['roles']
-                                                    if row['role'] == witness['role']))
+        return (_app_process(witness, identity, principals)
+                and _app_process(app_process, identity, principals) and witness == app_process)
     if kind == 'exchange':
         return (_closed(witness, ('caseId', 'operationDigest', 'requestDigest', 'expectedResponseDigest', 'responseDigest',
                                  'serverInvocationId', 'serverRequests'))
@@ -239,8 +255,11 @@ def _witness(case, witness, identity, principals):
                 and _hex(witness['unrelatedStateBefore'])
                 and witness['unrelatedStateBefore'] == witness['unrelatedStateAfter'])
     if kind == 'lifecycle':
-        return (_closed(witness, ('caseId', 'triggerDigest', 'triggerStartedNs', 'terminalObservedNs', 'roles',
+        return (_closed(witness, ('caseId', 'triggerDigest', 'trigger', 'triggerStartedNs', 'terminalObservedNs', 'roles',
                                  'populatedCgroups', 'remainingDescendants', 'retention'))
+                and _closed(witness['trigger'], ('kind', 'eventDigest'))
+                and witness['trigger']['kind'] == witness['caseId']
+                and _hex(witness['trigger']['eventDigest'])
                 and _positive(witness['triggerStartedNs']) and _positive(witness['terminalObservedNs'])
                 and witness['triggerStartedNs'] < witness['terminalObservedNs']
                 and _roster(witness['roles']) and witness['populatedCgroups'] == []
@@ -257,7 +276,7 @@ def inventory(statuses=None):
             for name, case in CASES.items()]
 
 
-def observation_status(record, identity, principals=None, targets=None, case_commitments=None):
+def observation_status(record, identity, principals=None, targets=None, case_commitments=None, app_process=None):
     if not isinstance(record, dict) or not isinstance(record.get('caseId'), str) or record['caseId'] not in CASES:
         raise ValueError('workload-case-invalid')
     if record.get('status') != 'passed':
@@ -271,13 +290,14 @@ def observation_status(record, identity, principals=None, targets=None, case_com
             and (record['actor'], record['target'], record['outcome']) == (case.actor, case.target, case.outcome)
             and _positive(record['startedMonotonicNs']) and _positive(record['finishedMonotonicNs'])
             and record['startedMonotonicNs'] < record['finishedMonotonicNs']
-            and _witness(case, record['witness'], identity, principals)):
+            and _witness(case, record['witness'], identity, principals, app_process)):
         raise ValueError('workload-observation-invalid')
     if case.witness in ('exchange', 'lifecycle'):
         field = 'operationDigest' if case.witness == 'exchange' else 'triggerDigest'
         if not (record['witness']['caseId'] == record['caseId']
                 and isinstance(case_commitments, dict) and record['caseId'] in case_commitments
                 and _hex(record['witness'][field])
+                and record['witness'][field] == payload_commitment(record['caseId'], record['witness'])
                 and record['witness'][field] == case_commitments[record['caseId']]):
             raise ValueError('workload-case-commitment-mismatch')
     if case.witness == 'denial':
@@ -305,6 +325,8 @@ def verify_attempts(expected_identity, attempts):
     active services; probeDigest commits to the endpoint/object and operation for that case.
     caseCommitments independently binds each exchange operation and measured lifecycle trigger;
     the driver must not derive this expected context by copying the submitted witness.
+    appProcess is a separate kernel observation of the current AppHost child, including its
+    host/namespace PID and start epoch; it must not be copied from candidate API claims.
     """
     statuses = {}
     probe_commitments = set()
@@ -312,12 +334,15 @@ def verify_attempts(expected_identity, attempts):
     for attempt in attempts if isinstance(attempts, list) and len(attempts) <= len(CASES) else ():
         try:
             if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations',
-                                     'guestStopped', 'attemptCompleted', 'principals', 'targets', 'caseCommitments'))
+                                     'guestStopped', 'attemptCompleted', 'principals', 'targets', 'caseCommitments',
+                                     'appProcess'))
                     and attempt['contract'] == CONTRACT and attempt['identity'] == expected_identity
                     and _principals(attempt['principals'])
                     and attempt['guestStopped'] is True and attempt['attemptCompleted'] is True
                     and isinstance(attempt['declaredCases'], list) and attempt['declaredCases']
                     and all(isinstance(name, str) and name in CASES for name in attempt['declaredCases'])
+                    and (_app_process(attempt['appProcess'], expected_identity, attempt['principals'])
+                         if 'signed-apphost-child' in attempt['declaredCases'] else attempt['appProcess'] is None)
                     and _targets(attempt['targets'], attempt['principals'], attempt['declaredCases'])
                     and _case_commitments(attempt['caseCommitments'], attempt['declaredCases'])
                     and len(set(attempt['declaredCases'])) == len(attempt['declaredCases'])
@@ -336,7 +361,7 @@ def verify_attempts(expected_identity, attempts):
             observed = {}
             for row in attempt['observations']:
                 status = observation_status(row, expected_identity, attempt['principals'], attempt['targets'],
-                                            attempt['caseCommitments'])
+                                            attempt['caseCommitments'], attempt['appProcess'])
                 if row['caseId'] in observed:
                     raise ValueError('workload-duplicate-observation')
                 observed[row['caseId']] = status
