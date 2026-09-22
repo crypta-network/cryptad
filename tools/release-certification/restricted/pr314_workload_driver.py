@@ -294,6 +294,23 @@ def observer_failure(error):
         result['immediateCause'] = {'exceptionType': _bounded_text(type(cause).__name__, 128),
             'privateDetail': _bounded_text(str(cause), 512),
             'meaning': 'python-explicit-cause-not-acceptance'}
+    # A shared deadline exception alone cannot locate the expired operation. Retain
+    # bounded code locations, never frame locals, source lines or absolute paths.
+    components = {'cross_version_workload.py', 'cross_version_runtime.py',
+                  'interop_smoke.py', 'pr314_workload_driver.py'}
+    frames = []
+    current = error.__traceback__
+    for _ in range(64):
+        if current is None:
+            break
+        code = current.tb_frame.f_code
+        component = Path(code.co_filename).name
+        if (component in components and code.co_name.isascii()
+                and code.co_name.isidentifier() and len(code.co_name) <= 64):
+            frames.append(component + ':' + code.co_name + ':' + str(current.tb_lineno))
+        current = current.tb_next
+    if frames:
+        result['privateCodeLocations'] = frames[-8:]
     return result
 
 

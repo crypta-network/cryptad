@@ -31,6 +31,25 @@ class ObserverFailureTest(unittest.TestCase):
         error.__cause__ = error
         self.assertNotIn('immediateCause', driver.observer_failure(error))
 
+    def test_deadline_diagnostic_retains_bounded_code_locations_without_locals_or_paths(self):
+        namespace = {}
+        exec(compile('def connect(depth):\n'
+                     ' private_token = "never-export-this-token"\n'
+                     ' if depth: return connect(depth - 1)\n'
+                     ' raise RuntimeError("operation-deadline-exceeded")\n',
+                     '/private-location/cross_version_workload.py', 'exec'), namespace)
+        try:
+            namespace['connect'](40)
+        except RuntimeError as error:
+            result = driver.observer_failure(error)
+        self.assertEqual(8, len(result['privateCodeLocations']))
+        self.assertTrue(all(value.startswith('cross_version_workload.py:connect:')
+                            for value in result['privateCodeLocations']))
+        encoded = json.dumps(result)
+        self.assertNotIn('private-location', encoded)
+        self.assertNotIn('never-export-this-token', encoded)
+        self.assertLess(len(encoded.encode()), 4096)
+
 
 class CleanupTest(unittest.TestCase):
     def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):

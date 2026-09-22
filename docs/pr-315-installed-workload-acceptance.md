@@ -12,6 +12,8 @@ The fifteenth reached all four daemons, then exposed an incorrect peer-wait help
 The sixteenth failed first-role wrapper bootstrap with a JVM illegal-instruction crash.
 The seventeenth passed four-daemon readiness and two-sided peer connection waits, then failed
 host bootstrap before app installation.
+The eighteenth again reached all four daemons, then hit a bounded operation deadline; the
+retained failure does not identify the expired operation, and no content retrieval completed.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -365,6 +367,19 @@ and original archives were retained before verified stopped disposable disks and
 copies were removed. The later retained-deadline handoff correction was not in this attempt.
 The fixture correction passed 154 workload tests with 21 skips, 220 interop tests with eight
 skips and 271 PR-31x restricted tests with one skip; root-only skips remain unexecuted.
+
+The eighteenth attempt included the first-run configuration and retained-deadline corrections.
+All four daemons passed FCP readiness before `operation-deadline-exceeded`; the shared error
+label cannot distinguish a peer wait from a management request, so it cannot establish that
+host bootstrap passed. All four stop receipts were captured, the synthetic sentinel matched,
+cleanup was reported complete and the host confirmed guest stop. Across 166 memory samples,
+minimum observed guest available memory exceeded 3.5 GiB. No content or restart result exists.
+The diagnostic successor retains at most eight code locations from four fixed helper modules,
+without traceback source lines, frame locals or absolute paths. This is private failure
+diagnosis, not a trusted per-case acceptance witness, and does not increase operation deadlines.
+At the eighteenth helper cutoff, complete protected discovery passed 519 tests with 74 skips,
+restricted discovery passed 393 with one skip, and interop discovery passed 220 with eight
+skips. The four certification self-tests passed 152, 247, 88 and 185 tests respectively.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by
