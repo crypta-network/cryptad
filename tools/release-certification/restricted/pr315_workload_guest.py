@@ -2,18 +2,26 @@
 """Fixed disposable-guest installation and workload handoff; administrator test kit only."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 import tempfile
 
+# Root can write through ordinary read-only mode bits. Never create bytecode inside
+# the immutable installed closure while provisioning or importing its verified owners.
+sys.dont_write_bytecode = True
+
 SOURCE = Path('/root/cryptad')
 FIXTURES = SOURCE / 'build/pr315-inputs'
 KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restricted')
+STAGE = 'prerequisites'
+FAILURE = Path('/root/pr315-workload-failure.private.json')
 
 
 def execute(manifest_digest, product_commit):
+    global STAGE
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
     # installation. Check the OS/VM boundary before any account or service mutation here.
@@ -23,13 +31,16 @@ def execute(manifest_digest, product_commit):
     if missing:
         return {'status': 'not-executed', 'protectedExecutionEnabled': False}, 78
     import pr315_workload_fixtures as fixtures
+    STAGE = 'fixture-verification'
     fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
     integration.load_installation(SOURCE)
+    STAGE = 'installation'
     with tempfile.TemporaryDirectory(dir='/root') as temporary:
         integration.provision(SOURCE, Path(temporary))
     # Execute the committed test-kit copy, not a source-tree replacement. Fixture
     # materialization and the driver independently reverify the installed closure.
-    result = subprocess.run(['/usr/bin/python3', '-I', '-S', str(KIT / Path(__file__).name),
+    STAGE = 'installed-workload-driver'
+    result = subprocess.run(['/usr/bin/python3', '-I', '-S', '-B', str(KIT / Path(__file__).name),
         '--installed', '--fixture-manifest-digest', manifest_digest,
         '--product-source-commit', product_commit], stdin=subprocess.DEVNULL,
         timeout=3900, env=integration.ENV, check=False)
@@ -37,6 +48,7 @@ def execute(manifest_digest, product_commit):
 
 
 def installed(manifest_digest, product_commit):
+    global STAGE
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
         sys.path.insert(0, str(Path('/opt/cryptad-cross-version/current') / relative))
@@ -44,12 +56,29 @@ def installed(manifest_digest, product_commit):
     import pr314_workload_driver as driver
     if Path(__file__).resolve() != KIT / Path(__file__).name:
         raise ValueError('workload-installed-test-kit-required')
+    STAGE = 'selection-materialization'
     fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
     selection = fixtures.materialize_selection(FIXTURES, SOURCE, manifest_digest, product_commit)
     sys.path.insert(0, '/opt/cryptad-cross-version/current/tools/release-certification/protected')
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
+    STAGE = 'positive-driver'
     return driver.execute(), 0
+
+
+def retain_failure(error):
+    """Bounded private setup diagnostics; never copy this exception into public output."""
+    if os.geteuid() != 0:
+        return
+    value = {'stage': STAGE, 'exceptionType': type(error).__name__,
+             'privateDetail': str(error)[:1024], 'installedAcceptance': False}
+    try:
+        descriptor = os.open(FAILURE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(value, stream, sort_keys=True)
+            stream.write('\n')
+    except OSError:
+        pass
 
 
 def main():
@@ -71,7 +100,8 @@ def main():
 if __name__ == '__main__':
     try:
         code = main()
-    except Exception:
+    except Exception as error:
+        retain_failure(error)
         print('{"status":"failed-private-reconciliation-required","protectedExecutionEnabled":false}')
         code = 1
     raise SystemExit(code)

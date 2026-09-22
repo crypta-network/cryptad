@@ -20,6 +20,8 @@ import stat
 import sys
 import time
 
+sys.dont_write_bytecode = True
+
 INSTALLED = Path('/opt/cryptad-cross-version/current')
 TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
@@ -290,7 +292,12 @@ def execute():
                 child.sendall(json.dumps(result, separators=(',', ':')).encode())
                 child.close()
                 os._exit(0)
-            except BaseException:
+            except BaseException as error:
+                try:
+                    child.sendall(json.dumps({'observerFailure': type(error).__name__,
+                                             'privateDetail': str(error)[:1024]}).encode())
+                except OSError:
+                    pass
                 child.close()
                 os._exit(1)
         child.close()
@@ -299,6 +306,8 @@ def execute():
         deadline = campaign_deadline / 10**9 + 100
         raw, status = collect_child(parent, pid, deadline, lambda: sample_memory(diagnostics))
         if status != 0:
+            diagnostics['observerFailure'] = {'exitStatus': status,
+                'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
         if result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True:

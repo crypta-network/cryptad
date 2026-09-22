@@ -493,6 +493,7 @@ print(json.dumps(records))
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
+                ('pr315-workload-failure.private.json', '/root/pr315-workload-failure.private.json', 8192),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),
                 ('execution.private.json', '/opt/cryptad-cross-version/restricted-execution.json', 8388608),
                 ('native-consumer.private.log', '/root/pr312-native-consumer.private.log', 65536),

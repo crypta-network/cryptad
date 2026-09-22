@@ -99,14 +99,14 @@ def positive_executed(report, result):
             and result.get('protectedExecutionEnabled') is False)
 
 
-def public_result(status, positive=False, reasons=()):
+def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
             'implementationCoverage': 'incomplete', 'installedPositiveExecuted': positive,
             'installedWorkloadAcceptanceSatisfied': False, 'finiteNativeAcceptance': False,
             'protectedExecutionEnabled': False, 'phaseComplete': False,
             # Aggregate success is not sufficient for any individual v8 assertion.
-            'cases': acceptance.inventory()}
+            'cases': acceptance.inventory(statuses)}
 
 
 def run(args):
@@ -177,7 +177,12 @@ def run(args):
             observation = selected.attempt / 'pr314-workload-observation.private.json'
             value = native_runner.private_json(observation) if observation.exists() and observation.stat().st_size else None
             positive = positive_executed(report, value)
-            result, code = public_result('implementation-incomplete', positive), 2
+            diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
+            reached = diagnostic.exists() and diagnostic.stat().st_size > 0
+            # A reached aggregate without per-case witnesses is inconclusive. An
+            # installation failure is setup-failed; neither is an observed denial.
+            statuses = {case: 'inconclusive' if reached else 'setup-failed' for case in groups()[0][1]}
+            result, code = public_result('implementation-incomplete', positive, statuses=statuses), 2
         native_runner._save(output / 'assessment.json', result)
         print(json.dumps(result, sort_keys=True))
         return code
