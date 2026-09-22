@@ -347,6 +347,15 @@ members before either bootstrap process-binding pass, so malformed JSON shapes f
 request. Local validation passed 97 workload tests under root and 19 contract tests. The current
 driver still does not execute the complete installed hostile/lifecycle suite.
 
+The next contract revision, `pr314-workload-roles-v3`, replaces unscoped aggregate resource
+counters with exactly one measurement per owned role. Each measurement binds role, cgroup digest,
+manager invocation, process epoch and boot identity to the attempt's measured principal roster;
+duplicate, missing and unrelated groups reject. Restart evidence explicitly names
+`candidate-sender` and binds its resulting invocation and epoch to that roster, in addition to
+requiring a changed invocation/epoch, preserved state digest and unchanged deadline. Earlier
+contract versions cannot satisfy this revised witness format. These checks establish record
+consistency; actual measurements and causal restart execution remain installed-driver obligations.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.

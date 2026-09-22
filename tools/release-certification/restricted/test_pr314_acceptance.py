@@ -26,9 +26,12 @@ def observation(name):
                     processEpoch=100, invocationId='0'*31+'1', installedAppDigest=digest),
         'exchange': dict(requestDigest=digest, expectedResponseDigest=digest, responseDigest=digest,
                          serverInvocationId='0'*31+('2' if name == 'fnp-content-retrieval' else '1'), serverRequests=1),
-        'resources': dict(source='cgroup-v2', memoryCurrentBytes=1024, pidsCurrent=4, cpuUsageUsec=2),
-        'restart': dict(beforeInvocationId='a'*32, afterInvocationId='b'*32, beforeEpoch=1,
-                        afterEpoch=2, beforeStateDigest=digest, afterStateDigest=digest,
+        'resources': dict(source='cgroup-v2', measurements=[{
+            **{key: row[key] for key in ('role', 'invocationId', 'processEpoch', 'bootId', 'cgroupDigest')},
+            'memoryCurrentBytes': 1024, 'pidsCurrent': 4, 'cpuUsageUsec': 2} for row in roles()]),
+        'restart': dict(role='candidate-sender', beforeInvocationId='a'*32,
+                        afterInvocationId=roles()[0]['invocationId'], beforeEpoch=1,
+                        afterEpoch=roles()[0]['processEpoch'], beforeStateDigest=digest, afterStateDigest=digest,
                         deadlineUnchanged=True),
         'denial': dict(actorUid={'observer': 1000, 'runner': 1001}.get(case.actor, 2000),
                        attackStartedNs=3, targetActiveBeforeNs=2,
@@ -50,6 +53,49 @@ def attempt():
 
 
 class WorkloadAcceptanceTest(unittest.TestCase):
+    def test_resource_measurements_bind_every_owned_cgroup(self):
+        for index in range(4):
+            for field, replacement in (('role', 'controller'), ('cgroupDigest', 'f'*64),
+                    ('invocationId', 'f'*32), ('bootId', 'f'*32), ('processEpoch', 9999),
+                    ('memoryCurrentBytes', True), ('pidsCurrent', -1), ('cpuUsageUsec', '2')):
+                value = attempt()
+                row = next(row for row in value['observations'] if row['caseId'] == 'kernel-resource-scope')
+                row['witness']['measurements'][index][field] = replacement
+                with self.subTest(index=index, field=field):
+                    self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+
+    def test_resource_measurements_require_complete_unique_roster(self):
+        for change in ('missing', 'duplicate', 'old-shape'):
+            value = observation('kernel-resource-scope')
+            if change == 'missing':
+                value['witness']['measurements'].pop()
+            elif change == 'duplicate':
+                value['witness']['measurements'][1] = value['witness']['measurements'][0]
+            else:
+                value['witness'] = dict(source='cgroup-v2', memoryCurrentBytes=1024, pidsCurrent=4, cpuUsageUsec=2)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                a.observation_status(value, identity(), attempt()['principals'])
+        with self.assertRaises(ValueError):
+            a.observation_status(observation('kernel-resource-scope'), identity())
+
+    def test_restart_terminal_identity_matches_sender(self):
+        for field, replacement in (('role', 'candidate-recipient'), ('role', 'controller'),
+                ('afterInvocationId', 'f'*32), ('afterInvocationId', roles()[1]['invocationId']),
+                ('afterEpoch', 9999), ('afterEpoch', roles()[1]['processEpoch'])):
+            value = attempt()
+            row = next(row for row in value['observations'] if row['caseId'] == 'restart-durable-state')
+            row['witness'][field] = replacement
+            with self.subTest(field=field, replacement=replacement):
+                self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+        with self.assertRaises(ValueError):
+            a.observation_status(observation('restart-durable-state'), identity())
+
+    def test_previous_contract_versions_cannot_supply_new_witnesses(self):
+        for version in ('pr314-workload-roles-v1', 'pr314-workload-roles-v2'):
+            value = attempt()
+            value['contract'] = version
+            self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+
     def test_exchange_must_match_expected_active_role(self):
         for name in ('own-management', 'fnp-content-retrieval', 'dynamic-app-bootstrap'):
             expected_role = 'candidate-recipient' if name == 'fnp-content-retrieval' else 'candidate-sender'

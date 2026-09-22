@@ -8,7 +8,7 @@ not installed observations and must never be published as such.
 from dataclasses import dataclass
 import re
 
-CONTRACT = 'pr314-workload-roles-v2'
+CONTRACT = 'pr314-workload-roles-v3'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
@@ -120,6 +120,28 @@ def _actor_uid(actor, principals):
     return principals[actor + 'Uid']
 
 
+def _resources(witness, principals):
+    if not (_closed(witness, ('source', 'measurements')) and witness['source'] == 'cgroup-v2'
+            and _principals(principals) and isinstance(witness['measurements'], list)
+            and len(witness['measurements']) == len(ROLES)):
+        return False
+    identity_fields = ('role', 'invocationId', 'processEpoch', 'bootId', 'cgroupDigest')
+    metrics = ('memoryCurrentBytes', 'pidsCurrent', 'cpuUsageUsec')
+    observed = set()
+    for measurement in witness['measurements']:
+        if not (_closed(measurement, (*identity_fields, *metrics))
+                and isinstance(measurement['role'], str) and measurement['role'] in ROLES
+                and measurement['role'] not in observed
+                and all(_positive(measurement[key]) for key in metrics)):
+            return False
+        expected = next(row for row in principals['roles'] if row['role'] == measurement['role'])
+        if any(type(measurement[key]) is not type(expected[key]) or measurement[key] != expected[key]
+               for key in identity_fields):
+            return False
+        observed.add(measurement['role'])
+    return observed == set(ROLES)
+
+
 def _witness(case, witness, identity, principals):
     kind = case.witness
     if kind == 'identity':
@@ -150,16 +172,18 @@ def _witness(case, witness, identity, principals):
                 and witness['serverInvocationId'] == next(row['invocationId'] for row in principals['roles']
                                                           if row['role'] == case.server_role))
     if kind == 'resources':
-        return (_closed(witness, ('source', 'memoryCurrentBytes', 'pidsCurrent', 'cpuUsageUsec'))
-                and witness['source'] == 'cgroup-v2'
-                and all(_positive(witness[key]) for key in ('memoryCurrentBytes', 'pidsCurrent', 'cpuUsageUsec')))
+        return _resources(witness, principals)
     if kind == 'restart':
-        return (_closed(witness, ('beforeInvocationId', 'afterInvocationId', 'beforeEpoch',
+        return (_closed(witness, ('role', 'beforeInvocationId', 'afterInvocationId', 'beforeEpoch',
                                  'afterEpoch', 'beforeStateDigest', 'afterStateDigest', 'deadlineUnchanged'))
+                and witness['role'] == 'candidate-sender' and _principals(principals)
                 and all(_hex(witness[key], 32) for key in ('beforeInvocationId', 'afterInvocationId'))
                 and witness['beforeInvocationId'] != witness['afterInvocationId']
                 and _positive(witness['beforeEpoch']) and _positive(witness['afterEpoch'])
                 and witness['beforeEpoch'] != witness['afterEpoch']
+                and any(row['role'] == witness['role']
+                        and row['invocationId'] == witness['afterInvocationId']
+                        and row['processEpoch'] == witness['afterEpoch'] for row in principals['roles'])
                 and _hex(witness['beforeStateDigest'])
                 and witness['beforeStateDigest'] == witness['afterStateDigest']
                 and witness['deadlineUnchanged'] is True)
