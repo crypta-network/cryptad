@@ -3,6 +3,7 @@ from contextlib import ExitStack, nullcontext
 import copy
 import json
 import os
+import shutil
 import socket
 import stat
 import threading
@@ -19,6 +20,20 @@ import restricted_workload as workload
 import restricted_workload_controller as controller
 import restricted_workload_launcher as launcher
 import restricted_workload_prepare as preparation
+
+
+class MarkerImportTest(unittest.TestCase):
+    def test_rejected_manager_entry_does_not_mutate_installed_module_tree(self):
+        source = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('restricted_workload_mark.py', 'restricted_workload.py',
+                         'restricted_native_launcher.py'):
+                shutil.copyfile(source / name, root / name)
+            result = subprocess.run([sys.executable, '-I', '-S', str(root / 'restricted_workload_mark.py')],
+                                    capture_output=True, timeout=10)
+            self.assertEqual(1, result.returncode)
+            self.assertFalse((root / '__pycache__').exists())
 
 
 class ProspectiveConfigurationTest(unittest.TestCase):

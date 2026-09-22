@@ -5,6 +5,9 @@ from pathlib import Path
 import re
 import sys
 
+# ExecStartPre runs as root outside the unprivileged role's mount boundary. Imports
+# must not add bytecode files to the exact immutable installation inventory.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import restricted_workload as workload
 
