@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pr312_reference_vm as reference
 import pr313_acceptance_runner as native_runner
 import pr314_acceptance as acceptance
+from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS
 
 GUEST_MEMORY = 5632 * 1024**2
 ROLE_MEMORY = 1024**3
@@ -85,6 +86,7 @@ def positive_executed(report, result):
     """Bind diagnostics to this transport and post-cleanup driver result, never to JSON alone."""
     identity = report.get('hostVerifiedIdentity')
     return (report.get('mode') == 'workload-positive' and report.get('guestStopped') is True
+            and report.get('workloadPurpose', 'positive') == 'positive'
             and report.get('status') == 'guest-report-retained' and report.get('guestExitCode') == 0
             and isinstance(identity, dict) and isinstance(result, dict)
             and isinstance(result.get('identity'), dict)
@@ -138,6 +140,8 @@ def run(args):
         output.mkdir(mode=0o700, exist_ok=False)
         native_runner._save(output / 'plan.private.json', {
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
+            'executionPurpose': 'startup-measurement' if getattr(args, 'startup_measurement', False) else 'positive',
+            'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
             'groups': [{'group': name, 'declaredCases': cases} for name, cases in groups()],
             'storageBudgetBytes': args.storage_budget_bytes, 'minimumFreeBytes': args.min_free_bytes,
             'memoryBudgetBytes': args.memory_budget_bytes, 'minimumHostMemoryBytes': args.min_host_memory_bytes,
@@ -176,13 +180,17 @@ def run(args):
             report = native_runner.private_json(selected.attempt / 'attempt.private.json')
             observation = selected.attempt / 'pr314-workload-observation.private.json'
             value = native_runner.private_json(observation) if observation.exists() and observation.stat().st_size else None
-            positive = positive_executed(report, value)
+            startup_measurement = getattr(args, 'startup_measurement', False)
+            positive = not startup_measurement and positive_executed(report, value)
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             reached = diagnostic.exists() and diagnostic.stat().st_size > 0
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
             statuses = {case: 'inconclusive' if reached else 'setup-failed' for case in groups()[0][1]}
-            result, code = public_result('implementation-incomplete', positive, statuses=statuses), 2
+            if startup_measurement:
+                statuses = None  # No workload case was invoked by this diagnostic.
+            result, code = public_result('implementation-incomplete', positive, statuses=statuses,
+                reasons=('startup-measurement-not-workload-execution',) if startup_measurement else ()), 2
         native_runner._save(output / 'assessment.json', result)
         print(json.dumps(result, sort_keys=True))
         return code
@@ -193,6 +201,8 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', action='store_true', help='Check capacity and inputs without allocating a VM.')
+    parser.add_argument('--startup-measurement', action='store_true',
+        help='Measure only installed controller startup under a fixed diagnostic ceiling; no role launch or acceptance.')
     for name in ('source', 'output', 'prepared-image', 'qemu-root', 'seed', 'ssh-key', 'known-hosts',
                  'prepared-fixtures', 'storage-root'):
         parser.add_argument('--' + name, required=True, type=Path)

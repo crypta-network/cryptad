@@ -16,6 +16,24 @@ import pr314_workload_driver as driver
 
 
 class CleanupTest(unittest.TestCase):
+    def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):
+        self.assertEqual(130, driver.readiness_deadline(999 * 10**9, 100))
+        self.assertEqual(220, driver.readiness_deadline(999 * 10**9, 100, True))
+        self.assertEqual(115, driver.readiness_deadline(115 * 10**9, 100, True))
+        self.assertEqual(90, driver.readiness_deadline(90 * 10**9, 100, True))
+
+    def test_startup_measurement_never_constructs_workload_or_claims_positive(self):
+        # None is deliberately unusable as a workload selection: diagnostic completion
+        # must not open a journal, construct an adapter, or start any role.
+        with patch.object(driver, 'controller_ready') as ready, \
+                patch.object(driver.time, 'monotonic', return_value=146):
+            value = driver.observer_sequence(None, None, None, 999 * 10**9, 100, True)
+        ready.assert_called_once_with(220)
+        self.assertEqual(46, value['startupElapsedSeconds'])
+        self.assertFalse(value['installedPositiveExecuted'])
+        self.assertNotIn('contentRetrieval', value)
+        self.assertEqual('startup-measurement-not-workload-acceptance', value['classification'])
+
     def test_startup_capture_uses_only_fixed_private_record(self):
         workload = SimpleNamespace(read=Mock(return_value={'stage': 'entry'}))
         value = driver.controller_startup_snapshot(workload)
@@ -279,7 +297,8 @@ class MemoryDiagnosticsTest(unittest.TestCase):
             group.mkdir()
             for name, value in {'memory.current': '123', 'memory.max': '1073741824',
                     'memory.swap.max': '0', 'pids.current': '8', 'pids.max': '512',
-                    'memory.events': 'oom 1\noom_kill 1\n', 'cgroup.events': 'populated 1\n'}.items():
+                    'memory.events': 'oom 1\noom_kill 1\n', 'cgroup.events': 'populated 1\n',
+                    'cpu.stat': 'usage_usec 15\nthrottled_usec 4\n', 'cpu.max': '50000 100000'}.items():
                 (group / name).write_text(value)
             snapshot = driver.memory_snapshot()['services'][group.name]
         self.assertEqual('observed', snapshot['status'])
@@ -287,6 +306,8 @@ class MemoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(0, snapshot['memory.swap.max'])
         self.assertEqual({'oom': 1, 'oom_kill': 1}, snapshot['memory.events'])
         self.assertEqual({'populated': 1}, snapshot['cgroup.events'])
+        self.assertEqual({'usage_usec': 15, 'throttled_usec': 4}, snapshot['cpu.stat'])
+        self.assertEqual({'quota': 50000, 'period': 100000}, snapshot['cpu.max'])
 
     def test_symlink_metric_is_unavailable_not_zero(self):
         with tempfile.TemporaryDirectory() as directory, \

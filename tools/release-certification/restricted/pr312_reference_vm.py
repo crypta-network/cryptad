@@ -328,6 +328,9 @@ def run(args):
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
+    if args.mode == 'workload-positive':
+        report['workloadPurpose'] = ('startup-measurement' if getattr(args, 'startup_measurement', False)
+                                     else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')
     try:
@@ -440,6 +443,7 @@ def run(args):
                        'pr315_workload_guest.py --fixture-manifest-digest '
                        + args.fixture_manifest_digest + ' --product-source-commit '
                        + args.product_source_commit
+                       + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
                        + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
         else:
             script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/disposable_integration.py '

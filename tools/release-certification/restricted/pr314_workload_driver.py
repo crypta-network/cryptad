@@ -30,6 +30,7 @@ VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
+STARTUP_MEASUREMENT_SECONDS = 120
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
 
 
@@ -167,6 +168,32 @@ def controller_startup_snapshot(workload):
         return {'status': 'unavailable-not-quiescence-proof'}
 
 
+def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False):
+    """Prospective diagnostic observation never extends the retained execution deadline."""
+    seconds = STARTUP_MEASUREMENT_SECONDS if startup_measurement else 30
+    return min(campaign_deadline_ns / 10**9, started + seconds)
+
+
+def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin, startup_measurement=False):
+    """The diagnostic stops at the actual served readiness response, before any role start."""
+    controller_ready(readiness_deadline(campaign_deadline, startup_begin, startup_measurement))
+    if startup_measurement:
+        return {'classification': 'startup-measurement-not-workload-acceptance',
+                'controllerReadiness': 'observed-root-peer-response',
+                'startupElapsedSeconds': time.monotonic() - startup_begin,
+                'observationCeilingSeconds': STARTUP_MEASUREMENT_SECONDS,
+                'installedPositiveExecuted': False}
+    from cross_version_workload import InstalledWorkloadAdapter
+    from cryptad_certification.cross_version_evidence import Journal
+    with Journal(root, selected['plan']) as journal:
+        journal.append('start')
+        adapter = InstalledWorkloadAdapter(selected['plan'], selected['private'],
+                                           selected['authorization'], journal, handoff)
+        result = adapter.run_positive()
+        journal.checkpoint('partial')
+    return result
+
+
 def memory_snapshot():
     """Fixed private kernel metrics; absent cgroups never establish owned quiescence."""
     snapshot = {'observedMonotonicNs': time.monotonic_ns(), 'guest': {}, 'services': {}}
@@ -196,11 +223,15 @@ def memory_snapshot():
                 if raw != 'max' and not raw.isdecimal():
                     raise ValueError('cgroup-metric-invalid')
                 metrics[name] = raw if raw == 'max' else int(raw)
-            for name in ('memory.events', 'cgroup.events'):
+            for name in ('memory.events', 'cgroup.events', 'cpu.stat'):
                 rows = [line.split() for line in _kernel_read(path / name).splitlines()]
                 if any(len(row) != 2 or not row[1].isdecimal() for row in rows):
                     raise ValueError('cgroup-events-invalid')
                 metrics[name] = {key: int(value) for key, value in rows}
+            quota, period = _kernel_read(path / 'cpu.max').split()
+            if (quota != 'max' and not quota.isdecimal()) or not period.isdecimal() or int(period) <= 0:
+                raise ValueError('cgroup-cpu-limit-invalid')
+            metrics['cpu.max'] = {'quota': quota if quota == 'max' else int(quota), 'period': int(period)}
             after = path.stat(follow_symlinks=False)
             if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
                 raise ValueError('cgroup-replaced')
@@ -236,7 +267,7 @@ def sample_memory(diagnostics):
         peak['lastObserved'] = metrics
 
 
-def execute():
+def execute(*, startup_measurement=False):
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
     sys.path.insert(0, str(INSTALLED / 'tools/release-certification/restricted'))
@@ -249,8 +280,6 @@ def execute():
     import restricted_workload as workload
     from restricted_workload_prepare import prepare
     import pr315_workload_evidence as evidence
-    from cross_version_workload import InstalledWorkloadAdapter
-    from cryptad_certification.cross_version_evidence import Journal
     identity = installation.verify_execution()
     kit = installation.read_json(installation.secured(TEST_KIT / '.test-kit.json'))
     relative = 'tools/release-certification/restricted/pr314_workload_driver.py'
@@ -283,6 +312,7 @@ def execute():
         sentinel = evidence.prepare_sentinel(workload)
         root.mkdir(mode=0o700)
         os.chown(root, observer.pw_uid, observer.pw_gid)
+        startup_begin = time.monotonic()
         subprocess.run(['/usr/bin/systemctl', 'start', 'cryptad-workload-controller.service'],
                        check=True, timeout=30, env=ENV)
         parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -296,14 +326,8 @@ def execute():
                 os.environ.clear()
                 os.environ.update(ENV)
                 os.umask(0o077)
-                controller_ready(time.monotonic() + 30)
-                with Journal(root, selected['plan']) as journal:
-                    journal.append('start')
-                    adapter = InstalledWorkloadAdapter(selected['plan'], selected['private'],
-                                                       selected['authorization'], journal, handoff)
-                    result = adapter.run_positive()
-                    # All other required scenarios retain their original missing status.
-                    journal.checkpoint('partial')
+                result = observer_sequence(selected, root, handoff, campaign_deadline,
+                                           startup_begin, startup_measurement)
                 child.sendall(json.dumps(result, separators=(',', ':')).encode())
                 child.close()
                 os._exit(0)
@@ -325,11 +349,12 @@ def execute():
                 'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
-        if result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True:
+        if not startup_measurement and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True):
             raise ValueError('workload-positive-observation-incomplete')
         result.update(identity=identity, finiteNativeAcceptance='not-executed-by-this-driver',
                       campaignDeadlineMonotonicNs=campaign_deadline,
-                      workloadAcceptance='incomplete-hostile-contract-not-executed', protectedExecutionEnabled=False)
+                      workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
+                          else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
     finally:
         try:
             if parent is not None:
@@ -353,7 +378,8 @@ def execute():
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
     workload.write(REPORT, result, create=True)
-    return {'status': 'positive-sequence-executed', 'workloadAcceptance': 'incomplete',
+    return {'status': 'startup-measurement-executed' if startup_measurement else 'positive-sequence-executed',
+            'workloadAcceptance': 'incomplete',
             'protectedExecutionEnabled': False}
 
 

@@ -4,7 +4,7 @@ This page records the PR-315 workload inventory, executable-path gaps, and the r
 installed verification required for the finite four-role source-build profile.
 **Implementation is incomplete; no installed workload case has a valid acceptance witness in
 this revision's audit.** The first three installed attempts failed before role staging; the next
-two failed network setup. A sixth prepared the fabric but timed out waiting for controller
+two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for controller
 readiness, before any role service was observed running.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
@@ -154,6 +154,36 @@ The fifth and sixth stopped guests' disk pairs were subsequently removed under t
 continuing authorization, after descriptor and backing-dependency checks. Their diagnostics,
 failure verdicts and source/tool snapshots remain retained. Each new attempt still requires
 the same task-wide 40 GiB budget and 8 GiB reserve check.
+
+The seventh attempt at helper `7b20b3f7800f131503823a6888bf5e67d206f93c` again expired the
+ordinary 30-second readiness poll. Its captured checkpoint was still at entry: installation
+verification had not completed before the observer deadline. This establishes the last reached
+phase, not eventual readiness or the correct replacement budget. Cleanup completed and the
+guest stopped. Its stopped disks were removed after the same ownership/dependency checks.
+Six older expanded source copies were also removed after byte/mode comparisons against their
+digest-verified retained archives, reclaiming 4,252,184,576 allocated bytes. The original source
+archives, exact exported bundles, logs, fixtures and reference inputs remain; no failed verdict
+was changed.
+
+`--startup-measurement` now selects a fixed administrator diagnostic in a fresh copied guest.
+It prepares the same campaign/fabric and starts the actual controller, but stops before any
+role start. Its prospective 120-second observation ceiling is clamped to the original retained
+campaign deadline. The ordinary positive driver's 30-second poll remains unchanged. A served
+root-peer response is required; checkpoint or socket existence alone never establishes readiness.
+The private checkpoint's prospective version 2 retains only the four fixed stage timestamps
+within one startup epoch. Private samples additionally capture actual cgroup CPU quota and
+usage/throttling counters. A diagnostic result cannot set installed positive execution, and all
+45 workload case statuses remain unexecuted. A later operational polling change requires review
+of the measured result under a new exact test-kit identity; this is not a campaign-clock reset.
+
+Two narrow network-helper fixes address separately demonstrated offline child-process failures.
+Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
+and context manager with unbounded waits. Descriptor receipt and child reap share the existing
+12-second connector deadline, followed by a bounded two-second termination reap on failure;
+the child alarm and TCP connection limits are unchanged. Uncertain reap closes local descriptors
+and fails without declaring quiescence. Real unprivileged child/descriptor tests cover EOF and
+post-transfer stalls; mocked namespace entry and cleanup-timeout cases remain offline tests,
+not installed hostile/lifecycle witnesses.
 
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing

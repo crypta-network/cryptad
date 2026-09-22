@@ -20,7 +20,7 @@ STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
 
 
-def execute(manifest_digest, product_commit):
+def execute(manifest_digest, product_commit, *, startup_measurement=False):
     global STAGE
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
@@ -42,12 +42,13 @@ def execute(manifest_digest, product_commit):
     STAGE = 'installed-workload-driver'
     result = subprocess.run(['/usr/bin/python3', '-I', '-S', '-B', str(KIT / Path(__file__).name),
         '--installed', '--fixture-manifest-digest', manifest_digest,
-        '--product-source-commit', product_commit], stdin=subprocess.DEVNULL,
+        '--product-source-commit', product_commit,
+        *(['--startup-measurement'] if startup_measurement else [])], stdin=subprocess.DEVNULL,
         timeout=3900, env=integration.ENV, check=False)
     return None, result.returncode
 
 
-def installed(manifest_digest, product_commit):
+def installed(manifest_digest, product_commit, *, startup_measurement=False):
     global STAGE
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
@@ -62,8 +63,8 @@ def installed(manifest_digest, product_commit):
     sys.path.insert(0, '/opt/cryptad-cross-version/current/tools/release-certification/protected')
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
-    STAGE = 'positive-driver'
-    return driver.execute(), 0
+    STAGE = 'startup-measurement' if startup_measurement else 'positive-driver'
+    return driver.execute(startup_measurement=startup_measurement), 0
 
 
 def _bounded_text(value, maximum):
@@ -150,12 +151,14 @@ def main():
     parser.add_argument('--fixture-manifest-digest', required=True)
     parser.add_argument('--product-source-commit', required=True)
     parser.add_argument('--installed', action='store_true')
+    parser.add_argument('--startup-measurement', action='store_true')
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):
         parser.error('invalid fixed source or fixture identity')
     operation = installed if args.installed else execute
-    result, code = operation(args.fixture_manifest_digest, args.product_source_commit)
+    result, code = operation(args.fixture_manifest_digest, args.product_source_commit,
+                             startup_measurement=args.startup_measurement)
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return code

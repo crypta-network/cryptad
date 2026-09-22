@@ -47,7 +47,8 @@ class RunnerTests(unittest.TestCase):
             'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
             'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
         self.assertTrue(runner.positive_executed(report, result))
-        for field, value in (('guestStopped', False), ('guestExitCode', 1), ('hostVerifiedIdentity', {})):
+        for field, value in (('guestStopped', False), ('guestExitCode', 1), ('hostVerifiedIdentity', {}),
+                             ('workloadPurpose', 'startup-measurement')):
             changed = copy.deepcopy(report)
             changed[field] = value
             self.assertFalse(runner.positive_executed(changed, result))

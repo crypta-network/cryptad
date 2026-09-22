@@ -190,19 +190,24 @@ def handle_request(connection, observer_uid):
         return False
 
 
-def startup_checkpoint(stage, started, error=None):
+def startup_checkpoint(stage, started, reached, error=None):
     """Best-effort root-private latest runtime state, never history or acceptance authority.
 
     Fixed internal stages expose no command, candidate output, exception message or private
     selection. The administrator can snapshot this before systemd removes RuntimeDirectory.
-    Diagnostic failure must not change controller behavior or replace the original failure.
+    The four-entry timestamp map belongs only to this process startup epoch; repeated error
+    observations preserve the first reached time. Diagnostic failure must not change controller
+    behavior or replace the original failure.
     """
     try:
-        if stage not in STARTUP_STAGES:
+        if stage not in STARTUP_STAGES or set(reached) - STARTUP_STAGES:
             return
-        record = {'schemaVersion': 1, 'classification': 'private-runtime-diagnostic-not-acceptance',
+        observed = time.monotonic_ns()
+        reached.setdefault(stage, started if stage == 'entry' else observed)
+        record = {'schemaVersion': 2, 'classification': 'private-runtime-diagnostic-not-acceptance',
             'pid': os.getpid(), 'bootId': workload.boot(), 'startedMonotonicNs': started,
-            'observedMonotonicNs': time.monotonic_ns(), 'stage': stage}
+            'observedMonotonicNs': observed, 'stage': stage,
+            'stageMonotonicNs': dict(reached)}
         if error is not None:
             record['exceptionType'] = type(error).__name__[:128]
         workload.write(STARTUP, record, mode=0o600)
@@ -214,7 +219,8 @@ def main():
     if len(sys.argv) != 1 or not sys.flags.isolated or not sys.flags.no_site or os.geteuid() != 0:
         workload.reject('fixed-entry-required')
     started, stage = time.monotonic_ns(), 'entry'
-    startup_checkpoint(stage, started)
+    reached = {}
+    startup_checkpoint(stage, started, reached)
     try:
         os.environ.clear()
         os.umask(0o077)
@@ -224,12 +230,12 @@ def main():
         import installation
         installation.verify_execution()
         stage = 'installation-verified'
-        startup_checkpoint(stage, started)
+        startup_checkpoint(stage, started, reached)
         observer = pwd.getpwnam('cryptad-soak')
         if (workload.ROOT / 'campaign.json').exists():
             workload.reconcile()
         stage = 'reconciled'
-        startup_checkpoint(stage, started)
+        startup_checkpoint(stage, started, reached)
         if SOCKET.exists() or SOCKET.is_symlink():
             workload.reject('socket-reconciliation-required')
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -238,9 +244,9 @@ def main():
         os.chown(SOCKET, observer.pw_uid, observer.pw_gid)
         server.listen(8)
         stage = 'listening'
-        startup_checkpoint(stage, started)
+        startup_checkpoint(stage, started, reached)
     except Exception as error:
-        startup_checkpoint(stage, started, error)
+        startup_checkpoint(stage, started, reached, error)
         raise
     last_observer = time.monotonic()
     try:

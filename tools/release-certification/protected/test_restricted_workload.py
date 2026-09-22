@@ -28,7 +28,7 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(controller, 'STARTUP', Path(directory) / 'startup.json'), \
                 patch.object(workload, 'secured', side_effect=lambda path, **_kwargs: path):
-            controller.startup_checkpoint('entry', 123, ValueError('sensitive detail'))
+            controller.startup_checkpoint('entry', 123, {}, ValueError('sensitive detail'))
             record = json.loads(controller.STARTUP.read_text())
             self.assertEqual(0o600, stat.S_IMODE(controller.STARTUP.stat().st_mode))
         self.assertEqual('private-runtime-diagnostic-not-acceptance', record['classification'])
@@ -36,16 +36,31 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
         self.assertEqual(workload.boot(), record['bootId'])
         self.assertEqual(123, record['startedMonotonicNs'])
         self.assertGreater(record['observedMonotonicNs'], 123)
+        self.assertEqual(2, record['schemaVersion'])
+        self.assertEqual({'entry': 123}, record['stageMonotonicNs'])
         self.assertEqual('entry', record['stage'])
         self.assertEqual('ValueError', record['exceptionType'])
         self.assertNotIn('sensitive detail', json.dumps(record))
 
     def test_invalid_stage_and_diagnostic_write_failure_cannot_change_control_behavior(self):
         with patch.object(workload, 'write', side_effect=OSError('disk unavailable')) as write:
-            controller.startup_checkpoint('arbitrary-stage', 1)
+            controller.startup_checkpoint('arbitrary-stage', 1, {})
             write.assert_not_called()
-            controller.startup_checkpoint('entry', 1)
+            controller.startup_checkpoint('entry', 1, {})
             write.assert_called_once()
+
+    def test_failed_write_and_later_exception_preserve_first_stage_time_in_one_epoch(self):
+        reached = {}
+        with patch.object(controller.time, 'monotonic_ns', side_effect=[100, 120, 150]), \
+                patch.object(workload, 'write', side_effect=[OSError('unavailable'), None, None]) as write:
+            controller.startup_checkpoint('entry', 90, reached)
+            controller.startup_checkpoint('installation-verified', 90, reached)
+            controller.startup_checkpoint('installation-verified', 90, reached, ValueError('private'))
+        record = write.call_args.args[1]
+        self.assertEqual({'entry': 90, 'installation-verified': 120}, record['stageMonotonicNs'])
+        self.assertEqual(150, record['observedMonotonicNs'])
+        self.assertEqual('ValueError', record['exceptionType'])
+        self.assertEqual({'entry': 90}, write.call_args_list[0].args[1]['stageMonotonicNs'])
 
     def run_startup(self, verification_error=None):
         records, events = [], []
@@ -96,6 +111,12 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
         self.assertEqual(1, len({row['startedMonotonicNs'] for row in records}))
         self.assertEqual(1, len({row['pid'] for row in records}))
         self.assertTrue(all('exceptionType' not in row for row in records))
+        for index, record in enumerate(records):
+            self.assertEqual(set(events[:index + 2]) - {'verify-called'}, set(record['stageMonotonicNs']))
+            self.assertEqual(record['startedMonotonicNs'], record['stageMonotonicNs']['entry'])
+            self.assertTrue(all(record['startedMonotonicNs'] <= timestamp <= record['observedMonotonicNs']
+                                for timestamp in record['stageMonotonicNs'].values()))
+        self.assertEqual(set(controller.STARTUP_STAGES), set(records[-1]['stageMonotonicNs']))
 
 
 class MarkerImportTest(unittest.TestCase):
