@@ -10,7 +10,7 @@ import hashlib
 import json
 import re
 
-CONTRACT = 'pr314-workload-roles-v6'
+CONTRACT = 'pr314-workload-roles-v7'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
@@ -181,8 +181,13 @@ def _resources(witness, principals):
 
 def payload_commitment(name, witness):
     """Canonical payload binding, not authentication; compare to independent driver context."""
-    field = 'operationDigest' if CASES[name].witness == 'exchange' else 'triggerDigest'
-    payload = {key: value for key, value in witness.items() if key != field}
+    kind = CASES[name].witness
+    if kind == 'denial':
+        payload = {**witness, 'targetIdentity': {
+            key: value for key, value in witness['targetIdentity'].items() if key != 'probeDigest'}}
+    else:
+        field = 'operationDigest' if kind == 'exchange' else 'triggerDigest'
+        payload = {key: value for key, value in witness.items() if key != field}
     raw = json.dumps({'domain': CONTRACT, 'caseId': name, 'target': CASES[name].target,
                       'payload': payload}, sort_keys=True, separators=(',', ':'), allow_nan=False)
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -240,10 +245,11 @@ def _witness(case, witness, identity, principals, app_process):
                 and witness['beforeStateDigest'] == witness['afterStateDigest']
                 and witness['deadlineUnchanged'] is True)
     if kind == 'denial':
-        return (_closed(witness, ('actorUid', 'attackStartedNs', 'targetActiveBeforeNs',
+        return (_closed(witness, ('actorUid', 'attackDigest', 'attackStartedNs', 'targetActiveBeforeNs',
                                  'targetActiveAfterNs', 'controlResponseDigest', 'denialSource',
                                  'denialCode', 'unrelatedStateBefore', 'unrelatedStateAfter', 'targetIdentity'))
                 and _positive(witness['actorUid'])
+                and _hex(witness['attackDigest'])
                 and _principals(principals)
                 and witness['actorUid'] == _actor_uid(case.actor, principals)
                 and all(_positive(witness[key]) for key in
@@ -304,6 +310,7 @@ def observation_status(record, identity, principals=None, targets=None, case_com
         target = record['witness']['targetIdentity']
         if not (isinstance(targets, dict) and record['caseId'] in targets
                 and _target(record['caseId'], target, principals)
+                and target['probeDigest'] == payload_commitment(record['caseId'], record['witness'])
                 and target == targets[record['caseId']]
                 and record['witness']['controlResponseDigest'] == target['controlResponseDigest']):
             raise ValueError('workload-denial-target-mismatch')
@@ -323,6 +330,8 @@ def verify_attempts(expected_identity, attempts):
     expected_identity.admittedAppDigest must come from the authenticated selection's exact
     installed-app projection, never from the observed app. Targets are independently measured
     active services; probeDigest commits to the endpoint/object and operation for that case.
+    Denial attackDigest must identify the actual measured attack transcript; the probe
+    commitment covers it and the complete denial payload, not just target metadata.
     caseCommitments independently binds each exchange operation and measured lifecycle trigger;
     the driver must not derive this expected context by copying the submitted witness.
     appProcess is a separate kernel observation of the current AppHost child, including its

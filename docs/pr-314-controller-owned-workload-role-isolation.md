@@ -389,6 +389,14 @@ the independent expected commitment. App witnesses must equal a separate kernel-
 Drivers must acquire this context independently, never copy candidate-reported identifiers.
 Canonical hashing provides consistency only, not authentic execution or trusted measurement.
 
+Contract `pr314-workload-roles-v7` applies the canonical payload binding to denials too.
+`attackDigest` identifies the actual measured attack transcript; `probeDigest` is recomputed
+over the case, target and complete denial witness, excluding only the nested probe digest.
+This covers actor, attack digest, timing, denial source/code, state and target/control identity.
+It must match the independently supplied target context, so changing target metadata cannot
+relabel a copied denial, and recomputing modified evidence cannot replace the expected context.
+Actual attack measurement remains an installed-driver obligation, not a property of a hash.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.
