@@ -19,6 +19,12 @@ import disposable_integration as harness
 class DisposableHarnessTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
                          'socket activation requires Linux fork')
+    def test_socket_activation_also_isolates_temporary_state_when_uid_is_root(self):
+        with patch.object(os, 'geteuid', return_value=0):
+            self.test_real_forked_listener_passes_worker_activation_with_noninheritable_fd()
+
+    @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
+                         'socket activation requires Linux fork')
     def test_real_forked_listener_passes_worker_activation_with_noninheritable_fd(self):
         with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
             import restricted_worker as worker
@@ -64,7 +70,8 @@ class DisposableHarnessTest(unittest.TestCase):
                             # only the root/state prerequisites, never the FD/socket checks.
                             if os.geteuid() != 0:
                                 patches.enter_context(patch.object(worker.os, 'geteuid', return_value=0))
-                                patches.enter_context(patch.object(worker, 'secure', side_effect=lambda path: path))
+                            # TemporaryDirectory may have a world-writable ancestor even as root.
+                            patches.enter_context(patch.object(worker, 'secure', side_effect=lambda path: path))
                             patches.enter_context(patch.object(worker, 'STATE', root))
                             patches.enter_context(patch.object(worker, 'OPERATIONS', operations))
                             patches.enter_context(patch.object(worker.socket, 'socket', side_effect=ActivatedSocket))

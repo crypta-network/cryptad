@@ -28,7 +28,7 @@ import pr313_public_faults as public_faults
 MAX_PRIVATE_RECORD = 256 * 1024
 # Reserve bounded guest write space plus room to retain terminal reports before another copy.
 # This is a conservative launch prerequisite, not a disk quota or permission to remove history.
-GUEST_WRITE_RESERVE = 4 * 1024**3
+GUEST_WRITE_RESERVE = 24 * 1024**3
 REPORT_RESERVE = 256 * 1024**2
 CASE_FAILURE_STAGES = {
     'installed-pr313-fault': frozenset(faults.CASES),
@@ -107,6 +107,51 @@ def required_attempt_bytes(args):
     copied += _tree_bytes(args.prepared_fixtures)
     return (args.prepared_image.stat().st_size + 3 * copied + _tree_bytes(args.qemu_root)
             + args.seed.stat().st_size + GUEST_WRITE_RESERVE + REPORT_RESERVE)
+
+
+def storage_policy(args, output):
+    """Require an explicit task-wide retention root, budget and host reserve."""
+    root = args.storage_root.resolve(strict=True)
+    if (not root.is_dir() or output.parent.resolve(strict=True) != root
+            or any(type(value) is not int or value <= 0 for value in
+                   (args.storage_budget_bytes, args.min_free_bytes))):
+        raise ValueError('pr313-storage-policy-invalid')
+    return root
+
+
+def allocated_bytes(root):
+    """Count retained siblings and current work without following links or crossing mounts."""
+    device = root.stat().st_dev
+    total = count = 0
+    deadline = time.monotonic() + 30
+    def walk_error(error):
+        raise error
+    for directory, directories, files in os.walk(root, followlinks=False, onerror=walk_error):
+        for path in [Path(directory), *(Path(directory) / name for name in files)]:
+            info = path.lstat()
+            count += 1
+            if count > 500000 or time.monotonic() >= deadline or info.st_dev != device:
+                raise ValueError('pr313-storage-inventory-unavailable')
+            total += info.st_blocks * 512
+        for name in directories:
+            path = Path(directory) / name
+            info = path.lstat()
+            if info.st_dev != device:
+                raise ValueError('pr313-storage-inventory-unavailable')
+            if stat.S_ISLNK(info.st_mode):
+                total += info.st_blocks * 512
+    return total
+
+
+def capacity_reason(args, root, required):
+    # Re-measure after each prior attempt's verified cleanup. Retained failures and recovery
+    # disks, including earlier suites under this task root, consume the same total budget.
+    used = allocated_bytes(root)
+    if used + required > args.storage_budget_bytes:
+        return 'suite-storage-budget-exhausted'
+    if shutil.disk_usage(root).free < required + args.min_free_bytes:
+        return 'external-capacity-unavailable'
+    return None
 
 
 def groups():
@@ -306,13 +351,16 @@ def run(args):
     verify_executing_source(args.source)
     os.umask(0o077)
     output = args.output.absolute()
+    storage_root = storage_policy(args, output)
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
     attempts, history = [], []
-    _save(output / 'plan.private.json', {'contract': acceptance.CONTRACT, 'groups': [
+    _save(output / 'plan.private.json', {'contract': acceptance.CONTRACT,
+        'storagePolicy': {'budgetBytes': args.storage_budget_bytes, 'minimumFreeBytes': args.min_free_bytes},
+        'groups': [
         {'group': group, 'caseId': case, 'declaredCases': declared}
         for group, case, declared in groups()]})
     expected = None
-    capacity_exhausted = False
+    capacity_exhausted = None
     for index, (group, case, declared) in enumerate(groups()):
         directory = output / ('attempt-' + str(index + 1).zfill(2))
         selected = SimpleNamespace(**vars(args))
@@ -320,12 +368,13 @@ def run(args):
         selected.mode = 'native-slice'
         selected.case_group, selected.fault_case = group, case
         try:
-            if capacity_exhausted or shutil.disk_usage(output).free < required_attempt_bytes(args):
-                capacity_exhausted = True
+            capacity_exhausted = capacity_exhausted or capacity_reason(
+                args, storage_root, required_attempt_bytes(args))
+            if capacity_exhausted:
                 attempts.append(dict(contract=acceptance.CONTRACT, identity=expected, declaredCases=declared,
                     observations=[{'caseId': name, 'status': 'setup-failed'} for name in declared], guestStopped=True, attemptCompleted=False))
                 history.append({'group': group, 'caseId': case, 'status': 'setup-failed',
-                                'reason': 'external-capacity-unavailable'})
+                                'reason': capacity_exhausted})
                 _save(output / ('history-' + str(index + 1).zfill(2) + '.private.json'), history)
                 continue
             exit_code = reference.run(selected)
@@ -353,10 +402,12 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'output', 'prepared-image', 'qemu-root', 'seed', 'ssh-key', 'known-hosts',
-                 'prepared-fixtures'):
+                 'prepared-fixtures', 'storage-root'):
         parser.add_argument('--' + name, required=True, type=Path)
     for name in ('product-source-commit', 'prepared-image-digest', 'fixture-manifest-digest'):
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--storage-budget-bytes', type=int, required=True)
+    parser.add_argument('--min-free-bytes', type=int, required=True)
     parser.add_argument('--profile', choices=tuple(reference.PROFILES), default='tcg-multi')
     parser.add_argument('--port', type=int, default=23112)
     parser.add_argument('--timeout', type=int, default=1800)

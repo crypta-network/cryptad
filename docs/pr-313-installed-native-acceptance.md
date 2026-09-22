@@ -118,6 +118,14 @@ and the shared 79 GiB filesystem had approximately 33 GiB available. The per-att
 reserve is not a suite-wide storage quota; remaining execution needs an explicit total storage
 bound before another launch.
 
+The 2026-09-22 review correction adds mandatory task-wide storage budget and free-space options,
+includes every PR-313 test module in hosted prerequisites, and fixes the temporary socket-state
+test for root invocation. This changes the acceptance runner after the installed positive run;
+the earlier 17-case result remains bound to `19983163e4`, not this corrected runner. No guest was
+started for the correction. Local restricted discovery passed 254 tests with the extracted real
+`qemu-img` selected and no skips; the image regression does not boot a VM. Workflow validation
+with `actionlint` and `git diff --check` also passed.
+
 ## Fixed contract and separate execution layers
 
 The authoritative inventory is
@@ -150,7 +158,18 @@ A denial is credited only after its attack executed at the required phase. Setup
 not-executed, inconclusive, rejected input and failed assertions retain distinct meanings.
 Expected reconciliation-required state is never deleted merely to make a later case run.
 
-Each launch checks available space for its private copies and a bounded guest-write reserve.
+Before another suite, inventory the task's retained VMs and clean up obsolete stopped resources
+under the root AGENTS.md policy. Select one existing storage root containing all retained attempts
+from this task; every new suite must be an immediate child of that root. Required
+`--storage-budget-bytes` and `--min-free-bytes` options establish the total retained-storage
+budget and host free-space reserve. Before the first guest and every subsequent guest, the
+runner measures allocated blocks throughout that root, including old failed/recovery suites,
+then checks both limits against the estimated next allocation. The estimate includes private
+copies, 24 GiB for guest disk growth, and report headroom. Verified cleanup from the preceding
+attempt happens before the next measurement. Exhausting either limit blocks every remaining
+launch and retains their required cases as setup-failed; it never deletes failed evidence.
+This is conservative admission control, not a filesystem quota or a guarantee against concurrent
+unrelated host writes. Run only one suite at a time under the selected storage root.
 After a successful attempt has stopped and every declared causal record and identity verifies,
 the runner can remove its generated disks, source archive and extracted source/bundle copies.
 It records the exact file hashes and sizes in a private disposal intent before removal and keeps
@@ -182,7 +201,10 @@ python3 tools/release-certification/restricted/pr313_fixtures.py \
   --product-source-commit EXACT_PRODUCT_COMMIT
 python3 tools/release-certification/restricted/pr313_acceptance_runner.py \
   --source /absolute/clean-source-with-builds \
-  --output /absolute/new-private-suite \
+  --output /absolute/task-vms/new-private-suite \
+  --storage-root /absolute/task-vms \
+  --storage-budget-bytes TOTAL_RETAINED_STORAGE_BUDGET_BYTES \
+  --min-free-bytes MINIMUM_HOST_FREE_BYTES \
   --prepared-image /absolute/new-private-reference/prepared-pristine.qcow2 \
   --prepared-image-digest EXACT_PREPARED_IMAGE_SHA256 \
   --qemu-root /absolute/extracted-qemu \

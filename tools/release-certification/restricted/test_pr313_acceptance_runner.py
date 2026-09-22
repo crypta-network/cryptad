@@ -15,6 +15,71 @@ from test_pr313_acceptance import synthetic_identity, synthetic_observation
 
 
 class AcceptanceRunnerTest(unittest.TestCase):
+    def test_storage_inventory_includes_old_attempts_but_not_link_targets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'task'
+            old = root / 'old-failed-attempt'
+            old.mkdir(parents=True)
+            disk = old / 'guest.qcow2'
+            disk.write_bytes(b'x' * 8192)
+            outside = Path(temporary) / 'outside'
+            outside.mkdir()
+            (root / 'link').symlink_to(outside, target_is_directory=True)
+            before = runner.allocated_bytes(root)
+            (outside / 'unrelated').write_bytes(b'x' * 16384)
+            self.assertEqual(before, runner.allocated_bytes(root))
+            self.assertGreaterEqual(before, disk.stat().st_blocks * 512)
+
+    def test_budget_and_free_space_reserve_are_independent_admission_requirements(self):
+        args = SimpleNamespace(storage_budget_bytes=1000, min_free_bytes=200)
+        with patch.object(runner, 'allocated_bytes', return_value=800), \
+                patch.object(runner.shutil, 'disk_usage', return_value=SimpleNamespace(free=400)):
+            self.assertIsNone(runner.capacity_reason(args, Path('/unused'), 200))
+            self.assertEqual('suite-storage-budget-exhausted',
+                             runner.capacity_reason(args, Path('/unused'), 201))
+        with patch.object(runner, 'allocated_bytes', return_value=0), \
+                patch.object(runner.shutil, 'disk_usage', return_value=SimpleNamespace(free=399)):
+            self.assertEqual('external-capacity-unavailable',
+                             runner.capacity_reason(args, Path('/unused'), 200))
+
+    def test_retained_failed_attempt_blocks_next_guest_even_with_free_host_space(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / 'suite'
+            args = SimpleNamespace(source=Path(__file__).resolve().parents[3], output=output,
+                storage_root=root, storage_budget_bytes=1000, min_free_bytes=200)
+            groups = [('fault', 'input-inode', ['input-inode']),
+                      ('fault', 'output-inode', ['output-inode'])]
+            def failed_guest(selected):
+                selected.attempt.mkdir()
+                (selected.attempt / 'guest.qcow2').write_bytes(b'failed-original')
+                raise ValueError('failed-attempt')
+            with patch.object(runner.os, 'geteuid', return_value=1000), \
+                    patch.object(runner, 'groups', return_value=groups), \
+                    patch.object(runner, 'required_attempt_bytes', return_value=200), \
+                    patch.object(runner, 'allocated_bytes', side_effect=[0, 900]), \
+                    patch.object(runner.shutil, 'disk_usage', return_value=SimpleNamespace(free=10000)), \
+                    patch.object(runner.reference, 'run', side_effect=failed_guest) as launch, \
+                    patch('builtins.print'):
+                self.assertEqual(2, runner.run(args))
+            self.assertEqual(1, launch.call_count)
+            self.assertEqual(b'failed-original', (output / 'attempt-01/guest.qcow2').read_bytes())
+            self.assertFalse((output / 'attempt-02').exists())
+            result = json.loads((output / 'assessment.json').read_text())
+            self.assertEqual('suite-storage-budget-exhausted', result['attemptHistory'][1]['reason'])
+            self.assertEqual(len(acceptance.CASES), len(result['cases']))
+
+    def test_storage_root_must_contain_suite_and_limits_must_be_positive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = SimpleNamespace(storage_root=root, storage_budget_bytes=1000, min_free_bytes=100)
+            self.assertEqual(root.resolve(), runner.storage_policy(args, root / 'suite'))
+            with self.assertRaisesRegex(ValueError, 'storage-policy-invalid'):
+                runner.storage_policy(args, root.parent / 'elsewhere')
+            for field in ('storage_budget_bytes', 'min_free_bytes'):
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'storage-policy-invalid'):
+                    runner.storage_policy(SimpleNamespace(**{**vars(args), field: 0}), root / 'suite')
+
     def test_fixed_groups_cover_each_required_case_once(self):
         rows = [name for _group, _case, names in runner.groups() for name in names]
         self.assertEqual(set(acceptance.CASES), set(rows))
@@ -230,7 +295,8 @@ class AcceptanceRunnerTest(unittest.TestCase):
                     patch.object(runner, 'required_attempt_bytes', return_value=100), \
                     patch.object(runner.shutil, 'disk_usage', return_value=SimpleNamespace(free=99)), \
                     patch.object(runner.reference, 'run') as launch, patch('builtins.print'):
-                self.assertEqual(2, runner.run(SimpleNamespace(output=output, source=Path(__file__).resolve().parents[3])))
+                self.assertEqual(2, runner.run(SimpleNamespace(output=output, source=Path(__file__).resolve().parents[3],
+                    storage_root=parent, storage_budget_bytes=10**9, min_free_bytes=1)))
             launch.assert_not_called()
             self.assertEqual(b'failed-original-immutable', original.read_bytes())
             self.assertFalse((output / 'attempt-01').exists())
@@ -257,7 +323,8 @@ class AcceptanceRunnerTest(unittest.TestCase):
     def test_failed_attempt_has_closed_public_matrix_and_no_upload_or_private_canary(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / 'suite'
-            args = SimpleNamespace(output=root, source=Path(__file__).resolve().parents[3])
+            args = SimpleNamespace(output=root, source=Path(__file__).resolve().parents[3],
+                storage_root=root.parent, storage_budget_bytes=10**9, min_free_bytes=1)
             original_uid = os.geteuid()
             with patch.object(runner.os, 'geteuid', return_value=original_uid or 1000), \
                     patch.object(runner, 'groups', return_value=[('positive', None, list(acceptance.CASES))]), \
