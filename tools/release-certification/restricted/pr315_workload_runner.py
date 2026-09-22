@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pr312_reference_vm as reference
 import pr313_acceptance_runner as native_runner
 import pr314_acceptance as acceptance
+import pr315_workload_fixtures as fixtures
 from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS
 
 GUEST_MEMORY = 5632 * 1024**2
@@ -96,6 +97,8 @@ def positive_executed(report, result):
             and result['identity'].get('sourceCommit') == identity.get('helperSourceCommit')
             and result.get('contentRetrieval') == 'observed' and result.get('newEpoch') is True
             and result.get('profile') == acceptance.PROFILE
+            and fixtures.runtime.canonical_digest(result.get('runtimePolicy'))
+                == fixtures.runtime.canonical_digest(fixtures.preparation.launcher_policy())
             and result.get('topologyRoles') == 4 and result.get('signedAppWorkers') in (2, 3)
             and result.get('workloadAcceptance') == 'incomplete-hostile-contract-not-executed'
             and result.get('protectedExecutionEnabled') is False)
@@ -104,6 +107,7 @@ def positive_executed(report, result):
 def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
+            'runtimePolicy': fixtures.preparation.launcher_policy()['revision'],
             'implementationCoverage': 'incomplete', 'installedPositiveExecuted': positive,
             'installedWorkloadAcceptanceSatisfied': False, 'finiteNativeAcceptance': False,
             'protectedExecutionEnabled': False, 'phaseComplete': False,
@@ -114,7 +118,7 @@ def public_result(status, positive=False, reasons=(), statuses=None):
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
-    for module in (reference, native_runner, acceptance):
+    for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
         if reference.sha256(module.__file__) != reference.sha256(expected):
             raise ValueError('executing-workload-source-mismatch')
@@ -140,6 +144,7 @@ def run(args):
         output.mkdir(mode=0o700, exist_ok=False)
         native_runner._save(output / 'plan.private.json', {
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
+            'runtimePolicy': fixtures.preparation.launcher_policy(),
             'executionPurpose': 'startup-measurement' if getattr(args, 'startup_measurement', False) else 'positive',
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
             'groups': [{'group': name, 'declaredCases': cases} for name, cases in groups()],

@@ -17,7 +17,7 @@ import time
 
 import restricted_workload as workload
 from restricted_workload_storage import copy_tree
-from restricted_workload_launcher import verify_wrapper_options
+from restricted_workload_launcher import launcher_policy, verify_wrapper_options
 from restricted_native_launcher import tree_identity
 
 
@@ -40,7 +40,8 @@ def configuration_identity(role, trust_digest):
     text = configuration(role)
     from cross_version_runtime import canonical_digest
     return canonical_digest({'profile': workload.PROFILE, 'role': role,
-                             'configuration': text, 'appTrustDigest': trust_digest})
+                             'configuration': text, 'appTrustDigest': trust_digest,
+                             'launcherPolicy': launcher_policy()})
 
 
 def prepare(plan, private, authorization):

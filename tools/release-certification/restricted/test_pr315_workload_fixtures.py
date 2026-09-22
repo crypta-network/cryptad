@@ -23,6 +23,32 @@ def products():
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_old_or_changed_runtime_policy_is_rejected_before_product_staging(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            policy = fixtures.preparation.launcher_policy()
+            value = {'schemaVersion': 3, 'kind': 'pr315-workload-fixtures',
+                'classification': fixtures.CLASSIFICATION, 'sourceCommit': 'a' * 40,
+                'products': products(), 'roles': list(fixtures.ROLES), 'runtimePolicy': policy,
+                'runtimeDigest': 'sha256:' + '1' * 64, 'jdkClosureDigest': 'sha256:' + '2' * 64,
+                'mailDigest': 'sha256:' + '3' * 64, 'trustDigest': 'sha256:' + '4' * 64,
+                'verifierDigest': 'sha256:' + '5' * 64, 'maxSeconds': 900, 'maxOperations': 1000,
+                'members': fixtures.inventory(root)}
+            altered = dict(policy, wrapperStartupTimeoutSeconds=dict(
+                policy['wrapperStartupTimeoutSeconds'], previous=600))
+            noninteger = dict(policy, wrapperStartupTimeoutSeconds=dict(
+                policy['wrapperStartupTimeoutSeconds'], previous=60.0))
+            for change in ({'schemaVersion': 2}, {'schemaVersion': 3.0}, {'runtimePolicy': None},
+                           {'runtimePolicy': altered}, {'runtimePolicy': noninteger},
+                           {'runtimePolicy': dict(policy, command='/bin/sh')}):
+                with self.subTest(change=change):
+                    manifest = root / fixtures.MANIFEST
+                    manifest.write_text(json.dumps(dict(value, **change)))
+                    with patch.object(fixtures, 'portable_daemon_identities') as read_product, \
+                            self.assertRaisesRegex(ValueError, 'manifest-invalid'):
+                        fixtures.verify(root, fixtures.digest(manifest), root, 'a' * 40)
+                    read_product.assert_not_called()
+
     def test_distinct_labels_and_archives_cannot_repackage_one_daemon(self):
         value = products()
         fixtures.validate_roster(value)
@@ -126,7 +152,8 @@ class ImplementationIdentityTests(unittest.TestCase):
                     artifactSize=portable.stat().st_size,
                     **fixtures.portable_daemon_identities(portable))
             selected['candidate']['daemonDigest'] = 'sha256:' + 'f' * 64
-            value = {'schemaVersion': 2, 'kind': 'pr315-workload-fixtures',
+            value = {'schemaVersion': 3, 'kind': 'pr315-workload-fixtures',
+                'runtimePolicy': fixtures.preparation.launcher_policy(),
                 'classification': fixtures.CLASSIFICATION, 'sourceCommit': 'a' * 40,
                 'products': selected, 'roles': list(fixtures.ROLES),
                 'runtimeDigest': 'sha256:' + '1' * 64, 'jdkClosureDigest': 'sha256:' + '2' * 64,

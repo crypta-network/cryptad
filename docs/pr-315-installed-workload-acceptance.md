@@ -7,7 +7,7 @@ this revision's audit.** The first three installed attempts failed before role s
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
 through thirteenth reached first-role startup but failed daemon readiness; no four-role positive
-run has completed.
+run has completed. The fourteenth reached both candidate daemons, then failed predecessor readiness.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -23,6 +23,10 @@ The current [verifier](../tools/release-certification/restricted/pr314_acceptanc
 remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
+New preparation additionally requires the explicit `workload-launcher-policy-v2` runtime
+revision described below. This is a prospective change within that profile family, not an
+unchanged v1 configuration. Earlier policy observations and performance results cannot be pooled
+with it; historical v8 record interpretation remains unchanged.
 
 ## Implemented preparation and positive orchestration
 
@@ -34,7 +38,7 @@ inventory. It does not create original published-product provenance. Build the t
 revisions with `distTarCryptad`; stage Mail with `:apps:mail-prototype:stageApp`, then use the
 ordinary `crypta-app keys`, `sign`, `verify` and `pack` commands on a private copy. Keep the
 synthetic signing material private. Fixture preparation requires a clean exact helper checkout.
-Private fixture schema 2 additionally binds and recomputes a canonical daemon class digest,
+Private fixture schema 3 additionally binds the closed runtime policy and recomputes a canonical daemon class digest,
 excluding the generated `Version.class` and archive metadata. Marker-only predecessor differences
 are rejected. This proves a conservative class-byte distinction, not semantic equivalence or
 original publication; resource-only changes are insufficient. Earlier fixture schemas require
@@ -275,6 +279,38 @@ apply. The static logger still initializes before `main`, and this ordering fix 
 prove a successful native handshake. The wrapper watchdog and all campaign/guest caps are
 unchanged. A rebuilt candidate, exact fresh fixture and installed retry are required.
 
+The fourteenth attempt used helper and rebuilt candidate `cfe6b4ab14`, with the unchanged
+substantive historical predecessor. Both candidate roles passed FCP daemon readiness. Their
+private logs place wrapper initialization before priority/provider setup and record completed
+node initialization. The predecessor still initialized the wrapper late and incurred three
+initial-signal timeouts; its original 180-second readiness window expired. The relay was never
+launched, and AppHost/FNP/restart stages were not reached. No complete positive case witness
+resulted. Across 95 periodic samples, observed controller memory peaked near 26 MiB and the
+three launched role services near 212, 214 and 128 MiB respectively, with no observed cgroup
+OOM events. These are sampled peaks, not continuous maxima or four-role resource acceptance.
+Teardown was reported completed, the synthetic sentinel matched, and the guest stopped.
+Its stopped disks and archive-verified expanded source were removed after ownership checks;
+bounded diagnostics and original archives remain. Further exact-match cleanup removed unused
+copied boot tools while preserving their recorded pins and complete reusable reference closure.
+
+The pinned native wrapper's absent-property default for `wrapper.startup.timeout` is 30 seconds.
+Local binary inspection and the predecessor's repeated late handshake support a narrow
+prospective compatibility allowance. `workload-launcher-policy-v2` explicitly sets 60 seconds
+only for `previous` and 30 seconds for the other fixed roles. This does not modify the historical
+portable/JAR bytes or introduce a startup shim. The full fixed policy is included in every
+`configuration_identity`, schema-3 fixture, private host plan and installed terminal result;
+the host rejects old or mismatched policy results. Selection cannot supply arbitrary wrapper
+properties. The profile family name and 45 requirement IDs remain, but this runtime-policy
+revision is explicit and earlier configuration identities cannot be reused.
+
+This compatibility setting was reviewed as a prospective development change before a fresh
+attempt, not as an independent security review or a demonstrated success. It leaves the FCP
+180-second ceiling, original campaign deadline, selected CPU/JDK and all resource/storage caps
+unchanged. It does change the historical role's initial wrapper watchdog, so this is not an
+unchanged-profile retry. Fresh exact fixture preparation and installed execution are required;
+no campaign is resumed or extended. The earlier abnormal dry-run exits and fatal signals remain
+undiagnosed.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing
@@ -483,6 +519,14 @@ workload subset ran 117 with 21 skips; the interop workload adapter ran 26 with 
 transport skips. Root-only host skips remain unexecuted installed checks. The four certification
 self-tests passed with 152, 247, 88 and 185 tests respectively. The FCP deadline regression uses
 a real stalled socketpair; namespace/manager mocks elsewhere remain offline-only observations.
+
+For the prospective launcher-policy revision, protected discovery passed 485 tests with 74
+skips, restricted discovery passed 388 with one tool-availability skip, and the interop adapter
+passed 26 with eight root-peer transport skips. The focused workload subset passed 120 with
+21 skips; fixture/runner/evidence tests passed 67. Isolated PR-314 discovery exposed a missing
+new dependency mock in the offline terminal-publication fixture; after correction all 61 tests
+passed. The four certification self-tests again passed with 152, 247, 88 and 185 tests.
+These results test implementation and policy binding only, not installed hostile/lifecycle cases.
 
 Earlier in this implementation, the Gradle wrapper completed
 `:platform-devtools:installDist assembleCryptadDist`, candidate Mail staging/portable assembly,

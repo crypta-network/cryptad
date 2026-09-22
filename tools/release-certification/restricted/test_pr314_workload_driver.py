@@ -242,6 +242,7 @@ class TerminalPublicationTest(unittest.TestCase):
                 capture=lambda *args: {'sentinel': {'status': 'matched'}}),
             'workload_installation': SimpleNamespace(install=lambda: None),
             'restricted_workload_prepare': SimpleNamespace(prepare=prepare),
+            'restricted_workload_launcher': SimpleNamespace(launcher_policy=lambda: {'revision': 'offline-test'}),
             'cross_version_workload': SimpleNamespace(InstalledWorkloadAdapter=Mock()),
             'cryptad_certification.cross_version_evidence': SimpleNamespace(Journal=Mock())}
         with ExitStack() as stack:

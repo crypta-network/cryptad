@@ -43,10 +43,16 @@ class RunnerTests(unittest.TestCase):
         report = {'hostVerifiedIdentity': identity, 'mode': 'workload-positive',
                   'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0}
         result = {'identity': {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
             'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
             'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
             'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
         self.assertTrue(runner.positive_executed(report, result))
+        for policy in (None, {}, {'revision': 'old'},
+                       dict(result['runtimePolicy'], wrapperStartupTimeoutSeconds={
+                           role: 60.0 if role == 'previous' else 30 for role in runner.acceptance.ROLES})):
+            with self.subTest(policy=policy):
+                self.assertFalse(runner.positive_executed(report, dict(result, runtimePolicy=policy)))
         for field, value in (('guestStopped', False), ('guestExitCode', 1), ('hostVerifiedIdentity', {}),
                              ('workloadPurpose', 'startup-measurement')):
             changed = copy.deepcopy(report)
@@ -111,6 +117,7 @@ class StartupPurposeTests(unittest.TestCase):
                 'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0,
                 'hostVerifiedIdentity': {'bundleIdentity': 'a' * 64, 'helperSourceCommit': 'b' * 40}}
             forged = {'identity': {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40},
+                'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
                 'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
                 'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
                 'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}

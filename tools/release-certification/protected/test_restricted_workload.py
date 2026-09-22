@@ -203,6 +203,13 @@ with open(sys.argv[3], 'wb') as stream:
         self.assertEqual(original, preparation.configuration_identity(role, 'sha256:' + 'a' * 64))
         self.assertNotEqual(original, preparation.configuration_identity(role, 'sha256:' + 'b' * 64))
 
+    def test_configuration_identity_changes_with_fixed_launcher_policy(self):
+        original = preparation.configuration_identity('previous', None)
+        changed = launcher.launcher_policy()
+        changed['wrapperStartupTimeoutSeconds']['previous'] = 30
+        with patch.object(preparation, 'launcher_policy', return_value=changed):
+            self.assertNotEqual(original, preparation.configuration_identity('previous', None))
+
 
 class BootstrapHttpTest(unittest.TestCase):
     def test_connected_loopback_listener_receives_its_real_host_port(self):
@@ -685,6 +692,15 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual('-Dcrypta.log.dir=/node/logs', properties['wrapper.java.additional.10'])
             self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
             self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])
+
+    def test_only_historical_role_gets_prospective_startup_allowance(self):
+        for role in workload.ROLES:
+            command, _environment = launcher.command(role)
+            properties = dict(item.split('=', 1) for item in command[command.index('--') + 2:])
+            self.assertEqual('60' if role == 'previous' else '30', properties['wrapper.startup.timeout'])
+        changed = launcher.launcher_policy()
+        changed['wrapperStartupTimeoutSeconds']['previous'] = 600
+        self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['previous'])
 
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:

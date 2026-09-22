@@ -12,6 +12,18 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 
 
+def launcher_policy():
+    """Closed prospective policy, included in every role's configuration identity.
+
+    The historical product initializes its wrapper backend after crypto providers.
+    Its initial handshake needs a separate fixed allowance on the selected TCG guest;
+    candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
+    """
+    return {'revision': 'workload-launcher-policy-v2',
+            'wrapperStartupTimeoutSeconds': {
+                role: 60 if role == 'previous' else 30 for role in ROLES}}
+
+
 def verify_wrapper_options(package):
     """Reserve one fixed JVM option without overwriting a selected product's options."""
     with (Path(package) / 'conf/wrapper.conf').open('rb') as stream:
@@ -49,6 +61,7 @@ def command(role):
     # Use the packaged wrapper's existing bounded rotation inside this role's tmpfs.
     # The administrator snapshots only a small safe tail after owned quiescence.
     child = ['/package/bin/cryptad', 'wrapper.java.maxmemory=256',
+             'wrapper.startup.timeout=' + str(launcher_policy()['wrapperStartupTimeoutSeconds'][role]),
              'wrapper.logfile=/node/logs/wrapper.log',
              'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
              'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs']

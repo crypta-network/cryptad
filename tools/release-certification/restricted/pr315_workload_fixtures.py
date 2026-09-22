@@ -357,7 +357,8 @@ def prepare(args):
         manifest = (stage / 'mail/cryptad-app.properties').read_text()
         if re.findall(r'(?m)^app\.id\s*=\s*(\S+)\s*$', manifest) != ['mail-prototype']:
             raise ValueError('workload-fixture-mail-identity-invalid')
-    value = {'schemaVersion': 2, 'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
+    value = {'schemaVersion': 3, 'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
+        'runtimePolicy': preparation.launcher_policy(),
         'sourceCommit': subprocess.check_output(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
                                               text=True, timeout=10).strip(),
         'products': products, 'roles': list(ROLES), 'runtimeDigest': runtime.tree_digest(output / 'jdk'),
@@ -384,8 +385,10 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
     value = metadata.read_json(raw)
     if (set(value) != {'schemaVersion', 'kind', 'classification', 'sourceCommit', 'products', 'roles',
                       'runtimeDigest', 'jdkClosureDigest', 'mailDigest', 'trustDigest', 'verifierDigest',
-                      'maxSeconds', 'maxOperations', 'members'}
-            or value['schemaVersion'] != 2 or value['kind'] != 'pr315-workload-fixtures'
+                      'maxSeconds', 'maxOperations', 'members', 'runtimePolicy'}
+            or type(value['schemaVersion']) is not int or value['schemaVersion'] != 3
+            or value['kind'] != 'pr315-workload-fixtures'
+            or runtime.canonical_digest(value['runtimePolicy']) != runtime.canonical_digest(preparation.launcher_policy())
             or value['classification'] != CLASSIFICATION or value['roles'] != list(ROLES)
             or type(value['maxSeconds']) is not int or not 30 <= value['maxSeconds'] <= 3600
             or type(value['maxOperations']) is not int or not 1 <= value['maxOperations'] <= 10000

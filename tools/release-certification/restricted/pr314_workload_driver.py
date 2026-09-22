@@ -295,6 +295,7 @@ def execute(*, startup_measurement=False):
     import workload_installation
     import restricted_workload as workload
     from restricted_workload_prepare import prepare
+    from restricted_workload_launcher import launcher_policy
     import pr315_workload_evidence as evidence
     identity = installation.verify_execution()
     kit = installation.read_json(installation.secured(TEST_KIT / '.test-kit.json'))
@@ -366,7 +367,8 @@ def execute(*, startup_measurement=False):
         result = json.loads(raw)
         if not startup_measurement and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True):
             raise ValueError('workload-positive-observation-incomplete')
-        result.update(identity=identity, finiteNativeAcceptance='not-executed-by-this-driver',
+        result.update(identity=identity, runtimePolicy=launcher_policy(),
+                      finiteNativeAcceptance='not-executed-by-this-driver',
                       campaignDeadlineMonotonicNs=campaign_deadline,
                       workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
