@@ -370,6 +370,15 @@ class FakeConnection:
 
 
 class ControllerRequestTest(unittest.TestCase):
+    def setUp(self):
+        # These tests use FakeConnection, not the host's peer-credential ABI.
+        # Supply only the missing option name on non-Linux hosts so protocol and
+        # adversarial HTTP/JSON tests still execute there. Production stays Linux-only.
+        option = patch.object(controller.socket, 'SO_PEERCRED',
+                              getattr(socket, 'SO_PEERCRED', 17), create=True)
+        option.start()
+        self.addCleanup(option.stop)
+
     def test_non_object_runtime_json_fails_only_bootstrap_request_in_both_passes(self):
         import restricted_workload_app as app
         import restricted_workload_network as network

@@ -193,6 +193,9 @@ class SetupStateTests(unittest.TestCase):
 
 
 class SocketTransferTests(unittest.TestCase):
+    @unittest.skipUnless(Path('/proc/self/ns/net').exists() and hasattr(os, 'setns')
+                         and hasattr(socket, 'MSG_CMSG_CLOEXEC'),
+                         'requires Linux proc namespace and socket descriptor interfaces')
     def test_real_fork_passes_connected_socket_without_changing_parent_namespace(self):
         # This tests SCM_RIGHTS only. setns is deliberately mocked, so it is NOT evidence
         # of installed role isolation or active sibling denial.
