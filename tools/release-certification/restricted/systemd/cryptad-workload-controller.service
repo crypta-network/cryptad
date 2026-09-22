@@ -1,0 +1,44 @@
+[Unit]
+Description=Cryptad fixed tokenless workload role controller
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_workload_controller.py
+RuntimeDirectory=cryptad-workload
+RuntimeDirectoryMode=0711
+WorkingDirectory=/
+UMask=0077
+StandardInput=null
+StandardOutput=null
+StandardError=null
+# This small separate controller can enter only recorded role network namespaces.
+# It receives no resolver/provider environment or credentials. It never executes candidate code.
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE CAP_CHOWN
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/cryptad-restricted-workload /run/cryptad-workload
+InaccessiblePaths=/var/lib/cryptad-restricted /var/lib/cryptad-restricted-native /var/lib/cryptad-runtime-baselines /var/lib/cryptad-cross-version-authority /var/lib/cryptad-runner
+RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK
+LockPersonality=yes
+RestrictRealtime=yes
+# CAP_SYS_PTRACE satisfies proc's cross-UID read access check for the fixed sampler.
+# No process tracing, memory access or performance event operation is admitted.
+SystemCallFilter=~ptrace process_vm_readv process_vm_writev perf_event_open
+LimitCORE=0
+LimitNOFILE=128
+TasksMax=16
+MemoryMax=512M
+CPUQuota=50%
+TimeoutStopSec=100
+KillMode=control-group
+Restart=no
