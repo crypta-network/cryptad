@@ -1,6 +1,10 @@
 """Local cleanup ordering and retention tests; no installed systemd execution."""
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 import fcntl
+import hashlib
+import os
+import socket
+import time
 from pathlib import Path
 import subprocess
 import tempfile
@@ -66,6 +70,219 @@ class CleanupTest(unittest.TestCase):
                 network.teardown.assert_not_called()
                 if failure == 'stop':
                     workload.reconcile.assert_not_called()
+
+
+@unittest.skipUnless(hasattr(os, 'fork'), 'requires real fork/waitpid')
+class ObserverProcessTest(unittest.TestCase):
+    def child(self, action):
+        parent, child = socket.socketpair()
+        pid = os.fork()
+        if pid == 0:
+            parent.close()
+            try:
+                action(child)
+            finally:
+                os._exit(0)
+        child.close()
+        return parent, pid
+
+    def test_eof_does_not_disable_exit_deadline(self):
+        def action(channel):
+            channel.close()
+            time.sleep(10)
+        parent, pid = self.child(action)
+        started = time.monotonic()
+        try:
+            with self.assertRaisesRegex(ValueError, 'exit-timeout'):
+                driver.collect_child(parent, pid, started + .1)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            parent.close()
+            driver.stop_child(pid)
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(pid, os.WNOHANG)
+
+    def test_complete_output_still_waits_for_actual_process_exit(self):
+        def action(channel):
+            channel.sendall(b'{"complete":true}')
+            channel.close()
+            time.sleep(.1)
+        parent, pid = self.child(action)
+        try:
+            raw, status = driver.collect_child(parent, pid, time.monotonic() + 2)
+            self.assertEqual(b'{"complete":true}', raw)
+            self.assertEqual(0, status)
+            with self.assertRaises(ChildProcessError):
+                os.waitpid(pid, os.WNOHANG)
+        finally:
+            parent.close()
+
+    def test_flooded_output_is_bounded_and_child_is_terminated(self):
+        def action(channel):
+            channel.sendall(b'x' * 65537)
+            time.sleep(10)
+        parent, pid = self.child(action)
+        try:
+            with self.assertRaisesRegex(ValueError, 'output-limit'):
+                driver.collect_child(parent, pid, time.monotonic() + 2)
+        finally:
+            parent.close()
+            driver.stop_child(pid)
+
+    def test_missing_eof_cannot_extend_collection(self):
+        parent, pid = self.child(lambda channel: time.sleep(10))
+        try:
+            with self.assertRaisesRegex(ValueError, 'observer-timeout'):
+                driver.collect_child(parent, pid, time.monotonic() + .1)
+        finally:
+            parent.close()
+            driver.stop_child(pid)
+
+
+class ControllerReadinessTest(unittest.TestCase):
+    def test_existing_socket_requires_root_peer_and_served_protocol(self):
+        import struct
+        for uid, response, error in ((1, b'', 'peer-not-root'),
+                (0, b'{"status":"ok"}\n', 'response-invalid'),
+                (0, b'{"error":"restricted-workload-request-failed"}\n', None)):
+            channel = Mock()
+            channel.__enter__ = Mock(return_value=channel)
+            channel.__exit__ = Mock(return_value=False)
+            channel.getsockopt.return_value = struct.pack('3i', 42, uid, uid)
+            channel.recv.return_value = response
+            with self.subTest(uid=uid, response=response), \
+                    patch.object(driver.socket, 'socket', return_value=channel):
+                if error:
+                    with self.assertRaisesRegex(ValueError, error):
+                        driver.controller_ready(time.monotonic() + 1)
+                else:
+                    driver.controller_ready(time.monotonic() + 1)
+                    channel.sendall.assert_called_once_with(b'{}\n')
+
+
+class TerminalPublicationTest(unittest.TestCase):
+    def exercise(self, failure):
+        events = []
+        repository = Path(driver.__file__).resolve().parents[3]
+        relative = 'tools/release-certification/restricted/pr314_workload_driver.py'
+        identity = {'sourceCommit': 'test-source'}
+        selection = {'plan': {}, 'private': {
+            'root': '/var/lib/cryptad-cross-version/experiments/pr315-test-never-created'},
+            'authorization': {'maxSeconds': 30}}
+        kit = {**identity, 'files': {relative: hashlib.sha256(Path(driver.__file__).read_bytes()).hexdigest()}}
+        installation = SimpleNamespace(verify_execution=lambda: identity,
+            read_json=lambda path: kit, secured=lambda path: path)
+        workload = SimpleNamespace(ROOT=Path('/var/lib/cryptad-restricted-workload'),
+            read=lambda path: selection if path == driver.SELECTION else
+                {'deadlineMonotonicNs': time.monotonic_ns() + 30 * 10**9},
+            write=lambda path, *args, **kwargs: events.append(
+                'terminal-report' if path == driver.REPORT else
+                'volatile-diagnostics' if path == driver.VOLATILE else 'private-diagnostics'))
+        def prepare(*args):
+            events.append('prepare')
+            if failure == 'prepare':
+                raise ValueError('setup-failure')
+            return {}
+        def cleanup(_workload):
+            events.append('cleanup')
+            if failure == 'cleanup':
+                raise ValueError('cleanup-failure')
+        modules = {'installation': installation, 'restricted_workload': workload,
+            'pr315_workload_evidence': SimpleNamespace(prepare_sentinel=lambda _: 'sha256:' + 'a' * 64,
+                capture=lambda *args: {'sentinel': {'status': 'matched'}}),
+            'workload_installation': SimpleNamespace(install=lambda: None),
+            'restricted_workload_prepare': SimpleNamespace(prepare=prepare),
+            'cross_version_workload': SimpleNamespace(InstalledWorkloadAdapter=Mock()),
+            'cryptad_certification.cross_version_evidence': SimpleNamespace(Journal=Mock())}
+        with ExitStack() as stack:
+            stack.enter_context(patch.dict('sys.modules', modules))
+            stack.enter_context(patch.object(driver, 'TEST_KIT', repository))
+            stack.enter_context(patch.object(driver, 'prerequisites', return_value=[]))
+            stack.enter_context(patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)))
+            stack.enter_context(patch.object(Path, 'mkdir'))
+            stack.enter_context(patch.object(driver.os, 'chown'))
+            stack.enter_context(patch.object(driver.os, 'fork', return_value=12345))
+            stack.enter_context(patch.object(driver.socket, 'socketpair', return_value=(Mock(), Mock())))
+            stack.enter_context(patch.object(driver.subprocess, 'run', side_effect=(
+                subprocess.TimeoutExpired('systemctl', 30) if failure == 'controller' else None)))
+            stack.enter_context(patch.object(driver, 'collect_child',
+                return_value=(b'{"contentRetrieval":"observed","newEpoch":true}', 0)))
+            stack.enter_context(patch.object(driver, 'cleanup', side_effect=cleanup))
+            if failure:
+                with self.assertRaises((ValueError, subprocess.TimeoutExpired)):
+                    driver.execute()
+            else:
+                self.assertEqual('incomplete', driver.execute()['workloadAcceptance'])
+        return events
+
+    def test_partial_preparation_and_controller_start_failure_reconcile(self):
+        for failure in ('prepare', 'controller'):
+            with self.subTest(failure=failure):
+                expected = ['prepare', 'cleanup', 'private-diagnostics']
+                if failure == 'controller':
+                    expected.append('volatile-diagnostics')
+                self.assertEqual(expected, self.exercise(failure))
+
+    def test_cleanup_failure_prevents_terminal_report(self):
+        self.assertEqual(['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics'], self.exercise('cleanup'))
+
+    def test_terminal_report_follows_completed_cleanup(self):
+        self.assertEqual(['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics', 'terminal-report'], self.exercise(None))
+
+
+class MemoryDiagnosticsTest(unittest.TestCase):
+    def test_sampled_peaks_preserve_observed_demand_after_cgroup_disappears(self):
+        diagnostics = {}
+        samples = [
+            {'guest': {'status': 'observed', 'MemAvailableBytes': available},
+             'services': {'role': {'status': 'observed', 'memory.current': memory, 'pids.current': tasks}}}
+            for available, memory, tasks in ((100, 20, 3), (50, 40, 2))]
+        samples.append({'guest': {'status': 'unavailable'}, 'services': {
+            'role': {'status': 'absent-or-removed-not-quiescence-proof'}}})
+        with patch.object(driver, 'memory_snapshot', side_effect=samples):
+            for _ in samples:
+                driver.sample_memory(diagnostics)
+        observed = diagnostics['during']
+        self.assertEqual(3, observed['sampleCount'])
+        self.assertEqual(50, observed['minimumObservedGuestAvailableBytes'])
+        self.assertEqual(40, observed['services']['role']['maximumObservedMemoryBytes'])
+        self.assertEqual(3, observed['services']['role']['maximumObservedTasks'])
+        self.assertEqual(2, observed['services']['role']['sampleCount'])
+
+    def test_absent_cgroups_do_not_become_zero_or_quiescence(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(driver, 'CGROUP_ROOT', Path(directory)):
+            snapshot = driver.memory_snapshot()
+        self.assertEqual('observed', snapshot['guest']['status'])
+        self.assertGreater(snapshot['guest']['MemTotalBytes'], 0)
+        self.assertEqual(5, len(snapshot['services']))
+        for service in snapshot['services'].values():
+            self.assertEqual({'status': 'absent-or-removed-not-quiescence-proof'}, service)
+
+    def test_fixed_cgroup_limits_and_events_are_observed_without_reinterpreting_oom(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(driver, 'CGROUP_ROOT', Path(directory)):
+            group = Path(directory) / 'cryptad-workload@candidate-sender.service'
+            group.mkdir()
+            for name, value in {'memory.current': '123', 'memory.max': '1073741824',
+                    'memory.swap.max': '0', 'pids.current': '8', 'pids.max': '512',
+                    'memory.events': 'oom 1\noom_kill 1\n', 'cgroup.events': 'populated 1\n'}.items():
+                (group / name).write_text(value)
+            snapshot = driver.memory_snapshot()['services'][group.name]
+        self.assertEqual('observed', snapshot['status'])
+        self.assertEqual(123, snapshot['memory.current'])
+        self.assertEqual(0, snapshot['memory.swap.max'])
+        self.assertEqual({'oom': 1, 'oom_kill': 1}, snapshot['memory.events'])
+        self.assertEqual({'populated': 1}, snapshot['cgroup.events'])
+
+    def test_symlink_metric_is_unavailable_not_zero(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(driver, 'CGROUP_ROOT', Path(directory)):
+            group = Path(directory) / 'cryptad-workload@candidate-sender.service'
+            group.mkdir()
+            (group / 'memory.current').symlink_to('/proc/meminfo')
+            snapshot = driver.memory_snapshot()['services'][group.name]
+        self.assertEqual({'status': 'unavailable'}, snapshot)
 
 
 if __name__ == '__main__':

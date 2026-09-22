@@ -1,0 +1,254 @@
+# Installed workload acceptance completion audit
+
+This page records the PR-315 workload inventory, executable-path gaps, and the remaining
+installed verification required for the finite four-role source-build profile.
+**Implementation is incomplete; all 45 installed workload cases remain unexecuted in this
+revision's audit.** Fixture preparation, offline tests, and a positive aggregate do not establish
+complete installed workload acceptance.
+
+The starting commit is `64a1708c17ebf02460d19ab66bfd7c8ed6b70700`, with tree
+`452af57522c2d1bf98b0200c18dfa9d5da708c31`. Its commit subject identifies the integration of
+GitHub #1416 (project PR-314), immediately after PR-313 integration
+`45eb43d6654074df884f59415fa598c1cda93e36`. The implementation therefore starts from the
+containing integration tree, not the originally inspected PR-314 feature head.
+This source identity is an audit cutoff, not an assertion about final-source CI or execution.
+
+The current [verifier](../tools/release-certification/restricted/pr314_acceptance.py) declares
+`pr314-workload-roles-v8`, preserving the original 45 IDs and meanings. The selected profile
+remains `debian13-systemd257-workload-v1`. Consult the
+[PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
+and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
+
+## Implemented preparation and positive orchestration
+
+`pr315_workload_fixtures.py` prepares exact inputs from two real portable source builds and a
+normally signed Mail ZIP. It checks embedded daemon source identities, different daemon bytes,
+Linux x64 runtime compatibility, bounded archive expansion, packaged API export and ordinary
+app signature verification. It stages the pinned flattened JDK and records the private input
+inventory. It does not create original published-product provenance. Build the two source
+revisions with `distTarCryptad`; stage Mail with `:apps:mail-prototype:stageApp`, then use the
+ordinary `crypta-app keys`, `sign`, `verify` and `pack` commands on a private copy. Keep the
+synthetic signing material private. Fixture preparation requires a clean exact helper checkout.
+
+The separate installed guest entry materializes the fixed selection only after production/test-kit
+installation and binds the actual installed `runner_identity()`. `pr315_workload_runner.py`
+uses the existing PR-312 copied reference transport, private SSH pin and boot closure. It has
+one predeclared 45-case plan, but currently invokes only the positive aggregate driver. No
+individual case or complete acceptance is granted from that aggregate. Missing hostile and
+lifecycle emitters remain visible; there is no report-import or force-complete option.
+
+The runner requires all reference/fixture inputs below its private task storage root, an explicit
+total disk budget and free-space reserve, and a separate memory budget/reserve. It counts retained
+attempts, serializes suites with a task-root lease and retains every attempted guest. `--probe`
+records prerequisites without allocating a VM and returns 78, including when inputs are present.
+The workload mode is an internal reuse of the reference runner; invoke the workload-specific
+entrypoint to enforce both budgets. Example options are:
+
+```text
+--storage-root /absolute/private-task-root
+--output /absolute/private-task-root/new-suite
+--storage-budget-bytes 42949672960 --min-free-bytes 8589934592
+--memory-budget-bytes 7516192768 --min-host-memory-bytes 1073741824
+--profile tcg-multi --timeout 4200
+```
+
+Supply the source, prepared image/digest, copied QEMU root, seed, private SSH key/host pin,
+prepared fixtures/digest and candidate product commit through the fixed named arguments shown
+by `--help`. The recreated reference preparation selects `qemu64`, `tcg-multi`, four vCPUs and
+5632 MiB explicitly. This differs from the historical PR-313 `tcg-single` positive observation;
+results cannot be pooled. Preparation now installs pinned `nftables=1.1.3-1` and
+`iproute2=6.15.0-1`, which the installed execution closure already requires but the old reference
+producer omitted. The prepared image and effective closure must be measured anew.
+
+The positive driver now bounds socket EOF through actual child exit, covers partial preparation
+and controller-start failure with cleanup, observes a root controller peer serving its existing
+closed protocol, and writes its terminal positive report only after cleanup. Its parent wait
+uses the original controller deadline plus the existing teardown grace, not a newly started
+campaign budget. Real local fork tests cover closed-output/hanging and flooded-output children;
+these are driver regressions, not installed lifecycle cases.
+
+Private memory diagnostics include before/after and sampled live cgroup demand. Missing cgroups
+are unavailable, never zero or quiescence proof. The separate fixed evidence reader captures
+bounded projected controller records and a 32-byte synthetic state sentinel after caller-verified
+cleanup, before shutdown. The sentinel starts before role launch and is compared after cleanup;
+this does not yet provide the independently captured immediate before/after restart epochs
+required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
+
+## Requirement-to-emitter mapping
+
+In the following tables, “positive path” identifies existing production actions reached by
+`pr314_workload_driver.py` and `InstalledWorkloadAdapter.run_positive()`. It does not mean that
+the action emits a complete trusted acceptance observation. “Missing” means there is no installed
+workload case driver at this audit cutoff. Synthetic verifier tests are not emitters.
+
+| Positive ID | Existing path | Missing installed acceptance evidence |
+| --- | --- | --- |
+| `installed-ready` | Installation/test-kit checks in positive driver | Observed ready controller and exact installed before/after identity |
+| `four-role-start` | Adapter starts four fixed role services | Trusted UID/GID, invocation, cgroup and namespace roster |
+| `signed-apphost-child` | Signed Mail install/start and worker observation | Exact bundle and independently captured kernel child binding |
+| `own-management` | Controller-bound FCP/HTTP descriptors | Per-operation request/control response and server invocation |
+| `fnp-content-retrieval` | Relay topology and byte-checked content operation | Cross-node causal evidence excluding recipient preload/cache-only success |
+| `dynamic-app-bootstrap` | Controller-verified Mail bootstrap | Current child/session/operation evidence captured independently |
+| `kernel-resource-scope` | Controller kernel observation support | All four actual scoped cgroup measurements |
+| `restart-durable-state` | Sender restart and app-inventory retention | Selected durable sentinel before/after, original deadline, both invocation epochs |
+
+All denial rows below have **missing installed emitters**. The actor column preserves the
+contract; it must not be replaced with a root probe or a same-UID process outside the asserted
+role/AppHost boundary.
+
+| Denial ID | Actor | Fixed target and required executable probe |
+| --- | --- | --- |
+| `observer-private-read` | candidate | Existing observer canary; role process attempts read after authorized control |
+| `observer-private-write` | candidate | Existing observer canary; role process attempts write; control confirms unchanged bytes |
+| `resolver-authority` | candidate | Active installed resolver; valid fixed authority request from role process |
+| `provider-authority` | app | Active synthetic provider fixture; normal signed AppHost child attempts authority access |
+| `sibling-data` | candidate | Existing recipient sentinel; sender process attempts access |
+| `sibling-fcp` | candidate | Active recipient FCP; emitted cross-role probe with attributed filter evidence |
+| `sibling-http` | candidate | Active recipient HTTP; emitted cross-role probe with attributed filter evidence |
+| `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
+| `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
+| `runner-control` | runner | Installed system manager; valid disallowed control request |
+| `observer-control` | observer | Installed system manager; valid disallowed control request |
+| `arbitrary-endpoint` | observer | Existing nonapproved endpoint; valid disallowed connector selection |
+| `hostile-app-origin` | candidate | Active own app; valid request with hostile origin |
+| `package-expectation` | candidate | Admitted immutable package/identity; actual fixed mutation attempt |
+| `forged-runtime-identity` | candidate | Process observer; fixed false claim compared with independent kernel identity |
+| `namespace-mount-escape` | app | Outer role boundary; bounded nested namespace/mount escape attempt |
+| `cgroup-migration` | candidate | Existing fixed cgroup target; actual migration attempt and unchanged ownership |
+| `resource-exhaustion` | app | Role resource cap; finite allocation/task probe and actual cgroup events |
+| `output-symlink` | candidate | Descriptor-based collector; role-created symlink |
+| `output-fifo` | candidate | Descriptor-based collector; role-created FIFO and bounded rejection |
+| `output-hardlink` | candidate | Descriptor-based collector; actual multiply linked file |
+| `output-replacement` | candidate | Descriptor-based collector; coordinated replacement during pinned read |
+| `output-flood` | candidate | Descriptor-based collector; finite cap-exceeding growth/output |
+| `stale-handle` | observer | Controller; retired handle against successor authority |
+| `stale-pid-uid` | observer | Process observer; retired invocation versus actual new process |
+| `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
+
+All lifecycle rows below also have **missing installed emitters**. Triggers must follow observed
+service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
+installed behavior.
+
+| Lifecycle ID | Fixed installed trigger and terminal evidence |
+| --- | --- |
+| `lost-start-response` | Close the response transport after observed start intent; retry and prove one original manager invocation |
+| `observer-death` | Kill exact owned observer after activity; observe real controller inactivity policy and exact role termination |
+| `controller-restart` | Restart exact controller invocation; observe actual `BindsTo` stop and retained reconciliation |
+| `late-child` | Synchronize one fixed late child with role stop; prove descendant ownership and terminal absence |
+| `setsid-double-fork` | Fixed finite double-fork/session probe; prove continued role cgroup membership and cleanup |
+| `deadline` | Reach original campaign deadline with roles running; observe actual owner stop without clock rewrite |
+| `revocation-running` | Create fixed revocation marker after running observation; deny new work and retain owned termination |
+| `cancellation` | Send existing stop operation for exact current handle; observe owned terminal state |
+| `partial-launch` | Fail one owned role at a measured launch transition; reconcile all already started roles |
+| `stuck-output` | Fixed owned process retains output channel; enforce collection deadline and descendant cleanup |
+| `cleanup-race` | Synchronize stop with owned invocation/cgroup change; retain uncertainty and preserve siblings |
+
+## Finite driver strategy
+
+Reuse one administrator test kit and the copied PR-313 guest runner. Keep fixture building and
+signature verification before campaign preparation. The private selection remains
+`/root/pr314-workload-selection.json`; production requests must keep their closed fixed methods
+and role handles. No arbitrary executable, shell, namespace, PID or systemd-property selection
+belongs on the production socket.
+
+Run the ordinary Mail positive profile separately from a prospective signed synthetic app cohort.
+The latter needs a clearly named, exact-byte-bound app with fixed probe operations launched through
+normal AppHost installation and sandboxing. Current preparation, adapter and bootstrap paths admit
+Mail only; therefore the four app-origin denial rows cannot honestly run yet. Do not modify Mail
+after signing or label a candidate-UID helper as an AppHost attack.
+
+Use fixed bounded probe operations for file access, immutable-input mutation, namespace escape,
+cgroup migration and output hazards. Capture the actual process epoch, UID, namespaces and
+current role invocation before and after each operation. For app actors, also capture normal
+AppHost parent/child and exact admitted bundle relationships. Administrator orchestration controls
+only the declared disposable resources and cannot substitute for the asserted attack actor.
+
+For network probes, keep DROP semantics. Add only fixed scenario-attributed counters or an
+equivalent bounded kernel observer in the task-owned namespaces. Record the actual emitted probe,
+exact ruleset/namespace identity, counter delta and causal interval, with an authorized active
+target control before and after. Current rules have no such counters. A recipient loopback
+listener does not prove that the recipient namespace address is the same valid endpoint; bind
+the target and denied path explicitly. Timeout, missing listener and setup failure remain
+inconclusive or failed, never fabricated `EACCES`/`EPERM`.
+
+Use fresh guests for destructive lifecycle/revocation groups unless a separate reset contract is
+verified. The real controller observer-loss policy is 240 seconds since the last successful
+request. Allocate that time before preparation; never extend the original campaign deadline.
+Lost-response and descendant tests need fixed synchronization barriers at observed transitions.
+Late children and setsid processes must remain owned by the original service cgroup until stop.
+
+The existing cleanup path treats a missing cgroup as quiescent, and its inactive/failed early
+branch does not independently establish unchanged retained invocation identity. The cleanup-race
+driver must test those transitions before claiming that missing/replaced cgroups prove safe
+completion. This is a code-audit concern, not an observed installed failure or a completed fix.
+
+## Records, budgets and private evidence
+
+Version any new witness semantics prospectively while preserving v8 historical meaning. The
+current attempt has one role roster, so it cannot faithfully bind both pre-restart operations and
+post-restart observations to different epochs. Its denial actor proof is UID-only. It also
+requires complete target/principal maps even for setup failures that never observed those
+subjects. A small successor must represent these failures honestly and bind each passed case to
+its actual process and invocation epoch; it must not invent missing target identities.
+
+Predeclare the complete 45-case group plan and retain every failed, setup-failed, inconclusive or
+unexecuted row. Compute operational acceptance only through pinned host transport and measured
+test-kit execution. Guest JSON, caller-authored commitments, an imported old report and synthetic
+unit records cannot authenticate an installed run. Final attempt completion follows exact role
+quiescence, bounded private diagnostic extraction and independently observed guest stop.
+
+Before every allocation, inventory actual allocated blocks, retained task attempts and backing
+dependencies. Require stopped exact ownership before deleting disposable resources. Declare one
+task-wide disk budget plus minimum free-space reserve, including reference/private copies,
+staging, growth, snapshots and failed-attempt retention. Stop allocation when that total cannot
+fit; leave remaining cases unexecuted/setup-blocked.
+
+The guest remains 5632 MiB with the explicitly selected CPU/accelerator and pinned boot closure.
+Each of four roles has a 1-GiB memory limit, zero swap and 512-task cap. Each role's 512-MiB,
+32768-inode tmpfs consumes real memory; it is not additional guaranteed headroom. Measure
+controller/JVM/AppHost demand and sibling/observer progress. Distinguish expected role-limit
+denial from guest-wide OOM or loss of observation. No VM allocation or memory measurement is
+established by this audit.
+
+After exact role quiescence, extract only fixed bounded sentinels and necessary controller records
+with existing safe descriptor readers. Reject symlinks, FIFOs, sockets, hardlinks, races and
+unbounded growth. Retained QCOW2 does not preserve tmpfs after shutdown. A private diagnostic
+snapshot is not a runtime restore format or continuation of the same epoch. Guest crashes may
+make volatile evidence unavailable; record that limitation without manufacturing a snapshot.
+
+Public output includes only approved classifications, counts, case IDs and tool/product
+identifiers. Actual actor IDs, endpoints, raw output, selections, credentials and correlatable
+private hashes stay in private evidence. Administrator-only modules must remain excluded by
+`installation.TEST_SEAMS` and production bundle manifests.
+
+## Verification and remaining gates
+
+Run the focused offline workload suites against final source:
+
+```bash
+python3 -m unittest discover -s tools/release-certification/protected -p 'test_restricted_workload*.py'
+python3 -m unittest discover -s tools/interop -p 'test_cross_version_workload.py'
+python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr314*.py'
+```
+
+Add fixture/runner/record/fault regressions as their implementations become executable. Run
+root-only checks only in the dedicated disposable environment and report other root skips.
+The actual installed suite is a separate invocation with declared storage/memory budgets;
+prerequisite exit 78 means unexecuted installed testing. This page contains no test-run result.
+
+| Assessment dimension | Audit verdict |
+| --- | --- |
+| `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
+| `installedPositiveExecuted` | False for this revision; no observed installed positive attempt |
+| `installedWorkloadAcceptanceSatisfied` | False; all 45 cases unexecuted |
+| `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
+| `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
+| `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
+
+The [Phase 12 register](phase-12-open-items.md) and
+[workload boundary gap](pr310-workload-boundary-gap.md) remain authoritative for broader debt.
+The 12 PR-309 composed-budget consumer gaps remain separate. Catalog, scheduler, recovery clone,
+migration, historical-original-product and protected-origin adapters remain unsupported.
+`InstalledAppHandle.mail_client()` still refuses higher-level Mail traffic; app startup/bootstrap
+is not ciphertext delivery. Namespace-bound Mail is a subsequent workstream, not Phase 12
+completion or authorization for Phase 13.

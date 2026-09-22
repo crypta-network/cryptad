@@ -29,9 +29,10 @@ PACKAGE_PINS = {
     'git': '1:2.47.3-0+deb13u1', 'openssl': '3.5.7-1~deb13u2', 'polkitd': '126-2',
     'python3.13': '3.13.5-2+deb13u5', 'sudo': '1.9.16p2-3+deb13u2',
     'systemd': '257.13-1~deb13u1', 'util-linux': '2.41.5-0+deb13u1',
+    'nftables': '1.1.3-1', 'iproute2': '6.15.0-1',
 }
 DEPENDENCIES = ('python3', 'openssl', 'bubblewrap', 'util-linux', 'gh', 'git', 'sudo',
-    'dbus', 'polkitd', 'ca-certificates', 'curl', 'libatomic1', 'libasound2t64',
+    'dbus', 'polkitd', 'nftables', 'iproute2', 'ca-certificates', 'curl', 'libatomic1', 'libasound2t64',
     'libfontconfig1', 'libfreetype6', 'libx11-6', 'libxext6', 'libxi6', 'libxrender1',
     'libxtst6', 'libgtk-3-0t64', 'libnss3')
 

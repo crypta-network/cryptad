@@ -222,6 +222,15 @@ def fixture_summary(value):
 
 def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
+    if report.get('mode') == 'workload-positive':
+        # Workload selections and all correlatable private identities remain private.
+        return {'schemaVersion': 1, 'kind': 'pr315-workload-reference-attempt',
+                'executed': report.get('executed') is True,
+                'status': 'transport-completed' if report.get('status') == 'guest-report-retained'
+                          else 'setup-or-execution-failed',
+                'guestStopped': report.get('guestStopped') is True,
+                'installedWorkloadAcceptanceSatisfied': False,
+                'protectedExecutionEnabled': False, 'phaseComplete': False}
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
               'helperSourceTree', 'productSourceCommit', 'productSourceVerification',
               'productDigest', 'sourceArchiveDigest',
@@ -355,7 +364,10 @@ def run(args):
             seedDigest=report['seedDigest'], sshHostKeyPinDigest=report['sshHostKeyPinDigest'],
             sshKeyDigest=key_digest, cpuModel=CPU_MODEL, accelerator=ACCELERATOR,
             machine='pc,smm=off', vcpus=4, memoryMiB=5632)
-        for name in ('pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py'):
+        helper_names = ['pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py']
+        if args.mode == 'workload-positive':
+            helper_names.extend(('pr315_workload_fixtures.py', 'pr315_workload_guest.py'))
+        for name in helper_names:
             if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
                 raise ValueError('executing-reference-source-mismatch')
         clone = attempt / 'cryptad'
@@ -370,12 +382,16 @@ def run(args):
             args.product_source_commit, report['productDigest'])
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
-            import pr313_fixtures
-            fixtures = clone / 'build/pr313-inputs'
+            if args.mode == 'workload-positive':
+                import pr315_workload_fixtures as fixture_module
+                fixtures = clone / 'build/pr315-inputs'
+            else:
+                import pr313_fixtures as fixture_module
+                fixtures = clone / 'build/pr313-inputs'
             fixtures.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(args.prepared_fixtures, fixtures, symlinks=True)
-            pr313_fixtures.verify(fixtures, args.fixture_manifest_digest, clone,
-                                 args.product_source_commit)
+            fixture_module.verify(fixtures, args.fixture_manifest_digest, clone,
+                                  args.product_source_commit)
             report['fixtureManifestDigest'] = args.fixture_manifest_digest
         expected_bundle, expected_kit = expected_installation(clone, attempt, report['helperSourceCommit'])
         archive = attempt / 'source.tar.gz'
@@ -419,6 +435,12 @@ def run(args):
                    'install -m 0600 /dev/null /home/vmadmin/driver.private.log\n')
         if args.mode == 'baseline':
             script += "sudo /usr/bin/python3 - <<'PR312_DRIVER' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n" + BASELINE + '\nPR312_DRIVER\n'
+        elif args.mode == 'workload-positive':
+            script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
+                       'pr315_workload_guest.py --fixture-manifest-digest '
+                       + args.fixture_manifest_digest + ' --product-source-commit '
+                       + args.product_source_commit
+                       + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
         else:
             script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/disposable_integration.py '
                        '--disposable-vm --source /root/cryptad --product-source-commit '
@@ -468,6 +490,9 @@ print(json.dumps(records))
         for label, remote, maximum in (
                 ('fixture-commands.private.json', '/root/pr313-fixture-commands.private.json', 262144),
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
+                ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
+                ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
+                ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),
                 ('execution.private.json', '/opt/cryptad-cross-version/restricted-execution.json', 8388608),
                 ('native-consumer.private.log', '/root/pr312-native-consumer.private.log', 65536),
@@ -493,7 +518,7 @@ print(json.dumps(records))
                            stdout=stream, stderr=log, check=True, timeout=120, env=boot.ENVIRONMENT)
         if args.prepared_fixtures is not None:
             report['hostVerifiedIdentity'] = verified_attempt_identity(report, attempt, expected_bundle, expected_kit)
-            if getattr(args, 'case_group', None) == 'positive':
+            if args.mode != 'workload-positive' and getattr(args, 'case_group', None) == 'positive':
                 evidence_path = attempt / 'pr313-observation.private.json'
                 rows = json.loads(evidence_path.read_bytes())
                 if not isinstance(rows, list):
@@ -598,6 +623,7 @@ def main():
             or (args.case_group == 'public' and args.fault_case not in PUBLIC_CASES)
             or (args.case_group is not None and args.mode != 'native-slice')
             or (args.prepared_fixtures is None) != (args.fixture_manifest_digest is None)
+            or (args.mode == 'workload-positive' and args.prepared_fixtures is None)
             or (args.fixture_manifest_digest is not None
                 and re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None)):
         parser.error('invalid fixed case or fixture selection')
