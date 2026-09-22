@@ -155,6 +155,10 @@ class SetupStateTests(unittest.TestCase):
                 role_namespace = arguments[2]
                 prior = [command for command, _ in self.commands]
                 self.assertIn([network.IP, 'netns', 'exec', role_namespace, network.NFT, '-f', '-'], prior)
+            if arguments[3:5] == ['route', 'add']:
+                prior = [command for command, _ in self.commands]
+                self.assertIn([network.IP, '-n', arguments[2], 'link', 'set', 'data0', 'up'], prior)
+                self.assertNotIn([network.IP, '-n', network.SWITCH, 'link', 'set', 'br0', 'up'], prior)
             self.record_command(arguments, script)
         with patch.object(network, '_run', checked_run):
             network.setup()

@@ -214,11 +214,13 @@ def setup():
         _run([IP, '-n', SWITCH, 'link', 'set', f'sw{index}', 'master', 'br0'])
         _run([IP, 'netns', 'exec', name, NFT, '-f', '-'], role_rules(role))
         _run([IP, '-n', name, 'address', 'add', address(role) + '/32', 'dev', 'data0'])
-        for peer in _peers(role):
-            _run([IP, '-n', name, 'route', 'add', address(peer) + '/32', 'dev', 'data0'])
         _run([IP, '-n', name, 'link', 'set', 'lo', 'up'])
         _run([IP, '-n', name, 'link', 'set', 'data0', 'up'])
         _run([IP, '-n', SWITCH, 'link', 'set', f'sw{index}', 'up'])
+        # Linux requires the route's output device to be administratively up.
+        # Both namespace filters already exist; the switch bridge remains down.
+        for peer in _peers(role):
+            _run([IP, '-n', name, 'route', 'add', address(peer) + '/32', 'dev', 'data0'])
     _run([IP, '-n', SWITCH, 'link', 'set', 'br0', 'up'])
     state['phase'] = 'ready'
     _save(state)
