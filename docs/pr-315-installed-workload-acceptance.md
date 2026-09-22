@@ -3,7 +3,8 @@
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
 **Implementation is incomplete; no installed workload case has a valid acceptance witness in
-this revision's audit.** Three installed attempts reached setup failures before role staging.
+this revision's audit.** The first three installed attempts failed before role staging; a fourth
+staged all four roles but failed network setup before any controller or role service started.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -112,6 +113,19 @@ source/tool snapshots, fixtures and the reusable standalone reference remain ret
 failure verdict was changed. Full failed guest filesystems are no longer available for forensic
 inspection. This explicit retention change resolves the capacity block without increasing
 the task cap or changing guest limits; each future allocation still requires a fresh check.
+
+The fourth attempt at helper `b80adc1ef353ca171b2c6f773cf086289e72038e` passed account setup
+and staged all four roles within its original campaign deadline. It failed during the fixed
+network fabric setup; no controller or role service started. Cleanup was reported completed,
+and the guest stopped. The helper had discarded the underlying network command error, so this
+attempt does not establish the failing command's cause. The network helper now reuses the
+existing bounded-process capture with the same 15-second limit and capped private diagnostics;
+its public error and network policy are unchanged. The evidence path now also captures fixed
+controller/network projections after a pre-sentinel preparation failure. The fourth attempt's
+uncaptured controller records and volatile state remain unavailable; no retrospective snapshot
+is fabricated. Under the user's renewed instruction to remove failed VM disks after retaining
+diagnostics, its two stopped, dependency-checked disks were removed, reclaiming 4,161,605,632
+allocated bytes. Its failure, source/tool snapshots, logs and unit-state diagnostics remain.
 
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing
@@ -304,7 +318,7 @@ These offline results and three retained setup failures grant no installed accep
 | --- | --- |
 | `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
 | `installedPositiveExecuted` | False for this revision; no observed installed positive attempt |
-| `installedWorkloadAcceptanceSatisfied` | False; latest executed attempt has eight setup-failed positives and 37 unexecuted faults |
+| `installedWorkloadAcceptanceSatisfied` | False; latest executed attempt has eight inconclusive positives and 37 unexecuted faults |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

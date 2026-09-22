@@ -218,9 +218,7 @@ class TerminalPublicationTest(unittest.TestCase):
     def test_partial_preparation_and_controller_start_failure_reconcile(self):
         for failure in ('prepare', 'controller'):
             with self.subTest(failure=failure):
-                expected = ['prepare', 'cleanup', 'private-diagnostics']
-                if failure == 'controller':
-                    expected.append('volatile-diagnostics')
+                expected = ['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics']
                 self.assertEqual(expected, self.exercise(failure))
 
     def test_cleanup_failure_prevents_terminal_report(self):

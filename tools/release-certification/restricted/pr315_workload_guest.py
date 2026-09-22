@@ -72,10 +72,23 @@ def retain_failure(error):
         return
     value = {'stage': STAGE, 'exceptionType': type(error).__name__,
              'privateDetail': str(error)[:1024], 'installedAcceptance': False}
+    diagnostic = getattr(error, 'private_diagnostics', None)
+    if (isinstance(diagnostic, dict) and set(diagnostic) == {'arguments', 'stderr', 'failureClass'}
+            and isinstance(diagnostic['arguments'], list) and len(diagnostic['arguments']) <= 32
+            and all(isinstance(argument, str) for argument in diagnostic['arguments'])
+            and sum(len(argument) for argument in diagnostic['arguments']) <= 2048
+            and isinstance(diagnostic['stderr'], str) and len(diagnostic['stderr']) <= 2048
+            and isinstance(diagnostic['failureClass'], str) and len(diagnostic['failureClass']) <= 128):
+        value['networkCommand'] = diagnostic
     try:
         descriptor = os.open(FAILURE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(descriptor, 'w') as stream:
-            json.dump(value, stream, sort_keys=True)
+            # ASCII escaping can expand private text; enforce the transport's byte cap.
+            raw = json.dumps(value, sort_keys=True)
+            if len(raw.encode()) > 8000:
+                value.pop('networkCommand', None)
+                raw = json.dumps(value, sort_keys=True)
+            stream.write(raw)
             stream.write('\n')
     except OSError:
         pass

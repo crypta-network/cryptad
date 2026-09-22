@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import socket
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -75,6 +76,46 @@ class NetworkPolicyTests(unittest.TestCase):
                 with self.subTest(endpoint=endpoint), self.assertRaises(network.NetworkBoundaryError):
                     network.connect('candidate-sender', endpoint)
             load.assert_not_called()
+
+
+class CommandDiagnosticsTests(unittest.TestCase):
+    def test_real_failed_helper_retains_private_stderr_without_public_disclosure(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+                     'import sys; sys.stderr.write("private network diagnostic"); sys.exit(7)']
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        self.assertEqual('restricted-workload-network-command-failed', str(raised.exception))
+        self.assertEqual({'arguments': arguments, 'stderr': 'private network diagnostic',
+                          'failureClass': 'bounded_process_failed'}, raised.exception.private_diagnostics)
+        self.assertNotIn('private network diagnostic', repr(raised.exception))
+
+    def test_real_flooding_helper_is_stopped_and_private_capture_is_bounded(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+                     'import os; chunk=b"private flood"*8192\nwhile True: os.write(2,chunk)']
+        started = time.monotonic()
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        self.assertLess(time.monotonic() - started, 5)
+        details = raised.exception.private_diagnostics
+        self.assertEqual('bounded_process_output_exceeded', details['failureClass'])
+        self.assertEqual(2048, len(details['stderr']))
+        self.assertNotIn('private flood', str(raised.exception))
+
+    def test_real_helper_receives_script_via_stdin_and_fixed_environment(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+            'import os,sys; assert os.environ["LANG"]=="C"; sys.stdout.buffer.write(sys.stdin.buffer.read())']
+        self.assertEqual(b'fixed script\n', network._run(arguments, 'fixed script\n'))
+
+    def test_failed_exec_keeps_bounded_arguments_without_exception_path_in_message(self):
+        arguments = ['/nonexistent-pr315-command', *(['x' * 100] * 40)]
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        details = raised.exception.private_diagnostics
+        self.assertEqual('FileNotFoundError', details['failureClass'])
+        self.assertEqual('', details['stderr'])
+        self.assertLessEqual(len(details['arguments']), 32)
+        self.assertLessEqual(sum(map(len, details['arguments'])), 2048)
+        self.assertEqual('restricted-workload-network-command-failed', str(raised.exception))
 
 
 class SetupStateTests(unittest.TestCase):

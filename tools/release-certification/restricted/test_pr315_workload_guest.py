@@ -6,8 +6,39 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import installation
+import pr315_workload_guest as guest
+
+
+class PrivateFailureTest(unittest.TestCase):
+    def test_fixed_network_diagnostic_is_private_and_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'failure.json'
+            error = ValueError('closed-failure')
+            error.private_diagnostics = {'arguments': ['/fixed/tool', '--fixed'],
+                'stderr': 'private diagnostic', 'failureClass': 'bounded_process_failed'}
+            with patch.object(guest.os, 'geteuid', return_value=0), patch.object(guest, 'FAILURE', path):
+                guest.retain_failure(error)
+            value = json.loads(path.read_text())
+            self.assertEqual(error.private_diagnostics, value['networkCommand'])
+            self.assertFalse(value['installedAcceptance'])
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+
+    def test_oversized_or_unrecognized_diagnostics_are_not_serialized(self):
+        for diagnostic in ({'unexpected': 'value'},
+                {'arguments': ['x' * 2049], 'stderr': '', 'failureClass': 'failed'},
+                {'arguments': [], 'stderr': 'x' * 2049, 'failureClass': 'failed'},
+                {'arguments': [], 'stderr': '\u2603' * 2048, 'failureClass': 'failed'}):
+            with self.subTest(diagnostic=list(diagnostic)), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / 'failure.json'
+                error = ValueError('closed-failure')
+                error.private_diagnostics = diagnostic
+                with patch.object(guest.os, 'geteuid', return_value=0), patch.object(guest, 'FAILURE', path):
+                    guest.retain_failure(error)
+                self.assertNotIn('networkCommand', json.loads(path.read_text()))
+                self.assertLess(path.stat().st_size, 8192)
 
 
 class GuestImportTest(unittest.TestCase):

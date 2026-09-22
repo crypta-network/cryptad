@@ -73,13 +73,36 @@ def _boot():
 
 
 def _run(arguments, script=None):
-    """Only internal fixed command constructors call this; no candidate environment survives."""
+    """Run only internal fixed commands, retaining bounded failure details privately.
+
+    The existing helper owns its process-group cleanup and pipe budgets. Diagnostics never
+    enter the exception message or controller protocol; only administrator evidence readers
+    may inspect ``private_diagnostics``. The nft script payload is deliberately not retained.
+    """
+    from bounded_process import run
+
+    captured = {}
+    def retain(_stdout, stderr):
+        captured['stderr'] = stderr.decode('utf-8', errors='replace')[:2048]
     try:
-        return subprocess.run(arguments, input=script, text=True, check=True, timeout=15,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'})
-    except (OSError, subprocess.SubprocessError):
-        raise NetworkBoundaryError('restricted-workload-network-command-failed') from None
+        return run(arguments, payload=script.encode('utf-8') if script is not None else None,
+                   timeout=15, output_limit=8192, diagnostic_sink=retain,
+                   environment={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'})
+    except (OSError, ValueError, subprocess.SubprocessError) as cause:
+        selected, remaining = [], 2048
+        for argument in arguments[:32]:
+            part = argument[:remaining]
+            selected.append(part)
+            remaining -= len(part)
+            if not remaining:
+                break
+        known = {'bounded_process_input_exceeded', 'bounded_process_deadline_exceeded',
+                 'bounded_process_output_exceeded', 'bounded_process_failed',
+                 'bounded_process_diagnostics_failed'}
+        error = NetworkBoundaryError('restricted-workload-network-command-failed')
+        error.private_diagnostics = {'arguments': selected, 'stderr': captured.get('stderr', ''),
+            'failureClass': str(cause) if str(cause) in known else type(cause).__name__[:128]}
+        raise error from None
 
 
 def _save(state, initial=False):

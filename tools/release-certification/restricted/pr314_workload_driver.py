@@ -233,6 +233,7 @@ def execute():
     import workload_installation
     import restricted_workload as workload
     from restricted_workload_prepare import prepare
+    import pr315_workload_evidence as evidence
     from cross_version_workload import InstalledWorkloadAdapter
     from cryptad_certification.cross_version_evidence import Journal
     identity = installation.verify_execution()
@@ -264,7 +265,6 @@ def execute():
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
         if type(campaign_deadline) is not int or campaign_deadline <= time.monotonic_ns():
             raise ValueError('workload-preparation-consumed-deadline')
-        import pr315_workload_evidence as evidence
         sentinel = evidence.prepare_sentinel(workload)
         root.mkdir(mode=0o700)
         os.chown(root, observer.pw_uid, observer.pw_gid)
@@ -330,11 +330,11 @@ def execute():
             finally:
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
-                if sentinel is not None:
-                    volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed')
-                    workload.write(VOLATILE, volatile, create=True)
-                    if diagnostics['cleanup'] == 'completed' and volatile['sentinel']['status'] != 'matched':
-                        raise ValueError('workload-retained-sentinel-not-established')
+                volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed')
+                workload.write(VOLATILE, volatile, create=True)
+                if (sentinel is not None and diagnostics['cleanup'] == 'completed'
+                        and volatile['sentinel']['status'] != 'matched'):
+                    raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
     workload.write(REPORT, result, create=True)
     return {'status': 'positive-sequence-executed', 'workloadAcceptance': 'incomplete',

@@ -127,7 +127,8 @@ def _record(root, name, fields, deadline):
 
 def _capture(root, expected, cleanup_complete):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
-    if not isinstance(expected, str) or re.fullmatch('sha256:[0-9a-f]{64}', expected) is None:
+    if expected is not None and (not isinstance(expected, str)
+            or re.fullmatch('sha256:[0-9a-f]{64}', expected) is None):
         raise ValueError('workload-sentinel-expected-digest-invalid')
     started = time.monotonic_ns()
     result = {'schemaVersion': 1, 'kind': 'pr315-private-volatile-diagnostics',
@@ -140,19 +141,24 @@ def _capture(root, expected, cleanup_complete):
     if cleanup_complete is True:
         deadline = time.monotonic() + 15
         result['controllerRecords']['campaign'] = _record(root, 'campaign.json', CAMPAIGN_FIELDS, deadline)
+        result['controllerRecords']['network'] = _record(root / 'authority', 'network.json',
+            ('version', 'bootId', 'phase', 'pending'), deadline)
         for role in ROLES:
             result['controllerRecords'][role] = _record(root / 'authority', role + '.json', ROLE_FIELDS, deadline)
-        try:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ValueError('workload-evidence-deadline')
-            raw = snapshot.read_file(root / 'state/candidate-sender', SENTINEL,
-                                     maximum=32, timeout=min(2, remaining))
-            actual = _digest(raw)
-            result['sentinel'] = {'status': 'matched' if len(raw) == 32 and actual == expected else 'changed',
-                                  'expectedDigest': expected, 'observedDigest': actual, 'sizeBytes': len(raw)}
-        except (OSError, ValueError):
-            result['sentinel'] = {'status': 'unavailable-or-unsafe', 'expectedDigest': expected}
+        if expected is None:
+            result['sentinel'] = {'status': 'not-prepared'}
+        else:
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError('workload-evidence-deadline')
+                raw = snapshot.read_file(root / 'state/candidate-sender', SENTINEL,
+                                         maximum=32, timeout=min(2, remaining))
+                actual = _digest(raw)
+                result['sentinel'] = {'status': 'matched' if len(raw) == 32 and actual == expected else 'changed',
+                                      'expectedDigest': expected, 'observedDigest': actual, 'sizeBytes': len(raw)}
+            except (OSError, ValueError):
+                result['sentinel'] = {'status': 'unavailable-or-unsafe', 'expectedDigest': expected}
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

@@ -37,9 +37,23 @@ class VolatileEvidenceTest(unittest.TestCase):
         result = evidence._capture(self.root, self.expected, True)
         self.assertEqual('matched', result['sentinel']['status'])
         self.assertFalse(result['quiescenceIndependentlyEstablished'])
-        self.assertEqual(5, len(result['controllerRecords']))
+        self.assertEqual(6, len(result['controllerRecords']))
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertLess(len(json.dumps(result)), evidence.MAX_OUTPUT)
+
+    def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
+        self.path.unlink()
+        (self.root / 'authority/network.json').write_text(json.dumps({
+            'version': 1, 'phase': 'retained', 'pending': None,
+            'namespaces': {'private-topology-not-exported': [1, 2]}}))
+        result = evidence._capture(self.root, None, True)
+        self.assertEqual({'status': 'not-prepared'}, result['sentinel'])
+        self.assertEqual('captured', result['controllerRecords']['campaign']['status'])
+        self.assertEqual({'version': 1, 'phase': 'retained', 'pending': None},
+                         result['controllerRecords']['network']['record'])
+        self.assertFalse(result['quiescenceIndependentlyEstablished'])
+        self.assertGreaterEqual(result['finishedMonotonicNs'], result['startedMonotonicNs'])
+        self.assertNotIn('private-topology-not-exported', json.dumps(result))
 
     def test_no_read_without_literal_completed_cleanup(self):
         with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('must not read')):
