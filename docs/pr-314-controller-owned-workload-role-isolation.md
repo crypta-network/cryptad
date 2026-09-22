@@ -214,7 +214,11 @@ python3 /opt/cryptad-restricted-test-kit/tools/release-certification/restricted/
 
 That driver invokes production preparation/installation code, drops the observer to `cryptad-soak`,
 uses the existing private journal, executes the adapter's actual positive sequence, and requires
-terminal owned cgroup quiescence before namespace teardown. It retains role tmpfs state and
+terminal owned cgroup quiescence before namespace teardown. Error cleanup first stops the
+controller under its fixed shutdown budget, then acquires the reconciliation lease; an in-flight
+RPC holding that lease cannot skip the stop request. Observer-child cleanup errors also reach
+this stop path. A failed stop, uncertain reconciliation or nonempty cgroup retains the network
+and state for diagnosis. It retains role tmpfs state and
 private records for diagnostics. Its public result has fixed status fields only. The private
 result labels the workload verdict incomplete because it does not execute the full hostile
 contract. Neither this command nor a passing positive sequence is a protected approval.

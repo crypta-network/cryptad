@@ -43,6 +43,19 @@ def prerequisites():
     return reasons
 
 
+def cleanup(workload):
+    """Stop the lease owner before acquiring its nonblocking reconciliation lease."""
+    subprocess.run(['/usr/bin/systemctl', 'stop', 'cryptad-workload-controller.service'],
+                   check=True, timeout=110, env=ENV)
+    workload.reconcile()
+    with workload.locked():
+        if not all(workload.quiescent(role) for role in workload.ROLES):
+            raise ValueError('workload-terminal-cgroups-not-empty')
+        from restricted_workload_network import teardown
+        teardown()
+    # Role tmpfs state and records remain explicitly retained for private diagnostics.
+
+
 def execute():
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
@@ -135,20 +148,14 @@ def execute():
         return {'status': 'positive-sequence-executed', 'workloadAcceptance': 'incomplete',
                 'protectedExecutionEnabled': False}
     finally:
-        parent.close()
-        if status is None:
-            # This is the exact unreaped fork child; it cannot have been PID-reused.
-            os.kill(pid, signal.SIGKILL)
-            os.waitpid(pid, 0)
-        workload.reconcile()
-        subprocess.run(['/usr/bin/systemctl', 'stop', 'cryptad-workload-controller.service'],
-                       check=True, timeout=110, env=ENV)
-        with workload.locked():
-            if not all(workload.quiescent(role) for role in workload.ROLES):
-                raise ValueError('workload-terminal-cgroups-not-empty')
-            from restricted_workload_network import teardown
-            teardown()
-        # Role tmpfs state and records remain explicitly retained for private diagnostics.
+        try:
+            parent.close()
+            if status is None:
+                # This is the exact unreaped fork child; it cannot have been PID-reused.
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+        finally:
+            cleanup(workload)
 
 
 def main():
