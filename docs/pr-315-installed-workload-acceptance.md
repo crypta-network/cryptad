@@ -3,7 +3,7 @@
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
 **Implementation is incomplete; no installed workload case has a valid acceptance witness in
-this revision's audit.** Two installed attempts reached setup failures before role staging.
+this revision's audit.** Three installed attempts reached setup failures before role staging.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -84,6 +84,24 @@ its unit/lookup binding; an installed rerun is still required. Both attempts sto
 and retain private diagnostics. Neither reached a role campaign or yielded workload witnesses.
 Their initial predecessor had only a generated-version class difference, so neither attempt can
 establish distinct-product acceptance even independently of its setup failure.
+
+The third attempt used a substantive historical source build with 24 differing implementation
+classes beyond `Version.class`, passed fixture admission and created all four role accounts.
+It failed before campaign creation because the shared sudo-denial parser recognized only
+`cryptad-runner`, even when the workload installer queried another account. The parser now
+matches the exact validated account supplied by the caller; default base-runner semantics are
+preserved. Regression tests reject another account's denial, malformed names, grants and
+ambiguous policy output. This fix awaits installed execution. The third guest is stopped and
+retained, with eight positive cases setup-failed and all 37 fault cases unexecuted.
+
+A subsequent capacity-only invocation returned 78 without allocating a guest. Retained task
+data occupied 17,280,811,008 bytes and the next copied attempt required 29,208,264,845 bytes,
+exceeding the selected 40 GiB task cap. The 8 GiB free-space reserve, 7 GiB host VM budget,
+1 GiB host memory reserve, and all guest limits remain unchanged. New allocation requires a
+prospective capacity decision; failed evidence is not disposable space. No attempt reached
+role cgroups, JVMs or AppHost, so actual four-role demand and volatile role snapshots remain
+unobserved. The stored QCOW2 files do not establish preservation of nonexistent or later
+lost tmpfs state.
 
 The positive driver now bounds socket EOF through actual child exit, covers partial preparation
 and controller-start failure with cleanup, observes a root controller peer serving its existing
@@ -232,8 +250,8 @@ The guest remains 5632 MiB with the explicitly selected CPU/accelerator and pinn
 Each of four roles has a 1-GiB memory limit, zero swap and 512-task cap. Each role's 512-MiB,
 32768-inode tmpfs consumes real memory; it is not additional guaranteed headroom. Measure
 controller/JVM/AppHost demand and sibling/observer progress. Distinguish expected role-limit
-denial from guest-wide OOM or loss of observation. No VM allocation or memory measurement is
-established by this audit.
+denial from guest-wide OOM or loss of observation. The current attempts measured host admission
+headroom but stopped during setup; they establish no running four-role memory observation.
 
 After exact role quiescence, extract only fixed bounded sentinels and necessary controller records
 with existing safe descriptor readers. Reject symlinks, FIFOs, sockets, hardlinks, races and
@@ -259,13 +277,24 @@ python3 -m unittest discover -s tools/release-certification/restricted -p 'test_
 Add fixture/runner/record/fault regressions as their implementations become executable. Run
 root-only checks only in the dedicated disposable environment and report other root skips.
 The actual installed suite is a separate invocation with declared storage/memory budgets;
-prerequisite exit 78 means unexecuted installed testing. This page contains no test-run result.
+prerequisite exit 78 means unexecuted installed testing.
+
+Local regressions after the sudo/fixture corrections: protected discovery ran 466 tests with
+74 skips; restricted discovery ran 350 with one QEMU-tool-availability skip; the workload adapter
+ran 24 with eight root-only skips. The protected workload subset ran 101 with 21 skips.
+The four certification self-tests ran 152, 247, 88 and 185 tests respectively, all passing after
+the corrections at helper `90a9d63f7d28b78b3d2a1f369e140f469bef0378`. The Gradle wrapper completed
+`:platform-devtools:installDist assembleCryptadDist`, candidate Mail staging/portable assembly,
+and historical predecessor portable assembly. Existing compiler/ErrorProne warnings and Gradle
+deprecation findings remain; task success does not establish analyzer cleanliness. No Java
+behavior was edited, no full Java test suite was run, and no final-source hosted CI was dispatched.
+These offline results and three retained setup failures grant no installed acceptance.
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
 | `installedPositiveExecuted` | False for this revision; no observed installed positive attempt |
-| `installedWorkloadAcceptanceSatisfied` | False; all 45 cases unexecuted |
+| `installedWorkloadAcceptanceSatisfied` | False; latest executed attempt has eight setup-failed positives and 37 unexecuted faults |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
