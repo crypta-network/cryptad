@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import subprocess
 import sys
 import tarfile
@@ -19,6 +20,51 @@ import restricted_workload as workload
 from restricted_workload_storage import copy_tree
 from restricted_workload_launcher import launcher_policy, verify_wrapper_options
 from restricted_native_launcher import tree_identity
+
+
+def _wait_storage_child(child, campaign_deadline_ns):
+    """Bound initialization and reap only its still-owned direct fork child.
+
+    No state is removed on failure. An uncertain reap leaves preparation incomplete;
+    the two-second termination allowance cannot authorize further campaign work.
+    """
+    deadline = min(campaign_deadline_ns / 1e9, time.monotonic() + 5)
+    while True:
+        try:
+            observed, status = os.waitpid(child, os.WNOHANG)
+        except InterruptedError:
+            observed = 0
+        except ChildProcessError:
+            workload.reject('role-storage-child-reconciliation-required')
+        if observed == child:
+            if time.monotonic() >= deadline:
+                workload.reject('role-storage-initialization-timeout')
+            if status != 0:
+                workload.reject('role-storage-initialization-failed')
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(.01, remaining))
+    # No wait has reaped this direct child, so its PID cannot yet be reused.
+    try:
+        os.kill(child, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    reap_deadline = time.monotonic() + 2
+    while True:
+        try:
+            observed, _status = os.waitpid(child, os.WNOHANG)
+        except InterruptedError:
+            observed = 0
+        except ChildProcessError:
+            workload.reject('role-storage-child-reconciliation-required')
+        if observed == child:
+            workload.reject('role-storage-initialization-timeout')
+        remaining = reap_deadline - time.monotonic()
+        if remaining <= 0:
+            workload.reject('role-storage-child-reconciliation-required')
+        time.sleep(min(.01, remaining))
 
 
 def configuration(role):
@@ -218,8 +264,7 @@ def prepare(plan, private, authorization):
                     os._exit(0)
                 except BaseException:
                     os._exit(1)
-            if os.waitpid(child, 0)[1] != 0:
-                workload.reject('role-storage-initialization-failed')
+            _wait_storage_child(child, deadline)
             # Expected initial bytes stay in root authority, separate from normalized runtime config.
             expected_config = hashlib.sha256((node / 'config/cryptad.ini').read_bytes()).hexdigest()
             java_digests[role] = runtime.digest_file(inputs / 'jdk/bin/java')
@@ -240,5 +285,6 @@ def prepare(plan, private, authorization):
         campaign['state'] = 'prepared'
         workload.write(workload.ROOT / 'campaign.json', campaign)
         return {'profile': workload.PROFILE, 'handles': handles, 'expectedJdkDigests': java_digests,
+                'deadlineMonotonicNs': campaign['deadlineMonotonicNs'],
                 'implementationIdentity': implementation,
                 'classification': campaign['classification']}

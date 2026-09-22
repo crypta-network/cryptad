@@ -237,9 +237,10 @@ class TerminalPublicationTest(unittest.TestCase):
         kit = {**identity, 'files': {relative: hashlib.sha256(Path(driver.__file__).read_bytes()).hexdigest()}}
         installation = SimpleNamespace(verify_execution=lambda: identity,
             read_json=lambda path: kit, secured=lambda path: path)
+        campaign_deadline = time.monotonic_ns() + 30 * 10**9
         workload = SimpleNamespace(ROOT=Path('/var/lib/cryptad-restricted-workload'),
             read=lambda path: selection if path == driver.SELECTION else
-                {'deadlineMonotonicNs': time.monotonic_ns() + 30 * 10**9},
+                {'deadlineMonotonicNs': campaign_deadline},
             write=lambda path, *args, **kwargs: events.append(
                 'terminal-report' if path == driver.REPORT else
                 'volatile-diagnostics' if path == driver.VOLATILE else 'private-diagnostics'))
@@ -247,7 +248,7 @@ class TerminalPublicationTest(unittest.TestCase):
             events.append('prepare')
             if failure == 'prepare':
                 raise ValueError('setup-failure')
-            return {}
+            return {'deadlineMonotonicNs': campaign_deadline + (1 if failure == 'handoff' else 0)}
         def cleanup(_workload):
             events.append('cleanup')
             if failure == 'cleanup':
@@ -282,7 +283,7 @@ class TerminalPublicationTest(unittest.TestCase):
         return events
 
     def test_partial_preparation_and_controller_start_failure_reconcile(self):
-        for failure in ('prepare', 'controller'):
+        for failure in ('prepare', 'controller', 'handoff'):
             with self.subTest(failure=failure):
                 expected = ['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics']
                 self.assertEqual(expected, self.exercise(failure))

@@ -33,6 +33,16 @@ def fail(code):
     raise runtime.RuntimeFailure('workload-' + code)
 
 
+def retained_deadline(handoff, maximum):
+    """Use the administrator's original monotonic epoch, including elapsed preparation."""
+    deadline = handoff.get('deadlineMonotonicNs')
+    now = time.monotonic_ns()
+    if (type(deadline) is not int or type(maximum) is not int or not 30 <= maximum <= 3600
+            or not now < deadline <= now + maximum * 10**9):
+        fail('retained-deadline-invalid-or-expired')
+    return deadline / 10**9
+
+
 def _object(pairs):
     result = {}
     for key, value in pairs:
@@ -331,7 +341,7 @@ class InstalledWorkloadAdapter:
         self.handles = dict(handoff['handles'])
         self.expected_jdk_digests = dict(expected_jdk_digests)
         self.control = control or WorkloadClient()
-        self.root, self.deadline, self.operations = root, time.monotonic() + maximum, 0
+        self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes = {}, {}, {}
         self._journal_started_roles = set()
         self.catalog_prepared = None

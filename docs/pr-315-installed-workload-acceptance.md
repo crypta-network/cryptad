@@ -357,6 +357,19 @@ certification self-tests passed 152, 247, 88 and 185 tests. Root and transport s
 unexecuted installed checks. The candidate portable remains the startup-fixed source build;
 this Python adapter change does not require rebuilding or relabeling the daemon product.
 
+The subsequent wait audit found that the observer adapter constructed a fresh local deadline
+after preparation, although the controller still enforced its original campaign deadline. The
+corrected handoff carries that original monotonic deadline; the administrator cross-checks it
+against retained authority, and late observer construction cannot grant a new local budget.
+This is an offline timing correction, not an observed installed deadline-lifecycle pass.
+Preparation's unbounded storage-child `waitpid` is also replaced with a finite initialization
+wait capped by the original campaign deadline, followed by at most two seconds for exact-child
+termination/reap. A timeout retains partial preparation and cannot authorize further work.
+Real unprivileged fork tests cover success, failure and a stalled child; simulated uncertain
+reap and clock cases remain offline tests. At this correction, protected discovery passed 518
+tests with 74 skips, restricted discovery passed 393 with one skip, and interop discovery passed
+219 with eight skips. These changes require a fresh installed attempt.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing

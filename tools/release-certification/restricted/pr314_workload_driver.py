@@ -340,6 +340,9 @@ def execute(*, startup_measurement=False):
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
         if type(campaign_deadline) is not int or campaign_deadline <= time.monotonic_ns():
             raise ValueError('workload-preparation-consumed-deadline')
+        if (type(handoff.get('deadlineMonotonicNs')) is not int
+                or handoff['deadlineMonotonicNs'] != campaign_deadline):
+            raise ValueError('workload-handoff-deadline-mismatch')
         sentinel = evidence.prepare_sentinel(workload)
         root.mkdir(mode=0o700)
         os.chown(root, observer.pw_uid, observer.pw_gid)

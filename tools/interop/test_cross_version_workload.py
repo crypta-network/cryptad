@@ -202,6 +202,19 @@ class ObserverPolicyTests(unittest.TestCase):
 
 
 class ReadinessDeadlineTests(unittest.TestCase):
+    def test_late_observer_uses_original_deadline_not_a_fresh_budget(self):
+        with mock.patch.object(workload.time, 'monotonic_ns', return_value=10 * 10**9):
+            self.assertEqual(20, workload.retained_deadline({'deadlineMonotonicNs': 20 * 10**9}, 30))
+        with mock.patch.object(workload.time, 'monotonic_ns', return_value=19 * 10**9):
+            self.assertEqual(20, workload.retained_deadline({'deadlineMonotonicNs': 20 * 10**9}, 30))
+
+    def test_missing_expired_extended_or_noninteger_deadline_rejects(self):
+        with mock.patch.object(workload.time, 'monotonic_ns', return_value=10 * 10**9):
+            for value in (None, True, 20e9, 0, 10 * 10**9, 40 * 10**9 + 1):
+                with self.subTest(deadline=value), self.assertRaisesRegex(
+                        workload.runtime.RuntimeFailure, 'retained-deadline'):
+                    workload.retained_deadline({'deadlineMonotonicNs': value}, 30)
+
     def adapter(self, seconds):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
