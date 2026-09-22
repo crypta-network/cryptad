@@ -163,6 +163,20 @@ def serve(connection, expected_uid):
     return method
 
 
+def handle_request(connection, observer_uid):
+    """Contain adversarial protocol errors to this request, preserving owned siblings."""
+    try:
+        with deadline(45):
+            serve(connection, observer_uid)
+        return True
+    except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
+        try:
+            connection.sendall(b'{"error":"restricted-workload-request-failed"}\n')
+        except OSError:
+            pass
+        return False
+
+
 def main():
     if len(sys.argv) != 1 or not sys.flags.isolated or not sys.flags.no_site or os.geteuid() != 0:
         workload.reject('fixed-entry-required')
@@ -200,15 +214,8 @@ def main():
                 continue
             connection, _ = server.accept()
             with connection:
-                try:
-                    with deadline(45):
-                        serve(connection, observer.pw_uid)
+                if handle_request(connection, observer.pw_uid):
                     last_observer = time.monotonic()
-                except (OSError, ValueError, KeyError, TypeError):
-                    try:
-                        connection.sendall(b'{"error":"restricted-workload-request-failed"}\n')
-                    except OSError:
-                        pass
     finally:
         server.close()
         workload.reconcile()

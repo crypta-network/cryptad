@@ -370,6 +370,41 @@ class FakeConnection:
 
 
 class ControllerRequestTest(unittest.TestCase):
+    def test_malformed_role_http_fails_only_request_and_next_request_succeeds(self):
+        for response in (b'not-http\r\n', b'HTTP/1.1 200 OK\r\nX: ' + b'a' * 65537 + b'\r\n\r\n'):
+            with self.subTest(response_length=len(response)), socket.socket() as listener:
+                listener.bind(('127.0.0.1', 0))
+                listener.listen(1)
+                errors = []
+                def reply():
+                    try:
+                        with listener.accept()[0] as peer:
+                            peer.settimeout(5)
+                            raw = b''
+                            while b'\r\n\r\n' not in raw:
+                                raw += peer.recv(4096)
+                            peer.sendall(response)
+                    except Exception as error:
+                        errors.append(error)
+                worker = threading.Thread(target=reply, daemon=True)
+                worker.start()
+                def bootstrap(_handle):
+                    with socket.create_connection(listener.getsockname(), timeout=5) as stream:
+                        return controller._http(stream, '/', {})
+                failed = FakeConnection(json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE}).encode() + b'\n')
+                with patch.object(controller, 'bootstrap', side_effect=bootstrap), \
+                        patch.object(workload, 'reconcile') as reconcile:
+                    self.assertFalse(controller.handle_request(failed, 1000))
+                    healthy = FakeConnection(self.raw() + b'\n')
+                    with patch.object(workload, 'start', return_value={'state': 'running'}):
+                        self.assertTrue(controller.handle_request(healthy, 1000))
+                    reconcile.assert_not_called()
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual([], errors)
+                self.assertEqual([b'{"error":"restricted-workload-request-failed"}\n'], failed.sent)
+                self.assertEqual([b'{"state":"running"}\n'], healthy.sent)
+
     def raw(self, **values):
         return json.dumps(dict(method='start', handle=HANDLE, **values)).encode()
 

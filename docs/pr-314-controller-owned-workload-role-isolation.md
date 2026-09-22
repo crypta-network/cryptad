@@ -323,6 +323,20 @@ unrelated helper exits, required process/ancestor exits during either pass, and 
 The subsequent checks passed: 95 workload tests under root without skips, 24 adapter tests with
 8 skips, and 12 acceptance-contract tests. These remain local tests, not installed acceptance.
 
+The subsequent PR review adds request-local handling of malformed role HTTP responses, including
+`HTTPException` subclasses. A malformed bootstrap fails its own request without exiting the
+controller and reconciling healthy siblings. Local TCP regressions exercise an invalid status
+line and an oversized header, followed by a successful controller request.
+
+The prospective acceptance contract is now `pr314-workload-roles-v2`. Each attempt requires
+measured `principals` containing the observer UID, runner UID and exact four-role roster; all
+six host accounts must be distinct. The start witness must match this context. Candidate/app
+denial probes in this initial contract originate in `candidate-sender`; their actor UID must
+match that role, while observer/runner denials must match their respective accounts. Legacy v1
+records cannot satisfy v2. These checks bind host accounts only: the installed driver must still
+measure the actual probe process and its app/role invocation. JSON context does not authenticate
+execution. Review validation passed 96 workload tests under root and 15 contract tests.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.

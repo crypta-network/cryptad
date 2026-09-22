@@ -8,7 +8,7 @@ not installed observations and must never be published as such.
 from dataclasses import dataclass
 import re
 
-CONTRACT = 'pr314-workload-roles-v1'
+CONTRACT = 'pr314-workload-roles-v2'
 PROFILE = 'debian13-systemd257-workload-v1'
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 IDENTITY_FIELDS = ('helperSourceCommit', 'helperSourceTree', 'productSelectionDigest',
@@ -104,7 +104,22 @@ def _roster(rows):
             and len({row['bootId'] for row in rows}) == 1)
 
 
-def _witness(case, witness, identity):
+def _principals(value):
+    """Measured per-attempt accounts; candidate/app probes originate in candidate-sender."""
+    return (_closed(value, ('observerUid', 'runnerUid', 'roles'))
+            and _roster(value['roles'])
+            and _positive(value['observerUid']) and _positive(value['runnerUid'])
+            and len({value['observerUid'], value['runnerUid'],
+                     *(row['uid'] for row in value['roles'])}) == len(ROLES) + 2)
+
+
+def _actor_uid(actor, principals):
+    if actor in ('candidate', 'app'):
+        return next(row['uid'] for row in principals['roles'] if row['role'] == 'candidate-sender')
+    return principals[actor + 'Uid']
+
+
+def _witness(case, witness, identity, principals):
     kind = case.witness
     if kind == 'identity':
         return witness == {'profile': PROFILE, 'bundleIdentity': identity['bundleIdentity'],
@@ -112,7 +127,9 @@ def _witness(case, witness, identity):
     if kind == 'roster':
         return (_closed(witness, ('observerUid', 'roles')) and _roster(witness['roles'])
                 and _positive(witness['observerUid'])
-                and witness['observerUid'] not in {row['uid'] for row in witness['roles']})
+                and witness['observerUid'] not in {row['uid'] for row in witness['roles']}
+                and (principals is None or (witness['observerUid'] == principals['observerUid']
+                     and witness['roles'] == principals['roles'])))
     if kind == 'app':
         return (_closed(witness, ('role', 'provider', 'hostPid', 'namespacePid',
                                  'processEpoch', 'invocationId', 'installedAppDigest'))
@@ -144,6 +161,8 @@ def _witness(case, witness, identity):
                                  'targetActiveAfterNs', 'controlResponseDigest', 'denialSource',
                                  'denialCode', 'unrelatedStateBefore', 'unrelatedStateAfter'))
                 and _positive(witness['actorUid'])
+                and _principals(principals)
+                and witness['actorUid'] == _actor_uid(case.actor, principals)
                 and all(_positive(witness[key]) for key in
                         ('attackStartedNs', 'targetActiveBeforeNs', 'targetActiveAfterNs'))
                 and witness['targetActiveBeforeNs'] < witness['attackStartedNs'] < witness['targetActiveAfterNs']
@@ -170,7 +189,7 @@ def inventory(statuses=None):
             for name, case in CASES.items()]
 
 
-def observation_status(record, identity):
+def observation_status(record, identity, principals=None):
     if not isinstance(record, dict) or not isinstance(record.get('caseId'), str) or record['caseId'] not in CASES:
         raise ValueError('workload-case-invalid')
     if record.get('status') != 'passed':
@@ -184,7 +203,7 @@ def observation_status(record, identity):
             and (record['actor'], record['target'], record['outcome']) == (case.actor, case.target, case.outcome)
             and _positive(record['startedMonotonicNs']) and _positive(record['finishedMonotonicNs'])
             and record['startedMonotonicNs'] < record['finishedMonotonicNs']
-            and _witness(case, record['witness'], identity)):
+            and _witness(case, record['witness'], identity, principals)):
         raise ValueError('workload-observation-invalid')
     for key in ('attackStartedNs', 'targetActiveBeforeNs', 'targetActiveAfterNs',
                 'triggerStartedNs', 'terminalObservedNs'):
@@ -195,14 +214,19 @@ def observation_status(record, identity):
 
 
 def verify_attempts(expected_identity, attempts):
-    """Check driver records; caller must independently bind transport and source identity."""
+    """Check driver records; caller must bind transport, source and measured principal context.
+
+    UID equality binds the host account, not proof of app sandbox execution. The installed
+    driver must capture the actual probe process under its current role/app invocation.
+    """
     statuses = {}
     valid = _identity(expected_identity) and isinstance(attempts, list) and 0 < len(attempts) <= len(CASES)
     for attempt in attempts if isinstance(attempts, list) and len(attempts) <= len(CASES) else ():
         try:
             if not (_closed(attempt, ('contract', 'identity', 'declaredCases', 'observations',
-                                     'guestStopped', 'attemptCompleted'))
+                                     'guestStopped', 'attemptCompleted', 'principals'))
                     and attempt['contract'] == CONTRACT and attempt['identity'] == expected_identity
+                    and _principals(attempt['principals'])
                     and attempt['guestStopped'] is True and attempt['attemptCompleted'] is True
                     and isinstance(attempt['declaredCases'], list) and attempt['declaredCases']
                     and all(isinstance(name, str) and name in CASES for name in attempt['declaredCases'])
@@ -213,7 +237,7 @@ def verify_attempts(expected_identity, attempts):
                 raise ValueError('workload-attempt-invalid')
             observed = {}
             for row in attempt['observations']:
-                status = observation_status(row, expected_identity)
+                status = observation_status(row, expected_identity, attempt['principals'])
                 if row['caseId'] in observed:
                     raise ValueError('workload-duplicate-observation')
                 observed[row['caseId']] = status
