@@ -207,6 +207,22 @@ These private candidate-origin diagnostics are not acceptance witnesses. Unsafe,
 unavailable logs remain explicitly unavailable. No daemon readiness or role resource limit
 was increased for this retry.
 
+The tenth attempt at helper `30ecc2a009a4fe5e0e082cf5a45c3dddb2916172` again passed
+controller readiness, but the first role service exited before daemon readiness. Its safely
+captured wrapper log reports an abnormal Java bootstrap-child exit followed by the wrapper's
+incorrect-bootstrap-output message. The message does not prove a corrupt JAR or identify a
+signal: the pinned wrapper and its JAR both identify version 3.6.2. No other role was started.
+Cleanup completed, the sentinel matched, and the guest stopped; the failed disks and verified
+expanded duplicates were then removed under the user's authorization, preserving archives and
+private diagnostics. No workload case passed.
+
+The next diagnostic revision logs the fixed Java command and query at INFO level into the same
+bounded private wrapper log. It also looks only for bounded JVM fatal-error headers in each
+role's fixed temporary directory after cleanup. Missing files are unavailable evidence, not
+proof that no JVM failure occurred. This does not establish where the previous fatal output
+went or explain historical SIGILL/SIGSEGV observations. CPU, JDK, memory and campaign limits
+remain unchanged; the previously demonstrated FCP deadline fix is included prospectively.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing

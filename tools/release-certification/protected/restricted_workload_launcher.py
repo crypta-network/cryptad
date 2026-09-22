@@ -28,7 +28,8 @@ def command(role):
     # The administrator snapshots only a small safe tail after owned quiescence.
     child = ['/package/bin/cryptad', 'wrapper.java.maxmemory=256',
              'wrapper.logfile=/node/logs/wrapper.log',
-             'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3']
+             'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
+             'wrapper.java.command.loglevel=INFO', 'wrapper.java.query.loglevel=INFO']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]

@@ -660,6 +660,8 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual('/node/logs/wrapper.log', properties['wrapper.logfile'])
             self.assertEqual('2M', properties['wrapper.logfile.maxsize'])
             self.assertEqual('3', properties['wrapper.logfile.maxfiles'])
+            self.assertEqual('INFO', properties['wrapper.java.command.loglevel'])
+            self.assertEqual('INFO', properties['wrapper.java.query.loglevel'])
             self.assertEqual('256', properties['wrapper.java.maxmemory'])
             self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
             self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])

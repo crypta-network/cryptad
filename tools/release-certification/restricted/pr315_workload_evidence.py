@@ -144,6 +144,47 @@ def _wrapper_log(root, role, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _fatal_logs(root, role, deadline):
+    """Inspect only the fixed possible JVM fallback directory, not an asserted crash location."""
+    if time.monotonic() >= deadline:
+        return {'status': 'capture-deadline'}
+    directory = root / 'state' / role / 'tmp'
+    try:
+        with snapshot._directory(directory) as descriptor:
+            names = []
+            with os.scandir(descriptor) as entries:
+                for count, entry in enumerate(entries, 1):
+                    if time.monotonic() >= deadline:
+                        return {'status': 'capture-deadline'}
+                    if count > 64:
+                        return {'status': 'too-many-directory-entries'}
+                    if re.fullmatch(r'hs_err_pid[0-9]{1,10}\.log', entry.name):
+                        names.append(entry.name)
+            result = {'status': 'none' if not names else
+                      'too-many-matching-files' if len(names) > 2 else 'captured',
+                      'classification': 'candidate-origin-private-diagnostic-not-acceptance',
+                      'locationProven': False, 'matchedFiles': len(names), 'files': []}
+            for name in sorted(names)[:2]:
+                row = {'name': name}
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    row['status'] = 'capture-deadline'
+                else:
+                    try:
+                        raw = snapshot.read_file(directory, name, maximum=MAX_WRAPPER_LOG,
+                                                 timeout=min(2, remaining))
+                        header = raw[:4096]
+                        row.update(status='captured', sizeBytes=len(raw), headBytes=len(header),
+                                   truncated=len(header) < len(raw),
+                                   headBase64=base64.b64encode(header).decode('ascii'))
+                    except (OSError, ValueError):
+                        row['status'] = 'unavailable-or-unsafe'
+                result['files'].append(row)
+        return result
+    except (OSError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -157,7 +198,8 @@ def _capture(root, expected, cleanup_complete):
         'quiescenceIndependentlyEstablished': False,
         'snapshotLimitations': 'fixed-files-not-atomic-not-runtime-continuation',
         'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {},
-        'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}}
+        'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
+        'fatalLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}}
     if cleanup_complete is True:
         deadline = time.monotonic() + 15
         result['controllerRecords']['campaign'] = _record(root, 'campaign.json', CAMPAIGN_FIELDS, deadline)
@@ -185,6 +227,11 @@ def _capture(root, expected, cleanup_complete):
             result['wrapperLogs'][role] = _wrapper_log(root, role, deadline)
             if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                 result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
+        # Lower-priority crash headers share the same deadline and private output bound.
+        for role in ROLES:
+            result['fatalLogs'][role] = _fatal_logs(root, role, deadline)
+            if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
+                result['fatalLogs'][role] = {'status': 'not-captured-output-budget'}
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

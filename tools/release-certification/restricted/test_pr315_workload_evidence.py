@@ -64,6 +64,94 @@ class VolatileEvidenceTest(unittest.TestCase):
                 self.assertTrue(all(row == {'status': 'not-captured-cleanup-unverified'}
                                     for row in result['wrapperLogs'].values()))
 
+    def fatal_directory(self):
+        directory = self.state / 'tmp'
+        directory.mkdir(exist_ok=True)
+        return directory
+
+    def test_fatal_selection_is_fixed_bounded_and_retains_header(self):
+        directory = self.fatal_directory()
+        for name in ('hs_err_pid3.log', 'hs_err_pid1.log', 'hs_err_pid2.log'):
+            (directory / name).write_bytes(b'H' * 5000 + b'TAIL')
+        (directory / 'credentials').write_bytes(b'must-not-read')
+        result = evidence._capture(self.root, self.expected, True)
+        logs = result['fatalLogs']['candidate-sender']
+        self.assertEqual('too-many-matching-files', logs['status'])
+        self.assertEqual(3, logs['matchedFiles'])
+        self.assertEqual(['hs_err_pid1.log', 'hs_err_pid2.log'],
+                         [row['name'] for row in logs['files']])
+        self.assertFalse(logs['locationProven'])
+        for row in logs['files']:
+            self.assertEqual(b'H' * 4096, base64.b64decode(row['headBase64']))
+            self.assertEqual(5004, row['sizeBytes'])
+            self.assertTrue(row['truncated'])
+        self.assertNotIn('must-not-read', json.dumps(result))
+
+    def test_fatal_empty_and_flooded_directory_are_distinct(self):
+        directory = self.fatal_directory()
+        self.assertEqual('none', evidence._fatal_logs(self.root, 'candidate-sender', float('inf'))['status'])
+        for number in range(65):
+            (directory / str(number)).touch()
+        with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('no reads')):
+            self.assertEqual('too-many-directory-entries',
+                evidence._fatal_logs(self.root, 'candidate-sender', float('inf'))['status'])
+
+    def test_fatal_special_files_and_oversize_are_rejected(self):
+        directory = self.fatal_directory()
+        path = directory / 'hs_err_pid1.log'
+        for kind in ('symlink', 'fifo', 'hardlink', 'oversize'):
+            with self.subTest(kind=kind):
+                if kind == 'symlink':
+                    path.symlink_to(self.path)
+                elif kind == 'fifo':
+                    os.mkfifo(path)
+                elif kind == 'hardlink':
+                    os.link(self.path, path)
+                else:
+                    with path.open('wb') as stream:
+                        stream.truncate(evidence.MAX_WRAPPER_LOG + 1)
+                row = evidence._fatal_logs(self.root, 'candidate-sender', float('inf'))['files'][0]
+                self.assertEqual('unavailable-or-unsafe', row['status'])
+                path.unlink()
+        directory.rmdir()
+        directory.symlink_to(self.root, target_is_directory=True)
+        self.assertEqual('unavailable-or-unsafe',
+            evidence._fatal_logs(self.root, 'candidate-sender', float('inf'))['status'])
+
+    def test_fatal_reader_uses_remaining_deadline_and_rejects_directory_replacement(self):
+        directory = self.fatal_directory()
+        (directory / 'hs_err_pid1.log').write_bytes(b'header')
+        with patch.object(evidence.time, 'monotonic', return_value=9.75), \
+                patch.object(evidence.snapshot, 'read_file', return_value=b'header') as reader:
+            result = evidence._fatal_logs(self.root, 'candidate-sender', 10)
+        self.assertEqual('captured', result['files'][0]['status'])
+        self.assertEqual(.25, reader.call_args.kwargs['timeout'])
+        self.assertEqual(2 * 1024 * 1024, reader.call_args.kwargs['maximum'])
+        original = evidence.snapshot.read_file
+        def replace(*args, **kwargs):
+            raw = original(*args, **kwargs)
+            directory.rename(self.state / 'replaced-tmp')
+            directory.mkdir()
+            return raw
+        with patch.object(evidence.snapshot, 'read_file', side_effect=replace):
+            result = evidence._fatal_logs(self.root, 'candidate-sender', float('inf'))
+        self.assertEqual({'status': 'unavailable-or-unsafe'}, result)
+
+    def test_fatal_deadline_and_output_budget_preserve_higher_priority_records(self):
+        directory = self.fatal_directory()
+        (directory / 'hs_err_pid1.log').write_bytes(b'H' * 4096)
+        with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('no reads')):
+            self.assertEqual('capture-deadline',
+                evidence._fatal_logs(self.root, 'candidate-sender', 0)['status'])
+        with patch.object(evidence, 'MAX_OUTPUT', 4096):
+            result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('not-captured-output-budget', result['fatalLogs']['candidate-sender']['status'])
+        self.assertEqual('matched', result['sentinel']['status'])
+        with patch.object(evidence.snapshot, '_directory', side_effect=AssertionError('no enumeration')):
+            result = evidence._capture(self.root, self.expected, False)
+        self.assertTrue(all(row['status'] == 'not-captured-cleanup-unverified'
+                            for row in result['fatalLogs'].values()))
+
     def wrapper(self, role='candidate-sender'):
         logs = self.root / 'state' / role / 'logs'
         logs.mkdir(parents=True, exist_ok=True)
