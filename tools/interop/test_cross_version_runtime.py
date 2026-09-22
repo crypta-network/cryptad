@@ -572,6 +572,13 @@ class HttpAdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(runtime.RuntimeFailure, "bootstrap-unavailable"):
                 self.handle.host_bootstrap()
 
+    def test_host_bootstrap_redirect_is_classified_without_following_or_exposing_body(self):
+        with patch.object(self.handle, 'request', return_value=(302, b'private-location')) as request:
+            with self.assertRaisesRegex(runtime.RuntimeFailure,
+                                        '^owned-host-bootstrap-unavailable-http-status$'):
+                self.handle.host_bootstrap()
+        request.assert_called_once_with('GET', '/app/node/', raw=True)
+
 
 
 class SupervisorBehaviorTest(unittest.TestCase):

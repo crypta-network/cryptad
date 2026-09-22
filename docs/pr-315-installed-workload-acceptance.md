@@ -10,6 +10,8 @@ through thirteenth reached first-role startup but failed daemon readiness; no fo
 run has completed. The fourteenth reached both candidate daemons, then failed predecessor readiness.
 The fifteenth reached all four daemons, then exposed an incorrect peer-wait helper call.
 The sixteenth failed first-role wrapper bootstrap with a JVM illegal-instruction crash.
+The seventeenth passed four-daemon readiness and two-sided peer connection waits, then failed
+host bootstrap before app installation.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -342,6 +344,27 @@ labelled CPU lines from already safely read crash logs, in addition to the exist
 The same 15-second capture deadline and 64 KiB overall private evidence limit remain. Adjacent
 environment sections and unrecognized formats are omitted. Thirty focused descriptor/evidence
 tests pass; these candidate-origin excerpts do not authenticate CPU features or diagnose SIGILL.
+
+The seventeenth attempt used the same products, JDK, CPU/accelerator, memory limits and launcher
+policy. All four daemons became ready and the three relay connections passed the real two-sided
+peer waiter. The first host bootstrap then failed with `owned-host-bootstrap-unavailable`.
+No HTTP status or redirect location was retained, so this is not an observed redirect diagnosis.
+Source inspection established an omitted prerequisite: the fixed fixture did not set
+`fproxy.hasCompletedWizard`, whose false default permits the HTTP router to redirect host UI
+requests to first-run setup. The prospective fixture now explicitly marks its preselected
+synthetic configuration complete. This changes its configuration identity; previous fixtures
+and observations cannot be relabelled. Global product defaults and redirect handling remain
+unchanged. Bootstrap errors now distinguish HTTP status from document shape using fixed labels,
+without exposing response bodies, locations or credentials.
+
+The seventeenth attempt captured all four exact stop receipts, a terminalizing campaign, the
+matching synthetic sentinel, completed reported cleanup and host-observed guest stop. This is
+installed evidence of the new cleanup mechanism, not a predeclared lifecycle-case verdict.
+No AppHost install/start, content retrieval or restart completed. Bounded private diagnostics
+and original archives were retained before verified stopped disposable disks and redundant
+copies were removed. The later retained-deadline handoff correction was not in this attempt.
+The fixture correction passed 154 workload tests with 21 skips, 220 interop tests with eight
+skips and 271 PR-31x restricted tests with one skip; root-only skips remain unexecuted.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by

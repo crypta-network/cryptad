@@ -204,6 +204,16 @@ with open(sys.argv[3], 'wb') as stream:
         self.assertEqual(original, preparation.configuration_identity(role, 'sha256:' + 'a' * 64))
         self.assertNotEqual(original, preparation.configuration_identity(role, 'sha256:' + 'b' * 64))
 
+    def test_preconfigured_workload_completes_wizard_and_changes_configuration_pin(self):
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                text = preparation.configuration(role)
+                self.assertEqual(1, text.count('fproxy.hasCompletedWizard=true\n'))
+                current = preparation.configuration_identity(role, None)
+                with patch.object(preparation, 'configuration', return_value=text.replace(
+                        'fproxy.hasCompletedWizard=true\n', '')):
+                    self.assertNotEqual(current, preparation.configuration_identity(role, None))
+
     def test_configuration_identity_changes_with_fixed_launcher_policy(self):
         original = preparation.configuration_identity('previous', None)
         changed = launcher.launcher_policy()

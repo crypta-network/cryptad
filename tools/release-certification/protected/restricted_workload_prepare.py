@@ -79,7 +79,10 @@ def configuration(role):
         text = config.read_text().replace(str(node), '/node')
     return (text.replace('node.bindTo=127.0.0.1', 'node.bindTo=' + address(role))
             .replace('node.ipAddressOverride=127.0.0.1', 'node.ipAddressOverride=' + address(role))
-            .replace('node.includeLocalAddressesInNoderefs=false', 'node.includeLocalAddressesInNoderefs=true'))
+            .replace('node.includeLocalAddressesInNoderefs=false', 'node.includeLocalAddressesInNoderefs=true')
+            # The finite synthetic fixture supplies setup choices before launch. Without
+            # this flag the normal HTTP router redirects host bootstrap to the wizard.
+            .replace('End\n', 'fproxy.hasCompletedWizard=true\nEnd\n'))
 
 
 def configuration_identity(role, trust_digest):

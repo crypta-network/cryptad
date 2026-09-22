@@ -797,7 +797,9 @@ class AppHandle:
         parser = _BootstrapParser()
         parser.feed(raw.decode("utf-8"))
         if status != 200 or parser.count != 1:
-            raise RuntimeFailure("owned-host-bootstrap-unavailable")
+            # Fixed classifications only: never include HTML, redirect locations or tokens.
+            reason = "http-status" if status != 200 else "document-shape"
+            raise RuntimeFailure("owned-host-bootstrap-unavailable-" + reason)
         value = json.loads("".join(parser.parts))
         password = value.get("formPassword")
         if not isinstance(password, str) or not password or len(password) > 4096:
