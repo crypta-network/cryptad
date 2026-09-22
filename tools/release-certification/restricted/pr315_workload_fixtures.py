@@ -7,6 +7,7 @@ original release evidence. The guest binds its installed helper/runtime separate
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -114,12 +115,31 @@ def daemon_implementation_identity(path):
             os.close(pinned)
 
 
-def portable_implementation_identity(path):
-    """Recompute from exact portable bytes; never accept a caller-authored class digest."""
+@contextmanager
+def _pinned_archive(path):
+    """Open a regular single-link archive once without following any mutable path leaf."""
+    from runtime_snapshot import _directory, _unchanged
+    path = Path(path).absolute()
+    with _directory(path.parent) as parent:
+        pinned = os.open(path.name, os.O_PATH | os.O_NOFOLLOW, dir_fd=parent)
+        try:
+            before = os.fstat(pinned)
+            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= MAX_DAEMON_BYTES:
+                raise ValueError('workload-fixture-archive-file-invalid')
+            descriptor = os.open('/proc/self/fd/' + str(pinned), os.O_RDONLY | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as stream:
+                _unchanged(before, os.fstat(stream.fileno()))
+                yield stream, before.st_size
+                _unchanged(before, os.fstat(stream.fileno()))
+            _unchanged(before, os.stat(path.name, dir_fd=parent, follow_symlinks=False))
+        finally:
+            os.close(pinned)
+
+
+def _portable_daemon_identities(stream, deadline):
     total = count = found = 0
     result = None
-    deadline = time.monotonic() + 60
-    with tarfile.open(path, 'r:*') as archive:
+    with tarfile.open(fileobj=stream, mode='r:*') as archive:
         for member in archive:
             total += member.size
             count += 1
@@ -132,6 +152,7 @@ def portable_implementation_identity(path):
                 raise ValueError('workload-fixture-daemon-member-invalid')
             with archive.extractfile(member) as source, tempfile.SpooledTemporaryFile(max_size=8 * 1024**2) as jar:
                 remaining = member.size
+                checksum = hashlib.sha256()
                 while remaining:
                     if time.monotonic() >= deadline:
                         raise ValueError('workload-fixture-daemon-copy-deadline')
@@ -139,12 +160,45 @@ def portable_implementation_identity(path):
                     if not raw:
                         raise ValueError('workload-fixture-daemon-member-invalid')
                     jar.write(raw)
+                    checksum.update(raw)
                     remaining -= len(raw)
                 jar.seek(0)
-                result = _implementation_identity(jar)
+                result = {'daemonDigest': 'sha256:' + checksum.hexdigest(),
+                          'daemonImplementationDigest': _implementation_identity(jar)}
     if found != 1:
         raise ValueError('workload-fixture-daemon-member-invalid')
     return result
+
+
+def portable_daemon_identities(path, *, expected_digest=None, expected_size=None):
+    """Bind portable hash and both daemon identities to the same pinned archive object."""
+    deadline = time.monotonic() + 60
+    with _pinned_archive(path) as (stream, size):
+        if expected_size is not None and size != expected_size:
+            raise ValueError('workload-fixture-product-mismatch')
+        checksum = hashlib.sha256()
+        observed = 0
+        while True:
+            if time.monotonic() >= deadline:
+                raise ValueError('workload-fixture-archive-read-deadline')
+            raw = stream.read(min(65536, size - observed + 1))
+            if not raw:
+                break
+            observed += len(raw)
+            if observed > size:
+                raise ValueError('workload-fixture-archive-size-changed')
+            checksum.update(raw)
+        if observed != size or (expected_digest is not None
+                and 'sha256:' + checksum.hexdigest() != expected_digest):
+            raise ValueError('workload-fixture-product-mismatch')
+        stream.seek(0)
+        result = _portable_daemon_identities(stream, deadline)
+    return result
+
+
+def portable_implementation_identity(path):
+    """Compatibility helper for the canonical code-only fixture distinction."""
+    return portable_daemon_identities(path)['daemonImplementationDigest']
 
 
 def digest(path):
@@ -343,9 +397,11 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
         raise ValueError('workload-fixture-source-mismatch')
     for name, product in value['products'].items():
         archive = root / (name + '.tar.gz')
-        if runtime.digest_file(archive) != product['artifactDigest'] or archive.stat().st_size != product['artifactSize']:
-            raise ValueError('workload-fixture-product-mismatch')
-        if portable_implementation_identity(archive) != product['daemonImplementationDigest']:
+        measured = portable_daemon_identities(archive, expected_digest=product['artifactDigest'],
+                                             expected_size=product['artifactSize'])
+        if measured['daemonDigest'] != product['daemonDigest']:
+            raise ValueError('workload-fixture-daemon-identity-mismatch')
+        if measured['daemonImplementationDigest'] != product['daemonImplementationDigest']:
             raise ValueError('workload-fixture-daemon-implementation-mismatch')
     if (runtime.tree_digest(root / 'jdk') != value['runtimeDigest']
             or runtime.digest_file(root / 'mail.zip') != value['mailDigest']

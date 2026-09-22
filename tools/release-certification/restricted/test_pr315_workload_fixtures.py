@@ -1,6 +1,7 @@
 """Offline fixture admission tests; no daemon launch or installed acceptance."""
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -104,6 +105,72 @@ class ImplementationIdentityTests(unittest.TestCase):
                 archive.add(jar, arcname='cryptad/lib/cryptad.jar')
             self.assertEqual(fixtures.daemon_implementation_identity(jar),
                              fixtures.portable_implementation_identity(portable))
+            measured = fixtures.portable_daemon_identities(portable,
+                expected_digest='sha256:' + hashlib.sha256(portable.read_bytes()).hexdigest(),
+                expected_size=portable.stat().st_size)
+            self.assertEqual('sha256:' + hashlib.sha256(jar.read_bytes()).hexdigest(), measured['daemonDigest'])
+
+    def test_verify_rejects_forged_raw_jar_digest_even_with_correct_portable_and_classes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = root / 'inputs'
+            inputs.mkdir()
+            selected = products()
+            for name in ('candidate', 'previous'):
+                jar = root / (name + '.jar')
+                self.jar(jar, name, b'\xca\xfe\xba\xbe ' + name.encode())
+                portable = inputs / (name + '.tar.gz')
+                with tarfile.open(portable, 'w:gz') as archive:
+                    archive.add(jar, arcname='cryptad/lib/cryptad.jar')
+                selected[name].update(artifactDigest='sha256:' + hashlib.sha256(portable.read_bytes()).hexdigest(),
+                    artifactSize=portable.stat().st_size,
+                    **fixtures.portable_daemon_identities(portable))
+            selected['candidate']['daemonDigest'] = 'sha256:' + 'f' * 64
+            value = {'schemaVersion': 2, 'kind': 'pr315-workload-fixtures',
+                'classification': fixtures.CLASSIFICATION, 'sourceCommit': 'a' * 40,
+                'products': selected, 'roles': list(fixtures.ROLES),
+                'runtimeDigest': 'sha256:' + '1' * 64, 'jdkClosureDigest': 'sha256:' + '2' * 64,
+                'mailDigest': 'sha256:' + '3' * 64, 'trustDigest': 'sha256:' + '4' * 64,
+                'verifierDigest': 'sha256:' + '5' * 64, 'maxSeconds': 900, 'maxOperations': 1000,
+                'members': fixtures.inventory(inputs)}
+            (inputs / fixtures.MANIFEST).write_text(json.dumps(value))
+            with patch.object(fixtures.subprocess, 'check_output', return_value='a' * 40), \
+                    self.assertRaisesRegex(ValueError, 'daemon-identity-mismatch'):
+                fixtures.verify(inputs, fixtures.digest(inputs / fixtures.MANIFEST), root, 'a' * 40)
+
+    def test_archive_replacement_between_hash_and_parse_is_rejected_without_following_fifo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jar = root / 'daemon.jar'
+            self.jar(jar, 'candidate')
+            portable = root / 'portable.tar.gz'
+            with tarfile.open(portable, 'w:gz') as archive:
+                archive.add(jar, arcname='cryptad/lib/cryptad.jar')
+            expected = 'sha256:' + hashlib.sha256(portable.read_bytes()).hexdigest()
+            original = fixtures._portable_daemon_identities
+            def replace_then_parse(stream, deadline):
+                portable.unlink()
+                os.mkfifo(portable)
+                return original(stream, deadline)
+            with patch.object(fixtures, '_portable_daemon_identities', side_effect=replace_then_parse), \
+                    self.assertRaises(ValueError):
+                fixtures.portable_daemon_identities(portable, expected_digest=expected)
+
+    def test_archive_fifo_is_rejected_before_open_for_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fifo = Path(directory) / 'portable.tar.gz'
+            os.mkfifo(fifo)
+            with self.assertRaisesRegex(ValueError, 'archive-file-invalid'):
+                fixtures.portable_daemon_identities(fifo)
+
+    def test_wrong_portable_digest_rejected_before_archive_parser(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'portable.tar.gz'
+            archive.write_bytes(b'not an archive')
+            with patch.object(fixtures, '_portable_daemon_identities') as parse, \
+                    self.assertRaisesRegex(ValueError, 'product-mismatch'):
+                fixtures.portable_daemon_identities(archive, expected_digest='sha256:' + '0' * 64)
+            parse.assert_not_called()
 
     def test_marker_only_jar_has_no_implementation(self):
         stream = io.BytesIO()
