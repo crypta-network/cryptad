@@ -86,6 +86,23 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         duplicate.unlink()
         duplicate.symlink_to(notice.name)
         metadata.stage_jdk(linked_java, cls.java, approved_jdk)
+        prepared = getattr(cls, "prepared_inputs", None)
+        if prepared is None:
+            cls._generate_signed_inputs()
+        else:
+            shutil.copytree(prepared / "signed", cls.root, dirs_exist_ok=True)
+            cls.previous_api = (prepared / "previous-api.jar").read_bytes()
+        cls.tool_digest = projection.tree_digest(cls.tool)
+        cls.java_digest = projection.tree_digest(cls.java)
+        tool_bytes = io.BytesIO()
+        with zipfile.ZipFile(tool_bytes, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(cls.tool.rglob("*")):
+                if path.is_file():
+                    archive.write(path, "crypta-app/" + path.relative_to(cls.tool).as_posix())
+        cls.tool_bytes = tool_bytes.getvalue()
+
+    @classmethod
+    def _generate_signed_inputs(cls):
         cp = str(cls.tool / "lib/*")
         source = ROOT / "platform-devtools/src/test/java/network/crypta/platform/devtools/fixtures/Pr304SignedFixture.java"
         subprocess.run([str(cls.java / "bin/javac"), "-cp", cp, "-d", str(cls.root), str(source)],
@@ -115,14 +132,6 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
         cls.previous_api = output.getvalue()
         if cls.previous_api == cls.api_jars[0].read_bytes():
             raise AssertionError("compiled contract implementation did not change")
-        cls.tool_digest = projection.tree_digest(cls.tool)
-        cls.java_digest = projection.tree_digest(cls.java)
-        tool_bytes = io.BytesIO()
-        with zipfile.ZipFile(tool_bytes, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in sorted(cls.tool.rglob("*")):
-                if path.is_file():
-                    archive.write(path, "crypta-app/" + path.relative_to(cls.tool).as_posix())
-        cls.tool_bytes = tool_bytes.getvalue()
 
     @classmethod
     def tearDownClass(cls):
@@ -186,11 +195,19 @@ class ProductConsumerIntegrationTest(unittest.TestCase):
             shutil.copyfile(self.root / (app + ".zip"), built / "cryptad-app-bundle" / (app + "-" + app_version + ".zip"))
             shutil.copytree(self.root / app, built / "cryptad-app" / app)
         product_root = self.work / (release + "-app-products")
-        signing = json.loads((self.root / "producer-env.json").read_bytes())
-        with patch.dict(os.environ, {**signing, "GITHUB_SHA": source}):
-            handoff = app_products.produce_app_products(workspace, product_root, release_id=release,
-                build_version=build, source_commit=source, include_mail=True,
-                artifact_base="https://example.invalid/synthetic-artifacts", exporter=self.tool / "bin/crypta-app", java_home=self.java)
+        prepared = getattr(type(self), "prepared_inputs", None)
+        if prepared is None:
+            signing = json.loads((self.root / "producer-env.json").read_bytes())
+            with patch.dict(os.environ, {**signing, "GITHUB_SHA": source}):
+                handoff = app_products.produce_app_products(workspace, product_root, release_id=release,
+                    build_version=build, source_commit=source, include_mail=True,
+                    artifact_base="https://example.invalid/synthetic-artifacts", exporter=self.tool / "bin/crypta-app", java_home=self.java)
+        else:
+            shutil.copytree(prepared / "app-products", product_root)
+            handoff = json.loads((product_root / app_products.HANDOFF_FILE).read_bytes())
+            if (handoff["sourceCommit"] != source or handoff["releaseId"] != release
+                    or handoff["buildVersion"] != build or handoff_overrides):
+                raise AssertionError("prepared-input-selection-mismatch")
         site = next(row for row in handoff["subjects"] if row["appId"] == "site-publisher")
         self.assertEqual("3.1", site["signedProjection"]["appVersion"])
         self.assertEqual(build, handoff["buildVersion"])

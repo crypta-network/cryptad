@@ -6,6 +6,7 @@ synthetic candidate input, not a product or provider authority. Failures retain 
 from pathlib import Path
 from contextlib import nullcontext
 from unittest.mock import patch
+import hashlib
 import json
 import os
 import secrets
@@ -34,6 +35,7 @@ public final class PackagedApiExport {
   }
   public static void main(String[] args) throws Exception {
     String mode = Files.readString(Path.of("/work/mode")).trim();
+    System.err.println("fixture-mode-started:" + mode); System.err.flush();
     if (mode.equals("timeout") || mode.equals("synthetic-revocation") || mode.equals("lost-start-response")) { Thread.sleep(300000); return; }
     if (mode.equals("overflow")) {
       byte[] block = new byte[4096];
@@ -42,10 +44,13 @@ public final class PackagedApiExport {
     }
     if (mode.equals("descendant")) {
       new ProcessBuilder("/usr/bin/setsid", "/usr/bin/sleep", "300").inheritIO().start();
+      System.err.println("fixture-descendant-started"); System.err.flush();
       System.out.println("fixture-pass"); return;
     }
     if (mode.equals("unexpected-output")) {
       Files.writeString(Path.of("/output/forged.json"), "{\"accepted\":true}");
+      require(Files.readString(Path.of("/output/forged.json")).equals("{\"accepted\":true}"));
+      System.err.println("fixture-unexpected-output-written"); System.err.flush();
       System.out.println("fixture-pass"); return;
     }
     if (mode.equals("cross-operation")) {
@@ -304,7 +309,7 @@ def _fixture_jdk(source, root):
     return staged
 
 
-def run(jdk, root, identity):
+def run(jdk, root, identity, *, observe=None):
     """Run finite synthetic attacks; return only named dimensions after observed success."""
     import restricted_native as native
     if os.geteuid() != 0 or not Path(native.__file__).resolve().is_relative_to('/opt'):
@@ -374,6 +379,7 @@ def run(jdk, root, identity):
                    'bundleIdentity': identity, 'deadlineMonotonic': time.monotonic() + 120}
         rejected = False
         started = time.monotonic()
+        started_ns = time.monotonic_ns()
         try:
             with transport, native.owning_boundary(context=context, check=revocation):
                 result = native.run(_command(jdk, work), environment={
@@ -416,6 +422,18 @@ def run(jdk, root, identity):
             expected = 'deadline' if mode == 'timeout' else 'output-limit'
             if failure.get('stage') != expected:
                 raise ValueError('native-fixture-wrong-failure-stage')
+        # A timeout/output rejection before the candidate entered its selected operation is
+        # setup failure, never an executed security denial. These fixed diagnostics stay private.
+        validate_attack_marker(native, stages[0], mode)
+        case_ids = {'positive': ('hostile-setid', 'hostile-filecap', 'openat2-safe',
+                    'hostile-openat2-hostile', 'hostile-descendant-userns', 'hostile-device-write',
+                    'hostile-root-write', 'hostile-environment', 'hostile-fd', 'hostile-proc'),
+                    'cross-operation': ('hostile-cross-operation',),
+                    'overflow': ('hostile-pipe-overflow',), 'timeout': ('hostile-timeout',),
+                    'descendant': ('hostile-setsid-descendant',),
+                    'unexpected-output': ('hostile-unexpected-output',)}.get(mode, ())
+        if observe is not None:
+            emit_observations(native, stages[0], case_ids, started_ns, observe)
         (work / 'observation.json').write_text(json.dumps({'mode': mode, 'rejected': rejected,
             'elapsedSeconds': time.monotonic() - started, 'quiescent': True,
             'revocationTransport': 'synthetic-test-owner-callback' if revocation else None,
@@ -426,3 +444,39 @@ def run(jdk, root, identity):
                                'installed-synthetic-native-filecap-no-gain',
                                'installed-synthetic-native-openat2-safe-and-hostile'])
     return dimensions
+
+
+def emit_observations(native, stage, case_ids, started_ns, observe):
+    """Export fixed private records only after the source-owned fixture checks succeeded."""
+    from pr313_acceptance import CASES
+    manager = json.loads((stage / 'manager.json').read_bytes())
+    stdout = native._read_output(stage / 'diagnostics/stdout', 8192, allow_empty=True)
+    stderr = native._read_output(stage / 'diagnostics/stderr', 8192, allow_empty=True)
+    diagnostic_digest = hashlib.sha256(len(stdout).to_bytes(8, 'big') + stdout + stderr).hexdigest()
+    state = native._manager('show')
+    _quiescent(native)
+    for name in case_ids:
+        case = CASES[name]
+        observe({'caseId': name, 'phase': case.phase, 'outcome': case.outcome,
+            'managerInvocationId': manager['invocationId'],
+            'attackWitness': {'operation': case.operation, 'operationMarker': name,
+                'ownerOutcome': case.outcome, 'stdoutDigest': diagnostic_digest,
+                'startedMonotonicNs': started_ns, 'finishedMonotonicNs': time.monotonic_ns()},
+            'quiescent': {'activeState': state['ActiveState'], 'cgroupPopulated': False,
+                          'activeRecordPresent': False}})
+
+
+def validate_attack_marker(native, stage, mode):
+    """Reject unrelated setup failures before crediting a timeout or candidate attack."""
+    if mode in ('synthetic-revocation', 'lost-start-response'):
+        return  # These older diagnostic-only dimensions have their own manager witnesses.
+    diagnostic = native._read_output(stage / 'diagnostics/stderr', 8192, allow_empty=True)
+    if ('fixture-mode-started:' + mode + '\n').encode() not in diagnostic:
+        raise ValueError('native-fixture-attack-not-observed')
+    if mode == 'descendant' and b'fixture-descendant-started\n' not in diagnostic:
+        raise ValueError('native-fixture-descendant-not-observed')
+    if mode == 'unexpected-output':
+        if (b'fixture-unexpected-output-written\n' not in diagnostic
+                or native._read_output(stage / 'diagnostics/stdout', 8192, allow_empty=True) != b'fixture-pass\n'
+                or (stage / 'output/failure.json').exists()):
+            raise ValueError('native-fixture-output-roster-attack-not-observed')

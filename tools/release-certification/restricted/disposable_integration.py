@@ -456,7 +456,25 @@ def preparation_socket():
             call(['/usr/bin/systemctl', 'start', 'cryptad-restricted.socket'])
 
 
-def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root):
+def activate_test_listener(listener):
+    """Match the installed socket activation FD contract in the synthetic controller child."""
+    descriptor = listener.detach()
+    if descriptor != 3:
+        os.dup2(descriptor, 3, inheritable=False)
+        os.close(descriptor)
+    # A listener already on descriptor 3 may have been made inheritable by its caller.
+    os.set_inheritable(3, False)
+    for name in os.listdir('/proc/self/fd'):
+        if int(name) > 3:
+            try:
+                os.close(int(name))
+            except OSError:
+                pass
+    os.environ['LISTEN_PID'] = str(os.getpid())
+    os.environ['LISTEN_FDS'] = '1'
+
+
+def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, projection_origin, private_root, observe=None, bind_context=None):
     """Run real preparation through the installed Worker with synthetic original provider I/O.
 
     Only this root-owned test harness substitutes upstream transport. Production bootstrap has
@@ -498,28 +516,49 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         'expiresAt': (timestamp + dt.timedelta(minutes=30)).isoformat()}))
     worker.CREDENTIAL.chmod(0o600)
     provider = preparation_provider(context, timestamp, original._gh)
+    read_counter = root / 'test-read-count.private'
+    read_counter.write_text('0')
+    def counted_read(*args, **kwargs):
+        read_counter.write_text(str(int(read_counter.read_text()) + 1))
+        return real_read(*args, **kwargs)
     def serve(listener):
         metadata.seal_private_freeze = real_seal
-        companion._read = real_read  # no inherited ownership-relaxation fixture shim
+        companion._read = counted_read  # Count real reads, preserving the installed owner.
         original._gh = provider
-        descriptor = listener.detach()
-        if descriptor != 3:
-            os.dup2(descriptor, 3)
-            os.close(descriptor)
-        for name in os.listdir('/proc/self/fd'):
-            if int(name) > 3:
-                try: os.close(int(name))
-                except OSError: pass
-        os.environ['LISTEN_PID'] = str(os.getpid())
-        os.environ['LISTEN_FDS'] = '1'
-        worker.main(bundle_identity=identity)
+        try:
+            activate_test_listener(listener)
+            worker.main(bundle_identity=identity)
+        except Exception as failure:
+            # Fixed classifications only; retain no exception text, credential or fixture bytes.
+            category = ('socket-activation-rejected' if isinstance(failure, worker.BoundaryError)
+                        and str(failure) == 'restricted-socket-activation-required' else 'controller-failed')
+            diagnostic = root / 'controller-failure.private.json'
+            try:
+                descriptor = os.open(diagnostic, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, 'w') as stream:
+                    json.dump({'phase': 'synthetic-worker-main', 'category': category}, stream, sort_keys=True)
+            except OSError:
+                pass
+            raise
     client = str(INSTALLED / 'tools/release-certification/protected/restricted_client.py')
     script = "import subprocess,sys; p=subprocess.run(['/usr/bin/python3','-I','-S',sys.argv[1],sys.argv[2],sys.argv[3]],capture_output=True,timeout=900); assert p.returncode==0; assert not p.stderr; sys.stdout.buffer.write(p.stdout)"
+    native_window = None
+    if observe is not None or bind_context is not None:
+        from pr313_observations import InvocationWindow
+        native_window = InvocationWindow()
     with preparation_socket() as (listener, child):
         child.start(lambda: serve(listener))
         public = as_role('cryptad-runner', script, arguments=(client, 'maintenance-prepare', handle), timeout=950)
+        binding = None
+        if native_window is not None:
+            binding = native_window.finish('package-api', owner_operation=handle)
+            if bind_context is not None:
+                bind_context(binding)
         ciphertext = {p.name: p.read_bytes() for p in (root / 'runtime').iterdir()}
         retained = (root / 'result.json').read_bytes()
+        import restricted_native as native
+        native_before = set(native.ROOT.iterdir())
+        reads_before = int(read_counter.read_text())
         child.stop()
         child.start(lambda: serve(listener))
         retried = as_role('cryptad-runner', script, arguments=(client, 'maintenance-prepare', handle), timeout=950)
@@ -532,6 +571,18 @@ def socket_preparation(real_seal, real_read, freeze, package, runtime_root, *, p
         assert ciphertext == {p.name: p.read_bytes() for p in (root / 'runtime').iterdir()}
         assert set(json.loads(public)) == {'schemaVersion', 'kind', 'operation', 'status', 'freezeDigest', 'descriptor', 'ciphertext'}
         assert b'SYNTHETIC-PROVIDER-CANARY' not in public
+        assert native_before == set(native.ROOT.iterdir())
+        assert reads_before == int(read_counter.read_text())
+        if observe is not None:
+            from pr313_observations import quiescent
+            observe({'caseId': 'retained-exact-retry', 'phase': 'completed-retry', 'outcome': 'exact-retry',
+                'managerInvocationId': binding['managerInvocationId'],
+                'quiescent': quiescent(), 'attackWitness': {
+                    'retainedDigest': hashlib.sha256(public).hexdigest(),
+                    'responseDigest': hashlib.sha256(retried).hexdigest(),
+                    'nativeLaunchCountBefore': len(native_before), 'nativeLaunchCountAfter': len(native_before),
+                    'decryptCountBefore': reads_before, 'decryptCountAfter': int(read_counter.read_text()),
+                    'durablePhase': 'completed-retry'}})
         # Transfer only exact retained ciphertext to the rest of the native consumer fixture.
         # The fixture's later owning consumer reauthenticates/decrypts it; JSON is not authority.
         shutil.copytree(root / 'runtime', runtime_root)
@@ -611,7 +662,7 @@ def private_fixture_failure(stream, error):
     stream.flush()
 
 
-def cms_native_integration(source, product_source_commit):
+def cms_native_integration(source, product_source_commit, prepared_inputs=None, worker_case=None, observe=None):
     import unittest
     import restricted_native as native
     import maintenance_runtime_metadata as metadata
@@ -627,6 +678,7 @@ def cms_native_integration(source, product_source_commit):
     # links and installation's "current" selector must not become native resource identities.
     # This changes only the excluded fixture's data root, never its Python import authority.
     installed_fixture_resources(legacy)
+    legacy.ProductConsumerIntegrationTest.prepared_inputs = prepared_inputs
     # The actual disposable root creates every synthetic key/policy. Remove inherited local
     # ownership test shims: real filesystem ownership checks run unchanged here.
     legacy.SelectedRootPolicy = Path
@@ -636,27 +688,98 @@ def cms_native_integration(source, product_source_commit):
     for case in suite:
         for selected in case:
             selected.product_source_commit = source_commit(product_source_commit)
+    windows, cms_binding, consumer_phases = {}, {}, []
+    active_phase = {}
+    # Trusted fixture preparation is outside these independently bounded real owner phases.
+    # A phase owns one deadline through all native calls and its context cleanup.
+    @contextmanager
+    def owner_phase(phase):
+        allowed = ('ordinary-freeze', 'wrong-product', 'wrong-app', 'product-admission',
+                   'substituted-validation', 'original-validation')
+        if phase not in allowed or active_phase:
+            raise ValueError('disposable-owner-phase-invalid')
+        context = {'operationId': secrets.token_hex(32),
+            'registrationDigest': 'sha256:' + hashlib.sha256(b'pr313-synthetic-test-owner').hexdigest(),
+            'bundleIdentity': installation.configuration()['bundleIdentity'],
+            'deadlineMonotonic': time.monotonic() + 900}
+        active_phase.update(context)
+        from pr313_observations import InvocationWindow, quiescent
+        quiescent()
+        window = InvocationWindow() if observe is not None and phase in allowed[3:] else None
+        try:
+            with native.owning_boundary(context=context):
+                yield
+            if time.monotonic() > context['deadlineMonotonic']:
+                raise ValueError('disposable-owner-phase-budget-expired')
+            if window is not None:
+                consumer_phases.append(window.consumer_phase(phase, context['operationId']))
+        finally:
+            try:
+                quiescent()
+            finally:
+                active_phase.clear()
+    integration.EncryptedProductConsumerIntegrationTest.owner_phase = staticmethod(owner_phase)
+    if observe is not None:
+        from pr313_observations import InvocationWindow, owner
+        def begin(case):
+            if case not in ('wrong-app', 'wrong-product') or case in windows:
+                raise ValueError('disposable-owner-observation-interval-invalid')
+            windows[case] = InvocationWindow()
+            return windows[case].started
+        def owned_observation(row):
+            operation = row['attackWitness']['operation']
+            if row['caseId'] == 'product-selection-native-consumers':
+                if [item['phase'] for item in consumer_phases] != [
+                        'product-admission', 'substituted-validation', 'original-validation']:
+                    raise ValueError('disposable-consumer-phases-unobserved')
+                last = consumer_phases[-1]
+                package = next(item for item in last['invocations'] if item['operation'] == 'package-api')
+                binding = {**package, 'operationId': last['operationId'],
+                    'startedMonotonicNs': last['startedMonotonicNs'],
+                    'finishedMonotonicNs': last['finishedMonotonicNs']}
+                row = {**row, 'attackWitness': {**row['attackWitness'], 'consumerPhases': consumer_phases}}
+            elif operation == 'maintenance-prepare':
+                if not cms_binding:
+                    raise ValueError('disposable-cms-native-context-unobserved')
+                binding = cms_binding
+            else:
+                binding = windows.pop(row['caseId']).finish(operation,
+                    owner_operation=active_phase['operationId'])
+            # Closing the exact invocation window is part of observing this assertion.
+            row = {**row, 'attackWitness': {**row['attackWitness'],
+                'finishedMonotonicNs': time.monotonic_ns()}}
+            observe(owner(row, binding))
+        integration.EncryptedProductConsumerIntegrationTest.acceptance_begin = staticmethod(begin)
+        integration.EncryptedProductConsumerIntegrationTest.acceptance_observer = staticmethod(owned_observation)
     real_seal, real_read = metadata.seal_private_freeze, companion._read
     def through_socket(*args, **kwargs):
         companion._read = real_read
-        return socket_preparation(real_seal, real_read, *args, **kwargs)
+        if worker_case is not None:
+            from pr313_worker_faults import run
+            observed = run(worker_case, real_seal, real_read, *args, **kwargs)
+            Path('/root/pr313-observation.private.json').write_text(json.dumps(observed, sort_keys=True))
+            raise ValueError('disposable-selected-worker-case-complete')
+        return socket_preparation(real_seal, real_read, *args, **kwargs, observe=observe,
+            bind_context=cms_binding.update if observe is not None else None)
     import installation
     # This root-owned disposable driver is a synthetic test owner, not the production controller.
     # Only original provider transport is substituted; the installed launch adapter is unchanged.
-    native_context = {'operationId': secrets.token_hex(32),
-        'registrationDigest': 'sha256:' + hashlib.sha256(b'pr312-synthetic-test-owner').hexdigest(),
-        'bundleIdentity': installation.configuration()['bundleIdentity'],
-        'deadlineMonotonic': time.monotonic() + 900}
     descriptor = os.open('/root/pr312-native-consumer.private.log',
                          os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, 'wb') as private_log, native.owning_boundary(context=native_context), \
+    with os.fdopen(descriptor, 'wb') as private_log, \
             patch.object(metadata, 'seal_private_freeze', side_effect=through_socket):
         bounded_log = BoundedPrivateLog(private_log)
         import bounded_process
         original_bounded_run = bounded_process.run
+        from pr313_fixtures import PrivateCommandDiagnostics
+        command_diagnostics = PrivateCommandDiagnostics(Path('/root/pr313-fixture-commands.private.json'))
+        diagnostic_pid = os.getpid()
         def fixture_run(*arguments, **options):
             # This excluded synthetic owner observes direct fixture-tool failures only. The
             # real call retains its exact command, environment, deadline and output bounds.
+            if os.getpid() != diagnostic_pid:
+                return original_bounded_run(*arguments, **options)
+            started = time.monotonic()
             captured = []
             supplied_sink = options.pop('diagnostic_sink', None)
             def capture(stdout, stderr):
@@ -666,6 +789,9 @@ def cms_native_integration(source, product_source_commit):
             try:
                 return original_bounded_run(*arguments, **options, diagnostic_sink=capture)
             except Exception:
+                # Preserve command identity before unittest teardown removes the temporary JDK.
+                command_diagnostics.failed(arguments[0], options, legacy.ProductConsumerIntegrationTest,
+                    getattr(selected, '_stage', 'fixture-setup'), started, captured)
                 if captured:
                     for label, raw in zip(('fixture-stdout', 'fixture-stderr'), captured):
                         bounded_log.write(label + ': ' + raw[:65536].decode('utf-8', errors='replace') + '\n')
@@ -676,6 +802,11 @@ def cms_native_integration(source, product_source_commit):
                           staticmethod(lambda error: private_fixture_failure(bounded_log, error)),
                           create=True), patch.object(bounded_process, 'run', side_effect=fixture_run):
             result = unittest.TextTestRunner(stream=bounded_log).run(suite)
+    if worker_case is not None:
+        observed = Path('/root/pr313-observation.private.json')
+        if not observed.is_file() or json.loads(observed.read_bytes()).get('caseId') != worker_case:
+            raise ValueError('disposable-worker-case-unobserved')
+        return []
     if result.testsRun != 1 or not result.wasSuccessful() or result.skipped:
         raise ValueError('disposable-real-cms-native-consumer-failed')
     return ['real-maintenance-cms-signed-native-owning-consumer-with-synthetic-provider',
@@ -694,7 +825,22 @@ def main():
                       help='Observe the finite installed native/CMS slice; workload acceptance stays false.')
     parser.add_argument('--product-source-commit', type=source_commit,
                         help='Test-only exact packaged source revision; defaults to helper source HEAD.')
+    from pr313_faults import CASES as NATIVE_CASES
+    from pr313_worker_faults import CASES as WORKER_CASES
+    from pr313_public_faults import CASES as PUBLIC_CASES
+    CASES = NATIVE_CASES + WORKER_CASES + PUBLIC_CASES
+    parser.add_argument('--case-group', choices=('positive', 'native-hostile', 'output-hostile', 'fault', 'worker', 'public'))
+    parser.add_argument('--fault-case', choices=CASES)
+    parser.add_argument('--prepared-fixtures', type=Path)
+    parser.add_argument('--fixture-manifest-digest')
     args = parser.parse_args()
+    if ((args.case_group in ('fault', 'worker', 'public')) != bool(args.fault_case)
+            or (args.case_group == 'fault' and args.fault_case not in NATIVE_CASES)
+            or (args.case_group == 'worker' and args.fault_case not in WORKER_CASES)
+            or (args.case_group == 'public' and args.fault_case not in PUBLIC_CASES)
+            or (args.case_group is not None and not args.native_slice)
+            or (args.prepared_fixtures is None) != (args.fixture_manifest_digest is None)):
+        parser.error('invalid fixed case or fixture selection')
     source = args.source.resolve()
     missing = prerequisites(source)
     if missing or args.probe or not args.disposable_vm:
@@ -710,6 +856,16 @@ def main():
            for path in (INSTALLED.parent, STATE, TEST_KIT, Path('/etc/cryptad-certification'))):
         raise ValueError('disposable-fresh-vm-required')
     identities = test_source_identities(source, args.product_source_commit)
+    prepared_inputs = None
+    if args.prepared_fixtures is not None:
+        # Keep fixture-source imports out of the process that will load installed owners.
+        script = ('import sys; from pathlib import Path; '
+                  'sys.path.insert(0, sys.argv[1]); from pr313_fixtures import verify; '
+                  'verify(Path(sys.argv[2]),sys.argv[3],Path(sys.argv[4]),sys.argv[5])')
+        call(['/usr/bin/python3', '-I', '-S', '-c', script,
+              str(source / 'tools/release-certification/restricted'), str(args.prepared_fixtures),
+              args.fixture_manifest_digest, str(source), identities['productSourceCommit']], timeout=120)
+        prepared_inputs = args.prepared_fixtures
     javac = Path(shutil.which('javac')).resolve()
     os.environ.clear()
     os.environ.update(ENV, PATH=str(javac.parent) + ':/usr/bin:/bin',
@@ -717,7 +873,14 @@ def main():
     sys.dont_write_bytecode = True
     load_installation(source)
     dimensions = []
+    observations = []
+    def observe(row):
+        # A repeated owner check is not new coverage; keep the first witnessed case in this guest.
+        if row['caseId'] not in {item['caseId'] for item in observations}:
+            observations.append(row)
+            Path('/root/pr313-observation.private.json').write_text(json.dumps(observations, sort_keys=True))
     identity = None
+    positive_executed = False
     stage = 'installation'
     def installation_event(name, status):
         nonlocal stage
@@ -730,9 +893,20 @@ def main():
             dimensions.append('installed-bundle-and-effective-profile-verified')
             stage = 'production-bootstrap-readiness'
             dimensions.extend(bootstrap_readiness())
+            from pr313_observations import InvocationWindow, baseline, completed
+            raw_state = call(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
+                '--property=Type,NotifyAccess,ActiveState,SubState,MainPID'], timeout=15)
+            state = dict(line.split('=', 1) for line in raw_state.decode('ascii').splitlines())
+            state['MainPID'] = int(state['MainPID'])
+            if args.case_group in (None, 'positive'):
+                observe(baseline('bootstrap-ready', state))
             stage = 'socket-admission'
             dimensions.extend(wrong_socket_uid())
             dimensions.extend(denial_probes())
+            if args.case_group in (None, 'positive'):
+                for case, peer in (('socket-wrong-uid', 'wrong-uid'), ('socket-unknown-handle', 'runner')):
+                    observe(baseline(case, {'peerClass': peer, 'exitCode': 0 if peer == 'wrong-uid' else 2, 'stdoutBytes': 0,
+                        'stderrClassification': 'dac-permission-denied' if peer == 'wrong-uid' else 'restricted-operation-unavailable'}))
             if not args.bootstrap_only:
                 if not args.native_slice:
                     stage = 'legacy-probes-unavailable'
@@ -743,27 +917,61 @@ def main():
                     import restricted_native
                     if not Path(restricted_native.__file__).resolve().is_relative_to(INSTALLED.resolve()):
                         raise ValueError('disposable-native-source-not-installed')
-                    restricted_native.probe(bundle_identity=identity)
-                    dimensions.append('installed-keyless-fixed-native-probe')
-                stage = 'installed-package-api-owner-validation'
-                dimensions.extend(native_package_api(javac.parent.parent, identity, source))
-                stage = 'installed-app-projection-owner-validation'
-                from pr312_app_projection import run as app_projection
-                dimensions.extend(app_projection(Path('/root/pr312-app-projection'),
-                    INSTALLED.resolve(strict=True), identity, Path('/root/pr312-package-api/jdk')))
-                stage = 'native-cms-owning-consumer'
-                dimensions.extend(cms_native_integration(source, identities['productSourceCommit']))
-                stage = 'installed-native-hostile-fixtures'
-                from pr312_native_faults import run as native_faults
-                dimensions.extend(native_faults(javac.parent.parent,
-                    Path('/root/pr312-native-faults'), identity))
-                stage = 'installed-projection-output-hostile-fixtures'
-                from pr312_output_faults import run as output_faults
-                dimensions.extend(output_faults(Path('/root/pr312-output-faults'), identity))
-                stage = 'production-restart-readiness'
-                call(['/usr/bin/systemctl', 'restart', 'cryptad-restricted.service'], timeout=190)
-                dimensions.extend(bootstrap_readiness())
-                dimensions.extend(denial_probes())
+                    if args.case_group != 'fault':
+                        probe_window = InvocationWindow()
+                        restricted_native.probe(bundle_identity=identity)
+                        if args.case_group in (None, 'positive'):
+                            observe(completed('construction-probe', 'bootstrap-probe', 'accepted', probe_window.finish('probe')))
+                        dimensions.append('installed-keyless-fixed-native-probe')
+                if args.case_group in (None, 'positive'):
+                    stage = 'installed-package-api-owner-validation'
+                    package_window = InvocationWindow()
+                    dimensions.extend(native_package_api(javac.parent.parent, identity, source))
+                    observe(completed('package-api', 'package-api', 'owner-validated',
+                        package_window.finish('package-api')))
+                    stage = 'installed-app-projection-owner-validation'
+                    from pr312_app_projection import run as app_projection
+                    app_started = time.monotonic_ns()
+                    dimensions.extend(app_projection(Path('/root/pr312-app-projection'),
+                        INSTALLED.resolve(strict=True), identity, Path('/root/pr312-package-api/jdk'),
+                        prepared_inputs=prepared_inputs, observe=observe))
+                    stage = 'native-cms-owning-consumer'
+                    dimensions.extend(cms_native_integration(source, identities['productSourceCommit'],
+                                                             prepared_inputs=prepared_inputs, observe=observe))
+                    positive_executed = True
+                if args.case_group in (None, 'native-hostile'):
+                    stage = 'installed-native-hostile-fixtures'
+                    from pr312_native_faults import run as native_faults
+                    dimensions.extend(native_faults(javac.parent.parent,
+                        Path('/root/pr312-native-faults'), identity, observe=observe))
+                if args.case_group in (None, 'output-hostile'):
+                    stage = 'installed-projection-output-hostile-fixtures'
+                    from pr312_output_faults import run as output_faults
+                    dimensions.extend(output_faults(Path('/root/pr312-output-faults'), identity, observe=observe))
+                if args.case_group == 'public':
+                    stage = 'installed-pr313-public-fault'
+                    from pr313_public_faults import run as public_fault
+                    observe(public_fault(args.fault_case, Path('/root/pr313-public'), identity))
+                if args.case_group == 'worker':
+                    stage = 'installed-pr313-worker-fault'
+                    cms_native_integration(source, identities['productSourceCommit'],
+                        prepared_inputs=prepared_inputs, worker_case=args.fault_case)
+                if args.case_group == 'fault':
+                    stage = 'installed-pr313-fault'
+                    from pr313_faults import run as fault
+                    observation = fault(args.fault_case, Path('/root/pr313-fault'), identity)
+                    Path('/root/pr313-observation.private.json').write_text(json.dumps(observation, sort_keys=True))
+                if args.case_group in (None, 'positive'):
+                    stage = 'production-restart-readiness'
+                    call(['/usr/bin/systemctl', 'restart', 'cryptad-restricted.service'], timeout=190)
+                    dimensions.extend(bootstrap_readiness())
+                    if args.case_group in (None, 'positive'):
+                        raw_state = call(['/usr/bin/systemctl', 'show', 'cryptad-restricted.service',
+                            '--property=Type,NotifyAccess,ActiveState,SubState,MainPID'], timeout=15)
+                        state = dict(line.split('=', 1) for line in raw_state.decode('ascii').splitlines())
+                        state['MainPID'] = int(state['MainPID'])
+                        observe(baseline('restart-ready', state))
+                    dimensions.extend(denial_probes())
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as failure:
         # Only the closed fixed identifier is retained; raw errors, paths and excerpts are dropped.
         code = failure_code(failure)
@@ -782,7 +990,7 @@ def main():
         'dimensions': sorted(set(dimensions)), 'productionAuthorityObserved': False,
         'mandatoryIsolationTestSatisfied': False,
         'installedKeylessNativeAcceptanceSatisfied': False,
-        'installedNativePositiveExecuted': not args.bootstrap_only,
+        'installedNativePositiveExecuted': positive_executed,
         'remainingMandatoryTests': ['installed-controller-owned-workload-positive',
             'primary-catalog-scheduler-app-budget-role-confinement',
             'sibling-admin-plane-and-storage-denials',

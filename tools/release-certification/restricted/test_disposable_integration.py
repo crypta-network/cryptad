@@ -1,6 +1,8 @@
 """Read-only harness checks, not substitutes for its VM/service/UID execution."""
 import contextlib
 import io
+import os
+import socket
 import json
 import datetime as dt
 import sys
@@ -15,6 +17,137 @@ import disposable_integration as harness
 
 
 class DisposableHarnessTest(unittest.TestCase):
+    def test_cli_positive_flag_requires_completed_positive_operations(self):
+        import pr312_app_projection as app
+        import pr312_native_faults as hostile
+        import pr312_output_faults as output
+        import pr313_faults as faults
+        import pr313_worker_faults as workers
+        import pr313_public_faults as public
+        import pr313_observations as observations
+        native = Mock(__file__=str(harness.INSTALLED / 'restricted_native.py'))
+        choices = [(None, None), ('positive', None), ('native-hostile', None),
+                   ('output-hostile', None), ('fault', faults.CASES[0]),
+                   ('worker', workers.CASES[0]), ('public', public.CASES[0]),
+                   ('bootstrap', None)]
+        for group, case in choices:
+            with self.subTest(group=group), contextlib.ExitStack() as patches:
+                args = ['driver', '--disposable-vm',
+                        '--bootstrap-only' if group == 'bootstrap' else '--native-slice']
+                if group not in (None, 'bootstrap'):
+                    args += ['--case-group', group]
+                if case:
+                    args += ['--fault-case', case]
+                patches.enter_context(patch.object(sys, 'argv', args))
+                patches.enter_context(patch.object(sys, 'path', list(sys.path)))
+                patches.enter_context(patch.object(sys, 'dont_write_bytecode', True))
+                patches.enter_context(patch.dict(sys.modules, restricted_native=native))
+                patches.enter_context(patch.dict(os.environ))
+                patches.enter_context(patch.object(harness.os, 'geteuid', return_value=0))
+                for name in ('exists', 'is_symlink'):
+                    patches.enter_context(patch.object(Path, name, return_value=False))
+                patches.enter_context(patch.object(Path, 'write_text'))
+                patches.enter_context(patch.object(Path, 'resolve', lambda path, **kwargs: path.absolute()))
+                patches.enter_context(patch.object(harness.tempfile, 'TemporaryDirectory',
+                    return_value=contextlib.nullcontext('/unused')))
+                patches.enter_context(patch.object(harness.shutil, 'which', return_value='/usr/bin/javac'))
+                patches.enter_context(patch.object(harness, 'prerequisites', return_value=[]))
+                patches.enter_context(patch.object(harness, 'test_source_identities',
+                    return_value={'productSourceCommit': 'a' * 40}))
+                patches.enter_context(patch.object(harness, 'load_installation'))
+                patches.enter_context(patch.object(harness, 'provision', return_value='b' * 64))
+                patches.enter_context(patch.object(harness, 'call', return_value=b'MainPID=1\n'))
+                calls = {}
+                for name in ('bootstrap_readiness', 'wrong_socket_uid', 'denial_probes',
+                             'native_package_api', 'cms_native_integration'):
+                    calls[name] = patches.enter_context(patch.object(harness, name, return_value=[]))
+                for module in (app, hostile, output):
+                    patches.enter_context(patch.object(module, 'run', return_value=[]))
+                for module in (faults, public):
+                    patches.enter_context(patch.object(module, 'run', return_value={'caseId': 'fixture'}))
+                patches.enter_context(patch.object(observations, 'InvocationWindow'))
+                for name in ('baseline', 'completed'):
+                    patches.enter_context(patch.object(observations, name,
+                        side_effect=lambda case, *args: {'caseId': case}))
+                printed = patches.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                self.assertEqual(0, harness.main())
+                report = json.loads(printed.getvalue())
+                expected = group in (None, 'positive')
+                self.assertEqual(expected, report['installedNativePositiveExecuted'])
+                self.assertEqual(expected, calls['native_package_api'].called)
+                self.assertFalse(report['installedKeylessNativeAcceptanceSatisfied'])
+                self.assertFalse(report['productionAuthorityObserved'])
+
+    @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
+                         'socket activation requires Linux fork')
+    def test_socket_activation_also_isolates_temporary_state_when_uid_is_root(self):
+        with patch.object(os, 'geteuid', return_value=0):
+            self.test_real_forked_listener_passes_worker_activation_with_noninheritable_fd()
+
+    @unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'fork'),
+                         'socket activation requires Linux fork')
+    def test_real_forked_listener_passes_worker_activation_with_noninheritable_fd(self):
+        with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
+            import restricted_worker as worker
+        for placement in ('already-three', 'different-descriptor'):
+            with self.subTest(placement=placement), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                operations = root / 'operations'
+                operations.mkdir(mode=0o700)
+                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.addCleanup(listener.close)
+                listener.bind(str(root / 'control.sock'))
+                listener.listen(1)
+                child = os.fork()
+                if child == 0:
+                    try:
+                        actual_socket = socket.socket
+                        original = listener.detach()
+                        chosen = 3 if placement == 'already-three' else 10
+                        if original != chosen:
+                            os.dup2(original, chosen, inheritable=True)
+                            os.close(original)
+                        else:
+                            os.set_inheritable(chosen, True)
+                        supplied = actual_socket(fileno=chosen)
+                        harness.activate_test_listener(supplied)
+                        if os.get_inheritable(3):
+                            os._exit(3)
+                        class ActivatedSocket:
+                            # Only map the fixed installed pathname to this disposable temp
+                            # listener. Family/type/listening/inheritability checks remain real.
+                            def __init__(self, fileno):
+                                self.actual = actual_socket(fileno=fileno)
+                            def getsockname(self):
+                                return '/run/cryptad-restricted/control.sock'
+                            def __getattr__(self, name):
+                                return getattr(self.actual, name)
+                        class ReadyObserved(Exception):
+                            pass
+                        def ready():
+                            raise ReadyObserved()
+                        with contextlib.ExitStack() as patches:
+                            # An unprivileged developer can test real activation by substituting
+                            # only the root/state prerequisites, never the FD/socket checks.
+                            if os.geteuid() != 0:
+                                patches.enter_context(patch.object(worker.os, 'geteuid', return_value=0))
+                            # TemporaryDirectory may have a world-writable ancestor even as root.
+                            patches.enter_context(patch.object(worker, 'secure', side_effect=lambda path: path))
+                            patches.enter_context(patch.object(worker, 'STATE', root))
+                            patches.enter_context(patch.object(worker, 'OPERATIONS', operations))
+                            patches.enter_context(patch.object(worker.socket, 'socket', side_effect=ActivatedSocket))
+                            try:
+                                worker.main(bundle_identity='a' * 64, ready=ready)
+                            except ReadyObserved:
+                                os._exit(0)
+                        os._exit(4)
+                    except BaseException:
+                        os._exit(5)
+                _, status = os.waitpid(child, 0)
+                self.assertTrue(os.WIFEXITED(status))
+                self.assertEqual(0, os.WEXITSTATUS(status))
+                listener.close()
+
     def test_synthetic_preparation_job_passes_real_worker_authentication(self):
         with patch.object(sys, 'path', [str(Path(__file__).parent.parent / 'protected'), *sys.path]):
             import restricted_worker as worker

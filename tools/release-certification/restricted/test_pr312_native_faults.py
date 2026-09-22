@@ -16,6 +16,56 @@ import restricted_native
 
 
 class NativeFixtureTest(unittest.TestCase):
+    def test_deadline_before_candidate_marker_cannot_be_counted_as_timeout_attack(self):
+        with patch.object(restricted_native, '_read_output', return_value=b''):
+            with self.assertRaisesRegex(ValueError, 'attack-not-observed'):
+                fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'timeout')
+        with patch.object(restricted_native, '_read_output', return_value=b'fixture-mode-started:timeout\n'):
+            fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'timeout')
+
+    def test_descendant_requires_marker_after_actual_child_start(self):
+        raw = b'fixture-mode-started:descendant\n'
+        with patch.object(restricted_native, '_read_output', return_value=raw):
+            with self.assertRaisesRegex(ValueError, 'descendant-not-observed'):
+                fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'descendant')
+        with patch.object(restricted_native, '_read_output', return_value=raw + b'fixture-descendant-started\n'):
+            fixtures.validate_attack_marker(restricted_native, Path('/stage'), 'descendant')
+
+    def test_unexpected_output_requires_successful_write_before_roster_denial(self):
+        entry = b'fixture-mode-started:unexpected-output\n'
+        completed = entry + b'fixture-unexpected-output-written\n'
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary)
+            with patch.object(restricted_native, '_read_output', return_value=entry):
+                with self.assertRaisesRegex(ValueError, 'output-roster-attack-not-observed'):
+                    fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+            with patch.object(restricted_native, '_read_output', side_effect=[completed, b'fixture-pass\n']):
+                fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+            # A marker followed by native timeout/failure is not the successful exporter exit
+            # needed to isolate the launcher's output-roster rejection.
+            (stage / 'output').mkdir()
+            (stage / 'output/failure.json').write_text('{"stage":"deadline"}')
+            with patch.object(restricted_native, '_read_output', side_effect=[completed, b'fixture-pass\n']):
+                with self.assertRaisesRegex(ValueError, 'output-roster-attack-not-observed'):
+                    fixtures.validate_attack_marker(restricted_native, stage, 'unexpected-output')
+
+    def test_observer_records_exact_manager_diagnostics_and_fixed_case_contract(self):
+        import hashlib
+        import pr313_acceptance as acceptance
+        with tempfile.TemporaryDirectory() as temporary:
+            stage = Path(temporary)
+            (stage / 'manager.json').write_text(json.dumps({'invocationId': 'a' * 32}))
+            rows = []
+            stdout, stderr = b'fixture-pass\n', b'fixture-mode-started:positive\n'
+            with patch.object(restricted_native, '_read_output', side_effect=[stdout, stderr]), \
+                    patch.object(restricted_native, '_manager', return_value={'ActiveState': 'inactive'}), \
+                    patch.object(fixtures, '_quiescent'):
+                fixtures.emit_observations(restricted_native, stage, ('hostile-setid',), 1, rows.append)
+            self.assertEqual('a' * 32, rows[0]['managerInvocationId'])
+            self.assertEqual(hashlib.sha256(len(stdout).to_bytes(8, 'big') + stdout + stderr).hexdigest(),
+                             rows[0]['attackWitness']['stdoutDigest'])
+            self.assertEqual('passed', acceptance.observation_status(rows[0], {}))
+
     def test_fixture_owner_is_physically_excluded_from_production_export(self):
         name = 'tools/release-certification/restricted/pr312_native_faults.py'
         self.assertIn(name, installation.TEST_SEAMS)

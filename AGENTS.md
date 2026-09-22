@@ -37,6 +37,26 @@ independent task justifies it; assign separate file ownership.
   redaction, and exact-byte verification. A request for a specific external action counts as
   authorization for that action; do not ask for the same approval again.
 
+## Temporary virtual machines and disk space
+
+Before creating a temporary VM or copying its disks, inventory existing disposable VMs and
+their actual disk usage. Clean up old VMs that are no longer needed before allocating new ones.
+This prerequisite applies to every attempt in a batch, including retries.
+
+- Limit cleanup to explicitly identified disposable resources owned by the task. Confirm the
+  guest and its emulator have stopped, and check that no retained VM depends on a disk before
+  deleting it. Never delete a running VM, a shared backing image, or an unrelated environment.
+- Remove obsolete guest disks, overlays, and generated copies once their required results and
+  diagnostics have been retained. Keep reusable reference inputs and evidence still required
+  by the task. Failed or interrupted disks subject to an explicit preservation requirement
+  remain required evidence; do not silently classify them as useless to reclaim space.
+- Set a total storage budget and a minimum free-space reserve before a VM batch. Count retained
+  attempts, private image copies, and expected disk growth across the whole batch, not only the
+  next launch. Recheck actual usage and free space after cleanup and before each allocation.
+- If cleanup cannot leave enough space within that budget, stop creating VMs and report the
+  retained resources and space shortfall. Resolve the capacity or retention constraint before
+  continuing; do not keep allocating until the host filesystem is nearly full.
+
 ## Skills and references
 
 Read the relevant skill before domain-specific changes. Skills live at

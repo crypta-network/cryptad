@@ -58,7 +58,7 @@ def _installed_module(native, installed_root):
             and all(not path.is_symlink() for path in (installed_root, *installed_root.parents)))
 
 
-def run(root, installed_root, identity, java_home):
+def run(root, installed_root, identity, java_home, prepared_inputs=None, observe=None):
     import restricted_native as native
     import app_subject_projection as projection
     import original_artifact_authentication as original
@@ -90,11 +90,15 @@ def run(root, installed_root, identity, java_home):
                     stream.write(raw[:65536])
         return retain
     classpath = str(tools / 'lib/*')
-    bounded_run([str(java_home / 'bin/javac'), '-cp', classpath, '-d', str(classes), str(source)],
-                environment=environment, timeout=60, output_limit=65536, diagnostic_sink=diagnostics('compile'))
-    bounded_run([str(java_home / 'bin/java'), '-cp', str(classes) + os.pathsep + classpath,
-                'network.crypta.platform.devtools.fixtures.Pr304SignedFixture', str(fixture)],
-                environment=environment, timeout=60, output_limit=65536, diagnostic_sink=diagnostics('generate'))
+    if prepared_inputs is None:
+        bounded_run([str(java_home / 'bin/javac'), '-cp', classpath, '-d', str(classes), str(source)],
+                    environment=environment, timeout=60, output_limit=65536, diagnostic_sink=diagnostics('compile'))
+        bounded_run([str(java_home / 'bin/java'), '-cp', str(classes) + os.pathsep + classpath,
+                    'network.crypta.platform.devtools.fixtures.Pr304SignedFixture', str(fixture)],
+                    environment=environment, timeout=60, output_limit=65536, diagnostic_sink=diagnostics('generate'))
+    else:
+        import shutil
+        shutil.copytree(prepared_inputs / 'signed', fixture, dirs_exist_ok=True)
     artifact, names = _artifact(original, fixture)
     exporter = tools / 'bin/crypta-app'
     options = dict(exporter=exporter, exporter_digest='sha256:' + hashlib.sha256(exporter.read_bytes()).hexdigest(),
@@ -105,6 +109,7 @@ def run(root, installed_root, identity, java_home):
     for app in ('external-app', 'wrong-app'):
         context = {'operationId': secrets.token_hex(32), 'registrationDigest': 'sha256:' + '0' * 64,
                    'bundleIdentity': identity, 'deadlineMonotonic': time.monotonic() + 180}
+        started_ns = time.monotonic_ns()
         before = set(native.ROOT.iterdir())
         rejected = False
         with native.owning_boundary(context):
@@ -133,6 +138,17 @@ def run(root, installed_root, identity, java_home):
             failure = json.loads((stages[0] / 'output/failure.json').read_bytes())
             if failure != {'invocation': stages[0].name, 'stage': 'native-failed'}:
                 raise ValueError('app-fixture-negative-native-unobserved')
+        if observe is not None:
+            from pr313_observations import quiescent
+            case = 'signed-app' if app == 'external-app' else 'wrong-app'
+            outcome = 'owner-validated' if app == 'external-app' else 'rejected'
+            observe({'caseId': case, 'phase': 'native-complete', 'outcome': outcome,
+                'managerInvocationId': manager['invocationId'], 'quiescent': quiescent(),
+                'attackWitness': {'operation': 'app-projection', 'operationMarker': case,
+                    'ownerOutcome': outcome, 'stdoutDigest': hashlib.sha256(
+                        native._read_output(stages[0] / 'diagnostics/stdout',
+                            8 * 1024 * 1024, allow_empty=True)).hexdigest(),
+                    'startedMonotonicNs': started_ns, 'finishedMonotonicNs': time.monotonic_ns()}})
         operations.append(context['operationId'])
     (root / 'observation.json').write_text(json.dumps({'kind': 'synthetic-installed-signed-app-observation',
         'productionEligible': False, 'originalProviderProof': 'synthetic', 'bundleIdentity': identity,
