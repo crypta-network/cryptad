@@ -434,6 +434,25 @@ class StartupDependencyTests(unittest.TestCase):
 
 
 class SudoPolicyDenialTests(unittest.TestCase):
+    def test_selected_role_denial_is_bound_to_exact_account(self):
+        for user in ('cryptad-soak', 'cryptad-wl-candidate-sender', 'cryptad-wl-candidate-recipient',
+                     'cryptad-wl-previous', 'cryptad-wl-relay-no-apps'):
+            message = ('User ' + user + ' is not allowed to run sudo on pr311-disposable.\n').encode()
+            result = subprocess.CompletedProcess([], 0, message, b'')
+            with self.subTest(user=user):
+                installation.verify_sudo_denial(result, user=user)
+                with self.assertRaises(installation.InstallationError):
+                    installation.verify_sudo_denial(result)
+                with self.assertRaises(installation.InstallationError):
+                    installation.verify_sudo_denial(result, user='cryptad-wl-other')
+
+    def test_expected_account_cannot_be_a_pattern_or_malformed_name(self):
+        result = subprocess.CompletedProcess([], 0,
+            b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n', b'')
+        for user in ('cryptad-.*', '', None, 'x' * 32, 'cryptad-runner\n'):
+            with self.subTest(user=user), self.assertRaises(installation.InstallationError):
+                installation.verify_sudo_denial(result, user=user)
+
     def test_explicit_denial_survives_administrator_listing_exit_status_difference(self):
         message = b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n'
         for status in (0, 1):

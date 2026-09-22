@@ -38,7 +38,7 @@ def verify():
     for user in (*users, pwd.getpwnam('cryptad-soak')):
         probe = subprocess.run(['/usr/bin/sudo', '-n', '-l', '-U', user.pw_name],
                                capture_output=True, env=ENV, timeout=15)
-        installation.verify_sudo_denial(probe)
+        installation.verify_sudo_denial(probe, user=user.pw_name)
     for name, target in ASSETS.items():
         if installation.secured(target).read_bytes() != installation.secured(SOURCE / name).read_bytes():
             raise ValueError('workload-installed-unit-changed')

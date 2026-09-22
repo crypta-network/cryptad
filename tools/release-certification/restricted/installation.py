@@ -544,18 +544,20 @@ def verify_polkit(runner):
             stop_polkit_subject(process)
 
 
-def verify_sudo_denial(result):
+def verify_sudo_denial(result, *, user='cryptad-runner'):
     """Accept only an explicit denied-user listing from the image-pinned sudo policy engine.
 
     On the reference Debian sudo, a successful administrator listing can return zero while
     reporting that the selected user has no permissions. Exit status alone is not admission.
     """
+    if not isinstance(user, str) or re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', user) is None:
+        raise InstallationError('restricted-runner-sudo-or-policy-unknown')
     try:
         diagnostic = result.stdout.decode('utf-8', errors='strict').strip()
     except UnicodeError:
         raise InstallationError('restricted-runner-sudo-or-policy-unknown') from None
     if (result.returncode not in (0, 1) or result.stderr or re.fullmatch(
-            r'User cryptad-runner is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
+            r'User ' + re.escape(user) + r' is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
         raise InstallationError('restricted-runner-sudo-or-policy-unknown')
 
 
