@@ -66,8 +66,8 @@ def prepare(plan, private, authorization):
             or type(authorization.get('maxOperations')) is not int
             or not 1 <= authorization['maxOperations'] <= 10000):
         workload.reject('profile-selection-unsupported')
-    for selected in plan['nodes']:
-        role = selected['role']
+    for index, role in enumerate(workload.ROLES):
+        selected = plan['nodes'][index]
         row = private['nodes'][role]
         if (selected.get('product') != 'cryptad'
                 or set(row) != {'archivePath', 'javaHome', 'fnpPort', 'fcpPort', 'httpPort',
@@ -90,8 +90,8 @@ def prepare(plan, private, authorization):
             or plan['producer'] != runtime.runner_identity()):
         workload.reject('installed-source-selection-mismatch')
     configurations = {}
-    for selected in plan['nodes']:
-        role = selected['role']
+    for index, role in enumerate(workload.ROLES):
+        selected = plan['nodes'][index]
         if selected['configDigest'] != configuration_identity(role, private['nodes'][role]['trustedKeysDigest']):
             workload.reject('profile-config-selection-mismatch')
         configurations[role] = configuration(role)
@@ -140,8 +140,10 @@ def prepare(plan, private, authorization):
             path = workload.ROOT / directory
             path.mkdir(mode=0o700)
             path.chmod(mode)
-        for selected in plan['nodes']:
-            role = selected['role']
+        # Paths and generated daemon configuration use controller constants, never
+        # values carried by the private selection. Roster order was checked above.
+        for index, role in enumerate(workload.ROLES):
+            selected = plan['nodes'][index]
             user = workload.account(role)
             row = private['nodes'][role]
             # Pin complete administrator inputs before parsing/extracting candidate archives.

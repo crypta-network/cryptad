@@ -556,6 +556,9 @@ class PreparationTest(unittest.TestCase):
     def test_unadapted_workloads_and_invalid_budgets_fail_before_lock_or_mutation(self):
         runtime = SimpleNamespace(canonical_digest=lambda _plan: 'exact')
         for section, key, value in (('plan', 'workloadInputs', {'catalog': True}),
+                                   ('plan', 'nodes', [{'role': '../private-selection'}]
+                                    + [{'role': role} for role in workload.ROLES[1:]]),
+                                   ('plan', 'nodes', [{'role': role} for role in reversed(workload.ROLES)]),
                                    ('plan', 'provenanceClass', 'original-release'),
                                    ('authorization', 'maxSeconds', 3601),
                                    ('authorization', 'maxOperations', 0),
