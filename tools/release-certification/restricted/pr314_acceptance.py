@@ -23,15 +23,16 @@ class Case:
     target: str
     outcome: str
     witness: str
+    server_role: str | None = None
 
 
 CASES = {
     'installed-ready': Case('administrator', 'installation', 'verified', 'identity'),
     'four-role-start': Case('observer', 'four-role-roster', 'running', 'roster'),
     'signed-apphost-child': Case('observer', 'own-app', 'sandboxed', 'app'),
-    'own-management': Case('observer', 'own-management', 'connected', 'exchange'),
-    'fnp-content-retrieval': Case('observer', 'approved-fnp-links', 'retrieved', 'exchange'),
-    'dynamic-app-bootstrap': Case('observer', 'own-app', 'bound-session', 'exchange'),
+    'own-management': Case('observer', 'own-management', 'connected', 'exchange', 'candidate-sender'),
+    'fnp-content-retrieval': Case('observer', 'approved-fnp-links', 'retrieved', 'exchange', 'candidate-recipient'),
+    'dynamic-app-bootstrap': Case('observer', 'own-app', 'bound-session', 'exchange', 'candidate-sender'),
     'kernel-resource-scope': Case('administrator', 'owned-cgroups', 'measured', 'resources'),
     'restart-durable-state': Case('observer', 'owned-role', 'new-epoch', 'restart'),
 }
@@ -144,7 +145,10 @@ def _witness(case, witness, identity, principals):
                                  'serverInvocationId', 'serverRequests'))
                 and all(_hex(witness[key]) for key in ('requestDigest', 'expectedResponseDigest', 'responseDigest'))
                 and witness['responseDigest'] == witness['expectedResponseDigest']
-                and _hex(witness['serverInvocationId'], 32) and _positive(witness['serverRequests']))
+                and _hex(witness['serverInvocationId'], 32) and _positive(witness['serverRequests'])
+                and _principals(principals)
+                and witness['serverInvocationId'] == next(row['invocationId'] for row in principals['roles']
+                                                          if row['role'] == case.server_role))
     if kind == 'resources':
         return (_closed(witness, ('source', 'memoryCurrentBytes', 'pidsCurrent', 'cpuUsageUsec'))
                 and witness['source'] == 'cgroup-v2'
@@ -180,6 +184,7 @@ def _witness(case, witness, identity, principals):
                 and _positive(witness['triggerStartedNs']) and _positive(witness['terminalObservedNs'])
                 and witness['triggerStartedNs'] < witness['terminalObservedNs']
                 and _roster(witness['roles']) and witness['populatedCgroups'] == []
+                and _principals(principals) and witness['roles'] == principals['roles']
                 and type(witness['remainingDescendants']) is int and witness['remainingDescendants'] == 0
                 and witness['retention'] in ('retained', 'cleaned-after-quiescence'))
     return False

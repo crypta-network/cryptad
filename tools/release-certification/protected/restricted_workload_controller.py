@@ -77,6 +77,17 @@ def _http(sock, path, headers):
         connection.close()
 
 
+def runtime_object(body):
+    """Reject malformed candidate JSON before any runtime or sandbox dereference."""
+    value = json.loads(body)
+    if not isinstance(value, dict) or not isinstance(value.get('runtime'), dict):
+        workload.reject('app-runtime-invalid')
+    runtime = value['runtime']
+    if not isinstance(runtime.get('sandbox'), dict):
+        workload.reject('app-runtime-invalid')
+    return runtime
+
+
 def bootstrap(handle):
     """Resolve dynamic app origin only from this role's current daemon launch proof."""
     with workload.locked(), deadline():
@@ -109,7 +120,7 @@ def bootstrap(handle):
             '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
         if runtime_status != 200:
             workload.reject('app-runtime-unavailable')
-        binding = require_app_listener(role, json.loads(runtime_body).get('runtime'), selected.port)
+        binding = require_app_listener(role, runtime_object(runtime_body), selected.port)
         origin = 'http://127.0.0.1:' + str(selected.port)
         status, _headers, body = _http(_connect_port(role, selected.port),
             '/.well-known/cryptad-bootstrap.json', {'Accept': 'application/json', 'Origin': origin,
@@ -123,7 +134,7 @@ def bootstrap(handle):
         workload.exact(role, record, workload.manager(role, 'show'))
         runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
             '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
-        if (runtime_status != 200 or require_app_listener(role, json.loads(runtime_body).get('runtime'),
+        if (runtime_status != 200 or require_app_listener(role, runtime_object(runtime_body),
                                                         selected.port) != binding):
             workload.reject('app-worker-changed')
         # A private response; never inserted into an acceptance/public result.

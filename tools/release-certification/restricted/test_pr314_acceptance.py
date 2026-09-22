@@ -25,7 +25,7 @@ def observation(name):
         'app': dict(role='candidate-sender', provider='bubblewrap', hostPid=101, namespacePid=2,
                     processEpoch=100, invocationId='0'*31+'1', installedAppDigest=digest),
         'exchange': dict(requestDigest=digest, expectedResponseDigest=digest, responseDigest=digest,
-                         serverInvocationId='0'*31+'1', serverRequests=1),
+                         serverInvocationId='0'*31+('2' if name == 'fnp-content-retrieval' else '1'), serverRequests=1),
         'resources': dict(source='cgroup-v2', memoryCurrentBytes=1024, pidsCurrent=4, cpuUsageUsec=2),
         'restart': dict(beforeInvocationId='a'*32, afterInvocationId='b'*32, beforeEpoch=1,
                         afterEpoch=2, beforeStateDigest=digest, afterStateDigest=digest,
@@ -50,6 +50,33 @@ def attempt():
 
 
 class WorkloadAcceptanceTest(unittest.TestCase):
+    def test_exchange_must_match_expected_active_role(self):
+        for name in ('own-management', 'fnp-content-retrieval', 'dynamic-app-bootstrap'):
+            expected_role = 'candidate-recipient' if name == 'fnp-content-retrieval' else 'candidate-sender'
+            for invocation in [row['invocationId'] for row in roles() if row['role'] != expected_role] + ['f' * 32]:
+                value = attempt()
+                row = next(row for row in value['observations'] if row['caseId'] == name)
+                row['witness']['serverInvocationId'] = invocation
+                with self.subTest(case=name, invocation=invocation):
+                    self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+            with self.assertRaises(ValueError):
+                a.observation_status(observation(name), identity())
+
+    def test_lifecycle_must_match_attempt_roster(self):
+        for name, case in a.CASES.items():
+            if case.witness != 'lifecycle':
+                continue
+            for field, replacement in (('uid', 9999), ('gid', 9999), ('invocationId', 'f'*32),
+                    ('processEpoch', 9999), ('networkNamespace', 9999), ('cgroupDigest', 'f'*64)):
+                value = attempt()
+                row = next(row for row in value['observations'] if row['caseId'] == name)
+                row['witness']['roles'][0][field] = replacement
+                with self.subTest(case=name, field=field):
+                    self.assertTrue(a._roster(row['witness']['roles']))
+                    self.assertFalse(a.verify_attempts(identity(), [value])['recordContractValid'])
+            with self.assertRaises(ValueError):
+                a.observation_status(observation(name), identity())
+
     def test_app_witness_must_match_active_sender_invocation(self):
         for invocation in (roles()[1]['invocationId'], 'f' * 32):
             value = attempt()

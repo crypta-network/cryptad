@@ -337,6 +337,16 @@ records cannot satisfy v2. These checks bind host accounts only: the installed d
 measure the actual probe process and its app/role invocation. JSON context does not authenticate
 execution. Review validation passed 96 workload tests under root and 15 contract tests.
 
+Subsequent witness-binding fixes require the signed app invocation and management/bootstrap
+server invocation to match `candidate-sender`; FNP retrieval binds its serving observation to
+`candidate-recipient`. Lifecycle terminal rosters must equal the measured attempt roster,
+including process epochs, accounts, invocations, cgroups and namespaces. A driver exercising a
+new restart epoch must supply that epoch's measured context for its terminal attempt; it cannot
+reuse stale context. Runtime JSON is checked as an object with object-valued runtime/sandbox
+members before either bootstrap process-binding pass, so malformed JSON shapes fail only the
+request. Local validation passed 97 workload tests under root and 19 contract tests. The current
+driver still does not execute the complete installed hostile/lifecycle suite.
+
 The next composed-budget work remains PR-309's import/fetch concurrency, timeout, cancellation,
 retry and owner-terminal causality, followed by dependent window/store/restart/privacy cases.
 Workload isolation does not close Mail lifecycle, migration, long-run or independent review.

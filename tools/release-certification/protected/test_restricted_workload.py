@@ -370,6 +370,39 @@ class FakeConnection:
 
 
 class ControllerRequestTest(unittest.TestCase):
+    def test_non_object_runtime_json_fails_only_bootstrap_request_in_both_passes(self):
+        import restricted_workload_app as app
+        import restricted_workload_network as network
+        import restricted_workload_storage as storage
+        valid_runtime = {'runtime': {'running': True, 'sandbox': {'provider': 'bubblewrap', 'active': True}}}
+        for body in ([], None, 'text', 7, {'runtime': []}, {'runtime': {'sandbox': []}}):
+            for final in (False, True):
+                with self.subTest(body=body, final=final), ExitStack() as stack:
+                    stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+                    stack.enter_context(patch.object(workload, 'retained', return_value=(
+                        {'deadlineMonotonicNs': 10**20}, ROLE, {})))
+                    for name in ('admit', 'exact', 'manager', 'current'):
+                        stack.enter_context(patch.object(workload, name))
+                    stack.enter_context(patch.object(workload, 'read', return_value={'mailIdentity': {}}))
+                    stack.enter_context(patch.object(storage, 'verify_installed_app'))
+                    stack.enter_context(patch.object(network, 'connect'))
+                    stack.enter_context(patch.object(network, '_connect_port'))
+                    stack.enter_context(patch.object(app, 'require_app_listener', return_value={'bound': True}))
+                    responses = [(302, {'Location': 'http://127.0.0.1:23456/#cryptadBootstrapNonce=' + 'a'*16}, b'')]
+                    if final:
+                        responses.extend([(200, {}, json.dumps(valid_runtime).encode()), (200, {}, json.dumps({
+                            'uiOrigin': 'http://127.0.0.1:23456', 'browserSessionToken': 'session'}).encode())])
+                    responses.append((200, {}, json.dumps(body).encode()))
+                    stack.enter_context(patch.object(controller, '_http', side_effect=responses))
+                    reconcile = stack.enter_context(patch.object(workload, 'reconcile'))
+                    failed = FakeConnection(json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE}).encode() + b'\n')
+                    self.assertFalse(controller.handle_request(failed, 1000))
+                    healthy = FakeConnection(self.raw() + b'\n')
+                    with patch.object(workload, 'start', return_value={'state': 'running'}):
+                        self.assertTrue(controller.handle_request(healthy, 1000))
+                    reconcile.assert_not_called()
+                    self.assertEqual([b'{"error":"restricted-workload-request-failed"}\n'], failed.sent)
+
     def test_malformed_role_http_fails_only_request_and_next_request_succeeds(self):
         for response in (b'not-http\r\n', b'HTTP/1.1 200 OK\r\nX: ' + b'a' * 65537 + b'\r\n\r\n'):
             with self.subTest(response_length=len(response)), socket.socket() as listener:
