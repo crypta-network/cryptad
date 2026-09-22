@@ -405,13 +405,16 @@ class InstalledWorkloadAdapter:
         deadline = time.monotonic() + self.remaining(180)
         while True:
             try:
-                with self.client(role) as client:
-                    value['reference'] = runtime.interop.get_node_reference(client, 'node-identity')
+                # FCP's general GetNode timeout is longer than this startup budget. Bound
+                # the complete attempt, including observation, handshake and trickled frames.
+                with runtime.absolute_deadline(deadline - time.monotonic()):
+                    with self.client(role) as client:
+                        value['reference'] = runtime.interop.get_node_reference(client, 'node-identity')
                 break
-            except (OSError, runtime.RuntimeFailure, runtime.interop.InteropFailure):
+            except (OSError, runtime.RuntimeFailure, runtime.interop.InteropFailure) as error:
                 if time.monotonic() >= deadline:
-                    fail('daemon-readiness-timeout')
-                time.sleep(0.2)
+                    raise runtime.RuntimeFailure('workload-daemon-readiness-timeout') from error
+                time.sleep(min(.2, max(0, deadline - time.monotonic())))
         self.emit('node-start', role=role, node_epoch=runtime.canonical_digest({key: value[key] for key in EPOCH})[7:39])
         self._journal_started_roles.add(role)
         return value

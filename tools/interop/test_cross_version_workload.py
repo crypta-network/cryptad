@@ -1,5 +1,6 @@
 """Bounded protocol, invocation, and current scoped-process mapping regressions."""
 import array
+from contextlib import contextmanager
 import copy
 import json
 import os
@@ -7,6 +8,7 @@ from pathlib import Path
 import socket
 import tempfile
 import threading
+import time
 import types
 import unittest
 from unittest import mock
@@ -167,6 +169,80 @@ class ObserverPolicyTests(unittest.TestCase):
                 with self.assertRaises(workload.runtime.RuntimeFailure):
                     workload.WorkloadClient().request(method, handle)
             factory.assert_not_called()
+
+
+class ReadinessDeadlineTests(unittest.TestCase):
+    def adapter(self, seconds):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.handles = {'candidate-sender': HANDLE}
+        adapter.nodes = {}
+        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value={**EPOCH, 'state': 'running'}))
+        adapter.deadline = time.monotonic() + seconds
+        adapter.emit = mock.Mock()
+        adapter._journal_started_roles = set()
+        return adapter
+
+    def test_retry_success_preserves_original_budget_and_one_manager_start(self):
+        adapter = self.adapter(2)
+        original_deadline = adapter.deadline
+        attempts, closed = [], []
+        @contextmanager
+        def client(role):
+            attempts.append(role)
+            if len(attempts) == 1:
+                raise ConnectionRefusedError('not listening yet')
+            try:
+                yield object()
+            finally:
+                closed.append(role)
+        adapter.client = client
+        reference = {'identity': 'synthetic-node-identity'}
+        with mock.patch.object(workload.runtime.interop, 'get_node_reference', return_value=reference):
+            result = adapter.start('candidate-sender')
+        self.assertEqual(reference, result['reference'])
+        self.assertEqual(original_deadline, adapter.deadline)
+        self.assertEqual(['candidate-sender'] * 2, attempts)
+        self.assertEqual(['candidate-sender'], closed)
+        adapter.control.request.assert_called_once_with('start', HANDLE)
+        adapter.emit.assert_called_once()
+        self.assertEqual({'candidate-sender'}, adapter._journal_started_roles)
+
+    def test_blocked_real_fcp_reference_cannot_exceed_original_readiness_deadline(self):
+        adapter = self.adapter(.1)
+        original_deadline = adapter.deadline
+        observer, daemon = socket.socketpair()
+        daemon.sendall(b'NodeHello\nVersion=test\nEndMessage\n')
+        stop = threading.Event()
+        def close_after_outer_bound():
+            stop.wait(.6)
+            daemon.close()
+        thread = threading.Thread(target=close_after_outer_bound)
+        thread.start()
+        with tempfile.TemporaryDirectory() as directory:
+            @contextmanager
+            def client(_role):
+                selected = workload.ConnectedFcpClient(observer, 'readiness-test', Path(directory) / 'fcp.log', lambda: None)
+                try:
+                    yield selected
+                finally:
+                    selected.close()
+            adapter.client = client
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'workload-daemon-readiness-timeout') as raised:
+                    adapter.start('candidate-sender')
+                self.assertLess(time.monotonic() - started, .4)
+                self.assertIsInstance(raised.exception.__cause__, workload.runtime.RuntimeFailure)
+                self.assertEqual('operation-deadline-exceeded', str(raised.exception.__cause__))
+                self.assertEqual(original_deadline, adapter.deadline)
+                adapter.emit.assert_not_called()
+                self.assertFalse(adapter._journal_started_roles)
+                self.assertEqual(-1, observer.fileno())
+            finally:
+                stop.set()
+                thread.join(2)
+                observer.close()
+                self.assertFalse(thread.is_alive())
 
 
 @unittest.skipUnless(os.geteuid() == 0, 'actual UNIX controller peer must be root')

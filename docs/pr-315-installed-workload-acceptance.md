@@ -223,6 +223,13 @@ uses the original controller deadline plus the existing teardown grace, not a ne
 campaign budget. Real local fork tests cover closed-output/hanging and flooded-output children;
 these are driver regressions, not installed lifecycle cases.
 
+A real socketpair regression demonstrated that the general FCP GetNode read could outlast
+the adapter's declared readiness window. The adapter now applies the existing absolute deadline
+to every complete readiness attempt and clamps retry sleep to the original remaining budget.
+The terminal timeout keeps its existing code and chains the last failure for private diagnosis.
+The production 180-second readiness ceiling and original campaign deadline are unchanged.
+This offline reproduction does not identify the cause of the ninth installed attempt.
+
 Private memory diagnostics include before/after and sampled live cgroup demand. Missing cgroups
 are unavailable, never zero or quiescence proof. The separate fixed evidence reader captures
 bounded projected controller records and a 32-byte synthetic state sentinel after caller-verified
