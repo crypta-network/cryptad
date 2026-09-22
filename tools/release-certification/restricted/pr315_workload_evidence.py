@@ -128,6 +128,37 @@ def _record(root, name, fields, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _wrapper_excerpt(raw, deadline):
+    """Select bounded private diagnostic lines; candidate text does not authenticate severity."""
+    chunks = []
+    size = 0
+    offset = 0
+    truncated = False
+    status = 'captured'
+    while offset < len(raw):
+        if time.monotonic() >= deadline:
+            status = 'capture-deadline'
+            truncated = True
+            break
+        end = raw.find(b'\n', offset)
+        end = len(raw) if end < 0 else end + 1
+        line = raw[offset:end]
+        offset = end
+        selected = (re.match(rb' *(?:ERROR|FATAL|WARN) *\| *wrapper *\|', line)
+                    or re.match(rb' *[A-Z]{1,16} *\| *jvm [0-9]{1,10} *\|', line))
+        if not selected or re.search(rb'\b(?:Command|JavaCommandLine)\b', line):
+            continue
+        available = 8192 - size
+        chunks.append(line[:available])
+        size += min(len(line), available)
+        if len(line) > available or size == 8192:
+            truncated = len(line) > available or offset < len(raw)
+            break
+    return {'status': status, 'classification': 'candidate-origin-private-diagnostic-not-acceptance',
+            'sizeBytes': size, 'truncated': truncated,
+            'contentBase64': base64.b64encode(b''.join(chunks)).decode('ascii')}
+
+
 def _wrapper_log(root, role, deadline):
     """Snapshot one fixed candidate-origin log safely; retain only its bounded private tail."""
     remaining = deadline - time.monotonic()
@@ -139,7 +170,8 @@ def _wrapper_log(root, role, deadline):
         tail = raw[-WRAPPER_TAIL:]
         return {'status': 'captured', 'classification': 'candidate-origin-private-diagnostic-not-acceptance',
             'sizeBytes': len(raw), 'tailBytes': len(tail), 'truncated': len(tail) < len(raw),
-            'tailBase64': base64.b64encode(tail).decode('ascii')}
+            'tailBase64': base64.b64encode(tail).decode('ascii'),
+            'excerpt': _wrapper_excerpt(raw, deadline)}
     except (OSError, ValueError):
         return {'status': 'unavailable-or-unsafe'}
 
@@ -225,6 +257,9 @@ def _capture(root, expected, cleanup_complete):
         # capture deadline covers logs; reserve the final timestamp and per-role status space.
         for role in ROLES:
             result['wrapperLogs'][role] = _wrapper_log(root, role, deadline)
+            if (len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256
+                    and 'excerpt' in result['wrapperLogs'][role]):
+                result['wrapperLogs'][role]['excerpt'] = {'status': 'not-captured-output-budget'}
             if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                 result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
         # Lower-priority crash headers share the same deadline and private output bound.

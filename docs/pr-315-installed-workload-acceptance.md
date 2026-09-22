@@ -4,8 +4,10 @@ This page records the PR-315 workload inventory, executable-path gaps, and the r
 installed verification required for the finite four-role source-build profile.
 **Implementation is incomplete; no installed workload case has a valid acceptance witness in
 this revision's audit.** The first three installed attempts failed before role staging; the next
-two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for controller
-readiness, before any role service was observed running.
+two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
+controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
+and tenth reached first-role startup but failed daemon readiness; no four-role positive run
+has completed.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -72,8 +74,10 @@ The recreated standalone reference completed preparation and stopped successfull
 records retain the prepared image, copied boot closure, seed, SSH credentials/host pin, and guest
 identities. Observed versions include kernel 6.12.107, systemd 257.13, bubblewrap 0.12,
 nftables 1.1.3, iproute2 6.15 and Temurin 25.0.4.1. These are preparation observations, not
-workload acceptance. Only obsolete successful preparation copies were removed after exact
-stopped ownership and standalone backing checks; failed attempts remain retained.
+workload acceptance. Initial cleanup removed obsolete successful preparation copies. The user
+subsequently authorized removing stopped failed guests to keep the 40-GiB budget. Their original
+archives, failure records and captured diagnostics remain retained; their disposable disks and
+verified duplicate expansions are removed only after ownership and dependency checks.
 
 The first installed attempt failed immutable bundle verification after privileged Python imports
 created bytecode files. Fixed installed entrypoints now suppress bytecode writes; a regression
@@ -222,6 +226,21 @@ role's fixed temporary directory after cleanup. Missing files are unavailable ev
 proof that no JVM failure occurred. This does not establish where the previous fatal output
 went or explain historical SIGILL/SIGSEGV observations. CPU, JDK, memory and campaign limits
 remain unchanged; the previously demonstrated FCP deadline fix is included prospectively.
+
+The eleventh attempt at helper `12d4eddc6344510a8dfa2acd1d620c88cec17576` retained a
+first-role wrapper log showing repeated JVM launch attempts and a wrapper CPU-starvation
+message before readiness expired. Its inspected temporary directory contained no matching JVM
+fatal-error file; that does not rule out a crash elsewhere. The final log tail was dominated
+by command lines, leaving earlier launch-failure messages unavailable after shutdown. No other
+role started and no workload case passed. The guest stopped; failed disks and verified duplicate
+expansions were removed after retaining the original archives and private diagnostics.
+
+The next revision removes the temporary command/query logging overrides. In addition to the
+existing tail, it retains at most 8192 bytes of selected wrapper warning/error and JVM-channel
+lines from the same bounded safe read. These untrusted text labels are diagnostic selection,
+not authenticated severity or acceptance. Immediate Python exception causes now survive the
+bounded private observer response; the public result remains unchanged. No deadline, CPU,
+JDK or memory limit was increased.
 
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
@@ -387,13 +406,23 @@ Each of four roles has a 1-GiB memory limit, zero swap and 512-task cap. Each ro
 32768-inode tmpfs consumes real memory; it is not additional guaranteed headroom. Measure
 controller/JVM/AppHost demand and sibling/observer progress. Distinguish expected role-limit
 denial from guest-wide OOM or loss of observation. The current attempts measured host admission
-headroom but stopped during setup; they establish no running four-role memory observation.
+headroom, controller demand and first-role startup demand. They establish no running four-role
+memory observation or installed role-exhaustion result.
 
 After exact role quiescence, extract only fixed bounded sentinels and necessary controller records
 with existing safe descriptor readers. Reject symlinks, FIFOs, sockets, hardlinks, races and
 unbounded growth. Retained QCOW2 does not preserve tmpfs after shutdown. A private diagnostic
 snapshot is not a runtime restore format or continuation of the same epoch. Guest crashes may
 make volatile evidence unavailable; record that limitation without manufacturing a snapshot.
+
+The current driver's `cleanup=completed` is a reported teardown result, not the contract's
+exact-owned terminal witness. Its inactive-service path accepts a missing or empty expected
+cgroup without fully binding the terminal observation to the retained invocation. An inactive
+replacement or removed cgroup therefore remains an acceptance gap. Controller `BindsTo`, fixed
+units and launch receipts constrain operations, but a causal stopping record and controlled
+future-launch state still need installed verification. Host-observed guest stop is a separate
+condition used for disposable disk cleanup; it does not repair those missing role witnesses.
+The private snapshot explicitly does not independently establish quiescence.
 
 Public output includes only approved classifications, counts, case IDs and tool/product
 identifiers. Actual actor IDs, endpoints, raw output, selections, credentials and correlatable
@@ -415,16 +444,19 @@ root-only checks only in the dedicated disposable environment and report other r
 The actual installed suite is a separate invocation with declared storage/memory budgets;
 prerequisite exit 78 means unexecuted installed testing.
 
-Local regressions after the sudo/fixture corrections: protected discovery ran 466 tests with
-74 skips; restricted discovery ran 350 with one QEMU-tool-availability skip; the workload adapter
-ran 24 with eight root-only skips. The protected workload subset ran 101 with 21 skips.
-The four certification self-tests ran 152, 247, 88 and 185 tests respectively, all passing after
-the corrections at helper `90a9d63f7d28b78b3d2a1f369e140f469bef0378`. The Gradle wrapper completed
+At helper `12d4eddc6344510a8dfa2acd1d620c88cec17576`, protected discovery ran 482 tests
+with 74 skips; restricted discovery ran 382 with one QEMU-tool-availability skip. The protected
+workload subset ran 117 with 21 skips; the interop workload adapter ran 26 with eight root-peer
+transport skips. Root-only host skips remain unexecuted installed checks. The four certification
+self-tests passed with 152, 247, 88 and 185 tests respectively. The FCP deadline regression uses
+a real stalled socketpair; namespace/manager mocks elsewhere remain offline-only observations.
+
+Earlier in this implementation, the Gradle wrapper completed
 `:platform-devtools:installDist assembleCryptadDist`, candidate Mail staging/portable assembly,
 and historical predecessor portable assembly. Existing compiler/ErrorProne warnings and Gradle
 deprecation findings remain; task success does not establish analyzer cleanliness. No Java
 behavior was edited, no full Java test suite was run, and no final-source hosted CI was dispatched.
-These offline results and three retained setup failures grant no installed acceptance.
+None of these results grants installed workload acceptance.
 
 | Assessment dimension | Audit verdict |
 | --- | --- |

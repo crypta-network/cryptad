@@ -2,6 +2,7 @@
 from contextlib import contextmanager, ExitStack
 import fcntl
 import hashlib
+import json
 import os
 import socket
 import time
@@ -13,6 +14,22 @@ import unittest
 from unittest.mock import Mock, patch
 
 import pr314_workload_driver as driver
+
+
+class ObserverFailureTest(unittest.TestCase):
+    def test_immediate_cause_survives_private_child_response(self):
+        error = ValueError('workload-daemon-readiness-timeout')
+        error.__cause__ = RuntimeError('controller-request-rejected')
+        result = driver.observer_failure(error)
+        self.assertEqual('controller-request-rejected', result['immediateCause']['privateDetail'])
+        self.assertEqual('workload-daemon-readiness-timeout', result['privateDetail'])
+
+    def test_unicode_and_cycles_cannot_overrun_retained_child_transcript(self):
+        error = ValueError('😀' * 10000)
+        error.__cause__ = RuntimeError('😀' * 10000)
+        self.assertLess(len(json.dumps(driver.observer_failure(error)).encode()), 4096)
+        error.__cause__ = error
+        self.assertNotIn('immediateCause', driver.observer_failure(error))
 
 
 class CleanupTest(unittest.TestCase):

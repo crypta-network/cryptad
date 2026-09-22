@@ -152,6 +152,48 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertTrue(all(row['status'] == 'not-captured-cleanup-unverified'
                             for row in result['fatalLogs'].values()))
 
+    def test_wrapper_excerpt_finds_buried_error_without_command_lines(self):
+        command = b'INFO | wrapper | 2026 | Command[1] : private-command-value\n'
+        error = b'ERROR | wrapper | 2026 | Bootstrap failed\n'
+        jvm = b'INFO | jvm 4 | 2026 | private-jvm-output\n'
+        raw = command * 1000 + error + jvm + command * 1000
+        self.wrapper().write_bytes(raw)
+        with patch.object(evidence.snapshot, 'read_file', wraps=evidence.snapshot.read_file) as reader:
+            log = evidence._wrapper_log(self.root, 'candidate-sender', float('inf'))
+        self.assertEqual(1, reader.call_count)
+        excerpt = log['excerpt']
+        self.assertEqual(error + jvm, base64.b64decode(excerpt['contentBase64']))
+        self.assertIn('private-diagnostic-not-acceptance', excerpt['classification'])
+        self.assertNotIn(error, base64.b64decode(log['tailBase64']))
+        self.assertFalse(excerpt['truncated'])
+
+    def test_wrapper_excerpt_yields_output_budget_to_existing_tail(self):
+        self.wrapper().write_bytes(b'ERROR | wrapper | failure ' + b'x' * 10000)
+        with patch.object(evidence, 'MAX_OUTPUT', 10000):
+            result = evidence._capture(self.root, self.expected, True)
+        log = result['wrapperLogs']['candidate-sender']
+        self.assertEqual('captured', log['status'])
+        self.assertEqual(4096, log['tailBytes'])
+        self.assertEqual({'status': 'not-captured-output-budget'}, log['excerpt'])
+        self.assertEqual('matched', result['sentinel']['status'])
+        self.assertLess(len(json.dumps(result)), 10000)
+
+    def test_wrapper_excerpt_bounds_adversarial_text_and_deadline(self):
+        line = b'FATAL | wrapper | spoofed-severity-is-not-proof ' + b'x' * 20000
+        excerpt = evidence._wrapper_excerpt(line, float('inf'))
+        self.assertEqual(line[:8192], base64.b64decode(excerpt['contentBase64']))
+        self.assertEqual(8192, excerpt['sizeBytes'])
+        self.assertTrue(excerpt['truncated'])
+        excluded = (b'ERROR text | wrapper | invalid\n'
+                    b'INFO | jvm evil | invalid\n'
+                    b'WARN | wrapper | Command[1] : hidden\n')
+        self.assertEqual('', evidence._wrapper_excerpt(excluded, float('inf'))['contentBase64'])
+        with patch.object(evidence.time, 'monotonic', side_effect=[0, 2]):
+            excerpt = evidence._wrapper_excerpt(b'WARN | wrapper | first\nINFO | jvm 1 | second\n', 1)
+        self.assertEqual('capture-deadline', excerpt['status'])
+        self.assertEqual(b'WARN | wrapper | first\n', base64.b64decode(excerpt['contentBase64']))
+        self.assertTrue(excerpt['truncated'])
+
     def wrapper(self, role='candidate-sender'):
         logs = self.root / 'state' / role / 'logs'
         logs.mkdir(parents=True, exist_ok=True)

@@ -270,6 +270,19 @@ def sample_memory(diagnostics):
         peak['lastObserved'] = metrics
 
 
+def observer_failure(error):
+    """Keep a bounded immediate propagation cause in the existing private child response."""
+    from pr315_workload_guest import _bounded_text
+    result = {'observerFailure': _bounded_text(type(error).__name__, 128),
+              'privateDetail': _bounded_text(str(error), 1024)}
+    cause = error.__cause__
+    if cause is not None and cause is not error:
+        result['immediateCause'] = {'exceptionType': _bounded_text(type(cause).__name__, 128),
+            'privateDetail': _bounded_text(str(cause), 512),
+            'meaning': 'python-explicit-cause-not-acceptance'}
+    return result
+
+
 def execute(*, startup_measurement=False):
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
@@ -336,8 +349,7 @@ def execute(*, startup_measurement=False):
                 os._exit(0)
             except BaseException as error:
                 try:
-                    child.sendall(json.dumps({'observerFailure': type(error).__name__,
-                                             'privateDetail': str(error)[:1024]}).encode())
+                    child.sendall(json.dumps(observer_failure(error)).encode())
                 except OSError:
                     pass
                 child.close()
