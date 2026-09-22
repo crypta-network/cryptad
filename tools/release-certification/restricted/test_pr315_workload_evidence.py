@@ -1,4 +1,5 @@
 """Real local descriptor-reader tests; these are not installed acceptance observations."""
+import base64
 import hashlib
 import json
 import os
@@ -60,6 +61,103 @@ class VolatileEvidenceTest(unittest.TestCase):
             for cleanup in (False, None, 1, 'true'):
                 result = evidence._capture(self.root, self.expected, cleanup)
                 self.assertEqual('not-captured-cleanup-unverified', result['sentinel']['status'])
+                self.assertTrue(all(row == {'status': 'not-captured-cleanup-unverified'}
+                                    for row in result['wrapperLogs'].values()))
+
+    def wrapper(self, role='candidate-sender'):
+        logs = self.root / 'state' / role / 'logs'
+        logs.mkdir(parents=True, exist_ok=True)
+        return logs / 'wrapper.log'
+
+    def test_wrapper_logs_capture_only_fixed_private_tail_after_authority_and_sentinel(self):
+        raw = b'not-in-retained-tail' + bytes(range(256)) * 32
+        for role in evidence.ROLES:
+            self.wrapper(role).write_bytes(raw)
+        original = evidence.snapshot.read_file
+        names = []
+        def read(root, name, **kwargs):
+            names.append(name)
+            return original(root, name, **kwargs)
+        with patch.object(evidence.snapshot, 'read_file', side_effect=read):
+            result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual([*(['wrapper.log'] * 4)], names[-4:])
+        self.assertLess(names.index(evidence.SENTINEL), names.index('wrapper.log'))
+        for log in result['wrapperLogs'].values():
+            self.assertEqual('candidate-origin-private-diagnostic-not-acceptance', log['classification'])
+            self.assertEqual(len(raw), log['sizeBytes'])
+            self.assertEqual(4096, log['tailBytes'])
+            self.assertTrue(log['truncated'])
+            self.assertEqual(raw[-4096:], base64.b64decode(log['tailBase64']))
+        self.assertEqual(64 * 1024, evidence.MAX_OUTPUT)
+        self.assertLessEqual(len(json.dumps(result).encode()), evidence.MAX_OUTPUT)
+
+    def test_short_and_missing_wrapper_logs_are_reported_without_invented_bytes(self):
+        self.wrapper().write_bytes(b'daemon startup failure\n')
+        result = evidence._capture(self.root, self.expected, True)
+        log = result['wrapperLogs']['candidate-sender']
+        self.assertFalse(log['truncated'])
+        self.assertEqual(log['sizeBytes'], log['tailBytes'])
+        self.assertEqual({'status': 'unavailable-or-unsafe'}, result['wrapperLogs']['previous'])
+
+    def test_wrapper_log_special_hardlinked_and_oversized_files_are_rejected(self):
+        path = self.wrapper()
+        other = path.with_name('unselected-file')
+        for kind in ('symlink', 'fifo', 'hardlink', 'oversized'):
+            with self.subTest(kind=kind):
+                path.unlink(missing_ok=True)
+                other.unlink(missing_ok=True)
+                if kind == 'symlink':
+                    other.write_bytes(b'private')
+                    path.symlink_to(other)
+                elif kind == 'fifo':
+                    os.mkfifo(path)
+                elif kind == 'hardlink':
+                    other.write_bytes(b'private')
+                    os.link(other, path)
+                else:
+                    with path.open('wb') as stream:
+                        stream.truncate(evidence.MAX_WRAPPER_LOG + 1)
+                result = evidence._capture(self.root, self.expected, True)
+                self.assertEqual({'status': 'unavailable-or-unsafe'}, result['wrapperLogs']['candidate-sender'])
+                self.assertEqual('matched', result['sentinel']['status'])
+
+    def test_wrapper_replacement_during_descriptor_read_is_not_exported(self):
+        path = self.wrapper()
+        path.write_bytes(b'fixed wrapper output')
+        original = os.read
+        replaced = False
+        def replace(fd, maximum):
+            nonlocal replaced
+            value = original(fd, maximum)
+            if value == b'fixed wrapper output' and not replaced:
+                replacement = path.with_name('replacement')
+                replacement.write_bytes(value)
+                os.replace(replacement, path)
+                replaced = True
+            return value
+        with patch.object(evidence.snapshot.os, 'read', side_effect=replace):
+            result = evidence._capture(self.root, self.expected, True)
+        self.assertTrue(replaced)
+        self.assertEqual({'status': 'unavailable-or-unsafe'}, result['wrapperLogs']['candidate-sender'])
+
+    def test_remaining_global_deadline_prevents_additional_log_reads(self):
+        with patch.object(evidence.time, 'monotonic', return_value=10), \
+                patch.object(evidence.snapshot, 'read_file') as read:
+            self.assertEqual({'status': 'capture-deadline'}, evidence._wrapper_log(self.root, 'previous', 9))
+            read.assert_not_called()
+            read.return_value = b'x'
+            evidence._wrapper_log(self.root, 'previous', 10.25)
+            self.assertEqual(.25, read.call_args.kwargs['timeout'])
+            self.assertEqual(2 * 1024 * 1024, read.call_args.kwargs['maximum'])
+
+    def test_output_budget_omits_logs_without_discarding_prior_observations(self):
+        self.wrapper().write_bytes(b'x' * 8192)
+        with patch.object(evidence, 'MAX_OUTPUT', 4096):
+            result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('matched', result['sentinel']['status'])
+        self.assertEqual('captured', result['controllerRecords']['campaign']['status'])
+        self.assertEqual({'status': 'not-captured-output-budget'}, result['wrapperLogs']['candidate-sender'])
+        self.assertLess(len(json.dumps(result)), 4096)
 
     def test_changed_sentinel_is_not_matched(self):
         self.path.write_bytes(b'x' * 32)

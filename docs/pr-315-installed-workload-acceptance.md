@@ -192,6 +192,21 @@ unchanged. This is a narrow administrator observation-budget change, not a retry
 of an existing campaign. It requires fresh exact fixtures and a fresh installed positive run;
 the successful startup diagnostic cannot be borrowed as workload acceptance.
 
+The ninth attempt at helper `25e3f34aa8b50dba01f4d5827bc37e65db644b18` observed
+controller readiness and started the first role service, then failed the unchanged 180-second
+daemon readiness window. The remaining three roles were not launched. Observed role memory
+stayed below its limit with no recorded OOM events; an active service does not prove a ready
+packaged daemon or AppHost child. Cleanup completed, the selected sentinel matched, and the
+guest stopped. Startup output was unavailable, so the cause remains undiagnosed.
+
+The next revision enables the packaged wrapper's existing bounded log rotation at a fixed
+role-local path (2 MiB per file, three rotated files). After verified cleanup, the administrator
+kit uses the existing safe descriptor reader to retain at most the final 4096 bytes of each
+fixed current log, under the shared 15-second snapshot deadline and 64-KiB evidence limit.
+These private candidate-origin diagnostics are not acceptance witnesses. Unsafe, missing or
+unavailable logs remain explicitly unavailable. No daemon readiness or role resource limit
+was increased for this retry.
+
 Two narrow network-helper fixes address separately demonstrated offline child-process failures.
 Namespace emptiness checks now reuse the existing bounded helper rather than an exception path
 and context manager with unbounded waits. Descriptor receipt and child reap share the existing

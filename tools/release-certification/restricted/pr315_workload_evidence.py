@@ -5,6 +5,7 @@ cleanup verification; a missing cgroup is never interpreted here as proof of qui
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -20,7 +21,9 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 SENTINEL = 'pr315-retention-sentinel'
 MAX_RECORD = 32768
-MAX_OUTPUT = 256 * 1024
+MAX_OUTPUT = 64 * 1024
+MAX_WRAPPER_LOG = 2 * 1024 * 1024
+WRAPPER_TAIL = 4096
 CAMPAIGN_FIELDS = ('generation', 'bootId', 'state', 'deadlineMonotonicNs', 'usedOperations')
 ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIdentity', 'stopReason')
 
@@ -125,6 +128,22 @@ def _record(root, name, fields, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _wrapper_log(root, role, deadline):
+    """Snapshot one fixed candidate-origin log safely; retain only its bounded private tail."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'state' / role / 'logs', 'wrapper.log',
+                                 maximum=MAX_WRAPPER_LOG, timeout=min(2, remaining))
+        tail = raw[-WRAPPER_TAIL:]
+        return {'status': 'captured', 'classification': 'candidate-origin-private-diagnostic-not-acceptance',
+            'sizeBytes': len(raw), 'tailBytes': len(tail), 'truncated': len(tail) < len(raw),
+            'tailBase64': base64.b64encode(tail).decode('ascii')}
+    except (OSError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -137,7 +156,8 @@ def _capture(root, expected, cleanup_complete):
         'cleanupReportedByCaller': cleanup_complete is True,
         'quiescenceIndependentlyEstablished': False,
         'snapshotLimitations': 'fixed-files-not-atomic-not-runtime-continuation',
-        'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {}}
+        'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {},
+        'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}}
     if cleanup_complete is True:
         deadline = time.monotonic() + 15
         result['controllerRecords']['campaign'] = _record(root, 'campaign.json', CAMPAIGN_FIELDS, deadline)
@@ -159,6 +179,12 @@ def _capture(root, expected, cleanup_complete):
                                       'expectedDigest': expected, 'observedDigest': actual, 'sizeBytes': len(raw)}
             except (OSError, ValueError):
                 result['sentinel'] = {'status': 'unavailable-or-unsafe', 'expectedDigest': expected}
+        # Controller projections and the selected sentinel take precedence. The same absolute
+        # capture deadline covers logs; reserve the final timestamp and per-role status space.
+        for role in ROLES:
+            result['wrapperLogs'][role] = _wrapper_log(root, role, deadline)
+            if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
+                result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

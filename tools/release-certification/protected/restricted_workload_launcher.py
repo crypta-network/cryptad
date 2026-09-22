@@ -24,7 +24,11 @@ def command(role):
         '--ro-bind', str(inputs / 'public'), '/inputs/public', '--bind', str(state), '/node',
         '--bind', str(state / 'tmp'), '/tmp', '--chdir', '/node',
         '--remount-ro', '/dev/pts', '--remount-ro', '/dev', '--remount-ro', '/']
-    child = ['/package/bin/cryptad', 'wrapper.java.maxmemory=256']
+    # Use the packaged wrapper's existing bounded rotation inside this role's tmpfs.
+    # The administrator snapshots only a small safe tail after owned quiescence.
+    child = ['/package/bin/cryptad', 'wrapper.java.maxmemory=256',
+             'wrapper.logfile=/node/logs/wrapper.log',
+             'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]

@@ -653,6 +653,17 @@ class ControllerRequestTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_wrapper_logging_is_fixed_bounded_and_inside_role_state(self):
+        for role in workload.ROLES:
+            command, _environment = launcher.command(role)
+            properties = dict(item.split('=', 1) for item in command[command.index('--') + 2:])
+            self.assertEqual('/node/logs/wrapper.log', properties['wrapper.logfile'])
+            self.assertEqual('2M', properties['wrapper.logfile.maxsize'])
+            self.assertEqual('3', properties['wrapper.logfile.maxfiles'])
+            self.assertEqual('256', properties['wrapper.java.maxmemory'])
+            self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
+            self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])
+
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:
             with self.subTest(role=role):
