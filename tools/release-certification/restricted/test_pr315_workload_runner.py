@@ -14,6 +14,35 @@ import installation
 import pr315_workload_runner as runner
 
 
+def synthetic_role_kernel_roster():
+    """Offline schema fixture only; never an installed observation."""
+    return {'observerUid': 987, 'runnerUid': 1000,
+            'roles': [{'role': role, 'uid': 983 + index, 'gid': 983 + index,
+                       'invocationId': format(index + 1, '032x'),
+                       'processEpoch': 100 + index, 'bootId': 'a' * 32,
+                       'cgroupDigest': runner.fixtures.runtime.canonical_digest({
+                           'role': role, 'identity': [1, 99 + index]})[7:],
+                       'networkNamespace': 200 + index}
+                      for index, role in enumerate(runner.acceptance.ROLES)]}
+
+
+def synthetic_terminal_roster(roster):
+    """Offline cross-check fixture, never a captured administrator record."""
+    records, receipts = {}, {}
+    for index, row in enumerate(roster['roles']):
+        role = row['role']
+        record = {'state': 'quiescent', 'generation': 'c' * 64,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'managerInvocation': row['invocationId'], 'cgroupIdentity': [1, 99 + index]}
+        records[role] = {'status': 'captured', 'record': record}
+        receipts[role] = {'current': {'status': 'captured', 'record': {
+            **record, 'membership': 'only-stop-helper', 'descendantCgroups': 0}}}
+    receipts['candidate-sender']['previous'] = {'status': 'captured'}
+    return {'schemaVersion': 1, 'kind': 'pr315-private-volatile-diagnostics',
+            'cleanupReportedByCaller': True, 'sentinel': {'status': 'matched'},
+            'controllerRecords': records, 'stopReceipts': receipts}
+
+
 class RunnerTests(unittest.TestCase):
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
@@ -46,21 +75,34 @@ class RunnerTests(unittest.TestCase):
             'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
             'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
             'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+            'roleKernelRoster': synthetic_role_kernel_roster(),
             'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
-        self.assertTrue(runner.positive_executed(report, result))
+        terminal = synthetic_terminal_roster(result['roleKernelRoster'])
+        self.assertTrue(runner.positive_executed(report, result, terminal))
         for policy in (None, {}, {'revision': 'old'},
                        dict(result['runtimePolicy'], wrapperStartupTimeoutSeconds={
                            role: 60.0 if role == 'previous' else 30 for role in runner.acceptance.ROLES})):
             with self.subTest(policy=policy):
-                self.assertFalse(runner.positive_executed(report, dict(result, runtimePolicy=policy)))
+                self.assertFalse(runner.positive_executed(report, dict(result, runtimePolicy=policy), terminal))
         for field, value in (('guestStopped', False), ('guestExitCode', 1), ('hostVerifiedIdentity', {}),
                              ('workloadPurpose', 'startup-measurement')):
             changed = copy.deepcopy(report)
             changed[field] = value
-            self.assertFalse(runner.positive_executed(changed, result))
+            self.assertFalse(runner.positive_executed(changed, result, terminal))
         report['hostVerifiedIdentity'] = {}
         result['identity'] = {}
-        self.assertFalse(runner.positive_executed(report, result))
+        self.assertFalse(runner.positive_executed(report, result, terminal))
+        report['hostVerifiedIdentity'] = identity
+        result['identity'] = {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40}
+        for roster in (None, {}, dict(result['roleKernelRoster'], runnerUid=987)):
+            with self.subTest(roster=roster):
+                self.assertFalse(runner.positive_executed(report, dict(result, roleKernelRoster=roster), terminal))
+        for changed in (None, {}, dict(terminal, cleanupReportedByCaller=False),
+                        dict(terminal, sentinel=None)):
+            self.assertFalse(runner.positive_executed(report, result, changed))
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['relay-no-apps']['current']['record']['cgroupIdentity'] = [1, 999]
+        self.assertFalse(runner.positive_executed(report, result, changed))
 
     def test_public_result_never_promotes_positive_aggregate_to_case_acceptance(self):
         result = runner.public_result('implementation-incomplete', True)
@@ -120,14 +162,17 @@ class StartupPurposeTests(unittest.TestCase):
                 'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
                 'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
                 'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+                'roleKernelRoster': synthetic_role_kernel_roster(),
                 'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
-            self.assertTrue(runner.positive_executed(report, forged))
+            terminal = synthetic_terminal_roster(forged['roleKernelRoster'])
+            self.assertTrue(runner.positive_executed(report, forged, terminal))
             selections = []
             def fake_transport(selected):
                 selections.append(selected)
                 selected.attempt.mkdir(mode=0o700)
                 for name, value in (('attempt.private.json', report),
-                    ('pr314-workload-observation.private.json', forged)):
+                    ('pr314-workload-observation.private.json', forged),
+                    ('pr315-workload-volatile.private.json', terminal)):
                     runner.native_runner._save(selected.attempt / name, value)
                 return 0
             with patch.object(runner, 'prerequisites', return_value=[]), \

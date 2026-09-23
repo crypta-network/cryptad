@@ -83,7 +83,7 @@ def prerequisites(args):
     return reasons
 
 
-def positive_executed(report, result):
+def positive_executed(report, result, terminal):
     """Bind diagnostics to this transport and post-cleanup driver result, never to JSON alone."""
     identity = report.get('hostVerifiedIdentity')
     return (report.get('mode') == 'workload-positive' and report.get('guestStopped') is True
@@ -100,8 +100,46 @@ def positive_executed(report, result):
             and fixtures.runtime.canonical_digest(result.get('runtimePolicy'))
                 == fixtures.runtime.canonical_digest(fixtures.preparation.launcher_policy())
             and result.get('topologyRoles') == 4 and result.get('signedAppWorkers') in (2, 3)
+            and acceptance._principals(result.get('roleKernelRoster'))
+            and terminal_roster_matches(result['roleKernelRoster'], terminal)
             and result.get('workloadAcceptance') == 'incomplete-hostile-contract-not-executed'
             and result.get('protectedExecutionEnabled') is False)
+
+
+def terminal_roster_matches(roster, terminal):
+    """Cross-check final observer kernel roles against root-captured terminal authority."""
+    if (not acceptance._principals(roster) or not isinstance(terminal, dict)
+            or terminal.get('schemaVersion') != 1
+            or terminal.get('kind') != 'pr315-private-volatile-diagnostics'
+            or terminal.get('cleanupReportedByCaller') is not True
+            or not isinstance(terminal.get('sentinel'), dict)
+            or terminal['sentinel'].get('status') != 'matched'):
+        return False
+    try:
+        for row in roster['roles']:
+            role = row['role']
+            authority = terminal['controllerRecords'][role]
+            receipt = terminal['stopReceipts'][role]['current']
+            if authority['status'] != 'captured' or receipt['status'] != 'captured':
+                return False
+            current, stopped = authority['record'], receipt['record']
+            identity = current['cgroupIdentity']
+            if (current['state'] != 'quiescent' or current['managerInvocation'] != row['invocationId']
+                    or current['bootId'].replace('-', '').lower() != row['bootId']
+                    or not isinstance(identity, list) or len(identity) != 2
+                    or any(type(part) is not int or part < 1 for part in identity)
+                    or row['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                        'role': role, 'identity': identity})[7:]
+                    or any(stopped[key] != current[key] for key in
+                           ('generation', 'bootId', 'managerInvocation', 'cgroupIdentity'))
+                    or stopped['membership'] != 'only-stop-helper'
+                    or stopped['descendantCgroups'] != 0):
+                return False
+        if terminal['stopReceipts']['candidate-sender']['previous']['status'] != 'captured':
+            return False
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+    return True
 
 
 def public_result(status, positive=False, reasons=(), statuses=None):
@@ -185,8 +223,11 @@ def run(args):
             report = native_runner.private_json(selected.attempt / 'attempt.private.json')
             observation = selected.attempt / 'pr314-workload-observation.private.json'
             value = native_runner.private_json(observation) if observation.exists() and observation.stat().st_size else None
+            terminal_path = selected.attempt / 'pr315-workload-volatile.private.json'
+            terminal = (native_runner.private_json(terminal_path)
+                        if terminal_path.exists() and terminal_path.stat().st_size else None)
             startup_measurement = getattr(args, 'startup_measurement', False)
-            positive = not startup_measurement and positive_executed(report, value)
+            positive = not startup_measurement and positive_executed(report, value, terminal)
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             reached = diagnostic.exists() and diagnostic.stat().st_size > 0
             # A reached aggregate without per-case witnesses is inconclusive. An

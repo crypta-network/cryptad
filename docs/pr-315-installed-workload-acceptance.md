@@ -835,6 +835,17 @@ retry validates this narrower process/network binding in one installed run. It d
 resolve attempt 32's startup failure, complete any individual positive case record, or
 execute the 37 hostile and lifecycle emitters.
 
+The next prospective adapter revision projects its final four controller-kernel samples into
+one fixed private role roster: installed UID/GID, actual daemon start tick, manager invocation,
+boot ID, cgroup identity digest and actual role network namespace inode. The host runner
+requires that roster's closed v8 principal shape and cross-checks the manager invocation,
+cgroup and boot identity against separately extracted root-owned terminal controller records
+and matching stop receipts after guest shutdown. Missing, malformed or substituted terminal
+records cannot set the diagnostic `installedPositiveExecuted` flag. These observations are
+still not per-case operation or denial witnesses, and the diagnostic flag does not imply
+`installedWorkloadAcceptanceSatisfied`. Linux focused adapter and PR-315 offline tests pass;
+the new roster path has not yet run in an installed guest.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

@@ -12,6 +12,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import socket
 import stat
@@ -333,6 +334,35 @@ def bind_daemon(observation, expected_jdk_digest):
     return matches[0]
 
 
+def kernel_roster(samples, expected_jdk_digests):
+    """Project only fixed role principals from final controller kernel observations."""
+    if (not isinstance(samples, dict) or not isinstance(expected_jdk_digests, dict)
+            or set(samples) != set(runtime.ROLES) or set(expected_jdk_digests) != set(runtime.ROLES)):
+        fail('kernel-roster-incomplete')
+    daemons = {role: bind_daemon(samples[role], expected_jdk_digests[role])
+               for role in runtime.ROLES}
+    rows = []
+    try:
+        runner_uid = pwd.getpwnam('vmadmin').pw_uid
+        for role in runtime.ROLES:
+            observation = samples[role]
+            daemon = daemons[role]
+            account = pwd.getpwnam('cryptad-wl-' + role)
+            rows.append({'role': role, 'uid': account.pw_uid, 'gid': account.pw_gid,
+                         'invocationId': daemon['managerInvocation'],
+                         'processEpoch': daemon['startTicks'],
+                         'bootId': uuid.UUID(observation['bootId']).hex,
+                         'cgroupDigest': runtime.canonical_digest({
+                             'role': role, 'identity': daemon['cgroupIdentity']})[7:],
+                         'networkNamespace': daemon['networkNamespaceIdentity'][1]})
+    except (KeyError, TypeError, ValueError):
+        fail('kernel-roster-invalid')
+    if min(os.geteuid(), runner_uid, *(row['uid'] for row in rows),
+           *(row['gid'] for row in rows)) <= 0:
+        fail('kernel-roster-principal-invalid')
+    return {'observerUid': os.geteuid(), 'runnerUid': runner_uid, 'roles': rows}
+
+
 class InstalledWorkloadAdapter:
     """Finite observer orchestration over a root-prepared, immutable source-build selection.
 
@@ -578,11 +608,11 @@ class InstalledWorkloadAdapter:
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
             runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
-            for role in runtime.ROLES:
-                self.observe(role)
+            final_samples = {role: self.observe(role) for role in runtime.ROLES}
             return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
+                    'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
                     'contentRetrieval': self.outcomes.get('network-chk')}
         finally:
             if self.cleanup() != 'complete':

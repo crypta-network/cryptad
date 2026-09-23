@@ -111,6 +111,54 @@ class ScopedDaemonTests(unittest.TestCase):
             workload.bind_daemon(value, JDK)
 
 
+class KernelRosterTests(unittest.TestCase):
+    def samples(self):
+        result = {}
+        for index, role in enumerate(workload.runtime.ROLES):
+            value = copy.deepcopy(sample())
+            value['managerInvocation'] = format(index + 1, '032x')
+            value['cgroupIdentity'] = [1, 99 + index]
+            value['networkNamespaceIdentity'] = [1, 42 + index]
+            daemon = value['processes'][1]
+            daemon['hostPid'] = 101 + index * 10
+            daemon['startTicks'] = 201 + index * 10
+            daemon['namespacePids'] = [daemon['hostPid'], 2 + index]
+            daemon['networkNamespaceIdentity'] = [1, 42 + index]
+            result[role] = value
+        return result
+
+    def test_final_controller_samples_project_distinct_fixed_role_principals(self):
+        accounts = {'vmadmin': (1000, 1000)}
+        accounts.update({'cryptad-wl-' + role: (1001 + index, 2001 + index)
+                         for index, role in enumerate(workload.runtime.ROLES)})
+        def account(name):
+            uid, gid = accounts[name]
+            return types.SimpleNamespace(pw_uid=uid, pw_gid=gid)
+        with mock.patch.object(workload.pwd, 'getpwnam', side_effect=account), \
+                mock.patch.object(workload.os, 'geteuid', return_value=987):
+            roster = workload.kernel_roster(self.samples(),
+                {role: JDK for role in workload.runtime.ROLES})
+        self.assertEqual({'observerUid', 'runnerUid', 'roles'}, set(roster))
+        self.assertEqual(987, roster['observerUid'])
+        self.assertEqual(1000, roster['runnerUid'])
+        self.assertEqual(set(workload.runtime.ROLES), {row['role'] for row in roster['roles']})
+        self.assertEqual({42, 43, 44, 45}, {row['networkNamespace'] for row in roster['roles']})
+        self.assertEqual({201, 211, 221, 231}, {row['processEpoch'] for row in roster['roles']})
+        self.assertTrue(all(set(row) == {'role', 'uid', 'gid', 'invocationId', 'processEpoch',
+                                         'bootId', 'cgroupDigest', 'networkNamespace'}
+                            for row in roster['roles']))
+
+    def test_missing_role_or_swapped_daemon_network_cannot_make_roster(self):
+        values = self.samples()
+        values.pop('previous')
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'kernel-roster-incomplete'):
+            workload.kernel_roster(values, {role: JDK for role in workload.runtime.ROLES})
+        values = self.samples()
+        values['previous']['processes'][1]['networkNamespaceIdentity'] = [1, 42]
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-sample-invalid'):
+            workload.kernel_roster(values, {role: JDK for role in workload.runtime.ROLES})
+
+
 class ObserverPolicyTests(unittest.TestCase):
     def stop_adapter(self, response, started=False):
         adapter = workload.InstalledWorkloadAdapter.__new__(workload.InstalledWorkloadAdapter)
