@@ -760,7 +760,11 @@ guest replaces independent proof. Its sentinel matched. Across 161 five-second s
 minimum observed guest available memory was 3,780,231,168 bytes and the last sampled OOM
 kill counters were zero; this is sampled diagnostic context, not continuous resource proof.
 A predecessor HotSpot fatal file records `SIGILL` during this otherwise completed attempt.
-The intermittent JVM signal has no established cause and remains open. The full stopped
+Its reported problematic frame was a C1-compiled `ZipUtils.get32` method. Other retained
+fatal summaries from attempts 13, 16, 21, 24-26 and 29 also name C1-compiled Java frames,
+but the methods and signals differ. This pattern does not establish whether the cause is
+QEMU, HotSpot or another guest fault; no VM, JDK or compiler profile was changed to obtain
+the positive aggregate. The intermittent JVM failures remain open. The full stopped
 attempt, including its same-attempt QCOW2 backing pair, was copied to the local private
 retention directory and a recursive checksum dry run found no differences. No installed
 hostile/lifecycle result or independent security review follows from this aggregate.
