@@ -321,10 +321,13 @@ class MemoryDiagnosticsTest(unittest.TestCase):
     def test_sampled_peaks_preserve_observed_demand_after_cgroup_disappears(self):
         diagnostics = {}
         samples = [
-            {'guest': {'status': 'observed', 'MemAvailableBytes': available},
+            {'observedMonotonicNs': index * 10 + 1,
+             'finishedMonotonicNs': index * 10 + 2,
+             'guest': {'status': 'observed', 'MemAvailableBytes': available},
              'services': {'role': {'status': 'observed', 'memory.current': memory, 'pids.current': tasks}}}
-            for available, memory, tasks in ((100, 20, 3), (50, 40, 2))]
-        samples.append({'guest': {'status': 'unavailable'}, 'services': {
+            for index, (available, memory, tasks) in enumerate(((100, 20, 3), (50, 40, 2)))]
+        samples.append({'observedMonotonicNs': 21, 'finishedMonotonicNs': 22,
+                        'guest': {'status': 'unavailable'}, 'services': {
             'role': {'status': 'absent-or-removed-not-quiescence-proof'}}})
         with patch.object(driver, 'memory_snapshot', side_effect=samples):
             for _ in samples:
@@ -335,6 +338,8 @@ class MemoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(40, observed['services']['role']['maximumObservedMemoryBytes'])
         self.assertEqual(3, observed['services']['role']['maximumObservedTasks'])
         self.assertEqual(2, observed['services']['role']['sampleCount'])
+        self.assertEqual({'startedMonotonicNs': 11, 'finishedMonotonicNs': 12},
+                         observed['services']['role']['lastObservedWindow'])
 
     def test_absent_cgroups_do_not_become_zero_or_quiescence(self):
         with tempfile.TemporaryDirectory() as directory, \
@@ -342,6 +347,7 @@ class MemoryDiagnosticsTest(unittest.TestCase):
             snapshot = driver.memory_snapshot()
         self.assertEqual('observed', snapshot['guest']['status'])
         self.assertGreater(snapshot['guest']['MemTotalBytes'], 0)
+        self.assertGreater(snapshot['finishedMonotonicNs'], snapshot['observedMonotonicNs'])
         self.assertEqual(5, len(snapshot['services']))
         for service in snapshot['services'].values():
             self.assertEqual({'status': 'absent-or-removed-not-quiescence-proof'}, service)

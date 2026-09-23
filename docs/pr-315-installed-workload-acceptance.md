@@ -880,6 +880,16 @@ case record, and private diagnostics were copied to local retention and passed a
 checksum dry run. This installed observation is narrower than full workload acceptance and
 does not replace original protected authority or independent security review.
 
+The next prospective positive revision samples the current signed Mail worker again after
+sender restart and binds its API PID hint to the controller's real nested-namespace worker
+and Java descendant. It also retains a bounded start/end time for each administrator cgroup
+sample, then requires all four current cgroup identities and positive memory, task and CPU
+measurements to match the terminal role roster before attempting `signed-apphost-child` or
+`kernel-resource-scope`. Missing, stale or mismatched observations leave those cases
+inconclusive; the existing two installed case records remain separate. Linux offline tests
+cover both the full four-case shape and evidence-substitution rejection. No installed result
+for these two additional cases exists yet.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

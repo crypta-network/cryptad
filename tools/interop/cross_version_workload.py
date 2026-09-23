@@ -282,7 +282,8 @@ def bind_worker(observation, api_pid, expected_jdk_digest):
         for _ in range(64):
             if cursor['hostPid'] == worker['hostPid']:
                 return {**{key: observation[key] for key in EPOCH}, 'hostPid': worker['hostPid'],
-                        'startTicks': worker['startTicks'], 'javaHostPid': row['hostPid'],
+                        'namespacePid': api_pid, 'startTicks': worker['startTicks'],
+                        'javaHostPid': row['hostPid'],
                         'javaStartTicks': row['startTicks'], 'provenance': 'controller-kernel-sample'}
             if cursor['hostPid'] in visited:
                 break
@@ -608,6 +609,11 @@ class InstalledWorkloadAdapter:
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
             runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
+            app_started = time.monotonic_ns()
+            app_worker = self.apps[('candidate-sender', 'mail-prototype')].observe_worker()
+            app_finished = time.monotonic_ns()
+            if app_finished <= app_started:
+                fail('app-kernel-clock-invalid')
             roster_started = time.monotonic_ns()
             final_samples = {role: self.observe(role) for role in runtime.ROLES}
             roster_finished = time.monotonic_ns()
@@ -616,6 +622,16 @@ class InstalledWorkloadAdapter:
             return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
+                    'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
+                        'hostPid': app_worker['hostPid'],
+                        'namespacePid': app_worker['namespacePid'],
+                        'processEpoch': app_worker['startTicks'],
+                        'invocationId': app_worker['managerInvocation'],
+                        'javaHostPid': app_worker['javaHostPid'],
+                        'javaStartTicks': app_worker['javaStartTicks'],
+                        'provenance': app_worker['provenance']},
+                    'appKernelWindow': {'startedMonotonicNs': app_started,
+                                        'finishedMonotonicNs': app_finished},
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
                     'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
                                                'finishedMonotonicNs': roster_finished},

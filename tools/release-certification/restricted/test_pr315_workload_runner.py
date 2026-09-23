@@ -51,6 +51,18 @@ def synthetic_host_identity():
             'preparedImageDigest': '3' * 64, 'fixtureManifestDigest': '4' * 64}
 
 
+def synthetic_resource_diagnostics(roster):
+    return {'during': {'services': {
+        'cryptad-workload@' + row['role'] + '.service': {
+            'lastObserved': {'cgroupIdentity': [1, 99 + index],
+                             'memory.current': 1024 + index,
+                             'pids.current': 2 + index,
+                             'cpu.stat': {'usage_usec': 100 + index}},
+            'lastObservedWindow': {'startedMonotonicNs': 50 + index * 10,
+                                   'finishedMonotonicNs': 51 + index * 10}}
+        for index, row in enumerate(roster['roles'])}}}
+
+
 class RunnerTests(unittest.TestCase):
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
@@ -137,7 +149,40 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'case-window-invalid'):
             runner.positive_case_attempt(report, invalid, {'mailDigest': 'sha256:' + '5' * 64}, 30, 40)
 
-    def test_installed_transport_path_reaches_two_cases_but_never_full_acceptance(self):
+    def test_app_and_resource_cases_require_actual_scoped_samples(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+            'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
+                'hostPid': 101, 'namespacePid': 3, 'processEpoch': 201,
+                'invocationId': sender['invocationId'], 'javaHostPid': 102,
+                'javaStartTicks': 202, 'provenance': 'controller-kernel-sample'},
+            'appKernelWindow': {'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}}
+        diagnostics = synthetic_resource_diagnostics(roster)
+        selected = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selected, 90, 100,
+                                                          diagnostics)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual({'installed-ready', 'four-role-start', 'signed-apphost-child',
+                          'kernel-resource-scope'},
+                         {row['caseId'] for row in checked['cases'] if row['status'] == 'passed'})
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        changed = copy.deepcopy(diagnostics)
+        changed['during']['services']['cryptad-workload@relay-no-apps.service'][
+            'lastObserved']['cgroupIdentity'] = [1, 999]
+        _, without_resources = runner.positive_case_attempt(report, result, selected, 90, 100,
+                                                             changed)
+        self.assertNotIn('kernel-resource-scope', without_resources['declaredCases'])
+        changed_result = copy.deepcopy(result)
+        changed_result['appKernelProcess']['provenance'] = 'candidate-api'
+        _, without_app = runner.positive_case_attempt(report, changed_result, selected, 90, 100,
+                                                      diagnostics)
+        self.assertNotIn('signed-apphost-child', without_app['declaredCases'])
+
+    def test_installed_transport_path_reaches_four_cases_but_never_full_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             root.chmod(0o700)
@@ -161,6 +206,12 @@ class RunnerTests(unittest.TestCase):
                 'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
                 'roleKernelRoster': roster,
                 'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
+                    'hostPid': 101, 'namespacePid': 3, 'processEpoch': 201,
+                    'invocationId': roster['roles'][0]['invocationId'],
+                    'javaHostPid': 102, 'javaStartTicks': 202,
+                    'provenance': 'controller-kernel-sample'},
+                'appKernelWindow': {'startedMonotonicNs': 30, 'finishedMonotonicNs': 40},
                 'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
             terminal = synthetic_terminal_roster(roster)
             def fake_transport(selected):
@@ -168,7 +219,7 @@ class RunnerTests(unittest.TestCase):
                 for name, value in (('attempt.private.json', report),
                     ('pr314-workload-observation.private.json', observation),
                     ('pr315-workload-volatile.private.json', terminal),
-                    ('pr315-workload-memory.private.json', {'during': {'sampleCount': 1}})):
+                    ('pr315-workload-memory.private.json', synthetic_resource_diagnostics(roster))):
                     runner.native_runner._save(selected.attempt / name, value)
                 return 0
             with patch.object(runner, 'prerequisites', return_value=[]), \
@@ -183,7 +234,8 @@ class RunnerTests(unittest.TestCase):
             assessment = json.loads((args.output / 'assessment.json').read_text())
             self.assertTrue(assessment['installedPositiveExecuted'])
             self.assertFalse(assessment['installedWorkloadAcceptanceSatisfied'])
-            self.assertEqual({'installed-ready', 'four-role-start'},
+            self.assertEqual({'installed-ready', 'four-role-start', 'signed-apphost-child',
+                              'kernel-resource-scope'},
                              {row['caseId'] for row in assessment['cases'] if row['status'] == 'passed'})
             self.assertTrue((args.output / 'positive-v8-evidence.private.json').is_file())
 

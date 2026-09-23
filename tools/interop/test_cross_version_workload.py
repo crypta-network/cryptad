@@ -39,6 +39,7 @@ class ScopedWorkerTests(unittest.TestCase):
     def test_real_scoped_inner_java_is_bound_to_wrapper_hint(self):
         result = workload.bind_worker(sample(), 3, JDK)
         self.assertEqual(102, result['hostPid'])
+        self.assertEqual(3, result['namespacePid'])
         self.assertEqual(103, result['javaHostPid'])
         self.assertEqual(EPOCH['managerInvocation'], result['managerInvocation'])
 
@@ -245,7 +246,11 @@ class ObserverPolicyTests(unittest.TestCase):
     def test_positive_result_requires_final_sample_of_each_running_daemon(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {'candidate-sender': dict(EPOCH)}
-        adapter.apps = {}
+        adapter.apps = {('candidate-sender', 'mail-prototype'): types.SimpleNamespace(
+            observe_worker=mock.Mock(return_value={'hostPid': 102, 'namespacePid': 3,
+                'startTicks': 202, 'managerInvocation': EPOCH['managerInvocation'],
+                'javaHostPid': 103, 'javaStartTicks': 203,
+                'provenance': 'controller-kernel-sample'}))}
         adapter.outcomes = {'network-chk': 'observed'}
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()

@@ -143,17 +143,68 @@ def terminal_roster_matches(roster, terminal):
     return True
 
 
-def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns):
-    """Build only the two cases backed by actual host identity and final kernel roster."""
+def _bounded_window(value):
+    return (isinstance(value, dict) and set(value) == {'startedMonotonicNs', 'finishedMonotonicNs'}
+            and type(value['startedMonotonicNs']) is int
+            and type(value['finishedMonotonicNs']) is int
+            and 0 < value['startedMonotonicNs'] < value['finishedMonotonicNs'])
+
+
+def _app_case(result, identity, principals):
+    raw, window = result.get('appKernelProcess'), result.get('appKernelWindow')
+    if not isinstance(raw, dict) or not _bounded_window(window):
+        return None
+    if (set(raw) != {'role', 'provider', 'hostPid', 'namespacePid', 'processEpoch',
+                     'invocationId', 'javaHostPid', 'javaStartTicks', 'provenance'}
+            or raw['provenance'] != 'controller-kernel-sample'
+            or type(raw['javaHostPid']) is not int or raw['javaHostPid'] <= 1
+            or type(raw['processEpoch']) is not int
+            or type(raw['javaStartTicks']) is not int
+            or raw['javaStartTicks'] < raw['processEpoch']):
+        return None
+    witness = {key: raw[key] for key in ('role', 'provider', 'hostPid', 'namespacePid',
+        'processEpoch', 'invocationId')}
+    witness['installedAppDigest'] = identity['admittedAppDigest']
+    if not acceptance._app_process(witness, identity, principals):
+        return None
+    return witness, window
+
+
+def _resource_case(diagnostics, principals):
+    if not isinstance(diagnostics, dict):
+        return None
+    measurements, windows = [], []
+    try:
+        services = diagnostics['during']['services']
+        for row in principals['roles']:
+            service = services['cryptad-workload@' + row['role'] + '.service']
+            sample, window = service['lastObserved'], service['lastObservedWindow']
+            if (not _bounded_window(window)
+                    or row['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                        'role': row['role'], 'identity': sample['cgroupIdentity']})[7:]):
+                return None
+            measurements.append({key: row[key] for key in
+                ('role', 'invocationId', 'processEpoch', 'bootId', 'cgroupDigest')} | {
+                'memoryCurrentBytes': sample['memory.current'],
+                'pidsCurrent': sample['pids.current'],
+                'cpuUsageUsec': sample['cpu.stat']['usage_usec']})
+            windows.append(window)
+    except (KeyError, TypeError, ValueError):
+        return None
+    witness = {'source': 'cgroup-v2', 'measurements': measurements}
+    if not acceptance._resources(witness, principals):
+        return None
+    return witness, {'startedMonotonicNs': min(w['startedMonotonicNs'] for w in windows),
+                     'finishedMonotonicNs': max(w['finishedMonotonicNs'] for w in windows)}
+
+
+def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns, diagnostics=None):
+    """Build only cases backed by actual host, app and kernel observations."""
     host = report['hostVerifiedIdentity']
     window = result['roleKernelRosterWindow']
     if (type(host_started_ns) is not int or type(host_finished_ns) is not int
             or not 0 < host_started_ns < host_finished_ns
-            or not isinstance(window, dict)
-            or set(window) != {'startedMonotonicNs', 'finishedMonotonicNs'}
-            or type(window['startedMonotonicNs']) is not int
-            or type(window['finishedMonotonicNs']) is not int
-            or not 0 < window['startedMonotonicNs'] < window['finishedMonotonicNs']
+            or not _bounded_window(window)
             or not isinstance(fixture['mailDigest'], str)
             or re.fullmatch('sha256:[0-9a-f]{64}', fixture['mailDigest']) is None):
         raise ValueError('workload-positive-case-window-invalid')
@@ -163,7 +214,7 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
     identity['productSelectionDigest'] = host['productDigest']
     identity['admittedAppDigest'] = fixture['mailDigest'][7:]
     principals = result['roleKernelRoster']
-    cases = ('installed-ready', 'four-role-start')
+    cases = ['installed-ready', 'four-role-start']
     observations = []
     for case_id, started, finished, witness in (
             ('installed-ready', host_started_ns, host_finished_ns,
@@ -176,11 +227,28 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
             'target': case.target, 'outcome': case.outcome,
             'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
             'witness': witness})
+    app_process = None
+    app = _app_case(result, identity, principals)
+    if app is not None:
+        app_process, app_window = app
+        case = acceptance.CASES['signed-apphost-child']
+        cases.append('signed-apphost-child')
+        observations.append({'caseId': 'signed-apphost-child', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **app_window, 'witness': app_process})
+    resources = _resource_case(diagnostics, principals)
+    if resources is not None:
+        resource_witness, resource_window = resources
+        case = acceptance.CASES['kernel-resource-scope']
+        cases.append('kernel-resource-scope')
+        observations.append({'caseId': 'kernel-resource-scope', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **resource_window, 'witness': resource_witness})
     attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
-        'declaredCases': list(cases), 'observations': observations,
+        'declaredCases': cases, 'observations': observations,
         'guestStopped': report['guestStopped'], 'attemptCompleted': True,
         'principals': principals, 'targets': {}, 'caseCommitments': {},
-        'appProcess': None, 'restartContext': None}
+        'appProcess': app_process, 'restartContext': None}
     return identity, attempt
 
 
@@ -285,12 +353,15 @@ def run(args):
                 host_finished = time.monotonic_ns()
                 if checked != host:
                     raise ValueError('workload-host-identity-changed')
+                resources = (native_runner.private_json(diagnostic)
+                             if diagnostic.exists() and diagnostic.stat().st_size else None)
                 identity, case_attempt = positive_case_attempt(
-                    report, value, fixture, host_started, host_finished)
+                    report, value, fixture, host_started, host_finished, resources)
                 checked_cases = acceptance.verify_attempts(identity, [case_attempt])
-                expected = {'installed-ready', 'four-role-start'}
+                expected = set(case_attempt['declaredCases'])
                 passed = {row['caseId'] for row in checked_cases['cases'] if row['status'] == 'passed'}
-                if (checked_cases['recordContractValid'] is not True or passed != expected
+                if (not {'installed-ready', 'four-role-start'} <= expected
+                        or checked_cases['recordContractValid'] is not True or passed != expected
                         or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
                     raise ValueError('workload-positive-case-verification-failed')
                 native_runner._save(output / 'positive-v8-evidence.private.json',

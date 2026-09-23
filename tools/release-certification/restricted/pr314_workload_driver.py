@@ -258,6 +258,7 @@ def memory_snapshot():
             snapshot['services'][unit] = {'status': 'absent-or-removed-not-quiescence-proof'}
         except (OSError, ValueError):
             snapshot['services'][unit] = {'status': 'unavailable'}
+    snapshot['finishedMonotonicNs'] = time.monotonic_ns()
     return snapshot
 
 
@@ -282,6 +283,8 @@ def sample_memory(diagnostics):
         peak['maximumObservedMemoryBytes'] = max(peak['maximumObservedMemoryBytes'], metrics['memory.current'])
         peak['maximumObservedTasks'] = max(peak['maximumObservedTasks'], metrics['pids.current'])
         peak['lastObserved'] = metrics
+        peak['lastObservedWindow'] = {'startedMonotonicNs': snapshot['observedMonotonicNs'],
+                                      'finishedMonotonicNs': snapshot['finishedMonotonicNs']}
 
 
 def observer_failure(error):
