@@ -2,7 +2,7 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; six of the 45 installed workload cases now have valid
+**Implementation is incomplete; seven of the 45 installed workload cases now have valid
 individual witnesses, and full installed acceptance remains false.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -998,7 +998,27 @@ before/after controller-kernel principal snapshots. The host will compare those 
 the independently captured current and archived prior stop receipts, terminal campaign
 deadline and final sentinel hash before submitting a restart witness to v8. Missing or
 mismatched evidence remains inconclusive. Focused Linux contract/controller/adapter tests
-pass; installed execution is still required for this seventh positive case.
+passed at that preparation cutoff; attempt 40 below supplies the installed result.
+
+Attempt 40 bound helper source `ef225e727b12cbdf5ca86a0207b4f498860603d9` to the
+unchanged Linux product and passed strict fixture and no-VM admission. Its four installed
+roles, two normally signed Mail workers, and both byte-checked CHK transfers around sender
+restart completed; the guest exited zero and the emulator stopped. The host matched actual
+before/after controller-kernel principal and fixed state-sentinel digests to the archived
+old and current sender stop receipts, unchanged campaign deadline and final root sentinel.
+The v8 verifier returned `recordContractValid=true` and `restart-durable-state` `passed`,
+bringing the installed positive total to seven. Only `fnp-content-retrieval` remains
+`inconclusive` among positives. All 26 denial and 11 lifecycle cases remain
+`not-executed`, so the 45-case acceptance verdict remains false.
+
+The caller reported cleanup complete; all current receipts and the sender's archived prior
+receipt were captured, and the sentinel matched. Independent quiescence is still not
+established by the fixed-file snapshot. No JVM fatal file was captured during this attempt;
+183 five-second samples observed at least 3,818,409,984 bytes of guest available memory
+and zero last-sampled OOM kills. The stopped seven-case record, diagnostics and same-attempt
+QCOW2 backing pair were copied to local private retention and passed a recursive checksum
+dry run. This one clean run does not resolve prior intermittent HotSpot C1 crashes or
+constitute a complete denial/lifecycle campaign.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
@@ -1279,9 +1299,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: six positive case records passed; two positive and all 37 hostile/lifecycle emitters remain missing |
-| `installedPositiveExecuted` | True for the installed attempt-39 aggregate with host, AppHost, cgroup, terminal roster and fixed controller exchange binding |
-| `installedWorkloadAcceptanceSatisfied` | False; two positive cases are inconclusive and 37 fault emitters remain unexecuted |
+| `implementationCoverage` | Incomplete: seven positive case records passed; FNP retrieval and all 37 hostile/lifecycle emitters remain missing |
+| `installedPositiveExecuted` | True for the installed attempt-40 aggregate with state, host, AppHost, cgroup, terminal roster and fixed controller exchange binding |
+| `installedWorkloadAcceptanceSatisfied` | False; FNP retrieval is inconclusive and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
