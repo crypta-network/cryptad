@@ -254,23 +254,29 @@ class ObserverPolicyTests(unittest.TestCase):
         self.assertEqual(workload.runtime.fixed_pr315_payload('a' * 40, 'op-' + 'b' * 32),
                          content.call_args.kwargs['payload'])
 
-    def test_fnp_probe_uses_only_current_recipient_handle_and_phase(self):
+    def test_fnp_probe_uses_only_administrator_sampler_and_fixed_phase(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-recipient': HANDLE}
         adapter.nodes = {'candidate-recipient': dict(EPOCH)}
         value = {'phase': 'before', 'managerInvocation': EPOCH['managerInvocation'],
                  'snapshot': {'observedMonotonicNs': 10}}
-        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value=value))
+        adapter.control = types.SimpleNamespace(request=mock.Mock())
+        self.assertIsNone(adapter._fnp_sample('before'))
+        self.assertEqual('administrator-sampler-unavailable',
+                         adapter.fnp_sample_failure['failureClass'])
+        adapter.counter_sampler = mock.Mock(return_value=value)
         self.assertEqual(value, adapter._fnp_sample('before'))
-        adapter.control.request.assert_called_once_with('observe-fnp', HANDLE)
+        adapter.counter_sampler.assert_called_once_with('before')
+        adapter.control.request.assert_not_called()
         self.assertIsNone(adapter._fnp_sample('after'))
         self.assertEqual({'phase': 'after', 'failureClass': 'response-binding-rejected'},
                          adapter.fnp_sample_failure)
-        adapter.control.request.side_effect = workload.runtime.RuntimeFailure('private detail')
+        adapter.counter_sampler.side_effect = workload.runtime.RuntimeFailure('private detail')
         self.assertIsNone(adapter._fnp_sample('before'))
         self.assertEqual({'phase': 'before', 'failureClass': 'RuntimeFailure'},
                          adapter.fnp_sample_failure)
         self.assertNotIn('private detail', str(adapter.fnp_sample_failure))
+        adapter.control.request.assert_not_called()
 
     def test_positive_result_requires_final_sample_of_each_running_daemon(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)

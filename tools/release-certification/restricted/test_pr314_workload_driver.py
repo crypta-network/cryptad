@@ -1,10 +1,12 @@
 """Local cleanup ordering and retention tests; no installed systemd execution."""
-from contextlib import contextmanager, ExitStack
+from contextlib import contextmanager, ExitStack, nullcontext
 import fcntl
 import hashlib
 import json
 import os
 import socket
+import sys
+import threading
 import time
 from pathlib import Path
 import subprocess
@@ -13,6 +15,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
 import pr314_workload_driver as driver
 
 
@@ -49,6 +52,111 @@ class ObserverFailureTest(unittest.TestCase):
         self.assertNotIn('private-location', encoded)
         self.assertNotIn('never-export-this-token', encoded)
         self.assertLess(len(encoded.encode()), 4096)
+
+
+class AdministratorFnpSamplerTest(unittest.TestCase):
+    def test_root_only_fixed_recipient_pair_is_written_before_observer_reply(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'authority').mkdir()
+            calls = []
+            record = {'managerInvocation': 'a' * 32}
+            def write(path, value, **options):
+                if options.get('create') and path.exists():
+                    raise FileExistsError(path)
+                path.write_text(json.dumps(value))
+            workload = SimpleNamespace(ROOT=root, locked=nullcontext,
+                retained=lambda handle: ({}, 'candidate-recipient', record),
+                admit=lambda campaign: calls.append('admit'),
+                manager=lambda role, operation: {},
+                exact=lambda role, retained, state: calls.append('exact'),
+                current=lambda campaign: None,
+                write=write, read=lambda path: json.loads(path.read_text()))
+            def sample(moment):
+                return {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+                    'policyDigest': 'b' * 64, 'bootId': 'boot',
+                    'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': moment,
+                    'counters': {'fixed': {'packets': moment, 'bytes': moment * 10}}}
+            network = SimpleNamespace(read_fnp_counters=Mock(side_effect=[sample(10), sample(20)]))
+            sampler = driver.AdministratorFnpSampler(workload, 'fixed-recipient-handle', {})
+            with patch.dict('sys.modules', {'restricted_workload_network': network}):
+                before = sampler.sample('before')
+                after = sampler.sample('after')
+                with self.assertRaisesRegex(ValueError, 'phase-invalid'):
+                    sampler.sample('after')
+            pair = json.loads((root / 'authority/fnp-content-probe.json').read_text())
+        self.assertEqual('pr315-administrator-fnp-counter-pair', pair['kind'])
+        self.assertEqual((sample(10), sample(20)), (pair['before'], pair['after']))
+        self.assertEqual(('before', 'after'), (before['phase'], after['phase']))
+        self.assertEqual(4, calls.count('exact'))
+        self.assertEqual(2, calls.count('admit'))
+        self.assertEqual(2, network.read_fnp_counters.call_count)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_socket_accepts_only_two_fixed_phase_packets(self):
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', {})
+        sampler.sample = Mock(return_value={'phase': 'before', 'managerInvocation': 'a' * 32,
+                                             'snapshot': {'observedMonotonicNs': 10}})
+        with ExitStack() as stack:
+            parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            stack.enter_context(parent)
+            stack.enter_context(child)
+            child.sendall(b'B')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual('before', json.loads(child.recv(8192))['phase'])
+            sampler.sample.assert_called_once_with('before')
+            child.sendall(b'X')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual({'error': 'pr315-admin-fnp-sample-failed'},
+                             json.loads(child.recv(8192)))
+            sampler.sample.assert_called_once()
+        self.assertEqual('ValueError', sampler.diagnostics['fnpAdminFailure']['exceptionType'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_observer_receives_only_administrator_fixed_sample(self):
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', {})
+        expected = {'phase': 'before', 'managerInvocation': 'a' * 32,
+                    'snapshot': {'observedMonotonicNs': 10}}
+        sampler.sample = Mock(return_value=expected)
+        with ExitStack() as stack:
+            parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            stack.enter_context(parent)
+            stack.enter_context(child)
+            worker = threading.Thread(target=sampler.serve, args=(parent,), daemon=True)
+            worker.start()
+            self.assertEqual(expected, driver.request_administrator_fnp(
+                child, 'before', time.monotonic_ns() + 5 * 10**9))
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        sampler.sample.assert_called_once_with('before')
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_parent_collects_child_result_while_serving_fixed_counter_request(self):
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', {})
+        expected = {'phase': 'before', 'managerInvocation': 'a' * 32,
+                    'snapshot': {'observedMonotonicNs': 10}}
+        sampler.sample = Mock(return_value=expected)
+        with ExitStack() as stack:
+            parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+            admin_parent, admin_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            for channel in (parent, child, admin_parent, admin_child):
+                stack.enter_context(channel)
+            def observer():
+                value = driver.request_administrator_fnp(
+                    admin_child, 'before', time.monotonic_ns() + 5 * 10**9)
+                child.sendall(json.dumps(value).encode())
+                child.close()
+                admin_child.close()
+            worker = threading.Thread(target=observer, daemon=True)
+            worker.start()
+            with patch.object(driver, 'wait_child', return_value=0):
+                raw, status = driver.collect_child(parent, 12345, time.monotonic() + 5,
+                    admin_channel=admin_parent, admin_sampler=sampler)
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(expected, json.loads(raw))
+        self.assertEqual(0, status)
+        sampler.sample.assert_called_once_with('before')
 
 
 class CleanupTest(unittest.TestCase):
@@ -267,7 +375,8 @@ class TerminalPublicationTest(unittest.TestCase):
             events.append('prepare')
             if failure == 'prepare':
                 raise ValueError('setup-failure')
-            return {'deadlineMonotonicNs': campaign_deadline + (1 if failure == 'handoff' else 0)}
+            return {'deadlineMonotonicNs': campaign_deadline + (1 if failure == 'handoff' else 0),
+                    'handles': {'candidate-recipient': 'a' * 64}}
         def cleanup(_workload):
             events.append('cleanup')
             if failure == 'cleanup':

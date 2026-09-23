@@ -384,7 +384,8 @@ def _fnp_case(result, terminal, identity, principals):
             return None
         pair = retained['record']
         recipient = next(row for row in principals['roles'] if row['role'] == 'candidate-recipient')
-        if (pair['caseId'] != 'fnp-content-retrieval' or pair['role'] != 'candidate-recipient'
+        if (pair.get('kind') != 'pr315-administrator-fnp-counter-pair'
+                or pair['caseId'] != 'fnp-content-retrieval' or pair['role'] != 'candidate-recipient'
                 or pair['managerInvocation'] != recipient['invocationId']
                 or set(observed_pair) != {'before', 'after'}):
             return None

@@ -103,15 +103,120 @@ def stop_child(pid):
     wait_child(pid, time.monotonic() + 5)
 
 
-def collect_child(parent, pid, deadline, sample=None):
+class AdministratorFnpSampler:
+    """Two fixed administrator counter reads over this attempt's inherited private socket."""
+
+    def __init__(self, workload, recipient_handle, diagnostics):
+        self.workload = workload
+        self.recipient_handle = recipient_handle
+        self.diagnostics = diagnostics
+        self.phase = 'initial'
+
+    def sample(self, phase):
+        if (phase, self.phase) not in {('before', 'initial'), ('after', 'before')}:
+            raise ValueError('workload-admin-fnp-phase-invalid')
+        from restricted_workload_network import read_fnp_counters
+        workload = self.workload
+        with workload.locked():
+            campaign, role, record = workload.retained(self.recipient_handle)
+            if role != 'candidate-recipient':
+                raise ValueError('workload-admin-fnp-recipient-invalid')
+            workload.admit(campaign)
+            workload.exact(role, record, workload.manager(role, 'show'))
+            snapshot = read_fnp_counters()
+            workload.exact(role, record, workload.manager(role, 'show'))
+            workload.current(campaign)
+            path = workload.ROOT / 'authority/fnp-content-probe.json'
+            if phase == 'before':
+                if os.path.lexists(path):
+                    raise ValueError('workload-admin-fnp-pair-exists')
+                pair = {'schemaVersion': 1, 'kind': 'pr315-administrator-fnp-counter-pair',
+                        'caseId': 'fnp-content-retrieval', 'role': role,
+                        'managerInvocation': record['managerInvocation'],
+                        'before': snapshot, 'after': None}
+                workload.write(path, pair, create=True)
+            else:
+                pair = workload.read(path)
+                before = pair.get('before') if isinstance(pair, dict) else None
+                if (not isinstance(pair, dict)
+                        or set(pair) != {'schemaVersion', 'kind', 'caseId', 'role',
+                                         'managerInvocation', 'before', 'after'}
+                        or pair['schemaVersion'] != 1
+                        or pair['kind'] != 'pr315-administrator-fnp-counter-pair'
+                        or pair['caseId'] != 'fnp-content-retrieval' or pair['role'] != role
+                        or pair['managerInvocation'] != record['managerInvocation']
+                        or pair['after'] is not None or not isinstance(before, dict)
+                        or any(before.get(key) != snapshot.get(key) for key in
+                               ('policyDigest', 'bootId', 'switchNamespaceIdentity'))
+                        or type(before.get('observedMonotonicNs')) is not int
+                        or before['observedMonotonicNs'] >= snapshot['observedMonotonicNs']):
+                    raise ValueError('workload-admin-fnp-pair-invalid')
+                pair['after'] = snapshot
+                workload.write(path, pair)
+        self.phase = phase
+        return {'phase': phase, 'managerInvocation': record['managerInvocation'],
+                'snapshot': snapshot}
+
+    def serve(self, channel):
+        message, _ancillary, flags, _address = channel.recvmsg(2)
+        if not message:
+            return False
+        try:
+            if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or message not in (b'B', b'A'):
+                raise ValueError('workload-admin-fnp-request-invalid')
+            result = self.sample('before' if message == b'B' else 'after')
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            private = getattr(error, 'private_diagnostics', None)
+            self.diagnostics['fnpAdminFailure'] = {
+                'phase': self.phase, 'exceptionType': type(error).__name__[:128],
+                'networkFailureClass': (private.get('failureClass')
+                    if isinstance(private, dict) and isinstance(private.get('failureClass'), str)
+                    else None)}
+            result = {'error': 'pr315-admin-fnp-sample-failed'}
+        raw = json.dumps(result, sort_keys=True, separators=(',', ':')).encode() + b'\n'
+        if len(raw) > 8192:
+            raise ValueError('workload-admin-fnp-response-limit')
+        channel.sendall(raw)
+        return True
+
+
+def request_administrator_fnp(channel, phase, campaign_deadline):
+    """One fixed phase request; the administrator owns namespace access and durable pair."""
+    from cross_version_runtime import RuntimeFailure
+    if phase not in ('before', 'after'):
+        raise RuntimeFailure('workload-admin-fnp-phase-invalid')
+    remaining = campaign_deadline / 10**9 - time.monotonic()
+    if remaining <= 0:
+        raise RuntimeFailure('workload-admin-fnp-deadline')
+    channel.settimeout(min(90, remaining))
+    try:
+        channel.sendall(b'B' if phase == 'before' else b'A')
+        raw = channel.recv(8193)
+        if not 1 <= len(raw) <= 8192 or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
+            raise RuntimeFailure('workload-admin-fnp-response-invalid')
+        value = json.loads(raw)
+        if not isinstance(value, dict) or 'error' in value:
+            raise RuntimeFailure('workload-admin-fnp-sample-failed')
+        return value
+    except RuntimeFailure:
+        raise
+    except (OSError, ValueError):
+        raise RuntimeFailure('workload-admin-fnp-transport-failed') from None
+
+
+def collect_child(parent, pid, deadline, sample=None, *, admin_channel=None, admin_sampler=None):
     raw = bytearray()
     next_sample = 0
     while time.monotonic() < deadline:
         if sample is not None and time.monotonic() >= next_sample:
             sample()
             next_sample = time.monotonic() + 5
-        ready, _, _ = select.select([parent], [], [], min(1, max(.001, deadline - time.monotonic())))
-        if ready:
+        watched = [parent] if admin_channel is None else [parent, admin_channel]
+        ready, _, _ = select.select(watched, [], [], min(1, max(.001, deadline - time.monotonic())))
+        if admin_channel is not None and admin_channel in ready:
+            if not admin_sampler.serve(admin_channel):
+                admin_channel = None
+        if parent in ready:
             block = parent.recv(65537 - len(raw))
             if not block:
                 return bytes(raw), wait_child(pid, deadline)
@@ -191,7 +296,8 @@ def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False)
     return min(campaign_deadline_ns / 10**9, started + seconds)
 
 
-def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin, startup_measurement=False):
+def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
+                      startup_measurement=False, *, admin_channel=None):
     """The diagnostic stops at the actual served readiness response, before any role start."""
     controller_ready(readiness_deadline(campaign_deadline, startup_begin, startup_measurement))
     if startup_measurement:
@@ -205,7 +311,9 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
     with Journal(root, selected['plan']) as journal:
         journal.append('start')
         adapter = InstalledWorkloadAdapter(selected['plan'], selected['private'],
-                                           selected['authorization'], journal, handoff)
+            selected['authorization'], journal, handoff,
+            counter_sampler=(lambda phase: request_administrator_fnp(
+                admin_channel, phase, campaign_deadline)) if admin_channel is not None else None)
         result = adapter.run_positive()
         journal.checkpoint('partial')
     return result
@@ -348,7 +456,7 @@ def execute(*, startup_measurement=False):
             or root.is_symlink()):
         raise ValueError('workload-observer-root-not-new')
     workload_installation.install()
-    parent = child = None
+    parent = child = admin_parent = admin_child = None
     pid = None
     status = None
     result = None
@@ -370,9 +478,11 @@ def execute(*, startup_measurement=False):
         subprocess.run(['/usr/bin/systemctl', 'start', 'cryptad-workload-controller.service'],
                        check=True, timeout=30, env=ENV)
         parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        admin_parent, admin_child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         pid = os.fork()
         if pid == 0:
             parent.close()
+            admin_parent.close()
             try:
                 os.setgroups([])
                 os.setgid(observer.pw_gid)
@@ -381,9 +491,11 @@ def execute(*, startup_measurement=False):
                 os.environ.update(ENV)
                 os.umask(0o077)
                 result = observer_sequence(selected, root, handoff, campaign_deadline,
-                                           startup_begin, startup_measurement)
+                                           startup_begin, startup_measurement,
+                                           admin_channel=admin_child)
                 child.sendall(json.dumps(result, separators=(',', ':')).encode())
                 child.close()
+                admin_child.close()
                 os._exit(0)
             except BaseException as error:
                 try:
@@ -391,12 +503,18 @@ def execute(*, startup_measurement=False):
                 except OSError:
                     pass
                 child.close()
+                admin_child.close()
                 os._exit(1)
         child.close()
+        admin_child.close()
         # Preparation already started the campaign clock. Observation gets only the
         # original deadline plus bounded teardown grace, never a new execution budget.
         deadline = campaign_deadline / 10**9 + 100
-        raw, status = collect_child(parent, pid, deadline, lambda: sample_memory(diagnostics))
+        sampler = AdministratorFnpSampler(workload,
+            handoff['handles']['candidate-recipient'], diagnostics)
+        raw, status = collect_child(parent, pid, deadline,
+            lambda: sample_memory(diagnostics), admin_channel=admin_parent,
+            admin_sampler=sampler)
         if status != 0:
             diagnostics['observerFailure'] = {'exitStatus': status,
                 'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
@@ -415,6 +533,10 @@ def execute(*, startup_measurement=False):
                 parent.close()
             if child is not None:
                 child.close()
+            if admin_parent is not None:
+                admin_parent.close()
+            if admin_child is not None:
+                admin_child.close()
             if pid is not None and pid > 0 and status is None:
                 stop_child(pid)
         finally:

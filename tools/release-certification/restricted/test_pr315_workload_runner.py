@@ -111,7 +111,7 @@ def synthetic_fnp_observation(roster, helper_commit):
                  ('candidate-sender', 'relay-no-apps'),
                  ('relay-no-apps', 'candidate-recipient')):
         after['counters'][names[link]] = {'packets': 2, 'bytes': 200}
-    root = {'schemaVersion': 1, 'kind': 'pr315-fnp-counter-pair',
+    root = {'schemaVersion': 1, 'kind': 'pr315-administrator-fnp-counter-pair',
             'caseId': 'fnp-content-retrieval', 'role': 'candidate-recipient',
             'managerInvocation': recipient['invocationId'], 'before': before, 'after': after}
     observed = {phase: {'phase': phase, 'managerInvocation': recipient['invocationId'],
@@ -329,6 +329,11 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(checked['recordContractValid'])
         self.assertIn('fnp-content-retrieval', attempt['declaredCases'])
         self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        wrong_origin = copy.deepcopy(terminal)
+        wrong_origin['fnpCounterPair']['record']['kind'] = 'pr315-fnp-counter-pair'
+        _, rejected = runner.positive_case_attempt(report, result, selected, 110, 120,
+                                                   terminal=wrong_origin)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
         bad_route = copy.deepcopy(terminal)
         name = runner.workload_network.FNP_COUNTERS[('relay-no-apps', 'candidate-sender')]
         bad_route['fnpCounterPair']['record']['after']['counters'][name] = {'packets': 1, 'bytes': 100}

@@ -729,82 +729,13 @@ class ControllerExchangeAuditTest(unittest.TestCase):
         written.assert_called_once()
 
 
-class FnpCounterPairTest(unittest.TestCase):
-    def test_only_current_recipient_can_publish_one_before_after_pair(self):
-        record = {'managerInvocation': INVOCATION}
-        first = {'policyDigest': 'a' * 64, 'bootId': BOOT,
-                 'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': 10}
-        second = dict(first, observedMonotonicNs=20)
-        retained, failures = [None], []
-        def write(path, value, **_options):
-            if path.name == 'fnp-content-failure.json':
-                failures.append(copy.deepcopy(value))
-            else:
-                retained[0] = copy.deepcopy(value)
-        with patch.object(workload, 'locked', side_effect=nullcontext), \
-                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', record)), \
-                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
-                patch.object(workload, 'manager'), patch.object(workload, 'current'), \
-                patch.object(workload.os.path, 'lexists', side_effect=lambda _path: retained[0] is not None), \
-                patch.object(workload, 'read', side_effect=lambda _path: copy.deepcopy(retained[0])), \
-                patch.object(workload, 'write', side_effect=write) as stored, \
-                patch('restricted_workload_network.read_fnp_counters',
-                      side_effect=[first, second, second]) as sampled:
-            self.assertEqual('before', workload.observe_fnp(HANDLE)['phase'])
-            self.assertEqual('after', workload.observe_fnp(HANDLE)['phase'])
-            self.assertEqual((first, second), (retained[0]['before'], retained[0]['after']))
-            with self.assertRaisesRegex(workload.WorkloadError, 'fnp-counter-pair-invalid'):
-                workload.observe_fnp(HANDLE)
-            self.assertEqual(3, stored.call_count)
-            self.assertEqual('pair-write', failures[0]['stage'])
-            self.assertEqual('restricted-workload-fnp-counter-pair-invalid',
-                             failures[0]['failureCode'])
-            self.assertEqual(3, sampled.call_count)
-
-    def test_counter_failure_retains_only_fixed_private_class(self):
-        from restricted_workload_network import NetworkBoundaryError
-        error = NetworkBoundaryError('restricted-workload-network-command-failed')
-        error.private_diagnostics = {'failureClass': 'bounded_process_deadline_exceeded',
-                                     'stderr': 'private candidate data', 'arguments': []}
-        with patch.object(workload, 'locked', side_effect=nullcontext), \
-                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', {})), \
-                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
-                patch.object(workload, 'manager'), \
-                patch.object(workload, 'write') as stored, \
-                patch('restricted_workload_network.read_fnp_counters', side_effect=error):
-            with self.assertRaises(NetworkBoundaryError):
-                workload.observe_fnp(HANDLE)
-        path, record = stored.call_args.args
-        self.assertEqual(workload.ROOT / 'authority/fnp-content-failure.json', path)
-        self.assertEqual('counter-read', record['stage'])
-        self.assertEqual('bounded_process_deadline_exceeded', record['networkFailureClass'])
-        self.assertIsNone(record['networkStderr'])
-        self.assertNotIn('private candidate data', json.dumps(record))
-
-    def test_only_fixed_counter_command_can_retain_bounded_private_stderr(self):
-        from restricted_workload_network import NetworkBoundaryError
-        error = NetworkBoundaryError('restricted-workload-network-command-failed')
-        error.private_diagnostics = {'failureClass': 'bounded_process_failed',
-            'arguments': ['/usr/sbin/ip', 'netns', 'exec', 'cryptad-role-switch',
-                          '/usr/sbin/nft', '-j', 'list', 'counters', 'table', 'bridge',
-                          'cryptad_switch'], 'stderr': 'Error: No such file or directory'}
-        with patch.object(workload, 'locked', side_effect=nullcontext), \
-                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', {})), \
-                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
-                patch.object(workload, 'manager'), patch.object(workload, 'write') as stored, \
-                patch('restricted_workload_network.read_fnp_counters', side_effect=error):
-            with self.assertRaises(NetworkBoundaryError):
-                workload.observe_fnp(HANDLE)
-        self.assertEqual('Error: No such file or directory',
-                         stored.call_args.args[1]['networkStderr'])
-
-    def test_sender_handle_cannot_read_fnp_counter_pair(self):
-        with patch.object(workload, 'locked', side_effect=nullcontext), \
-                patch.object(workload, 'retained', return_value=({}, 'candidate-sender', {})), \
-                patch('restricted_workload_network.read_fnp_counters') as sampled:
-            with self.assertRaisesRegex(workload.WorkloadError, 'fnp-observer-role-invalid'):
-                workload.observe_fnp(HANDLE)
-            sampled.assert_not_called()
+class FnpBoundaryTest(unittest.TestCase):
+    def test_counter_sampling_is_not_a_controller_method(self):
+        self.assertNotIn('observe-fnp', controller.METHODS)
+        self.assertFalse(hasattr(workload, 'observe_fnp'))
+        raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode()
+        with self.assertRaises(workload.WorkloadError):
+            controller.request(raw)
 
 
 class ControllerRequestTest(unittest.TestCase):
@@ -895,13 +826,12 @@ class ControllerRequestTest(unittest.TestCase):
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
 
-    def test_fixed_fnp_observation_dispatch_rejects_unknown_methods(self):
+    def test_removed_fnp_observation_method_is_rejected(self):
         raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode() + b'\n'
         connection = FakeConnection(raw)
-        with patch.object(workload, 'observe_fnp', return_value={'phase': 'before'}) as observed:
-            self.assertEqual('observe-fnp', controller.serve(connection, 1000))
-        observed.assert_called_once_with(HANDLE)
-        self.assertEqual([b'{"phase":"before"}\n'], connection.sent)
+        with self.assertRaises(workload.WorkloadError):
+            controller.serve(connection, 1000)
+        self.assertEqual([], connection.sent)
 
     def test_successful_bootstrap_audits_exact_sent_bytes_without_the_token(self):
         raw = json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE},

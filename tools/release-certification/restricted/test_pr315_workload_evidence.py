@@ -73,7 +73,7 @@ class VolatileEvidenceTest(unittest.TestCase):
                     'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': moment,
                     'counters': {name: {'packets': 2, 'bytes': 200}
                                  for name in evidence.FNP_COUNTER_NAMES}}
-        pair = {'schemaVersion': 1, 'kind': 'pr315-fnp-counter-pair',
+        pair = {'schemaVersion': 1, 'kind': 'pr315-administrator-fnp-counter-pair',
                 'caseId': 'fnp-content-retrieval', 'role': 'candidate-recipient',
                 'managerInvocation': 'b' * 32, 'before': sample(10), 'after': sample(20)}
         path = self.root / 'authority/fnp-content-probe.json'
@@ -82,29 +82,14 @@ class VolatileEvidenceTest(unittest.TestCase):
                          evidence._capture(self.root, self.expected, False)['fnpCounterPair']['status'])
         self.assertEqual('captured', evidence._capture(self.root, self.expected, True)[
             'fnpCounterPair']['status'])
+        path.write_text(json.dumps(dict(pair, kind='pr315-fnp-counter-pair')))
+        self.assertEqual('unavailable-or-unsafe', evidence._capture(self.root, self.expected, True)[
+            'fnpCounterPair']['status'])
+        path.write_text(json.dumps(pair))
         pair['after']['switchNamespaceIdentity'] = [1, 43]
         path.write_text(json.dumps(pair))
         self.assertEqual('unavailable-or-unsafe', evidence._capture(self.root, self.expected, True)[
             'fnpCounterPair']['status'])
-
-    def test_fnp_failure_is_private_diagnostic_without_acceptance_authority(self):
-        path = self.root / 'authority/fnp-content-failure.json'
-        record = {'schemaVersion': 1, 'kind': 'pr315-private-fnp-observer-failure',
-                  'stage': 'counter-read', 'exceptionType': 'NetworkBoundaryError',
-                  'failureCode': 'restricted-workload-network-command-failed',
-                  'networkFailureClass': 'bounded_process_deadline_exceeded',
-                  'networkStderr': 'Error: No such file or directory',
-                  'observedMonotonicNs': 123}
-        path.write_text(json.dumps(record))
-        self.assertEqual('not-captured-cleanup-unverified',
-                         evidence._capture(self.root, self.expected, False)['fnpFailure']['status'])
-        captured = evidence._capture(self.root, self.expected, True)['fnpFailure']
-        self.assertEqual('controller-private-diagnostic-not-acceptance', captured['classification'])
-        self.assertEqual(record, captured['record'])
-        record['stage'] = 'caller-selected-stage'
-        path.write_text(json.dumps(record))
-        self.assertEqual('unavailable-or-unsafe', evidence._capture(self.root, self.expected, True)[
-            'fnpFailure']['status'])
 
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()

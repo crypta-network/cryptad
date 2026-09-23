@@ -306,7 +306,8 @@ def _fnp_counter_pair(root, deadline):
         if (not isinstance(value, dict)
                 or set(value) != {'schemaVersion', 'kind', 'caseId', 'role',
                                   'managerInvocation', 'before', 'after'}
-                or value['schemaVersion'] != 1 or value['kind'] != 'pr315-fnp-counter-pair'
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-fnp-counter-pair'
                 or value['caseId'] != 'fnp-content-retrieval'
                 or value['role'] != 'candidate-recipient'
                 or re.fullmatch('[0-9a-f]{32}', str(value['managerInvocation'])) is None):
@@ -340,42 +341,6 @@ def _fnp_counter_pair(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
-def _fnp_failure(root, deadline):
-    """Retain only the controller's fixed-stage diagnostic, never an acceptance witness."""
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return {'status': 'capture-deadline'}
-    try:
-        raw = snapshot.read_file(root / 'authority', 'fnp-content-failure.json',
-                                 maximum=2048, timeout=min(2, remaining))
-        value = json.loads(raw)
-        if (not isinstance(value, dict)
-                or set(value) != {'schemaVersion', 'kind', 'stage', 'exceptionType',
-                                  'failureCode', 'networkFailureClass', 'networkStderr',
-                                  'observedMonotonicNs'}
-                or value['schemaVersion'] != 1
-                or value['kind'] != 'pr315-private-fnp-observer-failure'
-                or value['stage'] not in {'retained', 'admission', 'pre-manager',
-                                         'counter-read', 'post-manager', 'pair-write'}
-                or not isinstance(value['exceptionType'], str)
-                or not 1 <= len(value['exceptionType']) <= 128
-                or value['failureCode'] is not None and (not isinstance(value['failureCode'], str)
-                    or len(value['failureCode']) > 128)
-                or value['networkFailureClass'] is not None and (
-                    not isinstance(value['networkFailureClass'], str)
-                    or len(value['networkFailureClass']) > 128)
-                or value['networkStderr'] is not None and (
-                    not isinstance(value['networkStderr'], str)
-                    or len(value['networkStderr']) > 512)
-                or type(value['observedMonotonicNs']) is not int
-                or value['observedMonotonicNs'] <= 0):
-            raise ValueError('fnp-private-failure-invalid')
-        return {'status': 'captured',
-                'classification': 'controller-private-diagnostic-not-acceptance', 'record': value}
-    except (OSError, ValueError):
-        return {'status': 'unavailable-or-unsafe'}
-
-
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -392,7 +357,6 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'exchangeAudits': {case: {'status': 'not-captured-cleanup-unverified'}
                            for case in EXCHANGE_CASES},
         'fnpCounterPair': {'status': 'not-captured-cleanup-unverified'},
-        'fnpFailure': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -416,7 +380,6 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['exchangeAudits'][case] = _record(root / 'authority',
                                                      case + '-exchange.json', EXCHANGE_FIELDS, deadline)
         result['fnpCounterPair'] = _fnp_counter_pair(root, deadline)
-        result['fnpFailure'] = _fnp_failure(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

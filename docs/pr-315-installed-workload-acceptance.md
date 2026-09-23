@@ -1108,6 +1108,35 @@ still cannot satisfy any v8 case. Native Linux protected workload tests passed 1
 skips, and PR-315 restricted tests passed 92 after that schema extension. An installed
 rerun remains required to identify and correct the command failure.
 
+Attempt 46 bound the fixed-command stderr revision to the same pinned product, signed
+fixture and VM profile after fresh no-VM admission. Four installed roles, two normally
+signed Mail workers, both byte-checked CHK transfers and the sender restart completed;
+the guest exited zero. Seven individual positive cases passed again, while
+`fnp-content-retrieval` stayed `inconclusive`. The root-private controller diagnostic
+captured `counter-read` / `bounded_process_failed` and nft netlink's `Operation not
+permitted` response. The installed controller service's capability whitelist omits
+`CAP_NET_ADMIN`; the administrator's read-only query succeeded against the same named
+table. This establishes the permission mismatch for the failed counter read. One sender
+HotSpot fatal file was also captured, so this run does not establish JVM stability.
+The caller reported cleanup complete, four current stop receipts were captured, and the
+emulator stopped. The complete attempt and its same-attempt QCOW2 backing pair were
+copied locally and passed recursive checksum comparison; independent quiescence remains
+unestablished by the snapshot.
+
+The next prospective correction keeps the controller's existing capability whitelist.
+The already trusted administrator test driver performs the two fixed counter reads through
+an inherited per-attempt Unix seqpacket socket: the observer can request only `before`
+then `after`, and the administrator binds each read to the current recipient manager,
+campaign, cgroup and network namespace before durably saving the pair. The pair has a
+distinct administrator-origin kind; the host rejects the older controller-origin kind,
+requires both observer receipts and compares the selected CHK bytes, recipient FCP tail,
+content time window, stable policy/namespace identity and four directional counter deltas.
+The ineffective `observe-fnp` controller operation is removed. Offline native Linux
+protected discovery passed 527 tests with 74 skips, restricted discovery passed 420
+with one skip, and the owning interop adapter passed 42 with eight skips. These checks
+do not establish an installed FNP case; a new exact-source fixture and full installed
+rerun are required.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

@@ -27,7 +27,7 @@ import cross_version_runtime as runtime
 PROFILE = 'debian13-systemd257-workload-v1'
 SOCKET = '/run/cryptad-workload/control.sock'
 MAX_RESPONSE = 1024 * 1024
-METHODS = {'start', 'observe', 'observe-fnp', 'stop', 'connect-fcp',
+METHODS = {'start', 'observe', 'stop', 'connect-fcp',
            'connect-http', 'bootstrap-mail'}
 EPOCH = ('handle', 'generation', 'managerInvocation', 'bootId')
 
@@ -392,7 +392,8 @@ class InstalledWorkloadAdapter:
     selection, never candidate replies. The supplied journal retains its existing lease.
     Optional ``control`` permits isolated unit tests without an installed socket.
     """
-    def __init__(self, plan, private_config, authorization, journal, handoff, expected_jdk_digests=None, *, control=None):
+    def __init__(self, plan, private_config, authorization, journal, handoff, expected_jdk_digests=None,
+                 *, control=None, counter_sampler=None):
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
         if (handoff.get('profile') != PROFILE or set(handoff.get('handles', {})) != set(runtime.ROLES)
                 or plan.get('provenanceClass') != 'source-build-comparison'
@@ -433,6 +434,9 @@ class InstalledWorkloadAdapter:
         self.handles = dict(handoff['handles'])
         self.expected_jdk_digests = dict(expected_jdk_digests)
         self.control = control or WorkloadClient()
+        if counter_sampler is not None and not callable(counter_sampler):
+            fail('counter-sampler-invalid')
+        self.counter_sampler = counter_sampler
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
@@ -549,7 +553,12 @@ class InstalledWorkloadAdapter:
 
     def _fnp_sample(self, phase):
         try:
-            value = self.control.request('observe-fnp', self.handles['candidate-recipient'])
+            sampler = getattr(self, 'counter_sampler', None)
+            if sampler is None:
+                self.fnp_sample_failure = {'phase': phase,
+                                           'failureClass': 'administrator-sampler-unavailable'}
+                return None
+            value = sampler(phase)
         except (OSError, runtime.RuntimeFailure) as error:
             self.fnp_sample_failure = {'phase': phase, 'failureClass': type(error).__name__[:128]}
             return None
