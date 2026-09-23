@@ -205,6 +205,24 @@ class RandomGrabArrayTest {
   }
 
   @Test
+  void removeRandom_whenMultipleReadyItemsHaveNegativeExclusion_selectsAnItem() {
+    ClientRequestSelector root = mock(ClientRequestSelector.class);
+    RandomGrabArray rga = new RandomGrabArray(null, root);
+    ClientContext ctx = ctxWithSeed(98765);
+    TestItem first = new TestItem("first", 0);
+    TestItem second = new TestItem("second", 0);
+    rga.add(first, null);
+    rga.add(second, null);
+
+    // RequestStarter returns -1 for an eligible insert. Both items must remain selectable.
+    RemoveRandomReturn selected = rga.removeRandom(new FixedExclusions(-1), ctx, 1L);
+
+    assertNotNull(selected);
+    assertTrue(selected.item == first || selected.item == second);
+    assertEquals(2, rga.size());
+  }
+
+  @Test
   void removeRandom_whenAllExcluded_returnsEarliestWakeupAndStoresIt() {
     ClientRequestSelector root = mock(ClientRequestSelector.class);
     RandomGrabArray rga = new RandomGrabArray(null, root);

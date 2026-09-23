@@ -23,6 +23,8 @@ segmentation fault. The twenty-second through twenty-fourth reached the same fir
 insert and expired without a terminal insert frame. The full positive sequence remains
 incomplete. The twenty-fifth failed predecessor daemon readiness after both candidate roles
 responded to FCP. The twenty-sixth failed sender daemon readiness after a JVM startup crash.
+The twenty-seventh, in a separately identified macOS Docker translation profile, failed guest
+boot before SSH readiness.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -593,6 +595,66 @@ observed launch. Independent overall quiescence is still unestablished. Final ta
 8-GiB and 7-GiB-plus-1-GiB reserves pass. Further guest allocation is stopped under the
 selected task cap; all remaining installed cases remain unexecuted or inconclusive.
 
+### macOS transfer and separate startup diagnostic
+
+The retained 26-attempt private task tree was copied from CT102 into the macOS workspace.
+A checksum dry run found no differing files. A then-current `8e6fd35b898658a8a1c420cc6c64a664016abdb9`
+fixture was prepared on CT102 from the same candidate, predecessor, JDK and signed Mail inputs,
+then copied and strictly verified in an isolated Debian 13 amd64 Docker volume. Restoring the
+original build-output permission bits was necessary because the macOS archive extraction had
+removed group write permission from JARs; the verifier includes modes in its tool-tree digest.
+The Git worktree remained clean. The focused PR-315 suite passed all 83 tests inside Linux;
+its native macOS invocation was not a valid Linux test environment.
+
+The macOS host has an arm64 CPU, so Docker translates the fixed x86_64 QEMU process. This is a
+separately identified `pr315-mac-docker-translation-v1` diagnostic profile. Its prospective
+task-wide cap was 96 GiB, including the retained macOS evidence copy, private Docker volume,
+Docker image and next guest reservation; the Docker-root cap was 80 GiB. The 8 GiB filesystem
+and 7 GiB plus 1 GiB memory reserves passed. The new attempt's 202 common boot-closure file
+digests matched attempt 24, including its pinned QEMU binary and libraries. The source-built
+products and JDK were unchanged.
+
+Attempt 27 failed at guest boot. Under the existing 180-second SSH readiness window, the
+translated QEMU guest reached only early Debian systemd startup; SSH banner exchanges timed out.
+The guest and emulator stopped, and its complete stopped QCOW2 backing pair and failure
+diagnostics were copied back to private macOS retention. A bytewise dry run found no copy
+differences. This diagnostic cannot supply a workload witness or establish how the original
+native x86 profile would behave. No boot timeout, guest size, CPU model or campaign deadline was
+increased for it.
+
+A separate single-node macOS diagnostic used the exact source-built candidate JAR with a local
+Java 25 runtime, loopback FCP and no peers or Mail. Several synthetic
+`ClientPut LocalRequestOnly=true` operations stalled after FCP accepted the request; a 120-second
+attempt and shorter repetitions saw no response. A full live thread dump showed the FCP input
+thread reading the next message, its output queue idle and CHK insert starters waiting. Minimal
+insert DEBUG logs showed CHK encoding and block-set finalization without a started block request.
+With scheduler DEBUG enabled, an equivalent synthetic operation received `URIGenerated`,
+`PutFetchable` and `PutSuccessful` within milliseconds. A second non-debug `ClientPut` did not
+release an already stalled first request. The timing-sensitive local behavior narrows the
+investigation to insert scheduling or a preceding state transition. These local diagnostics
+remain private and do not constitute installed acceptance.
+
+A bounded read-only JVM Attach snapshot subsequently found two unfinished, ready CHK insert
+items at priority 2, no running insert token, and an idle starter. An additional `wakeUp()`
+did not clear the stall; a direct scheduler selection returned no block. Source inspection
+identified the exact branch: `RandomGrabArray` counted an exclusion value of `-1` as eligible,
+then `findNthValid()` required `== 0` when choosing among multiple eligible items. The insert
+starter deliberately returns `-1` for an allowed insert. This mismatch stranded both the data
+and metadata blocks for a small CHK put; DEBUG timing sometimes let the first block run while
+the selector contained only one item, bypassing the faulty branch.
+
+The source fix changes the final comparison to `<= 0`. A regression with two ready items and
+negative exclusions failed before the change and passed afterward with the complete
+`RandomGrabArrayTest` class. Two fresh, non-DEBUG local nodes then received `PutSuccessful`
+using the rebuilt Java artifact. These are local behavioral checks, not installed witnesses.
+The corrected Java product needs a new exact source build and fixture before the positive
+installed sequence can be rerun. The remaining 37 hostile and lifecycle emitters are unaffected.
+
+A read-only PVE storage check found the CT102 root filesystem still has room for another guest,
+but its underlying shared `local-lvm` thin pool had about 22 GiB free against the unchanged
+29.28-GB conservative next-attempt reservation. Increasing only CT102's 40-GiB task cap would
+not fund that underlying reservation. No further native CT102 VM was allocated in this state.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
@@ -859,11 +921,21 @@ informational static-import suggestions on unchanged test lines, none in the new
 No final-source hosted CI was dispatched.
 None of these results grants installed workload acceptance.
 
+For the insert-selector correction, the new two-item negative-exclusion regression failed on
+the unmodified selector and passed after the one-line fix. The complete
+`RandomGrabArrayTest` class passed. Two fresh, non-DEBUG local Java nodes then completed a
+synthetic local-only CHK `ClientPut` with the rebuilt artifact. The full Java suite on CT102
+passed 17,407 tests with ten skips, zero failures and zero errors. Focused `sonarlintFile`
+analysis of the touched production file produced an empty Checkstyle report. A full macOS
+Gradle run failed in unrelated workspace scanning and host-path/symlink tests; its outcome is
+not substituted for the successful Linux run. No complete installed workload campaign or
+hosted CI has run against the corrected Java product.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
 | `installedPositiveExecuted` | False for this revision; no observed installed positive attempt |
-| `installedWorkloadAcceptanceSatisfied` | False; latest executed attempt has eight inconclusive positives and 37 unexecuted faults |
+| `installedWorkloadAcceptanceSatisfied` | False; no complete positive record and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
