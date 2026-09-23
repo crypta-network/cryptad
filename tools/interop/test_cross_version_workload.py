@@ -75,11 +75,41 @@ class ScopedWorkerTests(unittest.TestCase):
             workload.bind_worker(value, 3, JDK)
 
 
+class ScopedDaemonTests(unittest.TestCase):
+    def test_outer_java_epoch_is_bound_to_controller_kernel_sample(self):
+        identity = workload.bind_daemon(sample(), JDK)
+        self.assertEqual(101, identity['hostPid'])
+        self.assertEqual(201, identity['startTicks'])
+        self.assertEqual(EPOCH['managerInvocation'], identity['managerInvocation'])
+
+    def test_nested_app_java_or_ambiguous_outer_java_cannot_replace_daemon(self):
+        value = sample()
+        value['processes'][1]['namespacePids'] = [101, 2, 1]
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-not-unique'):
+            workload.bind_daemon(value, JDK)
+        value = sample()
+        value['processes'].append({**value['processes'][1], 'hostPid': 104,
+                                   'namespacePids': [104, 5], 'startTicks': 204})
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-not-unique'):
+            workload.bind_daemon(value, JDK)
+
+    def test_candidate_claim_and_unscoped_java_are_rejected(self):
+        value = sample()
+        value['provenance'] = 'candidate-api'
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-sample-invalid'):
+            workload.bind_daemon(value, JDK)
+        value = sample()
+        value['processes'][1]['noNewPrivileges'] = False
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-sample-invalid'):
+            workload.bind_daemon(value, JDK)
+
+
 class ObserverPolicyTests(unittest.TestCase):
     def stop_adapter(self, response, started=False):
         adapter = workload.InstalledWorkloadAdapter.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
         adapter.nodes = {'candidate-sender': dict(EPOCH)} if started else {}
+        adapter.daemon_epochs = {}
         adapter._journal_started_roles = set()
         adapter.control = types.SimpleNamespace(request=mock.Mock(return_value=response))
         adapter.emit = mock.Mock()
@@ -144,6 +174,42 @@ class ObserverPolicyTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(workload.runtime.RuntimeFailure):
                 adapter._bound('candidate-sender', {**EPOCH, key: 'reused'})
 
+    def test_same_manager_invocation_cannot_hide_jvm_replacement(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.handles = {'candidate-sender': HANDLE}
+        adapter.nodes = {'candidate-sender': dict(EPOCH)}
+        adapter.expected_jdk_digests = {'candidate-sender': JDK}
+        adapter.daemon_epochs = {'candidate-sender': workload.bind_daemon(sample(), JDK)}
+        adapter.deadline = time.monotonic() + 10
+        replaced = sample()
+        replaced['processes'][1]['startTicks'] += 1
+        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value=replaced))
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-daemon-epoch-changed'):
+            adapter.observe('candidate-sender')
+
+    def test_positive_result_requires_final_sample_of_each_running_daemon(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {'candidate-sender': dict(EPOCH)}
+        adapter.apps = {}
+        adapter.outcomes = {'network-chk': 'observed'}
+        adapter.start = mock.Mock()
+        adapter.connect = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.restart = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
+                                                  'managerInvocation': 'f' * 32})
+        adapter.cleanup = mock.Mock(return_value='complete')
+        def observe(role):
+            if role == 'previous':
+                raise workload.runtime.RuntimeFailure('role-daemon-epoch-changed')
+        adapter.observe = mock.Mock(side_effect=observe)
+        with mock.patch.object(workload.runtime.Supervisor, 'content') as content:
+            with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-daemon-epoch-changed'):
+                adapter.run_positive()
+        self.assertEqual(2, content.call_count)
+        self.assertEqual([mock.call('candidate-sender'), mock.call('candidate-recipient'),
+                          mock.call('previous')], adapter.observe.call_args_list)
+        adapter.cleanup.assert_called_once_with()
+
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
         app = workload.InstalledAppHandle(supervisor, 'candidate-sender')
@@ -168,13 +234,24 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {'candidate-sender': dict(EPOCH)}
         adapter.apps = {}
+        adapter.daemon_epochs = {'candidate-sender': {'startTicks': 201}}
         adapter.deadline = 12345
         adapter.stop = mock.Mock()
-        adapter.start = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64, 'managerInvocation': 'f' * 32})
+        def start(_role):
+            adapter.daemon_epochs['candidate-sender'] = {'startTicks': 301}
+            return {**EPOCH, 'generation': 'e' * 64, 'managerInvocation': 'f' * 32}
+        adapter.start = mock.Mock(side_effect=start)
         result = adapter.restart('candidate-sender')
         self.assertEqual('e' * 64, result['generation'])
         self.assertEqual(12345, adapter.deadline)
-        adapter.start.return_value = {**EPOCH, 'generation': 'e' * 64}
+        adapter.start.side_effect = lambda _role: {**EPOCH, 'generation': 'e' * 64}
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'restart-epoch-invalid'):
+            adapter.restart('candidate-sender')
+        adapter.daemon_epochs['candidate-sender'] = {'startTicks': 301}
+        def reused_daemon(_role):
+            adapter.daemon_epochs['candidate-sender'] = {'startTicks': 301}
+            return {**EPOCH, 'generation': 'e' * 64, 'managerInvocation': 'f' * 32}
+        adapter.start.side_effect = reused_daemon
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'restart-epoch-invalid'):
             adapter.restart('candidate-sender')
 
@@ -182,6 +259,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
         adapter.nodes = {}
+        adapter.daemon_epochs = {}
         adapter._journal_started_roles = set()
         adapter.control = types.SimpleNamespace(request=mock.Mock(return_value={**EPOCH, 'state': 'quiescent'}))
         adapter.emit = mock.Mock()
@@ -219,7 +297,11 @@ class ReadinessDeadlineTests(unittest.TestCase):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
         adapter.nodes = {}
-        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value={**EPOCH, 'state': 'running'}))
+        adapter.daemon_epochs = {}
+        adapter.expected_jdk_digests = {'candidate-sender': JDK}
+        def request(method, _handle):
+            return {**EPOCH, 'state': 'running'} if method == 'start' else sample()
+        adapter.control = types.SimpleNamespace(request=mock.Mock(side_effect=request))
         adapter.deadline = time.monotonic() + seconds
         adapter.emit = mock.Mock()
         adapter._journal_started_roles = set()
@@ -246,7 +328,9 @@ class ReadinessDeadlineTests(unittest.TestCase):
         self.assertEqual(original_deadline, adapter.deadline)
         self.assertEqual(['candidate-sender'] * 2, attempts)
         self.assertEqual(['candidate-sender'], closed)
-        adapter.control.request.assert_called_once_with('start', HANDLE)
+        self.assertEqual([mock.call('start', HANDLE), mock.call('observe', HANDLE)],
+                         adapter.control.request.call_args_list)
+        self.assertEqual(201, adapter.daemon_epochs['candidate-sender']['startTicks'])
         adapter.emit.assert_called_once()
         self.assertEqual({'candidate-sender'}, adapter._journal_started_roles)
 

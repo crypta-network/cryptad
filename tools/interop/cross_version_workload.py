@@ -293,6 +293,37 @@ def bind_worker(observation, api_pid, expected_jdk_digest):
     fail('app-java-descendant-not-observed')
 
 
+def bind_daemon(observation, expected_jdk_digest):
+    """Pin the sole outer-namespace Java process from a controller kernel sample."""
+    if observation.get('provenance') != 'controller-kernel-sample':
+        fail('daemon-process-sample-invalid')
+    rows = observation.get('processes')
+    if not isinstance(rows, list) or len(rows) > 512:
+        fail('daemon-process-sample-invalid')
+    matches = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get('executableDigest') != expected_jdk_digest:
+            continue
+        namespaces = row.get('namespacePids')
+        if not isinstance(namespaces, list) or len(namespaces) != 2:
+            continue
+        pid = row.get('hostPid')
+        ticks = row.get('startTicks')
+        if (type(pid) is not int or pid <= 1 or namespaces[0] != pid
+                or any(type(value) is not int or value < 1 for value in namespaces)
+                or type(ticks) is not int or ticks < 1
+                or row.get('noNewPrivileges') is not True
+                or row.get('effectiveCapabilities') != 0):
+            fail('daemon-process-sample-invalid')
+        matches.append({'managerInvocation': observation.get('managerInvocation'),
+                        'hostPid': pid, 'startTicks': ticks,
+                        'namespacePids': tuple(namespaces),
+                        'executableDigest': expected_jdk_digest})
+    if len(matches) != 1:
+        fail('daemon-process-not-unique')
+    return matches[0]
+
+
 class InstalledWorkloadAdapter:
     """Finite observer orchestration over a root-prepared, immutable source-build selection.
 
@@ -342,7 +373,7 @@ class InstalledWorkloadAdapter:
         self.expected_jdk_digests = dict(expected_jdk_digests)
         self.control = control or WorkloadClient()
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
-        self.nodes, self.apps, self.outcomes = {}, {}, {}
+        self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self._journal_started_roles = set()
         self.catalog_prepared = None
 
@@ -375,6 +406,9 @@ class InstalledWorkloadAdapter:
         value = self._bound(role, self.control.request('observe', self.handles[role]))
         if value.get('state') != 'running':
             fail('role-not-running')
+        pinned = self.daemon_epochs.get(role)
+        if pinned is not None and bind_daemon(value, self.expected_jdk_digests[role]) != pinned:
+            fail('role-daemon-epoch-changed')
         return value
 
     def connection(self, role, endpoint):
@@ -425,6 +459,7 @@ class InstalledWorkloadAdapter:
                 if time.monotonic() >= deadline:
                     raise runtime.RuntimeFailure('workload-daemon-readiness-timeout') from error
                 time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        self.daemon_epochs[role] = bind_daemon(self.observe(role), self.expected_jdk_digests[role])
         self.emit('node-start', role=role, node_epoch=runtime.canonical_digest({key: value[key] for key in EPOCH})[7:39])
         self._journal_started_roles.add(role)
         return value
@@ -476,6 +511,7 @@ class InstalledWorkloadAdapter:
             fail('role-quiescence-unestablished')
         if role in self.nodes:
             self._bound(role, value)
+        self.daemon_epochs.pop(role, None)
         if role in self._journal_started_roles:
             self.emit('node-stop', role=role)
             self._journal_started_roles.remove(role)
@@ -484,11 +520,13 @@ class InstalledWorkloadAdapter:
     def restart(self, role):
         """New manager epoch over retained role data, without extending approved runtime."""
         before = dict(self.nodes[role])
+        before_daemon = self.daemon_epochs[role]
         self.stop(role)
         after = self.start(role)
         if (before['generation'] == after['generation']
-                or before['managerInvocation'] == after['managerInvocation']
-                or before['bootId'] != after['bootId']):
+                 or before['managerInvocation'] == after['managerInvocation']
+                 or before['bootId'] != after['bootId']
+                 or self.daemon_epochs[role]['startTicks'] <= before_daemon['startTicks']):
             fail('restart-epoch-invalid')
         app = self.apps.get((role, 'mail-prototype'))
         if app is not None:
@@ -531,6 +569,8 @@ class InstalledWorkloadAdapter:
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
             runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
+            for role in runtime.ROLES:
+                self.observe(role)
             return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
