@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import array
 from contextlib import contextmanager
+import hashlib
 import http.client
 import json
 import os
@@ -58,6 +59,7 @@ class WorkloadClient:
     def request(self, method, handle):
         if method not in METHODS or not isinstance(handle, str) or not re.fullmatch('[a-f0-9]{64}', handle):
             fail('request-invalid')
+        self.last_exchange = None
         descriptors = []
         channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -66,7 +68,8 @@ class WorkloadClient:
             _, uid, _ = struct.unpack('3i', channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
             if uid != 0:
                 fail('controller-peer-not-root')
-            channel.sendall(json.dumps({'method': method, 'handle': handle}, separators=(',', ':')).encode() + b'\n')
+            request_raw = json.dumps({'method': method, 'handle': handle}, separators=(',', ':')).encode() + b'\n'
+            channel.sendall(request_raw)
             payload = bytearray()
             while b'\n' not in payload:
                 data, ancillary, flags, _ = channel.recvmsg(min(65536, MAX_RESPONSE + 1 - len(payload)),
@@ -103,12 +106,18 @@ class WorkloadClient:
                         fail('controller-connection-invalid')
                     connected.getpeername()
                     connected.settimeout(25)
+                    self.last_exchange = {'method': method,
+                        'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                        'responseDigest': hashlib.sha256(payload).hexdigest()}
                     return value, connected
                 except BaseException:
                     connected.close()
                     raise
             if descriptors:
                 fail('controller-unexpected-connection')
+            self.last_exchange = {'method': method,
+                'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                'responseDigest': hashlib.sha256(payload).hexdigest()}
             return value
         except (OSError, ValueError, UnicodeError):
             fail('controller-transport-failed')
@@ -226,6 +235,11 @@ class InstalledAppHandle(runtime.AppHandle):
         self.supervisor.next_operation()
         self.supervisor.observe(self.role)
         value = self.supervisor.control.request('bootstrap-mail', self.supervisor.handles[self.role])
+        exchanges = getattr(self.supervisor, 'control_exchanges', None)
+        observed = getattr(self.supervisor.control, 'last_exchange', None)
+        if (self.role == 'candidate-sender' and isinstance(exchanges, dict)
+                and isinstance(observed, dict) and observed.get('method') == 'bootstrap-mail'):
+            exchanges['dynamic-app-bootstrap'] = dict(observed)
         self.supervisor.observe(self.role)
         # The controller validates nonce, origin and dynamic listener inside the role.
         if not isinstance(value, dict):
@@ -414,6 +428,7 @@ class InstalledWorkloadAdapter:
         self.control = control or WorkloadClient()
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
+        self.control_exchanges = {}
         self._journal_started_roles = set()
         self.catalog_prepared = None
 
@@ -457,6 +472,10 @@ class InstalledWorkloadAdapter:
         self.remaining()
         self.observe(role)
         value, connected = self.control.request('connect-' + endpoint, self.handles[role])
+        observed = getattr(self.control, 'last_exchange', None)
+        if (role == 'candidate-sender' and endpoint == 'fcp'
+                and isinstance(observed, dict) and observed.get('method') == 'connect-fcp'):
+            self.control_exchanges['own-management'] = dict(observed)
         try:
             if value != {'status': 'connected'}:
                 fail('connection-response-invalid')
@@ -632,6 +651,7 @@ class InstalledWorkloadAdapter:
                         'provenance': app_worker['provenance']},
                     'appKernelWindow': {'startedMonotonicNs': app_started,
                                         'finishedMonotonicNs': app_finished},
+                    'controlExchanges': dict(self.control_exchanges),
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
                     'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
                                                'finishedMonotonicNs': roster_finished},

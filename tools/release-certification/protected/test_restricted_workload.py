@@ -1,6 +1,7 @@
 """Workload control fault tests with simulated manager state, not installed acceptance."""
 from contextlib import ExitStack, nullcontext
 import copy
+import hashlib
 import json
 import os
 import shlex
@@ -668,6 +669,41 @@ class FakeConnection:
         self.sent.append(value)
 
 
+class ControllerExchangeAuditTest(unittest.TestCase):
+    def audit(self, method, response, *, failure=None):
+        request = json.dumps({'method': method, 'handle': HANDLE}, separators=(',', ':')).encode() + b'\n'
+        record = {'managerInvocation': INVOCATION, 'bootId': BOOT,
+                  'cgroupIdentity': [1, 99]}
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, ROLE, record)), \
+                patch.object(workload, 'manager', return_value=manager_state()), \
+                patch.object(workload, 'exact'), \
+                patch.object(workload, 'admit') as admission, \
+                patch.object(workload, 'write', side_effect=failure) as written:
+            controller._audit_exchange(method, HANDLE, request, response, 10, 20)
+        admission.assert_not_called()
+        return request, written
+
+    def test_fixed_successful_exchange_retains_only_root_digests(self):
+        response = b'{"browserSessionToken":"private-session"}\n'
+        request, written = self.audit('bootstrap-mail', response)
+        path, value = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/dynamic-app-bootstrap-exchange.json', path)
+        self.assertEqual('dynamic-app-bootstrap', value['caseId'])
+        self.assertEqual(INVOCATION, value['managerInvocation'])
+        self.assertEqual(hashlib.sha256(request).hexdigest(), value['requestDigest'])
+        self.assertEqual(hashlib.sha256(response).hexdigest(), value['responseDigest'])
+        self.assertNotIn('private-session', json.dumps(value))
+        self.assertEqual((10, 20), (value['startedMonotonicNs'], value['finishedMonotonicNs']))
+        _request, written = self.audit('connect-fcp', b'{"status":"connected"}\n')
+        self.assertEqual(workload.ROOT / 'authority/own-management-exchange.json',
+                         written.call_args.args[0])
+
+    def test_audit_failure_is_inconclusive_without_an_extra_admission(self):
+        _request, written = self.audit('bootstrap-mail', b'{}\n', failure=OSError('audit unavailable'))
+        written.assert_called_once()
+
+
 class ControllerRequestTest(unittest.TestCase):
     def setUp(self):
         # These tests use FakeConnection, not the host's peer-credential ABI.
@@ -755,6 +791,19 @@ class ControllerRequestTest(unittest.TestCase):
             self.assertEqual('start', controller.serve(connection, 1000))
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
+
+    def test_successful_bootstrap_audits_exact_sent_bytes_without_the_token(self):
+        raw = json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE},
+                         separators=(',', ':')).encode() + b'\n'
+        connection = FakeConnection(raw)
+        with patch.object(controller, 'bootstrap', return_value={'browserSessionToken': 'private'}), \
+                patch.object(controller, '_audit_exchange') as audit:
+            self.assertEqual('bootstrap-mail', controller.serve(connection, 1000))
+        self.assertEqual(1, len(connection.sent))
+        method, handle, request, response, started, finished = audit.call_args.args
+        self.assertEqual(('bootstrap-mail', HANDLE, raw, connection.sent[0]),
+                         (method, handle, request, response))
+        self.assertLess(started, finished)
 
     def test_duplicate_fields_are_rejected(self):
         raw = ('{"method":"start","method":"stop","handle":"' + HANDLE + '"}').encode()

@@ -6,6 +6,7 @@ role handle and one fixed method. Service death stops bound role units through s
 """
 import array
 from contextlib import contextmanager
+import hashlib
 import http.client
 import json
 import os
@@ -28,6 +29,7 @@ SOCKET = Path('/run/cryptad-workload/control.sock')
 STARTUP = Path('/run/cryptad-workload/startup.json')
 STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp', 'connect-http', 'bootstrap-mail'})
+EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
 
 
 @contextmanager
@@ -63,6 +65,32 @@ def request(raw):
             or re.fullmatch('[a-f0-9]{64}', value['handle']) is None):
         workload.reject('request-invalid')
     return value
+
+
+def _audit_exchange(method, handle, request_raw, response_raw, started, finished):
+    """Retain only root-observed digests for two fixed successful controller exchanges."""
+    case_id = EXCHANGE_CASES.get(method)
+    if case_id is None:
+        return
+    try:
+        with workload.locked():
+            _campaign, role, record = workload.retained(handle)
+            if role != 'candidate-sender':
+                return
+            workload.exact(role, record, workload.manager(role, 'show'))
+            value = {'schemaVersion': 1, 'kind': 'pr315-fixed-exchange-audit',
+                'caseId': case_id, 'method': method, 'role': role,
+                'managerInvocation': record['managerInvocation'], 'bootId': record['bootId'],
+                'cgroupIdentity': record['cgroupIdentity'],
+                'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                'responseDigest': hashlib.sha256(response_raw).hexdigest(),
+                'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+                'serverRequests': 1}
+            workload.write(workload.ROOT / 'authority' / (case_id + '-exchange.json'), value)
+    except (OSError, ValueError, KeyError, TypeError):
+        # Audit absence cannot turn a successful existing connection into an error.
+        # The host verifier will leave the case inconclusive without this root record.
+        pass
 
 
 def _http(sock, path, headers):
@@ -161,18 +189,22 @@ def serve(connection, expected_uid):
         workload.reject('request-framing-invalid')
     selected = request(bytes(raw[:-1]))
     method, handle = selected['method'], selected['handle']
+    request_raw = bytes(raw)
+    started = time.monotonic_ns()
     if method.startswith('connect-'):
         with workload.connect(handle, method.removeprefix('connect-')) as stream:
             rights = array.array('i', [stream.fileno()])
-            connection.sendmsg([b'{"status":"connected"}\n'], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
+            response_raw = b'{"status":"connected"}\n'
+            connection.sendmsg([response_raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
     else:
         operation = {'start': workload.start, 'stop': workload.stop, 'observe': workload.observe,
                      'bootstrap-mail': bootstrap}[method]
         result = operation(handle)
-        raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'
-        if len(raw) > 1024 * 1024:
+        response_raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'
+        if len(response_raw) > 1024 * 1024:
             workload.reject('response-limit')
-        connection.sendall(raw)
+        connection.sendall(response_raw)
+    _audit_exchange(method, handle, request_raw, response_raw, started, time.monotonic_ns())
     return method
 
 

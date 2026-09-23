@@ -28,6 +28,9 @@ GUEST_MEMORY = 5632 * 1024**2
 ROLE_MEMORY = 1024**3
 ROLE_TMPFS = 512 * 1024**2
 HOST_OVERHEAD = 512 * 1024**2
+EXCHANGE_AUDIT_FIELDS = frozenset(('schemaVersion', 'kind', 'caseId', 'method', 'role',
+    'managerInvocation', 'bootId', 'cgroupIdentity', 'requestDigest', 'responseDigest',
+    'startedMonotonicNs', 'finishedMonotonicNs', 'serverRequests'))
 
 
 def groups():
@@ -198,7 +201,62 @@ def _resource_case(diagnostics, principals):
                      'finishedMonotonicNs': max(w['finishedMonotonicNs'] for w in windows)}
 
 
-def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns, diagnostics=None):
+def _exchange_case(case_id, result, terminal, principals):
+    methods = {'own-management': 'connect-fcp', 'dynamic-app-bootstrap': 'bootstrap-mail'}
+    observed = result.get('controlExchanges')
+    audits = terminal.get('exchangeAudits') if isinstance(terminal, dict) else None
+    if not isinstance(observed, dict) or not isinstance(audits, dict):
+        return None
+    sent, retained = observed.get(case_id), audits.get(case_id)
+    if (not isinstance(sent, dict) or not isinstance(retained, dict)
+            or retained.get('status') != 'captured'
+            or not isinstance(retained.get('record'), dict)):
+        return None
+    audit = retained['record']
+    sender = next((row for row in principals['roles'] if row['role'] == 'candidate-sender'), None)
+    if (set(audit) != EXCHANGE_AUDIT_FIELDS
+            or set(sent) != {'method', 'requestDigest', 'responseDigest'}
+            or sender is None
+            or any(type(audit[key]) is not str for key in
+                   ('kind', 'caseId', 'method', 'role', 'managerInvocation', 'bootId',
+                    'requestDigest', 'responseDigest'))
+            or any(type(sent[key]) is not str for key in
+                   ('method', 'requestDigest', 'responseDigest'))
+            or not isinstance(audit['cgroupIdentity'], list)
+            or len(audit['cgroupIdentity']) != 2
+            or any(type(part) is not int or part < 1 for part in audit['cgroupIdentity'])
+            or audit['schemaVersion'] != 1 or audit['kind'] != 'pr315-fixed-exchange-audit'
+            or audit['caseId'] != case_id or audit['method'] != methods[case_id]
+            or sent['method'] != audit['method'] or audit['role'] != 'candidate-sender'
+            or audit['managerInvocation'] != sender['invocationId']
+            or audit['bootId'].replace('-', '').lower() != sender['bootId']
+            or sender['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                'role': 'candidate-sender', 'identity': audit['cgroupIdentity']})[7:]
+            or any(re.fullmatch('[0-9a-f]{64}', value) is None for value in
+                   (audit['requestDigest'], audit['responseDigest']))
+            or sent['requestDigest'] != audit['requestDigest']
+            or sent['responseDigest'] != audit['responseDigest']
+            or type(audit['serverRequests']) is not int or audit['serverRequests'] != 1):
+        return None
+    window = {'startedMonotonicNs': audit['startedMonotonicNs'],
+              'finishedMonotonicNs': audit['finishedMonotonicNs']}
+    if not _bounded_window(window):
+        return None
+    root_witness = {'caseId': case_id, 'operationDigest': '',
+        'requestDigest': audit['requestDigest'],
+        'expectedResponseDigest': audit['responseDigest'],
+        'responseDigest': audit['responseDigest'],
+        'serverInvocationId': audit['managerInvocation'],
+        'serverRequests': audit['serverRequests']}
+    commitment = acceptance.payload_commitment(case_id, root_witness)
+    witness = dict(root_witness, responseDigest=sent['responseDigest'], operationDigest=commitment)
+    if acceptance.payload_commitment(case_id, witness) != commitment:
+        return None
+    return witness, window, commitment
+
+
+def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns,
+                          diagnostics=None, terminal=None):
     """Build only cases backed by actual host, app and kernel observations."""
     host = report['hostVerifiedIdentity']
     window = result['roleKernelRosterWindow']
@@ -215,6 +273,7 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
     identity['admittedAppDigest'] = fixture['mailDigest'][7:]
     principals = result['roleKernelRoster']
     cases = ['installed-ready', 'four-role-start']
+    commitments = {}
     observations = []
     for case_id, started, finished, witness in (
             ('installed-ready', host_started_ns, host_finished_ns,
@@ -236,6 +295,16 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         observations.append({'caseId': 'signed-apphost-child', 'status': 'passed',
             'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
             **app_window, 'witness': app_process})
+    for case_id in ('own-management', 'dynamic-app-bootstrap'):
+        exchange = _exchange_case(case_id, result, terminal, principals)
+        if exchange is None:
+            continue
+        witness, exchange_window, commitments[case_id] = exchange
+        case = acceptance.CASES[case_id]
+        cases.append(case_id)
+        observations.append({'caseId': case_id, 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **exchange_window, 'witness': witness})
     resources = _resource_case(diagnostics, principals)
     if resources is not None:
         resource_witness, resource_window = resources
@@ -247,7 +316,7 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
     attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
         'declaredCases': cases, 'observations': observations,
         'guestStopped': report['guestStopped'], 'attemptCompleted': True,
-        'principals': principals, 'targets': {}, 'caseCommitments': {},
+        'principals': principals, 'targets': {}, 'caseCommitments': commitments,
         'appProcess': app_process, 'restartContext': None}
     return identity, attempt
 
@@ -356,7 +425,7 @@ def run(args):
                 resources = (native_runner.private_json(diagnostic)
                              if diagnostic.exists() and diagnostic.stat().st_size else None)
                 identity, case_attempt = positive_case_attempt(
-                    report, value, fixture, host_started, host_finished, resources)
+                    report, value, fixture, host_started, host_finished, resources, terminal)
                 checked_cases = acceptance.verify_attempts(identity, [case_attempt])
                 expected = set(case_attempt['declaredCases'])
                 passed = {row['caseId'] for row in checked_cases['cases'] if row['status'] == 'passed'}

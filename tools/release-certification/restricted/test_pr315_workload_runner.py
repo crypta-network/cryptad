@@ -63,6 +63,26 @@ def synthetic_resource_diagnostics(roster):
         for index, row in enumerate(roster['roles'])}}}
 
 
+def synthetic_exchange_audits(roster):
+    """Synthetic root/observer copies with matching digests for offline verifier tests."""
+    audits, observed = {}, {}
+    for index, (case, method) in enumerate((('own-management', 'connect-fcp'),
+                                            ('dynamic-app-bootstrap', 'bootstrap-mail'))):
+        request = format(100 + index, '064x')
+        response = format(200 + index, '064x')
+        audits[case] = {'status': 'captured', 'record': {
+            'schemaVersion': 1, 'kind': 'pr315-fixed-exchange-audit',
+            'caseId': case, 'method': method, 'role': 'candidate-sender',
+            'managerInvocation': roster['roles'][0]['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 99], 'requestDigest': request,
+            'responseDigest': response, 'startedMonotonicNs': 50 + index * 10,
+            'finishedMonotonicNs': 51 + index * 10, 'serverRequests': 1}}
+        observed[case] = {'method': method, 'requestDigest': request,
+                          'responseDigest': response}
+    return audits, observed
+
+
 class RunnerTests(unittest.TestCase):
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
@@ -182,7 +202,34 @@ class RunnerTests(unittest.TestCase):
                                                       diagnostics)
         self.assertNotIn('signed-apphost-child', without_app['declaredCases'])
 
-    def test_installed_transport_path_reaches_four_cases_but_never_full_acceptance(self):
+    def test_controller_exchange_commitments_require_matching_root_and_observer_bytes(self):
+        roster = synthetic_role_kernel_roster()
+        audits, observed = synthetic_exchange_audits(roster)
+        terminal = synthetic_terminal_roster(roster)
+        terminal['exchangeAudits'] = audits
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                  'controlExchanges': observed}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        selection = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selection, 90, 100,
+                                                         terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual({'own-management', 'dynamic-app-bootstrap'},
+                         set(attempt['caseCommitments']))
+        changed = copy.deepcopy(result)
+        changed['controlExchanges']['dynamic-app-bootstrap']['responseDigest'] = '0' * 64
+        _, rejected = runner.positive_case_attempt(report, changed, selection, 90, 100,
+                                                   terminal=terminal)
+        self.assertNotIn('dynamic-app-bootstrap', rejected['declaredCases'])
+        changed_root = copy.deepcopy(terminal)
+        changed_root['exchangeAudits']['own-management']['record']['managerInvocation'] = 'f' * 32
+        _, rejected = runner.positive_case_attempt(report, result, selection, 90, 100,
+                                                   terminal=changed_root)
+        self.assertNotIn('own-management', rejected['declaredCases'])
+
+    def test_installed_transport_path_reaches_six_cases_but_never_full_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             root.chmod(0o700)
@@ -214,6 +261,7 @@ class RunnerTests(unittest.TestCase):
                 'appKernelWindow': {'startedMonotonicNs': 30, 'finishedMonotonicNs': 40},
                 'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
             terminal = synthetic_terminal_roster(roster)
+            terminal['exchangeAudits'], observation['controlExchanges'] = synthetic_exchange_audits(roster)
             def fake_transport(selected):
                 selected.attempt.mkdir(mode=0o700)
                 for name, value in (('attempt.private.json', report),
@@ -235,7 +283,7 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(assessment['installedPositiveExecuted'])
             self.assertFalse(assessment['installedWorkloadAcceptanceSatisfied'])
             self.assertEqual({'installed-ready', 'four-role-start', 'signed-apphost-child',
-                              'kernel-resource-scope'},
+                              'own-management', 'dynamic-app-bootstrap', 'kernel-resource-scope'},
                              {row['caseId'] for row in assessment['cases'] if row['status'] == 'passed'})
             self.assertTrue((args.output / 'positive-v8-evidence.private.json').is_file())
 

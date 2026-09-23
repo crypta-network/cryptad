@@ -950,6 +950,18 @@ QCOW2 backing pair, four-case record and fatal diagnostics, was copied to local 
 retention and passed a recursive checksum dry run. No denial/lifecycle result, original
 protected authority or independent security review follows from this partial acceptance.
 
+The next prospective positive revision adds fixed root-owned exchange audits for the
+existing `connect-fcp` and `bootstrap-mail` controller methods. The controller records only
+exact request/response hashes, current manager/cgroup/boot identity, actual monotonic
+window and one served request; it never retains the Mail session token or a candidate URL.
+The observer separately records hashes of the exact bytes it sent and received. After guest
+shutdown the administrator snapshots the two fixed audit files and checks both sources
+against the current role roster before producing independent v8 case commitments for
+`own-management` and `dynamic-app-bootstrap`. An absent or mismatched audit leaves each
+case inconclusive, and no new control method or arbitrary endpoint selector is introduced.
+Linux protected and restricted offline tests cover fixed dispatch, digest projection and
+tamper rejection; installed execution remains necessary before either case can be credited.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

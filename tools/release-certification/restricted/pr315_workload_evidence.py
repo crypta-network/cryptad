@@ -33,6 +33,10 @@ ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIden
 STOP_FIELDS = ('schemaVersion', 'role', 'campaign', 'generation', 'bootId', 'managerInvocation',
                'cgroupIdentity', 'helperPid', 'helperStartTimeTicks', 'startedMonotonicNs',
                'observedMonotonicNs', 'membership', 'descendantCgroups')
+EXCHANGE_CASES = ('own-management', 'dynamic-app-bootstrap')
+EXCHANGE_FIELDS = ('schemaVersion', 'kind', 'caseId', 'method', 'role', 'managerInvocation',
+                   'bootId', 'cgroupIdentity', 'requestDigest', 'responseDigest',
+                   'startedMonotonicNs', 'finishedMonotonicNs', 'serverRequests')
 
 
 def _digest(raw):
@@ -301,6 +305,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'quiescenceIndependentlyEstablished': False,
         'snapshotLimitations': 'fixed-files-not-atomic-not-runtime-continuation',
         'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {},
+        'exchangeAudits': {case: {'status': 'not-captured-cleanup-unverified'}
+                           for case in EXCHANGE_CASES},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -320,6 +326,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                 receipts['previous'] = _record(root / 'authority', role + '-stop-' + previous + '.json',
                                                STOP_FIELDS, deadline)
             result['stopReceipts'][role] = receipts
+        for case in EXCHANGE_CASES:
+            result['exchangeAudits'][case] = _record(root / 'authority',
+                                                     case + '-exchange.json', EXCHANGE_FIELDS, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

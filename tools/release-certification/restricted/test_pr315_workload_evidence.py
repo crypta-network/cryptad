@@ -42,6 +42,27 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertLess(len(json.dumps(result)), evidence.MAX_OUTPUT)
 
+    def test_fixed_exchange_audits_are_private_bounded_projections_after_cleanup(self):
+        import pr315_workload_runner as runner
+        self.assertEqual(set(evidence.EXCHANGE_FIELDS), runner.EXCHANGE_AUDIT_FIELDS)
+        for case, method in (('own-management', 'connect-fcp'),
+                             ('dynamic-app-bootstrap', 'bootstrap-mail')):
+            (self.root / 'authority' / (case + '-exchange.json')).write_text(json.dumps({
+                'schemaVersion': 1, 'kind': 'pr315-fixed-exchange-audit',
+                'caseId': case, 'method': method, 'role': 'candidate-sender',
+                'managerInvocation': 'a' * 32, 'bootId': 'boot',
+                'cgroupIdentity': [1, 2], 'requestDigest': 'b' * 64,
+                'responseDigest': 'c' * 64, 'startedMonotonicNs': 1,
+                'finishedMonotonicNs': 2, 'serverRequests': 1,
+                'browserSessionToken': 'must-not-copy'}))
+        pending = evidence._capture(self.root, self.expected, False)
+        self.assertEqual({'not-captured-cleanup-unverified'},
+                         {row['status'] for row in pending['exchangeAudits'].values()})
+        result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual({'captured'}, {row['status'] for row in result['exchangeAudits'].values()})
+        self.assertNotIn('must-not-copy', json.dumps(result))
+        self.assertEqual('b' * 64, result['exchangeAudits']['own-management']['record']['requestDigest'])
+
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
         (self.root / 'authority/network.json').write_text(json.dumps({
