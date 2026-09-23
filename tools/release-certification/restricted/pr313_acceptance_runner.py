@@ -160,6 +160,15 @@ def _native_allocated_bytes(root):
         mount = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), fields[4])
         if mount.startswith(prefix) and Path(mount).stat().st_dev != device:
             raise ValueError('pr313-storage-inventory-unavailable')
+    if os.path.ismount(root):
+        # A private storage root that is itself a mount can conservatively charge the
+        # entire filesystem. This includes retained files and metadata, without a
+        # latency-sensitive second walk as the task history grows.
+        usage = os.statvfs(root)
+        if (usage.f_frsize <= 0 or usage.f_blocks <= 0
+                or not 0 <= usage.f_bfree <= usage.f_blocks):
+            raise ValueError('pr313-storage-inventory-unavailable')
+        return (usage.f_blocks - usage.f_bfree) * usage.f_frsize
     try:
         result = subprocess.run(['/usr/bin/du', '-slx', '--block-size=1', '--null', '--', str(root)],
             stdin=subprocess.DEVNULL, capture_output=True, timeout=30, check=True,

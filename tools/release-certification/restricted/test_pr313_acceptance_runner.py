@@ -68,6 +68,24 @@ class AcceptanceRunnerTest(unittest.TestCase):
                     runner.allocated_bytes(root)
                 native.assert_not_called()
 
+    def test_private_mountpoint_charges_whole_filesystem_without_a_second_walk(self):
+        if not Path('/proc/self/mountinfo').is_file():
+            self.skipTest('mounted task inventory requires Linux mountinfo')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'task'
+            root.mkdir()
+            usage = SimpleNamespace(f_frsize=4096, f_blocks=100, f_bfree=30)
+            with patch.object(runner.os.path, 'ismount', return_value=True), \
+                    patch.object(runner.os, 'statvfs', return_value=usage), \
+                    patch.object(runner.subprocess, 'run') as native:
+                self.assertEqual(70 * 4096, runner.allocated_bytes(root))
+                native.assert_not_called()
+            usage.f_bfree = 101
+            with patch.object(runner.os.path, 'ismount', return_value=True), \
+                    patch.object(runner.os, 'statvfs', return_value=usage):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    runner.allocated_bytes(root)
+
     def test_budget_and_free_space_reserve_are_independent_admission_requirements(self):
         args = SimpleNamespace(storage_budget_bytes=1000, min_free_bytes=200)
         with patch.object(runner, 'allocated_bytes', return_value=800), \

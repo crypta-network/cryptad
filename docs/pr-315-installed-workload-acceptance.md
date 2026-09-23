@@ -908,6 +908,23 @@ device before using `du -x`. Non-Linux behavior retains the original walk. The f
 directory is retained separately; fresh exact-source fixture and no-VM admission remain
 required before another guest.
 
+Subsequent unchanged no-VM probes showed that even the native `du` fallback could hit its
+30-second bound intermittently on the growing ZFS tree; a direct diagnostic retained a
+`TimeoutExpired` cause. A different probe completed admission, and formal attempt 37
+allocated a VM, but its guest did not reach SSH readiness within the original 180-second
+boot window. It stopped at `guest-boot` without any workload case execution; its stopped
+private boot evidence and same-attempt disk pair were retained. This is separate from the
+capacity-inventory failure.
+
+The task root is itself a mounted, private ZFS filesystem. A prospective refinement first
+rejects any nested foreign-device mount, then charges the entire mounted filesystem's
+allocated usage from `statvfs` rather than walking retained files. On this dedicated mount,
+that constant-time figure was conservative relative to the earlier complete `du` count;
+it includes filesystem metadata and all retained task inputs. Non-mount Linux roots keep
+the bounded hardlink-counting `du` path, and non-Linux roots keep the earlier Python walk.
+No storage budget, free-space reserve, guest boot deadline or campaign deadline was raised.
+The refinement needs a fresh exact-source fixture and no-VM admission before another guest.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
