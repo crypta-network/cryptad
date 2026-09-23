@@ -243,6 +243,28 @@ class ObserverPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-daemon-epoch-changed'):
             adapter.observe('candidate-sender')
 
+    def test_installed_chk_selection_is_public_and_charged_once(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.plan = {'producer': {'sourceCommit': 'a' * 40}}
+        adapter.next_operation = mock.Mock(return_value='op-' + 'b' * 32)
+        with mock.patch.object(workload.runtime.Supervisor, 'content') as content:
+            adapter.content_chk()
+        adapter.next_operation.assert_called_once_with()
+        self.assertEqual('op-' + 'b' * 32, content.call_args.kwargs['operation'])
+        self.assertEqual(workload.runtime.fixed_pr315_payload('a' * 40, 'op-' + 'b' * 32),
+                         content.call_args.kwargs['payload'])
+
+    def test_fnp_probe_uses_only_current_recipient_handle_and_phase(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.handles = {'candidate-recipient': HANDLE}
+        adapter.nodes = {'candidate-recipient': dict(EPOCH)}
+        value = {'phase': 'before', 'managerInvocation': EPOCH['managerInvocation'],
+                 'snapshot': {'observedMonotonicNs': 10}}
+        adapter.control = types.SimpleNamespace(request=mock.Mock(return_value=value))
+        self.assertEqual(value, adapter._fnp_sample('before'))
+        adapter.control.request.assert_called_once_with('observe-fnp', HANDLE)
+        self.assertIsNone(adapter._fnp_sample('after'))
+
     def test_positive_result_requires_final_sample_of_each_running_daemon(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {'candidate-sender': dict(EPOCH)}
@@ -257,15 +279,16 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
                                                                'managerInvocation': 'f' * 32})
+        adapter.content_chk = mock.Mock()
+        adapter._fnp_sample = mock.Mock(return_value=None)
         adapter.cleanup = mock.Mock(return_value='complete')
         def observe(role):
             if role == 'previous':
                 raise workload.runtime.RuntimeFailure('role-daemon-epoch-changed')
         adapter.observe = mock.Mock(side_effect=observe)
-        with mock.patch.object(workload.runtime.Supervisor, 'content') as content:
-            with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-daemon-epoch-changed'):
-                adapter.run_positive()
-        self.assertEqual(2, content.call_count)
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'role-daemon-epoch-changed'):
+            adapter.run_positive()
+        self.assertEqual(2, adapter.content_chk.call_count)
         self.assertEqual([mock.call('candidate-sender'), mock.call('candidate-recipient'),
                           mock.call('previous')], adapter.observe.call_args_list)
         adapter.cleanup.assert_called_once_with()

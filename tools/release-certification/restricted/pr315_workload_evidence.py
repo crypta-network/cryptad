@@ -37,6 +37,8 @@ EXCHANGE_CASES = ('own-management', 'dynamic-app-bootstrap')
 EXCHANGE_FIELDS = ('schemaVersion', 'kind', 'caseId', 'method', 'role', 'managerInvocation',
                    'bootId', 'cgroupIdentity', 'requestDigest', 'responseDigest',
                    'startedMonotonicNs', 'finishedMonotonicNs', 'serverRequests')
+FNP_COUNTER_NAMES = frozenset({*(f'fnp_role{index}_to_relay' for index in range(3)),
+                               *(f'fnp_relay_to_role{index}' for index in range(3))})
 
 
 def _digest(raw):
@@ -292,6 +294,52 @@ def _observer_fcp_log(root, role, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _fnp_counter_pair(root, deadline):
+    """Project only the fixed, root-owned six-link counter pair after cleanup."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'fnp-content-probe.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'caseId', 'role',
+                                  'managerInvocation', 'before', 'after'}
+                or value['schemaVersion'] != 1 or value['kind'] != 'pr315-fnp-counter-pair'
+                or value['caseId'] != 'fnp-content-retrieval'
+                or value['role'] != 'candidate-recipient'
+                or re.fullmatch('[0-9a-f]{32}', str(value['managerInvocation'])) is None):
+            raise ValueError('fnp-counter-pair-invalid')
+        before, after = value['before'], value['after']
+        for sample in (before, after):
+            if (not isinstance(sample, dict)
+                    or set(sample) != {'schemaVersion', 'kind', 'policyDigest', 'bootId',
+                                      'switchNamespaceIdentity', 'observedMonotonicNs', 'counters'}
+                    or sample['schemaVersion'] != 1 or sample['kind'] != 'pr315-fixed-fnp-counters'
+                    or re.fullmatch('[0-9a-f]{64}', str(sample['policyDigest'])) is None
+                    or not isinstance(sample['bootId'], str)
+                    or not isinstance(sample['switchNamespaceIdentity'], list)
+                    or len(sample['switchNamespaceIdentity']) != 2
+                    or any(type(part) is not int or part < 1 for part in sample['switchNamespaceIdentity'])
+                    or type(sample['observedMonotonicNs']) is not int or sample['observedMonotonicNs'] <= 0
+                    or not isinstance(sample['counters'], dict)
+                    or set(sample['counters']) != FNP_COUNTER_NAMES):
+                raise ValueError('fnp-counter-sample-invalid')
+            for counter in sample['counters'].values():
+                if (not isinstance(counter, dict) or set(counter) != {'packets', 'bytes'}
+                        or any(type(counter[key]) is not int or counter[key] < 0
+                               for key in ('packets', 'bytes'))):
+                    raise ValueError('fnp-counter-value-invalid')
+        if (any(before[key] != after[key] for key in
+                ('policyDigest', 'bootId', 'switchNamespaceIdentity'))
+                or before['observedMonotonicNs'] >= after['observedMonotonicNs']):
+            raise ValueError('fnp-counter-epoch-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -307,6 +355,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'sentinel': {'status': 'not-captured-cleanup-unverified'}, 'controllerRecords': {},
         'exchangeAudits': {case: {'status': 'not-captured-cleanup-unverified'}
                            for case in EXCHANGE_CASES},
+        'fnpCounterPair': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -329,6 +378,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         for case in EXCHANGE_CASES:
             result['exchangeAudits'][case] = _record(root / 'authority',
                                                      case + '-exchange.json', EXCHANGE_FIELDS, deadline)
+        result['fnpCounterPair'] = _fnp_counter_pair(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

@@ -201,6 +201,16 @@ def canonical_digest(value):
                                                  allow_nan=False).encode()).hexdigest()
 
 
+def fixed_pr315_payload(helper_commit, operation):
+    """Derive public synthetic CHK bytes from the pinned helper and one fresh operation."""
+    if (not isinstance(helper_commit, str) or re.fullmatch('[0-9a-f]{40}', helper_commit) is None
+            or not isinstance(operation, str)
+            or re.fullmatch('op-[0-9a-f]{32}', operation) is None):
+        raise RuntimeFailure('fixed-content-selection-invalid')
+    digest = hashlib.sha256((helper_commit + ':' + operation).encode('ascii')).hexdigest()
+    return ('PUBLIC SYNTHETIC PR315 CHK ' + digest).encode('ascii')
+
+
 def tree_digest(root, require_java=True):
     """Bind the complete executable runtime, refusing links outside the selected runtime."""
     root = Path(root).resolve(strict=True)
@@ -1770,9 +1780,19 @@ class Supervisor:
             raise RuntimeFailure("operation-budget-exceeded")
         return "op-" + uuid.uuid4().hex
 
-    def content(self, source, recipient, scenario="network-chk", *, verify_local_source=False):
-        operation = self.next_operation()
-        payload = ("PUBLIC SYNTHETIC CROSS-VERSION " + uuid.uuid4().hex).encode("ascii")
+    def content(self, source, recipient, scenario="network-chk", *, verify_local_source=False,
+                operation=None, payload=None):
+        selected = operation is not None or payload is not None
+        if selected:
+            if (scenario != 'network-chk' or not verify_local_source
+                    or not isinstance(operation, str)
+                    or re.fullmatch('op-[0-9a-f]{32}', operation) is None
+                    or not isinstance(payload, bytes) or not 1 <= len(payload) <= 1024 * 1024):
+                raise RuntimeFailure('fixed-content-selection-invalid')
+        else:
+            operation = self.next_operation()
+            payload = ("PUBLIC SYNTHETIC CROSS-VERSION " + uuid.uuid4().hex).encode("ascii")
+        started_ns = time.monotonic_ns()
         uri = "CHK@"
         with absolute_deadline(self.remaining(180)), self.client(source) as sender, self.client(recipient) as receiver:
             if scenario != "network-chk":
@@ -1798,6 +1818,16 @@ class Supervisor:
             actual = interop.fetch_direct(receiver, operation + "-fetch", reference, 120, ignore_ds=True)
             if actual != payload:
                 raise RuntimeFailure("cross-node-content-mismatch")
+            if selected:
+                finished_ns = time.monotonic_ns()
+                request = interop.build_client_get_fields(operation + '-fetch', reference, ignore_ds=True)
+                self.content_evidence = {'source': source, 'recipient': recipient,
+                    'operation': operation, 'referenceDigest': hashlib.sha256(reference.encode()).hexdigest(),
+                    'requestDigest': canonical_digest(request)[7:],
+                    'payloadDigest': hashlib.sha256(payload).hexdigest(),
+                    'sourceControlDigest': hashlib.sha256(control.payload).hexdigest(),
+                    'responseDigest': hashlib.sha256(actual).hexdigest(), 'bytes': len(payload),
+                    'startedMonotonicNs': started_ns, 'finishedMonotonicNs': finished_ns}
             if scenario == "network-usk":
                 later = payload + b" edition-one"
                 edition = interop.usk_from_ssk(insert, operation, 1)

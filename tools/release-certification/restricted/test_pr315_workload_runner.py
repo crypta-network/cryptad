@@ -1,6 +1,8 @@
 """Offline orchestration regression tests; they do not execute installed acceptance."""
+import base64
 from contextlib import redirect_stdout
 import copy
+import hashlib
 import io
 import json
 import os
@@ -81,6 +83,47 @@ def synthetic_exchange_audits(roster):
         observed[case] = {'method': method, 'requestDigest': request,
                           'responseDigest': response}
     return audits, observed
+
+
+def synthetic_fnp_observation(roster, helper_commit):
+    """Offline fixed CHK transcript and six-link root counter pair only."""
+    operation = 'op-' + 'c' * 32
+    uri = 'CHK@synthetic-fixed-reference'
+    payload = runner.fixtures.runtime.fixed_pr315_payload(helper_commit, operation)
+    fields = runner.fixtures.runtime.interop.build_client_get_fields(
+        operation + '-fetch', uri, ignore_ds=True)
+    text = ('[synthetic] SEND ClientGet\n'
+            + ''.join(f'{key}={value}\n' for key, value in fields.items())
+            + 'EndMessage\n[synthetic] RECV AllData\n'
+            + f'Identifier={operation}-fetch\nDataLength={len(payload)}\nData\n'
+            + f'PayloadLength={len(payload)}\nPayloadBase64={base64.b64encode(payload).decode()}\n')
+    recipient = roster['roles'][1]
+    names = runner.workload_network.FNP_COUNTERS
+    before = {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+              'policyDigest': hashlib.sha256(runner.workload_network.switch_rules().encode()).hexdigest(),
+              'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': 10,
+              'counters': {name: {'packets': 1, 'bytes': 100} for name in names.values()}}
+    after = copy.deepcopy(before)
+    after['observedMonotonicNs'] = 100
+    for link in (('candidate-recipient', 'relay-no-apps'),
+                 ('relay-no-apps', 'candidate-sender'),
+                 ('candidate-sender', 'relay-no-apps'),
+                 ('relay-no-apps', 'candidate-recipient')):
+        after['counters'][names[link]] = {'packets': 2, 'bytes': 200}
+    root = {'schemaVersion': 1, 'kind': 'pr315-fnp-counter-pair',
+            'caseId': 'fnp-content-retrieval', 'role': 'candidate-recipient',
+            'managerInvocation': recipient['invocationId'], 'before': before, 'after': after}
+    observed = {phase: {'phase': phase, 'managerInvocation': recipient['invocationId'],
+                        'snapshot': snapshot} for phase, snapshot in (('before', before), ('after', after))}
+    content = {'source': 'candidate-sender', 'recipient': 'candidate-recipient',
+               'operation': operation, 'referenceDigest': hashlib.sha256(uri.encode()).hexdigest(),
+               'requestDigest': runner.fixtures.runtime.canonical_digest(fields)[7:],
+               'payloadDigest': hashlib.sha256(payload).hexdigest(),
+               'sourceControlDigest': hashlib.sha256(payload).hexdigest(),
+               'responseDigest': hashlib.sha256(payload).hexdigest(), 'bytes': len(payload),
+               'startedMonotonicNs': 20, 'finishedMonotonicNs': 80}
+    return root, observed, content, text
 
 
 class RunnerTests(unittest.TestCase):
@@ -264,6 +307,42 @@ class RunnerTests(unittest.TestCase):
         _, rejected = runner.positive_case_attempt(report, result,
             {'mailDigest': 'sha256:' + '5' * 64}, 100, 110, terminal=changed)
         self.assertNotIn('restart-durable-state', rejected['declaredCases'])
+
+    def test_fnp_case_requires_actual_payload_and_all_four_directional_counter_deltas(self):
+        roster = synthetic_role_kernel_roster()
+        host = synthetic_host_identity()
+        root, observed, content, transcript = synthetic_fnp_observation(roster,
+                                                                          host['helperSourceCommit'])
+        terminal = synthetic_terminal_roster(roster)
+        terminal['fnpCounterPair'] = {'status': 'captured', 'record': root}
+        terminal['observerFcpLogs'] = {'candidate-recipient': {'status': 'captured',
+            'tailBase64': base64.b64encode(transcript.encode()).decode(),
+            'tailBytes': len(transcript.encode())}}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1, 'finishedMonotonicNs': 2},
+                  'fnpCounterPair': observed, 'contentEvidence': content}
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        selected = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selected, 110, 120,
+                                                          terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('fnp-content-retrieval', attempt['declaredCases'])
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        bad_route = copy.deepcopy(terminal)
+        name = runner.workload_network.FNP_COUNTERS[('relay-no-apps', 'candidate-sender')]
+        bad_route['fnpCounterPair']['record']['after']['counters'][name] = {'packets': 1, 'bytes': 100}
+        matched_bad_route = copy.deepcopy(result)
+        matched_bad_route['fnpCounterPair']['after']['snapshot']['counters'][name] = {
+            'packets': 1, 'bytes': 100}
+        _, rejected = runner.positive_case_attempt(report, matched_bad_route, selected, 110, 120,
+                                                   terminal=bad_route)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
+        changed = copy.deepcopy(result)
+        changed['contentEvidence']['responseDigest'] = '0' * 64
+        _, rejected = runner.positive_case_attempt(report, changed, selected, 110, 120,
+                                                   terminal=terminal)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
 
     def test_installed_transport_path_reaches_six_cases_but_never_full_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:

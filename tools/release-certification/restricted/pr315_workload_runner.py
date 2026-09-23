@@ -7,8 +7,10 @@ hostile emitters remain explicitly unexecuted. No stored report can be imported 
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import redirect_stdout
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +24,7 @@ import pr312_reference_vm as reference
 import pr313_acceptance_runner as native_runner
 import pr314_acceptance as acceptance
 import pr315_workload_fixtures as fixtures
+import restricted_workload_network as workload_network
 from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS
 
 GUEST_MEMORY = 5632 * 1024**2
@@ -293,6 +296,137 @@ def _restart_case(result, terminal, principals):
     return witness, window, context
 
 
+def _fcp_fields(lines):
+    fields = {}
+    for line in lines:
+        if '=' not in line:
+            return None
+        key, value = line.split('=', 1)
+        if not key or len(key) > 64 or len(value) > 4096 or key in fields:
+            return None
+        fields[key] = value
+    return fields
+
+
+def _recipient_content_from_tail(terminal, operation):
+    try:
+        captured = terminal['observerFcpLogs']['candidate-recipient']
+        if captured['status'] != 'captured':
+            return None
+        raw = base64.b64decode(captured['tailBase64'], validate=True)
+        if len(raw) != captured['tailBytes'] or len(raw) > 2048:
+            return None
+        transcript = raw.decode('utf-8')
+        selected = []
+        for match in re.finditer(r'\] SEND ClientGet\n(.*?)EndMessage\n', transcript, re.S):
+            fields = _fcp_fields(match[1].splitlines())
+            if fields is not None and fields.get('Identifier') == operation + '-fetch':
+                selected.append((fields, match.end()))
+        if len(selected) != 1:
+            return None
+        fields, end = selected[0]
+        uri = fields.get('URI', '')
+        if (not uri.startswith('CHK@') or fields != fixtures.runtime.interop.build_client_get_fields(
+                operation + '-fetch', uri, ignore_ds=True)):
+            return None
+        later = transcript[end:]
+        data_at = later.find('] RECV AllData\n')
+        if data_at < 0 or '] RECV GetFailed\n' in later[:data_at]:
+            return None
+        body = later[data_at + len('] RECV AllData\n'):]
+        header, separator, payload_section = body.partition('\nData\n')
+        if not separator:
+            return None
+        values = _fcp_fields(header.splitlines())
+        payload_fields = _fcp_fields(payload_section.splitlines()[:2])
+        if (values is None or payload_fields is None
+                or values.get('Identifier') != operation + '-fetch'
+                or not values.get('DataLength', '').isdigit()
+                or not payload_fields.get('PayloadLength', '').isdigit()
+                or set(payload_fields) != {'PayloadLength', 'PayloadBase64'}):
+            return None
+        payload = base64.b64decode(payload_fields['PayloadBase64'], validate=True)
+        if (not 1 <= len(payload) <= 1024 * 1024
+                or len(payload) != int(values['DataLength'])
+                or len(payload) != int(payload_fields['PayloadLength'])):
+            return None
+        return {'requestDigest': fixtures.runtime.canonical_digest(fields)[7:],
+                'responseDigest': hashlib.sha256(payload).hexdigest(),
+                'referenceDigest': hashlib.sha256(uri.encode()).hexdigest(),
+                'bytes': len(payload)}
+    except (AttributeError, KeyError, TypeError, ValueError, UnicodeError):
+        return None
+
+
+def _fnp_case(result, terminal, identity, principals):
+    content = result.get('contentEvidence')
+    observed_pair = result.get('fnpCounterPair')
+    if (not isinstance(content, dict) or not isinstance(observed_pair, dict)
+            or not isinstance(terminal, dict)):
+        return None
+    try:
+        operation = content['operation']
+        if (not isinstance(operation, str) or re.fullmatch('op-[0-9a-f]{32}', operation) is None
+                or content['source'] != 'candidate-sender'
+                or content['recipient'] != 'candidate-recipient'):
+            return None
+        root_bytes = _recipient_content_from_tail(terminal, operation)
+        expected = fixtures.runtime.fixed_pr315_payload(identity['helperSourceCommit'], operation)
+        expected_digest = hashlib.sha256(expected).hexdigest()
+        if (root_bytes is None or root_bytes['bytes'] != len(expected)
+                or any(content[key] != root_bytes[key] for key in
+                       ('requestDigest', 'responseDigest', 'referenceDigest', 'bytes'))
+                or any(content[key] != expected_digest for key in
+                       ('payloadDigest', 'sourceControlDigest', 'responseDigest'))):
+            return None
+        retained = terminal['fnpCounterPair']
+        if retained['status'] != 'captured':
+            return None
+        pair = retained['record']
+        recipient = next(row for row in principals['roles'] if row['role'] == 'candidate-recipient')
+        if (pair['caseId'] != 'fnp-content-retrieval' or pair['role'] != 'candidate-recipient'
+                or pair['managerInvocation'] != recipient['invocationId']
+                or set(observed_pair) != {'before', 'after'}):
+            return None
+        before, after = pair['before'], pair['after']
+        for phase, sample in (('before', before), ('after', after)):
+            observed = observed_pair[phase]
+            if (not isinstance(observed, dict)
+                    or observed != {'phase': phase, 'managerInvocation': recipient['invocationId'],
+                                    'snapshot': sample}
+                    or sample['policyDigest'] != hashlib.sha256(
+                        workload_network.switch_rules().encode()).hexdigest()
+                    or sample['bootId'].replace('-', '').lower() != recipient['bootId']):
+                return None
+        window = {'startedMonotonicNs': before['observedMonotonicNs'],
+                  'finishedMonotonicNs': after['observedMonotonicNs']}
+        if (not _bounded_window(window)
+                or not window['startedMonotonicNs'] < content['startedMonotonicNs']
+                    < content['finishedMonotonicNs'] < window['finishedMonotonicNs']):
+            return None
+        for link in (('candidate-recipient', 'relay-no-apps'),
+                     ('relay-no-apps', 'candidate-sender'),
+                     ('candidate-sender', 'relay-no-apps'),
+                     ('relay-no-apps', 'candidate-recipient')):
+            name = workload_network.FNP_COUNTERS[link]
+            if any(after['counters'][name][key] <= before['counters'][name][key]
+                   for key in ('packets', 'bytes')):
+                return None
+    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+    root_witness = {'caseId': 'fnp-content-retrieval', 'operationDigest': '',
+        'requestDigest': root_bytes['requestDigest'],
+        'expectedResponseDigest': expected_digest,
+        'responseDigest': root_bytes['responseDigest'],
+        'serverInvocationId': recipient['invocationId'], 'serverRequests': 1}
+    commitment = acceptance.payload_commitment('fnp-content-retrieval', root_witness)
+    witness = dict(root_witness, requestDigest=content['requestDigest'],
+                   responseDigest=content['responseDigest'], operationDigest=commitment)
+    if acceptance.payload_commitment('fnp-content-retrieval', witness) != commitment:
+        return None
+    return witness, window, commitment
+
+
 def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns,
                           diagnostics=None, terminal=None):
     """Build only cases backed by actual host, app and kernel observations."""
@@ -343,6 +477,14 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         observations.append({'caseId': case_id, 'status': 'passed',
             'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
             **exchange_window, 'witness': witness})
+    fnp = _fnp_case(result, terminal, identity, principals)
+    if fnp is not None:
+        witness, fnp_window, commitments['fnp-content-retrieval'] = fnp
+        case = acceptance.CASES['fnp-content-retrieval']
+        cases.append('fnp-content-retrieval')
+        observations.append({'caseId': 'fnp-content-retrieval', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **fnp_window, 'witness': witness})
     resources = _resource_case(diagnostics, principals)
     if resources is not None:
         resource_witness, resource_window = resources

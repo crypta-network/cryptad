@@ -573,3 +573,45 @@ def connect(handle, endpoint):
         except BaseException:
             result.close()
             raise
+
+
+def observe_fnp(handle):
+    """Bind two fixed bridge counter samples to one current recipient invocation."""
+    with locked():
+        campaign, role, record = retained(handle)
+        if role != 'candidate-recipient':
+            reject('fnp-observer-role-invalid')
+        admit(campaign)
+        exact(role, record, manager(role, 'show'))
+        from restricted_workload_network import read_fnp_counters
+        sample = read_fnp_counters()
+        exact(role, record, manager(role, 'show'))
+        current(campaign)
+        path = ROOT / 'authority/fnp-content-probe.json'
+        if not os.path.lexists(path):
+            value = {'schemaVersion': 1, 'kind': 'pr315-fnp-counter-pair',
+                'caseId': 'fnp-content-retrieval', 'role': role,
+                'managerInvocation': record['managerInvocation'],
+                'before': sample, 'after': None}
+            write(path, value, create=True)
+            phase = 'before'
+        else:
+            value = read(path)
+            before = value.get('before') if isinstance(value, dict) else None
+            if (not isinstance(value, dict)
+                    or set(value) != {'schemaVersion', 'kind', 'caseId', 'role',
+                                      'managerInvocation', 'before', 'after'}
+                    or value['schemaVersion'] != 1 or value['kind'] != 'pr315-fnp-counter-pair'
+                    or value['caseId'] != 'fnp-content-retrieval' or value['role'] != role
+                    or value['managerInvocation'] != record['managerInvocation']
+                    or value['after'] is not None or not isinstance(before, dict)
+                    or any(before.get(key) != sample.get(key) for key in
+                           ('policyDigest', 'bootId', 'switchNamespaceIdentity'))
+                    or type(before.get('observedMonotonicNs')) is not int
+                    or before['observedMonotonicNs'] >= sample['observedMonotonicNs']):
+                reject('fnp-counter-pair-invalid')
+            value['after'] = sample
+            write(path, value)
+            phase = 'after'
+        return {'phase': phase, 'managerInvocation': record['managerInvocation'],
+                'snapshot': sample}

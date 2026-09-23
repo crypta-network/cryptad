@@ -27,7 +27,8 @@ import cross_version_runtime as runtime
 PROFILE = 'debian13-systemd257-workload-v1'
 SOCKET = '/run/cryptad-workload/control.sock'
 MAX_RESPONSE = 1024 * 1024
-METHODS = {'start', 'observe', 'stop', 'connect-fcp', 'connect-http', 'bootstrap-mail'}
+METHODS = {'start', 'observe', 'observe-fnp', 'stop', 'connect-fcp',
+           'connect-http', 'bootstrap-mail'}
 EPOCH = ('handle', 'generation', 'managerInvocation', 'bootId')
 
 
@@ -538,6 +539,25 @@ class InstalledWorkloadAdapter:
                 runtime.interop.add_peer(peer, 'peer-add', node)
                 runtime.interop.wait_for_peer_connection(client, peer, node['identity'], relay['identity'], 150)
 
+    def content_chk(self):
+        """Insert only the helper-bound public CHK selected for this installed operation."""
+        operation = self.next_operation()
+        payload = runtime.fixed_pr315_payload(self.plan['producer']['sourceCommit'], operation)
+        return runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient',
+            verify_local_source=True, operation=operation, payload=payload)
+
+    def _fnp_sample(self, phase):
+        try:
+            value = self.control.request('observe-fnp', self.handles['candidate-recipient'])
+        except (OSError, runtime.RuntimeFailure):
+            return None
+        if (not isinstance(value, dict) or set(value) != {'phase', 'managerInvocation', 'snapshot'}
+                or value['phase'] != phase
+                or value['managerInvocation'] != self.nodes['candidate-recipient']['managerInvocation']
+                or not isinstance(value['snapshot'], dict)):
+            return None
+        return value
+
     def provision_apps(self):
         for role in runtime.ROLES:
             handle = InstalledAppHandle(self, role)
@@ -651,13 +671,15 @@ class InstalledWorkloadAdapter:
                 self.start(role)
             self.connect()
             self.provision_apps()
-            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
+            self.content_chk()
             before = dict(self.nodes['candidate-sender'])
             after = self.restart_with_witness('candidate-sender')
             new_epoch = (before['generation'] != after['generation']
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
-            runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
+            before_fnp = self._fnp_sample('before')
+            self.content_chk()
+            after_fnp = self._fnp_sample('after') if before_fnp is not None else None
             app_started = time.monotonic_ns()
             app_worker = self.apps[('candidate-sender', 'mail-prototype')].observe_worker()
             app_finished = time.monotonic_ns()
@@ -682,6 +704,9 @@ class InstalledWorkloadAdapter:
                     'appKernelWindow': {'startedMonotonicNs': app_started,
                                         'finishedMonotonicNs': app_finished},
                     'controlExchanges': dict(self.control_exchanges),
+                    'contentEvidence': getattr(self, 'content_evidence', None),
+                    'fnpCounterPair': ({'before': before_fnp, 'after': after_fnp}
+                                       if before_fnp is not None and after_fnp is not None else None),
                     'restartContext': self.restart_context,
                     'restartWindow': self.restart_window,
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),

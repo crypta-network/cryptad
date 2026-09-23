@@ -7,6 +7,7 @@ additional check, not a replacement. Partial setup is retained and never automat
 This module grants no external RPC and does not authenticate original workload authorization.
 """
 import array
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,11 @@ SWITCH = 'cryptad-role-switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
 MAX_STATE_BYTES = 8192
+FNP_COUNTERS = {
+    **{(role, ROLES[-1]): 'fnp_role' + str(index) + '_to_relay'
+       for index, role in enumerate(ROLES[:-1])},
+    **{(ROLES[-1], role): 'fnp_relay_to_role' + str(index)
+       for index, role in enumerate(ROLES[:-1])}}
 
 
 class NetworkBoundaryError(ValueError):
@@ -170,6 +176,7 @@ def role_rules(role):
 
 def switch_rules():
     lines = ['table bridge cryptad_switch {',
+             *(f' counter {name} {{ }}' for name in FNP_COUNTERS.values()),
              ' chain input { type filter hook input priority 0; policy drop; }',
              ' chain output { type filter hook output priority 0; policy drop; }',
              ' chain forward { type filter hook forward priority 0; policy drop;']
@@ -180,8 +187,45 @@ def switch_rules():
             lines.append(prefix + 'ether type arp accept')
             lines.append(prefix + f'ether type ip ip saddr {address(src_role)} '
                          f'ip daddr {address(dst_role)} ip protocol udp '
-                         f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept')
+                         f'udp sport {FNP_PORT} udp dport {FNP_PORT} '
+                         f'counter name {FNP_COUNTERS[(src_role, dst_role)]} accept')
     return '\n'.join([*lines, ' }', '}', ''])
+
+
+def read_fnp_counters():
+    """Read only the six fixed permitted bridge links and their retained nsfs owner."""
+    state = _load()
+    if state['phase'] != 'ready' or state['pending'] is not None:
+        _reject()
+    identity = _namespace_identity(SWITCH)
+    raw = _run([IP, 'netns', 'exec', SWITCH, NFT, '-j', 'list', 'counters',
+                'table', 'bridge', SWITCH])
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict) or set(parsed) != {'nftables'} or not isinstance(parsed['nftables'], list):
+            _reject()
+        counters = {}
+        for entry in parsed['nftables']:
+            if not isinstance(entry, dict) or len(entry) != 1:
+                _reject()
+            if 'metainfo' in entry:
+                continue
+            counter = entry.get('counter')
+            if (not isinstance(counter, dict) or counter.get('family') != 'bridge'
+                    or counter.get('table') != SWITCH or counter.get('name') not in FNP_COUNTERS.values()
+                    or counter['name'] in counters
+                    or any(type(counter.get(key)) is not int or counter[key] < 0
+                           for key in ('packets', 'bytes'))):
+                _reject()
+            counters[counter['name']] = {'packets': counter['packets'], 'bytes': counter['bytes']}
+        if set(counters) != set(FNP_COUNTERS.values()) or _namespace_identity(SWITCH) != identity:
+            _reject()
+        return {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+                'policyDigest': hashlib.sha256(switch_rules().encode()).hexdigest(),
+                'bootId': _boot(), 'switchNamespaceIdentity': identity,
+                'observedMonotonicNs': time.monotonic_ns(), 'counters': counters}
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        _reject()
 
 
 def setup():

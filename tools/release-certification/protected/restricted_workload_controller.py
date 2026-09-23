@@ -28,7 +28,8 @@ import restricted_workload as workload
 SOCKET = Path('/run/cryptad-workload/control.sock')
 STARTUP = Path('/run/cryptad-workload/startup.json')
 STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
-METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp', 'connect-http', 'bootstrap-mail'})
+METHODS = frozenset({'start', 'observe', 'observe-fnp', 'stop', 'connect-fcp',
+                     'connect-http', 'bootstrap-mail'})
 EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
 
 
@@ -198,6 +199,7 @@ def serve(connection, expected_uid):
             connection.sendmsg([response_raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
     else:
         operation = {'start': workload.start, 'stop': workload.stop, 'observe': workload.observe,
+                     'observe-fnp': workload.observe_fnp,
                      'bootstrap-mail': bootstrap}[method]
         result = operation(handle)
         response_raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'

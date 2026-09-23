@@ -11,7 +11,9 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'protected'))
 import pr315_workload_evidence as evidence
+import restricted_workload_network as network
 
 
 class VolatileEvidenceTest(unittest.TestCase):
@@ -62,6 +64,28 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual({'captured'}, {row['status'] for row in result['exchangeAudits'].values()})
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertEqual('b' * 64, result['exchangeAudits']['own-management']['record']['requestDigest'])
+
+    def test_fnp_counter_pair_requires_same_fixed_policy_and_six_links(self):
+        self.assertEqual(set(network.FNP_COUNTERS.values()), evidence.FNP_COUNTER_NAMES)
+        def sample(moment):
+            return {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+                    'policyDigest': 'a' * 64, 'bootId': 'boot',
+                    'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': moment,
+                    'counters': {name: {'packets': 2, 'bytes': 200}
+                                 for name in evidence.FNP_COUNTER_NAMES}}
+        pair = {'schemaVersion': 1, 'kind': 'pr315-fnp-counter-pair',
+                'caseId': 'fnp-content-retrieval', 'role': 'candidate-recipient',
+                'managerInvocation': 'b' * 32, 'before': sample(10), 'after': sample(20)}
+        path = self.root / 'authority/fnp-content-probe.json'
+        path.write_text(json.dumps(pair))
+        self.assertEqual('not-captured-cleanup-unverified',
+                         evidence._capture(self.root, self.expected, False)['fnpCounterPair']['status'])
+        self.assertEqual('captured', evidence._capture(self.root, self.expected, True)[
+            'fnpCounterPair']['status'])
+        pair['after']['switchNamespaceIdentity'] = [1, 43]
+        path.write_text(json.dumps(pair))
+        self.assertEqual('unavailable-or-unsafe', evidence._capture(self.root, self.expected, True)[
+            'fnpCounterPair']['status'])
 
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()

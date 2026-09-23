@@ -2,6 +2,7 @@
 import copy
 import array
 import importlib.util
+import json
 import os
 from pathlib import Path
 import socket
@@ -51,6 +52,32 @@ class NetworkPolicyTests(unittest.TestCase):
         self.assertNotIn('iifname "sw0" oifname "sw1"', rules)
         self.assertEqual(rules.count('ether type arp accept'), 6)
         self.assertEqual(rules.count('udp sport 19400 udp dport 19400'), 6)
+        self.assertEqual(rules.count('counter name fnp_'), 6)
+        for name in network.FNP_COUNTERS.values():
+            self.assertIn(f'counter {name} {{ }}', rules)
+
+    def test_fixed_fnp_counter_read_rejects_missing_or_substituted_links(self):
+        counters = [{'counter': {'family': 'bridge', 'table': network.SWITCH,
+                    'name': name, 'packets': 5, 'bytes': 500}}
+                    for name in network.FNP_COUNTERS.values()]
+        command = [network.IP, 'netns', 'exec', network.SWITCH, network.NFT, '-j',
+                   'list', 'counters', 'table', 'bridge', network.SWITCH]
+        def read(rows):
+            with patch.object(network, '_load', return_value={'phase': 'ready', 'pending': None}), \
+                    patch.object(network, '_namespace_identity', return_value=[1, 42]), \
+                    patch.object(network, '_boot', return_value='boot'), \
+                    patch.object(network, '_run', return_value=json.dumps({'nftables': [
+                        {'metainfo': {'version': '1.1.3'}}, *rows]}).encode()) as run:
+                result = network.read_fnp_counters()
+                run.assert_called_once_with(command)
+                return result
+        observed = read(counters)
+        self.assertEqual(set(network.FNP_COUNTERS.values()), set(observed['counters']))
+        self.assertEqual([1, 42], observed['switchNamespaceIdentity'])
+        for changed in (counters[:-1], counters + counters[:1],
+                        [*counters[:-1], {'counter': dict(counters[-1]['counter'], packets=-1)}]):
+            with self.subTest(rows=changed), self.assertRaises(network.NetworkBoundaryError):
+                read(changed)
 
     def test_non_root_setup_is_rejected_before_mutation(self):
         with patch.object(network.os, 'geteuid', return_value=1234), patch.object(network, '_run') as run:

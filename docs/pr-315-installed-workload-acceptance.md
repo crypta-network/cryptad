@@ -1020,6 +1020,23 @@ QCOW2 backing pair were copied to local private retention and passed a recursive
 dry run. This one clean run does not resolve prior intermittent HotSpot C1 crashes or
 constitute a complete denial/lifecycle campaign.
 
+The next prospective `fnp-content-retrieval` emitter keeps the same DROP policy and
+four-role star topology, adding only six fixed named counters to the switch's already
+approved FNP UDP rules. A new closed `observe-fnp` controller operation accepts only the
+current recipient handle and durably brackets one content transfer with root-owned
+before/after six-link counter snapshots. It cannot select a namespace, port, packet filter,
+PID, executable or arbitrary operation. The observer's second public synthetic CHK payload
+is derived from the pinned helper commit and a fresh operation ID, then byte-checked locally
+at the sender and remotely at the recipient with `IgnoreDS=true`. After cleanup the host
+will independently parse the fixed recipient FCP transcript tail, recompute the selected
+payload and compare exact request/response digests, current recipient invocation, unchanged
+ruleset/namespace identity and positive packet/byte deltas on all four directional links
+needed for recipient-to-sender request and reverse data transfer. Only then can it compute
+an independent v8 commitment. The current seven installed case records remain separate;
+the eighth positive case has no installed witness yet. This is a separately identifiable
+network-observer revision within the prospective workload profile, not a claim that prior
+attempts had counter evidence.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

@@ -729,6 +729,41 @@ class ControllerExchangeAuditTest(unittest.TestCase):
         written.assert_called_once()
 
 
+class FnpCounterPairTest(unittest.TestCase):
+    def test_only_current_recipient_can_publish_one_before_after_pair(self):
+        record = {'managerInvocation': INVOCATION}
+        first = {'policyDigest': 'a' * 64, 'bootId': BOOT,
+                 'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': 10}
+        second = dict(first, observedMonotonicNs=20)
+        retained = [None]
+        def write(_path, value, **_options):
+            retained[0] = copy.deepcopy(value)
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', record)), \
+                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
+                patch.object(workload, 'manager'), patch.object(workload, 'current'), \
+                patch.object(workload.os.path, 'lexists', side_effect=lambda _path: retained[0] is not None), \
+                patch.object(workload, 'read', side_effect=lambda _path: copy.deepcopy(retained[0])), \
+                patch.object(workload, 'write', side_effect=write) as stored, \
+                patch('restricted_workload_network.read_fnp_counters',
+                      side_effect=[first, second, second]) as sampled:
+            self.assertEqual('before', workload.observe_fnp(HANDLE)['phase'])
+            self.assertEqual('after', workload.observe_fnp(HANDLE)['phase'])
+            self.assertEqual((first, second), (retained[0]['before'], retained[0]['after']))
+            with self.assertRaisesRegex(workload.WorkloadError, 'fnp-counter-pair-invalid'):
+                workload.observe_fnp(HANDLE)
+            self.assertEqual(2, stored.call_count)
+            self.assertEqual(3, sampled.call_count)
+
+    def test_sender_handle_cannot_read_fnp_counter_pair(self):
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, 'candidate-sender', {})), \
+                patch('restricted_workload_network.read_fnp_counters') as sampled:
+            with self.assertRaisesRegex(workload.WorkloadError, 'fnp-observer-role-invalid'):
+                workload.observe_fnp(HANDLE)
+            sampled.assert_not_called()
+
+
 class ControllerRequestTest(unittest.TestCase):
     def setUp(self):
         # These tests use FakeConnection, not the host's peer-credential ABI.
@@ -816,6 +851,14 @@ class ControllerRequestTest(unittest.TestCase):
             self.assertEqual('start', controller.serve(connection, 1000))
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
+
+    def test_fixed_fnp_observation_dispatch_rejects_unknown_methods(self):
+        raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode() + b'\n'
+        connection = FakeConnection(raw)
+        with patch.object(workload, 'observe_fnp', return_value={'phase': 'before'}) as observed:
+            self.assertEqual('observe-fnp', controller.serve(connection, 1000))
+        observed.assert_called_once_with(HANDLE)
+        self.assertEqual([b'{"phase":"before"}\n'], connection.sent)
 
     def test_successful_bootstrap_audits_exact_sent_bytes_without_the_token(self):
         raw = json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE},
