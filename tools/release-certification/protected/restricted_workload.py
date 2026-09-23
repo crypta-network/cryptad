@@ -456,6 +456,7 @@ def _process_sample(pid, role, expected_uid):
     """A fixed kernel-only projection. No cmdline, environment or caller-selected PID."""
     path = Path('/proc') / str(pid)
     before = (path / 'stat').read_text().rsplit(')', 1)[1].split()
+    before_network = (path / 'ns/net').stat()
     status = dict(line.split(':', 1) for line in (path / 'status').read_text().splitlines() if ':' in line)
     if (set(map(int, status['Uid'].split())) != {expected_uid}
             or (path / 'cgroup').read_text().strip() != '0::/system.slice/' + unit(role)):
@@ -479,8 +480,12 @@ def _process_sample(pid, role, expected_uid):
     after = (path / 'stat').read_text().rsplit(')', 1)[1].split()
     if before[19] != after[19]:
         reject('process-epoch-changed')
+    network = (path / 'ns/net').stat()
+    if (before_network.st_dev, before_network.st_ino) != (network.st_dev, network.st_ino):
+        reject('process-network-namespace-changed')
     return {'hostPid': pid, 'hostParentPid': int(before[1]),
             'pidNamespace': os.readlink(path / 'ns/pid'),
+            'networkNamespaceIdentity': [network.st_dev, network.st_ino],
             'namespacePids': list(map(int, status['NSpid'].split())),
             'startTicks': int(before[19]), 'executableDigest': 'sha256:' + digest.hexdigest(),
             'rssBytes': int(status['VmRSS'].split()[0]) * 1024 if 'VmRSS' in status else None,
@@ -492,6 +497,8 @@ def observe(handle):
     with locked():
         campaign, role, record = retained(handle)
         admit(campaign)
+        from restricted_workload_network import _namespace_identity, namespace
+        role_network = _namespace_identity(namespace(role))
         before = manager(role, 'show')
         exact(role, record, before)
         root = group(role)
@@ -507,9 +514,13 @@ def observe(handle):
                 processes.append(_process(pid, role, account(role).pw_uid))
             except (FileNotFoundError, ProcessLookupError):
                 exited += 1
+        if _namespace_identity(namespace(role)) != role_network:
+            reject('role-network-namespace-changed')
         exact(role, record, manager(role, 'show'))
         return {**summary(role, record), 'provenance': 'controller-kernel-sample',
                 'processes': processes, 'exitedDuringSample': exited,
+                'cgroupIdentity': record['cgroupIdentity'],
+                'networkNamespaceIdentity': role_network,
                 'cgroupMemoryBytes': int((root / 'memory.current').read_text()),
                 'cgroupTasks': int((root / 'pids.current').read_text())}
 

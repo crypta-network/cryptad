@@ -301,6 +301,8 @@ class ObservationTest(unittest.TestCase):
         self.stack.enter_context(patch.object(workload, 'group', return_value=root))
         self.stack.enter_context(patch.object(workload, 'boot', return_value=BOOT))
         self.stack.enter_context(patch.object(workload, 'account', return_value=SimpleNamespace(pw_uid=os.getuid())))
+        self.network = self.stack.enter_context(patch(
+            'restricted_workload_network._namespace_identity', return_value=[1, 42]))
         self.manager = self.stack.enter_context(patch.object(workload, 'manager', return_value=manager_state()))
 
     def reaped_child(self):
@@ -317,7 +319,15 @@ class ObservationTest(unittest.TestCase):
         self.assertEqual([], result['processes'])
         self.assertEqual(1, result['exitedDuringSample'])
         self.assertEqual(4096, result['cgroupMemoryBytes'])
+        self.assertEqual([1, 42], result['networkNamespaceIdentity'])
+        self.assertEqual(self.root.stat().st_ino, result['cgroupIdentity'][1])
         self.assertEqual(2, self.manager.call_count)
+
+    def test_role_namespace_replacement_during_process_sample_is_rejected(self):
+        (self.root / 'cgroup.procs').write_text('')
+        self.network.side_effect = ([1, 42], [1, 43])
+        with self.assertRaisesRegex(workload.WorkloadError, 'role-network-namespace-changed'):
+            workload.observe(HANDLE)
 
     @unittest.skipUnless(hasattr(os, 'pidfd_open'), 'requires Linux pidfd support')
     def test_reaped_process_does_not_skip_final_invocation_check(self):

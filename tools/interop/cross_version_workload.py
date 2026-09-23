@@ -297,6 +297,12 @@ def bind_daemon(observation, expected_jdk_digest):
     """Pin the sole outer-namespace Java process from a controller kernel sample."""
     if observation.get('provenance') != 'controller-kernel-sample':
         fail('daemon-process-sample-invalid')
+    network = observation.get('networkNamespaceIdentity')
+    group = observation.get('cgroupIdentity')
+    if any(not isinstance(value, list) or len(value) != 2
+           or any(type(part) is not int or part < 1 for part in value)
+           for value in (network, group)):
+        fail('daemon-process-sample-invalid')
     rows = observation.get('processes')
     if not isinstance(rows, list) or len(rows) > 512:
         fail('daemon-process-sample-invalid')
@@ -312,12 +318,15 @@ def bind_daemon(observation, expected_jdk_digest):
         if (type(pid) is not int or pid <= 1 or namespaces[0] != pid
                 or any(type(value) is not int or value < 1 for value in namespaces)
                 or type(ticks) is not int or ticks < 1
+                or row.get('networkNamespaceIdentity') != network
                 or row.get('noNewPrivileges') is not True
                 or row.get('effectiveCapabilities') != 0):
             fail('daemon-process-sample-invalid')
         matches.append({'managerInvocation': observation.get('managerInvocation'),
                         'hostPid': pid, 'startTicks': ticks,
                         'namespacePids': tuple(namespaces),
+                        'networkNamespaceIdentity': tuple(network),
+                        'cgroupIdentity': tuple(group),
                         'executableDigest': expected_jdk_digest})
     if len(matches) != 1:
         fail('daemon-process-not-unique')

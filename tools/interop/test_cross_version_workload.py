@@ -25,8 +25,10 @@ def sample():
     def row(pid, parent, namespaces, digest):
         return {'hostPid': pid, 'hostParentPid': parent, 'namespacePids': namespaces,
                 'startTicks': pid + 100, 'executableDigest': digest,
+                'networkNamespaceIdentity': [1, 42],
                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
-    return {**EPOCH, 'state': 'running', 'provenance': 'controller-kernel-sample', 'processes': [
+    return {**EPOCH, 'state': 'running', 'provenance': 'controller-kernel-sample',
+            'cgroupIdentity': [1, 99], 'networkNamespaceIdentity': [1, 42], 'processes': [
         row(100, 1, [100, 1], 'sha256:' + '0' * 64),
         row(101, 100, [101, 2], JDK),
         row(102, 101, [102, 3], 'sha256:' + '1' * 64),
@@ -81,6 +83,7 @@ class ScopedDaemonTests(unittest.TestCase):
         self.assertEqual(101, identity['hostPid'])
         self.assertEqual(201, identity['startTicks'])
         self.assertEqual(EPOCH['managerInvocation'], identity['managerInvocation'])
+        self.assertEqual((1, 42), identity['networkNamespaceIdentity'])
 
     def test_nested_app_java_or_ambiguous_outer_java_cannot_replace_daemon(self):
         value = sample()
@@ -100,6 +103,10 @@ class ScopedDaemonTests(unittest.TestCase):
             workload.bind_daemon(value, JDK)
         value = sample()
         value['processes'][1]['noNewPrivileges'] = False
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-sample-invalid'):
+            workload.bind_daemon(value, JDK)
+        value = sample()
+        value['processes'][1]['networkNamespaceIdentity'] = [1, 43]
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'daemon-process-sample-invalid'):
             workload.bind_daemon(value, JDK)
 

@@ -36,6 +36,9 @@ The thirtieth, with the corrected native Linux product, completed the installed 
 aggregate: two byte-checked sender/recipient CHK transfers straddled a sender restart and
 the signed Mail workers started. No individual v8 positive case has a complete trusted
 record, and all denial and lifecycle cases remain unexecuted.
+The thirty-first reran the same product with a fresh source-bound fixture and prospective
+controller-kernel daemon epoch checks. Its positive aggregate also completed, including
+the final four-role process sweep; individual v8 case coverage remains incomplete.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -776,8 +779,32 @@ a new Java epoch after the intended sender restart, and samples all four roles a
 returning a positive aggregate. This addresses the attempt-30 gap where a service unit could
 remain active while its JVM crashed or restarted internally. Linux interop tests exercise
 same-manager JVM replacement, ambiguous process selection and the terminal all-role sweep.
-These checks have not yet run in an installed guest; they do not establish per-case process
-identity or turn any v8 case into `passed`.
+The checks do not establish per-case process identity or turn any v8 case into `passed`.
+
+Attempt 31 used helper source `9a231a35e36de8fb8e604d1232ea89e31328f9d9` and the
+unchanged `4a924b8b7b039355ba01eb102d813d774689166a` candidate product. Its strict
+fixture verification and separate no-VM admission probe passed. The original QEMU/JDK,
+four-vCPU, 5632-MiB guest, operation bounds and workload policy remained selected. The
+installed guest reported exit code zero and stopped; the positive aggregate again recorded
+four roles, two signed Mail workers, a new sender manager epoch and byte-checked cross-node
+retrieval before and after restart. The new daemon process epoch checks and final all-role
+sample completed without failure. No fatal JVM file was found in this attempt. All current
+stop receipts and the sender's prior receipt were captured, the sentinel matched, and the
+caller reported cleanup completed. The fixed-file snapshot still states
+`quiescenceIndependentlyEstablished=false`. The full stopped private evidence and same-attempt
+QCOW2 backing pair were copied to local retention; a recursive checksum dry run found no
+differences. The Linux interop offline suite passed 227 tests with eight skips, and the
+focused PR-315 suite passed 83 tests. Attempt 31 therefore confirms the narrower process
+epoch guard in one installed run, while all eight individual positive cases remain
+`inconclusive` and the 37 denial/lifecycle cases remain `not-executed`.
+
+A further prospective controller observation binds the fixed role namespace's nsfs device
+and inode to the actual outer Java PID's `/proc/<pid>/ns/net` identity, sampled before and
+after the process read. The adapter rejects a missing, ambiguous or mismatched daemon
+namespace and retains the fixed cgroup identity alongside the process epoch. Linux focused
+controller and adapter tests pass; an installed run is still required for this narrower
+network-bound process proof. These observations are groundwork for genuine per-case actor
+binding and are not themselves accepted case records.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
