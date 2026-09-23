@@ -2,7 +2,7 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; four of the 45 installed workload cases now have valid
+**Implementation is incomplete; six of the 45 installed workload cases now have valid
 individual witnesses, and full installed acceptance remains false.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -960,7 +960,31 @@ against the current role roster before producing independent v8 case commitments
 `own-management` and `dynamic-app-bootstrap`. An absent or mismatched audit leaves each
 case inconclusive, and no new control method or arbitrary endpoint selector is introduced.
 Linux protected and restricted offline tests cover fixed dispatch, digest projection and
-tamper rejection; installed execution remains necessary before either case can be credited.
+tamper rejection. At this preparation cutoff installed execution was still required;
+attempt 39 below supplies it.
+
+Attempt 39 bound helper source `c39cf688e1e37336eacaf58fb41773118425f72c` to the
+unchanged Linux product and passed strict fixture and no-VM admission. Its four installed
+roles, two normally signed Mail workers, sender restart and byte-checked CHK transfers before
+and after restart completed; the guest exited zero and the emulator stopped. The root
+controller's fixed `connect-fcp` and `bootstrap-mail` audit digests matched the separately
+received observer bytes and current sender manager/cgroup identity. The host produced
+independent v8 commitments, and the verifier returned `recordContractValid=true` with six
+positive cases `passed`: `installed-ready`, `four-role-start`, `signed-apphost-child`,
+`own-management`, `dynamic-app-bootstrap` and `kernel-resource-scope`. The remaining two
+positive cases, `fnp-content-retrieval` and `restart-durable-state`, stay `inconclusive`;
+all 26 denial and 11 lifecycle cases remain `not-executed`. Full installed workload
+acceptance remains false.
+
+The caller reported cleanup complete, current stop receipts and the sender's prior receipt
+were captured, and the sentinel matched; independent quiescence remains unestablished.
+Across 215 five-second samples, minimum observed guest available memory was 3,775,909,888
+bytes and the last OOM-kill counters were zero. A candidate-sender HotSpot fatal file still
+recorded `SIGILL` in C1-compiled JDK `SHA5.lf_delta1`; the successful final invocation does
+not explain that intermittent crash. The stopped private six-case record, exchange audits,
+fatal diagnostic and same-attempt QCOW2 backing pair were copied locally and passed a
+recursive checksum dry run. This is partial installed case coverage, not a protected release
+or a 45-case acceptance result.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
@@ -1241,9 +1265,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: four positive case records passed; four positive and all 37 hostile/lifecycle emitters remain missing |
-| `installedPositiveExecuted` | True for the installed attempt-38 aggregate with host, AppHost, cgroup and terminal roster binding |
-| `installedWorkloadAcceptanceSatisfied` | False; four positive cases are inconclusive and 37 fault emitters remain unexecuted |
+| `implementationCoverage` | Incomplete: six positive case records passed; two positive and all 37 hostile/lifecycle emitters remain missing |
+| `installedPositiveExecuted` | True for the installed attempt-39 aggregate with host, AppHost, cgroup, terminal roster and fixed controller exchange binding |
+| `installedWorkloadAcceptanceSatisfied` | False; two positive cases are inconclusive and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
