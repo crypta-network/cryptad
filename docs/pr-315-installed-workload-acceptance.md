@@ -19,7 +19,10 @@ then timed out waiting for the FCP fetch response. The twentieth lost the recipi
 connection during normal Mail startup, with JVM fatal signals in the retained wrapper output.
 It did not reach the new sender-local content control. The twenty-first reached content insertion
 but expired while awaiting the sender's local insert response; its relay also recorded a JVM
-segmentation fault. The full positive sequence remains incomplete.
+segmentation fault. The twenty-second through twenty-fourth reached the same first local-only
+insert and expired without a terminal insert frame. The full positive sequence remains
+incomplete. The twenty-fifth failed predecessor daemon readiness after both candidate roles
+responded to FCP. The twenty-sixth failed sender daemon readiness after a JVM startup crash.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -474,6 +477,121 @@ cleared its invocation and cgroup properties. This demonstrates why missing-path
 post-stop manager query cannot supply the required retained-invocation cleanup witness. The
 measurement remains private diagnostic evidence, not an accepted lifecycle case; the existing
 cleanup gap remains open.
+
+Attempts 22 and 23 reused the exact `beb9caa143010e5ce5edd0739c0bc60d745ca851`
+helper tree and source-built two-product fixture. Both reached four-daemon readiness, peer
+exchange, normal signed Mail AppHost startup and bootstrap, then expired while waiting for the
+sender's first local-only FCP `ClientPut` response. Neither reached the new source-local
+`ClientGet DSOnly=true` control, remote recipient fetch or role restart. Attempt 23's one-time
+private sender thread diagnostic, taken during that wait, did not show an active insert stack;
+it retained selected stack lines but not the complete thread dump. Its 161 guest-memory samples
+had a minimum of 3,792,982,016 bytes available. Four current stop receipts, a matching sentinel,
+reported cleanup and guest stop were retained. These observations do not locate the missing
+insert callback or independently establish role quiescence.
+
+Attempt 24 retained the same helper, products, JDK, `tcg-multi`/`qemu64`, 5632-MiB guest,
+campaign and operation deadlines. Four daemons again reached readiness and the normal peer,
+signed AppHost and bootstrap path completed. Its FCP tail records the sender's `ClientPut` with
+no subsequent insert frame. At the predeclared 45-second nonresponse point, a single private
+administrator diagnostic signaled only the exact owned sender JVM after checking its retained
+invocation, role cgroup, namespaces, principal and executable digest. The bounded full-output
+capture observed 84,048 bytes and a thread-dump header; dump completeness was not independently
+established. At that snapshot FCP was reading the next message, its output queue was idle, the
+CHK realtime starter was waiting for work and no active insert stack was observed. This does
+not distinguish a request that failed before scheduling from a later missing callback or a
+response observation defect. Fixed bounded node-log excerpts include peer-reference errors,
+without a demonstrated link to the local-only insert.
+
+Attempt 24's bounded fatal-log snapshot also retained two JVM `SIGSEGV` headers and corrected
+instruction sections. Their recorded times precede the sender's `ClientPut`; the current sender
+diagnostic identifies a different process epoch from its earlier fatal report. These crashes
+show continuing emulator/JVM instability, but do not establish the cause of the later local
+insert wait. The observer again expired at the original operation deadline. Its 175 guest-memory
+samples observed at least 3,823,648,768 bytes available. Four current stop receipts, a matched
+sentinel, reported cleanup and guest stop were captured. The private snapshot explicitly marks
+independent quiescence unestablished, and none of the eight positive case witnesses passed.
+
+After exact stopped-guest, backing and archive-reconstruction checks, the three attempts'
+disposable disks and verified duplicate staging copies were removed while their original source
+archives and unique private diagnostics stayed retained. After attempt 24, task allocation is
+14,133,207,040 bytes. An unchanged next attempt requires a further 29,213,549,102-byte
+reservation, projecting 43,346,756,142 bytes, or 397,083,182 bytes above the selected 40-GiB
+task cap. Filesystem free space is 41,934,192,640 bytes against the 8-GiB reserve; effective
+available host memory is 10,450,337,792 bytes against the 7-GiB VM budget plus 1-GiB host
+reserve. Storage alone blocks another allocation. Remaining installed cases stay unexecuted or
+inconclusive; no deadline, CPU, JDK, role memory or guest-size limit was changed to make room.
+
+For a prospective unchanged twenty-fifth attempt, an audit found two obsolete JDK preparation
+copies rather than deleting any distinct failed-attempt archive. The source expansion's 486
+entries matched the retained original archive by type, file bytes and symlink targets; its 136
+mode-only differences were inventoried privately. A separate prepared JDK tar was an exact
+digest duplicate of the retained input tar and absent from the boot-file roster. After active
+reference checks, those two generated copies were removed, reclaiming 458,571,776 allocated
+bytes. The original archive, flattened runtime JDK, pinned closure, fixture and all 24 distinct
+failure archives stayed retained. The next unchanged allocation then projected 42,888,450,606
+bytes, 61,222,354 bytes below the 40-GiB cap; the 8-GiB free-space and host-memory reserves
+passed. The runner repeated admission before allocating.
+
+Attempt 25 used the same helper/product/JDK/CPU/resource tuple. It verified installation and
+test kit before starting the campaign, prepared all four roles, and observed FCP readiness on
+the two candidate roles. The predecessor never yielded FCP readiness within the fixed window;
+its retained wrapper log reports that the wrapper's own JVM-start signal wait expired and that
+it terminated that JVM. This identifies the immediate predecessor startup failure, without
+establishing why startup was slow under the pinned guest. The relay was not observed started.
+The positive driver reported
+`workload-daemon-readiness-timeout`, with no content operation. Its private snapshot retained a
+sender startup `SIGILL` report, but that earlier process failure does not establish why the
+predecessor failed readiness. The controller recorded two node starts and two stops. Three
+current stop receipts and a matching sentinel were captured; the relay receipt was
+`unavailable-or-unsafe`, and independent quiescence remains unestablished. Reported cleanup and
+guest stop completed. Its 104 guest-memory samples observed at least 4,487,254,016 bytes
+available. The fixed sender-stall diagnostic did not trigger. This attempt supplies no completed
+positive case or hostile/lifecycle witness.
+
+After the stopped-ownership and backing checks, attempt 25's disposable disks, archive-verified
+source expansion, duplicate boot closure and reconstructable expected-bundle expansion were
+removed. Its distinct original source archive and private failure diagnostics remain retained.
+The relay's retained controller state was prepared with no generation, manager invocation or
+cgroup, consistent with no observed launch; the unavailable receipt still cannot prove
+quiescence. Task allocation is now 14,106,800,128 bytes. Another unchanged attempt would project
+43,320,349,230 bytes, exceeding the 40-GiB task cap by 370,676,270 bytes. Filesystem free space
+is 41,957,908,480 bytes against the 8-GiB reserve; effective available host memory is
+10,469,734,400 bytes against the 7-GiB plus 1-GiB memory reservation. Storage is the blocking
+condition, so another guest must not be allocated without a separately verified safe reclaim or
+a prospective budget decision.
+
+A further task-wide audit retired two detached, task-owned historical source-build worktrees
+only after verifying their exact Git commits and trees, reconstructable tracked files, portable
+expansions, wrapper expansions and duplicate JARs. Unique problem reports, the two modified
+checkout scripts and 8,226 unproven ignored build files were moved intact to private retention,
+with old/new paths, hashes and a losslessly compressed complete inventory. Targeted
+`git worktree remove` completed without force; original products, failed-attempt archives,
+current fixture and reference inputs remained. The measured preflight for another unchanged
+attempt then counted 13,713,506,304 allocated task bytes plus the conservative unchanged
+29,213,549,102-byte reservation, leaving 22,617,554 bytes under 40 GiB. Filesystem free space
+was 42,351,628,288 bytes and effective available host memory was 10,487,266,304 bytes; both
+reserves passed. The runner repeated its own admission before allocating attempt 26.
+
+Attempt 26 verified installation and test kit, prepared all four roles, then failed sender daemon
+readiness before any node-start event. Its retained sender startup report records a JVM `SIGILL`
+approximately five seconds into that process epoch. The observer reported
+`workload-daemon-readiness-timeout` with the original experiment deadline exhausted; no peer,
+app, content or restart action was observed. The private snapshot retained a matching sentinel
+and a current sender stop receipt. The other three roles had no available safe stop receipt;
+reported cleanup and guest stop do not turn those absences into independent quiescence proof.
+Its 53 guest-memory samples observed at least 5,066,575,872 bytes available. The fixed sender
+insert-stall diagnostic did not trigger. No positive, hostile or lifecycle case passed.
+
+After exact stopped-owner, backing, boot-pin and archive checks, attempt 26's disposable disks
+and verified duplicate expansions were removed. The original source archive and all unique
+private diagnostics remain retained. The sender's captured stop receipt was checked against its
+owned invocation; the other three roles remained prepared with no invocation or cgroup and no
+observed launch. Independent overall quiescence is still unestablished. Final task allocation is
+14,145,384,448 bytes. The next unchanged reservation is 29,208,196,898 bytes, projecting
+43,353,581,346 bytes, or 403,908,386 bytes above the 40-GiB cap. Filesystem free space is
+41,923,276,800 bytes and effective available host memory is 10,472,177,664 bytes, so their
+8-GiB and 7-GiB-plus-1-GiB reserves pass. Further guest allocation is stopped under the
+selected task cap; all remaining installed cases remain unexecuted or inconclusive.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
