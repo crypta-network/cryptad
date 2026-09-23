@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import time
 from types import SimpleNamespace
 
 import pr312_reference_vm as reference
@@ -142,6 +143,47 @@ def terminal_roster_matches(roster, terminal):
     return True
 
 
+def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns):
+    """Build only the two cases backed by actual host identity and final kernel roster."""
+    host = report['hostVerifiedIdentity']
+    window = result['roleKernelRosterWindow']
+    if (type(host_started_ns) is not int or type(host_finished_ns) is not int
+            or not 0 < host_started_ns < host_finished_ns
+            or not isinstance(window, dict)
+            or set(window) != {'startedMonotonicNs', 'finishedMonotonicNs'}
+            or type(window['startedMonotonicNs']) is not int
+            or type(window['finishedMonotonicNs']) is not int
+            or not 0 < window['startedMonotonicNs'] < window['finishedMonotonicNs']
+            or not isinstance(fixture['mailDigest'], str)
+            or re.fullmatch('sha256:[0-9a-f]{64}', fixture['mailDigest']) is None):
+        raise ValueError('workload-positive-case-window-invalid')
+    identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+        'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+        'preparedImageDigest', 'fixtureManifestDigest')}
+    identity['productSelectionDigest'] = host['productDigest']
+    identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+    principals = result['roleKernelRoster']
+    cases = ('installed-ready', 'four-role-start')
+    observations = []
+    for case_id, started, finished, witness in (
+            ('installed-ready', host_started_ns, host_finished_ns,
+             {'profile': acceptance.PROFILE, 'bundleIdentity': identity['bundleIdentity'],
+              'testKitDigest': identity['testKitDigest']}),
+            ('four-role-start', window['startedMonotonicNs'], window['finishedMonotonicNs'],
+             {'observerUid': principals['observerUid'], 'roles': principals['roles']})):
+        case = acceptance.CASES[case_id]
+        observations.append({'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+            'target': case.target, 'outcome': case.outcome,
+            'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+            'witness': witness})
+    attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+        'declaredCases': list(cases), 'observations': observations,
+        'guestStopped': report['guestStopped'], 'attemptCompleted': True,
+        'principals': principals, 'targets': {}, 'caseCommitments': {},
+        'appProcess': None, 'restartContext': None}
+    return identity, attempt
+
+
 def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
@@ -233,6 +275,27 @@ def run(args):
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
             statuses = {case: 'inconclusive' if reached else 'setup-failed' for case in groups()[0][1]}
+            if positive:
+                host_started = time.monotonic_ns()
+                fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
+                    args.source, args.product_source_commit)
+                host = report['hostVerifiedIdentity']
+                checked = reference.verified_attempt_identity(report, selected.attempt,
+                    host['bundleIdentity'], host['testKitDigest'])
+                host_finished = time.monotonic_ns()
+                if checked != host:
+                    raise ValueError('workload-host-identity-changed')
+                identity, case_attempt = positive_case_attempt(
+                    report, value, fixture, host_started, host_finished)
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                expected = {'installed-ready', 'four-role-start'}
+                passed = {row['caseId'] for row in checked_cases['cases'] if row['status'] == 'passed'}
+                if (checked_cases['recordContractValid'] is not True or passed != expected
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-positive-case-verification-failed')
+                native_runner._save(output / 'positive-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                statuses.update({case: 'passed' for case in expected})
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,

@@ -846,6 +846,17 @@ still not per-case operation or denial witnesses, and the diagnostic flag does n
 `installedWorkloadAcceptanceSatisfied`. Linux focused adapter and PR-315 offline tests pass;
 the new roster path has not yet run in an installed guest.
 
+A subsequent prospective host verifier uses that bound roster for exactly two v8 cases:
+`installed-ready` repeats the fixed host installation/source/test-kit verification after
+guest shutdown, and `four-role-start` uses the real final controller-kernel sample window.
+Both are passed through the existing closed `pr314_acceptance.verify_attempts` contract with
+the selected signed Mail digest and retained root terminal authority. The other six positive
+cases remain inconclusive and all 37 hostile/lifecycle cases remain unexecuted; the runner
+hard-codes full installed acceptance false for this incomplete implementation. Offline
+synthetic records prove only that this narrow verifier path is reachable, never that an
+installed case passed. Fresh installed execution is required before either case can be
+credited in the audit.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

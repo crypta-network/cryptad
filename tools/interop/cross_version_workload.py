@@ -608,11 +608,17 @@ class InstalledWorkloadAdapter:
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
             runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
+            roster_started = time.monotonic_ns()
             final_samples = {role: self.observe(role) for role in runtime.ROLES}
+            roster_finished = time.monotonic_ns()
+            if roster_finished <= roster_started:
+                fail('kernel-roster-clock-invalid')
             return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
+                    'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
+                                               'finishedMonotonicNs': roster_finished},
                     'contentRetrieval': self.outcomes.get('network-chk')}
         finally:
             if self.cleanup() != 'complete':
