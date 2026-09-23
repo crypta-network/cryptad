@@ -326,7 +326,13 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                       'expectedDigest': expected, 'observedDigest': actual, 'sizeBytes': len(raw)}
             except (OSError, ValueError):
                 result['sentinel'] = {'status': 'unavailable-or-unsafe', 'expectedDigest': expected}
-        # The fixed observer transcripts precede lower-priority candidate log snapshots.
+        # Crash headers and instruction sections precede routine transcript volume. They
+        # remain untrusted private diagnostics and share the same deadline/output ceiling.
+        for role in ROLES:
+            result['fatalLogs'][role] = _fatal_logs(root, role, deadline)
+            if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
+                result['fatalLogs'][role] = {'status': 'not-captured-output-budget'}
+        # The fixed observer transcripts precede lower-priority routine wrapper logs.
         if observer_root is not None:
             for role in ROLES:
                 result['observerFcpLogs'][role] = _observer_fcp_log(observer_root, role, deadline)
@@ -341,11 +347,6 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                 result['wrapperLogs'][role]['excerpt'] = {'status': 'not-captured-output-budget'}
             if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                 result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
-        # Lower-priority crash headers share the same deadline and private output bound.
-        for role in ROLES:
-            result['fatalLogs'][role] = _fatal_logs(root, role, deadline)
-            if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
-                result['fatalLogs'][role] = {'status': 'not-captured-output-budget'}
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

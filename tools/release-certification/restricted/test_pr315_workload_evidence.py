@@ -211,6 +211,43 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertTrue(all(row['status'] == 'not-captured-cleanup-unverified'
                             for row in result['fatalLogs'].values()))
 
+    def test_recipient_crash_survives_flooded_routine_wrapper_and_observer_logs(self):
+        observer = self.observer()
+        for role in evidence.ROLES:
+            (observer / ('fcp-' + role + '.log')).write_bytes(b'routine FCP\n' * 4096)
+            self.wrapper(role).write_bytes(b'INFO | jvm 1 | routine output\n' * 4096)
+        directory = self.root / 'state/candidate-recipient/tmp'
+        directory.mkdir()
+        crash = (b'# SIGILL\n' + b'H' * 4096 + b'\nInstructions:\n'
+                 + b'0x12345678: 0f 0b 00 00 01 02 03 04\n' * 128
+                 + b'\nCPU Features: ' + b'feature ' * 256 + b'\n')
+        for name in ('hs_err_pid1.log', 'hs_err_pid2.log'):
+            (directory / name).write_bytes(crash)
+        expected = evidence._fatal_logs(self.root, 'candidate-recipient', float('inf'))
+        reads = []
+        original = evidence.snapshot.read_file
+        def read(root, name, **kwargs):
+            reads.append(name)
+            return original(root, name, **kwargs)
+        with patch.object(evidence.snapshot, 'read_file', side_effect=read):
+            result = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual(expected, result['fatalLogs']['candidate-recipient'])
+        self.assertEqual(2, len(expected['files']))
+        for row in expected['files']:
+            self.assertEqual('captured', row['status'])
+            self.assertEqual(crash[:4096], base64.b64decode(row['headBase64']))
+            self.assertIn(b'0f 0b', base64.b64decode(row['sections']['instructions']['contentBase64']))
+            self.assertIn(b'CPU Features:', base64.b64decode(row['sections']['cpu']['contentBase64']))
+        self.assertLess(reads.index(evidence.SENTINEL), reads.index('hs_err_pid1.log'))
+        self.assertLess(reads.index('hs_err_pid2.log'), reads.index('fcp-candidate-sender.log'))
+        self.assertLess(reads.index('hs_err_pid2.log'), reads.index('wrapper.log'))
+        self.assertTrue(any(row.get('excerpt', {}).get('status') == 'not-captured-output-budget'
+                            or row['status'] == 'not-captured-output-budget'
+                            for row in result['wrapperLogs'].values()))
+        self.assertEqual('matched', result['sentinel']['status'])
+        self.assertLessEqual(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
+                             evidence.MAX_OUTPUT)
+
     def test_wrapper_excerpt_finds_buried_error_without_command_lines(self):
         command = b'INFO | wrapper | 2026 | Command[1] : private-command-value\n'
         error = b'ERROR | wrapper | 2026 | Bootstrap failed\n'

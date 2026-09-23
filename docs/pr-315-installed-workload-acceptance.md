@@ -15,7 +15,9 @@ host bootstrap before app installation.
 The eighteenth again reached all four daemons, then hit a bounded operation deadline; the
 retained failure does not identify the expired operation, and no content retrieval completed.
 The nineteenth reached recipient CHK retrieval after peer, signed AppHost and bootstrap checks,
-then timed out waiting for the FCP fetch response. The full positive sequence remains incomplete.
+then timed out waiting for the FCP fetch response. The twentieth lost the recipient HTTP
+connection during normal Mail startup, with JVM fatal signals in the retained wrapper output.
+It did not reach the new sender-local content control. The full positive sequence remains incomplete.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -411,6 +413,25 @@ Older expected-bundle copies were removed only after byte/identity verification 
 of their unique files and complete path/type/mode inventories alongside the original archives.
 The source-control and transcript changes passed 222 interop tests with eight skips, 401
 restricted tests with one skip and the 152-test cross-version soak self-test.
+
+The twentieth attempt used helper `4b85d11281742503f5da06bfce40bded2ce5ef76`, with unchanged
+products, JDK, CPU and VM resource profile. It passed four-daemon readiness and peer exchange
+before the recipient HTTP connection closed during the normal Mail start request. Retained
+wrapper output contains SIGILL and SIGSEGV reports; overlapping excerpts are not a reliable
+count of distinct crashes. Their cause remains undiagnosed. All four FCP tails, stop receipts
+and the matching sentinel were retained; cleanup and guest stop completed. The bounded evidence
+record omitted detailed crash sections because routine logs had already consumed the output
+budget. Those volatile details cannot be recovered after guest shutdown.
+
+The follow-up evidence correction prioritizes crash headers and instruction/CPU sections after
+controller records and the sentinel, ahead of FCP tails and routine wrapper logs. It preserves
+the same 15-second deadline and 64 KiB output limit. A regression with crash records and flooded
+routine logs verifies retention priority and explicit lower-priority omissions; all 38 focused
+evidence tests pass. This is an evidence-retention fix, not a fix for the JVM failures.
+After verified disposal of the stopped twentieth guest and redundant copies, task allocation
+was 12,840,984,576 bytes and filesystem free space was 43,988,877,312 bytes. Original archives,
+available diagnostics, reusable inputs and the current fixture remain retained under the
+40 GiB task budget and 8 GiB free-space reserve.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by
