@@ -57,11 +57,12 @@ class NetworkPolicyTests(unittest.TestCase):
             self.assertIn(f'counter {name} {{ }}', rules)
 
     def test_fixed_fnp_counter_read_rejects_missing_or_substituted_links(self):
-        counters = [{'counter': {'family': 'bridge', 'table': network.SWITCH,
+        # The installed nft JSON names the bridge table, not its enclosing netns.
+        counters = [{'counter': {'family': 'bridge', 'table': 'cryptad_switch',
                     'name': name, 'packets': 5, 'bytes': 500}}
                     for name in network.FNP_COUNTERS.values()]
         command = [network.IP, 'netns', 'exec', network.SWITCH, network.NFT, '-j',
-                   'list', 'counters', 'table', 'bridge', network.SWITCH]
+                   'list', 'counters', 'table', 'bridge', 'cryptad_switch']
         def read(rows):
             with patch.object(network, '_load', return_value={'phase': 'ready', 'pending': None}), \
                     patch.object(network, '_namespace_identity', return_value=[1, 42]), \

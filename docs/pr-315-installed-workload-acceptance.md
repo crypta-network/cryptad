@@ -1037,6 +1037,31 @@ the eighth positive case has no installed witness yet. This is a separately iden
 network-observer revision within the prospective workload profile, not a claim that prior
 attempts had counter evidence.
 
+Attempt 41 bound helper source `b33995343ab712bb76f650788468ca5bf089fe0f` to the
+unchanged Linux product and passed fixture and no-VM admission. The guest exited zero after
+four-role readiness, two normally signed Mail workers, sender restart and two byte-checked
+cross-node CHK transfers. The stopped host runner again verified seven individual positive
+v8 records; `fnp-content-retrieval` stayed `inconclusive` because the root-owned counter-pair
+file was absent. All denial and lifecycle rows stayed `not-executed`. The caller reported
+cleanup complete, four current stop receipts were captured, and independent quiescence was
+not established. The complete stopped attempt and same-attempt QCOW2 backing pair were
+retained locally and passed a recursive checksum comparison.
+
+Attempt 42 repeated the same helper, product, fixture and VM profile after a fresh no-VM
+admission. The bridge namespace contained all six named counters, and a read-only `nft -j`
+query observed permitted FNP packet traffic on all six links. A separate read-only call to
+the installed fixed counter reader reproduced the missing-pair cause: it queried the
+namespace name `cryptad-role-switch` as a bridge table, while the installed rules define
+the table `cryptad_switch`. The guest's positive sequence also failed after a recipient
+JVM `SIGILL` in C1-compiled JDK code. Its report therefore provided no valid positive case
+record; the result must not inherit attempt 41's seven passes. The caller reported cleanup
+complete, four current stop receipts were captured, the emulator stopped, and the full
+private attempt was copied locally with a recursive checksum match. The current source
+correction uses a distinct fixed bridge-table constant in the reader and validates the
+real table name independently in the offline test. It still needs installed rerun before
+the eighth positive case can pass. Neither this diagnosis nor the read-only query explains
+the intermittent JVM crashes.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
@@ -1262,6 +1287,15 @@ python3 -m unittest discover -s tools/release-certification/protected -p 'test_r
 python3 -m unittest discover -s tools/interop -p 'test_cross_version_workload.py'
 python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr314*.py'
 ```
+
+For the fixed bridge-table correction, the independent table-name regression failed on
+the old reader and passed on the corrected reader. Native Linux protected discovery passed
+528 tests with 74 skips; the owning interop workload adapter passed 42 with eight skips;
+and PR-31x restricted discovery passed 294 with one skip. Broader interop discovery ran
+252 tests and retained four package/environment failures, including embedded source
+mismatch against the pinned daemon product; it is not counted as green. macOS protected
+discovery also remained red under its local socket sandbox, so installed Linux evidence
+remains necessary. Root-only skips are still unexecuted checks.
 
 Add fixture/runner/record/fault regressions as their implementations become executable. Run
 root-only checks only in the dedicated disposable environment and report other root skips.

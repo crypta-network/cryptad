@@ -25,6 +25,7 @@ NETNS_ROOT = Path('/run/netns')
 IP = '/usr/sbin/ip'
 NFT = '/usr/sbin/nft'
 SWITCH = 'cryptad-role-switch'
+SWITCH_TABLE = 'cryptad_switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
 MAX_STATE_BYTES = 8192
@@ -175,7 +176,7 @@ def role_rules(role):
 
 
 def switch_rules():
-    lines = ['table bridge cryptad_switch {',
+    lines = [f'table bridge {SWITCH_TABLE} {{',
              *(f' counter {name} {{ }}' for name in FNP_COUNTERS.values()),
              ' chain input { type filter hook input priority 0; policy drop; }',
              ' chain output { type filter hook output priority 0; policy drop; }',
@@ -199,7 +200,7 @@ def read_fnp_counters():
         _reject()
     identity = _namespace_identity(SWITCH)
     raw = _run([IP, 'netns', 'exec', SWITCH, NFT, '-j', 'list', 'counters',
-                'table', 'bridge', SWITCH])
+                'table', 'bridge', SWITCH_TABLE])
     try:
         parsed = json.loads(raw)
         if not isinstance(parsed, dict) or set(parsed) != {'nftables'} or not isinstance(parsed['nftables'], list):
@@ -212,7 +213,7 @@ def read_fnp_counters():
                 continue
             counter = entry.get('counter')
             if (not isinstance(counter, dict) or counter.get('family') != 'bridge'
-                    or counter.get('table') != SWITCH or counter.get('name') not in FNP_COUNTERS.values()
+                    or counter.get('table') != SWITCH_TABLE or counter.get('name') not in FNP_COUNTERS.values()
                     or counter['name'] in counters
                     or any(type(counter.get(key)) is not int or counter[key] < 0
                            for key in ('packets', 'bytes'))):
