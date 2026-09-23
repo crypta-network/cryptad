@@ -2,7 +2,7 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; two of the 45 installed workload cases now have valid
+**Implementation is incomplete; four of the 45 installed workload cases now have valid
 individual witnesses, and full installed acceptance remains false.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -887,8 +887,8 @@ sample, then requires all four current cgroup identities and positive memory, ta
 measurements to match the terminal role roster before attempting `signed-apphost-child` or
 `kernel-resource-scope`. Missing, stale or mismatched observations leave those cases
 inconclusive; the existing two installed case records remain separate. Linux offline tests
-cover both the full four-case shape and evidence-substitution rejection. No installed result
-for these two additional cases exists yet.
+cover both the full four-case shape and evidence-substitution rejection. At that preparation
+cutoff no installed result for these two additional cases existed; attempt 38 below supplies it.
 
 Attempt 36 used the additional AppHost/resource emitter source with a fresh exact fixture,
 but the sender JVM crashed with `SIGSEGV` in C1-compiled `Math.max` before FCP readiness.
@@ -924,6 +924,31 @@ it includes filesystem metadata and all retained task inputs. Non-mount Linux ro
 the bounded hardlink-counting `du` path, and non-Linux roots keep the earlier Python walk.
 No storage budget, free-space reserve, guest boot deadline or campaign deadline was raised.
 The refinement needs a fresh exact-source fixture and no-VM admission before another guest.
+
+Attempt 38 bound helper source `6a9472d2485436ceaf3d64780454fb466fc34047` to the
+unchanged Linux product and passed strict fixture and no-VM admission checks. Mounted task
+usage was charged conservatively without a repeated file-tree scan; no budget or guest
+deadline changed. The guest passed four-daemon readiness, started two normally signed Mail
+workers, performed byte-checked sender/recipient CHK transfers before and after sender
+restart, and exited zero. The stopped host runner cross-checked the final role roster,
+administrator cgroup sample windows, signed AppHost child identity, installation/source
+identity and current stop receipts. The fixed v8 verifier returned
+`recordContractValid=true` with `installed-ready`, `four-role-start`,
+`signed-apphost-child` and `kernel-resource-scope` all `passed`. The other four positive
+cases remain `inconclusive`; 26 denial and 11 lifecycle cases remain `not-executed`.
+Full installed workload acceptance therefore remains false.
+
+The caller reported cleanup complete, all current stop receipts and the sender's prior
+receipt were captured, and the sentinel matched; independent quiescence remains
+unestablished. Across 186 five-second samples, guest available memory stayed at or above
+3,747,287,040 bytes and the last OOM-kill counters were zero. Private HotSpot fatal files
+nevertheless showed two candidate-sender, one candidate-recipient and one relay JVM crashes,
+all in varying C1-compiled JDK methods with `SIGILL` or `SIGSEGV`. The successful case records
+refer to the actual final bound invocation epochs; they do not establish continuous JVM
+stability or explain the earlier crashes. The full stopped attempt, including same-attempt
+QCOW2 backing pair, four-case record and fatal diagnostics, was copied to local private
+retention and passed a recursive checksum dry run. No denial/lifecycle result, original
+protected authority or independent security review follows from this partial acceptance.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
@@ -1204,9 +1229,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: two positive case records passed; six positive and all 37 hostile/lifecycle emitters remain missing |
-| `installedPositiveExecuted` | True for the installed attempt-35 aggregate with host/terminal roster binding |
-| `installedWorkloadAcceptanceSatisfied` | False; six positive cases are inconclusive and 37 fault emitters remain unexecuted |
+| `implementationCoverage` | Incomplete: four positive case records passed; four positive and all 37 hostile/lifecycle emitters remain missing |
+| `installedPositiveExecuted` | True for the installed attempt-38 aggregate with host, AppHost, cgroup and terminal roster binding |
+| `installedWorkloadAcceptanceSatisfied` | False; four positive cases are inconclusive and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
