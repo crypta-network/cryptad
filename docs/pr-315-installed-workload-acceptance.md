@@ -17,7 +17,9 @@ retained failure does not identify the expired operation, and no content retriev
 The nineteenth reached recipient CHK retrieval after peer, signed AppHost and bootstrap checks,
 then timed out waiting for the FCP fetch response. The twentieth lost the recipient HTTP
 connection during normal Mail startup, with JVM fatal signals in the retained wrapper output.
-It did not reach the new sender-local content control. The full positive sequence remains incomplete.
+It did not reach the new sender-local content control. The twenty-first reached content insertion
+but expired while awaiting the sender's local insert response; its relay also recorded a JVM
+segmentation fault. The full positive sequence remains incomplete.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -432,6 +434,38 @@ After verified disposal of the stopped twentieth guest and redundant copies, tas
 was 12,840,984,576 bytes and filesystem free space was 43,988,877,312 bytes. Original archives,
 available diagnostics, reusable inputs and the current fixture remain retained under the
 40 GiB task budget and 8 GiB free-space reserve.
+
+The twenty-first attempt used helper `b9aab8c03b98b2886c738db10f790707b067d0ea` (tree
+`93529a143b2bd1636e1b30260b44f5c6de47eed5`). Four daemon readiness checks and the normal
+peer/AppHost/bootstrap sequence completed before the first content insertion. The retained FCP
+tail confirms the sender's local-only insert request; the observer expired at the original
+operation deadline while awaiting its response. Neither the sender-local read control nor the
+recipient fetch ran. The relay fatal header reports SIGSEGV/SEGV_MAPERR in C1-compiled
+`java.lang.CharacterData.of`. That observation does not establish the cause of the sender's
+insert timeout or the earlier JVM failures. The pinned emulator binary identifies QEMU 10.0.13
+(Debian `1:10.0.13+ds-0+deb13u1`) and matches the attempt's boot-closure identity.
+
+Crash-first capture retained the fatal header and CPU line, but exposed a second diagnostic
+defect: the instruction parser reported `captured` for a heading with no byte rows. JDK 25's
+formatter permits indented and highlighted rows, which the earlier bare-address parser rejected.
+The corrected reader accepts those fixed row forms, retains only normalized address/hex bytes
+and a strictly numeric PC, and discards optional ASCII columns and adjacent sections. A heading
+without byte rows is now `not-found`. Existing section, deadline and total-output caps remain.
+The [OpenJDK 25 formatter](https://github.com/openjdk/jdk25u/blob/master/src/hotspot/share/runtime/os.cpp)
+documents these row forms. A single unprivileged disposable process using the exact pinned JDK,
+with core dumps disabled and bounded time/heap/output, confirmed that the corrected extractor
+retains actual hex rows and the PC within the 2 KiB section limit. This is offline format
+validation, not an installed workload case. All 83 PR-315 offline tests passed at this cutoff.
+The exact rejected row from the twenty-first guest was not retained; the formatting correction
+does not reconstruct those lost bytes or diagnose a JVM defect.
+
+The twenty-first attempt captured all four current stop receipts and the matching sentinel,
+completed cleanup and stopped the guest. Its 170 periodic memory samples observed a minimum
+of 3,808,256,000 bytes available in the guest; the last observed role memory-event counters had
+no OOM or OOM-kill events. Sampling is not continuous proof. Safe disposal retained the original
+archive and available diagnostics while removing stopped disks and verified redundant copies.
+After also retaining the unique files and reconstruction inventories for older expected bundles,
+task allocation was 12,982,272,000 bytes and filesystem free space was 43,844,763,648 bytes.
 
 A separate bounded, read-only administrator observation during that attempt followed an already
 open role cgroup events descriptor through shutdown. It observed `populated=1`, followed by

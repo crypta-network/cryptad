@@ -90,7 +90,7 @@ class VolatileEvidenceTest(unittest.TestCase):
                b'CPU: total 4 avx sse2\nCPU Features: avx2\n'
                b'Environment Variables: SECRET=value\n')
         result = evidence._fatal_sections(raw, float('inf'))
-        self.assertEqual(b'Instructions:\n0x123: 0f 0b 90\n',
+        self.assertEqual(b'Instructions: (pc=0x123)\n0x123: 0f 0b 90\n',
                          base64.b64decode(result['instructions']['contentBase64']))
         self.assertEqual(b'CPU: total 4 avx sse2\nCPU Features: avx2\n',
                          base64.b64decode(result['cpu']['contentBase64']))
@@ -105,6 +105,43 @@ class VolatileEvidenceTest(unittest.TestCase):
         missing = evidence._fatal_sections(b'Environment Variables: secret\n', float('inf'))
         self.assertTrue(all(row['status'] == 'not-found' and row['sizeBytes'] == 0
                             for row in missing.values()))
+
+    def test_jdk25_highlighted_hex_rows_normalize_without_ascii_column(self):
+        # os.cpp print_hex_dump uses two-space/=> row prefixes and an optional
+        # three-space ASCII delimiter. print_instructions supplies a numeric PC.
+        raw = (b'Instructions: (pc=0x000000000000AB10)\r\n'
+               b'  0x000000000000ab00:   0F 0B 90 00   PRIVATE-ascii\r\n'
+               b'=>0x000000000000ab10:   48 8B 00 FF\n'
+               b'  0x000000000000ab20:   01 02   de ad be ef\n'
+               b'\nRegisters: private\n0x111: 11 22\n')
+        row = evidence._fatal_sections(raw, float('inf'))['instructions']
+        self.assertEqual('captured', row['status'])
+        self.assertEqual((b'Instructions: (pc=0x000000000000ab10)\n'
+                          b'0x000000000000ab00: 0f 0b 90 00\n'
+                          b'0x000000000000ab10: 48 8b 00 ff\n'
+                          b'0x000000000000ab20: 01 02\n'),
+                         base64.b64decode(row['contentBase64']))
+
+    def test_instruction_heading_without_valid_bytes_is_not_captured(self):
+        for raw in (b'Instructions:\n', b'Instructions: (pc=0x123)\n\n',
+                    b'Instructions: private-heading\n0x123: 01 02\n',
+                    b'Instructions: (pc=0x123 SECRET)\n0x123: 01 02\n',
+                    b'Instructions:\n=>0x123:   ?? ??\n',
+                    b'Instructions:\n=>0x123:   01 INVALID\n',
+                    b'Instructions:\n0x123: ' + b'01 ' * 65 + b'\n'):
+            with self.subTest(raw=raw[:80]):
+                row = evidence._fatal_sections(raw, float('inf'))['instructions']
+                self.assertEqual('not-found', row['status'])
+                self.assertEqual(0, row['sizeBytes'])
+                self.assertEqual('', row['contentBase64'])
+
+    def test_malformed_instruction_row_ends_section_without_adjacent_byte_capture(self):
+        for invalid in (b' =>0x124: 01 02\n', b'=>0x124: 0x01 02\n',
+                        b'=>0x124: 01 SECRET\n', b'Registers:\n'):
+            with self.subTest(invalid=invalid):
+                raw = b'Instructions:\n=>0x123:   0f 0b\n' + invalid + b'0x125: aa bb\n'
+                row = evidence._fatal_sections(raw, float('inf'))['instructions']
+                self.assertEqual(b'Instructions:\n0x123: 0f 0b\n', base64.b64decode(row['contentBase64']))
 
     def test_fatal_snapshot_selects_sections_beyond_retained_header(self):
         directory = self.fatal_directory()

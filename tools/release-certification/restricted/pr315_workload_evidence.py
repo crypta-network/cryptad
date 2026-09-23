@@ -190,6 +190,7 @@ def _fatal_sections(raw, deadline):
     truncated = {key: False for key in selected}
     expired = False
     in_instructions = False
+    instruction_header = b''
     offset = 0
     while offset < len(raw):
         if time.monotonic() >= deadline:
@@ -201,12 +202,19 @@ def _fatal_sections(raw, deadline):
         offset = end
         key = None
         if line.startswith(b'Instructions:'):
-            in_instructions = True
-            # Retain only the fixed header label; arbitrary header suffixes are not selected.
-            line = b'Instructions:\n'
-            key = 'instructions'
+            header = re.fullmatch(rb'Instructions:(?: \(pc=(0x[0-9a-fA-F]{1,16})\))?\r?\n?', line)
+            in_instructions = header is not None
+            instruction_header = (b'Instructions:' + (b' (pc=' + header[1].lower() + b')'
+                                  if header is not None and header[1] else b'') + b'\n')
         elif in_instructions:
-            if re.fullmatch(rb'0x[0-9a-fA-F]+: *(?:[0-9a-fA-F]{2}[ \t]*)+\r?\n?', line):
+            # HotSpot's highlighted dump prefixes rows with two spaces or =>. The
+            # optional ASCII column follows three spaces; retain only parsed hex.
+            row = re.fullmatch(rb'(?:  |=>)?(0x[0-9a-fA-F]{1,16}):[ \t]*(.*?)\r?\n?', line)
+            hex_part = row[2].split(b'   ', 1)[0].rstrip(b' \t') if row else b''
+            if re.fullmatch(rb'[0-9a-fA-F]{2}(?:[ \t][0-9a-fA-F]{2}){0,63}', hex_part):
+                normalized = row[1].lower() + b': ' + b' '.join(hex_part.lower().split()) + b'\n'
+                line = instruction_header + normalized
+                instruction_header = b''
                 key = 'instructions'
             else:
                 in_instructions = False
