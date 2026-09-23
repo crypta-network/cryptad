@@ -890,6 +890,24 @@ inconclusive; the existing two installed case records remain separate. Linux off
 cover both the full four-case shape and evidence-substitution rejection. No installed result
 for these two additional cases exists yet.
 
+Attempt 36 used the additional AppHost/resource emitter source with a fresh exact fixture,
+but the sender JVM crashed with `SIGSEGV` in C1-compiled `Math.max` before FCP readiness.
+The guest stopped after reported cleanup; no new case was credited. Its complete private
+crash evidence and same-attempt QCOW2 backing pair were retained and copied locally.
+This is another intermittent startup/JIT failure, not evidence that the new witness path
+was exercised.
+
+The next no-VM attempt-37 probe exposed a separate host admission problem before any guest
+allocation: Python's task-wide allocated-block walk reached its existing 30-second deadline
+after the retained input/evidence tree grew, even though the tank1 quota and free-space
+reserves still passed. A read-only native `du` walk counted the same allocated blocks as the
+old walk on a hardlink/symlink fixture and completed the real retained tree well within 30
+seconds. The prospective Linux fast path retains a 30-second process deadline, counts every
+hardlink, refuses malformed totals and checks `/proc/self/mountinfo` for any nested foreign
+device before using `du -x`. Non-Linux behavior retains the original walk. The failed probe
+directory is retained separately; fresh exact-source fixture and no-VM admission remain
+required before another guest.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
