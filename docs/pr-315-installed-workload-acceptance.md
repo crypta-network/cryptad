@@ -39,6 +39,9 @@ record, and all denial and lifecycle cases remain unexecuted.
 The thirty-first reran the same product with a fresh source-bound fixture and prospective
 controller-kernel daemon epoch checks. Its positive aggregate also completed, including
 the final four-role process sweep; individual v8 case coverage remains incomplete.
+The thirty-second, adding actual Java PID-to-role network namespace identity checks, reached
+four-role startup but failed relay FCP readiness after a wrapper JVM-start signal timeout.
+The unchanged thirty-third attempt completed the positive aggregate with those checks.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -802,9 +805,35 @@ A further prospective controller observation binds the fixed role namespace's ns
 and inode to the actual outer Java PID's `/proc/<pid>/ns/net` identity, sampled before and
 after the process read. The adapter rejects a missing, ambiguous or mismatched daemon
 namespace and retains the fixed cgroup identity alongside the process epoch. Linux focused
-controller and adapter tests pass; an installed run is still required for this narrower
-network-bound process proof. These observations are groundwork for genuine per-case actor
+controller and adapter tests passed; the installed results appear below. These observations
+are groundwork for genuine per-case actor
 binding and are not themselves accepted case records.
+
+Attempt 32 bound helper source `16403569775efb3bd3de8d85f5c16b04ac335a87` to the
+unchanged candidate product and passed strict fixture/admission checks. Sender, recipient and
+predecessor obtained FCP identities; relay service became active but never returned a complete
+FCP identity within the original 180-second daemon readiness bound. The retained wrapper
+excerpt shows its first JVM exceeded the wrapper's fixed startup-signal window and was
+terminated, followed by a second JVM launch. The observer reported
+`workload-daemon-readiness-timeout` with an immediate operation-deadline cause; no CHK request
+was attempted. No HotSpot fatal file was captured and the relay's last sampled OOM-kill count
+was zero. Cleanup was reported complete and the guest stopped. This does not establish a
+namespace check failure or the root cause of intermittent startup delay.
+
+Attempt 33 used the exact same source, fixture, product, guest profile and deadlines after a
+fresh whole-task inventory and no-VM admission probe. It retained an exit-zero stopped guest
+and `installedPositiveExecuted=true` aggregate with four roles, two signed Mail workers,
+sender restart, and two byte-checked cross-node CHK transfers. Controller-observed daemon
+process epochs and actual network namespace identities survived the final all-role sweep.
+No fatal JVM file was captured; 172 five-second samples recorded at least 3,798,196,224 bytes
+of guest available memory, with zero last-sampled OOM kills. The caller reported cleanup
+completed, all current stop receipts and the sender's prior receipt were captured, and the
+sentinel matched. Independent quiescence is still unestablished by the fixed-file snapshot.
+The two stopped attempts and their same-attempt QCOW2 backing pairs were retained privately
+and copied to local storage; recursive checksum dry runs found no differences. The successful
+retry validates this narrower process/network binding in one installed run. It does not
+resolve attempt 32's startup failure, complete any individual positive case record, or
+execute the 37 hostile and lifecycle emitters.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
