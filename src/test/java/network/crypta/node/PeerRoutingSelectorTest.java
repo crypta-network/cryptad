@@ -83,7 +83,7 @@ class PeerRoutingSelectorTest {
   }
 
   @Test
-  void closerPeer_whenSingleEligiblePeer_expectNull() {
+  void closerPeer_whenSingleEligiblePeer_expectThatPeer() {
     // Arrange
     PeerNode onlyPeer = routablePeerAt(0.80);
     when(roster.connectedPeers()).thenReturn(new PeerNode[] {onlyPeer});
@@ -111,11 +111,11 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertNull(selected);
+    assertEquals(onlyPeer, selected);
   }
 
   @Test
-  void closerPeer_whenTwoEligiblePeers_expectSecondClosestSelected() {
+  void closerPeer_whenTwoEligiblePeers_expectClosestSelected() {
     // Arrange
     PeerNode closest = routablePeerAt(0.24);
     PeerNode secondClosest = routablePeerAt(0.30);
@@ -144,7 +144,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(secondClosest, selected);
+    assertEquals(closest, selected);
   }
 
   @Test
@@ -184,7 +184,7 @@ class PeerRoutingSelectorTest {
   }
 
   @Test
-  void closerPeer_whenIgnoreSelfTrueAndOnlyPeersBeyondSelf_expectSelectsSecond() {
+  void closerPeer_whenIgnoreSelfTrueAndOnlyPeersBeyondSelf_expectSelectsClosest() {
     // Arrange
     when(node.network().location()).thenReturn(0.0); // self-distance to target=0.25 is 0.25
 
@@ -216,7 +216,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(fartherBeyondSelf, selected);
+    assertEquals(closerBeyondSelf, selected);
   }
 
   @Test
@@ -225,14 +225,14 @@ class PeerRoutingSelectorTest {
     PeerNode missingStats = routablePeerAt(0.24);
     stubLoadStats(missingStats, null);
 
-    PeerNode ignored = routablePeerAt(0.27);
-    stubLoadStats(ignored, mock(PeerLoadStats.class));
-
-    PeerNode selectedExpected = routablePeerAt(0.30);
+    PeerNode selectedExpected = routablePeerAt(0.27);
     stubLoadStats(selectedExpected, mock(PeerLoadStats.class));
 
+    PeerNode farther = routablePeerAt(0.30);
+    stubLoadStats(farther, mock(PeerLoadStats.class));
+
     when(roster.connectedPeers())
-        .thenReturn(new PeerNode[] {missingStats, ignored, selectedExpected});
+        .thenReturn(new PeerNode[] {missingStats, selectedExpected, farther});
 
     // Act
     PeerNode selected =
@@ -267,14 +267,14 @@ class PeerRoutingSelectorTest {
     stubLoadStats(inMandatoryBackoff, mock(PeerLoadStats.class));
     when(inMandatoryBackoff.isInMandatoryBackoff(NOW, true)).thenReturn(true);
 
-    PeerNode ignored = routablePeerAt(0.27);
-    stubLoadStats(ignored, mock(PeerLoadStats.class));
-
-    PeerNode selectedExpected = routablePeerAt(0.30);
+    PeerNode selectedExpected = routablePeerAt(0.27);
     stubLoadStats(selectedExpected, mock(PeerLoadStats.class));
 
+    PeerNode farther = routablePeerAt(0.30);
+    stubLoadStats(farther, mock(PeerLoadStats.class));
+
     when(roster.connectedPeers())
-        .thenReturn(new PeerNode[] {inMandatoryBackoff, ignored, selectedExpected});
+        .thenReturn(new PeerNode[] {inMandatoryBackoff, selectedExpected, farther});
 
     // Act
     PeerNode selected =
@@ -308,11 +308,11 @@ class PeerRoutingSelectorTest {
     PeerNode overSelected = routablePeerAt(0.24);
     when(overSelected.selectionRate()).thenReturn(100.0);
 
-    PeerNode ignored = routablePeerAt(0.27);
-    when(ignored.selectionRate()).thenReturn(1.0);
-
-    PeerNode selectedExpected = routablePeerAt(0.30);
+    PeerNode selectedExpected = routablePeerAt(0.27);
     when(selectedExpected.selectionRate()).thenReturn(1.0);
+
+    PeerNode farther = routablePeerAt(0.30);
+    when(farther.selectionRate()).thenReturn(1.0);
 
     PeerNode other1 = routablePeerAt(0.35);
     PeerNode other2 = routablePeerAt(0.40);
@@ -320,7 +320,7 @@ class PeerRoutingSelectorTest {
     when(other2.selectionRate()).thenReturn(1.0);
 
     when(roster.connectedPeers())
-        .thenReturn(new PeerNode[] {overSelected, ignored, selectedExpected, other1, other2});
+        .thenReturn(new PeerNode[] {overSelected, selectedExpected, farther, other1, other2});
 
     // Act
     PeerNode selected =
@@ -357,15 +357,15 @@ class PeerRoutingSelectorTest {
     when(oldFred.getNodeName()).thenReturn("Fred");
     when(oldFred.getVersion()).thenReturn("Fred,0.7,1.0,999");
 
-    PeerNode ignored = routablePeerAt(0.27);
-    when(ignored.getNodeName()).thenReturn("Fred");
-    when(ignored.getVersion()).thenReturn("Fred,0.7,1.0,1000");
-
-    PeerNode selectedExpected = routablePeerAt(0.30);
+    PeerNode selectedExpected = routablePeerAt(0.27);
     when(selectedExpected.getNodeName()).thenReturn("Fred");
-    when(selectedExpected.getVersion()).thenReturn("Fred,0.7,1.0,1001");
+    when(selectedExpected.getVersion()).thenReturn("Fred,0.7,1.0,1000");
 
-    when(roster.connectedPeers()).thenReturn(new PeerNode[] {oldFred, ignored, selectedExpected});
+    PeerNode farther = routablePeerAt(0.30);
+    when(farther.getNodeName()).thenReturn("Fred");
+    when(farther.getVersion()).thenReturn("Fred,0.7,1.0,1001");
+
+    when(roster.connectedPeers()).thenReturn(new PeerNode[] {oldFred, selectedExpected, farther});
 
     // Act
     PeerNode selected =
@@ -432,7 +432,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(direct, selected);
+    assertEquals(indirect, selected);
     verify(indirect)
         .getClosestPeerLocation(
             eq(TARGET),
@@ -445,7 +445,7 @@ class PeerRoutingSelectorTest {
   }
 
   @Test
-  void closerPeer_whenAllCandidatesBackedOff_expectReturnsSecondClosestBackedOff() {
+  void closerPeer_whenAllCandidatesBackedOff_expectReturnsClosestBackedOff() {
     // Arrange
     PeerNode closestBackedOff = routablePeerAt(0.24);
     when(closestBackedOff.isRoutingBackedOff(anyLong(), anyBoolean())).thenReturn(true);
@@ -478,14 +478,14 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(secondBackedOff, selected);
+    assertEquals(closestBackedOff, selected);
   }
 
   @Test
   void closerPeer_whenAddUnpickedLocsToProvided_expectCollectsUnpickedAndBackedOff() {
     // Arrange
-    PeerNode closest = routablePeerAt(0.22); // diff=0.03 (ignored)
-    PeerNode selectedExpected = routablePeerAt(0.20); // diff=0.05
+    PeerNode closest = routablePeerAt(0.22); // diff=0.03
+    PeerNode unpickedCloser = routablePeerAt(0.20); // diff=0.05
 
     PeerNode backedOff = routablePeerAt(0.19); // diff=0.06
     when(backedOff.isRoutingBackedOff(anyLong(), anyBoolean())).thenReturn(true);
@@ -493,7 +493,7 @@ class PeerRoutingSelectorTest {
     PeerNode unpicked = routablePeerAt(0.10); // diff=0.15
 
     when(roster.connectedPeers())
-        .thenReturn(new PeerNode[] {closest, selectedExpected, backedOff, unpicked});
+        .thenReturn(new PeerNode[] {closest, unpickedCloser, backedOff, unpicked});
 
     List<Double> addUnpickedLocsTo = new ArrayList<>();
 
@@ -520,8 +520,8 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(selectedExpected, selected);
-    assertEquals(Set.of(0.10, 0.19), Set.copyOf(addUnpickedLocsTo));
+    assertEquals(closest, selected);
+    assertEquals(Set.of(0.10, 0.19, 0.20), Set.copyOf(addUnpickedLocsTo));
   }
 
   @Test
@@ -537,14 +537,14 @@ class PeerRoutingSelectorTest {
     when(failureTable.getTimedOutNodesList(key)).thenReturn(entry);
 
     PeerNode closest = routablePeerAt(0.24);
-    PeerNode selectedExpected = routablePeerAt(0.27);
-    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, selectedExpected});
+    PeerNode farther = routablePeerAt(0.27);
+    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, farther});
 
     when(entry.getTimeoutTime(closest, OUTGOING_HTL, NOW, true)).thenReturn(NOW - 1);
-    when(entry.getTimeoutTime(selectedExpected, OUTGOING_HTL, NOW, true)).thenReturn(NOW - 1);
+    when(entry.getTimeoutTime(farther, OUTGOING_HTL, NOW, true)).thenReturn(NOW - 1);
 
     when(entry.getTimeoutTime(closest, OUTGOING_HTL, NOW, false)).thenReturn(NOW + 10_000);
-    when(entry.getTimeoutTime(selectedExpected, OUTGOING_HTL, NOW, false)).thenReturn(NOW - 1);
+    when(entry.getTimeoutTime(farther, OUTGOING_HTL, NOW, false)).thenReturn(NOW - 1);
 
     RecentlyFailedReturn recentlyFailed = new RecentlyFailedReturn();
 
@@ -571,7 +571,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(selectedExpected, selected);
+    assertEquals(closest, selected);
     assertEquals(-1L, recentlyFailed.recentlyFailed());
   }
 
@@ -637,8 +637,8 @@ class PeerRoutingSelectorTest {
         .thenReturn(0);
 
     PeerNode closest = routablePeerAt(0.24);
-    PeerNode selectedExpected = routablePeerAt(0.27);
-    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, selectedExpected});
+    PeerNode farther = routablePeerAt(0.27);
+    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, farther});
 
     // Act
     PeerNode selected =
@@ -663,7 +663,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(selectedExpected, selected);
+    assertEquals(closest, selected);
     verify(statusBook, atLeastOnce())
         .getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_CONNECTED, false);
     verify(statusBook, atLeastOnce())
@@ -704,8 +704,8 @@ class PeerRoutingSelectorTest {
   void closerPeer_whenUsingConvenienceOverload_expectSameSelectionRulesApply() {
     // Arrange
     PeerNode closest = routablePeerAt(0.24);
-    PeerNode selectedExpected = routablePeerAt(0.30);
-    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, selectedExpected});
+    PeerNode farther = routablePeerAt(0.30);
+    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, farther});
 
     // Act
     PeerNode selected =
@@ -730,7 +730,7 @@ class PeerRoutingSelectorTest {
                 false));
 
     // Assert
-    assertEquals(selectedExpected, selected);
+    assertEquals(closest, selected);
   }
 
   private static Set<PeerNode> identityPeerSet() {

@@ -27,6 +27,11 @@ The twenty-seventh, in a separately identified macOS Docker translation profile,
 boot before SSH readiness.
 The twenty-eighth, on a new native x86 tank1 task root, failed during host source archiving before
 allocating its VM.
+The twenty-ninth passed four-role readiness, signed Mail bootstrap and the sender's local-only
+CHK insertion and local byte control, then timed out waiting for the recipient's cross-node
+fetch. Its diagnostics and stopped guest are retained privately. A subsequent isolated
+three-node diagnostic identified a peer-selection defect and verified a narrow source fix;
+that local result is not an installed acceptance witness.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -689,6 +694,38 @@ FCP operation deadlines, QEMU, CPU model, guest memory and role limits are uncha
 helper source identity requires fresh fixture preparation and an installed rerun. Attempt 28
 remains a failed preparation diagnostic, and all 45 installed workload cases remain without a
 complete acceptance witness.
+
+### Installed attempt 29 and cross-node routing defect
+
+Attempt 29 used the unchanged native x86 `tcg-multi`/`qemu64`, four-vCPU, 5632-MiB guest
+profile on the tank1 task root. Its copied reference, strict fixture, source archive, guest
+boot, installation, four-daemon readiness and ordinary signed Mail bootstrap passed. The
+sender's first `ClientPut LocalRequestOnly=true` emitted `URIGenerated`, `PutFetchable` and
+`PutSuccessful`; a sender-side `DSOnly=true` control returned the exact inserted bytes. The
+recipient then sent `ClientGet IgnoreDS=true` but received no terminal frame within the
+predeclared 120-second operation limit. The driver failed and stopped the guest. All four
+stop receipts were captured, but independent quiescence was not established. No complete
+positive case was recorded, and the 37 hostile and lifecycle emitters remain unexecuted.
+
+The same candidate JAR reproduced the stalled recipient fetch in a private, isolated
+three-node loopback network without QEMU, nftables or AppHost. Peer status showed two-sided
+connections. A read-only recipient fetch-scheduler snapshot found no pending CHK item after
+the request had started; detailed logs showed its first `RequestSender` selecting the only
+connected relay as the overall closest peer, then immediately finishing with
+`ROUTE_NOT_FOUND`. This excludes the earlier insert-scheduler defect as the cause of this
+particular local fetch failure. An experiment enabling sender
+`node.writeLocalToDatastore` still timed out, so local datastore policy did not resolve it.
+
+Source inspection found that `PeerRoutingSelector.updateBestTracking()` combined three
+state-mutating calls with short-circuit `||`. When the first call selected a candidate as the
+overall closest, it skipped the backed-off and not-backed-off trackers. The final selector
+reads those trackers, so one eligible peer yielded `null`; multiple peers could select the
+second closest instead. Existing unit expectations encoded that wrong behavior. After
+correcting the tracker calls and expectations, 13 of 17 focused tests failed on the old
+source and all 17 passed on the revised source. A fresh source-built local three-node run
+then completed the same local-only CHK insertion, sender byte control and recipient
+cross-node byte retrieval. This corroborates the defect and fix in an isolated network;
+the revised product still requires an exact Linux build, fresh fixture and installed rerun.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
