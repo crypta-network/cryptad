@@ -32,6 +32,10 @@ CHK insertion and local byte control, then timed out waiting for the recipient's
 fetch. Its diagnostics and stopped guest are retained privately. A subsequent isolated
 three-node diagnostic identified a peer-selection defect and verified a narrow source fix;
 that local result is not an installed acceptance witness.
+The thirtieth, with the corrected native Linux product, completed the installed positive
+aggregate: two byte-checked sender/recipient CHK transfers straddled a sender restart and
+the signed Mail workers started. No individual v8 positive case has a complete trusted
+record, and all denial and lifecycle cases remain unexecuted.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -727,6 +731,40 @@ then completed the same local-only CHK insertion, sender byte control and recipi
 cross-node byte retrieval. This corroborates the defect and fix in an isolated network;
 the revised product still requires an exact Linux build, fresh fixture and installed rerun.
 
+### Native installed positive aggregate in attempt 30
+
+The exact `4a924b8b7b039355ba01eb102d813d774689166a` Linux build passed the full Java
+suite: 17,407 tests, ten skips, zero failures and zero errors. The focused PR-315 Linux
+offline suite passed 83 tests. The new source/product-bound fixture passed strict verification.
+A no-VM probe accepted the unchanged tank1 storage, host-memory and original
+`tcg-multi`/`qemu64` profile. The first formal invocation refused the probe's already
+existing output directory before allocating a VM; its files were preserved under a separate
+`probe-30` path. After a fresh capacity check, the real attempt used a new `suite-30` output
+directory without changing VM, guest, FCP or campaign limits.
+
+The real attempt retained a guest report with exit code zero and `guestStopped=true`.
+The installed driver reported four roles, two signed Mail workers, a new sender manager
+epoch, and observed CHK content retrieval. Both sender `ClientPut` operations reached
+`PutSuccessful`; sender-local controls and recipient cross-node `ClientGet` operations
+returned `AllData`, and the driver compared their bytes before reporting success. The
+positive aggregate is bound to the installed source/product identity by the runner, which
+reported `installedPositiveExecuted=true`. Its eight individual positive case statuses
+remain `inconclusive`: the required trusted per-case observations and host context have not
+been emitted. All 26 denial and 11 lifecycle cases remain `not-executed`, so
+`installedWorkloadAcceptanceSatisfied=false` and implementation coverage is incomplete.
+
+The caller reported cleanup completed, all four current stop receipts were captured, and
+the sender's pre-restart receipt was also captured. The retained fixed-file snapshot still
+states `quiescenceIndependentlyEstablished=false`; neither the caller report nor the stopped
+guest replaces independent proof. Its sentinel matched. Across 161 five-second samples,
+minimum observed guest available memory was 3,780,231,168 bytes and the last sampled OOM
+kill counters were zero; this is sampled diagnostic context, not continuous resource proof.
+A predecessor HotSpot fatal file records `SIGILL` during this otherwise completed attempt.
+The intermittent JVM signal has no established cause and remains open. The full stopped
+attempt, including its same-attempt QCOW2 backing pair, was copied to the local private
+retention directory and a recursive checksum dry run found no differences. No installed
+hostile/lifecycle result or independent security review follows from this aggregate.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
@@ -1000,13 +1038,14 @@ synthetic local-only CHK `ClientPut` with the rebuilt artifact. The full Java su
 passed 17,407 tests with ten skips, zero failures and zero errors. Focused `sonarlintFile`
 analysis of the touched production file produced an empty Checkstyle report. A full macOS
 Gradle run failed in unrelated workspace scanning and host-path/symlink tests; its outcome is
-not substituted for the successful Linux run. No complete installed workload campaign or
-hosted CI has run against the corrected Java product.
+not substituted for the successful Linux run. The subsequent peer-selector correction passed
+the full Linux Java suite and a complete installed positive aggregate as described above.
+No 45-case installed workload campaign or hosted CI has run against the latest source.
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
-| `installedPositiveExecuted` | False for this revision; no observed installed positive attempt |
+| `installedPositiveExecuted` | True for the installed attempt-30 aggregate; all eight individual positive case records remain inconclusive |
 | `installedWorkloadAcceptanceSatisfied` | False; no complete positive record and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
