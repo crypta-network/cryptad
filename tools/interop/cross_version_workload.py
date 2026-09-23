@@ -436,6 +436,7 @@ class InstalledWorkloadAdapter:
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
+        self.fnp_sample_failure = None
         self.restart_context = self.restart_window = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
@@ -549,12 +550,14 @@ class InstalledWorkloadAdapter:
     def _fnp_sample(self, phase):
         try:
             value = self.control.request('observe-fnp', self.handles['candidate-recipient'])
-        except (OSError, runtime.RuntimeFailure):
+        except (OSError, runtime.RuntimeFailure) as error:
+            self.fnp_sample_failure = {'phase': phase, 'failureClass': type(error).__name__[:128]}
             return None
         if (not isinstance(value, dict) or set(value) != {'phase', 'managerInvocation', 'snapshot'}
                 or value['phase'] != phase
                 or value['managerInvocation'] != self.nodes['candidate-recipient']['managerInvocation']
                 or not isinstance(value['snapshot'], dict)):
+            self.fnp_sample_failure = {'phase': phase, 'failureClass': 'response-binding-rejected'}
             return None
         return value
 
@@ -707,6 +710,7 @@ class InstalledWorkloadAdapter:
                     'contentEvidence': getattr(self, 'content_evidence', None),
                     'fnpCounterPair': ({'before': before_fnp, 'after': after_fnp}
                                        if before_fnp is not None and after_fnp is not None else None),
+                    'fnpSampleFailure': getattr(self, 'fnp_sample_failure', None),
                     'restartContext': self.restart_context,
                     'restartWindow': self.restart_window,
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),

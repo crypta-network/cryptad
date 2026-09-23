@@ -735,9 +735,12 @@ class FnpCounterPairTest(unittest.TestCase):
         first = {'policyDigest': 'a' * 64, 'bootId': BOOT,
                  'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': 10}
         second = dict(first, observedMonotonicNs=20)
-        retained = [None]
-        def write(_path, value, **_options):
-            retained[0] = copy.deepcopy(value)
+        retained, failures = [None], []
+        def write(path, value, **_options):
+            if path.name == 'fnp-content-failure.json':
+                failures.append(copy.deepcopy(value))
+            else:
+                retained[0] = copy.deepcopy(value)
         with patch.object(workload, 'locked', side_effect=nullcontext), \
                 patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', record)), \
                 patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
@@ -752,8 +755,30 @@ class FnpCounterPairTest(unittest.TestCase):
             self.assertEqual((first, second), (retained[0]['before'], retained[0]['after']))
             with self.assertRaisesRegex(workload.WorkloadError, 'fnp-counter-pair-invalid'):
                 workload.observe_fnp(HANDLE)
-            self.assertEqual(2, stored.call_count)
+            self.assertEqual(3, stored.call_count)
+            self.assertEqual('pair-write', failures[0]['stage'])
+            self.assertEqual('restricted-workload-fnp-counter-pair-invalid',
+                             failures[0]['failureCode'])
             self.assertEqual(3, sampled.call_count)
+
+    def test_counter_failure_retains_only_fixed_private_class(self):
+        from restricted_workload_network import NetworkBoundaryError
+        error = NetworkBoundaryError('restricted-workload-network-command-failed')
+        error.private_diagnostics = {'failureClass': 'bounded_process_deadline_exceeded',
+                                     'stderr': 'private candidate data', 'arguments': []}
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', {})), \
+                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
+                patch.object(workload, 'manager'), \
+                patch.object(workload, 'write') as stored, \
+                patch('restricted_workload_network.read_fnp_counters', side_effect=error):
+            with self.assertRaises(NetworkBoundaryError):
+                workload.observe_fnp(HANDLE)
+        path, record = stored.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/fnp-content-failure.json', path)
+        self.assertEqual('counter-read', record['stage'])
+        self.assertEqual('bounded_process_deadline_exceeded', record['networkFailureClass'])
+        self.assertNotIn('private candidate data', json.dumps(record))
 
     def test_sender_handle_cannot_read_fnp_counter_pair(self):
         with patch.object(workload, 'locked', side_effect=nullcontext), \

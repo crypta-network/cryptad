@@ -1062,6 +1062,36 @@ real table name independently in the offline test. It still needs installed reru
 the eighth positive case can pass. Neither this diagnosis nor the read-only query explains
 the intermittent JVM crashes.
 
+Attempt 43 bound the corrected reader helper to the same product, prepared reference and
+normally signed Mail fixture. Its no-VM admission passed, and a separate read-only call to
+the installed fixed reader returned `pr315-fixed-fnp-counters` from the real bridge table.
+The sender then crashed during startup with `SIGSEGV` in a C1-compiled Bouncy Castle method.
+The guest reported a failed positive sequence and cleanup, four current stop receipts were
+captured, and no individual positive case was established in this attempt. The emulator
+stopped and its complete private evidence, including the same-attempt QCOW2 backing pair,
+passed local recursive checksum comparison. The crash does not negate the isolated reader
+diagnosis and does not establish the eighth case.
+
+Attempt 44 reused the same exact helper, fixture, product and VM profile after fresh
+task-wide storage and memory admission. Four roles and two signed Mail workers ran, both
+byte-checked cross-node CHK transfers and the sender restart completed, and the guest exited
+zero. Seven individual positive v8 cases passed again; `fnp-content-retrieval` remained
+`inconclusive`. The observer supplied no `fnpCounterPair`, and the stopped host snapshot
+reported its fixed root pair unavailable. No HotSpot fatal file was captured. The caller
+reported cleanup complete and four current stop receipts were captured, but independent
+quiescence remains unestablished. The stopped full attempt was retained locally and passed
+recursive checksum comparison. Strings found by a read-only scan of its QCOW2 overlay
+could also originate from the installed source and do not prove that a pair record existed.
+
+The current diagnostic revision retains only a fixed stage, exception class, fixed error
+code and bounded network failure class when the root `observe-fnp` method fails. The
+administrator snapshots that private record only after reported cleanup. The observer
+separately reports whether its fixed request failed or response binding failed. These
+diagnostics cannot create a v8 case commitment or change a failing result. Native Linux
+protected workload tests passed 164 with 21 skips, PR-315 restricted tests passed 92, and
+the owning interop adapter tests passed 42 with eight skips. An installed run is still
+required to locate the remaining failure and prove the eighth positive case.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

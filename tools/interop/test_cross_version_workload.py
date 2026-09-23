@@ -264,6 +264,13 @@ class ObserverPolicyTests(unittest.TestCase):
         self.assertEqual(value, adapter._fnp_sample('before'))
         adapter.control.request.assert_called_once_with('observe-fnp', HANDLE)
         self.assertIsNone(adapter._fnp_sample('after'))
+        self.assertEqual({'phase': 'after', 'failureClass': 'response-binding-rejected'},
+                         adapter.fnp_sample_failure)
+        adapter.control.request.side_effect = workload.runtime.RuntimeFailure('private detail')
+        self.assertIsNone(adapter._fnp_sample('before'))
+        self.assertEqual({'phase': 'before', 'failureClass': 'RuntimeFailure'},
+                         adapter.fnp_sample_failure)
+        self.assertNotIn('private detail', str(adapter.fnp_sample_failure))
 
     def test_positive_result_requires_final_sample_of_each_running_daemon(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
