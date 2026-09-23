@@ -2,12 +2,13 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; no installed workload case has a valid acceptance witness in
-this revision's audit.** The first three installed attempts failed before role staging; the next
+**Implementation is incomplete; two of the 45 installed workload cases now have valid
+individual witnesses, and full installed acceptance remains false.** The first three installed
+attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
 through thirteenth reached first-role startup but failed daemon readiness; no four-role positive
-run has completed. The fourteenth reached both candidate daemons, then failed predecessor readiness.
+run had completed at that point. The fourteenth reached both candidate daemons, then failed predecessor readiness.
 The fifteenth reached all four daemons, then exposed an incorrect peer-wait helper call.
 The sixteenth failed first-role wrapper bootstrap with a JVM illegal-instruction crash.
 The seventeenth passed four-daemon readiness and two-sided peer connection waits, then failed
@@ -20,7 +21,7 @@ connection during normal Mail startup, with JVM fatal signals in the retained wr
 It did not reach the new sender-local content control. The twenty-first reached content insertion
 but expired while awaiting the sender's local insert response; its relay also recorded a JVM
 segmentation fault. The twenty-second through twenty-fourth reached the same first local-only
-insert and expired without a terminal insert frame. The full positive sequence remains
+insert and expired without a terminal insert frame. The full positive sequence then remained
 incomplete. The twenty-fifth failed predecessor daemon readiness after both candidate roles
 responded to FCP. The twenty-sixth failed sender daemon readiness after a JVM startup crash.
 The twenty-seventh, in a separately identified macOS Docker translation profile, failed guest
@@ -843,8 +844,9 @@ cgroup and boot identity against separately extracted root-owned terminal contro
 and matching stop receipts after guest shutdown. Missing, malformed or substituted terminal
 records cannot set the diagnostic `installedPositiveExecuted` flag. These observations are
 still not per-case operation or denial witnesses, and the diagnostic flag does not imply
-`installedWorkloadAcceptanceSatisfied`. Linux focused adapter and PR-315 offline tests pass;
-the new roster path has not yet run in an installed guest.
+`installedWorkloadAcceptanceSatisfied`. At this prospective revision's preparation cutoff,
+Linux focused adapter and PR-315 offline tests passed, while the roster path still awaited
+installed execution.
 
 A subsequent prospective host verifier uses that bound roster for exactly two v8 cases:
 `installed-ready` repeats the fixed host installation/source/test-kit verification after
@@ -853,9 +855,30 @@ Both are passed through the existing closed `pr314_acceptance.verify_attempts` c
 the selected signed Mail digest and retained root terminal authority. The other six positive
 cases remain inconclusive and all 37 hostile/lifecycle cases remain unexecuted; the runner
 hard-codes full installed acceptance false for this incomplete implementation. Offline
-synthetic records prove only that this narrow verifier path is reachable, never that an
-installed case passed. Fresh installed execution is required before either case can be
-credited in the audit.
+synthetic records proved only that this narrow verifier path was reachable; attempt 35 below
+provides the installed result.
+
+Attempt 35 used helper source `21d004f0cc4de57bdbe7f573ae67c7b27ac5eabb`, the unchanged
+source-built Linux product, and a fresh strict fixture. Task-wide storage and memory
+admission passed before allocating the original `tcg-multi`/`qemu64`, four-vCPU, 5632-MiB
+guest. The installed driver completed four roles, two normally signed Mail workers, both
+byte-checked sender/recipient CHK transfers and a new sender manager and Java epoch. The
+guest command exited zero and the emulator stopped. Afterward the host reverified the
+installed source/test-kit/boot/product identity, checked the final controller-kernel roster
+against root-owned terminal role and stop records, and called the fixed v8 verifier with
+only `installed-ready` and `four-role-start` declared. It returned
+`recordContractValid=true` and those two cases `passed`. The other six positive cases remain
+`inconclusive`; 26 denial and 11 lifecycle cases remain `not-executed`, so the 45-case
+`installedWorkloadAcceptanceSatisfied` verdict remains false.
+
+The caller reported cleanup complete, all current stop receipts and the sender's prior
+receipt were captured, and the synthetic sentinel matched. The fixed-file snapshot still
+reports `quiescenceIndependentlyEstablished=false`; these two cases do not prove lifecycle
+cleanup or any denial. No JVM fatal file was captured and 172 five-second resource samples
+ended with zero OOM-kill counters. The stopped guest and same-attempt QCOW2 backing pair,
+case record, and private diagnostics were copied to local retention and passed a recursive
+checksum dry run. This installed observation is narrower than full workload acceptance and
+does not replace original protected authority or independent security review.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
@@ -1136,9 +1159,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: 37 installed hostile/lifecycle emitters and complete trusted positive records remain missing |
-| `installedPositiveExecuted` | True for the installed attempt-30 aggregate; all eight individual positive case records remain inconclusive |
-| `installedWorkloadAcceptanceSatisfied` | False; no complete positive record and 37 fault emitters remain unexecuted |
+| `implementationCoverage` | Incomplete: two positive case records passed; six positive and all 37 hostile/lifecycle emitters remain missing |
+| `installedPositiveExecuted` | True for the installed attempt-35 aggregate with host/terminal roster binding |
+| `installedWorkloadAcceptanceSatisfied` | False; six positive cases are inconclusive and 37 fault emitters remain unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
