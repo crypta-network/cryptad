@@ -25,6 +25,8 @@ incomplete. The twenty-fifth failed predecessor daemon readiness after both cand
 responded to FCP. The twenty-sixth failed sender daemon readiness after a JVM startup crash.
 The twenty-seventh, in a separately identified macOS Docker translation profile, failed guest
 boot before SSH readiness.
+The twenty-eighth, on a new native x86 tank1 task root, failed during host source archiving before
+allocating its VM.
 Fixture preparation, offline tests, and a positive aggregate do not establish
 complete installed workload acceptance.
 
@@ -647,13 +649,46 @@ The source fix changes the final comparison to `<= 0`. A regression with two rea
 negative exclusions failed before the change and passed afterward with the complete
 `RandomGrabArrayTest` class. Two fresh, non-DEBUG local nodes then received `PutSuccessful`
 using the rebuilt Java artifact. These are local behavioral checks, not installed witnesses.
-The corrected Java product needs a new exact source build and fixture before the positive
-installed sequence can be rerun. The remaining 37 hostile and lifecycle emitters are unaffected.
+An exact `c0964f057b46347575bed818d486a9054c9f27ac` Linux source build and fixture subsequently
+passed strict verification. The remaining 37 hostile and lifecycle emitters are unaffected.
 
 A read-only PVE storage check found the CT102 root filesystem still has room for another guest,
 but its underlying shared `local-lvm` thin pool had about 22 GiB free against the unchanged
 29.28-GB conservative next-attempt reservation. Increasing only CT102's 40-GiB task cap would
 not fund that underlying reservation. No further native CT102 VM was allocated in this state.
+
+### Native tank1 preparation and archive limit
+
+The former 40-GiB task cap applied to the previous container agent; it is not a limit for this
+workspace. A prospective 512-GiB task-wide budget now counts the retained macOS, Docker and
+CT102 copies, a new tank1 copy and the next guest reservation. The task-owned tank1 dataset has
+a 256-GiB quota; its runner root has a 224-GiB budget and a 16-GiB free-space reserve. The
+shared PVE thin pool retains a separate 16-GiB minimum because the CT102 root still resides
+there. One VM attempt is admitted at a time and capacity is rechecked before every allocation.
+
+The healthy tank1 dataset was hot-mounted into CT102 at `/work/pr315-task` without stopping the
+container. The original CT102 tree and macOS copy remain intact. Both retained reference QCOW2
+files had no backing dependency and no QEMU was running before the copy. A checksum dry run found
+no differences in the copied inputs or evidence; its only entries were the mount root's timestamp
+and the verification output created in the source directory after the copy. The fixture in the
+new root passed its full strict verification. The runner's `--probe` reported about 13.43 GB of
+retained task allocation, a 29.21-GB next-attempt reservation and about 10.62 GB effective host
+memory available, with no admission reason. It allocated no VM.
+
+Attempt 28 repeated those admission checks and copied the fixed source, product and fixture to
+the tank1 attempt directory. It failed at `source-archive`, before `guest.qcow2` creation; its
+reported guest state remained stopped and no installed driver ran. The shared host-command
+helper gives `tar -czf` 120 seconds by default. The retained archive was incomplete at about
+285 MB when that bound expired. A separate bounded diagnostic archived the same exact source
+snapshot to the same tank1 dataset in 267.421 seconds, producing a 425,189,755-byte archive.
+This establishes a host preparation bound on the new storage, not a workload or guest timeout.
+
+The prospective helper revision gives only `workload-positive` source archiving 420 seconds;
+other reference modes retain 120 seconds. Guest SSH readiness, the original campaign deadline,
+FCP operation deadlines, QEMU, CPU model, guest memory and role limits are unchanged. The new
+helper source identity requires fresh fixture preparation and an installed rerun. Attempt 28
+remains a failed preparation diagnostic, and all 45 installed workload cases remain without a
+complete acceptance witness.
 
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four

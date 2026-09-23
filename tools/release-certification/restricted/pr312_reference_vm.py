@@ -412,7 +412,11 @@ def run(args):
         expected_bundle, expected_kit = expected_installation(clone, attempt, report['helperSourceCommit'])
         archive = attempt / 'source.tar.gz'
         report['stage'] = 'source-archive'
-        command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)
+        # Slower task-owned storage may need longer for host-only packaging. This does
+        # not extend any guest startup, campaign, or workload-operation deadline.
+        archive_timeout = 420 if args.mode == 'workload-positive' else 120
+        command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'],
+                timeout=archive_timeout, stdout=log, stderr=log)
         report['sourceArchiveDigest'] = sha256(archive)
         report['stage'] = 'guest-overlay'
         command([str(qemu_img), 'create', '-f', 'qcow2', '-F', 'qcow2',
