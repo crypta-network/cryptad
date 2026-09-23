@@ -68,7 +68,8 @@ def observation(name):
 
 
 def restart_context():
-    before = {**roles()[0], 'invocationId': 'a'*32, 'processEpoch': 1}
+    before = {**roles()[0], 'invocationId': 'a'*32, 'processEpoch': 1,
+              'cgroupDigest': 'e'*64}
     return {stage: dict(roleIdentity=row, stateDigest='b'*64, deadlineNs=10,
                         observedMonotonicNs=timestamp)
             for stage, row, timestamp in (('before', before, 2), ('after', roles()[0], 4))}
@@ -324,7 +325,8 @@ class WorkloadAcceptanceTest(unittest.TestCase):
     def test_restart_context_rejects_changed_scope_deadline_state_and_timing(self):
         for stage in ('before', 'after'):
             for field, replacement in (('bootId', 'f'*32), ('uid', 9999), ('gid', 9999),
-                    ('role', 'candidate-recipient'), ('cgroupDigest', 'f'*64),
+                    ('role', 'candidate-recipient'),
+                    ('cgroupDigest', roles()[0]['cgroupDigest'] if stage == 'before' else 'f'*64),
                     ('networkNamespace', 9999), ('invocationId', roles()[1]['invocationId']),
                     ('processEpoch', True), ('deadlineNs', 11), ('stateDigest', 'f'*64),
                     ('observedMonotonicNs', 6), ('observedMonotonicNs', 1)):

@@ -349,6 +349,22 @@ def bind_daemon(observation, expected_jdk_digest):
     return matches[0]
 
 
+def principal_row(role, observation, expected_jdk_digest, daemon=None):
+    """Project one fixed installed account and actual outer Java process identity."""
+    daemon = daemon or bind_daemon(observation, expected_jdk_digest)
+    try:
+        account = pwd.getpwnam('cryptad-wl-' + role)
+        return {'role': role, 'uid': account.pw_uid, 'gid': account.pw_gid,
+                'invocationId': daemon['managerInvocation'],
+                'processEpoch': daemon['startTicks'],
+                'bootId': uuid.UUID(observation['bootId']).hex,
+                'cgroupDigest': runtime.canonical_digest({
+                    'role': role, 'identity': daemon['cgroupIdentity']})[7:],
+                'networkNamespace': daemon['networkNamespaceIdentity'][1]}
+    except (KeyError, TypeError, ValueError):
+        fail('kernel-roster-invalid')
+
+
 def kernel_roster(samples, expected_jdk_digests):
     """Project only fixed role principals from final controller kernel observations."""
     if (not isinstance(samples, dict) or not isinstance(expected_jdk_digests, dict)
@@ -356,20 +372,10 @@ def kernel_roster(samples, expected_jdk_digests):
         fail('kernel-roster-incomplete')
     daemons = {role: bind_daemon(samples[role], expected_jdk_digests[role])
                for role in runtime.ROLES}
-    rows = []
     try:
         runner_uid = pwd.getpwnam('vmadmin').pw_uid
-        for role in runtime.ROLES:
-            observation = samples[role]
-            daemon = daemons[role]
-            account = pwd.getpwnam('cryptad-wl-' + role)
-            rows.append({'role': role, 'uid': account.pw_uid, 'gid': account.pw_gid,
-                         'invocationId': daemon['managerInvocation'],
-                         'processEpoch': daemon['startTicks'],
-                         'bootId': uuid.UUID(observation['bootId']).hex,
-                         'cgroupDigest': runtime.canonical_digest({
-                             'role': role, 'identity': daemon['cgroupIdentity']})[7:],
-                         'networkNamespace': daemon['networkNamespaceIdentity'][1]})
+        rows = [principal_row(role, samples[role], expected_jdk_digests[role], daemons[role])
+                for role in runtime.ROLES]
     except (KeyError, TypeError, ValueError):
         fail('kernel-roster-invalid')
     if min(os.geteuid(), runner_uid, *(row['uid'] for row in rows),
@@ -429,6 +435,7 @@ class InstalledWorkloadAdapter:
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
+        self.restart_context = self.restart_window = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
 
@@ -604,6 +611,29 @@ class InstalledWorkloadAdapter:
             app.refresh_session()
         return after
 
+    def restart_with_witness(self, role):
+        """Bracket one actual manager/JVM restart with controller state observations."""
+        started = time.monotonic_ns()
+        before = self.observe(role)
+        before_identity = principal_row(role, before, self.expected_jdk_digests[role],
+                                        self.daemon_epochs[role])
+        result = self.restart(role)
+        after = self.observe(role)
+        after_identity = principal_row(role, after, self.expected_jdk_digests[role],
+                                       self.daemon_epochs[role])
+        finished = time.monotonic_ns()
+        if finished <= started:
+            fail('restart-window-clock-invalid')
+        self.restart_context = {
+            'before': {'roleIdentity': before_identity, 'stateDigest': before.get('stateDigest'),
+                       'deadlineNs': before.get('deadlineMonotonicNs'),
+                       'observedMonotonicNs': before.get('observedMonotonicNs')},
+            'after': {'roleIdentity': after_identity, 'stateDigest': after.get('stateDigest'),
+                      'deadlineNs': after.get('deadlineMonotonicNs'),
+                      'observedMonotonicNs': after.get('observedMonotonicNs')}}
+        self.restart_window = {'startedMonotonicNs': started, 'finishedMonotonicNs': finished}
+        return result
+
     def cleanup(self):
         complete = True
         for role in reversed(runtime.ROLES):
@@ -623,7 +653,7 @@ class InstalledWorkloadAdapter:
             self.provision_apps()
             runtime.Supervisor.content(self, 'candidate-sender', 'candidate-recipient', verify_local_source=True)
             before = dict(self.nodes['candidate-sender'])
-            after = self.restart('candidate-sender')
+            after = self.restart_with_witness('candidate-sender')
             new_epoch = (before['generation'] != after['generation']
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
@@ -652,6 +682,8 @@ class InstalledWorkloadAdapter:
                     'appKernelWindow': {'startedMonotonicNs': app_started,
                                         'finishedMonotonicNs': app_finished},
                     'controlExchanges': dict(self.control_exchanges),
+                    'restartContext': self.restart_context,
+                    'restartWindow': self.restart_window,
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
                     'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
                                                'finishedMonotonicNs': roster_finished},

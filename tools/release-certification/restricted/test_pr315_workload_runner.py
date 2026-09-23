@@ -229,6 +229,42 @@ class RunnerTests(unittest.TestCase):
                                                    terminal=changed_root)
         self.assertNotIn('own-management', rejected['declaredCases'])
 
+    def test_restart_case_requires_real_prior_group_and_same_durable_state(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        old = dict(sender, invocationId='f' * 32, processEpoch=50,
+            cgroupDigest=runner.fixtures.runtime.canonical_digest({
+                'role': 'candidate-sender', 'identity': [1, 98]})[7:])
+        context = {
+            'before': {'roleIdentity': old, 'stateDigest': '5' * 64,
+                       'deadlineNs': 1000, 'observedMonotonicNs': 70},
+            'after': {'roleIdentity': sender, 'stateDigest': '5' * 64,
+                      'deadlineNs': 1000, 'observedMonotonicNs': 80}}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                  'restartContext': context,
+                  'restartWindow': {'startedMonotonicNs': 60, 'finishedMonotonicNs': 90}}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'deadlineMonotonicNs': 1000}}
+        terminal['sentinel']['observedDigest'] = 'sha256:' + '5' * 64
+        terminal['stopReceipts']['candidate-sender']['previous']['record'] = {
+            'managerInvocation': old['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 98]}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        identity, attempt = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 100, 110, terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('restart-durable-state', attempt['declaredCases'])
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['candidate-sender']['previous']['record']['cgroupIdentity'] = [1, 97]
+        _, rejected = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 100, 110, terminal=changed)
+        self.assertNotIn('restart-durable-state', rejected['declaredCases'])
+
     def test_installed_transport_path_reaches_six_cases_but_never_full_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

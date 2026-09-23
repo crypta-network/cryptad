@@ -493,6 +493,37 @@ def _process_sample(pid, role, expected_uid):
             'effectiveCapabilities': int(status['CapEff'].strip(), 16)}
 
 
+def _synthetic_state_digest(role):
+    """Sample only the fixed PR-315 state subject; absence grants no state witness."""
+    if role != 'candidate-sender':
+        return None
+    directory = ROOT / 'state/candidate-sender'
+    try:
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            owner = os.fstat(parent)
+            if (owner.st_uid != account(role).pw_uid or owner.st_mode & 0o077):
+                return None
+            fd = os.open('pr315-retention-sentinel', os.O_RDONLY | os.O_NOFOLLOW
+                         | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+            try:
+                before = os.fstat(fd)
+                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size != 32:
+                    return None
+                raw = os.read(fd, 33)
+                after = os.fstat(fd)
+                if (len(raw) != 32 or any(getattr(before, key) != getattr(after, key)
+                        for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))):
+                    return None
+                return hashlib.sha256(raw).hexdigest()
+            finally:
+                os.close(fd)
+        finally:
+            os.close(parent)
+    except (OSError, ValueError):
+        return None
+
+
 def observe(handle):
     with locked():
         campaign, role, record = retained(handle)
@@ -521,6 +552,9 @@ def observe(handle):
                 'processes': processes, 'exitedDuringSample': exited,
                 'cgroupIdentity': record['cgroupIdentity'],
                 'networkNamespaceIdentity': role_network,
+                'stateDigest': _synthetic_state_digest(role),
+                'deadlineMonotonicNs': campaign.get('deadlineMonotonicNs'),
+                'observedMonotonicNs': time.monotonic_ns(),
                 'cgroupMemoryBytes': int((root / 'memory.current').read_text()),
                 'cgroupTasks': int((root / 'pids.current').read_text())}
 

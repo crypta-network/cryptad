@@ -320,6 +320,8 @@ class ObservationTest(unittest.TestCase):
         self.assertEqual([], result['processes'])
         self.assertEqual(1, result['exitedDuringSample'])
         self.assertEqual(4096, result['cgroupMemoryBytes'])
+        self.assertIsNone(result['stateDigest'])
+        self.assertGreater(result['observedMonotonicNs'], 0)
         self.assertEqual([1, 42], result['networkNamespaceIdentity'])
         self.assertEqual(self.root.stat().st_ino, result['cgroupIdentity'][1])
         self.assertEqual(2, self.manager.call_count)
@@ -370,6 +372,29 @@ class ObservationTest(unittest.TestCase):
                     if child.poll() is None:
                         child.kill()
                     child.wait(timeout=5)
+
+
+class SyntheticStateDigestTest(unittest.TestCase):
+    def test_fixed_owned_subject_is_hashed_and_symlink_is_never_followed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'state/candidate-sender'
+            directory.mkdir(parents=True, mode=0o700)
+            directory.chmod(0o700)
+            subject = directory / 'pr315-retention-sentinel'
+            raw = b'x' * 32
+            subject.write_bytes(raw)
+            with patch.object(workload, 'ROOT', root), \
+                    patch.object(workload, 'account', return_value=SimpleNamespace(pw_uid=os.getuid())):
+                self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                                 workload._synthetic_state_digest('candidate-sender'))
+                subject.write_bytes(b'y' * 32)
+                self.assertNotEqual(hashlib.sha256(raw).hexdigest(),
+                                    workload._synthetic_state_digest('candidate-sender'))
+                subject.unlink()
+                subject.symlink_to('/etc/passwd')
+                self.assertIsNone(workload._synthetic_state_digest('candidate-sender'))
+                self.assertIsNone(workload._synthetic_state_digest('candidate-recipient'))
 
 
 class LifecycleTest(unittest.TestCase):

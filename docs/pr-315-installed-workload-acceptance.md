@@ -986,6 +986,20 @@ fatal diagnostic and same-attempt QCOW2 backing pair were copied locally and pas
 recursive checksum dry run. This is partial installed case coverage, not a protected release
 or a 45-case acceptance result.
 
+The next prospective positive path addresses `restart-durable-state`. Attempt-39 current
+and prior sender stop receipts show different systemd cgroup identities across the real
+restart. The old v8 pure verifier incorrectly required their digests to be equal, so it
+could not accept the observed installed profile. The corrected rule requires stable
+installed UID/GID, boot and role network namespace, and changed manager invocation, Java
+start epoch and cgroup identity. Controller `observe` now hashes only the fixed synthetic
+32-byte sender state sentinel, returns its actual deadline and sample time, and never
+returns the sentinel bytes. The observer brackets its genuine stop/start transition with
+before/after controller-kernel principal snapshots. The host will compare those values to
+the independently captured current and archived prior stop receipts, terminal campaign
+deadline and final sentinel hash before submitting a restart witness to v8. Missing or
+mismatched evidence remains inconclusive. Focused Linux contract/controller/adapter tests
+pass; installed execution is still required for this seventh positive case.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

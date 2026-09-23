@@ -255,6 +255,44 @@ def _exchange_case(case_id, result, terminal, principals):
     return witness, window, commitment
 
 
+def _restart_case(result, terminal, principals):
+    context, window = result.get('restartContext'), result.get('restartWindow')
+    if not _bounded_window(window) or not isinstance(context, dict) or not isinstance(terminal, dict):
+        return None
+    try:
+        if not acceptance._restart_context(context, principals):
+            return None
+        before, after = context['before'], context['after']
+        earlier = terminal['stopReceipts']['candidate-sender']['previous']
+        current = terminal['stopReceipts']['candidate-sender']['current']
+        campaign = terminal['controllerRecords']['campaign']
+        sentinel = terminal['sentinel']
+        if (earlier['status'] != 'captured' or current['status'] != 'captured'
+                or campaign['status'] != 'captured' or sentinel['status'] != 'matched'
+                or any(not window['startedMonotonicNs'] <= snapshot['observedMonotonicNs']
+                       <= window['finishedMonotonicNs'] for snapshot in (before, after))
+                or campaign['record']['deadlineMonotonicNs'] != before['deadlineNs']
+                or before['deadlineNs'] != after['deadlineNs']
+                or sentinel['observedDigest'] != 'sha256:' + before['stateDigest']
+                or before['stateDigest'] != after['stateDigest']):
+            return None
+        for snapshot, receipt in ((before, earlier['record']), (after, current['record'])):
+            role = snapshot['roleIdentity']
+            if (role['invocationId'] != receipt['managerInvocation']
+                    or role['bootId'] != receipt['bootId'].replace('-', '').lower()
+                    or role['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                        'role': 'candidate-sender', 'identity': receipt['cgroupIdentity']})[7:]):
+                return None
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    old, new = before['roleIdentity'], after['roleIdentity']
+    witness = {'role': 'candidate-sender', 'beforeInvocationId': old['invocationId'],
+        'afterInvocationId': new['invocationId'], 'beforeEpoch': old['processEpoch'],
+        'afterEpoch': new['processEpoch'], 'beforeStateDigest': before['stateDigest'],
+        'afterStateDigest': after['stateDigest'], 'deadlineUnchanged': True}
+    return witness, window, context
+
+
 def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns,
                           diagnostics=None, terminal=None):
     """Build only cases backed by actual host, app and kernel observations."""
@@ -313,11 +351,20 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         observations.append({'caseId': 'kernel-resource-scope', 'status': 'passed',
             'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
             **resource_window, 'witness': resource_witness})
+    restart_context = None
+    restart = _restart_case(result, terminal, principals)
+    if restart is not None:
+        restart_witness, restart_window, restart_context = restart
+        case = acceptance.CASES['restart-durable-state']
+        cases.append('restart-durable-state')
+        observations.append({'caseId': 'restart-durable-state', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **restart_window, 'witness': restart_witness})
     attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
         'declaredCases': cases, 'observations': observations,
         'guestStopped': report['guestStopped'], 'attemptCompleted': True,
         'principals': principals, 'targets': {}, 'caseCommitments': commitments,
-        'appProcess': app_process, 'restartContext': None}
+        'appProcess': app_process, 'restartContext': restart_context}
     return identity, attempt
 
 

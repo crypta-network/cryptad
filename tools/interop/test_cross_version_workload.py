@@ -255,8 +255,8 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()
         adapter.provision_apps = mock.Mock()
-        adapter.restart = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
-                                                  'managerInvocation': 'f' * 32})
+        adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
+                                                               'managerInvocation': 'f' * 32})
         adapter.cleanup = mock.Mock(return_value='complete')
         def observe(role):
             if role == 'previous':
@@ -314,6 +314,36 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.start.side_effect = reused_daemon
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'restart-epoch-invalid'):
             adapter.restart('candidate-sender')
+
+    def test_restart_context_uses_real_before_after_controller_epochs(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        before = sample()
+        after = copy.deepcopy(before)
+        after['managerInvocation'] = 'e' * 32
+        after['cgroupIdentity'] = [1, 100]
+        after['processes'][1]['startTicks'] = 301
+        after['stateDigest'] = before['stateDigest'] = 'b' * 64
+        after['deadlineMonotonicNs'] = before['deadlineMonotonicNs'] = 1000
+        before['observedMonotonicNs'], after['observedMonotonicNs'] = 10, 20
+        adapter.expected_jdk_digests = {'candidate-sender': JDK}
+        adapter.daemon_epochs = {'candidate-sender': workload.bind_daemon(before, JDK)}
+        adapter.observe = mock.Mock(side_effect=[before, after])
+        def restarted(role):
+            self.assertEqual('candidate-sender', role)
+            adapter.daemon_epochs[role] = workload.bind_daemon(after, JDK)
+            return {'state': 'running'}
+        adapter.restart = mock.Mock(side_effect=restarted)
+        with mock.patch.object(workload.pwd, 'getpwnam', return_value=types.SimpleNamespace(
+                pw_uid=2000, pw_gid=2000)):
+            self.assertEqual({'state': 'running'}, adapter.restart_with_witness('candidate-sender'))
+        context = adapter.restart_context
+        self.assertEqual((10, 20), (context['before']['observedMonotonicNs'],
+                                    context['after']['observedMonotonicNs']))
+        self.assertEqual('b' * 64, context['after']['stateDigest'])
+        self.assertNotEqual(context['before']['roleIdentity']['cgroupDigest'],
+                            context['after']['roleIdentity']['cgroupDigest'])
+        self.assertLess(adapter.restart_window['startedMonotonicNs'],
+                        adapter.restart_window['finishedMonotonicNs'])
 
     def test_unstarted_role_cleanup_does_not_forge_node_epoch_event(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
