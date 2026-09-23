@@ -778,7 +778,25 @@ class FnpCounterPairTest(unittest.TestCase):
         self.assertEqual(workload.ROOT / 'authority/fnp-content-failure.json', path)
         self.assertEqual('counter-read', record['stage'])
         self.assertEqual('bounded_process_deadline_exceeded', record['networkFailureClass'])
+        self.assertIsNone(record['networkStderr'])
         self.assertNotIn('private candidate data', json.dumps(record))
+
+    def test_only_fixed_counter_command_can_retain_bounded_private_stderr(self):
+        from restricted_workload_network import NetworkBoundaryError
+        error = NetworkBoundaryError('restricted-workload-network-command-failed')
+        error.private_diagnostics = {'failureClass': 'bounded_process_failed',
+            'arguments': ['/usr/sbin/ip', 'netns', 'exec', 'cryptad-role-switch',
+                          '/usr/sbin/nft', '-j', 'list', 'counters', 'table', 'bridge',
+                          'cryptad_switch'], 'stderr': 'Error: No such file or directory'}
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, 'candidate-recipient', {})), \
+                patch.object(workload, 'admit'), patch.object(workload, 'exact'), \
+                patch.object(workload, 'manager'), patch.object(workload, 'write') as stored, \
+                patch('restricted_workload_network.read_fnp_counters', side_effect=error):
+            with self.assertRaises(NetworkBoundaryError):
+                workload.observe_fnp(HANDLE)
+        self.assertEqual('Error: No such file or directory',
+                         stored.call_args.args[1]['networkStderr'])
 
     def test_sender_handle_cannot_read_fnp_counter_pair(self):
         with patch.object(workload, 'locked', side_effect=nullcontext), \

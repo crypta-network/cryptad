@@ -1092,6 +1092,22 @@ protected workload tests passed 164 with 21 skips, PR-315 restricted tests passe
 the owning interop adapter tests passed 42 with eight skips. An installed run is still
 required to locate the remaining failure and prove the eighth positive case.
 
+Attempt 45 bound that diagnostic revision to the unchanged product and VM profile after
+fresh no-VM admission. Four role services reached running state, but the positive sequence
+failed and produced no individual passing case record. Its stopped root-private snapshot
+captured an `observe-fnp` failure at `counter-read`, classified as
+`NetworkBoundaryError` / `bounded_process_failed`; the fixed pair remained unavailable.
+No HotSpot fatal file was captured. The caller reported cleanup complete, four current stop
+receipts were retained, the emulator stopped, and the complete private attempt passed a
+recursive local checksum comparison. The recorded class establishes that the fixed `nft`
+command returned failure, but it lacks the command's stderr and cannot identify the kernel
+or userspace reason. The next narrow diagnostic revision retains up to 512 bytes of stderr
+only when the captured argv exactly matches the fixed counter-read command, inside the
+root-private failure record. Other command stderr cannot enter this record, and the record
+still cannot satisfy any v8 case. Native Linux protected workload tests passed 164 with 21
+skips, and PR-315 restricted tests passed 92 after that schema extension. An installed
+rerun remains required to identify and correct the command failure.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

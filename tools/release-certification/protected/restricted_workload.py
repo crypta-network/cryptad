@@ -627,11 +627,17 @@ def observe_fnp(handle):
             network_failure = (diagnostic.get('failureClass')
                 if isinstance(diagnostic, dict) and isinstance(diagnostic.get('failureClass'), str)
                 and len(diagnostic['failureClass']) <= 128 else None)
+            fixed_counter_command = ['/usr/sbin/ip', 'netns', 'exec', 'cryptad-role-switch',
+                '/usr/sbin/nft', '-j', 'list', 'counters', 'table', 'bridge', 'cryptad_switch']
+            network_stderr = (diagnostic['stderr'][:512]
+                if isinstance(diagnostic, dict)
+                and diagnostic.get('arguments') == fixed_counter_command
+                and isinstance(diagnostic.get('stderr'), str) else None)
             failure = {'schemaVersion': 1, 'kind': 'pr315-private-fnp-observer-failure',
                 'stage': stage, 'exceptionType': type(error).__name__[:128],
                 'failureCode': str(error)[:128] if isinstance(error, WorkloadError)
                     or type(error).__name__ == 'NetworkBoundaryError' else None,
-                'networkFailureClass': network_failure,
+                'networkFailureClass': network_failure, 'networkStderr': network_stderr,
                 'observedMonotonicNs': time.monotonic_ns()}
             try:
                 write(ROOT / 'authority/fnp-content-failure.json', failure)

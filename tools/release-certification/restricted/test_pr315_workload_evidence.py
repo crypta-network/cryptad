@@ -93,6 +93,7 @@ class VolatileEvidenceTest(unittest.TestCase):
                   'stage': 'counter-read', 'exceptionType': 'NetworkBoundaryError',
                   'failureCode': 'restricted-workload-network-command-failed',
                   'networkFailureClass': 'bounded_process_deadline_exceeded',
+                  'networkStderr': 'Error: No such file or directory',
                   'observedMonotonicNs': 123}
         path.write_text(json.dumps(record))
         self.assertEqual('not-captured-cleanup-unverified',

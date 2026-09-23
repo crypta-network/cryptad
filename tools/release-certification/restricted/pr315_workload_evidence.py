@@ -351,7 +351,8 @@ def _fnp_failure(root, deadline):
         value = json.loads(raw)
         if (not isinstance(value, dict)
                 or set(value) != {'schemaVersion', 'kind', 'stage', 'exceptionType',
-                                  'failureCode', 'networkFailureClass', 'observedMonotonicNs'}
+                                  'failureCode', 'networkFailureClass', 'networkStderr',
+                                  'observedMonotonicNs'}
                 or value['schemaVersion'] != 1
                 or value['kind'] != 'pr315-private-fnp-observer-failure'
                 or value['stage'] not in {'retained', 'admission', 'pre-manager',
@@ -363,6 +364,9 @@ def _fnp_failure(root, deadline):
                 or value['networkFailureClass'] is not None and (
                     not isinstance(value['networkFailureClass'], str)
                     or len(value['networkFailureClass']) > 128)
+                or value['networkStderr'] is not None and (
+                    not isinstance(value['networkStderr'], str)
+                    or len(value['networkStderr']) > 512)
                 or type(value['observedMonotonicNs']) is not int
                 or value['observedMonotonicNs'] <= 0):
             raise ValueError('fnp-private-failure-invalid')
