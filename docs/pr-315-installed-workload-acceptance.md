@@ -2,9 +2,10 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; attempt 62 passed eight positive cases, two denial cases
-and `controller-restart` on one source-bound VM, while full installed acceptance remains
-false.** The first three installed
+**Implementation is incomplete; `db25340` TCG suites 66 and 68 each passed
+eight positive cases and two denial cases, with `cancellation` and
+`controller-restart` respectively. Their 12 distinct case IDs do not complete
+the 45-case contract.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
@@ -1615,8 +1616,9 @@ campaign deadline before sampling counters or issuing the second insert. It does
 not add a peer, change the 120-second fetch timeout or treat peer status as
 retrieval proof. Offline regressions confirm that an unconnected restarted peer
 blocks the second CHK and that the check uses the current sender reference. No
-installed run has yet exercised this helper revision, so its effect on the run-04
-timeout is unknown. On CT102 Linux, the affected PR-314 driver, protected workload
+installed run had exercised this helper revision at that cutoff. Later suites 66
+and 68 completed the positive sequence with this check, while the run-04 timeout
+remains unexplained. On CT102 Linux, the affected PR-314 driver, protected workload
 and cross-version interop suites passed 71, 165 and 242 tests respectively; the
 latter two retained 21 and eight root/environment skips. The same broader suites
 were red on macOS because Linux `/proc`, peer-credential and cgroup semantics are
@@ -1679,9 +1681,72 @@ persistent policies remain unchanged. Focused aggregation and single-block tests
 pass after the change. The subsequent full CT102 Linux `./gradlew test` passed
 17,411 tests across root and leaf XML, with zero failures/errors and 15 skips.
 The touched Java files had no compiler warning, and focused SonarLint reported
-zero findings for the production file. Its causal effect on installed run 05
-remains unverified; a newly built candidate and source-bound installed rerun are
-required.
+zero findings for the production file. The change cannot retroactively establish
+the cause of run 05; the rebuilt candidate's installed observations appear below.
+
+### Rebuilt product and latest-source installed attempts
+
+The aggregator change was committed at `db2534044e9c5a4b12a7742e16a4ad42884fec7e`.
+The resulting source-built portable was normalized and its packaged daemon
+identity matched that commit. A new schema-4 fixture with the same pinned
+predecessor, JDK and normally signed Mail/probe inputs passed strict verification.
+The PVE private source clone initially retained the old `build/cryptad-dist`
+copy: KVM run 06 stopped at `product-source-verification` before VM allocation.
+The clone's product tree was replaced with the exact new build and host-side
+product-source verification passed. Run 06 remains a retained setup failure.
+
+KVM run 07 then completed the positive driver on the new source and product:
+guest exit 0, four current stop receipts, no new JVM fatal files and a true
+host-side positive-shape check. Its exact-task pressure monitor recorded no
+termination action; minimum host physical available memory was about 4.16 GB
+and minimum free swap about 8.08 GB. This remains the separate
+`pve-kvm-swap-authorized-differential-not-acceptance` profile. Its stopped guest
+and private evidence were copied locally and matched CT102 by recursive checksum.
+
+The original CT102 `tcg-multi/qemu64` suite 65 used the same exact source,
+product, fixture and deadlines. Its candidate-sender wrapper timed out waiting
+for the JVM startup signal before the first daemon became ready. No HotSpot
+fatal file was captured and no CHK ran. Guest exit 1 and stopped QEMU were
+observed; only the sender's current stop receipt was captured. The PVE host
+pressure monitor did not terminate QEMU. Its first watcher used the PVE mount
+path and missed the CT-origin QEMU command path; a corrected watcher recognized
+the exact process during the remaining run. The complete stopped failure was
+copied locally and passed recursive checksum comparison. This single failure
+does not establish whether CPU scheduling, JVM startup or wrapper timing was
+causal.
+
+Unchanged suite 66 passed the fixed TCG installed positive aggregate and eleven
+individual v8 rows on one source-bound guest: all eight positives,
+`observer-control`, `namespace-mount-escape` and a genuine administrator
+`cancellation`. Its guest exited 0, four current stop receipts were captured,
+and all four roles had zero new HotSpot fatal files. The corrected watcher saw
+the exact QEMU from startup, took no termination action, and measured minimum
+host physical available memory about 2.99 GB and free swap about 12.52 GB.
+The complete stopped guest and evidence were copied locally and matched CT102
+by recursive checksum. The assessment still correctly reports
+`installedWorkloadAcceptanceSatisfied=false`.
+
+The separate `controller-restart` scenario failed in suite 67 before its
+trigger: relay daemon readiness expired after two relay HotSpot fatal files,
+`SIGILL` in a C1-compiled `SHA5.lf_ch` frame and `SIGSEGV` in a JVM
+stack-trace frame. It exited 1 with four current stop receipts and no passed
+case. The stopped guest and private evidence were copied and checksum-verified.
+Unchanged suite 68 then passed the positive aggregate and eleven individual
+rows on one guest, including genuine administrator `controller-restart` in
+place of `cancellation`. It exited 0 with four current stop receipts, no new
+HotSpot fatal files and no pressure-monitor termination. Its private stopped
+guest and host observations were copied locally and checksum-verified.
+
+Suites 66 and 68 have identical trusted host identities. Taken as two separate
+source-bound observations, they cover twelve distinct v8 case IDs: the same
+eight positive and two denial cases, plus the two different lifecycle cases.
+The verifier rejects duplicate case declarations across combined raw attempts,
+so these full positive attempts are not rewritten or pooled into a synthetic
+12-case acceptance record. All 24 other denial and nine other lifecycle IDs
+still lack a `db25340` installed pass; the complete 45-case verdict remains
+false. The intermittent TCG JVM startup/fatal behavior remains unexplained,
+and neither the KVM result nor the host's available swap changes the selected
+TCG profile or its fixed timeouts.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -1983,9 +2048,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: attempt 62 passed eight positive rows, two denial rows and `controller-restart` on one helper; 24 denial and ten other lifecycle rows remain without a pass on that helper. `cancellation` passed only on an older helper |
-| `installedPositiveExecuted` | True for the historical source-bound attempt-62 eight-case aggregate; false for the newest `99cdda8` installed attempt 64, which failed before CHK |
-| `installedWorkloadAcceptanceSatisfied` | False; 11 of 45 rows passed together on the older attempt-62 helper, while the newest product source has no complete positive result and the remaining denial/lifecycle emitters are missing |
+| `implementationCoverage` | Incomplete: suites 66 and 68 each passed eight positive, two denial and one different lifecycle row on the `db25340` helper/product. Across those separate attempts 12 distinct IDs have a pass; 24 denial and nine lifecycle IDs still lack one on this source |
+| `installedPositiveExecuted` | True for the latest `db25340` accepted-profile TCG suites 66 and 68; each completed the eight-case positive aggregate |
+| `installedWorkloadAcceptanceSatisfied` | False; each `db25340` attempt has 11 of 45 passing rows, the two raw attempts cannot be pooled with duplicate declarations, and 33 IDs still lack a pass |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
