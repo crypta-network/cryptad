@@ -430,6 +430,12 @@ class ObserverPolicyTests(unittest.TestCase):
             else (200, {'runtime': {'running': True}}))
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'installed-app-not-retained'):
             adapter.restart('candidate-sender')
+        adapter.daemon_epochs['candidate-sender'] = {'startTicks': 201}
+        mail.request.side_effect = mail_request
+        probe.request.side_effect = [(200, {'runtime': {'running': False}}), (409, {'private': 'must-not-copy'})]
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'restart-probe-start-http-409') as raised:
+            adapter.restart('candidate-sender')
+        self.assertNotIn('must-not-copy', str(raised.exception))
 
     def test_restart_context_uses_real_before_after_controller_epochs(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)

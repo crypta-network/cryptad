@@ -1330,6 +1330,32 @@ host-side witness independently binds the current signed probe process, active o
 role target, syscall window and kernel denial. An exact-source signed ZIP and installed
 rerun are still required.
 
+Attempt 57 used a newly signed, source-matched probe ZIP with the same product/JDK and
+VM profile after fresh no-VM admission. Four roles reached readiness and the signed
+probe wrote its fixed `unshare-mount` `EPERM` result inside the real sender AppHost
+boundary. During sender restart the two-app inventory check passed, but the probe's
+current runtime was not running and its normal `POST /start` returned a non-success
+status. The observer rejected the sequence as `workload-restart-probe-start-failed`;
+the guest exited nonzero, cleanup was reported complete, four current stop receipts
+were captured, and no case passed. No HotSpot fatal file was captured. The stopped
+guest and same-attempt QCOW2 backing pair were copied locally with a recursive
+checksum match.
+
+A byte-verified forensic copy of this stopped disk was booted to look for the app
+process log. It confirmed that the role's app install, data and run paths lived in
+tmpfs and were absent after a reboot; the copy was stopped and removed after a
+zero-dependent QCOW check, while the original failure disks remain retained. The
+next narrow diagnostic revision preserves only a fixed HTTP status class from the
+observer's failed `POST /start` and a bounded private AppHost process-log tail during
+the original guest's post-cleanup, pre-shutdown snapshot. Neither diagnostic is an
+acceptance witness. The app-origin denial rows remain `not-executed` until the actual
+current signed child, active target and denied operation are independently bound.
+Native Linux interop workload tests passed 45 with eight skips; full restricted
+discovery passed 432 with one skip, including a real local process test that launched
+the signed probe worker twice against one app data directory and verified atomic
+replacement without emitting its token. The next installed run must identify the
+bounded restart HTTP result and retain the ephemeral process-log tail before shutdown.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

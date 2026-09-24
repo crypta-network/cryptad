@@ -378,6 +378,25 @@ def _probe_app_result(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _probe_app_log(root, deadline):
+    """Keep only a bounded private AppHost log tail after owned cleanup."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'state/candidate-sender/run/node/apps/pr315-probe',
+                                 'process.log', maximum=2 * 1024 * 1024,
+                                 timeout=min(2, remaining))
+        tail = raw[-2048:]
+        return {'status': 'captured',
+                'classification': 'apphost-process-private-diagnostic-not-acceptance',
+                'sizeBytes': len(raw), 'tailBytes': len(tail),
+                'truncated': len(tail) < len(raw),
+                'tailBase64': base64.b64encode(tail).decode('ascii')}
+    except (OSError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -395,6 +414,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                            for case in EXCHANGE_CASES},
         'fnpCounterPair': {'status': 'not-captured-cleanup-unverified'},
         'probeAppResult': {'status': 'not-captured-cleanup-unverified'},
+        'probeAppLog': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -445,6 +465,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                 result['observerFcpLogs'][role] = _observer_fcp_log(observer_root, role, deadline)
                 if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                     result['observerFcpLogs'][role] = {'status': 'not-captured-output-budget'}
+        result['probeAppLog'] = _probe_app_log(root, deadline)
+        if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
+            result['probeAppLog'] = {'status': 'not-captured-output-budget'}
         # Controller projections and the selected sentinel take precedence. The same absolute
         # capture deadline covers logs; reserve the final timestamp and per-role status space.
         for role in ROLES:

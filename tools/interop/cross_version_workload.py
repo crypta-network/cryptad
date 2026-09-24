@@ -720,7 +720,9 @@ class InstalledWorkloadAdapter:
                 if value.get('runtime', {}).get('running') is not True:
                     status, _ = probe.request('POST', '/api/v1/apps/pr315-probe/start')
                     if status not in {200, 201}:
-                        fail('restart-probe-start-failed')
+                        selected = status if type(status) is int and status in {
+                            400, 401, 403, 404, 409, 429, 500, 503} else 0
+                        fail('restart-probe-start-http-' + str(selected))
                 probe.observe_worker()
         return after
 

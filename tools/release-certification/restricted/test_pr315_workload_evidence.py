@@ -112,6 +112,25 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', rejected['probeAppResult']['status'])
         self.assertNotIn('must-not-copy', json.dumps(rejected))
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_probe_process_log_is_private_bounded_and_requires_cleanup(self):
+        directory = self.root / 'state/candidate-sender/run/node/apps/pr315-probe'
+        directory.mkdir(parents=True)
+        path = directory / 'process.log'
+        raw = b'private-probe-log\n' * 300
+        path.write_bytes(raw)
+        self.assertEqual('not-captured-cleanup-unverified', evidence._capture(
+            self.root, self.expected, False)['probeAppLog']['status'])
+        captured = evidence._capture(self.root, self.expected, True)['probeAppLog']
+        self.assertEqual('apphost-process-private-diagnostic-not-acceptance',
+                         captured['classification'])
+        self.assertEqual(raw[-2048:], base64.b64decode(captured['tailBase64']))
+        self.assertEqual(2048, captured['tailBytes'])
+        path.unlink()
+        path.symlink_to(self.path)
+        self.assertEqual('unavailable-or-unsafe', evidence._capture(
+            self.root, self.expected, True)['probeAppLog']['status'])
+
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
         (self.root / 'authority/network.json').write_text(json.dumps({
