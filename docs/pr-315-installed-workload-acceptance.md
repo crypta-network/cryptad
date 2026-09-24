@@ -2,8 +2,8 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; seven of the 45 installed workload cases now have valid
-individual witnesses, and full installed acceptance remains false.** The first three installed
+**Implementation is incomplete; attempt 52 passed eight positive cases and one lifecycle case
+individually, while full installed acceptance remains false.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
@@ -1356,6 +1356,30 @@ the signed probe worker twice against one app data directory and verified atomic
 replacement without emitting its token. The next installed run must identify the
 bounded restart HTTP result and retain the ephemeral process-log tail before shutdown.
 
+Attempt 58 used that bounded-diagnostic helper and the exact schema-4 signed probe cohort.
+The recipient JVM crashed in C1 (`SIGSEGV` while compiling `ZipUtils.get16`) before
+the signed probe could start. Recipient readiness expired; no positive, denial or
+lifecycle case passed. The guest stopped after reported cleanup, and the full private
+attempt was copied and checked locally. Repeating the same JVM profile without a
+demonstrated correction would not establish the missing case, so this failure does not
+justify changing QEMU, JDK, timeouts or workload limits.
+
+The next implementation revision retains an immutable first AppHost probe result across
+sender restart, and adds one closed administrator request while the first signed child
+is still running. The root sampler verifies the installed probe tree against the
+preparation's trusted tree, samples the current sender cgroup and process namespaces,
+checks the sender role's durable-state digest before and after, and binds the fixed
+candidate-origin `unshare` result to that live child. The observer durably checkpoints
+the initial four-role target roster, controller process sample and matching root record
+digest before later CHK or restart failures. After cleanup, the fixed descriptor reader
+retains the three bounded records. The host's `namespace-mount-escape` builder checks
+their exact identities, namespace inodes, syscall result, temporal order, signed fixture,
+host transport and matching stop receipt before admitting the single denial contract row.
+This path has passed offline tests only; it has no installed result yet and cannot set
+the 45-case acceptance verdict. A malicious same-UID candidate could still try to alter
+its app data result; stronger independent syscall witnessing remains necessary before
+claiming adversarial resistance beyond the fixed signed source profile.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
@@ -1644,9 +1668,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: seven positive case records passed; FNP retrieval and all 37 hostile/lifecycle emitters remain missing |
-| `installedPositiveExecuted` | True for the installed attempt-40 aggregate with state, host, AppHost, cgroup, terminal roster and fixed controller exchange binding |
-| `installedWorkloadAcceptanceSatisfied` | False; FNP retrieval is inconclusive and 37 fault emitters remain unexecuted |
+| `implementationCoverage` | Incomplete: attempt 52 passed all eight positive rows and `cancellation`; 26 denial and ten other lifecycle rows have no passing installed result |
+| `installedPositiveExecuted` | True for attempt 52's installed eight-case positive aggregate; later signed-probe attempts did not complete that aggregate |
+| `installedWorkloadAcceptanceSatisfied` | False; only nine of 45 cases have a passing installed result, with the new app denial path still offline-only |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

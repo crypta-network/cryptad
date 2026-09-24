@@ -40,6 +40,19 @@ def main():
               'namespaceInodes': {name: os.stat('/proc/self/ns/' + name).st_ino
                                   for name in ('mnt', 'pid', 'net', 'user')},
               'mountEscape': mount_escape()}
+    first = data / 'pr315-probe-result-first.json'
+    second = data / 'pr315-probe-result-second.json'
+    if not os.path.lexists(first):
+        slot = first
+    elif not os.path.lexists(second):
+        slot = second
+    else:
+        raise ValueError('probe-launch-budget-exhausted')
+    descriptor = os.open(slot, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump(record, stream, sort_keys=True, separators=(',', ':'))
+        stream.flush()
+        os.fsync(stream.fileno())
     target = data / 'pr315-probe-result.json'
     temporary = data / '.pr315-probe-result.new'
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)

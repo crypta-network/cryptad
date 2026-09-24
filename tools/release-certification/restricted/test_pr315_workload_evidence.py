@@ -107,6 +107,14 @@ class VolatileEvidenceTest(unittest.TestCase):
         captured = evidence._capture(self.root, self.expected, True)['probeAppResult']
         self.assertEqual('signed-app-candidate-origin-not-acceptance', captured['classification'])
         self.assertEqual(record, captured['record'])
+        (directory / 'pr315-probe-result-first.json').write_text(json.dumps(record))
+        second = dict(record, pid=124, startedMonotonicNs=30)
+        (directory / 'pr315-probe-result-second.json').write_text(json.dumps(second))
+        captured = evidence._capture(self.root, self.expected, True)
+        self.assertEqual(record, captured['probeAppFirstResult']['record'])
+        self.assertEqual(second, captured['probeAppSecondResult']['record'])
+        with self.assertRaisesRegex(ValueError, 'selection-invalid'):
+            evidence._probe_app_result(self.root, float('inf'), '../arbitrary')
         path.write_text(json.dumps(dict(record, privateToken='must-not-copy')))
         rejected = evidence._capture(self.root, self.expected, True)
         self.assertEqual('unavailable-or-unsafe', rejected['probeAppResult']['status'])
@@ -130,6 +138,28 @@ class VolatileEvidenceTest(unittest.TestCase):
         path.symlink_to(self.path)
         self.assertEqual('unavailable-or-unsafe', evidence._capture(
             self.root, self.expected, True)['probeAppLog']['status'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_probe_kernel_checkpoint_survives_later_observer_failure_without_extra_fields(self):
+        observer = self.observer()
+        path = observer / 'pr315-probe-kernel.private.json'
+        record = {'schemaVersion': 1, 'kind': 'pr315-observer-probe-kernel-checkpoint',
+                  'appId': 'pr315-probe', 'bundleDigest': 'sha256:' + 'a' * 64,
+                  'roleKernelRoster': {}, 'roleKernelRosterWindow': {},
+                  'senderStateBefore': 'b' * 64, 'probeWorker': {},
+                  'administratorRecordDigest': 'c' * 64}
+        path.write_text(json.dumps(record))
+        self.assertEqual('not-captured-cleanup-unverified', evidence._capture(
+            self.root, self.expected, False, observer_root=observer)['probeKernelCheckpoint']['status'])
+        captured = evidence._capture(self.root, self.expected, True,
+                                     observer_root=observer)['probeKernelCheckpoint']
+        self.assertEqual('observer-origin-private-checkpoint-not-acceptance',
+                         captured['classification'])
+        self.assertEqual(record, captured['record'])
+        path.write_text(json.dumps(dict(record, privateToken='must-not-copy')))
+        rejected = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual('unavailable-or-unsafe', rejected['probeKernelCheckpoint']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(rejected))
 
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
@@ -456,7 +486,8 @@ class VolatileEvidenceTest(unittest.TestCase):
             return original(root, name, **kwargs)
         with patch.object(evidence.snapshot, 'read_file', side_effect=read):
             result = evidence._capture(self.root, self.expected, True, observer_root=observer)
-        self.assertEqual(['fcp-' + role + '.log' for role in evidence.ROLES],
+        self.assertEqual(['pr315-probe-kernel.private.json',
+                          *['fcp-' + role + '.log' for role in evidence.ROLES]],
                          [name for root, name in reads if root == observer])
         names = [name for _root, name in reads]
         self.assertLess(names.index(evidence.SENTINEL), names.index('fcp-candidate-sender.log'))

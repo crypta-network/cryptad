@@ -341,14 +341,17 @@ def _fnp_counter_pair(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
-def _probe_app_result(root, deadline):
+def _probe_app_result(root, deadline, name='pr315-probe-result.json'):
     """Project only the signed app's fixed candidate-origin syscall result."""
+    if name not in ('pr315-probe-result.json', 'pr315-probe-result-first.json',
+                    'pr315-probe-result-second.json'):
+        raise ValueError('probe-app-result-selection-invalid')
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return {'status': 'capture-deadline'}
     try:
         raw = snapshot.read_file(root / 'state/candidate-sender/data/node/apps/data/pr315-probe',
-                                 'pr315-probe-result.json', maximum=2048, timeout=min(2, remaining))
+                                 name, maximum=2048, timeout=min(2, remaining))
         value = json.loads(raw)
         if (not isinstance(value, dict)
                 or set(value) != {'schemaVersion', 'kind', 'pid', 'uid', 'gid',
@@ -397,6 +400,66 @@ def _probe_app_log(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _probe_kernel_checkpoint(observer_root, deadline):
+    """Retain only the fixed observer/controller app epoch before later faults."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(observer_root, 'pr315-probe-kernel.private.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'appId', 'bundleDigest',
+                                  'roleKernelRoster', 'roleKernelRosterWindow',
+                                  'senderStateBefore', 'probeWorker',
+                                  'administratorRecordDigest'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-observer-probe-kernel-checkpoint'
+                or value['appId'] != 'pr315-probe'
+                or re.fullmatch('sha256:[0-9a-f]{64}', str(value['bundleDigest'])) is None
+                or re.fullmatch('[0-9a-f]{64}', str(value['senderStateBefore'])) is None
+                or re.fullmatch('[0-9a-f]{64}', str(value['administratorRecordDigest'])) is None
+                or not isinstance(value['roleKernelRoster'], dict)
+                or not isinstance(value['roleKernelRosterWindow'], dict)
+                or not isinstance(value['probeWorker'], dict)):
+            raise ValueError('probe-kernel-checkpoint-invalid')
+        return {'status': 'captured',
+                'classification': 'observer-origin-private-checkpoint-not-acceptance',
+                'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
+def _probe_administrator_record(root, deadline):
+    """Retain one fixed root-owned live-process record with a closed field set."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'pr315-probe-process.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'caseId', 'role', 'bundleDigest',
+                                  'verifiedTree', 'firstResultDigest', 'senderUid', 'senderGid',
+                                  'managerInvocation', 'bootId', 'cgroupIdentity',
+                                  'stateBefore', 'stateAfter', 'activeBeforeNs', 'activeAfterNs',
+                                  'worker', 'outer'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-probe-process'
+                or value['caseId'] != 'namespace-mount-escape'
+                or value['role'] != 'candidate-sender'
+                or not isinstance(value['worker'], dict) or not isinstance(value['outer'], dict)
+                or any(key not in value['worker'] or key not in value['outer'] for key in
+                       ('hostPid', 'namespacePids', 'mountNamespaceIdentity',
+                        'networkNamespaceIdentity'))):
+            raise ValueError('probe-administrator-record-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -414,7 +477,11 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                            for case in EXCHANGE_CASES},
         'fnpCounterPair': {'status': 'not-captured-cleanup-unverified'},
         'probeAppResult': {'status': 'not-captured-cleanup-unverified'},
+        'probeAppFirstResult': {'status': 'not-captured-cleanup-unverified'},
+        'probeAppSecondResult': {'status': 'not-captured-cleanup-unverified'},
         'probeAppLog': {'status': 'not-captured-cleanup-unverified'},
+        'probeKernelCheckpoint': {'status': 'not-captured-cleanup-unverified'},
+        'probeAdministratorRecord': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -439,6 +506,13 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                      case + '-exchange.json', EXCHANGE_FIELDS, deadline)
         result['fnpCounterPair'] = _fnp_counter_pair(root, deadline)
         result['probeAppResult'] = _probe_app_result(root, deadline)
+        result['probeAppFirstResult'] = _probe_app_result(root, deadline,
+                                                        'pr315-probe-result-first.json')
+        result['probeAppSecondResult'] = _probe_app_result(root, deadline,
+                                                         'pr315-probe-result-second.json')
+        if observer_root is not None:
+            result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
+        result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

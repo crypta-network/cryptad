@@ -55,6 +55,63 @@ class ObserverFailureTest(unittest.TestCase):
 
 
 class AdministratorFnpSamplerTest(unittest.TestCase):
+    def test_probe_root_record_requires_current_kernel_child_and_verified_tree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'authority').mkdir()
+            result = {'pid': 2, 'uid': 986, 'gid': 986,
+                      'namespaceInodes': {'mnt': 5, 'pid': 44, 'net': 7, 'user': 8},
+                      'mountEscape': {'operation': 'unshare-mount', 'returnCode': -1,
+                                      'errno': 'EPERM'}}
+            worker = {'hostPid': 300, 'namespacePids': [300, 20, 2],
+                      'mountNamespaceIdentity': [1, 5], 'userNamespaceIdentity': [1, 8],
+                      'networkNamespaceIdentity': [1, 7], 'pidNamespace': 'pid:[44]',
+                      'noNewPrivileges': True, 'effectiveCapabilities': 0,
+                      'executableDigest': 'sha256:' + 'a' * 64}
+            outer = {'hostPid': 100, 'namespacePids': [100, 10],
+                     'mountNamespaceIdentity': [1, 6],
+                     'executableDigest': 'sha256:' + 'b' * 64}
+            sample = {'state': 'running', 'provenance': 'controller-kernel-sample',
+                      'managerInvocation': 'c' * 32, 'bootId': 'boot',
+                      'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
+                      'networkNamespaceIdentity': [1, 7],
+                      'observedMonotonicNs': 100,
+                      'processes': [worker, outer]}
+            calls = []
+            def write(path, value, **options):
+                calls.append((path, value, options))
+            workload = SimpleNamespace(ROOT=root, locked=nullcontext,
+                observe=Mock(side_effect=[sample, dict(sample, observedMonotonicNs=200)]),
+                retained=lambda handle: ({'deadlineMonotonicNs': time.monotonic_ns() + 10**10},
+                                         'candidate-sender', {}),
+                admit=lambda campaign: None, exact=lambda *arguments: None,
+                manager=lambda *arguments: {},
+                read=lambda path: {'probeIdentity': {'digest': 'sha256:' + 'e' * 64,
+                    'fileCount': 3, 'sizeBytes': 100}},
+                account=lambda role: SimpleNamespace(pw_uid=986, pw_gid=986), write=write)
+            sampler = driver.AdministratorFnpSampler(workload, 'recipient', {},
+                sender_handle='sender', probe_digest='sha256:' + 'f' * 64,
+                sender_jdk_digest=outer['executableDigest'])
+            snapshot = SimpleNamespace(read_file=Mock(return_value=json.dumps(result,
+                sort_keys=True, separators=(',', ':')).encode()))
+            storage = SimpleNamespace(verify_installed_app=Mock(return_value={
+                'digest': 'sha256:' + 'e' * 64, 'fileCount': 3, 'sizeBytes': 100}))
+            with patch.dict('sys.modules', {'runtime_snapshot': snapshot,
+                                            'restricted_workload_storage': storage}), patch(
+                                                'cross_version_runtime.digest_file',
+                                                return_value=worker['executableDigest']):
+                response = sampler.probe()
+                self.assertEqual('probe', response['phase'])
+                self.assertEqual(1, len(calls))
+                self.assertEqual(worker, calls[0][1]['worker'])
+                self.assertTrue(calls[0][2]['create'])
+                storage.verify_installed_app.assert_called_once()
+                workload.observe = Mock(side_effect=[sample, dict(sample,
+                    observedMonotonicNs=200,
+                    processes=[dict(worker, namespacePids=[300, 20, 3]), outer])])
+                with self.assertRaisesRegex(ValueError, 'actor-ambiguous'):
+                    sampler.probe()
+
     def test_root_only_fixed_recipient_pair_is_written_before_observer_reply(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -93,7 +150,7 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
         self.assertEqual(2, network.read_fnp_counters.call_count)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
-    def test_socket_accepts_only_two_fixed_phase_packets(self):
+    def test_socket_accepts_only_fixed_counter_and_probe_packets(self):
         sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', {})
         sampler.sample = Mock(return_value={'phase': 'before', 'managerInvocation': 'a' * 32,
                                              'snapshot': {'observedMonotonicNs': 10}})
@@ -110,6 +167,11 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             self.assertEqual({'error': 'pr315-admin-fnp-sample-failed'},
                              json.loads(child.recv(8192)))
             sampler.sample.assert_called_once()
+            sampler.probe = Mock(return_value={'phase': 'probe', 'recordDigest': 'b' * 64})
+            child.sendall(b'P')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual('probe', json.loads(child.recv(8192))['phase'])
+            sampler.probe.assert_called_once_with()
         self.assertEqual('ValueError', sampler.diagnostics['fnpAdminFailure']['exceptionType'])
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')

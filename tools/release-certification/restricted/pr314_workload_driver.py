@@ -7,6 +7,7 @@ normally signed Mail bundle. This driver never manufactures original release aut
 Its positive result alone cannot satisfy the separate complete workload fault contract.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -277,13 +278,103 @@ def stop_child(pid):
 
 
 class AdministratorFnpSampler:
-    """Two fixed administrator counter reads over this attempt's inherited private socket."""
+    """Fixed administrator observations over this attempt's inherited private socket."""
 
-    def __init__(self, workload, recipient_handle, diagnostics):
+    def __init__(self, workload, recipient_handle, diagnostics, sender_handle=None,
+                 probe_digest=None, sender_jdk_digest=None):
         self.workload = workload
         self.recipient_handle = recipient_handle
         self.diagnostics = diagnostics
         self.phase = 'initial'
+        self.sender_handle = sender_handle
+        self.probe_digest = probe_digest
+        self.sender_jdk_digest = sender_jdk_digest
+
+    def probe(self):
+        """Bind one live signed probe process, immutable app bytes and its first result."""
+        import runtime_snapshot as snapshot
+        from restricted_workload_storage import verify_installed_app
+        from cross_version_runtime import digest_file
+        workload = self.workload
+        if (self.sender_handle is None or not isinstance(self.probe_digest, str)
+                or not isinstance(self.sender_jdk_digest, str)):
+            raise ValueError('workload-admin-probe-not-selected')
+        first = workload.observe(self.sender_handle)
+        if first.get('state') != 'running' or first.get('provenance') != 'controller-kernel-sample':
+            raise ValueError('workload-admin-probe-target-inactive')
+        with workload.locked():
+            campaign, role, retained = workload.retained(self.sender_handle)
+            if role != 'candidate-sender':
+                raise ValueError('workload-admin-probe-role-invalid')
+            workload.admit(campaign)
+            workload.exact(role, retained, workload.manager(role, 'show'))
+            launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+            expected_tree = launch.get('probeIdentity')
+            if not isinstance(expected_tree, dict):
+                raise ValueError('workload-admin-probe-tree-unselected')
+            verified_tree = verify_installed_app(
+                workload.ROOT / 'state/candidate-sender/data/node/apps/installed/pr315-probe',
+                expected_tree, workload.ROOT / 'authority/candidate-sender-probe-app-snapshot',
+                min(time.monotonic() + 5, campaign['deadlineMonotonicNs'] / 1e9))
+        raw = snapshot.read_file(
+            workload.ROOT / 'state/candidate-sender/data/node/apps/data/pr315-probe',
+            'pr315-probe-result-first.json', maximum=2048, timeout=2)
+        result = json.loads(raw)
+        if (not isinstance(result, dict) or not isinstance(result.get('mountEscape'), dict)
+                or not isinstance(result.get('namespaceInodes'), dict)):
+            raise ValueError('workload-admin-probe-result-invalid')
+        second = workload.observe(self.sender_handle)
+        if (second.get('state') != 'running' or second.get('managerInvocation') != first['managerInvocation']
+                or second.get('cgroupIdentity') != first['cgroupIdentity']
+                or first.get('stateDigest') != second.get('stateDigest')
+                or not isinstance(first.get('stateDigest'), str)):
+            raise ValueError('workload-admin-probe-target-changed')
+        processes = second.get('processes')
+        if not isinstance(processes, list):
+            raise ValueError('workload-admin-probe-processes-invalid')
+        workers = [row for row in processes if isinstance(row, dict)
+                   and isinstance(row.get('namespacePids'), list)
+                   and len(row['namespacePids']) >= 3
+                   and row['namespacePids'][-1] == result.get('pid')]
+        outers = [row for row in processes if isinstance(row, dict)
+                  and row.get('executableDigest') == self.sender_jdk_digest
+                  and isinstance(row.get('namespacePids'), list)
+                  and len(row['namespacePids']) == 2]
+        if len(workers) != 1 or len(outers) != 1:
+            raise ValueError('workload-admin-probe-actor-ambiguous')
+        worker, outer = workers[0], outers[0]
+        account = workload.account('candidate-sender')
+        ns = result.get('namespaceInodes')
+        if (result.get('uid') != account.pw_uid or result.get('gid') != account.pw_gid
+                or not isinstance(ns, dict)
+                or worker.get('noNewPrivileges') is not True
+                or worker.get('effectiveCapabilities') != 0
+                or worker.get('executableDigest') != digest_file('/usr/bin/python3')
+                or worker.get('mountNamespaceIdentity', [None, None])[-1] != ns.get('mnt')
+                or worker.get('userNamespaceIdentity', [None, None])[-1] != ns.get('user')
+                or worker.get('networkNamespaceIdentity', [None, None])[-1] != ns.get('net')
+                or worker.get('networkNamespaceIdentity') != second['networkNamespaceIdentity']
+                or worker.get('pidNamespace') != 'pid:[' + str(ns.get('pid')) + ']'
+                or worker.get('mountNamespaceIdentity') == outer.get('mountNamespaceIdentity')
+                or result.get('mountEscape', {}).get('operation') != 'unshare-mount'
+                or result['mountEscape'].get('returnCode') != -1
+                or result['mountEscape'].get('errno') != 'EPERM'
+                or not first['observedMonotonicNs'] < second['observedMonotonicNs']):
+            raise ValueError('workload-admin-probe-boundary-invalid')
+        record = {'schemaVersion': 1, 'kind': 'pr315-administrator-probe-process',
+                  'caseId': 'namespace-mount-escape', 'role': 'candidate-sender',
+                  'bundleDigest': self.probe_digest, 'verifiedTree': verified_tree,
+                  'firstResultDigest': hashlib.sha256(raw).hexdigest(),
+                  'senderUid': account.pw_uid, 'senderGid': account.pw_gid,
+                  'managerInvocation': first['managerInvocation'], 'bootId': first['bootId'],
+                  'cgroupIdentity': first['cgroupIdentity'],
+                  'stateBefore': first['stateDigest'], 'stateAfter': second['stateDigest'],
+                  'activeBeforeNs': first['observedMonotonicNs'],
+                  'activeAfterNs': second['observedMonotonicNs'],
+                  'worker': worker, 'outer': outer}
+        workload.write(workload.ROOT / 'authority/pr315-probe-process.json', record, create=True)
+        return {'phase': 'probe', 'recordDigest': hashlib.sha256(json.dumps(
+            record, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
     def sample(self, phase):
         if (phase, self.phase) not in {('before', 'initial'), ('after', 'before')}:
@@ -335,9 +426,10 @@ class AdministratorFnpSampler:
         if not message:
             return False
         try:
-            if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or message not in (b'B', b'A'):
+            if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or message not in (b'B', b'A', b'P'):
                 raise ValueError('workload-admin-fnp-request-invalid')
-            result = self.sample('before' if message == b'B' else 'after')
+            result = (self.probe() if message == b'P' else
+                      self.sample('before' if message == b'B' else 'after'))
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             private = getattr(error, 'private_diagnostics', None)
             self.diagnostics['fnpAdminFailure'] = {
@@ -356,14 +448,14 @@ class AdministratorFnpSampler:
 def request_administrator_fnp(channel, phase, campaign_deadline):
     """One fixed phase request; the administrator owns namespace access and durable pair."""
     from cross_version_runtime import RuntimeFailure
-    if phase not in ('before', 'after'):
+    if phase not in ('before', 'after', 'probe'):
         raise RuntimeFailure('workload-admin-fnp-phase-invalid')
     remaining = campaign_deadline / 10**9 - time.monotonic()
     if remaining <= 0:
         raise RuntimeFailure('workload-admin-fnp-deadline')
     channel.settimeout(min(90, remaining))
     try:
-        channel.sendall(b'B' if phase == 'before' else b'A')
+        channel.sendall({'before': b'B', 'after': b'A', 'probe': b'P'}[phase])
         raw = channel.recv(8193)
         if not 1 <= len(raw) <= 8192 or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
             raise RuntimeFailure('workload-admin-fnp-response-invalid')
@@ -687,8 +779,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
         # Preparation already started the campaign clock. Observation gets only the
         # original deadline plus bounded teardown grace, never a new execution budget.
         deadline = campaign_deadline / 10**9 + 100
+        selected_apps = selected['private'].get('nodes', {}).get('candidate-sender', {}).get('apps', [])
+        probe_digest = (selected_apps[1]['bundleDigest'] if len(selected_apps) == 2
+                        and selected_apps[1]['appId'] == 'pr315-probe' else None)
         sampler = AdministratorFnpSampler(workload,
-            handoff['handles']['candidate-recipient'], diagnostics)
+            handoff['handles']['candidate-recipient'], diagnostics,
+            sender_handle=handoff['handles'].get('candidate-sender') if probe_digest else None,
+            probe_digest=probe_digest,
+            sender_jdk_digest=handoff.get('expectedJdkDigests', {}).get('candidate-sender'))
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
             admin_sampler=sampler)

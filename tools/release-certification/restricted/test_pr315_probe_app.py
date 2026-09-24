@@ -44,8 +44,15 @@ class ProbeWorkerTest(unittest.TestCase):
             self.assertEqual(2, len(records))
             self.assertNotEqual(records[0]['pid'], records[1]['pid'])
             self.assertEqual('unshare-mount', records[1]['mountEscape']['operation'])
+            self.assertEqual(records[0], json.loads((data / 'pr315-probe-result-first.json').read_text()))
+            self.assertEqual(records[1], json.loads((data / 'pr315-probe-result-second.json').read_text()))
             self.assertFalse((data / '.pr315-probe-result.new').exists())
             self.assertNotIn('test-token-must-not-appear', target.read_text())
+            third = subprocess.run([sys.executable, '-I', '-S', '-B', str(script)],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE, env=environment, timeout=2)
+            self.assertNotEqual(0, third.returncode)
+            self.assertEqual(records[1], json.loads(target.read_text()))
 
 
 if __name__ == '__main__':

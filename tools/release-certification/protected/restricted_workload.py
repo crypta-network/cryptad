@@ -457,6 +457,8 @@ def _process_sample(pid, role, expected_uid):
     path = Path('/proc') / str(pid)
     before = (path / 'stat').read_text().rsplit(')', 1)[1].split()
     before_network = (path / 'ns/net').stat()
+    before_mount = (path / 'ns/mnt').stat()
+    before_user = (path / 'ns/user').stat()
     status = dict(line.split(':', 1) for line in (path / 'status').read_text().splitlines() if ':' in line)
     if (set(map(int, status['Uid'].split())) != {expected_uid}
             or (path / 'cgroup').read_text().strip() != '0::/system.slice/' + unit(role)):
@@ -481,11 +483,18 @@ def _process_sample(pid, role, expected_uid):
     if before[19] != after[19]:
         reject('process-epoch-changed')
     network = (path / 'ns/net').stat()
+    mount = (path / 'ns/mnt').stat()
+    user = (path / 'ns/user').stat()
     if (before_network.st_dev, before_network.st_ino) != (network.st_dev, network.st_ino):
         reject('process-network-namespace-changed')
+    if ((before_mount.st_dev, before_mount.st_ino) != (mount.st_dev, mount.st_ino)
+            or (before_user.st_dev, before_user.st_ino) != (user.st_dev, user.st_ino)):
+        reject('process-namespace-changed')
     return {'hostPid': pid, 'hostParentPid': int(before[1]),
             'pidNamespace': os.readlink(path / 'ns/pid'),
             'networkNamespaceIdentity': [network.st_dev, network.st_ino],
+            'mountNamespaceIdentity': [mount.st_dev, mount.st_ino],
+            'userNamespaceIdentity': [user.st_dev, user.st_ino],
             'namespacePids': list(map(int, status['NSpid'].split())),
             'startTicks': int(before[19]), 'executableDigest': 'sha256:' + digest.hexdigest(),
             'rssBytes': int(status['VmRSS'].split()[0]) * 1024 if 'VmRSS' in status else None,

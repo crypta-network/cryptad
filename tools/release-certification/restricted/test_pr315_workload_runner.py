@@ -127,6 +127,68 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_probe_denial_requires_live_root_actor_target_and_immutable_app_result(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '6' * 64}
+        result = {'schemaVersion': 1, 'kind': 'pr315-signed-apphost-probe',
+                  'pid': 1, 'uid': sender['uid'], 'gid': sender['gid'],
+                  'startedMonotonicNs': 25,
+                  'namespaceInodes': {'mnt': 5, 'pid': 44, 'net': 7, 'user': 8},
+                  'mountEscape': {'operation': 'unshare-mount', 'startedMonotonicNs': 30,
+                                  'finishedMonotonicNs': 40, 'returnCode': -1, 'errno': 'EPERM'}}
+        measured = {'hostPid': 300, 'namespacePids': [300, 20, 1], 'startTicks': 50,
+                    'mountNamespaceIdentity': [1, 5], 'userNamespaceIdentity': [1, 8],
+                    'networkNamespaceIdentity': [1, 7], 'pidNamespace': 'pid:[44]',
+                    'executableDigest': 'sha256:' + '7' * 64,
+                    'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        worker = {key: measured[key] for key in ('hostPid', 'namespacePids', 'startTicks',
+                  'mountNamespaceIdentity', 'userNamespaceIdentity',
+                  'networkNamespaceIdentity', 'executableDigest')}
+        worker.update(managerInvocation=sender['invocationId'], cgroupIdentity=[1, 99],
+                      outerMountNamespaceIdentity=[1, 6], observedMonotonicNs=50)
+        state = '8' * 64
+        admin = {'schemaVersion': 1, 'kind': 'pr315-administrator-probe-process',
+                 'caseId': 'namespace-mount-escape', 'role': 'candidate-sender',
+                 'bundleDigest': fixture['probeDigest'],
+                 'verifiedTree': {'digest': 'sha256:' + '9' * 64,
+                                  'fileCount': 3, 'sizeBytes': 1024},
+                 'firstResultDigest': hashlib.sha256(json.dumps(result, sort_keys=True,
+                     separators=(',', ':')).encode()).hexdigest(),
+                 'senderUid': sender['uid'], 'senderGid': sender['gid'],
+                 'managerInvocation': sender['invocationId'],
+                 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                 'cgroupIdentity': [1, 99], 'stateBefore': state, 'stateAfter': state,
+                 'activeBeforeNs': 60, 'activeAfterNs': 70,
+                 'worker': measured, 'outer': {'mountNamespaceIdentity': [1, 6]}}
+        checkpoint = {'bundleDigest': fixture['probeDigest'], 'roleKernelRoster': roster,
+                      'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                                 'finishedMonotonicNs': 20},
+                      'senderStateBefore': state, 'probeWorker': worker,
+                      'administratorRecordDigest': hashlib.sha256(json.dumps(admin,
+                          sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + state
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        for name, record in (('probeKernelCheckpoint', checkpoint),
+                             ('probeAdministratorRecord', admin), ('probeAppFirstResult', result)):
+            terminal[name] = {'status': 'captured', 'record': record}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        identity, attempt = runner.probe_denial_attempt(report, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'namespace-mount-escape'))
+        for mutate in (
+                lambda row: row['probeAppFirstResult']['record'].update(uid=9999),
+                lambda row: row['probeAdministratorRecord']['record'].update(activeAfterNs=81),
+                lambda row: row['probeAdministratorRecord']['record']['worker'].update(hostPid=301),
+                lambda row: row['probeKernelCheckpoint']['record'].update(senderStateBefore='0' * 64)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.probe_denial_attempt(report, fixture, changed))
+
     def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)

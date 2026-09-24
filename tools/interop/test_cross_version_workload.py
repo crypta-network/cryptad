@@ -116,21 +116,28 @@ class KernelRosterTests(unittest.TestCase):
     def test_signed_probe_pid_hint_requires_nested_kernel_process_without_capabilities(self):
         process = {'hostPid': 123, 'namespacePids': [123, 22, 1],
                    'startTicks': 456, 'noNewPrivileges': True,
-                   'effectiveCapabilities': 0, 'executableDigest': 'sha256:' + 'a' * 64}
+                   'effectiveCapabilities': 0, 'executableDigest': 'sha256:' + 'a' * 64,
+                   'pidNamespace': 'pid:[46]', 'mountNamespaceIdentity': [1, 45],
+                   'userNamespaceIdentity': [1, 47], 'networkNamespaceIdentity': [1, 43]}
+        daemon = {'hostPid': 100, 'namespacePids': [100, 2],
+                  'executableDigest': JDK, 'mountNamespaceIdentity': [1, 44]}
         observation = {'provenance': 'controller-kernel-sample',
                        'managerInvocation': 'b' * 32,
                        'cgroupIdentity': [1, 42], 'networkNamespaceIdentity': [1, 43],
-                       'processes': [process]}
-        bound = workload.bind_probe_worker(observation, 22)
+                       'stateDigest': 'c' * 64, 'observedMonotonicNs': 1000,
+                       'processes': [daemon, process]}
+        bound = workload.bind_probe_worker(observation, 22, JDK)
         self.assertEqual(123, bound['hostPid'])
         self.assertEqual([123, 22, 1], bound['namespacePids'])
+        self.assertEqual([1, 45], bound['mountNamespaceIdentity'])
+        self.assertEqual([1, 44], bound['outerMountNamespaceIdentity'])
         self.assertEqual('controller-kernel-sample', bound['provenance'])
         shallow = dict(process, namespacePids=[123, 22])
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'outside-role'):
-            workload.bind_probe_worker(dict(observation, processes=[shallow]), 22)
+            workload.bind_probe_worker(dict(observation, processes=[daemon, shallow]), 22, JDK)
         privileged = dict(process, effectiveCapabilities=1)
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'kernel-boundary-invalid'):
-            workload.bind_probe_worker(dict(observation, processes=[privileged]), 22)
+            workload.bind_probe_worker(dict(observation, processes=[daemon, privileged]), 22, JDK)
 
     def samples(self):
         result = {}
@@ -180,6 +187,44 @@ class KernelRosterTests(unittest.TestCase):
 
 
 class ObserverPolicyTests(unittest.TestCase):
+    def test_probe_cohort_captures_four_active_roles_before_app_launch(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.private = {'nodes': {'candidate-sender': {'apps': [
+            {'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}}}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+        adapter.observe = mock.Mock(side_effect=lambda role: {'role': role,
+                                                              'stateDigest': 'a' * 64})
+        expected = {'observerUid': 1001, 'roles': []}
+        with mock.patch.object(workload, 'kernel_roster', return_value=expected) as roster:
+            adapter.capture_probe_target_roster()
+        self.assertEqual(expected, adapter.initial_role_roster)
+        self.assertEqual('a' * 64, adapter.initial_sender_state)
+        self.assertEqual(4, adapter.observe.call_count)
+        self.assertLess(adapter.initial_role_window['startedMonotonicNs'],
+                        adapter.initial_role_window['finishedMonotonicNs'])
+        roster.assert_called_once()
+
+    def test_probe_checkpoint_durably_binds_fixed_signed_child_before_later_faults(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            adapter = object.__new__(workload.InstalledWorkloadAdapter)
+            adapter.root = Path(temporary)
+            adapter.initial_role_roster = {'observerUid': 1001, 'roles': []}
+            adapter.initial_role_window = {'startedMonotonicNs': 10,
+                                           'finishedMonotonicNs': 20}
+            adapter.initial_sender_state = 'a' * 64
+            worker = {'hostPid': 123, 'observedMonotonicNs': 30}
+            selected = {'appId': 'pr315-probe', 'bundleDigest': 'sha256:' + 'b' * 64}
+            administrator = {'phase': 'probe', 'recordDigest': 'c' * 64}
+            adapter.retain_probe_checkpoint(selected, worker, administrator)
+            path = adapter.root / 'pr315-probe-kernel.private.json'
+            value = json.loads(path.read_text())
+            self.assertEqual(worker, value['probeWorker'])
+            self.assertEqual(selected['bundleDigest'], value['bundleDigest'])
+            self.assertEqual(administrator['recordDigest'], value['administratorRecordDigest'])
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            with self.assertRaises(FileExistsError):
+                adapter.retain_probe_checkpoint(selected, worker, administrator)
+
     def stop_adapter(self, response, started=False):
         adapter = workload.InstalledWorkloadAdapter.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}
@@ -308,6 +353,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.outcomes = {'network-chk': 'observed'}
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()
+        adapter.capture_probe_target_roster = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
                                                                'managerInvocation': 'f' * 32})
@@ -340,6 +386,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.restart_context = adapter.restart_window = None
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()
+        adapter.capture_probe_target_roster = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={
             'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})

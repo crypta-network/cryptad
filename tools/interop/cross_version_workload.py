@@ -282,11 +282,12 @@ class InstalledProbeAppHandle(runtime.AppHandle):
                 or reported.get('sandbox', {}).get('active') is not True):
             fail('real-probe-sandbox-not-observed')
         observation = self.supervisor.observe(self.role)
-        self.worker_identity = bind_probe_worker(observation, reported.get('pid'))
+        self.worker_identity = bind_probe_worker(observation, reported.get('pid'),
+            self.supervisor.expected_jdk_digests[self.role])
         return self.worker_identity
 
 
-def bind_probe_worker(observation, api_pid):
+def bind_probe_worker(observation, api_pid, expected_jdk_digest):
     """Resolve the app's PID hint only against the current controller kernel sample."""
     if type(api_pid) is not int or api_pid <= 1 or observation.get('provenance') != 'controller-kernel-sample':
         fail('probe-process-hint-invalid')
@@ -300,21 +301,42 @@ def bind_probe_worker(observation, api_pid):
     if len(matches) != 1:
         fail('probe-process-outside-role')
     worker = matches[0]
+    daemons = [row for row in rows if isinstance(row, dict)
+               and row.get('executableDigest') == expected_jdk_digest
+               and isinstance(row.get('namespacePids'), list)
+               and len(row['namespacePids']) == 2]
+    if len(daemons) != 1:
+        fail('probe-outer-daemon-unavailable')
+    outer = daemons[0]
+    pid_namespace = re.fullmatch(r'pid:\[([0-9]+)\]', str(worker.get('pidNamespace')))
     if (type(worker.get('hostPid')) is not int or worker['hostPid'] <= 1
             or worker['namespacePids'][0] != worker['hostPid']
             or type(worker.get('startTicks')) is not int or worker['startTicks'] <= 0
             or worker.get('noNewPrivileges') is not True
             or worker.get('effectiveCapabilities') != 0
             or not isinstance(worker.get('executableDigest'), str)
-            or not re.fullmatch('sha256:[0-9a-f]{64}', worker['executableDigest'])):
+            or not re.fullmatch('sha256:[0-9a-f]{64}', worker['executableDigest'])
+            or pid_namespace is None
+            or any(not isinstance(worker.get(key), list) or len(worker[key]) != 2
+                   or any(type(part) is not int or part <= 0 for part in worker[key])
+                   for key in ('mountNamespaceIdentity', 'userNamespaceIdentity',
+                               'networkNamespaceIdentity'))
+            or worker['networkNamespaceIdentity'] != observation.get('networkNamespaceIdentity')
+            or worker['mountNamespaceIdentity'] == outer.get('mountNamespaceIdentity')):
         fail('probe-process-kernel-boundary-invalid')
     return {'role': 'candidate-sender', 'hostPid': worker['hostPid'],
             'namespacePid': api_pid, 'namespacePids': worker['namespacePids'],
             'startTicks': worker['startTicks'],
             'executableDigest': worker['executableDigest'],
+            'mountNamespaceIdentity': worker['mountNamespaceIdentity'],
+            'outerMountNamespaceIdentity': outer['mountNamespaceIdentity'],
+            'userNamespaceIdentity': worker['userNamespaceIdentity'],
+            'pidNamespaceIdentity': int(pid_namespace[1]),
             'managerInvocation': observation['managerInvocation'],
             'cgroupIdentity': observation['cgroupIdentity'],
             'networkNamespaceIdentity': observation['networkNamespaceIdentity'],
+            'stateDigest': observation.get('stateDigest'),
+            'observedMonotonicNs': observation.get('observedMonotonicNs'),
             'provenance': 'controller-kernel-sample'}
 
 
@@ -499,6 +521,7 @@ class InstalledWorkloadAdapter:
         self.control_exchanges = {}
         self.fnp_sample_failure = None
         self.restart_context = self.restart_window = None
+        self.initial_role_roster = self.initial_role_window = self.initial_sender_state = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
 
@@ -601,6 +624,50 @@ class InstalledWorkloadAdapter:
                 runtime.interop.add_peer(peer, 'peer-add', node)
                 runtime.interop.wait_for_peer_connection(client, peer, node['identity'], relay['identity'], 150)
 
+    def capture_probe_target_roster(self):
+        """Persist a pre-app active-target premise before any probe child runs."""
+        if len(self.private['nodes']['candidate-sender']['apps']) != 2:
+            return
+        started = time.monotonic_ns()
+        samples = {role: self.observe(role) for role in runtime.ROLES}
+        finished = time.monotonic_ns()
+        if finished <= started:
+            fail('probe-target-window-invalid')
+        self.initial_role_roster = kernel_roster(samples, self.expected_jdk_digests)
+        self.initial_role_window = {'startedMonotonicNs': started, 'finishedMonotonicNs': finished}
+        self.initial_sender_state = samples['candidate-sender'].get('stateDigest')
+
+    def retain_probe_checkpoint(self, selected, worker, administrator):
+        """Durably retain the controller-kernel AppHost child before later workload faults."""
+        if (selected.get('appId') != 'pr315-probe' or self.initial_role_roster is None
+                or self.initial_role_window is None or not isinstance(worker, dict)
+                or not isinstance(administrator, dict)
+                or administrator.get('phase') != 'probe'
+                or not isinstance(administrator.get('recordDigest'), str)
+                or re.fullmatch('[0-9a-f]{64}', administrator['recordDigest']) is None):
+            fail('probe-checkpoint-premise-missing')
+        value = {'schemaVersion': 1, 'kind': 'pr315-observer-probe-kernel-checkpoint',
+                 'appId': 'pr315-probe', 'bundleDigest': selected['bundleDigest'],
+                 'roleKernelRoster': self.initial_role_roster,
+                 'roleKernelRosterWindow': self.initial_role_window,
+                 'senderStateBefore': self.initial_sender_state,
+                 'probeWorker': worker,
+                 'administratorRecordDigest': administrator['recordDigest']}
+        raw = json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+        if len(raw) > 32768:
+            fail('probe-checkpoint-size-limit')
+        target = self.root / 'pr315-probe-kernel.private.json'
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
     def content_chk(self):
         """Insert only the helper-bound public CHK selected for this installed operation."""
         operation = self.next_operation()
@@ -663,7 +730,11 @@ class InstalledWorkloadAdapter:
                 status, _ = probe.request('POST', '/api/v1/apps/pr315-probe/start')
                 if status not in {200, 201}:
                     fail('signed-probe-start-failed')
-                probe.observe_worker()
+                worker = probe.observe_worker()
+                if self.counter_sampler is None:
+                    fail('probe-administrator-sampler-unavailable')
+                administrator = self.counter_sampler('probe')
+                self.retain_probe_checkpoint(selected_apps[1], worker, administrator)
                 self.apps[(role, 'pr315-probe')] = probe
 
     def stop(self, role):
@@ -766,6 +837,7 @@ class InstalledWorkloadAdapter:
             for role in runtime.ROLES:
                 self.start(role)
             self.connect()
+            self.capture_probe_target_roster()
             self.provision_apps()
             self.content_chk()
             before = dict(self.nodes['candidate-sender'])

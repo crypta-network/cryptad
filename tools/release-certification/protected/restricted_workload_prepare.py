@@ -284,6 +284,11 @@ def prepare(plan, private, authorization):
                 launch['mailIdentity'] = tree_identity(inputs / 'apps/mail-prototype')
                 if launch['mailIdentity']['sizeBytes'] > 64 * 1024 * 1024 or launch['mailIdentity']['fileCount'] > 4095:
                     workload.reject('app-observation-budget-exceeded')
+                if role == 'candidate-sender' and len(row['apps']) == 2:
+                    launch['probeIdentity'] = tree_identity(inputs / 'apps/pr315-probe')
+                    if (launch['probeIdentity']['sizeBytes'] > 64 * 1024 * 1024
+                            or launch['probeIdentity']['fileCount'] > 4095):
+                        workload.reject('probe-observation-budget-exceeded')
             workload.write(inputs / 'launch.json', launch, create=True, mode=0o444)
             record = {'handle': handles[role], 'campaign': generation, 'bootId': campaign['bootId'],
                 'generation': None, 'managerInvocation': None, 'cgroupIdentity': None,

@@ -700,6 +700,121 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
     return identity, attempt
 
 
+def probe_denial_attempt(report, fixture, terminal):
+    """Admit one installed app-origin denial from three independently retained records."""
+    if (report.get('guestStopped') is not True or not isinstance(terminal, dict)
+            or terminal.get('cleanupReportedByCaller') is not True
+            or fixture.get('schemaVersion') != 4):
+        return None
+    try:
+        selected = [terminal[key] for key in ('probeKernelCheckpoint',
+                    'probeAdministratorRecord', 'probeAppFirstResult')]
+        if any(row['status'] != 'captured' for row in selected):
+            return None
+        checkpoint, admin, result = (row['record'] for row in selected)
+        if (checkpoint['bundleDigest'] != fixture['probeDigest']
+                or admin['bundleDigest'] != fixture['probeDigest']
+                or checkpoint['administratorRecordDigest'] != hashlib.sha256(json.dumps(
+                    admin, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                or admin['firstResultDigest'] != hashlib.sha256(json.dumps(
+                    result, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                or not acceptance._principals(checkpoint['roleKernelRoster'])
+                or not _bounded_window(checkpoint['roleKernelRosterWindow'])):
+            return None
+        principals = checkpoint['roleKernelRoster']
+        sender = next(row for row in principals['roles'] if row['role'] == 'candidate-sender')
+        worker, measured = checkpoint['probeWorker'], admin['worker']
+        outer = admin['outer']
+        namespace = result['namespaceInodes']
+        attack = result['mountEscape']
+        if (admin['role'] != 'candidate-sender' or admin['senderUid'] != sender['uid']
+                or result['uid'] != sender['uid'] or result['gid'] != sender['gid']
+                or admin['managerInvocation'] != sender['invocationId']
+                or admin['bootId'].replace('-', '').lower() != sender['bootId']
+                or sender['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender', 'identity': admin['cgroupIdentity']})[7:]
+                or not isinstance(admin['verifiedTree'], dict)
+                or set(admin['verifiedTree']) != {'digest', 'fileCount', 'sizeBytes'}
+                or not re.fullmatch('sha256:[0-9a-f]{64}', str(admin['verifiedTree']['digest']))
+                or any(type(admin['verifiedTree'][key]) is not int
+                       or admin['verifiedTree'][key] < 1 for key in ('fileCount', 'sizeBytes'))
+                or admin['stateBefore'] != checkpoint['senderStateBefore']
+                or admin['stateAfter'] != admin['stateBefore']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] != 'sha256:' + admin['stateAfter']
+                or worker['hostPid'] != measured['hostPid']
+                or worker['startTicks'] != measured['startTicks']
+                or worker['namespacePids'] != measured['namespacePids']
+                or worker['mountNamespaceIdentity'] != measured['mountNamespaceIdentity']
+                or worker['userNamespaceIdentity'] != measured['userNamespaceIdentity']
+                or worker['networkNamespaceIdentity'] != measured['networkNamespaceIdentity']
+                or worker['executableDigest'] != measured['executableDigest']
+                or worker['managerInvocation'] != sender['invocationId']
+                or worker['cgroupIdentity'] != admin['cgroupIdentity']
+                or measured['noNewPrivileges'] is not True
+                or measured['effectiveCapabilities'] != 0
+                or measured['namespacePids'][-1] != result['pid']
+                or measured['mountNamespaceIdentity'][-1] != namespace['mnt']
+                or measured['userNamespaceIdentity'][-1] != namespace['user']
+                or measured['networkNamespaceIdentity'][-1] != namespace['net']
+                or measured['pidNamespace'] != 'pid:[' + str(namespace['pid']) + ']'
+                or outer['mountNamespaceIdentity'] != worker['outerMountNamespaceIdentity']
+                or outer['mountNamespaceIdentity'] == measured['mountNamespaceIdentity']
+                or attack['operation'] != 'unshare-mount' or attack['returnCode'] != -1
+                or attack['errno'] != 'EPERM'
+                or not checkpoint['roleKernelRosterWindow']['finishedMonotonicNs']
+                    < result['startedMonotonicNs'] <= attack['startedMonotonicNs']
+                    < attack['finishedMonotonicNs'] < worker['observedMonotonicNs']
+                    <= admin['activeBeforeNs'] < admin['activeAfterNs']):
+            return None
+        receipts = terminal['stopReceipts']['candidate-sender']
+        matching = [entry['record'] for entry in receipts.values()
+                    if isinstance(entry, dict) and entry.get('status') == 'captured'
+                    and isinstance(entry.get('record'), dict)
+                    and entry['record'].get('managerInvocation') == sender['invocationId']]
+        if (len(matching) != 1
+                or matching[0]['bootId'].replace('-', '').lower() != sender['bootId']
+                or matching[0]['cgroupIdentity'] != admin['cgroupIdentity']
+                or matching[0]['membership'] != 'only-stop-helper'
+                or matching[0]['descendantCgroups'] != 0
+                or admin['activeAfterNs'] >= matching[0]['startedMonotonicNs']):
+            return None
+        host = report['hostVerifiedIdentity']
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        case_id = 'namespace-mount-escape'
+        control_digest = hashlib.sha256(json.dumps(admin, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id, 'target': 'outer-role', 'role': 'candidate-sender',
+                  'invocationId': sender['invocationId'], 'cgroupDigest': sender['cgroupDigest'],
+                  'bootId': sender['bootId'], 'controlResponseDigest': control_digest,
+                  'probeDigest': ''}
+        witness = {'actorUid': sender['uid'], 'attackDigest': admin['firstResultDigest'],
+                   'attackStartedNs': attack['startedMonotonicNs'],
+                   'targetActiveBeforeNs': checkpoint['roleKernelRosterWindow']['finishedMonotonicNs'],
+                   'targetActiveAfterNs': admin['activeAfterNs'],
+                   'controlResponseDigest': control_digest, 'denialSource': 'kernel',
+                   'denialCode': 'EPERM', 'unrelatedStateBefore': admin['stateBefore'],
+                   'unrelatedStateAfter': admin['stateAfter'], 'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': checkpoint['roleKernelRosterWindow']['startedMonotonicNs'],
+                       'finishedMonotonicNs': admin['activeAfterNs'], 'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+                   'declaredCases': [case_id], 'observations': [observation],
+                   'guestStopped': True, 'attemptCompleted': True, 'principals': principals,
+                   'targets': {case_id: target}, 'caseCommitments': {},
+                   'appProcess': None, 'restartContext': None}
+        return identity, attempt
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
@@ -820,6 +935,29 @@ def run(args):
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 statuses.update({case: 'passed' for case in expected})
+            if (not startup_measurement and isinstance(terminal, dict)
+                    and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):
+                fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
+                    args.source, args.product_source_commit)
+                host = report.get('hostVerifiedIdentity')
+                if not isinstance(host, dict):
+                    raise ValueError('workload-denial-host-identity-unavailable')
+                checked = reference.verified_attempt_identity(report, selected.attempt,
+                    host['bundleIdentity'], host['testKitDigest'])
+                if checked != host:
+                    raise ValueError('workload-denial-host-identity-changed')
+                denial = probe_denial_attempt(report, fixture, terminal)
+                if denial is not None:
+                    identity, case_attempt = denial
+                    checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                    if (checked_cases['recordContractValid'] is not True
+                            or next(row['status'] for row in checked_cases['cases']
+                                    if row['caseId'] == 'namespace-mount-escape') != 'passed'
+                            or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                        raise ValueError('workload-denial-case-verification-failed')
+                    native_runner._save(output / 'denial-v8-evidence.private.json',
+                        {'attempt': case_attempt, 'assessment': checked_cases})
+                    statuses['namespace-mount-escape'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,
