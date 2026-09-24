@@ -1186,6 +1186,40 @@ substituted receipts. Native Linux interop workload tests passed 43 with eight s
 full restricted discovery passed 422 with one skip. Installed execution of this new
 behavior is still required.
 
+Attempts 50–52 bound helper source `a453d8046c69749ee109b43a9240d314b1d02f25` to
+the unchanged signed Mail fixture, product, JDK and `tcg-multi`/`qemu64` four-vCPU profile.
+Each passed its own no-VM task-wide storage and memory admission. Attempts 50 and 51 did
+not reach an administrator cancellation trigger. Attempt 50 failed four-role readiness
+after sender and predecessor JVM `SIGILL` crashes in different C1 methods; attempt 51
+failed sender restart readiness after another C1 `SIGILL`. Both reported cleanup complete
+with four current stop receipts and stopped emulators, but no case passed in either
+attempt. Their complete private evidence and same-attempt QCOW2 backing pairs were
+copied locally and passed recursive checksum comparisons.
+
+Attempt 52 reached four-role readiness, started two normally signed Mail workers,
+completed both byte-checked CHK transfers across the sender restart, and exited zero.
+The observer left all four final invocations active after its positive observations.
+The administrator independently matched their current manager and cgroup identities,
+recorded a fixed cancellation intent before the original campaign deadline, fenced the
+campaign and stopped the controller. Its terminal observation found no populated owned
+cgroup or remaining descendant, and the host matched the resulting current stop receipts
+and stopped guest to that pretrigger roster. The v8 verifier returned all eight positive
+cases plus `cancellation` as individually `passed`. A sender HotSpot fatal file from an
+earlier invocation was still captured; the passed cases bind only the later measured
+invocation epochs and do not establish continuous JVM stability. The fixed-file volatile
+snapshot itself still marks independent quiescence unestablished; the cancellation case
+uses the separate administrator active/terminal observations and exact receipts. The
+complete stopped attempt and same-attempt QCOW2 backing pair passed a recursive local
+checksum comparison.
+
+The suite remains `implementationCoverage=incomplete` and
+`installedWorkloadAcceptanceSatisfied=false`: all 26 denial cases and ten other lifecycle
+cases are still `not-executed`. A fresh read-only summary of locally retained fatal
+snapshots through attempt 52 found 26 HotSpot fatal files across 20 attempts, 17
+`SIGILL` and nine `SIGSEGV`, all reported at varying C1-compiled frames. That pattern
+does not by itself establish the cause or permit changing a runtime profile to claim
+the existing installed result.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
