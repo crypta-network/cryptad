@@ -2,8 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; attempt 52 passed eight positive cases and one lifecycle case
-individually, while full installed acceptance remains false.** The first three installed
+**Implementation is incomplete; attempt 62 passed eight positive cases, two denial cases
+and `controller-restart` on one source-bound VM, while full installed acceptance remains
+false.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
@@ -1479,6 +1480,40 @@ explains the observed status from the installed caller and bridge, but has not
 yet been confirmed by another installed run. It does not change product code,
 guest limits, timeout, QEMU profile or JDK.
 
+Attempt 61 used the exact-source fixture for that narrow fix under the unchanged
+`tcg-multi/qemu64` profile. The guest reached the signed probe and both independent
+denial paths; host-verified `observer-control` and `namespace-mount-escape` each
+passed their own v8 record contract, with real controller response, root process
+and signed AppHost child binding, fixed `unshare` `EPERM`, active target and matching
+stop receipt. Sender restart then expired before daemon readiness after a C1 `SIGILL`
+in `LongArray.reduceInPlace` at compiled-entry offset +5. The guest exited 1,
+reported cleanup complete, retained four stop receipts and did not pass the
+positive aggregate or lifecycle row. Its complete stopped private attempt and
+same-attempt QCOW pair were copied locally and compared recursively without
+differences; CT102 originals remain. The refreshed host credential got past the
+previous HTTP 403, but a C1 fatal again blocked positive completion. Neither
+denial pass establishes general JVM stability.
+
+Attempt 62 selected `controller-restart` using the *same* helper, signed fixture,
+product/JDK and VM profile after a fresh no-VM capacity admission. It exited 0,
+reported cleanup complete and stopped the guest. The nine-case positive/lifecycle
+private assessment passed all eight positive v8 rows plus the real administrator
+`controller-restart` trigger, new controller invocation, four role stop receipts
+and zero remaining descendants. Separate host assessments for
+`observer-control` and `namespace-mount-escape` each had `recordContractValid=true`
+and a passed denial row. Thus this one source-bound installed attempt has 11
+individual passes out of the fixed 45. Its public verdict still correctly keeps
+`installedWorkloadAcceptanceSatisfied=false`, `finiteNativeAcceptance=false`,
+`protectedExecutionEnabled=false` and `phaseComplete=false`. Two sender C1
+`SIGSEGV` fatal files were captured during this guest run, in `StrictMath.ceil`
+and `StringLatin1.lastIndexOf`; the final bound process epochs and terminal
+receipts passed, but the fatal files mean startup reliability remains unresolved.
+Complete private evidence and stopped guest/backing QCOW were copied locally and
+passed recursive checksum comparison with CT102; the originals remain retained.
+Across bounded fatal excerpts through attempt 62, 36 files in 27 attempts show
+21 `SIGILL` and 15 `SIGSEGV`, all naming C1 frames; 25 of 34 parsed compiled-entry
+offsets are within eight bytes. This still does not identify a QEMU or JDK root cause.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -1775,9 +1810,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: attempt 52 passed eight positive rows and `cancellation`; attempt 60 passed `observer-control` on a different helper, leaving 25 denial and ten other lifecycle rows without a passing installed result |
-| `installedPositiveExecuted` | True for attempt 52's installed eight-case positive aggregate; later signed-probe attempts did not complete that aggregate |
-| `installedWorkloadAcceptanceSatisfied` | False; nine historical rows at attempt 52 and one denial at attempt 60 cannot form one complete source-bound 45-case result; the app denial remains unexecuted |
+| `implementationCoverage` | Incomplete: attempt 62 passed eight positive rows, two denial rows and `controller-restart` on one helper; 24 denial and ten other lifecycle rows remain without a pass on that helper. `cancellation` passed only on an older helper |
+| `installedPositiveExecuted` | True for the source-bound attempt-62 eight-case positive aggregate |
+| `installedWorkloadAcceptanceSatisfied` | False; 11 of 45 rows passed on attempt 62, while the fixed inventory requires the missing denial and lifecycle emitters plus complete source-bound verification |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
