@@ -288,7 +288,7 @@ class InstalledProbeAppHandle(runtime.AppHandle):
 
 
 def bind_probe_worker(observation, api_pid, expected_jdk_digest):
-    """Resolve the app's PID hint only against the current controller kernel sample."""
+    """Bind the AppHost PID-1 leader to its signed Python child in one kernel sample."""
     if type(api_pid) is not int or api_pid <= 1 or observation.get('provenance') != 'controller-kernel-sample':
         fail('probe-process-hint-invalid')
     rows = observation.get('processes')
@@ -296,11 +296,26 @@ def bind_probe_worker(observation, api_pid, expected_jdk_digest):
         fail('probe-process-sample-invalid')
     matches = [row for row in rows if isinstance(row, dict)
                and isinstance(row.get('namespacePids'), list)
-               and len(row['namespacePids']) >= 3
-               and row['namespacePids'][1] == api_pid]
+               and len(row['namespacePids']) == 3
+               and row['namespacePids'][1] == api_pid
+               and row['namespacePids'][-1] == 1]
     if len(matches) != 1:
         fail('probe-process-outside-role')
-    worker = matches[0]
+    leader = matches[0]
+    python_digest = runtime.digest_file('/usr/bin/python3')
+    children = [row for row in rows if isinstance(row, dict)
+                and row.get('hostParentPid') == leader.get('hostPid')
+                and isinstance(row.get('namespacePids'), list)
+                and len(row['namespacePids']) == 3
+                and row['namespacePids'][-1] == 2
+                and row.get('pidNamespace') == leader.get('pidNamespace')
+                and row.get('mountNamespaceIdentity') == leader.get('mountNamespaceIdentity')
+                and row.get('userNamespaceIdentity') == leader.get('userNamespaceIdentity')
+                and row.get('networkNamespaceIdentity') == leader.get('networkNamespaceIdentity')
+                and row.get('executableDigest') == python_digest]
+    if len(children) != 1:
+        fail('probe-python-child-unavailable')
+    worker = children[0]
     daemons = [row for row in rows if isinstance(row, dict)
                and row.get('executableDigest') == expected_jdk_digest
                and isinstance(row.get('namespacePids'), list)
@@ -309,9 +324,16 @@ def bind_probe_worker(observation, api_pid, expected_jdk_digest):
         fail('probe-outer-daemon-unavailable')
     outer = daemons[0]
     pid_namespace = re.fullmatch(r'pid:\[([0-9]+)\]', str(worker.get('pidNamespace')))
-    if (type(worker.get('hostPid')) is not int or worker['hostPid'] <= 1
+    if (type(leader.get('hostPid')) is not int or leader['hostPid'] <= 1
+            or type(leader.get('startTicks')) is not int or leader['startTicks'] <= 0
+            or leader.get('noNewPrivileges') is not True
+            or leader.get('effectiveCapabilities') != 0
+            or re.fullmatch('sha256:[0-9a-f]{64}', str(leader.get('executableDigest'))) is None
+            or type(worker.get('hostPid')) is not int or worker['hostPid'] <= 1
             or worker['namespacePids'][0] != worker['hostPid']
+            or leader['namespacePids'][0] != leader['hostPid']
             or type(worker.get('startTicks')) is not int or worker['startTicks'] <= 0
+            or worker['startTicks'] < leader['startTicks']
             or worker.get('noNewPrivileges') is not True
             or worker.get('effectiveCapabilities') != 0
             or not isinstance(worker.get('executableDigest'), str)
@@ -337,6 +359,14 @@ def bind_probe_worker(observation, api_pid, expected_jdk_digest):
             'networkNamespaceIdentity': observation['networkNamespaceIdentity'],
             'stateDigest': observation.get('stateDigest'),
             'observedMonotonicNs': observation.get('observedMonotonicNs'),
+            'sandboxLeader': {'hostPid': leader['hostPid'],
+                              'namespacePids': leader['namespacePids'],
+                              'startTicks': leader['startTicks'],
+                              'executableDigest': leader['executableDigest'],
+                              'mountNamespaceIdentity': leader['mountNamespaceIdentity'],
+                              'userNamespaceIdentity': leader['userNamespaceIdentity'],
+                              'networkNamespaceIdentity': leader['networkNamespaceIdentity'],
+                              'pidNamespaceIdentity': int(pid_namespace[1])},
             'provenance': 'controller-kernel-sample'}
 
 
@@ -842,6 +872,9 @@ class InstalledWorkloadAdapter:
             app.refresh_session()
             probe = self.apps.get((role, 'pr315-probe'))
             if probe is not None:
+                # Sender restart rotates the host form password. The probe shares
+                # that principal only after the Mail handle re-bootstraps this epoch.
+                probe.password = app.password
                 status, value = probe.request('GET', '/api/v1/apps/pr315-probe/runtime')
                 if status != 200:
                     fail('restart-probe-runtime-unavailable')

@@ -1442,6 +1442,43 @@ owning interop tests passed 48 with eight skips. These are offline checks only;
 `observer-control` remains `not-executed` in installed evidence, and no positive
 or complete acceptance verdict changes.
 
+Attempt 60 used that source-bound signed schema-4 cohort, the unchanged candidate,
+predecessor and JDK, and the original `tcg-multi/qemu64` profile after a new no-VM
+admission. The root controller's fixed readiness/denial exchange and observer
+checkpoint were both captured. Host transport verification, actual peer/target
+process epochs, sender state, denial response and matching stop receipt passed the
+single `observer-control` v8 contract row. Its private assessment has
+`recordContractValid=true`, `observer-control=passed` and overall acceptance false.
+The guest stopped with exit code 1 after reported cleanup, and all four current
+role stop receipts plus the sender's prior receipt were captured. There was no
+HotSpot fatal file in this attempt. The complete stopped attempt, including its
+guest and backing QCOW, was copied to the ignored local task directory; recursive
+checksum comparison found no difference and CT102 retains its originals.
+
+The same attempt normally launched the signed probe: the first AppHost result
+reported the fixed `unshare(CLONE_NEWNS)` `EPERM`, and the root administrator
+independently captured its Python process and installed signed tree. The observer
+had instead recorded the AppHost API PID, which in this installed launch was the
+sandbox's inner PID 1; the actual Python child was inner PID 2 and its direct
+descendant. The host correctly refused to equate these two process records, so
+`namespace-mount-escape` remains `not-executed`. The follow-up binds the API PID
+to the sandbox leader, then binds its unique same-namespace Python child using
+the kernel parent PID and executable digest; the administrator retains the
+leader alongside the child for independent host cross-checks. A hypothetical
+in-memory projection of attempt 60 showed no second host-side mismatch, but it
+is diagnostic only and did not alter the installed verdict.
+
+After sender restart, the probe's normal `POST /start` returned HTTP 403. Source
+inspection shows the Platform API bridge requires the current `formPassword` for
+that mutating route and returns 403 for an invalid one. The observer refreshed
+the Mail handle's host bootstrap password for the new sender epoch but kept the
+probe handle's old copied password. The narrow fix copies the newly validated
+password into the probe handle before its restart request; a focused regression
+fails when the old password remains and passes with the epoch refresh. This
+explains the observed status from the installed caller and bridge, but has not
+yet been confirmed by another installed run. It does not change product code,
+guest limits, timeout, QEMU profile or JDK.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -1738,9 +1775,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: attempt 52 passed all eight positive rows and `cancellation`; 26 denial and ten other lifecycle rows have no passing installed result |
+| `implementationCoverage` | Incomplete: attempt 52 passed eight positive rows and `cancellation`; attempt 60 passed `observer-control` on a different helper, leaving 25 denial and ten other lifecycle rows without a passing installed result |
 | `installedPositiveExecuted` | True for attempt 52's installed eight-case positive aggregate; later signed-probe attempts did not complete that aggregate |
-| `installedWorkloadAcceptanceSatisfied` | False; only nine of 45 cases have a passing installed result, with the new app denial path still offline-only |
+| `installedWorkloadAcceptanceSatisfied` | False; nine historical rows at attempt 52 and one denial at attempt 60 cannot form one complete source-bound 45-case result; the app denial remains unexecuted |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

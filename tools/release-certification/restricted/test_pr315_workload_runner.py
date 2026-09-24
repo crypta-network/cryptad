@@ -179,12 +179,13 @@ class RunnerTests(unittest.TestCase):
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
                    'probeDigest': 'sha256:' + '6' * 64}
         result = {'schemaVersion': 1, 'kind': 'pr315-signed-apphost-probe',
-                  'pid': 1, 'uid': sender['uid'], 'gid': sender['gid'],
+                  'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
                   'startedMonotonicNs': 25,
                   'namespaceInodes': {'mnt': 5, 'pid': 44, 'net': 7, 'user': 8},
                   'mountEscape': {'operation': 'unshare-mount', 'startedMonotonicNs': 30,
                                   'finishedMonotonicNs': 40, 'returnCode': -1, 'errno': 'EPERM'}}
-        measured = {'hostPid': 300, 'namespacePids': [300, 20, 1], 'startTicks': 50,
+        measured = {'hostPid': 300, 'hostParentPid': 299,
+                    'namespacePids': [300, 20, 2], 'startTicks': 50,
                     'mountNamespaceIdentity': [1, 5], 'userNamespaceIdentity': [1, 8],
                     'networkNamespaceIdentity': [1, 7], 'pidNamespace': 'pid:[44]',
                     'executableDigest': 'sha256:' + '7' * 64,
@@ -194,6 +195,14 @@ class RunnerTests(unittest.TestCase):
                   'networkNamespaceIdentity', 'executableDigest')}
         worker.update(managerInvocation=sender['invocationId'], cgroupIdentity=[1, 99],
                       outerMountNamespaceIdentity=[1, 6], observedMonotonicNs=50)
+        leader = dict(measured, hostPid=299, hostParentPid=100,
+                      namespacePids=[299, 19, 1], startTicks=40,
+                      executableDigest='sha256:' + 'a' * 64)
+        worker['namespacePid'] = 19
+        worker['sandboxLeader'] = {key: leader[key] for key in ('hostPid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'userNamespaceIdentity', 'networkNamespaceIdentity')}
+        worker['sandboxLeader']['pidNamespaceIdentity'] = 44
         state = '8' * 64
         admin = {'schemaVersion': 1, 'kind': 'pr315-administrator-probe-process',
                  'caseId': 'namespace-mount-escape', 'role': 'candidate-sender',
@@ -207,7 +216,8 @@ class RunnerTests(unittest.TestCase):
                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                  'cgroupIdentity': [1, 99], 'stateBefore': state, 'stateAfter': state,
                  'activeBeforeNs': 60, 'activeAfterNs': 70,
-                 'worker': measured, 'outer': {'mountNamespaceIdentity': [1, 6]}}
+                 'worker': measured, 'sandboxLeader': leader,
+                 'outer': {'mountNamespaceIdentity': [1, 6]}}
         checkpoint = {'bundleDigest': fixture['probeDigest'], 'roleKernelRoster': roster,
                       'roleKernelRosterWindow': {'startedMonotonicNs': 10,
                                                  'finishedMonotonicNs': 20},

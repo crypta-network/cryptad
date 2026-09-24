@@ -116,30 +116,39 @@ class ScopedDaemonTests(unittest.TestCase):
 
 class KernelRosterTests(unittest.TestCase):
     def test_signed_probe_pid_hint_requires_nested_kernel_process_without_capabilities(self):
-        process = {'hostPid': 123, 'namespacePids': [123, 22, 1],
+        leader = {'hostPid': 123, 'namespacePids': [123, 22, 1],
                    'startTicks': 456, 'noNewPrivileges': True,
                    'effectiveCapabilities': 0, 'executableDigest': 'sha256:' + 'a' * 64,
                    'pidNamespace': 'pid:[46]', 'mountNamespaceIdentity': [1, 45],
                    'userNamespaceIdentity': [1, 47], 'networkNamespaceIdentity': [1, 43]}
+        child = dict(leader, hostPid=124, hostParentPid=123,
+                     namespacePids=[124, 23, 2], startTicks=457,
+                     executableDigest='sha256:' + 'd' * 64)
         daemon = {'hostPid': 100, 'namespacePids': [100, 2],
                   'executableDigest': JDK, 'mountNamespaceIdentity': [1, 44]}
         observation = {'provenance': 'controller-kernel-sample',
                        'managerInvocation': 'b' * 32,
                        'cgroupIdentity': [1, 42], 'networkNamespaceIdentity': [1, 43],
                        'stateDigest': 'c' * 64, 'observedMonotonicNs': 1000,
-                       'processes': [daemon, process]}
-        bound = workload.bind_probe_worker(observation, 22, JDK)
-        self.assertEqual(123, bound['hostPid'])
-        self.assertEqual([123, 22, 1], bound['namespacePids'])
-        self.assertEqual([1, 45], bound['mountNamespaceIdentity'])
-        self.assertEqual([1, 44], bound['outerMountNamespaceIdentity'])
-        self.assertEqual('controller-kernel-sample', bound['provenance'])
-        shallow = dict(process, namespacePids=[123, 22])
-        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'outside-role'):
-            workload.bind_probe_worker(dict(observation, processes=[daemon, shallow]), 22, JDK)
-        privileged = dict(process, effectiveCapabilities=1)
-        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'kernel-boundary-invalid'):
-            workload.bind_probe_worker(dict(observation, processes=[daemon, privileged]), 22, JDK)
+                       'processes': [daemon, leader, child]}
+        with mock.patch.object(workload.runtime, 'digest_file', return_value=child['executableDigest']):
+            bound = workload.bind_probe_worker(observation, 22, JDK)
+            self.assertEqual(124, bound['hostPid'])
+            self.assertEqual([124, 23, 2], bound['namespacePids'])
+            self.assertEqual(123, bound['sandboxLeader']['hostPid'])
+            self.assertEqual([123, 22, 1], bound['sandboxLeader']['namespacePids'])
+            self.assertEqual([1, 45], bound['mountNamespaceIdentity'])
+            self.assertEqual([1, 44], bound['outerMountNamespaceIdentity'])
+            self.assertEqual('controller-kernel-sample', bound['provenance'])
+            shallow = dict(leader, namespacePids=[123, 22])
+            with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'outside-role'):
+                workload.bind_probe_worker(dict(observation, processes=[daemon, shallow, child]), 22, JDK)
+            privileged = dict(leader, effectiveCapabilities=1)
+            with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'kernel-boundary-invalid'):
+                workload.bind_probe_worker(dict(observation, processes=[daemon, privileged, child]), 22, JDK)
+            with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'python-child-unavailable'):
+                workload.bind_probe_worker(dict(observation, processes=[daemon, leader,
+                    dict(child, executableDigest='sha256:' + 'e' * 64)]), 22, JDK)
 
     def samples(self):
         result = {}
@@ -520,10 +529,16 @@ class ObserverPolicyTests(unittest.TestCase):
             if path == '/api/v1/apps':
                 return 200, {'apps': [{'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}
             return 200, {'runtime': {'running': True}}
-        mail = types.SimpleNamespace(host_bootstrap=mock.Mock(), request=mock.Mock(side_effect=mail_request),
-            observe_worker=mock.Mock(), refresh_session=mock.Mock())
-        probe = types.SimpleNamespace(request=mock.Mock(side_effect=[
-            (200, {'runtime': {'running': False}}), (201, {})]), observe_worker=mock.Mock())
+        mail = types.SimpleNamespace(password='stale', host_bootstrap=mock.Mock(),
+            request=mock.Mock(side_effect=mail_request), observe_worker=mock.Mock(),
+            refresh_session=mock.Mock())
+        mail.host_bootstrap.side_effect = lambda: setattr(mail, 'password', 'current')
+        probe = types.SimpleNamespace(password='stale', request=mock.Mock(), observe_worker=mock.Mock())
+        def probe_request(method, _path):
+            if method == 'GET':
+                return 200, {'runtime': {'running': False}}
+            return (201, {}) if probe.password == 'current' else (403, {})
+        probe.request.side_effect = probe_request
         adapter.apps = {('candidate-sender', 'mail-prototype'): mail,
                         ('candidate-sender', 'pr315-probe'): probe}
         adapter.restart('candidate-sender')
@@ -531,6 +546,7 @@ class ObserverPolicyTests(unittest.TestCase):
             mock.call('GET', '/api/v1/apps/pr315-probe/runtime'),
             mock.call('POST', '/api/v1/apps/pr315-probe/start')])
         probe.observe_worker.assert_called_once_with()
+        self.assertEqual('current', probe.password)
         adapter.daemon_epochs['candidate-sender'] = {'startTicks': 201}
         mail.request.side_effect = lambda method, path, *args: (
             (200, {'apps': [{'appId': 'mail-prototype'}]}) if path == '/api/v1/apps'

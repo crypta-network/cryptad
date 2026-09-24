@@ -64,10 +64,14 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
                       'mountEscape': {'operation': 'unshare-mount', 'returnCode': -1,
                                       'errno': 'EPERM'}}
             worker = {'hostPid': 300, 'namespacePids': [300, 20, 2],
+                      'hostParentPid': 299, 'startTicks': 20,
                       'mountNamespaceIdentity': [1, 5], 'userNamespaceIdentity': [1, 8],
                       'networkNamespaceIdentity': [1, 7], 'pidNamespace': 'pid:[44]',
                       'noNewPrivileges': True, 'effectiveCapabilities': 0,
                       'executableDigest': 'sha256:' + 'a' * 64}
+            leader = dict(worker, hostPid=299, hostParentPid=100, startTicks=10,
+                          namespacePids=[299, 19, 1],
+                          executableDigest='sha256:' + 'e' * 64)
             outer = {'hostPid': 100, 'namespacePids': [100, 10],
                      'mountNamespaceIdentity': [1, 6],
                      'executableDigest': 'sha256:' + 'b' * 64}
@@ -78,7 +82,7 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
                       'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
                       'networkNamespaceIdentity': [1, 7],
                       'observedMonotonicNs': 100,
-                      'processes': [worker, mail_worker, outer]}
+                      'processes': [worker, leader, mail_worker, outer]}
             calls = []
             def write(path, value, **options):
                 calls.append((path, value, options))
@@ -106,12 +110,13 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
                 self.assertEqual('probe', response['phase'])
                 self.assertEqual(1, len(calls))
                 self.assertEqual(worker, calls[0][1]['worker'])
+                self.assertEqual(leader, calls[0][1]['sandboxLeader'])
                 self.assertTrue(calls[0][2]['create'])
                 storage.verify_installed_app.assert_called_once()
                 workload.observe = Mock(side_effect=[sample, dict(sample,
                     observedMonotonicNs=200,
                     processes=[dict(worker, namespacePids=[300, 20, 3]),
-                               mail_worker, outer])])
+                               leader, mail_worker, outer])])
                 with self.assertRaisesRegex(ValueError, 'actor-ambiguous'):
                     sampler.probe()
 

@@ -445,13 +445,16 @@ def _probe_administrator_record(root, deadline):
                                   'verifiedTree', 'firstResultDigest', 'senderUid', 'senderGid',
                                   'managerInvocation', 'bootId', 'cgroupIdentity',
                                   'stateBefore', 'stateAfter', 'activeBeforeNs', 'activeAfterNs',
-                                  'worker', 'outer'}
+                                  'worker', 'sandboxLeader', 'outer'}
                 or value['schemaVersion'] != 1
                 or value['kind'] != 'pr315-administrator-probe-process'
                 or value['caseId'] != 'namespace-mount-escape'
                 or value['role'] != 'candidate-sender'
-                or not isinstance(value['worker'], dict) or not isinstance(value['outer'], dict)
-                or any(key not in value['worker'] or key not in value['outer'] for key in
+                or not isinstance(value['worker'], dict)
+                or not isinstance(value['sandboxLeader'], dict)
+                or not isinstance(value['outer'], dict)
+                or any(key not in value['worker'] or key not in value['sandboxLeader']
+                       or key not in value['outer'] for key in
                        ('hostPid', 'namespacePids', 'mountNamespaceIdentity',
                         'networkNamespaceIdentity'))):
             raise ValueError('probe-administrator-record-invalid')

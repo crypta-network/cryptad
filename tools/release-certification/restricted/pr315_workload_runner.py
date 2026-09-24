@@ -724,7 +724,8 @@ def probe_denial_attempt(report, fixture, terminal):
         principals = checkpoint['roleKernelRoster']
         sender = next(row for row in principals['roles'] if row['role'] == 'candidate-sender')
         worker, measured = checkpoint['probeWorker'], admin['worker']
-        outer = admin['outer']
+        outer, leader = admin['outer'], admin['sandboxLeader']
+        observer_leader = worker['sandboxLeader']
         namespace = result['namespaceInodes']
         attack = result['mountEscape']
         if (admin['role'] != 'candidate-sender' or admin['senderUid'] != sender['uid']
@@ -749,6 +750,20 @@ def probe_denial_attempt(report, fixture, terminal):
                 or worker['userNamespaceIdentity'] != measured['userNamespaceIdentity']
                 or worker['networkNamespaceIdentity'] != measured['networkNamespaceIdentity']
                 or worker['executableDigest'] != measured['executableDigest']
+                or measured['hostParentPid'] != leader['hostPid']
+                or observer_leader['hostPid'] != leader['hostPid']
+                or observer_leader['startTicks'] != leader['startTicks']
+                or observer_leader['namespacePids'] != leader['namespacePids']
+                or observer_leader['executableDigest'] != leader['executableDigest']
+                or observer_leader['mountNamespaceIdentity'] != leader['mountNamespaceIdentity']
+                or observer_leader['userNamespaceIdentity'] != leader['userNamespaceIdentity']
+                or observer_leader['networkNamespaceIdentity'] != leader['networkNamespaceIdentity']
+                or observer_leader['pidNamespaceIdentity'] != namespace['pid']
+                or leader['namespacePids'][-1] != 1
+                or measured['namespacePids'][-1] != 2
+                or leader['namespacePids'][1] != worker['namespacePid']
+                or leader['pidNamespace'] != measured['pidNamespace']
+                or leader['mountNamespaceIdentity'] != measured['mountNamespaceIdentity']
                 or worker['managerInvocation'] != sender['invocationId']
                 or worker['cgroupIdentity'] != admin['cgroupIdentity']
                 or measured['noNewPrivileges'] is not True

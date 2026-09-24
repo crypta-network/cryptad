@@ -348,12 +348,27 @@ class AdministratorFnpSampler:
         if len(workers) != 1 or len(outers) != 1:
             raise ValueError('workload-admin-probe-actor-ambiguous')
         worker, outer = workers[0], outers[0]
+        leaders = [row for row in processes if isinstance(row, dict)
+                   and row.get('hostPid') == worker.get('hostParentPid')
+                   and isinstance(row.get('namespacePids'), list)
+                   and len(row['namespacePids']) == 3
+                   and row['namespacePids'][-1] == 1
+                   and all(row.get(key) == worker.get(key) for key in
+                           ('pidNamespace', 'mountNamespaceIdentity',
+                            'userNamespaceIdentity', 'networkNamespaceIdentity'))]
+        if len(leaders) != 1:
+            raise ValueError('workload-admin-probe-leader-ambiguous')
+        leader = leaders[0]
         account = workload.account('candidate-sender')
         ns = result.get('namespaceInodes')
         if (result.get('uid') != account.pw_uid or result.get('gid') != account.pw_gid
                 or not isinstance(ns, dict)
                 or worker.get('noNewPrivileges') is not True
                 or worker.get('effectiveCapabilities') != 0
+                or leader.get('noNewPrivileges') is not True
+                or leader.get('effectiveCapabilities') != 0
+                or type(leader.get('startTicks')) is not int
+                or worker.get('startTicks', 0) < leader['startTicks']
                 or worker.get('executableDigest') != digest_file('/usr/bin/python3')
                 or worker.get('mountNamespaceIdentity', [None, None])[-1] != ns.get('mnt')
                 or worker.get('userNamespaceIdentity', [None, None])[-1] != ns.get('user')
@@ -376,7 +391,7 @@ class AdministratorFnpSampler:
                   'stateBefore': first['stateDigest'], 'stateAfter': second['stateDigest'],
                   'activeBeforeNs': first['observedMonotonicNs'],
                   'activeAfterNs': second['observedMonotonicNs'],
-                  'worker': worker, 'outer': outer}
+                  'worker': worker, 'sandboxLeader': leader, 'outer': outer}
         workload.write(workload.ROOT / 'authority/pr315-probe-process.json', record, create=True)
         return {'phase': 'probe', 'recordDigest': hashlib.sha256(json.dumps(
             record, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
