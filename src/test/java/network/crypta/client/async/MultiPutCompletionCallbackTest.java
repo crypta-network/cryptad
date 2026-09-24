@@ -11,6 +11,7 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.InsertException;
 import network.crypta.client.Metadata;
 import network.crypta.keys.BaseClientKey;
+import network.crypta.keys.ClientKey;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.api.Bucket;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,11 +28,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class MultiPutCompletionCallbackTest {
@@ -161,6 +165,55 @@ class MultiPutCompletionCallbackTest {
     mpc.onEncode(key, other, context);
 
     verify(cb, never()).onEncode(any(), any(), any());
+  }
+
+  @Test
+  void onSuccess_whenTransientGeneratorKeyWasNotForwarded_reportsItBeforeSuccess() {
+    MultiPutCompletionCallback mpc =
+        new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
+    SingleBlockInserter generator = mock(SingleBlockInserter.class);
+    ClientKey key = mock(ClientKey.class);
+    when(generator.getKeyNoEncode()).thenReturn(key);
+    mpc.addURIGenerator(generator);
+    mpc.arm(context);
+
+    mpc.onSuccess(generator, context);
+
+    InOrder ordered = inOrder(cb);
+    ordered.verify(cb).onEncode(key, mpc, context);
+    ordered.verify(cb).onSuccess(mpc, context);
+  }
+
+  @Test
+  void onSuccess_whenTransientGeneratorKeyWasAlreadyForwarded_doesNotRepeatIt() {
+    MultiPutCompletionCallback mpc =
+        new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
+    SingleBlockInserter generator = mock(SingleBlockInserter.class);
+    ClientKey key = mock(ClientKey.class);
+    mpc.addURIGenerator(generator);
+    mpc.arm(context);
+    mpc.onEncode(key, generator, context);
+
+    mpc.onSuccess(generator, context);
+
+    verify(cb, times(1)).onEncode(key, mpc, context);
+    verify(generator, never()).getKeyNoEncode();
+    verify(cb).onSuccess(mpc, context);
+  }
+
+  @Test
+  void onSuccess_whenPersistentGeneratorKeyWasNotForwarded_preservesCallbackPolicy() {
+    MultiPutCompletionCallback mpc =
+        new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ true);
+    SingleBlockInserter generator = mock(SingleBlockInserter.class);
+    mpc.addURIGenerator(generator);
+    mpc.arm(context);
+
+    mpc.onSuccess(generator, context);
+
+    verify(generator, never()).getKeyNoEncode();
+    verify(cb, never()).onEncode(any(), any(), any());
+    verify(cb).onSuccess(mpc, context);
   }
 
   @Test

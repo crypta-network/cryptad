@@ -207,6 +207,7 @@ public class MultiPutCompletionCallback
   /** {@inheritDoc} */
   @Override
   public void onSuccess(ClientPutState state, ClientContext context) {
+    publishTransientGeneratorKeyIfMissing(state, context);
     onBlockSetFinished(state, context);
     onFetchable(state);
     boolean complete = true;
@@ -229,6 +230,17 @@ public class MultiPutCompletionCallback
       LOG.debug("Completing...");
       complete(null, context);
     }
+  }
+
+  /** Reports a known connection-scoped generator key before the group can complete. */
+  private void publishTransientGeneratorKeyIfMissing(ClientPutState state, ClientContext context) {
+    BaseClientKey key;
+    synchronized (this) {
+      if (persistent || state != generator || encodedKey != null) return;
+      if (!(state instanceof SingleBlockInserter single)) return;
+      key = single.getKeyNoEncode();
+    }
+    if (key != null) onEncode(key, state, context);
   }
 
   /**

@@ -1603,7 +1603,7 @@ The complete stopped run-04 guest, diagnostics and reference inputs were copied
 into the ignored local private evidence directory and matched the CT102 originals
 by recursive checksum. The task-private host plans, summaries, transports and
 preflights were also retained locally. The original guest and backing QCOWs remain
-retained on the task dataset. No second KVM guest was allocated after the PVE host's
+retained on the task dataset. At that cutoff, no second KVM guest was allocated after the PVE host's
 available memory fell below the unchanged next-run admission requirement. The
 latest accepted-profile installed positive and full 45-case verdicts remain false.
 
@@ -1634,6 +1634,54 @@ sufficient physical-host admission for another guest; none was allocated. An
 earlier preflight command reused an existing output directory and returned exit
 2 without changing that retained directory. The unique run established the
 actual source and capacity result, without executing any v8 case.
+
+### Swap-authorized PVE KVM run 05
+
+The operator then authorized another isolated PVE diagnostic using available swap
+when physical `MemAvailable` fell below the original admission threshold. The
+task-private run-05 guard retained the 5632-MiB guest, four vCPUs, pinned QEMU,
+JDK, `qemu64` CPU, product `99cdda8`, 224-GiB task budget and 16-GiB filesystem
+reserve. It separately measured physical memory, free swap and pressure, required
+the 1-GiB physical host reserve plus 2 GiB spare swap, and never counted swap as
+physical `MemAvailable`. This is a distinct
+`pve-kvm-swap-authorized-differential-not-acceptance` profile. Two no-VM
+preflights passed before guest allocation. A task-only pressure watcher initially
+missed QEMU because the pinned executable ran through its private dynamic loader;
+a corrected exact loader/executable/attempt matcher was started during boot and
+observed the guest. Neither watcher terminated it. Across the sampled run, the
+minimum physical available memory was about 2.19 GB, the minimum free swap about
+10.96 GB, and the maximum ten-second full memory-pressure average 5.43 percent.
+The original matcher gap is retained in private diagnostics.
+
+Run 05 used the clean `31dae88` helper and freshly verified schema-4 fixture. It
+reached the installed positive driver. The first CHK transfer and the new
+post-restart two-sided peer check completed. The second local-only `ClientPut`
+returned `PutFetchable` and `PutSuccessful` without a URI, and the observer
+correctly refused to invent one. The sender wrapper recorded a missing generated
+URI at `ClientPutBase.onSuccess`; four roles had no new HotSpot fatal file. The
+guest exited 1, stopped, and retained four role stop receipts. The full stopped
+guest and private diagnostics were copied locally and passed recursive checksum
+comparison with CT102; host plans, preflights and pressure samples were copied
+separately. This KVM run passes no v8 case and does not prove that swap makes the
+original TCG profile reliable.
+
+The candidate product's `SingleBlockInserter` bytecode was checked and contains
+the earlier synchronous final-key callback fix. Separate pinned-product CT102
+diagnostics completed 40 single-node and 30 three-node local CHK inserts across
+sender restarts with a URI every time. Those negative reproductions do not explain
+run 05. Source inspection found another concrete callback-ordering gap:
+`MultiPutCompletionCallback` could complete a transient group without forwarding
+the already-known key of its URI-generating `SingleBlockInserter`. A deterministic
+regression failed on the old code with group success and no URI callback. The
+prospective narrow change asks that generator for its latched key before group
+success only when the transient group has not already received it; duplicate and
+persistent policies remain unchanged. Focused aggregation and single-block tests
+pass after the change. The subsequent full CT102 Linux `./gradlew test` passed
+17,411 tests across root and leaf XML, with zero failures/errors and 15 skips.
+The touched Java files had no compiler warning, and focused SonarLint reported
+zero findings for the production file. Its causal effect on installed run 05
+remains unverified; a newly built candidate and source-bound installed rerun are
+required.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
