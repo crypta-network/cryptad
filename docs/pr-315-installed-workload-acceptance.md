@@ -1514,6 +1514,31 @@ Across bounded fatal excerpts through attempt 62, 36 files in 27 attempts show
 21 `SIGILL` and 15 `SIGSEGV`, all naming C1 frames; 25 of 34 parsed compiled-entry
 offsets are within eight bytes. This still does not identify a QEMU or JDK root cause.
 
+Attempt 63 deliberately reused the clean detached `fc691e7` helper and exact fixture
+for `cancellation`, preserving attempt 62's source identity without rewriting the
+active branch. It passed the two installed denial rows again but stopped before the
+administrator cancellation trigger. The sender's first local-only CHK insert got
+`PutFetchable` and `PutSuccessful` without `URI`, and no `URIGenerated` frame appeared
+in the retained FCP tail. The observer correctly refused to invent a CHK reference;
+the guest exited 1 after reported cleanup, and `cancellation` stayed
+`not-executed`. One relay C1 `SIGSEGV` in `StrictMath.ceil` was also captured.
+The stopped attempt and its guest/backing QCOW were copied locally and matched the
+CT102 original by recursive checksum; both copies remain private.
+
+Source inspection found a finite single-block insert ordering race: the transient
+`SingleBlockInserter` queues `onEncode` on the main executor, then can deliver
+terminal `onSuccess` on the current path before the queued URI callback runs.
+A regression with a deliberately delayed executor failed on the old code with
+only `onSuccess` observed, matching the missing-URI FCP shape. The narrow product
+fix delivers the final key synchronously before terminal success for
+nonpersistent inserts; persistent behavior and wire fields remain unchanged.
+The same focused test passed after the fix. `SingleBlockInserter.java` produced
+an empty SonarLint XML report, and the full Linux Gradle test run passed with
+17,317 tests, zero failures/errors and ten skips across root and leaf JUnit XML.
+This is an offline result. A fresh source-built candidate product and signed
+fixture are required before the affected installed CHK/cancellation cases can
+be rerun; attempt 63 itself has no cancellation witness.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -1589,7 +1614,9 @@ workload case driver at this audit cutoff. Synthetic verifier tests are not emit
 | `kernel-resource-scope` | Controller kernel observation support | All four actual scoped cgroup measurements |
 | `restart-durable-state` | Sender restart and app-inventory retention | Selected durable sentinel before/after, original deadline, both invocation epochs |
 
-All denial rows below have **missing installed emitters**. The actor column preserves the
+The denial rows below retain their fixed actor and target requirements. Only
+`observer-control` and `namespace-mount-escape` have passing installed witnesses
+on attempt 62; the other 24 still lack passing installed emitters. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -1622,7 +1649,9 @@ role/AppHost boundary.
 | `stale-pid-uid` | observer | Process observer; retired invocation versus actual new process |
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
-All lifecycle rows below also have **missing installed emitters**. Triggers must follow observed
+The lifecycle rows below retain their fixed triggers and terminal evidence.
+`controller-restart` passed on attempt 62 and `cancellation` passed on an older helper;
+the other nine remain without passing installed emitters. Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.
 

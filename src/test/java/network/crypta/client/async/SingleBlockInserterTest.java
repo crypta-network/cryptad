@@ -23,6 +23,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -251,6 +252,32 @@ class SingleBlockInserterTest {
       // ArrayBucket should be freed by inserter; subsequent getInputStream must fail
       assertThrows(IOException.class, realBucket::getInputStream);
     }
+  }
+
+  @Test
+  void onSuccess_whenUriNotificationIsQueued_reportsKeyBeforeTerminalSuccess() {
+    ClientContext context = Mockito.spy(newMinimalClientContext(insertCtx));
+    PriorityAwareExecutor delayedExecutor = mock(PriorityAwareExecutor.class);
+    doReturn(delayedExecutor).when(context).getMainExecutor();
+    SingleBlockInserter inserter =
+        newInserter(
+            context,
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ false,
+            new Object(),
+            /*freeData*/ false);
+    ClientKey key = mock(ClientKey.class);
+
+    inserter.onSuccess(null, key, context);
+
+    InOrder ordered = Mockito.inOrder(cb);
+    ordered.verify(cb).onEncode(key, inserter, context);
+    ordered.verify(cb).onSuccess(inserter, context);
+    verify(delayedExecutor).execute(any(Runnable.class), Mockito.eq("Got URI"));
   }
 
   @Test
