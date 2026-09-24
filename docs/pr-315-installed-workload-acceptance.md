@@ -1278,6 +1278,18 @@ log capture. Repeating the same profile without an isolating JVM/QEMU diagnosis 
 a demonstrated fix. The revised lifecycle case still needs an installed rerun after
 that separate diagnosis.
 
+A separately identified JVM diagnostic used the pinned Temurin 25 from a stopped
+successful guest and one byte-checked Java class that exercises SHA-512, regex, CRC,
+reference queues and integer operations in four threads. Two fresh copies of the same
+stopped guest overlay were booted sequentially with the pinned `qemu64`, four-vCPU QEMU
+closure: one `tcg-multi`, one `tcg-single`. Each ran the fixed class for 120 seconds
+with C1 tier selection and exited zero without a new HotSpot fatal file. The test class
+and bounded results are retained privately; the disposable guest copies were removed
+after stopping each emulator and checking that no retained QCOW depended on either.
+These negative results do not reproduce or explain the intermittent installed C1
+crashes and do not authorize pooling the `tcg-single` diagnostic with the installed
+`tcg-multi` acceptance profile.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
