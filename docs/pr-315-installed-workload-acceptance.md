@@ -1170,6 +1170,22 @@ retained fatal snapshots through attempt 48 found 21 HotSpot fatal files across 
 13 `SIGILL` and eight `SIGSEGV`, all reported in varying C1-compiled frames. This pattern
 does not establish a QEMU or JDK root cause and is not a reason to relax a passing case.
 
+The next prospective lifecycle revision exercises `cancellation` through the installed
+administrator rather than relabeling the already quiescent positive cleanup. After the
+observer captures its final four-role roster it leaves those exact roles running on a
+successful positive sequence. The administrator separately verifies each active systemd
+invocation, cgroup identity and populated state against that roster, records one fixed
+cancellation trigger under the original campaign deadline, then executes the existing
+fence, controller stop, role reconciliation and network teardown. It observes exact
+stop receipts, inactive manager states and empty owned cgroups before producing a
+terminal record. The host will accept this lifecycle case only when the independent
+pretrigger record, retained terminal receipts, campaign deadline and stopped guest
+agree; otherwise the case remains unexecuted or inconclusive without borrowing the
+eight positive passes. Offline tests cover the active/terminal transition and reject
+substituted receipts. Native Linux interop workload tests passed 43 with eight skips and
+full restricted discovery passed 422 with one skip. Installed execution of this new
+behavior is still required.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

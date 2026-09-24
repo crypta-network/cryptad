@@ -159,6 +159,65 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
         sampler.sample.assert_called_once_with('before')
 
 
+class CancellationObservationTest(unittest.TestCase):
+    def test_active_role_trigger_requires_exact_receipts_after_administrator_stop(self):
+        from cross_version_runtime import canonical_digest
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'authority').mkdir()
+            (root / 'cgroups').mkdir()
+            deadline = time.monotonic_ns() + 10 * 10**9
+            campaign = {'generation': 'c' * 64, 'deadlineMonotonicNs': deadline}
+            boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+            handles = {}
+            records = {}
+            receipts = {}
+            rows = []
+            for index, role in enumerate(driver.ROLE_NAMES):
+                handles[role] = format(index + 1, '064x')
+                records[role] = {'managerInvocation': format(index + 1, '032x'),
+                                 'bootId': boot, 'cgroupIdentity': [1, 99 + index]}
+                receipts[role] = {'role': role, **records[role]}
+                group = root / 'cgroups' / role
+                group.mkdir()
+                (group / 'cgroup.events').write_text('populated 1\n')
+                rows.append({'role': role, 'invocationId': records[role]['managerInvocation'],
+                             'bootId': 'a' * 32, 'cgroupDigest': canonical_digest({
+                                 'role': role, 'identity': records[role]['cgroupIdentity']})[7:]})
+            terminal = [False]
+            def read(path):
+                if path.name == 'campaign.json':
+                    return campaign
+                return receipts[path.name.removesuffix('-stop.json')]
+            def retained(handle):
+                role = next(role for role, value in handles.items() if value == handle)
+                return campaign, role, records[role]
+            def manager(role, operation):
+                return {'ActiveState': 'inactive' if terminal[0] else 'active',
+                        'SubState': 'dead' if terminal[0] else 'running',
+                        'MainPID': '0' if terminal[0] else str(1000 + driver.ROLE_NAMES.index(role))}
+            workload = SimpleNamespace(ROOT=root, locked=nullcontext, read=read,
+                current=Mock(), retained=retained, manager=manager, exact=Mock(),
+                group=lambda role: root / 'cgroups' / role,
+                quiescent=lambda role: terminal[0])
+            before = driver.begin_cancellation(workload, {'handles': handles},
+                                               {'roleKernelRoster': {'roles': rows}})
+            self.assertEqual(len(driver.ROLE_NAMES), len(before['preRoles']))
+            self.assertEqual(64, len(before['triggerEventDigest']))
+            forged = [dict(row) for row in rows]
+            forged[0]['cgroupDigest'] = '0' * 64
+            with self.assertRaisesRegex(ValueError, 'roster-mismatch'):
+                driver.begin_cancellation(workload, {'handles': handles},
+                                          {'roleKernelRoster': {'roles': forged}})
+            terminal[0] = True
+            after = driver.complete_cancellation(workload, before)
+            self.assertGreater(after['terminalObservedNs'], before['triggerStartedNs'])
+            self.assertEqual([], after['populatedCgroups'])
+            receipts['previous']['cgroupIdentity'] = [1, 1000]
+            with self.assertRaisesRegex(ValueError, 'terminal-mismatch'):
+                driver.complete_cancellation(workload, before)
+
+
 class CleanupTest(unittest.TestCase):
     def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):
         self.assertEqual(190, driver.readiness_deadline(999 * 10**9, 100))

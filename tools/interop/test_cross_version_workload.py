@@ -306,6 +306,34 @@ class ObserverPolicyTests(unittest.TestCase):
                           mock.call('previous')], adapter.observe.call_args_list)
         adapter.cleanup.assert_called_once_with()
 
+    def test_successful_positive_sequence_leaves_roles_only_for_administrator_teardown(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {'candidate-sender': {'generation': 'old',
+            'managerInvocation': 'a' * 32, 'bootId': 'boot'}}
+        adapter.apps = {('candidate-sender', 'mail-prototype'): types.SimpleNamespace(
+            observe_worker=mock.Mock(return_value={'hostPid': 102, 'namespacePid': 3,
+                'startTicks': 202, 'managerInvocation': 'a' * 32,
+                'javaHostPid': 103, 'javaStartTicks': 203,
+                'provenance': 'controller-kernel-sample'}))}
+        adapter.outcomes = {'network-chk': 'observed'}
+        adapter.control_exchanges = {}
+        adapter.expected_jdk_digests = {}
+        adapter.restart_context = adapter.restart_window = None
+        adapter.start = mock.Mock()
+        adapter.connect = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.restart_with_witness = mock.Mock(return_value={
+            'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})
+        adapter.content_chk = mock.Mock()
+        adapter._fnp_sample = mock.Mock(return_value=None)
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.cleanup = mock.Mock(return_value='complete')
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
+            result = adapter.run_positive(leave_running_for_administrator=True)
+        self.assertTrue(result['newEpoch'])
+        self.assertEqual('observed', result['contentRetrieval'])
+        adapter.cleanup.assert_not_called()
+
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
         app = workload.InstalledAppHandle(supervisor, 'candidate-sender')

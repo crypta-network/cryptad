@@ -428,6 +428,77 @@ def _fnp_case(result, terminal, identity, principals):
     return witness, window, commitment
 
 
+def _cancellation_case(report, result, diagnostics, terminal, principals):
+    """Require the administrator's active-role trigger and exact stopped-role receipts."""
+    if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
+            or report.get('guestStopped') is not True
+            or terminal.get('cleanupReportedByCaller') is not True):
+        return None
+    context = diagnostics.get('cancellation')
+    try:
+        if (not isinstance(context, dict)
+                or set(context) != {'schemaVersion', 'kind', 'triggerStartedNs',
+                                    'triggerEventDigest', 'campaignDeadlineNs', 'preRoles',
+                                    'terminalObservedNs', 'populatedCgroups',
+                                    'remainingDescendants', 'retention'}
+                or context['schemaVersion'] != 1
+                or context['kind'] != 'pr315-administrator-cancellation'
+                or context['populatedCgroups'] != [] or context['remainingDescendants'] != 0
+                or context['retention'] != 'retained'
+                or not _bounded_window({'startedMonotonicNs': context['triggerStartedNs'],
+                                        'finishedMonotonicNs': context['terminalObservedNs']})
+                or context['triggerStartedNs'] >= context['campaignDeadlineNs']
+                or len(context['preRoles']) != len(acceptance.ROLES)):
+            return None
+        campaign = terminal['controllerRecords']['campaign']
+        if (campaign['status'] != 'captured'
+                or campaign['record']['state'] != 'terminalizing'
+                or campaign['record']['deadlineMonotonicNs'] != context['campaignDeadlineNs']):
+            return None
+        rows = context['preRoles']
+        if (not all(isinstance(row, dict) and
+                    set(row) == {'role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid'}
+                    for row in rows)
+                or {row['role'] for row in rows} != set(acceptance.ROLES)
+                or len({row['mainPid'] for row in rows}) != len(rows)):
+            return None
+        expected_event = {'kind': 'cancellation', 'roles': rows,
+                          'campaignDeadlineNs': context['campaignDeadlineNs']}
+        if context['triggerEventDigest'] != fixtures.runtime.canonical_digest(expected_event)[7:]:
+            return None
+        for row in rows:
+            role = row['role']
+            principal = next(item for item in principals['roles'] if item['role'] == role)
+            receipt = terminal['stopReceipts'][role]['current']
+            if (type(row['mainPid']) is not int or row['mainPid'] <= 0
+                    or row['managerInvocation'] != principal['invocationId']
+                    or row['bootId'].replace('-', '').lower() != principal['bootId']
+                    or fixtures.runtime.canonical_digest({
+                        'role': role, 'identity': row['cgroupIdentity']})[7:] != principal['cgroupDigest']
+                    or receipt['status'] != 'captured'):
+                return None
+            stopped = receipt['record']
+            if (any(stopped[key] != row[key] for key in
+                    ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                    or stopped['membership'] != 'only-stop-helper'
+                    or stopped['descendantCgroups'] != 0
+                    or not context['triggerStartedNs'] < stopped['startedMonotonicNs']
+                        <= stopped['observedMonotonicNs'] <= context['terminalObservedNs']):
+                return None
+    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+    witness = {'caseId': 'cancellation', 'triggerDigest': '',
+        'trigger': {'kind': 'cancellation', 'eventDigest': context['triggerEventDigest']},
+        'triggerStartedNs': context['triggerStartedNs'],
+        'terminalObservedNs': context['terminalObservedNs'],
+        'roles': principals['roles'], 'populatedCgroups': [],
+        'remainingDescendants': 0, 'retention': 'retained'}
+    commitment = acceptance.payload_commitment('cancellation', witness)
+    witness['triggerDigest'] = commitment
+    return witness, {'startedMonotonicNs': context['triggerStartedNs'],
+                     'finishedMonotonicNs': context['terminalObservedNs']}, commitment
+
+
 def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns,
                           diagnostics=None, terminal=None):
     """Build only cases backed by actual host, app and kernel observations."""
@@ -503,6 +574,14 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         observations.append({'caseId': 'restart-durable-state', 'status': 'passed',
             'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
             **restart_window, 'witness': restart_witness})
+    cancellation = _cancellation_case(report, result, diagnostics, terminal, principals)
+    if cancellation is not None:
+        witness, cancellation_window, commitments['cancellation'] = cancellation
+        case = acceptance.CASES['cancellation']
+        cases.append('cancellation')
+        observations.append({'caseId': 'cancellation', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **cancellation_window, 'witness': witness})
     attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
         'declaredCases': cases, 'observations': observations,
         'guestStopped': report['guestStopped'], 'attemptCompleted': True,
@@ -618,6 +697,8 @@ def run(args):
                     report, value, fixture, host_started, host_finished, resources, terminal)
                 checked_cases = acceptance.verify_attempts(identity, [case_attempt])
                 expected = set(case_attempt['declaredCases'])
+                if isinstance(resources, dict) and 'cancellation' in resources:
+                    statuses['cancellation'] = 'inconclusive'
                 passed = {row['caseId'] for row in checked_cases['cases'] if row['status'] == 'passed'}
                 if (not {'installed-ready', 'four-role-start'} <= expected
                         or checked_cases['recordContractValid'] is not True or passed != expected

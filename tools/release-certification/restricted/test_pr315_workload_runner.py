@@ -33,7 +33,7 @@ def synthetic_terminal_roster(roster):
     records, receipts = {}, {}
     for index, row in enumerate(roster['roles']):
         role = row['role']
-        record = {'state': 'quiescent', 'generation': 'c' * 64,
+        record = {'role': role, 'state': 'quiescent', 'generation': 'c' * 64,
                   'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                   'managerInvocation': row['invocationId'], 'cgroupIdentity': [1, 99 + index]}
         records[role] = {'status': 'captured', 'record': record}
@@ -127,6 +127,48 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 210 + index
+            receipt['observedMonotonicNs'] = 220 + index
+        event = {'kind': 'cancellation', 'roles': rows, 'campaignDeadlineNs': 1000}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-cancellation',
+                   'triggerStartedNs': 200, 'triggerEventDigest':
+                       runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'terminalObservedNs': 300, 'populatedCgroups': [],
+                   'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50, 'finishedMonotonicNs': 100}}
+        fixture = {'mailDigest': 'sha256:' + '5' * 64}
+        diagnostics = {'cancellation': context}
+        identity, attempt = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, diagnostics, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('cancellation', attempt['declaredCases'])
+        invalid = copy.deepcopy(terminal)
+        invalid['stopReceipts']['previous']['current']['record']['observedMonotonicNs'] = 400
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, diagnostics, invalid)
+        self.assertNotIn('cancellation', rejected['declaredCases'])
+        invalid_context = copy.deepcopy(context)
+        invalid_context['preRoles'][0]['mainPid'] = 0
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'cancellation': invalid_context}, terminal)
+        self.assertNotIn('cancellation', rejected['declaredCases'])
+
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
         self.assertEqual([8, 26, 11], [len(names) for _, names in groups])

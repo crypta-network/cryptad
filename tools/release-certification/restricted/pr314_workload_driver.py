@@ -82,6 +82,70 @@ def cleanup(workload):
     # Role tmpfs state and records remain explicitly retained for private diagnostics.
 
 
+def begin_cancellation(workload, handoff, result):
+    """Observe four current, populated role cgroups before administrator-owned stop."""
+    from cross_version_runtime import canonical_digest
+    principals = result.get('roleKernelRoster') if isinstance(result, dict) else None
+    if (not isinstance(principals, dict) or not isinstance(principals.get('roles'), list)
+            or len(principals['roles']) != len(ROLE_NAMES)):
+        raise ValueError('workload-cancellation-roster-unavailable')
+    expected = {row['role']: row for row in principals['roles']}
+    if set(expected) != set(ROLE_NAMES):
+        raise ValueError('workload-cancellation-roster-invalid')
+    rows = []
+    with workload.locked():
+        campaign = workload.read(workload.ROOT / 'campaign.json')
+        workload.current(campaign)
+        for role in ROLE_NAMES:
+            _campaign, actual_role, record = workload.retained(handoff['handles'][role])
+            state = workload.manager(role, 'show')
+            if actual_role != role or state['ActiveState'] != 'active' or state['SubState'] != 'running':
+                raise ValueError('workload-cancellation-role-not-active')
+            workload.exact(role, record, state)
+            if not state['MainPID'].isdecimal() or int(state['MainPID']) <= 0:
+                raise ValueError('workload-cancellation-role-main-pid-invalid')
+            events = (workload.group(role) / 'cgroup.events').read_text().splitlines()
+            if 'populated 1' not in events:
+                raise ValueError('workload-cancellation-role-not-populated')
+            row = expected[role]
+            digest = canonical_digest({'role': role, 'identity': record['cgroupIdentity']})[7:]
+            if (row['invocationId'] != record['managerInvocation']
+                    or row['bootId'] != record['bootId'].replace('-', '').lower()
+                    or row['cgroupDigest'] != digest):
+                raise ValueError('workload-cancellation-roster-mismatch')
+            rows.append({'role': role, 'managerInvocation': record['managerInvocation'],
+                         'bootId': record['bootId'], 'cgroupIdentity': record['cgroupIdentity'],
+                         'mainPid': int(state['MainPID'])})
+        started = time.monotonic_ns()
+        if started >= campaign['deadlineMonotonicNs']:
+            raise ValueError('workload-cancellation-deadline')
+        event = {'kind': 'cancellation', 'roles': rows,
+                 'campaignDeadlineNs': campaign['deadlineMonotonicNs']}
+        return {'schemaVersion': 1, 'kind': 'pr315-administrator-cancellation',
+                'triggerStartedNs': started, 'triggerEventDigest': canonical_digest(event)[7:],
+                'campaignDeadlineNs': campaign['deadlineMonotonicNs'], 'preRoles': rows}
+
+
+def complete_cancellation(workload, context):
+    """Bind the administrator stop to exact retained receipts and empty owned cgroups."""
+    with workload.locked():
+        for row in context['preRoles']:
+            role = row['role']
+            state = workload.manager(role, 'show')
+            receipt = workload.read(workload.ROOT / 'authority' / (role + '-stop.json'))
+            if (state['ActiveState'] not in {'inactive', 'failed'}
+                    or state['SubState'] not in {'dead', 'failed'} or state['MainPID'] != '0'
+                    or not workload.quiescent(role)
+                    or any(receipt[key] != row[key] for key in
+                           ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))):
+                raise ValueError('workload-cancellation-terminal-mismatch')
+        finished = time.monotonic_ns()
+    if finished <= context['triggerStartedNs']:
+        raise ValueError('workload-cancellation-clock-invalid')
+    return {**context, 'terminalObservedNs': finished,
+            'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
+
+
 def wait_child(pid, deadline):
     """Reap only our unreaped child, including the interval after its output reaches EOF."""
     while True:
@@ -314,7 +378,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
             selected['authorization'], journal, handoff,
             counter_sampler=(lambda phase: request_administrator_fnp(
                 admin_channel, phase, campaign_deadline)) if admin_channel is not None else None)
-        result = adapter.run_positive()
+        result = adapter.run_positive(leave_running_for_administrator=True)
         journal.checkpoint('partial')
     return result
 
@@ -463,6 +527,7 @@ def execute(*, startup_measurement=False):
     diagnostics = {'classification': 'private-kernel-diagnostics-not-acceptance',
                    'before': memory_snapshot(), 'cleanup': 'not-completed'}
     sentinel = None
+    cancellation = None
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
@@ -527,6 +592,14 @@ def execute(*, startup_measurement=False):
                       campaignDeadlineMonotonicNs=campaign_deadline,
                       workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
+        if not startup_measurement:
+            try:
+                cancellation = begin_cancellation(workload, handoff, result)
+                diagnostics['cancellation'] = cancellation
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['cancellation'] = {'status': 'unavailable-or-unsafe',
+                                               'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -544,6 +617,13 @@ def execute(*, startup_measurement=False):
                 diagnostics['controllerStartup'] = controller_startup_snapshot(workload)
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
+                if cancellation is not None:
+                    try:
+                        diagnostics['cancellation'] = complete_cancellation(workload, cancellation)
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                            subprocess.SubprocessError) as error:
+                        diagnostics['cancellation'] = {'status': 'unavailable-or-unsafe',
+                                                       'exceptionType': type(error).__name__[:128]}
             finally:
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)

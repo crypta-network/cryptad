@@ -676,8 +676,9 @@ class InstalledWorkloadAdapter:
         self.emit('cleanup', outcome='pass' if complete else 'fail')
         return 'complete' if complete else 'reconciliation-required'
 
-    def run_positive(self):
-        """Exercise normal four-role transports and real app startup; always stop owned roles."""
+    def run_positive(self, *, leave_running_for_administrator=False):
+        """Exercise normal transports, retaining active roles only for administrator teardown."""
+        completed = False
         try:
             for role in runtime.ROLES:
                 self.start(role)
@@ -702,7 +703,7 @@ class InstalledWorkloadAdapter:
             roster_finished = time.monotonic_ns()
             if roster_finished <= roster_started:
                 fail('kernel-roster-clock-invalid')
-            return {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
+            result = {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
                     'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
@@ -726,6 +727,8 @@ class InstalledWorkloadAdapter:
                     'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
                                                'finishedMonotonicNs': roster_finished},
                     'contentRetrieval': self.outcomes.get('network-chk')}
+            completed = True
+            return result
         finally:
-            if self.cleanup() != 'complete':
+            if (not completed or not leave_running_for_administrator) and self.cleanup() != 'complete':
                 fail('terminal-reconciliation-required')
