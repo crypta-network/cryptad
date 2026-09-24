@@ -1137,6 +1137,39 @@ with one skip, and the owning interop adapter passed 42 with eight skips. These 
 do not establish an installed FNP case; a new exact-source fixture and full installed
 rerun are required.
 
+Attempts 47–49 used the same helper source `456d716fd22cd16c3efe5ed810a6534305408d64`,
+the same signed fixture, product, JDK and `tcg-multi`/`qemu64` four-vCPU VM profile. Each
+passed its own no-VM task-wide storage and memory admission. Attempts 47 and 48 did not
+reach administrator counter sampling: sender readiness timed out after a JVM `SIGILL` in
+C1-compiled JDK code in 47, and relay readiness timed out after a JVM `SIGSEGV` in a
+different C1-compiled JDK method in 48. Both reported cleanup complete with four current
+stop receipts and independently observed emulator stop, but neither yielded an individual
+positive case. Their complete private evidence and same-attempt QCOW2 backing pairs were
+copied locally and passed recursive checksum comparison. These crashes remain unexplained;
+no QEMU, JDK, guest/host resource limit or deadline was changed for the next attempt.
+
+Attempt 49 reached four-role readiness, started two normally signed Mail workers, completed
+both byte-checked sender-to-recipient CHK transfers around the sender restart, and exited
+zero. The administrator test driver durably captured the fixed six-link counter pair before
+and after the second transfer. The observer's two responses matched that root pair; the
+stopped host verifier matched recipient FCP bytes, selected payload, current invocation,
+sample window, stable policy/namespace identity and positive packet/byte deltas on the
+four directional links. All eight positive v8 rows, including `fnp-content-retrieval`,
+returned `passed`. No HotSpot fatal file was captured in this attempt. The caller reported
+cleanup complete, four current stop receipts and the sender's previous receipt were
+retained, the emulator stopped, and the complete private attempt with its same-attempt
+QCOW2 backing pair passed a recursive local checksum comparison. The fixed snapshot still
+does not independently establish quiescence.
+
+This is an installed eight-case positive result, not the complete 45-case workload
+acceptance. The 26 denial and 11 lifecycle rows remain `not-executed`, and the suite
+still reports `implementationCoverage=incomplete`,
+`installedWorkloadAcceptanceSatisfied=false`, `finiteNativeAcceptance=false`,
+`protectedExecutionEnabled=false` and `phaseComplete=false`. A read-only summary of locally
+retained fatal snapshots through attempt 48 found 21 HotSpot fatal files across 17 attempts:
+13 `SIGILL` and eight `SIGSEGV`, all reported in varying C1-compiled frames. This pattern
+does not establish a QEMU or JDK root cause and is not a reason to relax a passing case.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
