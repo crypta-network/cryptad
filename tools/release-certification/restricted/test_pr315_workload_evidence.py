@@ -191,6 +191,36 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', rejected['observerControlAudit']['status'])
         self.assertNotIn('must-not-copy', json.dumps(rejected))
 
+    def test_runner_control_denial_requires_bounded_real_policy_response(self):
+        response = b'Failed to stop fixed unit: Interactive authentication required.\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': 'boot', 'mainPid': 100, 'mainStartTicks': 200,
+                  'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-runner-control-denial',
+                 'caseId': 'runner-control',
+                 'actor': {'pid': 123, 'uid': 1000, 'startTicks': 456},
+                 'roleKernelRoster': {}, 'roleKernelRosterWindow': {},
+                 'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=20),
+                 'senderManagerInvocation': 'e' * 32, 'senderCgroupIdentity': [1, 3],
+                 'senderStateBefore': 'a' * 64, 'senderStateAfter': 'a' * 64,
+                 'requestStartedNs': 12, 'responseObservedNs': 13,
+                 'requestDigest': 'b' * 64, 'responseDigest': hashlib.sha256(response).hexdigest(),
+                 'responseBase64': base64.b64encode(response).decode(),
+                 'exitCode': 1, 'stdoutBytes': 0}
+        path = self.root / 'authority/runner-control-denial.json'
+        path.write_text(json.dumps(audit))
+        self.assertEqual('not-captured-cleanup-unverified', evidence._capture(
+            self.root, self.expected, False)['runnerControlAudit']['status'])
+        self.assertEqual(audit, evidence._capture(
+            self.root, self.expected, True)['runnerControlAudit']['record'])
+        for changed in (dict(audit, exitCode=0),
+                        dict(audit, responseBase64='@@@'),
+                        dict(audit, browserToken='must-not-copy')):
+            path.write_text(json.dumps(changed))
+            rejected = evidence._capture(self.root, self.expected, True)
+            self.assertEqual('unavailable-or-unsafe', rejected['runnerControlAudit']['status'])
+            self.assertNotIn('must-not-copy', json.dumps(rejected))
+
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
         (self.root / 'authority/network.json').write_text(json.dumps({

@@ -1748,6 +1748,33 @@ false. The intermittent TCG JVM startup/fatal behavior remains unexplained,
 and neither the KVM result nor the host's available swap changes the selected
 TCG profile or its fixed timeouts.
 
+### Prospective runner-origin controller denial
+
+The next `runner-control` emitter uses the actual `vmadmin` runner UID rather
+than the observer's `cryptad-soak` controller socket identity. After a completed
+positive sequence leaves the installed roles active, the administrator measures
+the running controller systemd unit and sender role, then launches only the
+fixed `systemctl --no-ask-password stop cryptad-workload-controller.service`
+request as `vmadmin`. A bounded 2-KiB, 15-second reader captures the child's
+actual policy response; excess output or timeout reaps only that child and
+cannot produce an acceptance row. The administrator checks the actor PID/UID
+epoch, the unchanged controller invocation/cgroup/process epoch and unchanged
+sender state, then retains a root-owned private audit. After exact cleanup,
+the safe reader checks its closed schema and bounded denial response. The host
+verifier binds that audit to the positive result's principal roster, fixed
+request, actual denied response, sender stop receipt and retained sentinel
+before it can mark `runner-control` passed. Failure leaves this row unexecuted
+or inconclusive; a successful forbidden stop or changed controller/sender epoch
+fails the guest attempt rather than preserving a positive result.
+
+This is prospective source work only. On CT102 Linux, final-source PR-314
+discovery passed 73 tests, PR-315 workload discovery passed 104, protected
+workload discovery passed 165 with 21 skips, and cross-version interop
+discovery passed 242 with eight skips. Offline tests also reject a forged runner
+UID, altered target invocation, modified response and oversized child output.
+No installed `runner-control` observation exists yet; the latest executed
+`db25340` 12-distinct-ID coverage and incomplete 45-case verdict are unchanged.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -1840,7 +1867,7 @@ role/AppHost boundary.
 | `sibling-http` | candidate | Active recipient HTTP; emitted cross-role probe with attributed filter evidence |
 | `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
-| `runner-control` | runner | Installed system manager; valid disallowed control request |
+| `runner-control` | runner | Prospective fixed vmadmin `systemctl` stop request against active controller unit; installed policy denial and root/host audit still unexecuted |
 | `observer-control` | observer | Installed system manager; valid disallowed control request |
 | `arbitrary-endpoint` | observer | Existing nonapproved endpoint; valid disallowed connector selection |
 | `hostile-app-origin` | candidate | Active own app; valid request with hostile origin |

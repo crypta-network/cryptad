@@ -54,6 +54,71 @@ class ObserverFailureTest(unittest.TestCase):
         self.assertLess(len(encoded.encode()), 4096)
 
 
+@unittest.skipUnless(sys.platform.startswith('linux') and os.getuid() > 0,
+                     'Linux actor /proc epoch required')
+class RunnerControlProbeTest(unittest.TestCase):
+    def test_vmadmin_policy_denial_is_bound_to_actor_epoch_and_unchanged_unit(self):
+        now = time.monotonic_ns()
+        before = {'invocationId': 'a' * 32, 'cgroupIdentity': [1, 25],
+                  'bootId': 'boot', 'mainPid': 200, 'mainStartTicks': 300,
+                  'observedMonotonicNs': now - 500}
+        after = dict(before, observedMonotonicNs=now + 10**9)
+        sender = {'state': 'running', 'stateDigest': 'd' * 64,
+                  'managerInvocation': 'b' * 32, 'cgroupIdentity': [1, 99],
+                  'bootId': 'boot'}
+        result = {'roleKernelRoster': {'runnerUid': os.getuid()},
+                  'roleKernelRosterWindow': {'startedMonotonicNs': now - 1000,
+                                             'finishedMonotonicNs': now - 900}}
+        workload = Mock(ROOT=Path('/private-task-root'))
+        workload.observe.return_value = sender
+        denied = b'Failed to stop fixed unit: Interactive authentication required.\n'
+        process = Mock(pid=os.getpid(), returncode=1)
+        process.poll.return_value = 1
+        user = SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
+        handoff = {'handles': {'candidate-sender': 'a' * 64}}
+        with patch.object(driver.pwd, 'getpwnam', return_value=user), \
+                patch.object(driver, 'controller_unit_identity', side_effect=[before, after]), \
+                patch.object(driver, 'bounded_runner_control_output', return_value=(b'', denied)), \
+                patch.object(driver.subprocess, 'Popen', return_value=process) as launched:
+            self.assertEqual({'status': 'captured'},
+                             driver.probe_runner_control(workload, handoff, result))
+        self.assertEqual('/usr/bin/systemctl', launched.call_args.args[0][0])
+        self.assertEqual('stop', launched.call_args.args[0][2])
+        audit = workload.write.call_args.args[1]
+        self.assertEqual(os.getuid(), audit['actor']['uid'])
+        self.assertEqual(os.getpid(), audit['actor']['pid'])
+        self.assertEqual(hashlib.sha256(denied).hexdigest(), audit['responseDigest'])
+        self.assertEqual(sender['stateDigest'], audit['senderStateAfter'])
+
+        process.returncode = 0
+        workload.write.reset_mock()
+        with patch.object(driver.pwd, 'getpwnam', return_value=user), \
+                patch.object(driver, 'controller_unit_identity', return_value=before), \
+                patch.object(driver, 'bounded_runner_control_output', return_value=(b'', denied)), \
+                patch.object(driver.subprocess, 'Popen', return_value=process):
+            with self.assertRaisesRegex(RuntimeError, 'forbidden-unit-stop-admitted'):
+                driver.probe_runner_control(workload, handoff, result)
+        workload.write.assert_not_called()
+
+        process.returncode = 1
+        changed = dict(after, invocationId='c' * 32)
+        with patch.object(driver.pwd, 'getpwnam', return_value=user), \
+                patch.object(driver, 'controller_unit_identity', side_effect=[before, changed]), \
+                patch.object(driver, 'bounded_runner_control_output', return_value=(b'', denied)), \
+                patch.object(driver.subprocess, 'Popen', return_value=process):
+            with self.assertRaisesRegex(RuntimeError, 'runner-control-target-changed'):
+                driver.probe_runner_control(workload, handoff, result)
+        workload.write.assert_not_called()
+
+    def test_fixed_systemctl_output_reader_reaps_oversized_child(self):
+        process = subprocess.Popen([sys.executable, '-c',
+            'import sys; sys.stderr.write("x" * 4096)'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        with self.assertRaisesRegex(ValueError, 'runner-control-output-limit'):
+            driver.bounded_runner_control_output(process)
+        self.assertIsNotNone(process.returncode)
+
+
 class AdministratorFnpSamplerTest(unittest.TestCase):
     def test_probe_root_record_requires_current_kernel_child_and_verified_tree(self):
         with tempfile.TemporaryDirectory() as temporary:

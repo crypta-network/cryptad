@@ -6,6 +6,7 @@ cleanup verification; a missing cgroup is never interpreted here as proof of qui
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import os
@@ -522,6 +523,49 @@ def _observer_control_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _runner_control_audit(root, deadline):
+    """Read one fixed root-observed vmadmin denial of active systemd unit control."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'runner-control-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'actor', 'roleKernelRoster',
+                  'roleKernelRosterWindow', 'targetBefore', 'targetAfter',
+                  'senderManagerInvocation', 'senderCgroupIdentity',
+                  'senderStateBefore', 'senderStateAfter', 'requestStartedNs',
+                  'responseObservedNs', 'requestDigest', 'responseDigest',
+                  'responseBase64', 'exitCode', 'stdoutBytes'}
+        target_fields = {'invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
+                         'mainStartTicks', 'observedMonotonicNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-runner-control-denial'
+                or value['caseId'] != 'runner-control'
+                or not isinstance(value['actor'], dict)
+                or set(value['actor']) != {'pid', 'uid', 'startTicks'}
+                or not isinstance(value['roleKernelRoster'], dict)
+                or not isinstance(value['roleKernelRosterWindow'], dict)
+                or any(not isinstance(value[key], dict) or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or type(value['exitCode']) is not int or not 1 <= value['exitCode'] <= 255
+                or value['stdoutBytes'] != 0
+                or any(type(value['actor'][key]) is not int or value['actor'][key] <= 0
+                       for key in ('pid', 'uid', 'startTicks'))):
+            raise ValueError('runner-control-audit-invalid')
+        response = base64.b64decode(value['responseBase64'], validate=True)
+        if (not 1 <= len(response) <= 2048
+                or value['responseDigest'] != hashlib.sha256(response).hexdigest()
+                or not any(marker in response for marker in
+                           (b'Interactive authentication required', b'Access denied'))):
+            raise ValueError('runner-control-response-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, binascii.Error):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -546,6 +590,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'probeAdministratorRecord': {'status': 'not-captured-cleanup-unverified'},
         'observerControlCheckpoint': {'status': 'not-captured-cleanup-unverified'},
         'observerControlAudit': {'status': 'not-captured-cleanup-unverified'},
+        'runnerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -579,6 +624,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
         result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
         result['observerControlAudit'] = _observer_control_audit(root, deadline)
+        result['runnerControlAudit'] = _runner_control_audit(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

@@ -173,6 +173,54 @@ class RunnerTests(unittest.TestCase):
             mutate(changed)
             self.assertIsNone(runner.observer_control_denial_attempt(report, fixture, changed))
 
+    def test_runner_control_denial_requires_real_runner_and_unchanged_active_unit(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        window = {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20}
+        response = b'Failed to stop cryptad-workload-controller.service: Interactive authentication required.\n'
+        command = ['/usr/bin/systemctl', '--no-ask-password', 'stop',
+                   'cryptad-workload-controller.service']
+        target = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'mainPid': 200, 'mainStartTicks': 40, 'observedMonotonicNs': 30}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-runner-control-denial',
+                 'caseId': 'runner-control',
+                 'actor': {'pid': 300, 'uid': roster['runnerUid'], 'startTicks': 45},
+                 'roleKernelRoster': roster, 'roleKernelRosterWindow': window,
+                 'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=60),
+                 'senderManagerInvocation': sender['invocationId'],
+                 'senderCgroupIdentity': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'requestStartedNs': 40, 'responseObservedNs': 50,
+                 'requestDigest': hashlib.sha256(json.dumps(command,
+                     separators=(',', ':')).encode()).hexdigest(),
+                 'responseDigest': hashlib.sha256(response).hexdigest(),
+                 'responseBase64': base64.b64encode(response).decode(),
+                 'exitCode': 1, 'stdoutBytes': 0}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['runnerControlAudit'] = {'status': 'captured', 'record': audit}
+        result = {'roleKernelRoster': roster, 'roleKernelRosterWindow': window}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+
+        identity, attempt = runner.runner_control_denial_attempt(report, result, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'runner-control'))
+        for mutate in (
+                lambda row: row['runnerControlAudit']['record']['actor'].update(uid=roster['observerUid']),
+                lambda row: row['runnerControlAudit']['record'].update(responseDigest='0' * 64),
+                lambda row: row['runnerControlAudit']['record']['targetAfter'].update(
+                    invocationId='e' * 32),
+                lambda row: row['runnerControlAudit']['record'].update(senderStateAfter='0' * 64),
+                lambda row: row['runnerControlAudit']['record'].update(responseBase64='@@@')):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.runner_control_denial_attempt(report, result, fixture, changed))
+
     def test_probe_denial_requires_live_root_actor_target_and_immutable_app_result(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

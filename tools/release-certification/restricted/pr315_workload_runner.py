@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 from contextlib import redirect_stdout
 import fcntl
 import hashlib
@@ -924,6 +925,98 @@ def observer_control_denial_attempt(report, fixture, terminal):
         return None
 
 
+def runner_control_denial_attempt(report, result, fixture, terminal):
+    """Bind a real vmadmin systemd refusal to a live controller and sender epoch."""
+    if (report.get('guestStopped') is not True or not isinstance(result, dict)
+            or not isinstance(terminal, dict)
+            or terminal.get('cleanupReportedByCaller') is not True
+            or fixture.get('schemaVersion') != 4):
+        return None
+    try:
+        retained = terminal['runnerControlAudit']
+        if retained['status'] != 'captured':
+            return None
+        root = retained['record']
+        principals, window = root['roleKernelRoster'], root['roleKernelRosterWindow']
+        before, after = root['targetBefore'], root['targetAfter']
+        sender = next(row for row in principals['roles'] if row['role'] == 'candidate-sender')
+        actor = root['actor']
+        request = ['/usr/bin/systemctl', '--no-ask-password', 'stop',
+                   'cryptad-workload-controller.service']
+        request_digest = hashlib.sha256(json.dumps(request, separators=(',', ':')).encode()).hexdigest()
+        response = base64.b64decode(root['responseBase64'], validate=True)
+        if (not acceptance._principals(principals) or not _bounded_window(window)
+                or result['roleKernelRoster'] != principals
+                or result['roleKernelRosterWindow'] != window
+                or actor['uid'] != principals['runnerUid']
+                or any(type(actor[key]) is not int or actor[key] <= 1
+                       for key in ('pid', 'startTicks'))
+                or root['requestDigest'] != request_digest
+                or root['responseDigest'] != hashlib.sha256(response).hexdigest()
+                or not any(marker in response for marker in
+                           (b'Interactive authentication required', b'Access denied'))
+                or root['exitCode'] == 0 or root['stdoutBytes'] != 0
+                or any(before[key] != after[key] for key in
+                       ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid', 'mainStartTicks'))
+                or before['bootId'].replace('-', '').lower() != sender['bootId']
+                or root['senderManagerInvocation'] != sender['invocationId']
+                or sender['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender', 'identity': root['senderCgroupIdentity']})[7:]
+                or root['senderStateBefore'] != root['senderStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] != 'sha256:' + root['senderStateAfter']
+                or not window['finishedMonotonicNs'] < before['observedMonotonicNs']
+                    < root['requestStartedNs'] < root['responseObservedNs']
+                    < after['observedMonotonicNs']):
+            return None
+        receipt = terminal['stopReceipts']['candidate-sender']
+        matching = [entry['record'] for entry in receipt.values()
+                    if isinstance(entry, dict) and entry.get('status') == 'captured'
+                    and isinstance(entry.get('record'), dict)
+                    and entry['record'].get('managerInvocation') == sender['invocationId']]
+        if (len(matching) != 1 or matching[0]['cgroupIdentity'] != root['senderCgroupIdentity']
+                or matching[0]['bootId'].replace('-', '').lower() != sender['bootId']
+                or matching[0]['membership'] != 'only-stop-helper'
+                or matching[0]['descendantCgroups'] != 0
+                or after['observedMonotonicNs'] >= matching[0]['startedMonotonicNs']):
+            return None
+        host = report['hostVerifiedIdentity']
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        case_id = 'runner-control'
+        target = {'caseId': case_id, 'target': 'manager', 'role': None,
+                  'invocationId': before['invocationId'],
+                  'cgroupDigest': fixtures.runtime.canonical_digest({
+                      'role': 'controller', 'identity': before['cgroupIdentity']})[7:],
+                  'bootId': sender['bootId'], 'probeDigest': '',
+                  'controlResponseDigest': root['responseDigest']}
+        witness = {'actorUid': principals['runnerUid'], 'attackDigest': root['requestDigest'],
+                   'attackStartedNs': root['requestStartedNs'],
+                   'targetActiveBeforeNs': before['observedMonotonicNs'],
+                   'targetActiveAfterNs': after['observedMonotonicNs'],
+                   'controlResponseDigest': root['responseDigest'],
+                   'denialSource': 'server', 'denialCode': 'policy-rejected',
+                   'unrelatedStateBefore': root['senderStateBefore'],
+                   'unrelatedStateAfter': root['senderStateAfter'], 'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': window['startedMonotonicNs'],
+                       'finishedMonotonicNs': after['observedMonotonicNs'], 'witness': witness}
+        return identity, {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True, 'principals': principals,
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
+            binascii.Error):
+        return None
+
+
 def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
@@ -1090,6 +1183,20 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
+            if (positive and isinstance(terminal, dict)
+                    and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
+                denial = runner_control_denial_attempt(report, value, fixture, terminal)
+                if denial is not None:
+                    identity, case_attempt = denial
+                    checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                    if (checked_cases['recordContractValid'] is not True
+                            or next(row['status'] for row in checked_cases['cases']
+                                    if row['caseId'] == 'runner-control') != 'passed'
+                            or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                        raise ValueError('workload-runner-control-verification-failed')
+                    native_runner._save(output / 'runner-control-v8-evidence.private.json',
+                        {'attempt': case_attempt, 'assessment': checked_cases})
+                    statuses['runner-control'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,

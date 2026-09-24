@@ -7,11 +7,13 @@ normally signed Mail bundle. This driver never manufactures original release aut
 Its positive result alone cannot satisfy the separate complete workload fault contract.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
 from pathlib import Path
 import pwd
+import re
 import select
 import signal
 import socket
@@ -716,6 +718,144 @@ def observer_failure(error):
     return result
 
 
+def controller_unit_identity(workload):
+    """Measure the active installed controller unit from the administrator process."""
+    unit = 'cryptad-workload-controller.service'
+    selected = subprocess.run(['/usr/bin/systemctl', 'show', unit,
+        '--property=InvocationID,ActiveState,SubState,MainPID,ControlGroup', '--no-pager'],
+        stdin=subprocess.DEVNULL, capture_output=True, check=True, timeout=5, env=ENV)
+    if len(selected.stdout) > 8192 or selected.stderr:
+        raise ValueError('runner-control-target-unavailable')
+    state = dict(line.split('=', 1) for line in selected.stdout.decode().splitlines() if '=' in line)
+    group = '/system.slice/' + unit
+    if (set(state) != {'InvocationID', 'ActiveState', 'SubState', 'MainPID', 'ControlGroup'}
+            or re.fullmatch('[0-9a-f]{32}', state['InvocationID']) is None
+            or state['ActiveState'] != 'active' or state['SubState'] != 'running'
+            or not state['MainPID'].isdecimal() or int(state['MainPID']) <= 1
+            or state['ControlGroup'] != group):
+        raise ValueError('runner-control-target-inactive')
+    pid = int(state['MainPID'])
+    process = Path('/proc') / str(pid)
+    if process.joinpath('cgroup').read_text().strip() != '0::' + group:
+        raise ValueError('runner-control-target-cgroup-changed')
+    start_ticks = int(process.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+    identity = (Path('/sys/fs/cgroup') / group.removeprefix('/')).stat()
+    return {'invocationId': state['InvocationID'],
+            'cgroupIdentity': [identity.st_dev, identity.st_ino],
+            'bootId': workload.boot(), 'mainPid': pid, 'mainStartTicks': start_ticks,
+            'observedMonotonicNs': time.monotonic_ns()}
+
+
+def bounded_runner_control_output(process):
+    """Collect at most 2 KiB from the exact systemctl child within 15 seconds."""
+    streams = (process.stdout, process.stderr)
+    data = [bytearray(), bytearray()]
+    pending = {stream.fileno(): index for index, stream in enumerate(streams)}
+    deadline = time.monotonic() + 15
+    try:
+        for descriptor in pending:
+            os.set_blocking(descriptor, False)
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError('runner-control-request-timeout')
+            readable, _, _ = select.select(tuple(pending), [], [], remaining)
+            if not readable:
+                raise ValueError('runner-control-request-timeout')
+            for descriptor in readable:
+                count = sum(map(len, data))
+                chunk = os.read(descriptor, max(1, 2049 - count))
+                if chunk:
+                    data[pending[descriptor]].extend(chunk)
+                    if sum(map(len, data)) > 2048:
+                        raise ValueError('runner-control-output-limit')
+                else:
+                    del pending[descriptor]
+        process.wait(timeout=max(.001, deadline - time.monotonic()))
+        return bytes(data[0]), bytes(data[1])
+    except (ValueError, subprocess.TimeoutExpired):
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2)
+        raise
+    finally:
+        for stream in streams:
+            stream.close()
+
+
+def probe_runner_control(workload, handoff, result):
+    """Bind a vmadmin systemd denial to the active controller and sender epochs."""
+    roster = result['roleKernelRoster']
+    window = result['roleKernelRosterWindow']
+    runner = pwd.getpwnam('vmadmin')
+    if (runner.pw_uid <= 0 or runner.pw_uid != roster['runnerUid']
+            or not isinstance(window, dict)):
+        raise ValueError('runner-control-actor-invalid')
+    handle = handoff['handles']['candidate-sender']
+    before = controller_unit_identity(workload)
+    sender_before = workload.observe(handle)
+    if sender_before.get('state') != 'running' or sender_before.get('stateDigest') is None:
+        raise ValueError('runner-control-sender-inactive')
+    arguments = ['/usr/bin/systemctl', '--no-ask-password', 'stop',
+                 'cryptad-workload-controller.service']
+    request_raw = json.dumps(arguments, separators=(',', ':')).encode()
+
+    def become_runner():
+        os.setgroups([])
+        os.setgid(runner.pw_gid)
+        os.setuid(runner.pw_uid)
+
+    started = time.monotonic_ns()
+    process = subprocess.Popen(arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, cwd='/', env=ENV, preexec_fn=become_runner,
+                               start_new_session=True)
+    actor_path = Path('/proc') / str(process.pid)
+    try:
+        status = dict(line.split(':', 1) for line in actor_path.joinpath('status').read_text().splitlines()
+                      if ':' in line)
+        if set(map(int, status['Uid'].split())) != {runner.pw_uid}:
+            raise ValueError('runner-control-actor-uid-changed')
+        actor_start = int(actor_path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        stdout, stderr = bounded_runner_control_output(process)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2)
+    responded = time.monotonic_ns()
+    if process.returncode == 0:
+        raise RuntimeError('runner-control-forbidden-unit-stop-admitted')
+    if (stdout or not 1 <= len(stderr) <= 2048
+            or not any(marker in stderr for marker in
+                       (b'Interactive authentication required', b'Access denied'))):
+        raise ValueError('runner-control-policy-denial-unobserved')
+    sender_after = workload.observe(handle)
+    after = controller_unit_identity(workload)
+    if (not window['finishedMonotonicNs'] < before['observedMonotonicNs'] < started
+            < responded < after['observedMonotonicNs']
+            or any(before[key] != after[key] for key in
+                   ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid', 'mainStartTicks'))
+            or any(sender_before[key] != sender_after[key] for key in
+                   ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest'))
+            or sender_after.get('state') != 'running'):
+        raise RuntimeError('runner-control-target-changed')
+    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-runner-control-denial',
+             'caseId': 'runner-control', 'actor': {'pid': process.pid,
+                 'uid': runner.pw_uid, 'startTicks': actor_start},
+             'roleKernelRoster': roster, 'roleKernelRosterWindow': window,
+             'targetBefore': before, 'targetAfter': after,
+             'senderManagerInvocation': sender_before['managerInvocation'],
+             'senderCgroupIdentity': sender_before['cgroupIdentity'],
+             'senderStateBefore': sender_before['stateDigest'],
+             'senderStateAfter': sender_after['stateDigest'],
+             'requestStartedNs': started, 'responseObservedNs': responded,
+             'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+             'responseDigest': hashlib.sha256(stderr).hexdigest(),
+             'responseBase64': base64.b64encode(stderr).decode('ascii'),
+             'exitCode': process.returncode, 'stdoutBytes': len(stdout)}
+    workload.write(workload.ROOT / 'authority/runner-control-denial.json', audit, create=True)
+    return {'status': 'captured'}
+
+
 def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
@@ -828,6 +968,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                       campaignDeadlineMonotonicNs=campaign_deadline,
                       workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
+        if not startup_measurement:
+            try:
+                diagnostics['runnerControl'] = probe_runner_control(workload, handoff, result)
+            except (OSError, ValueError, KeyError, TypeError, IndexError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['runnerControl'] = {'status': 'unavailable-or-unsafe',
+                                                'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)
