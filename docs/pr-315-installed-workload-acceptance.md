@@ -1535,9 +1535,34 @@ nonpersistent inserts; persistent behavior and wire fields remain unchanged.
 The same focused test passed after the fix. `SingleBlockInserter.java` produced
 an empty SonarLint XML report, and the full Linux Gradle test run passed with
 17,317 tests, zero failures/errors and ten skips across root and leaf JUnit XML.
-This is an offline result. A fresh source-built candidate product and signed
-fixture are required before the affected installed CHK/cancellation cases can
-be rerun; attempt 63 itself has no cancellation witness.
+This was initially an offline result; attempt 63 itself has no cancellation witness.
+
+The fix was committed at `99cdda8f3731b68bf6409aa037ab586112de5ee3` and
+built into a new candidate portable. Its packaged daemon identity check matched
+that exact source commit. The first private tar had noncanonical member modes
+and ownership and was rejected before any VM allocation. The repository's
+portable archive normalizer corrected only archive metadata; the daemon jar
+digest stayed `sha256:686079e31f004e097a9dc92a8f8ae17f6218b4b307cbe9b6ec3dc105770dfc89`.
+The normalized archive was made owner-only, and a fresh schema-4 fixture with
+the same historical predecessor, pinned JDK and normally signed Mail/probe
+passed strict source, package and signature verification. No weakened archive
+or unsigned bundle was admitted.
+
+Attempt 64 used that new candidate under the original `tcg-multi/qemu64` profile
+after inventory and a no-VM admission with no reasons. The full Java test
+run had left an idle Gradle daemon and worker processes consuming CT102 memory;
+the task-owned daemon was stopped normally, and effective available memory
+returned above the unchanged VM plus host reserve before allocation. The guest
+reached four-role connection setup, then an FCP connection closed during peer
+waiting. The recipient and relay each had one C1 `SIGSEGV`, in
+`CharacterData.of` and `Yarrow.getBytes` respectively. It stopped with exit 1
+after reported cleanup; no case passed, and neither CHK nor `cancellation` was
+executed on the new product. Its complete stopped guest/backing QCOW and private
+diagnostics were copied locally and matched CT102 by recursive checksum; both
+copies remain private. This attempt cannot confirm the URI fix in an installed
+sequence. Across retained bounded fatal excerpts through attempt 64, 39 files
+in 29 attempts show 21 `SIGILL` and 18 `SIGSEGV`, all naming C1 frames. The
+intermittent C1 failure has no established QEMU/JDK root cause.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -1840,8 +1865,8 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Incomplete: attempt 62 passed eight positive rows, two denial rows and `controller-restart` on one helper; 24 denial and ten other lifecycle rows remain without a pass on that helper. `cancellation` passed only on an older helper |
-| `installedPositiveExecuted` | True for the source-bound attempt-62 eight-case positive aggregate |
-| `installedWorkloadAcceptanceSatisfied` | False; 11 of 45 rows passed on attempt 62, while the fixed inventory requires the missing denial and lifecycle emitters plus complete source-bound verification |
+| `installedPositiveExecuted` | True for the historical source-bound attempt-62 eight-case aggregate; false for the newest `99cdda8` installed attempt 64, which failed before CHK |
+| `installedWorkloadAcceptanceSatisfied` | False; 11 of 45 rows passed together on the older attempt-62 helper, while the newest product source has no complete positive result and the remaining denial/lifecycle emitters are missing |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
