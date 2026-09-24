@@ -1380,6 +1380,41 @@ the 45-case acceptance verdict. A malicious same-UID candidate could still try t
 its app data result; stronger independent syscall witnessing remains necessary before
 claiming adversarial resistance beyond the fixed signed source profile.
 
+Attempt 59 used the newly signed probe bundle, schema-4 fixture bound to helper
+`ae80895f1d674b90e8c253d363dc5d789cde4862`, unchanged candidate and predecessor
+products, pinned JDK, and the original `tcg-multi/qemu64` four-vCPU VM. A fresh no-VM
+preflight passed with 143,314,124,800 task-allocated bytes, a 29,217,091,904-byte
+next reservation, and 131,563,782,144 bytes free on the task ZFS dataset. The PVE
+thin-pool reserve and host-memory reserve also passed; no QEMU was active before
+allocation. The guest booted and reached SSH, but the sender JVM later recorded one
+`SIGSEGV` in C1-compiled `java.lang.Math.max(II)I` at compiled entry offset +2.
+The observer expired waiting for sender readiness. Cleanup completed, the sender's
+stop receipt was captured while the three unlaunched roles had no stop receipt,
+and the guest stopped with exit code 1. The signed probe did not launch; the
+root process record, observer checkpoint and first AppHost result were unavailable.
+Thus no case passed in this attempt and
+`namespace-mount-escape` remains `not-executed`. The stopped guest and backing QCOW,
+plus the complete private attempt, were copied to the ignored local task directory;
+recursive checksum comparison reported no differences. Original stopped disks and
+private diagnostics remain retained on CT102. This is another C1 fatal in the pinned
+profile, but it does not establish a QEMU or JDK root cause or justify relabeling
+the profile. Further identical VM attempts are deferred pending a demonstrated fix
+or a separately identified diagnostic profile.
+
+Across the locally retained bounded fatal excerpts through attempt 59, 33 HotSpot
+fatal files appear in 25 attempts: 20 `SIGILL` and 13 `SIGSEGV`. Every excerpt names a
+C1-compiled Java frame. Of the 31 excerpts whose compiled-entry offset could be
+parsed, 22 place the fault within eight bytes of that entry. This is a pattern in
+the captured crashes, not a proof that TCG, HotSpot or a particular patch caused it.
+
+For the `ae80895` source, native Linux protected discovery passed 527 tests with
+74 skips, restricted discovery passed 435 with one skip, and the owning interop
+workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
+with eight skips but had one import error and three packaged integration failures
+from the existing package/environment and embedded-source mismatch; it is not a
+green gate. The test suite validates the code path only. No final-source hosted CI,
+independent security review or complete installed 45-case campaign has passed.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
