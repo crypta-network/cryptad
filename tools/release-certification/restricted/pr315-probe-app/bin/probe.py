@@ -41,11 +41,13 @@ def main():
                                   for name in ('mnt', 'pid', 'net', 'user')},
               'mountEscape': mount_escape()}
     target = data / 'pr315-probe-result.json'
-    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    temporary = data / '.pr315-probe-result.new'
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(record, stream, sort_keys=True, separators=(',', ':'))
         stream.flush()
         os.fsync(stream.fileno())
+    os.replace(temporary, target)
     while True:
         time.sleep(1)
 

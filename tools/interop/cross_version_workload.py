@@ -700,7 +700,8 @@ class InstalledWorkloadAdapter:
         if app is not None:
             app.host_bootstrap()
             status, value = app.request('GET', '/api/v1/apps')
-            if status != 200 or [entry.get('appId') for entry in value.get('apps', [])] != ['mail-prototype']:
+            expected_apps = [selected['appId'] for selected in self.private['nodes'][role]['apps']]
+            if status != 200 or [entry.get('appId') for entry in value.get('apps', [])] != expected_apps:
                 fail('restart-installed-app-not-retained')
             status, value = app.request('GET', '/api/v1/apps/mail-prototype/runtime')
             if status != 200:
@@ -711,6 +712,16 @@ class InstalledWorkloadAdapter:
                     fail('restart-app-start-failed')
             app.observe_worker()
             app.refresh_session()
+            probe = self.apps.get((role, 'pr315-probe'))
+            if probe is not None:
+                status, value = probe.request('GET', '/api/v1/apps/pr315-probe/runtime')
+                if status != 200:
+                    fail('restart-probe-runtime-unavailable')
+                if value.get('runtime', {}).get('running') is not True:
+                    status, _ = probe.request('POST', '/api/v1/apps/pr315-probe/start')
+                    if status not in {200, 201}:
+                        fail('restart-probe-start-failed')
+                probe.observe_worker()
         return after
 
     def restart_with_witness(self, role):

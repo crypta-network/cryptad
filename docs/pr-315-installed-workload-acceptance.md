@@ -1307,6 +1307,29 @@ discovery passed 527 tests with 74 skips, restricted discovery passed 430 with o
 skip, and the owning interop workload tests passed 44 with eight skips. Installed
 probe launch remains unexecuted at this preparation cutoff.
 
+Attempts 55 and 56 used the same schema-4 helper source, distinct signed probe ZIP and
+two-key trust registry, unchanged candidate product/JDK and original VM profile after
+separate no-VM admissions. Attempt 55 stopped at sender readiness after another C1
+`SIGILL`; the probe was not launched, cleanup was reported complete, and no case passed.
+Attempt 56 reached four-role readiness and normally installed/started the signed probe
+through AppHost. Its fixed candidate-origin file reported a real `unshare(CLONE_NEWNS)`
+return of `-1`/`EPERM` with four namespace inode fields, and the safe root reader captured
+that bounded result after cleanup. The observer then failed at sender restart because
+its retained-app check still expected the exact inventory `['mail-prototype']`, while
+this cohort correctly contained `['mail-prototype', 'pr315-probe']`. The guest exited
+nonzero, so the host passed no positive, denial or lifecycle row; one predecessor JVM
+fatal file was also captured. Both stopped attempts, including same-attempt QCOW2 backing
+pairs, were copied locally and passed recursive checksum comparisons.
+
+The narrow follow-up binds the restart inventory to the already admitted fixed app list,
+restarts and reobserves the probe worker if AppHost did not keep it running, and has the
+signed worker atomically replace its fixed bounded result after a new launch. This
+preserves the Mail positive case and prevents a stale pre-restart probe file from being
+used as a new child observation. No `namespace-mount-escape` case is emitted until a
+host-side witness independently binds the current signed probe process, active outer
+role target, syscall window and kernel denial. An exact-source signed ZIP and installed
+rerun are still required.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

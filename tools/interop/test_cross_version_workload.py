@@ -398,6 +398,39 @@ class ObserverPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'restart-epoch-invalid'):
             adapter.restart('candidate-sender')
 
+    def test_restart_retains_exact_two_signed_apps_and_restarts_probe_worker(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {'candidate-sender': dict(EPOCH)}
+        adapter.private = {'nodes': {'candidate-sender': {'apps': [
+            {'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}}}
+        adapter.daemon_epochs = {'candidate-sender': {'startTicks': 201}}
+        adapter.stop = mock.Mock()
+        def start(_role):
+            adapter.daemon_epochs['candidate-sender'] = {'startTicks': 301}
+            return {**EPOCH, 'generation': 'e' * 64, 'managerInvocation': 'f' * 32}
+        adapter.start = mock.Mock(side_effect=start)
+        def mail_request(method, path, *args):
+            if path == '/api/v1/apps':
+                return 200, {'apps': [{'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}
+            return 200, {'runtime': {'running': True}}
+        mail = types.SimpleNamespace(host_bootstrap=mock.Mock(), request=mock.Mock(side_effect=mail_request),
+            observe_worker=mock.Mock(), refresh_session=mock.Mock())
+        probe = types.SimpleNamespace(request=mock.Mock(side_effect=[
+            (200, {'runtime': {'running': False}}), (201, {})]), observe_worker=mock.Mock())
+        adapter.apps = {('candidate-sender', 'mail-prototype'): mail,
+                        ('candidate-sender', 'pr315-probe'): probe}
+        adapter.restart('candidate-sender')
+        probe.request.assert_has_calls([
+            mock.call('GET', '/api/v1/apps/pr315-probe/runtime'),
+            mock.call('POST', '/api/v1/apps/pr315-probe/start')])
+        probe.observe_worker.assert_called_once_with()
+        adapter.daemon_epochs['candidate-sender'] = {'startTicks': 201}
+        mail.request.side_effect = lambda method, path, *args: (
+            (200, {'apps': [{'appId': 'mail-prototype'}]}) if path == '/api/v1/apps'
+            else (200, {'runtime': {'running': True}}))
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'installed-app-not-retained'):
+            adapter.restart('candidate-sender')
+
     def test_restart_context_uses_real_before_after_controller_epochs(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         before = sample()
