@@ -25,7 +25,7 @@ import pr313_acceptance_runner as native_runner
 import pr314_acceptance as acceptance
 import pr315_workload_fixtures as fixtures
 import restricted_workload_network as workload_network
-from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS
+from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS, LIFECYCLE_SCENARIOS
 
 GUEST_MEMORY = 5632 * 1024**2
 ROLE_MEMORY = 1024**3
@@ -499,6 +499,91 @@ def _cancellation_case(report, result, diagnostics, terminal, principals):
                      'finishedMonotonicNs': context['terminalObservedNs']}, commitment
 
 
+def _controller_restart_case(report, diagnostics, terminal, principals):
+    """Bind actual controller invocation replacement to all four terminal role receipts."""
+    if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
+            or report.get('guestStopped') is not True
+            or terminal.get('cleanupReportedByCaller') is not True):
+        return None
+    context = diagnostics.get('controllerRestart')
+    try:
+        if (not isinstance(context, dict)
+                or set(context) != {'schemaVersion', 'kind', 'triggerStartedNs',
+                                    'triggerEventDigest', 'campaignDeadlineNs', 'preRoles',
+                                    'beforeController', 'restartReturnCode', 'afterController',
+                                    'terminalObservedNs', 'populatedCgroups',
+                                    'remainingDescendants', 'retention'}
+                or context['schemaVersion'] != 1
+                or context['kind'] != 'pr315-administrator-controller-restart'
+                or context['populatedCgroups'] != [] or context['remainingDescendants'] != 0
+                or context['retention'] != 'retained'
+                or type(context['restartReturnCode']) is not int
+                or not _bounded_window({'startedMonotonicNs': context['triggerStartedNs'],
+                                        'finishedMonotonicNs': context['terminalObservedNs']})
+                or context['triggerStartedNs'] >= context['campaignDeadlineNs']
+                or len(context['preRoles']) != len(acceptance.ROLES)):
+            return None
+        before, after = context['beforeController'], context['afterController']
+        fields = {'InvocationID', 'ActiveState', 'SubState', 'MainPID', 'Result'}
+        if (not isinstance(before, dict) or not isinstance(after, dict)
+                or set(before) != fields or set(after) != fields
+                or re.fullmatch('[0-9a-f]{32}', before['InvocationID']) is None
+                or re.fullmatch('[0-9a-f]{32}', after['InvocationID']) is None
+                or before['InvocationID'] == after['InvocationID']
+                or before['ActiveState'] != 'active' or before['SubState'] != 'running'
+                or not before['MainPID'].isdecimal() or int(before['MainPID']) <= 0):
+            return None
+        campaign = terminal['controllerRecords']['campaign']
+        if (campaign['status'] != 'captured'
+                or campaign['record']['state'] != 'terminalizing'
+                or campaign['record']['deadlineMonotonicNs'] != context['campaignDeadlineNs']):
+            return None
+        rows = context['preRoles']
+        if (not all(isinstance(row, dict) and
+                    set(row) == {'role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid'}
+                    for row in rows)
+                or {row['role'] for row in rows} != set(acceptance.ROLES)):
+            return None
+        expected_event = {'kind': 'controller-restart', 'roles': rows,
+            'campaignDeadlineNs': context['campaignDeadlineNs'],
+            'oldControllerInvocation': before['InvocationID']}
+        if context['triggerEventDigest'] != fixtures.runtime.canonical_digest(expected_event)[7:]:
+            return None
+        for row in rows:
+            role = row['role']
+            principal = next(item for item in principals['roles'] if item['role'] == role)
+            receipt = terminal['stopReceipts'][role]['current']
+            role_record = terminal['controllerRecords'][role]
+            if (type(row['mainPid']) is not int or row['mainPid'] <= 0
+                    or row['managerInvocation'] != principal['invocationId']
+                    or row['bootId'].replace('-', '').lower() != principal['bootId']
+                    or fixtures.runtime.canonical_digest({
+                        'role': role, 'identity': row['cgroupIdentity']})[7:] != principal['cgroupDigest']
+                    or receipt['status'] != 'captured' or role_record['status'] != 'captured'
+                    or role_record['record']['stopReason'] != 'controller-reconciliation'):
+                return None
+            stopped = receipt['record']
+            if (any(stopped[key] != row[key] for key in
+                    ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                    or stopped['membership'] != 'only-stop-helper'
+                    or stopped['descendantCgroups'] != 0
+                    or not context['triggerStartedNs'] < stopped['startedMonotonicNs']
+                        <= stopped['observedMonotonicNs'] <= context['terminalObservedNs']):
+                return None
+    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+    witness = {'caseId': 'controller-restart', 'triggerDigest': '',
+        'trigger': {'kind': 'controller-restart', 'eventDigest': context['triggerEventDigest']},
+        'triggerStartedNs': context['triggerStartedNs'],
+        'terminalObservedNs': context['terminalObservedNs'],
+        'roles': principals['roles'], 'populatedCgroups': [],
+        'remainingDescendants': 0, 'retention': 'retained'}
+    commitment = acceptance.payload_commitment('controller-restart', witness)
+    witness['triggerDigest'] = commitment
+    return witness, {'startedMonotonicNs': context['triggerStartedNs'],
+                     'finishedMonotonicNs': context['terminalObservedNs']}, commitment
+
+
 def positive_case_attempt(report, result, fixture, host_started_ns, host_finished_ns,
                           diagnostics=None, terminal=None):
     """Build only cases backed by actual host, app and kernel observations."""
@@ -582,6 +667,14 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         observations.append({'caseId': 'cancellation', 'status': 'passed',
             'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
             **cancellation_window, 'witness': witness})
+    controller_restart = _controller_restart_case(report, diagnostics, terminal, principals)
+    if controller_restart is not None:
+        witness, restart_window, commitments['controller-restart'] = controller_restart
+        case = acceptance.CASES['controller-restart']
+        cases.append('controller-restart')
+        observations.append({'caseId': 'controller-restart', 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            **restart_window, 'witness': witness})
     attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
         'declaredCases': cases, 'observations': observations,
         'guestStopped': report['guestStopped'], 'attemptCompleted': True,
@@ -632,6 +725,7 @@ def run(args):
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
             'runtimePolicy': fixtures.preparation.launcher_policy(),
             'executionPurpose': 'startup-measurement' if getattr(args, 'startup_measurement', False) else 'positive',
+            'lifecycleScenario': getattr(args, 'lifecycle_scenario', 'cancellation'),
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
             'groups': [{'group': name, 'declaredCases': cases} for name, cases in groups()],
             'storageBudgetBytes': args.storage_budget_bytes, 'minimumFreeBytes': args.min_free_bytes,
@@ -699,6 +793,8 @@ def run(args):
                 expected = set(case_attempt['declaredCases'])
                 if isinstance(resources, dict) and 'cancellation' in resources:
                     statuses['cancellation'] = 'inconclusive'
+                if isinstance(resources, dict) and 'controllerRestart' in resources:
+                    statuses['controller-restart'] = 'inconclusive'
                 passed = {row['caseId'] for row in checked_cases['cases'] if row['status'] == 'passed'}
                 if (not {'installed-ready', 'four-role-start'} <= expected
                         or checked_cases['recordContractValid'] is not True or passed != expected
@@ -723,6 +819,8 @@ def main():
     parser.add_argument('--probe', action='store_true', help='Check capacity and inputs without allocating a VM.')
     parser.add_argument('--startup-measurement', action='store_true',
         help='Measure only installed controller startup under a fixed diagnostic ceiling; no role launch or acceptance.')
+    parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
+                        default='cancellation')
     for name in ('source', 'output', 'prepared-image', 'qemu-root', 'seed', 'ssh-key', 'known-hosts',
                  'prepared-fixtures', 'storage-root'):
         parser.add_argument('--' + name, required=True, type=Path)

@@ -1220,6 +1220,19 @@ snapshots through attempt 52 found 26 HotSpot fatal files across 20 attempts, 17
 does not by itself establish the cause or permit changing a runtime profile to claim
 the existing installed result.
 
+The next prospective lifecycle revision adds a closed `controller-restart` scenario
+selection to the same administrator test kit; the existing `cancellation` path remains
+the default and a suite selects only one trigger. After a successful positive sequence
+leaves four exact invocations running, the administrator records the current controller
+invocation and role cgroups, issues one real `systemctl restart` for the installed
+controller, then checks that the new controller invocation differs and its recovery
+retains terminal role reconciliation. The host requires all four exact stop receipts,
+`controller-reconciliation` stop reasons, empty cgroups, unchanged original campaign
+deadline and stopped guest before emitting the v8 lifecycle case. Missing proof leaves
+the case inconclusive, and no status is borrowed from attempt 52. Native Linux restricted
+offline discovery passed 425 tests with one skip after this preparation; installed
+execution remains required.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

@@ -218,6 +218,55 @@ class CancellationObservationTest(unittest.TestCase):
                 driver.complete_cancellation(workload, before)
 
 
+class ControllerRestartObservationTest(unittest.TestCase):
+    def test_fixed_restart_requires_a_distinct_real_manager_invocation(self):
+        active = {'triggerStartedNs': 10, 'campaignDeadlineNs': time.monotonic_ns() + 10**10,
+                  'preRoles': [{'role': role, 'managerInvocation': format(index + 1, '032x'),
+                                'bootId': 'boot', 'cgroupIdentity': [1, index + 1],
+                                'mainPid': 1000 + index}
+                               for index, role in enumerate(driver.ROLE_NAMES)]}
+        before = {'InvocationID': 'a' * 32, 'ActiveState': 'active',
+                  'SubState': 'running', 'MainPID': '100', 'Result': 'success'}
+        after = dict(before, InvocationID='b' * 32, MainPID='200')
+        with patch.object(driver, 'begin_cancellation', return_value=active), \
+                patch.object(driver, 'controller_unit_state', side_effect=[before, after]) as observed, \
+                patch.object(driver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
+            intent = driver.begin_controller_restart(SimpleNamespace(), {}, {})
+            result = driver.trigger_controller_restart(intent)
+        self.assertEqual('pr315-administrator-controller-restart', result['kind'])
+        self.assertEqual('b' * 32, result['afterController']['InvocationID'])
+        self.assertEqual(2, observed.call_count)
+        self.assertEqual(['/usr/bin/systemctl', 'restart',
+                          'cryptad-workload-controller.service'], run.call_args.args[0])
+        with patch.object(driver, 'controller_unit_state', return_value=before), \
+                patch.object(driver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+            with self.assertRaisesRegex(ValueError, 'invocation-unchanged'):
+                driver.trigger_controller_restart(intent)
+
+    def test_terminal_reconciliation_requires_all_four_exact_stop_reasons(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'authority').mkdir()
+            rows = [{'role': role, 'managerInvocation': format(index + 1, '032x'),
+                     'bootId': 'boot', 'cgroupIdentity': [1, index + 1],
+                     'mainPid': 1000 + index}
+                    for index, role in enumerate(driver.ROLE_NAMES)]
+            records = {row['role']: {'stopReason': 'controller-reconciliation'} for row in rows}
+            def read(path):
+                role = path.name.split('.')[0].removesuffix('-stop')
+                return next(row for row in rows if row['role'] == role) if path.name.endswith('-stop.json') else records[role]
+            workload = SimpleNamespace(ROOT=root, locked=nullcontext, read=read,
+                manager=lambda role, operation: {'ActiveState': 'inactive', 'SubState': 'dead',
+                                                  'MainPID': '0'}, quiescent=lambda role: True)
+            context = {'triggerStartedNs': time.monotonic_ns() - 100, 'preRoles': rows}
+            completed = driver.complete_controller_restart(workload, context)
+            self.assertEqual([], completed['populatedCgroups'])
+            self.assertEqual(0, completed['remainingDescendants'])
+            records['relay-no-apps']['stopReason'] = 'requested'
+            with self.assertRaisesRegex(ValueError, 'terminal-mismatch'):
+                driver.complete_controller_restart(workload, context)
+
+
 class CleanupTest(unittest.TestCase):
     def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):
         self.assertEqual(190, driver.readiness_deadline(999 * 10**9, 100))

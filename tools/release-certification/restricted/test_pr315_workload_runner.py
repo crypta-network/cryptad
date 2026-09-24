@@ -169,6 +169,53 @@ class RunnerTests(unittest.TestCase):
             report, result, fixture, 10, 20, {'cancellation': invalid_context}, terminal)
         self.assertNotIn('cancellation', rejected['declaredCases'])
 
+    def test_controller_restart_requires_changed_invocation_and_reconciled_role_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            terminal['controllerRecords'][role]['record']['stopReason'] = 'controller-reconciliation'
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 210 + index
+            receipt['observedMonotonicNs'] = 220 + index
+        before = {'InvocationID': 'b' * 32, 'ActiveState': 'active',
+                  'SubState': 'running', 'MainPID': '100', 'Result': 'success'}
+        after = dict(before, InvocationID='c' * 32, MainPID='200')
+        event = {'kind': 'controller-restart', 'roles': rows,
+                 'campaignDeadlineNs': 1000, 'oldControllerInvocation': before['InvocationID']}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-controller-restart',
+                   'triggerStartedNs': 200, 'triggerEventDigest':
+                       runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'beforeController': before, 'restartReturnCode': 0,
+                   'afterController': after, 'terminalObservedNs': 300,
+                   'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50, 'finishedMonotonicNs': 100}}
+        fixture = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': context}, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('controller-restart', attempt['declaredCases'])
+        invalid = copy.deepcopy(context)
+        invalid['afterController']['InvocationID'] = before['InvocationID']
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+        invalid_terminal = copy.deepcopy(terminal)
+        invalid_terminal['controllerRecords']['relay-no-apps']['record']['stopReason'] = 'requested'
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': context}, invalid_terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
         self.assertEqual([8, 26, 11], [len(names) for _, names in groups])

@@ -186,6 +186,7 @@ class StartupTransportTests(unittest.TestCase):
         self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B',
             str(guest.KIT / 'pr315_workload_guest.py'), '--installed',
             '--fixture-manifest-digest', 'a' * 64, '--product-source-commit', 'b' * 40,
+            '--lifecycle-scenario', 'cancellation',
             '--startup-measurement'], run.call_args.args[0])
         fixtures.verify.assert_called_once_with(guest.FIXTURES, 'a' * 64, guest.SOURCE, 'b' * 40)
 
@@ -202,7 +203,8 @@ class StartupTransportTests(unittest.TestCase):
                 patch.object(guest.sys, 'path', list(sys.path)), \
                 patch.object(guest, 'KIT', Path(guest.__file__).resolve().parent):
             result, code = guest.installed('a' * 64, 'b' * 40, startup_measurement=True)
-        driver.execute.assert_called_once_with(startup_measurement=True)
+        driver.execute.assert_called_once_with(startup_measurement=True,
+                                               lifecycle_scenario='cancellation')
         fixtures.materialize_selection.assert_called_once_with(guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
         workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
         self.assertFalse(result['installedPositiveExecuted'])

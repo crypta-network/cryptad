@@ -313,13 +313,16 @@ def identity_observations(identity):
 
 def workload_guest_command(args):
     """One fixed administrator-kit invocation; no arbitrary command or shell selection."""
+    scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
-            or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None):
+            or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
+            or scenario not in ('cancellation', 'controller-restart')):
         raise ValueError('workload-guest-command-identity-invalid')
     return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
             'pr315_workload_guest.py --fixture-manifest-digest '
             + args.fixture_manifest_digest + ' --product-source-commit '
             + args.product_source_commit
+            + ' --lifecycle-scenario ' + scenario
             + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
             + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 

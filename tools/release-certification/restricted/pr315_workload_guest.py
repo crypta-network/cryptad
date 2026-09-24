@@ -18,9 +18,11 @@ FIXTURES = SOURCE / 'build/pr315-inputs'
 KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restricted')
 STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart')
 
 
-def execute(manifest_digest, product_commit, *, startup_measurement=False):
+def execute(manifest_digest, product_commit, *, startup_measurement=False,
+            lifecycle_scenario='cancellation'):
     global STAGE
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
@@ -43,12 +45,14 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False):
     result = subprocess.run(['/usr/bin/python3', '-I', '-S', '-B', str(KIT / Path(__file__).name),
         '--installed', '--fixture-manifest-digest', manifest_digest,
         '--product-source-commit', product_commit,
+        '--lifecycle-scenario', lifecycle_scenario,
         *(['--startup-measurement'] if startup_measurement else [])], stdin=subprocess.DEVNULL,
         timeout=3900, env=integration.ENV, check=False)
     return None, result.returncode
 
 
-def installed(manifest_digest, product_commit, *, startup_measurement=False):
+def installed(manifest_digest, product_commit, *, startup_measurement=False,
+              lifecycle_scenario='cancellation'):
     global STAGE
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
@@ -64,7 +68,8 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False):
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
     STAGE = 'startup-measurement' if startup_measurement else 'positive-driver'
-    return driver.execute(startup_measurement=startup_measurement), 0
+    return driver.execute(startup_measurement=startup_measurement,
+                          lifecycle_scenario=lifecycle_scenario), 0
 
 
 def _bounded_text(value, maximum):
@@ -152,13 +157,16 @@ def main():
     parser.add_argument('--product-source-commit', required=True)
     parser.add_argument('--installed', action='store_true')
     parser.add_argument('--startup-measurement', action='store_true')
+    parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
+                        default='cancellation')
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):
         parser.error('invalid fixed source or fixture identity')
     operation = installed if args.installed else execute
     result, code = operation(args.fixture_manifest_digest, args.product_source_commit,
-                             startup_measurement=args.startup_measurement)
+                             startup_measurement=args.startup_measurement,
+                             lifecycle_scenario=args.lifecycle_scenario)
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return code

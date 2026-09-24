@@ -30,6 +30,7 @@ VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -142,6 +143,78 @@ def complete_cancellation(workload, context):
         finished = time.monotonic_ns()
     if finished <= context['triggerStartedNs']:
         raise ValueError('workload-cancellation-clock-invalid')
+    return {**context, 'terminalObservedNs': finished,
+            'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
+
+
+def controller_unit_state():
+    """Project the fixed installed controller's actual systemd invocation."""
+    command = ['/usr/bin/systemctl', 'show', 'cryptad-workload-controller.service',
+               '--property=InvocationID,ActiveState,SubState,MainPID,Result', '--no-pager']
+    process = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
+                             env=ENV, timeout=35, check=True)
+    if len(process.stdout) > 8192 or len(process.stderr) > 8192:
+        raise ValueError('workload-controller-state-output-limit')
+    state = dict(line.split('=', 1) for line in process.stdout.decode().splitlines() if '=' in line)
+    if (set(state) != {'InvocationID', 'ActiveState', 'SubState', 'MainPID', 'Result'}
+            or len(state['InvocationID']) != 32
+            or any(character not in '0123456789abcdef' for character in state['InvocationID'])
+            or not state['MainPID'].isdecimal()):
+        raise ValueError('workload-controller-state-invalid')
+    return state
+
+
+def begin_controller_restart(workload, handoff, result):
+    """Bind a fixed restart trigger to four independently observed active role cgroups."""
+    from cross_version_runtime import canonical_digest
+    active = begin_cancellation(workload, handoff, result)
+    before = controller_unit_state()
+    if (before['ActiveState'] != 'active' or before['SubState'] != 'running'
+            or int(before['MainPID']) <= 0):
+        raise ValueError('workload-controller-restart-not-active')
+    event = {'kind': 'controller-restart', 'roles': active['preRoles'],
+             'campaignDeadlineNs': active['campaignDeadlineNs'],
+             'oldControllerInvocation': before['InvocationID']}
+    started = time.monotonic_ns()
+    if started >= active['campaignDeadlineNs']:
+        raise ValueError('workload-controller-restart-deadline')
+    return {'schemaVersion': 1, 'kind': 'pr315-administrator-controller-restart',
+            'triggerStartedNs': started,
+            'triggerEventDigest': canonical_digest(event)[7:],
+            'campaignDeadlineNs': active['campaignDeadlineNs'],
+            'preRoles': active['preRoles'], 'beforeController': before}
+
+
+def trigger_controller_restart(context):
+    """Restart only the exact installed controller unit while its four roles are active."""
+    process = subprocess.run(['/usr/bin/systemctl', 'restart',
+                              'cryptad-workload-controller.service'],
+                             stdin=subprocess.DEVNULL, capture_output=True,
+                             env=ENV, timeout=100, check=False)
+    after = controller_unit_state()
+    if after['InvocationID'] == context['beforeController']['InvocationID']:
+        raise ValueError('workload-controller-restart-invocation-unchanged')
+    return {**context, 'restartReturnCode': process.returncode, 'afterController': after}
+
+
+def complete_controller_restart(workload, context):
+    """Confirm BindsTo termination and retained reconciliation after the new invocation."""
+    with workload.locked():
+        for row in context['preRoles']:
+            role = row['role']
+            state = workload.manager(role, 'show')
+            receipt = workload.read(workload.ROOT / 'authority' / (role + '-stop.json'))
+            record = workload.read(workload.ROOT / 'authority' / (role + '.json'))
+            if (state['ActiveState'] not in {'inactive', 'failed'}
+                    or state['SubState'] not in {'dead', 'failed'} or state['MainPID'] != '0'
+                    or not workload.quiescent(role)
+                    or record['stopReason'] != 'controller-reconciliation'
+                    or any(receipt[key] != row[key] for key in
+                           ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))):
+                raise ValueError('workload-controller-restart-terminal-mismatch')
+        finished = time.monotonic_ns()
+    if finished <= context['triggerStartedNs']:
+        raise ValueError('workload-controller-restart-clock-invalid')
     return {**context, 'terminalObservedNs': finished,
             'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
 
@@ -489,7 +562,9 @@ def observer_failure(error):
     return result
 
 
-def execute(*, startup_measurement=False):
+def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
+    if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
+        raise ValueError('workload-lifecycle-scenario-invalid')
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
     sys.path.insert(0, str(INSTALLED / 'tools/release-certification/restricted'))
@@ -528,6 +603,7 @@ def execute(*, startup_measurement=False):
                    'before': memory_snapshot(), 'cleanup': 'not-completed'}
     sentinel = None
     cancellation = None
+    controller_restart = None
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
@@ -592,7 +668,7 @@ def execute(*, startup_measurement=False):
                       campaignDeadlineMonotonicNs=campaign_deadline,
                       workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
-        if not startup_measurement:
+        if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)
                 diagnostics['cancellation'] = cancellation
@@ -600,6 +676,15 @@ def execute(*, startup_measurement=False):
                     subprocess.SubprocessError) as error:
                 diagnostics['cancellation'] = {'status': 'unavailable-or-unsafe',
                                                'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and lifecycle_scenario == 'controller-restart':
+            try:
+                active = begin_controller_restart(workload, handoff, result)
+                controller_restart = trigger_controller_restart(active)
+                diagnostics['controllerRestart'] = controller_restart
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
+                                                    'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -624,6 +709,14 @@ def execute(*, startup_measurement=False):
                             subprocess.SubprocessError) as error:
                         diagnostics['cancellation'] = {'status': 'unavailable-or-unsafe',
                                                        'exceptionType': type(error).__name__[:128]}
+                if controller_restart is not None:
+                    try:
+                        diagnostics['controllerRestart'] = complete_controller_restart(
+                            workload, controller_restart)
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                            subprocess.SubprocessError) as error:
+                        diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
+                                                            'exceptionType': type(error).__name__[:128]}
             finally:
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
@@ -643,6 +736,8 @@ def execute(*, startup_measurement=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
+                        default='cancellation')
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:
@@ -651,7 +746,7 @@ def main():
     if not args.execute:
         print(json.dumps({'status': 'prerequisites-present-not-executed', 'protectedExecutionEnabled': False}))
         return 0
-    print(json.dumps(execute(), sort_keys=True))
+    print(json.dumps(execute(lifecycle_scenario=args.lifecycle_scenario), sort_keys=True))
     return 0
 
 
