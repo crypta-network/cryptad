@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -825,6 +826,91 @@ class ControllerRequestTest(unittest.TestCase):
             self.assertEqual('start', controller.serve(connection, 1000))
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
+
+    def test_only_exact_observer_control_probe_routes_to_denied_fixed_method(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with patch.object(controller, '_controller_process', return_value=target), \
+                patch.object(controller, '_observer_control_denial',
+                             return_value='pr315-observer-control') as denial:
+            connection = FakeConnection(b'P' + raw)
+            self.assertEqual('pr315-observer-control', controller.serve(connection, 1000))
+            self.assertEqual([b'R'], connection.sent)
+            self.assertEqual((HANDLE, 123, 1000, raw), denial.call_args.args[1:5])
+            self.assertEqual(target, denial.call_args.args[5])
+            self.assertGreater(denial.call_args.args[6], target['observedMonotonicNs'])
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw, uid=2000), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(raw), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw.replace(b'pr315-observer-control',
+                                                            b'pr315-observer-control-extra')), 1000)
+            denial.assert_called_once()
+
+    @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED'), 'Linux peer credentials required')
+    def test_observer_control_request_follows_real_socket_readiness_barrier(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with ExitStack() as stack:
+            server, client = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+            stack.enter_context(server)
+            stack.enter_context(client)
+            stack.enter_context(patch.object(controller, '_controller_process', return_value=target))
+            denial = stack.enter_context(patch.object(controller, '_observer_control_denial',
+                return_value='pr315-observer-control'))
+            outcomes = []
+            worker = threading.Thread(target=lambda: outcomes.append(
+                controller.serve(server, os.getuid())), daemon=True)
+            worker.start()
+            client.sendall(b'P')
+            client.settimeout(2)
+            self.assertEqual(b'R', client.recv(1))
+            client.sendall(raw)
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(['pr315-observer-control'], outcomes)
+        self.assertEqual((HANDLE, os.getpid(), os.getuid(), raw), denial.call_args.args[1:5])
+        self.assertEqual(target, denial.call_args.args[5])
+        self.assertGreater(denial.call_args.args[6], target['observedMonotonicNs'])
+
+    def test_observer_control_denial_retains_root_target_and_exact_sent_response(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        moment = time.monotonic_ns()
+        controller_before = {'invocationId': 'a' * 32, 'cgroupIdentity': [1, 12],
+                             'bootId': BOOT, 'observedMonotonicNs': moment - 1000}
+        controller_after = dict(controller_before, observedMonotonicNs=moment + 10**9)
+        sender = {'state': 'running', 'stateDigest': 'b' * 64,
+                  'provenance': 'controller-kernel-sample',
+                  'managerInvocation': INVOCATION, 'cgroupIdentity': [1, 99], 'bootId': BOOT}
+        actor = {'pid': 123, 'uid': 1000, 'startTicks': 45}
+        connection = FakeConnection(b'')
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(controller, '_observer_peer', return_value=actor))
+            stack.enter_context(patch.object(controller, '_controller_process',
+                                            side_effect=[controller_before, controller_after]))
+            stack.enter_context(patch.object(workload, 'observe', side_effect=[sender, sender]))
+            stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+            stack.enter_context(patch.object(workload, 'retained',
+                                            return_value=({}, 'candidate-sender', {})))
+            stack.enter_context(patch.object(workload, 'read',
+                                            return_value={'probeIdentity': {'digest': 'fixed'}}))
+            for name in ('admit', 'exact', 'manager'):
+                stack.enter_context(patch.object(workload, name))
+            written = stack.enter_context(patch.object(workload, 'write'))
+            self.assertEqual('pr315-observer-control', controller._observer_control_denial(
+                connection, HANDLE, 123, 1000, raw,
+                dict(controller_before, observedMonotonicNs=moment - 1000), moment))
+        self.assertEqual([controller.DENIED_RESPONSE], connection.sent)
+        self.assertEqual(1, written.call_count)
+        target, audit = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/observer-control-denial.json', target)
+        self.assertEqual(actor, audit['actor'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), audit['requestDigest'])
+        self.assertEqual(hashlib.sha256(controller.DENIED_RESPONSE).hexdigest(), audit['responseDigest'])
+        self.assertTrue(written.call_args.kwargs['create'])
 
     def test_removed_fnp_observation_method_is_rejected(self):
         raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode() + b'\n'

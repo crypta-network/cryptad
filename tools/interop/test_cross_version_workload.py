@@ -2,10 +2,12 @@
 import array
 from contextlib import contextmanager
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
 import socket
+import struct
 import tempfile
 import threading
 import time
@@ -187,6 +189,62 @@ class KernelRosterTests(unittest.TestCase):
 
 
 class ObserverPolicyTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED') and Path('/proc/self/stat').is_file(),
+                         'Linux peer credentials and process epoch required')
+    def test_fixed_observer_control_denial_checkpoint_excludes_handle(self):
+        class FakeChannel:
+            def __init__(self):
+                self.response = b'R{"error":"restricted-workload-request-failed"}\n'
+                self.request = None
+                self.sent = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_arguments):
+                return False
+
+            def settimeout(self, value):
+                self.timeout = value
+
+            def connect(self, address):
+                self.address = address
+
+            def getsockopt(self, *_arguments):
+                return struct.pack('3i', 1, 0, 0)
+
+            def sendall(self, value):
+                self.request = value
+                self.sent.append(value)
+
+            def recv(self, length):
+                value, self.response = self.response[:length], self.response[length:]
+                return value
+
+        with tempfile.TemporaryDirectory() as temporary:
+            adapter = object.__new__(workload.InstalledWorkloadAdapter)
+            adapter.root = Path(temporary)
+            adapter.private = {'nodes': {'candidate-sender': {'apps': [
+                {'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}}}
+            adapter.handles = {'candidate-sender': HANDLE}
+            adapter.initial_role_roster = {'observerUid': 1001, 'roles': []}
+            adapter.initial_role_window = {'startedMonotonicNs': 10,
+                                           'finishedMonotonicNs': 20}
+            adapter.initial_sender_state = 'c' * 64
+            adapter.remaining = lambda maximum: maximum
+            channel = FakeChannel()
+            with mock.patch.object(workload.socket, 'socket', return_value=channel):
+                adapter.probe_observer_control()
+            path = adapter.root / 'pr315-observer-control.private.json'
+            value = json.loads(path.read_text())
+            self.assertEqual(workload.SOCKET, channel.address)
+            self.assertEqual(b'P', channel.sent[0])
+            self.assertEqual(hashlib.sha256(channel.request).hexdigest(), value['requestDigest'])
+            self.assertEqual(hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest(),
+                             value['responseDigest'])
+            self.assertNotIn(HANDLE, path.read_text())
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+
     def test_probe_cohort_captures_four_active_roles_before_app_launch(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.private = {'nodes': {'candidate-sender': {'apps': [
@@ -354,6 +412,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()
         adapter.capture_probe_target_roster = mock.Mock()
+        adapter.probe_observer_control = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
                                                                'managerInvocation': 'f' * 32})
@@ -387,6 +446,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.start = mock.Mock()
         adapter.connect = mock.Mock()
         adapter.capture_probe_target_roster = mock.Mock()
+        adapter.probe_observer_control = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={
             'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})

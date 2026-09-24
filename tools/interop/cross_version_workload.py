@@ -637,6 +637,63 @@ class InstalledWorkloadAdapter:
         self.initial_role_window = {'startedMonotonicNs': started, 'finishedMonotonicNs': finished}
         self.initial_sender_state = samples['candidate-sender'].get('stateDigest')
 
+    def probe_observer_control(self):
+        """Send one forbidden fixed method to the installed root controller."""
+        if len(self.private['nodes']['candidate-sender']['apps']) != 2:
+            return
+        if (self.initial_role_roster is None or self.initial_role_window is None
+                or not isinstance(self.initial_sender_state, str)):
+            fail('observer-control-premise-missing')
+        handle = self.handles['candidate-sender']
+        request_raw = (b'{"method":"pr315-observer-control","handle":"'
+                       + handle.encode() + b'"}\n')
+        response_raw = b'{"error":"restricted-workload-request-failed"}\n'
+        actor_pid = os.getpid()
+        actor_start = int(Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()[19])
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+            channel.settimeout(self.remaining(50))
+            channel.connect(SOCKET)
+            _pid, uid, _gid = struct.unpack('3i', channel.getsockopt(
+                socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+            if uid != 0:
+                fail('observer-control-peer-not-root')
+            channel.sendall(b'P')
+            if channel.recv(1) != b'R':
+                fail('observer-control-target-not-ready')
+            channel.sendall(request_raw)
+            raw = bytearray()
+            while not raw.endswith(b'\n') and len(raw) <= len(response_raw):
+                block = channel.recv(len(response_raw) + 1 - len(raw))
+                if not block:
+                    break
+                raw.extend(block)
+            if bytes(raw) != response_raw:
+                fail('observer-control-denial-not-observed')
+        if int(Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()[19]) != actor_start:
+            fail('observer-control-actor-epoch-changed')
+        value = {'schemaVersion': 1, 'kind': 'pr315-observer-control-denial-checkpoint',
+                 'caseId': 'observer-control', 'actorPid': actor_pid,
+                 'actorStartTicks': actor_start,
+                 'roleKernelRoster': self.initial_role_roster,
+                 'roleKernelRosterWindow': self.initial_role_window,
+                 'senderStateBefore': self.initial_sender_state,
+                 'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                 'responseDigest': hashlib.sha256(response_raw).hexdigest()}
+        raw = json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+        if len(raw) > 8192:
+            fail('observer-control-checkpoint-size-limit')
+        target = self.root / 'pr315-observer-control.private.json'
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
     def retain_probe_checkpoint(self, selected, worker, administrator):
         """Durably retain the controller-kernel AppHost child before later workload faults."""
         if (selected.get('appId') != 'pr315-probe' or self.initial_role_roster is None
@@ -838,6 +895,7 @@ class InstalledWorkloadAdapter:
                 self.start(role)
             self.connect()
             self.capture_probe_target_roster()
+            self.probe_observer_control()
             self.provision_apps()
             self.content_chk()
             before = dict(self.nodes['candidate-sender'])

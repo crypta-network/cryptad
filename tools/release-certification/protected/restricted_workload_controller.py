@@ -17,6 +17,7 @@ import select
 import signal
 import socket
 import struct
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -31,6 +32,8 @@ STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'lis
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp',
                      'connect-http', 'bootstrap-mail'})
 EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
+OBSERVER_CONTROL_REQUEST = re.compile(rb'\{"method":"pr315-observer-control","handle":"([0-9a-f]{64})"\}\n')
+DENIED_RESPONSE = b'{"error":"restricted-workload-request-failed"}\n'
 
 
 @contextmanager
@@ -92,6 +95,98 @@ def _audit_exchange(method, handle, request_raw, response_raw, started, finished
         # Audit absence cannot turn a successful existing connection into an error.
         # The host verifier will leave the case inconclusive without this root record.
         pass
+
+
+def _controller_process():
+    """Identify this serving process against its fixed active systemd unit."""
+    unit = 'cryptad-workload-controller.service'
+    selected = subprocess.run(['/usr/bin/systemctl', 'show', unit,
+        '--property=InvocationID,ActiveState,SubState,MainPID,ControlGroup', '--no-pager'],
+        stdin=subprocess.DEVNULL, capture_output=True, env=workload.ENV, timeout=5, check=True)
+    if len(selected.stdout) > 8192 or selected.stderr:
+        workload.reject('controller-target-unavailable')
+    state = dict(line.split('=', 1) for line in selected.stdout.decode().splitlines() if '=' in line)
+    path = '/system.slice/' + unit
+    if (set(state) != {'InvocationID', 'ActiveState', 'SubState', 'MainPID', 'ControlGroup'}
+            or re.fullmatch('[0-9a-f]{32}', state['InvocationID']) is None
+            or state['ActiveState'] != 'active' or state['SubState'] != 'running'
+            or state['MainPID'] != str(os.getpid()) or state['ControlGroup'] != path
+            or Path('/proc/self/cgroup').read_text().strip() != '0::' + path):
+        workload.reject('controller-target-changed')
+    info = (Path('/sys/fs/cgroup') / path.removeprefix('/')).stat()
+    return {'invocationId': state['InvocationID'],
+            'cgroupIdentity': [info.st_dev, info.st_ino], 'bootId': workload.boot(),
+            'observedMonotonicNs': time.monotonic_ns()}
+
+
+def _observer_peer(pid, expected_uid):
+    """Bind the fixed socket peer to one live kernel PID and UID epoch."""
+    if type(pid) is not int or pid <= 1:
+        workload.reject('observer-peer-invalid')
+    root = Path('/proc') / str(pid)
+    status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines() if ':' in line)
+    if set(map(int, status['Uid'].split())) != {expected_uid}:
+        workload.reject('observer-peer-changed')
+    stat_fields = (root / 'stat').read_text().rsplit(')', 1)[1].split()
+    return {'pid': pid, 'uid': expected_uid, 'startTicks': int(stat_fields[19])}
+
+
+def _observer_control_denial(connection, handle, peer_pid, peer_uid, request_raw,
+                             target_before, request_received_ns):
+    """Exercise one fixed forbidden controller method while its target is active."""
+    before_peer = _observer_peer(peer_pid, peer_uid)
+    current_controller = _controller_process()
+    if (target_before['invocationId'] != current_controller['invocationId']
+            or target_before['cgroupIdentity'] != current_controller['cgroupIdentity']
+            or target_before['bootId'] != current_controller['bootId']
+            or target_before['observedMonotonicNs'] >= request_received_ns):
+        workload.reject('observer-control-target-changed')
+    before = workload.observe(handle)
+    with workload.locked():
+        campaign, role, record = workload.retained(handle)
+        if role != 'candidate-sender' or not isinstance(workload.read(
+                workload.ROOT / 'roles/candidate-sender/launch.json').get('probeIdentity'), dict):
+            workload.reject('observer-control-cohort-invalid')
+        workload.admit(campaign)
+        workload.exact(role, record, workload.manager(role, 'show'))
+    if (before.get('state') != 'running' or before.get('stateDigest') is None
+            or before.get('provenance') != 'controller-kernel-sample'):
+        workload.reject('observer-control-target-inactive')
+    request_observed = request_received_ns
+    connection.sendall(DENIED_RESPONSE)
+    response_sent = time.monotonic_ns()
+    try:
+        after = workload.observe(handle)
+        after_controller = _controller_process()
+        after_peer = _observer_peer(peer_pid, peer_uid)
+        if (before_peer != after_peer or target_before['invocationId'] != after_controller['invocationId']
+                or target_before['cgroupIdentity'] != after_controller['cgroupIdentity']
+                or target_before['bootId'] != after_controller['bootId']
+                or before['managerInvocation'] != after['managerInvocation']
+                or before['cgroupIdentity'] != after['cgroupIdentity']
+                or before['bootId'] != after['bootId']
+                or before['stateDigest'] != after['stateDigest']
+                or after.get('state') != 'running'
+                or not target_before['observedMonotonicNs']
+                    < request_observed < response_sent
+                    < after_controller['observedMonotonicNs']):
+            return 'pr315-observer-control'
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-control-denial',
+                 'caseId': 'observer-control', 'actor': before_peer,
+                 'targetBefore': target_before, 'targetAfter': after_controller,
+                 'senderManagerInvocation': before['managerInvocation'],
+                 'senderCgroupIdentity': before['cgroupIdentity'],
+                 'senderStateBefore': before['stateDigest'],
+                 'senderStateAfter': after['stateDigest'],
+                 'requestObservedNs': request_observed,
+                 'responseSentNs': response_sent,
+                 'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                 'responseDigest': hashlib.sha256(DENIED_RESPONSE).hexdigest()}
+        workload.write(workload.ROOT / 'authority/observer-control-denial.json', audit, create=True)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        # The already delivered denial stands; absent audit never grants acceptance.
+        pass
+    return 'pr315-observer-control'
 
 
 def _http(sock, path, headers):
@@ -174,11 +269,20 @@ def bootstrap(handle):
 
 def serve(connection, expected_uid):
     credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
-    _pid, uid, _gid = struct.unpack('3i', credentials)
+    pid, uid, _gid = struct.unpack('3i', credentials)
     if uid != expected_uid:
         workload.reject('peer-denied')
     connection.settimeout(5)
-    raw = bytearray()
+    first = connection.recv(1)
+    target_before = None
+    if first == b'P':
+        # A fixed test-only readiness byte establishes an active controller
+        # snapshot before the observer can send the forbidden request bytes.
+        target_before = _controller_process()
+        connection.sendall(b'R')
+        raw = bytearray()
+    else:
+        raw = bytearray(first)
     while b'\n' not in raw:
         block = connection.recv(257 - len(raw))
         if not block:
@@ -188,6 +292,13 @@ def serve(connection, expected_uid):
             workload.reject('request-limit')
     if raw[-1:] != b'\n' or raw.count(b'\n') != 1:
         workload.reject('request-framing-invalid')
+    request_received_ns = time.monotonic_ns()
+    probe = OBSERVER_CONTROL_REQUEST.fullmatch(bytes(raw))
+    if probe is not None:
+        if target_before is None:
+            workload.reject('observer-control-handshake-required')
+        return _observer_control_denial(connection, probe[1].decode(), pid, uid, bytes(raw),
+                                        target_before, request_received_ns)
     selected = request(bytes(raw[:-1]))
     method, handle = selected['method'], selected['handle']
     request_raw = bytes(raw)

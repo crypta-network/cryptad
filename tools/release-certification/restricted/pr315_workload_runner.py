@@ -815,6 +815,100 @@ def probe_denial_attempt(report, fixture, terminal):
         return None
 
 
+def observer_control_denial_attempt(report, fixture, terminal):
+    """Bind a real forbidden observer request to its root serving process and role epoch."""
+    if (report.get('guestStopped') is not True or not isinstance(terminal, dict)
+            or terminal.get('cleanupReportedByCaller') is not True
+            or fixture.get('schemaVersion') != 4):
+        return None
+    try:
+        retained = terminal['observerControlCheckpoint']
+        audited = terminal['observerControlAudit']
+        if retained['status'] != 'captured' or audited['status'] != 'captured':
+            return None
+        observer, root = retained['record'], audited['record']
+        principals = observer['roleKernelRoster']
+        window = observer['roleKernelRosterWindow']
+        if not acceptance._principals(principals) or not _bounded_window(window):
+            return None
+        sender = next(row for row in principals['roles'] if row['role'] == 'candidate-sender')
+        actor = root['actor']
+        before, after = root['targetBefore'], root['targetAfter']
+        fixed_response = b'{"error":"restricted-workload-request-failed"}\n'
+        if (root['caseId'] != 'observer-control' or observer['caseId'] != 'observer-control'
+                or actor != {'pid': observer['actorPid'],
+                             'uid': principals['observerUid'],
+                             'startTicks': observer['actorStartTicks']}
+                or root['requestDigest'] != observer['requestDigest']
+                or root['responseDigest'] != observer['responseDigest']
+                or root['responseDigest'] != hashlib.sha256(fixed_response).hexdigest()
+                or root['senderManagerInvocation'] != sender['invocationId']
+                or sender['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender', 'identity': root['senderCgroupIdentity']})[7:]
+                or root['senderStateBefore'] != observer['senderStateBefore']
+                or root['senderStateBefore'] != root['senderStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] != 'sha256:' + root['senderStateAfter']
+                or before['invocationId'] != after['invocationId']
+                or before['cgroupIdentity'] != after['cgroupIdentity']
+                or before['bootId'] != after['bootId']
+                or before['bootId'].replace('-', '').lower() != sender['bootId']
+                or re.fullmatch('[0-9a-f]{32}', str(before['invocationId'])) is None
+                or not isinstance(before['cgroupIdentity'], list)
+                or len(before['cgroupIdentity']) != 2
+                or any(type(part) is not int or part <= 0
+                       for part in before['cgroupIdentity'])
+                or not window['finishedMonotonicNs']
+                    < before['observedMonotonicNs'] < root['requestObservedNs']
+                    < root['responseSentNs'] < after['observedMonotonicNs']):
+            return None
+        receipt = terminal['stopReceipts']['candidate-sender']
+        matching = [entry['record'] for entry in receipt.values()
+                    if isinstance(entry, dict) and entry.get('status') == 'captured'
+                    and isinstance(entry.get('record'), dict)
+                    and entry['record'].get('managerInvocation') == sender['invocationId']]
+        if (len(matching) != 1 or matching[0]['bootId'].replace('-', '').lower() != sender['bootId']
+                or matching[0]['cgroupIdentity'] != root['senderCgroupIdentity']
+                or matching[0]['membership'] != 'only-stop-helper'
+                or matching[0]['descendantCgroups'] != 0
+                or after['observedMonotonicNs'] >= matching[0]['startedMonotonicNs']):
+            return None
+        host = report['hostVerifiedIdentity']
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        case_id = 'observer-control'
+        target = {'caseId': case_id, 'target': 'manager', 'role': None,
+                  'invocationId': before['invocationId'],
+                  'cgroupDigest': fixtures.runtime.canonical_digest({
+                      'role': 'controller', 'identity': before['cgroupIdentity']})[7:],
+                  'bootId': sender['bootId'], 'probeDigest': '',
+                  'controlResponseDigest': root['responseDigest']}
+        witness = {'actorUid': principals['observerUid'], 'attackDigest': root['requestDigest'],
+                   'attackStartedNs': root['requestObservedNs'],
+                   'targetActiveBeforeNs': before['observedMonotonicNs'],
+                   'targetActiveAfterNs': after['observedMonotonicNs'],
+                   'controlResponseDigest': root['responseDigest'],
+                   'denialSource': 'controller', 'denialCode': 'policy-rejected',
+                   'unrelatedStateBefore': root['senderStateBefore'],
+                   'unrelatedStateAfter': root['senderStateAfter'], 'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': window['startedMonotonicNs'],
+                       'finishedMonotonicNs': after['observedMonotonicNs'], 'witness': witness}
+        return identity, {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True, 'principals': principals,
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def public_result(status, positive=False, reasons=(), statuses=None):
     return {'schemaVersion': 1, 'kind': 'pr315-workload-suite', 'contract': acceptance.CONTRACT,
             'profile': acceptance.PROFILE, 'status': status, 'reasons': list(reasons),
@@ -958,6 +1052,29 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
+            if (not startup_measurement and isinstance(terminal, dict)
+                    and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
+                fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
+                    args.source, args.product_source_commit)
+                host = report.get('hostVerifiedIdentity')
+                if not isinstance(host, dict):
+                    raise ValueError('workload-observer-control-host-identity-unavailable')
+                checked = reference.verified_attempt_identity(report, selected.attempt,
+                    host['bundleIdentity'], host['testKitDigest'])
+                if checked != host:
+                    raise ValueError('workload-observer-control-host-identity-changed')
+                denial = observer_control_denial_attempt(report, fixture, terminal)
+                if denial is not None:
+                    identity, case_attempt = denial
+                    checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                    if (checked_cases['recordContractValid'] is not True
+                            or next(row['status'] for row in checked_cases['cases']
+                                    if row['caseId'] == 'observer-control') != 'passed'
+                            or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                        raise ValueError('workload-observer-control-verification-failed')
+                    native_runner._save(output / 'observer-control-v8-evidence.private.json',
+                        {'attempt': case_attempt, 'assessment': checked_cases})
+                    statuses['observer-control'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,

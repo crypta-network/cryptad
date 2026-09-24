@@ -460,6 +460,65 @@ def _probe_administrator_record(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _observer_control_checkpoint(root, deadline):
+    """Retain one fixed observer-origin denial transcript without the role handle."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root, 'pr315-observer-control.private.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'caseId', 'actorPid',
+                                  'actorStartTicks', 'roleKernelRoster',
+                                  'roleKernelRosterWindow', 'senderStateBefore',
+                                  'requestDigest', 'responseDigest'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-observer-control-denial-checkpoint'
+                or value['caseId'] != 'observer-control'
+                or any(type(value[key]) is not int or value[key] <= 1
+                       for key in ('actorPid', 'actorStartTicks'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('senderStateBefore', 'requestDigest', 'responseDigest'))
+                or not isinstance(value['roleKernelRoster'], dict)
+                or not isinstance(value['roleKernelRosterWindow'], dict)):
+            raise ValueError('observer-control-checkpoint-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
+def _observer_control_audit(root, deadline):
+    """Retain only the fixed root controller denial and live target projection."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'observer-control-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'caseId', 'actor',
+                                  'targetBefore', 'targetAfter', 'senderManagerInvocation',
+                                  'senderCgroupIdentity', 'senderStateBefore',
+                                  'senderStateAfter', 'requestObservedNs',
+                                  'responseSentNs', 'requestDigest', 'responseDigest'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-observer-control-denial'
+                or value['caseId'] != 'observer-control'
+                or not isinstance(value['actor'], dict)
+                or set(value['actor']) != {'pid', 'uid', 'startTicks'}
+                or any(not isinstance(value[key], dict) or
+                       set(value[key]) != {'invocationId', 'cgroupIdentity', 'bootId',
+                                           'observedMonotonicNs'}
+                       for key in ('targetBefore', 'targetAfter'))):
+            raise ValueError('observer-control-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -482,6 +541,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'probeAppLog': {'status': 'not-captured-cleanup-unverified'},
         'probeKernelCheckpoint': {'status': 'not-captured-cleanup-unverified'},
         'probeAdministratorRecord': {'status': 'not-captured-cleanup-unverified'},
+        'observerControlCheckpoint': {'status': 'not-captured-cleanup-unverified'},
+        'observerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -512,7 +573,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                          'pr315-probe-result-second.json')
         if observer_root is not None:
             result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
+            result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
         result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
+        result['observerControlAudit'] = _observer_control_audit(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

@@ -127,6 +127,52 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        state = 'd' * 64
+        response = hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        observer = {'schemaVersion': 1, 'kind': 'pr315-observer-control-denial-checkpoint',
+                    'caseId': 'observer-control', 'actorPid': 123,
+                    'actorStartTicks': 45, 'roleKernelRoster': roster,
+                    'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                               'finishedMonotonicNs': 20},
+                    'senderStateBefore': state, 'requestDigest': 'e' * 64,
+                    'responseDigest': response}
+        target = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'observedMonotonicNs': 30}
+        root = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-control-denial',
+                'caseId': 'observer-control',
+                'actor': {'pid': 123, 'uid': roster['observerUid'], 'startTicks': 45},
+                'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=60),
+                'senderManagerInvocation': sender['invocationId'],
+                'senderCgroupIdentity': [1, 99], 'senderStateBefore': state,
+                'senderStateAfter': state, 'requestObservedNs': 40,
+                'responseSentNs': 50, 'requestDigest': observer['requestDigest'],
+                'responseDigest': response}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + state
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['observerControlCheckpoint'] = {'status': 'captured', 'record': observer}
+        terminal['observerControlAudit'] = {'status': 'captured', 'record': root}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.observer_control_denial_attempt(report, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'observer-control'))
+        for mutate in (
+                lambda row: row['observerControlAudit']['record']['actor'].update(startTicks=46),
+                lambda row: row['observerControlAudit']['record'].update(responseDigest='0' * 64),
+                lambda row: row['observerControlAudit']['record']['targetAfter'].update(
+                    observedMonotonicNs=81),
+                lambda row: row['observerControlAudit']['record'].update(senderStateAfter='0' * 64)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.observer_control_denial_attempt(report, fixture, changed))
+
     def test_probe_denial_requires_live_root_actor_target_and_immutable_app_result(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

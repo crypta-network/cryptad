@@ -161,6 +161,36 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', rejected['probeKernelCheckpoint']['status'])
         self.assertNotIn('must-not-copy', json.dumps(rejected))
 
+    def test_observer_control_denial_copies_only_fixed_root_and_observer_fields(self):
+        observer = self.observer()
+        checkpoint = {'schemaVersion': 1,
+                      'kind': 'pr315-observer-control-denial-checkpoint',
+                      'caseId': 'observer-control', 'actorPid': 123,
+                      'actorStartTicks': 456, 'roleKernelRoster': {},
+                      'roleKernelRosterWindow': {}, 'senderStateBefore': 'a' * 64,
+                      'requestDigest': 'b' * 64, 'responseDigest': 'c' * 64}
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': 'boot', 'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-observer-control-denial',
+                 'caseId': 'observer-control',
+                 'actor': {'pid': 123, 'uid': 987, 'startTicks': 456},
+                 'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=20),
+                 'senderManagerInvocation': 'e' * 32, 'senderCgroupIdentity': [1, 3],
+                 'senderStateBefore': 'a' * 64, 'senderStateAfter': 'a' * 64,
+                 'requestObservedNs': 12, 'responseSentNs': 13,
+                 'requestDigest': 'b' * 64, 'responseDigest': 'c' * 64}
+        (observer / 'pr315-observer-control.private.json').write_text(json.dumps(checkpoint))
+        path = self.root / 'authority/observer-control-denial.json'
+        path.write_text(json.dumps(audit))
+        captured = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual(checkpoint, captured['observerControlCheckpoint']['record'])
+        self.assertEqual(audit, captured['observerControlAudit']['record'])
+        path.write_text(json.dumps(dict(audit, browserToken='must-not-copy')))
+        rejected = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual('unavailable-or-unsafe', rejected['observerControlAudit']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(rejected))
+
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
         (self.root / 'authority/network.json').write_text(json.dumps({
@@ -487,6 +517,7 @@ class VolatileEvidenceTest(unittest.TestCase):
         with patch.object(evidence.snapshot, 'read_file', side_effect=read):
             result = evidence._capture(self.root, self.expected, True, observer_root=observer)
         self.assertEqual(['pr315-probe-kernel.private.json',
+                          'pr315-observer-control.private.json',
                           *['fcp-' + role + '.log' for role in evidence.ROLES]],
                          [name for root, name in reads if root == observer])
         names = [name for _root, name in reads]

@@ -1422,6 +1422,26 @@ preflight returned the expected unexecuted exit 78 with no admission reasons:
 attempt and 10,582,802,432 bytes of effective host memory. No guest was allocated
 from this preflight. The repeated C1 startup failure is still unresolved.
 
+A subsequent offline `observer-control` denial emitter uses the installed controller's
+real peer-credential-checked Unix socket. In the schema-4 cohort, the observer sends
+one fixed readiness byte; the root controller verifies its active systemd invocation
+and cgroup, then returns a fixed readiness byte. Only then does the observer send a
+single forbidden method with its already retained sender handle. The controller
+returns its actual fixed denial, checks the same peer and target process epochs plus
+the sender's active cgroup and durable-state digest, and writes a root-owned audit
+containing only the fixed actor/target identities, times and request/response hashes.
+The observer durably retains its pre-app four-role roster and matching transcript
+hashes without storing the handle. After cleanup the safe reader captures both
+fixed records; the host validates source/transport identity, the actual denied
+response, causal order, matching stop receipt and unchanged sender state before
+admitting this one denial row. A real Linux socketpair regression checks the
+readiness barrier, including that the forbidden request follows it; malformed
+requests and wrong peers still fail closed. Native Linux protected discovery passed
+530 tests with 74 skips, restricted discovery passed 437 with one skip, and the
+owning interop tests passed 48 with eight skips. These are offline checks only;
+`observer-control` remains `not-executed` in installed evidence, and no positive
+or complete acceptance verdict changes.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
