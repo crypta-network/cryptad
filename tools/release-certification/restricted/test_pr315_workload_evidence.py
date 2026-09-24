@@ -105,6 +105,22 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertGreaterEqual(result['finishedMonotonicNs'], result['startedMonotonicNs'])
         self.assertNotIn('private-topology-not-exported', json.dumps(result))
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_failed_cleanup_retains_only_root_authority_and_partial_stop_receipts(self):
+        (self.root / 'authority/candidate-sender-stop.json').write_text(json.dumps({
+            'role': 'candidate-sender', 'managerInvocation': 'a' * 32,
+            'membership': 'only-stop-helper', 'privateHandle': 'must-not-copy'}))
+        result = evidence._capture(self.root, self.expected, False)
+        self.assertFalse(result['cleanupReportedByCaller'])
+        self.assertFalse(result['quiescenceIndependentlyEstablished'])
+        self.assertEqual('captured', result['controllerRecords']['campaign']['status'])
+        self.assertEqual('captured', result['controllerRecords']['candidate-sender']['status'])
+        self.assertEqual('captured', result['stopReceipts']['candidate-sender']['current']['status'])
+        self.assertEqual('not-captured-cleanup-unverified', result['sentinel']['status'])
+        self.assertEqual('not-captured-cleanup-unverified', result['fnpCounterPair']['status'])
+        self.assertEqual('not-captured-cleanup-unverified', result['fatalLogs']['candidate-sender']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(result))
+
     def test_stop_receipts_preserve_current_and_previous_epoch_with_fixed_projection(self):
         role = 'candidate-sender'
         authority = self.root / 'authority'
@@ -125,8 +141,12 @@ class VolatileEvidenceTest(unittest.TestCase):
         (authority / (role + '.json')).write_text(json.dumps(record))
         self.assertNotIn('previous', evidence._capture(self.root, self.expected, True)['stopReceipts'][role])
 
-    def test_no_read_without_literal_completed_cleanup(self):
-        with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('must not read')):
+    def test_nonliteral_cleanup_reads_only_root_authority(self):
+        original = evidence.snapshot.read_file
+        def root_only(parent, name, **options):
+            self.assertIn(parent, (self.root, self.root / 'authority'))
+            return original(parent, name, **options)
+        with patch.object(evidence.snapshot, 'read_file', side_effect=root_only):
             for cleanup in (False, None, 1, 'true'):
                 result = evidence._capture(self.root, self.expected, cleanup)
                 self.assertEqual('not-captured-cleanup-unverified', result['sentinel']['status'])
@@ -292,7 +312,7 @@ class VolatileEvidenceTest(unittest.TestCase):
             result = evidence._capture(self.root, self.expected, True)
         self.assertEqual('not-captured-output-budget', result['fatalLogs']['candidate-sender']['status'])
         self.assertEqual('matched', result['sentinel']['status'])
-        with patch.object(evidence.snapshot, '_directory', side_effect=AssertionError('no enumeration')):
+        with patch.object(evidence, '_fatal_logs', side_effect=AssertionError('no fatal enumeration')):
             result = evidence._capture(self.root, self.expected, False)
         self.assertTrue(all(row['status'] == 'not-captured-cleanup-unverified'
                             for row in result['fatalLogs'].values()))
@@ -416,7 +436,7 @@ class VolatileEvidenceTest(unittest.TestCase):
             self.assertEqual({}, result['observerFcpLogs'])
             read.assert_not_called()
         for cleanup in (False, None, 1, 'true'):
-            with self.subTest(cleanup=cleanup), patch.object(evidence.snapshot, 'read_file') as read:
+            with self.subTest(cleanup=cleanup), patch.object(evidence, '_observer_fcp_log') as read:
                 result = evidence._capture(self.root, self.expected, cleanup, observer_root=self.observer())
                 self.assertTrue(all(row == {'status': 'not-captured-cleanup-unverified'}
                                     for row in result['observerFcpLogs'].values()))

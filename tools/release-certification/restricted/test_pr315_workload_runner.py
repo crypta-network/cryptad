@@ -193,7 +193,12 @@ class RunnerTests(unittest.TestCase):
                    'triggerStartedNs': 200, 'triggerEventDigest':
                        runner.fixtures.runtime.canonical_digest(event)[7:],
                    'campaignDeadlineNs': 1000, 'preRoles': rows,
-                   'beforeController': before, 'restartReturnCode': 0,
+                   'beforeController': before, 'killReturnCode': 0,
+                   'preStartBoundRoles': [{'role': role['role'], 'activeState': 'inactive',
+                       'subState': 'dead', 'mainPid': 0,
+                       'receiptObservedMonotonicNs': 220 + index}
+                       for index, role in enumerate(rows)],
+                   'newControllerStartRequestedNs': 240, 'startReturnCode': 0,
                    'afterController': after, 'terminalObservedNs': 300,
                    'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
@@ -207,6 +212,11 @@ class RunnerTests(unittest.TestCase):
         self.assertIn('controller-restart', attempt['declaredCases'])
         invalid = copy.deepcopy(context)
         invalid['afterController']['InvocationID'] = before['InvocationID']
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+        invalid = copy.deepcopy(context)
+        invalid['preStartBoundRoles'][0]['activeState'] = 'active'
         _, rejected = runner.positive_case_attempt(
             report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
         self.assertNotIn('controller-restart', rejected['declaredCases'])

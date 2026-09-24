@@ -219,6 +219,22 @@ class CancellationObservationTest(unittest.TestCase):
 
 
 class ControllerRestartObservationTest(unittest.TestCase):
+    def test_waits_for_all_bound_roles_and_exact_stop_receipts_before_new_start(self):
+        rows = [{'role': role, 'managerInvocation': format(index + 1, '032x'),
+                 'bootId': 'boot', 'cgroupIdentity': [1, index + 1], 'mainPid': 1000 + index}
+                for index, role in enumerate(driver.ROLE_NAMES)]
+        records = {row['role']: dict(row) for row in rows}
+        workload = SimpleNamespace(ROOT=Path('/fixed-private-root'),
+            manager=lambda role, operation: {'ActiveState': 'inactive', 'SubState': 'dead',
+                                              'MainPID': '0'},
+            read=lambda path: records[path.name.removesuffix('.json')],
+            stop_receipt=lambda role, record: {'observedMonotonicNs': 123},
+            quiescent=lambda role: True)
+        selected = driver.wait_bound_roles_stopped(workload, {
+            'preRoles': rows, 'campaignDeadlineNs': time.monotonic_ns() + 5 * 10**9})
+        self.assertEqual(set(driver.ROLE_NAMES), {row['role'] for row in selected})
+        self.assertTrue(all(row['mainPid'] == 0 for row in selected))
+
     def test_fixed_restart_requires_a_distinct_real_manager_invocation(self):
         active = {'triggerStartedNs': 10, 'campaignDeadlineNs': time.monotonic_ns() + 10**10,
                   'preRoles': [{'role': role, 'managerInvocation': format(index + 1, '032x'),
@@ -230,18 +246,24 @@ class ControllerRestartObservationTest(unittest.TestCase):
         after = dict(before, InvocationID='b' * 32, MainPID='200')
         with patch.object(driver, 'begin_cancellation', return_value=active), \
                 patch.object(driver, 'controller_unit_state', side_effect=[before, after]) as observed, \
+                patch.object(driver, 'wait_bound_roles_stopped', return_value=[
+                    {'role': row['role'], 'activeState': 'inactive', 'subState': 'dead',
+                     'mainPid': 0, 'receiptObservedMonotonicNs': 20} for row in active['preRoles']]), \
                 patch.object(driver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as run:
             intent = driver.begin_controller_restart(SimpleNamespace(), {}, {})
-            result = driver.trigger_controller_restart(intent)
+            result = driver.trigger_controller_restart(SimpleNamespace(), intent)
         self.assertEqual('pr315-administrator-controller-restart', result['kind'])
         self.assertEqual('b' * 32, result['afterController']['InvocationID'])
         self.assertEqual(2, observed.call_count)
-        self.assertEqual(['/usr/bin/systemctl', 'restart',
-                          'cryptad-workload-controller.service'], run.call_args.args[0])
+        self.assertEqual(['/usr/bin/systemctl', 'kill', '--kill-who=main', '--signal=SIGKILL',
+                          'cryptad-workload-controller.service'], run.call_args_list[0].args[0])
+        self.assertEqual(['/usr/bin/systemctl', 'start',
+                          'cryptad-workload-controller.service'], run.call_args_list[1].args[0])
         with patch.object(driver, 'controller_unit_state', return_value=before), \
+                patch.object(driver, 'wait_bound_roles_stopped', return_value=[]), \
                 patch.object(driver.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
             with self.assertRaisesRegex(ValueError, 'invocation-unchanged'):
-                driver.trigger_controller_restart(intent)
+                driver.trigger_controller_restart(SimpleNamespace(), intent)
 
     def test_terminal_reconciliation_requires_all_four_exact_stop_reasons(self):
         with tempfile.TemporaryDirectory() as temporary:

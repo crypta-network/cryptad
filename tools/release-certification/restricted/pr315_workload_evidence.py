@@ -415,6 +415,20 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                 result['wrapperLogs'][role]['excerpt'] = {'status': 'not-captured-output-budget'}
             if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                 result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
+    else:
+        # Root authority may explain a failed reconciliation. Its fixed files can be
+        # sampled safely without claiming role quiescence or reading candidate state.
+        deadline = time.monotonic() + 8
+        result['snapshotLimitations'] = 'failed-cleanup-root-authority-only-not-quiescent'
+        result['controllerRecords']['campaign'] = _record(root, 'campaign.json', CAMPAIGN_FIELDS, deadline)
+        result['controllerRecords']['network'] = _record(root / 'authority', 'network.json',
+            ('version', 'bootId', 'phase', 'pending'), deadline)
+        result['stopReceipts'] = {}
+        for role in ROLES:
+            result['controllerRecords'][role] = _record(root / 'authority', role + '.json',
+                                                       ROLE_FIELDS, deadline)
+            result['stopReceipts'][role] = {'current': _record(
+                root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

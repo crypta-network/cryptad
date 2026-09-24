@@ -185,16 +185,52 @@ def begin_controller_restart(workload, handoff, result):
             'preRoles': active['preRoles'], 'beforeController': before}
 
 
-def trigger_controller_restart(context):
-    """Restart only the exact installed controller unit while its four roles are active."""
-    process = subprocess.run(['/usr/bin/systemctl', 'restart',
+def wait_bound_roles_stopped(workload, context):
+    """Observe BindsTo termination before starting a new controller invocation."""
+    until = min(time.monotonic() + 35, context['campaignDeadlineNs'] / 10**9)
+    while time.monotonic() < until:
+        try:
+            stopped = []
+            for row in context['preRoles']:
+                role = row['role']
+                state = workload.manager(role, 'show')
+                record = workload.read(workload.ROOT / 'authority' / (role + '.json'))
+                receipt = workload.stop_receipt(role, record)
+                if (state['ActiveState'] not in {'inactive', 'failed'}
+                        or state['SubState'] not in {'dead', 'failed'} or state['MainPID'] != '0'
+                        or not workload.quiescent(role)
+                        or any(record[key] != row[key] for key in
+                               ('managerInvocation', 'bootId', 'cgroupIdentity'))):
+                    raise ValueError('workload-bound-role-still-active')
+                stopped.append({'role': role, 'activeState': state['ActiveState'],
+                                'subState': state['SubState'], 'mainPid': 0,
+                                'receiptObservedMonotonicNs': receipt['observedMonotonicNs']})
+            return stopped
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+            time.sleep(min(.05, max(0, until - time.monotonic())))
+    raise ValueError('workload-bound-role-stop-timeout')
+
+
+def trigger_controller_restart(workload, context):
+    """Kill the old main process, prove BindsTo stop, then start one new controller."""
+    killed = subprocess.run(['/usr/bin/systemctl', 'kill', '--kill-who=main',
+                             '--signal=SIGKILL', 'cryptad-workload-controller.service'],
+                            stdin=subprocess.DEVNULL, capture_output=True,
+                            env=ENV, timeout=20, check=True)
+    bound_roles = wait_bound_roles_stopped(workload, context)
+    requested = time.monotonic_ns()
+    started = subprocess.run(['/usr/bin/systemctl', 'start',
                               'cryptad-workload-controller.service'],
                              stdin=subprocess.DEVNULL, capture_output=True,
                              env=ENV, timeout=100, check=False)
     after = controller_unit_state()
     if after['InvocationID'] == context['beforeController']['InvocationID']:
         raise ValueError('workload-controller-restart-invocation-unchanged')
-    return {**context, 'restartReturnCode': process.returncode, 'afterController': after}
+    return {**context, 'killReturnCode': killed.returncode,
+            'preStartBoundRoles': bound_roles,
+            'newControllerStartRequestedNs': requested,
+            'startReturnCode': started.returncode,
+            'afterController': after}
 
 
 def complete_controller_restart(workload, context):
@@ -679,7 +715,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
         if not startup_measurement and lifecycle_scenario == 'controller-restart':
             try:
                 active = begin_controller_restart(workload, handoff, result)
-                controller_restart = trigger_controller_restart(active)
+                controller_restart = trigger_controller_restart(workload, active)
                 diagnostics['controllerRestart'] = controller_restart
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:

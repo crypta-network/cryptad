@@ -1233,6 +1233,35 @@ the case inconclusive, and no status is borrowed from attempt 52. Native Linux r
 offline discovery passed 425 tests with one skip after this preparation; installed
 execution remains required.
 
+Attempt 53 selected the fixed `controller-restart` mode and passed exact-source fixture and
+no-VM admission. Four roles and the administrator FNP pair reached the expected positive
+path. The administrator observed a new controller InvocationID after the actual
+`systemctl restart`, but final `reconcile()` rejected, so the guest exited nonzero and
+the host correctly passed no case. The original stopped guest and same-attempt backing
+pair were copied locally and passed recursive checksum comparison. Because cleanup was
+not verified, the earlier volatile snapshot withheld role authority and stop records.
+
+A separate task-owned forensic VM booted a byte-verified copy of the failed overlay,
+leaving the original guest and backing disks untouched. The previous-boot systemd journal
+showed all four roles stop and then receive new start jobs during the explicit controller
+restart. Each original stop receipt matched its retained role identity, yet all four
+authority records ended `reconciliation-required` after the attempted relaunch. This is
+consistent with the documented [systemd `BindsTo=` restart propagation](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html).
+The forensic VM was stopped; its reconstructable disk copy was removed after confirming
+no retained QCOW depended on it. The bounded private unit journal and full original
+failure evidence remain retained.
+
+The corrected prospective trigger kills only the old controller main process, observes
+all four `BindsTo` stops and exact stop receipts before issuing a fixed `systemctl start`
+for the new controller. It still requires a changed controller InvocationID, original
+campaign deadline, controller reconciliation stop reasons and terminally empty role
+cgroups. A failed cleanup now captures only fixed root authority and partial stop-receipt
+projections before shutdown; it does not read candidate state or claim quiescence.
+Focused offline tests cover fixed kill/start commands, stopped-role preconditions,
+administrator-origin trigger binding and root-only failed-cleanup capture. Full native
+Linux restricted discovery passed 427 tests with one skip. This revised scenario remains
+unexecuted in an installed VM.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

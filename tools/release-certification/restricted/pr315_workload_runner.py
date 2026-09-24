@@ -510,16 +510,21 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
         if (not isinstance(context, dict)
                 or set(context) != {'schemaVersion', 'kind', 'triggerStartedNs',
                                     'triggerEventDigest', 'campaignDeadlineNs', 'preRoles',
-                                    'beforeController', 'restartReturnCode', 'afterController',
+                                    'beforeController', 'killReturnCode', 'preStartBoundRoles',
+                                    'newControllerStartRequestedNs', 'startReturnCode',
+                                    'afterController',
                                     'terminalObservedNs', 'populatedCgroups',
                                     'remainingDescendants', 'retention'}
                 or context['schemaVersion'] != 1
                 or context['kind'] != 'pr315-administrator-controller-restart'
                 or context['populatedCgroups'] != [] or context['remainingDescendants'] != 0
                 or context['retention'] != 'retained'
-                or type(context['restartReturnCode']) is not int
+                or context['killReturnCode'] != 0 or context['startReturnCode'] != 0
+                or type(context['newControllerStartRequestedNs']) is not int
                 or not _bounded_window({'startedMonotonicNs': context['triggerStartedNs'],
                                         'finishedMonotonicNs': context['terminalObservedNs']})
+                or not context['triggerStartedNs'] < context['newControllerStartRequestedNs']
+                    < context['terminalObservedNs']
                 or context['triggerStartedNs'] >= context['campaignDeadlineNs']
                 or len(context['preRoles']) != len(acceptance.ROLES)):
             return None
@@ -539,10 +544,16 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
                 or campaign['record']['deadlineMonotonicNs'] != context['campaignDeadlineNs']):
             return None
         rows = context['preRoles']
+        bound = context['preStartBoundRoles']
         if (not all(isinstance(row, dict) and
                     set(row) == {'role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid'}
                     for row in rows)
-                or {row['role'] for row in rows} != set(acceptance.ROLES)):
+                or {row['role'] for row in rows} != set(acceptance.ROLES)
+                or not isinstance(bound, list) or len(bound) != len(rows)
+                or not all(isinstance(row, dict) and
+                    set(row) == {'role', 'activeState', 'subState', 'mainPid',
+                                 'receiptObservedMonotonicNs'} for row in bound)
+                or {row['role'] for row in bound} != set(acceptance.ROLES)):
             return None
         expected_event = {'kind': 'controller-restart', 'roles': rows,
             'campaignDeadlineNs': context['campaignDeadlineNs'],
@@ -554,13 +565,17 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
             principal = next(item for item in principals['roles'] if item['role'] == role)
             receipt = terminal['stopReceipts'][role]['current']
             role_record = terminal['controllerRecords'][role]
+            bound_role = next(item for item in bound if item['role'] == role)
             if (type(row['mainPid']) is not int or row['mainPid'] <= 0
                     or row['managerInvocation'] != principal['invocationId']
                     or row['bootId'].replace('-', '').lower() != principal['bootId']
                     or fixtures.runtime.canonical_digest({
                         'role': role, 'identity': row['cgroupIdentity']})[7:] != principal['cgroupDigest']
                     or receipt['status'] != 'captured' or role_record['status'] != 'captured'
-                    or role_record['record']['stopReason'] != 'controller-reconciliation'):
+                    or role_record['record']['stopReason'] != 'controller-reconciliation'
+                    or bound_role['activeState'] not in {'inactive', 'failed'}
+                    or bound_role['subState'] not in {'dead', 'failed'}
+                    or bound_role['mainPid'] != 0):
                 return None
             stopped = receipt['record']
             if (any(stopped[key] != row[key] for key in
@@ -568,7 +583,9 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
                     or stopped['membership'] != 'only-stop-helper'
                     or stopped['descendantCgroups'] != 0
                     or not context['triggerStartedNs'] < stopped['startedMonotonicNs']
-                        <= stopped['observedMonotonicNs'] <= context['terminalObservedNs']):
+                        <= stopped['observedMonotonicNs']
+                        == bound_role['receiptObservedMonotonicNs']
+                        <= context['newControllerStartRequestedNs']):
                 return None
     except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
         return None
