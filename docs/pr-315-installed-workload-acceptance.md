@@ -1262,6 +1262,22 @@ administrator-origin trigger binding and root-only failed-cleanup capture. Full 
 Linux restricted discovery passed 427 tests with one skip. This revised scenario remains
 unexecuted in an installed VM.
 
+Attempt 54 used that corrected exact-source helper, unchanged signed fixture, product,
+JDK and `tcg-multi`/`qemu64` VM profile after fresh no-VM admission. Four roles reached
+running state, but the observer failed sender restart readiness before the selected
+controller-loss trigger. The guest exited nonzero; root cleanup was reported complete,
+four current stop receipts and the stopped emulator were observed, and the FNP pair was
+not available. Three captured HotSpot fatal files covered sender and recipient, with
+`SIGILL`/`SIGSEGV` in different C1-compiled methods. No case passed in this attempt;
+it cannot validate or refute the revised controller recovery. The complete stopped
+attempt, including its same-attempt QCOW2 backing pair, was copied locally and passed a
+recursive checksum comparison. Across all locally captured fatal snapshots through this
+attempt there are 29 files in 21 attempts, 19 `SIGILL` and ten `SIGSEGV`, all reported
+in C1-compiled frames; the count is incomplete where failed cleanup suppressed candidate
+log capture. Repeating the same profile without an isolating JVM/QEMU diagnosis is not
+a demonstrated fix. The revised lifecycle case still needs an installed rerun after
+that separate diagnosis.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain
