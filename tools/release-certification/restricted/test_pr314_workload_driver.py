@@ -71,12 +71,14 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             outer = {'hostPid': 100, 'namespacePids': [100, 10],
                      'mountNamespaceIdentity': [1, 6],
                      'executableDigest': 'sha256:' + 'b' * 64}
+            mail_worker = dict(worker, hostPid=301, namespacePids=[301, 21, 2],
+                               pidNamespace='pid:[45]', mountNamespaceIdentity=[1, 15])
             sample = {'state': 'running', 'provenance': 'controller-kernel-sample',
                       'managerInvocation': 'c' * 32, 'bootId': 'boot',
                       'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
                       'networkNamespaceIdentity': [1, 7],
                       'observedMonotonicNs': 100,
-                      'processes': [worker, outer]}
+                      'processes': [worker, mail_worker, outer]}
             calls = []
             def write(path, value, **options):
                 calls.append((path, value, options))
@@ -108,7 +110,8 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
                 storage.verify_installed_app.assert_called_once()
                 workload.observe = Mock(side_effect=[sample, dict(sample,
                     observedMonotonicNs=200,
-                    processes=[dict(worker, namespacePids=[300, 20, 3]), outer])])
+                    processes=[dict(worker, namespacePids=[300, 20, 3]),
+                               mail_worker, outer])])
                 with self.assertRaisesRegex(ValueError, 'actor-ambiguous'):
                     sampler.probe()
 
@@ -172,6 +175,13 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             self.assertTrue(sampler.serve(parent))
             self.assertEqual('probe', json.loads(child.recv(8192))['phase'])
             sampler.probe.assert_called_once_with()
+            sampler.probe = Mock(side_effect=ValueError('private-actor-input'))
+            child.sendall(b'P')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual({'error': 'pr315-admin-probe-sample-failed'},
+                             json.loads(child.recv(8192)))
+            self.assertEqual({'phase': 'probe', 'exceptionType': 'ValueError'},
+                             sampler.diagnostics['probeAdminFailure'])
         self.assertEqual('ValueError', sampler.diagnostics['fnpAdminFailure']['exceptionType'])
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')

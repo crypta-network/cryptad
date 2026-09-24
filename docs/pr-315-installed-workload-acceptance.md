@@ -1407,6 +1407,21 @@ C1-compiled Java frame. Of the 31 excerpts whose compiled-entry offset could be
 parsed, 22 place the fault within eight bytes of that entry. This is a pattern in
 the captured crashes, not a proof that TCG, HotSpot or a particular patch caused it.
 
+An offline review after attempt 59 identified a separate future probe ambiguity:
+Mail and the signed probe can each have inner PID 2 in distinct AppHost namespaces.
+The administrator now matches the fixed probe's kernel PID and mount namespace inodes
+as well as its inner PID, and reports probe-sampling failures separately from FNP
+counter failures. A Linux regression with a same-PID Mail decoy passes. This source
+revision has not been rerun in an installed guest.
+
+The corrected helper `64fd1864519fa77cee8cdca58cbd1886422ad7c1` has a new
+exact-source schema-4 private fixture using the same signed probe ZIP and pinned
+product/JDK identities. Its manifest digest is retained privately. A no-VM runner
+preflight returned the expected unexecuted exit 78 with no admission reasons:
+147,688,783,872 task-allocated bytes, 29,217,608,075 bytes reserved for the next
+attempt and 10,582,802,432 bytes of effective host memory. No guest was allocated
+from this preflight. The repeated C1 startup failure is still unresolved.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

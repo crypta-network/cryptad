@@ -654,7 +654,7 @@ class InstalledWorkloadAdapter:
                  'probeWorker': worker,
                  'administratorRecordDigest': administrator['recordDigest']}
         raw = json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
-        if len(raw) > 32768:
+        if len(raw) > 8192:
             fail('probe-checkpoint-size-limit')
         target = self.root / 'pr315-probe-kernel.private.json'
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)

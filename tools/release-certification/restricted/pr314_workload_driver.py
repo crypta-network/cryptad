@@ -323,6 +323,7 @@ class AdministratorFnpSampler:
         if (not isinstance(result, dict) or not isinstance(result.get('mountEscape'), dict)
                 or not isinstance(result.get('namespaceInodes'), dict)):
             raise ValueError('workload-admin-probe-result-invalid')
+        namespaces = result['namespaceInodes']
         second = workload.observe(self.sender_handle)
         if (second.get('state') != 'running' or second.get('managerInvocation') != first['managerInvocation']
                 or second.get('cgroupIdentity') != first['cgroupIdentity']
@@ -335,7 +336,11 @@ class AdministratorFnpSampler:
         workers = [row for row in processes if isinstance(row, dict)
                    and isinstance(row.get('namespacePids'), list)
                    and len(row['namespacePids']) >= 3
-                   and row['namespacePids'][-1] == result.get('pid')]
+                   and row['namespacePids'][-1] == result.get('pid')
+                   and row.get('pidNamespace') == 'pid:[' + str(namespaces.get('pid')) + ']'
+                   and isinstance(row.get('mountNamespaceIdentity'), list)
+                   and len(row['mountNamespaceIdentity']) == 2
+                   and row['mountNamespaceIdentity'][-1] == namespaces.get('mnt')]
         outers = [row for row in processes if isinstance(row, dict)
                   and row.get('executableDigest') == self.sender_jdk_digest
                   and isinstance(row.get('namespacePids'), list)
@@ -432,12 +437,17 @@ class AdministratorFnpSampler:
                       self.sample('before' if message == b'B' else 'after'))
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             private = getattr(error, 'private_diagnostics', None)
-            self.diagnostics['fnpAdminFailure'] = {
-                'phase': self.phase, 'exceptionType': type(error).__name__[:128],
-                'networkFailureClass': (private.get('failureClass')
-                    if isinstance(private, dict) and isinstance(private.get('failureClass'), str)
-                    else None)}
-            result = {'error': 'pr315-admin-fnp-sample-failed'}
+            if message == b'P':
+                self.diagnostics['probeAdminFailure'] = {
+                    'phase': 'probe', 'exceptionType': type(error).__name__[:128]}
+                result = {'error': 'pr315-admin-probe-sample-failed'}
+            else:
+                self.diagnostics['fnpAdminFailure'] = {
+                    'phase': self.phase, 'exceptionType': type(error).__name__[:128],
+                    'networkFailureClass': (private.get('failureClass')
+                        if isinstance(private, dict) and isinstance(private.get('failureClass'), str)
+                        else None)}
+                result = {'error': 'pr315-admin-fnp-sample-failed'}
         raw = json.dumps(result, sort_keys=True, separators=(',', ':')).encode() + b'\n'
         if len(raw) > 8192:
             raise ValueError('workload-admin-fnp-response-limit')
@@ -461,7 +471,8 @@ def request_administrator_fnp(channel, phase, campaign_deadline):
             raise RuntimeFailure('workload-admin-fnp-response-invalid')
         value = json.loads(raw)
         if not isinstance(value, dict) or 'error' in value:
-            raise RuntimeFailure('workload-admin-fnp-sample-failed')
+            raise RuntimeFailure('workload-admin-' +
+                                 ('probe' if phase == 'probe' else 'fnp') + '-sample-failed')
         return value
     except RuntimeFailure:
         raise
