@@ -1623,6 +1623,18 @@ were red on macOS because Linux `/proc`, peer-credential and cgroup semantics ar
 absent there and local loopback binds were sandboxed. The focused changed-file
 interop suite passed 50 tests with nine skips on macOS.
 
+A fresh schema-4 signed fixture was prepared and strictly verified on CT102 for
+the new helper source while retaining the `99cdda8` product. A unique no-VM
+preflight returned exit 78 with `prerequisites-present-not-executed` and no
+reported reasons. Its task allocation plus next-attempt reservation was below
+the 224-GiB task budget, and CT102 reported enough effective memory. A separate
+PVE host `/proc/meminfo` read showed less than the same guest/host memory
+requirement at that point. CT102's virtualized memory report is therefore not
+sufficient physical-host admission for another guest; none was allocated. An
+earlier preflight command reused an existing output directory and returned exit
+2 without changing that retained directory. The unique run established the
+actual source and capacity result, without executing any v8 case.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
