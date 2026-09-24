@@ -91,6 +91,27 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', evidence._capture(self.root, self.expected, True)[
             'fnpCounterPair']['status'])
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_signed_probe_result_is_bounded_candidate_origin_only(self):
+        directory = self.root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+        directory.mkdir(parents=True)
+        path = directory / 'pr315-probe-result.json'
+        record = {'schemaVersion': 1, 'kind': 'pr315-signed-apphost-probe',
+                  'pid': 123, 'uid': 1001, 'gid': 1001, 'startedMonotonicNs': 10,
+                  'namespaceInodes': {'mnt': 11, 'pid': 12, 'net': 13, 'user': 14},
+                  'mountEscape': {'operation': 'unshare-mount', 'startedMonotonicNs': 20,
+                                  'finishedMonotonicNs': 21, 'returnCode': -1, 'errno': 'EPERM'}}
+        path.write_text(json.dumps(record))
+        self.assertEqual('not-captured-cleanup-unverified', evidence._capture(
+            self.root, self.expected, False)['probeAppResult']['status'])
+        captured = evidence._capture(self.root, self.expected, True)['probeAppResult']
+        self.assertEqual('signed-app-candidate-origin-not-acceptance', captured['classification'])
+        self.assertEqual(record, captured['record'])
+        path.write_text(json.dumps(dict(record, privateToken='must-not-copy')))
+        rejected = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('unavailable-or-unsafe', rejected['probeAppResult']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(rejected))
+
     def test_partial_preparation_captures_authority_without_inventing_a_sentinel(self):
         self.path.unlink()
         (self.root / 'authority/network.json').write_text(json.dumps({

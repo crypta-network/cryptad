@@ -36,6 +36,7 @@ TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name
     'pr313_public_faults.py', 'pr314_acceptance.py', 'pr314_workload_driver.py',
     'pr315_workload_fixtures.py', 'pr315_workload_guest.py', 'pr315_workload_runner.py',
     'pr315_workload_evidence.py'))
+TEST_SEAM_PREFIXES = ('tools/release-certification/restricted/pr315-probe-app/',)
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
                     '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
@@ -156,6 +157,7 @@ def production_member(name):
     """
     path = Path(name)
     return (path.as_posix() not in TEST_SEAMS
+            and not any(path.as_posix().startswith(prefix) for prefix in TEST_SEAM_PREFIXES)
             and not (path.name.startswith('test_') and path.suffix == '.py')
             and 'tests' not in path.parts
             and not (path.parts[:1] == ('tools',) and 'test' in path.parts))

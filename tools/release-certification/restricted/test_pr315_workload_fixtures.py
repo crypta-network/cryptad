@@ -84,6 +84,29 @@ class AdmissionTests(unittest.TestCase):
                 self.assertFalse(output.exists())
 
 
+class ProbeSourceTests(unittest.TestCase):
+    def test_signed_probe_payload_must_match_reviewed_source_exactly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / fixtures.PROBE_SOURCE
+            extracted = root / 'extracted'
+            for name in fixtures.PROBE_FILES:
+                (source / name).parent.mkdir(parents=True, exist_ok=True)
+                (extracted / name).parent.mkdir(parents=True, exist_ok=True)
+                (source / name).write_bytes(('reviewed-' + name).encode())
+                (extracted / name).write_bytes((source / name).read_bytes())
+            for name in ('cryptad-app.digests', 'cryptad-app.signature'):
+                (extracted / name).write_bytes(b'fixed-sidecar')
+            fixtures._verify_probe_source(extracted, root)
+            (extracted / 'bin/probe.py').write_bytes(b'substituted worker')
+            with self.assertRaisesRegex(ValueError, 'source-mismatch'):
+                fixtures._verify_probe_source(extracted, root)
+            (extracted / 'bin/probe.py').write_bytes((source / 'bin/probe.py').read_bytes())
+            (extracted / 'extra').write_bytes(b'unreviewed')
+            with self.assertRaisesRegex(ValueError, 'file-set-invalid'):
+                fixtures._verify_probe_source(extracted, root)
+
+
 class ImplementationIdentityTests(unittest.TestCase):
     def jar(self, path, revision, implementation=b'\xca\xfe\xba\xbe implementation-a', *, reverse=False):
         rows = [('META-INF/MANIFEST.MF', ('Implementation-Version: ' + revision).encode()),
@@ -281,6 +304,29 @@ class FileTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_signed_probe_cohort_adds_only_sender_app_to_exact_plan(self):
+        selected = {'schemaVersion': 4, 'products': products(),
+            'runtimeDigest': 'sha256:' + 'c' * 64,
+            'mailDigest': 'sha256:' + 'd' * 64,
+            'probeDigest': 'sha256:' + 'f' * 64,
+            'trustDigest': 'sha256:' + 'e' * 64,
+            'maxSeconds': 900, 'maxOperations': 1000}
+        producer = {'sourceCommit': 'f' * 40, 'runnerDigest': 'sha256:' + '1' * 64,
+                    'adapterDigest': 'sha256:' + '2' * 64}
+        with patch.object(fixtures, 'verify', return_value=selected), \
+                patch.object(fixtures.os, 'geteuid', return_value=0), \
+                patch.object(fixtures.runtime, 'runner_identity', return_value=producer), \
+                patch.object(fixtures.preparation, 'configuration_identity',
+                             side_effect=lambda role, trust: 'sha256:' + hashlib.sha256(role.encode()).hexdigest()):
+            value = fixtures.materialize_selection(fixtures.FIXED_GUEST_ROOT,
+                Path('/root/cryptad'), '9' * 64, 'a' * 40)
+        self.assertEqual(['mail-prototype', 'pr315-probe'],
+                         [app['appId'] for app in value['private']['nodes']['candidate-sender']['apps']])
+        self.assertEqual(['mail-prototype'],
+                         [app['appId'] for app in value['private']['nodes']['candidate-recipient']['apps']])
+        self.assertEqual([], value['private']['nodes']['relay-no-apps']['apps'])
+        self.assertEqual(2, len(value['plan']['nodes'][0]['appDigests']))
+
     def test_guest_materialization_binds_fresh_installed_identity_and_fixed_roster(self):
         selected = {'products': products(), 'runtimeDigest': 'sha256:' + 'c' * 64,
             'mailDigest': 'sha256:' + 'd' * 64, 'trustDigest': 'sha256:' + 'e' * 64,

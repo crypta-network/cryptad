@@ -1290,6 +1290,23 @@ These negative results do not reproduce or explain the intermittent installed C1
 crashes and do not authorize pooling the `tcg-single` diagnostic with the installed
 `tcg-multi` acceptance profile.
 
+The next prospective denial cohort adds an exact-source signed `pr315-probe` app beside
+Mail only in candidate-sender. Its reviewed worker runs through normal AppHost
+installation and required bubblewrap, records only fixed process/namespace metadata,
+attempts one bounded mount-namespace `unshare` syscall, and remains alive for controller
+kernel observation. Fixture schema 4 binds its signed ZIP digest to the three exact
+tracked source files; the ordinary app signature verifier accepts both Mail and probe
+under a private two-key public registry. The production export excludes the probe source
+tree as a test seam. After reported cleanup, the administrator's safe descriptor reader
+projects only the fixed bounded app result and classifies it as candidate-origin,
+not acceptance. A host-side active-target, signed child and kernel denial witness is
+still needed before `namespace-mount-escape` or any other app-origin denial can pass.
+The private staged and packed probe verified with `crypta-app validate --strict`,
+`compat verify`, `sign`, `verify` and extracted-ZIP `verify`. Native Linux protected
+discovery passed 527 tests with 74 skips, restricted discovery passed 430 with one
+skip, and the owning interop workload tests passed 44 with eight skips. Installed
+probe launch remains unexecuted at this preparation cutoff.
+
 For the peer-call correction, all interop discovery passed 215 tests with eight skips, protected
 discovery passed 485 with 74 skips, and restricted discovery passed 388 with one skip. The four
 certification self-tests passed 152, 247, 88 and 185 tests. Root and transport skips remain

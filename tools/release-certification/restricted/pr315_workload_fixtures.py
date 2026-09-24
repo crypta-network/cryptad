@@ -34,6 +34,8 @@ from cryptad_certification import cross_version_evidence as evidence
 
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 MANIFEST = 'manifest.private.json'
+PROBE_SOURCE = Path('tools/release-certification/restricted/pr315-probe-app')
+PROBE_FILES = frozenset(('cryptad-app.properties', 'bin/start.sh', 'bin/probe.py'))
 FIXED_GUEST_ROOT = Path('/root/cryptad/build/pr315-inputs')
 MAX_BYTES = 2 * 1024**3
 MAX_FILES = 32768
@@ -301,6 +303,23 @@ def portable_bound(path):
                 raise ValueError('workload-fixture-package-too-large')
 
 
+def _verify_probe_source(extracted, source):
+    """Bind the signed synthetic worker to this exact reviewed helper source tree."""
+    extracted, source = Path(extracted), Path(source) / PROBE_SOURCE
+    allowed = PROBE_FILES | {'cryptad-app.digests', 'cryptad-app.signature'}
+    actual = set()
+    for path in extracted.rglob('*'):
+        if path.is_symlink():
+            raise ValueError('workload-probe-symlink-invalid')
+        if path.is_file():
+            actual.add(path.relative_to(extracted).as_posix())
+    if actual != allowed:
+        raise ValueError('workload-probe-file-set-invalid')
+    for name in PROBE_FILES:
+        if (extracted / name).read_bytes() != (source / name).read_bytes():
+            raise ValueError('workload-probe-source-mismatch')
+
+
 def prepare(args):
     """Package verified artifacts; all work occurs before a controller campaign exists."""
     if (type(args.max_seconds) is not int or not 30 <= args.max_seconds <= 3600
@@ -357,7 +376,20 @@ def prepare(args):
         manifest = (stage / 'mail/cryptad-app.properties').read_text()
         if re.findall(r'(?m)^app\.id\s*=\s*(\S+)\s*$', manifest) != ['mail-prototype']:
             raise ValueError('workload-fixture-mail-identity-invalid')
-    value = {'schemaVersion': 3, 'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
+        probe_app = getattr(args, 'probe_app', None)
+        if probe_app is not None:
+            copy_input(probe_app, output / 'probe.zip', 64 * 1024**2)
+            runtime.extract_app_bundle(output / 'probe.zip', stage / 'probe',
+                                       runtime.digest_file(output / 'probe.zip'))
+            run([str(output / 'jdk/bin/java'), '-cp', str(tool / 'lib/*'),
+                 'network.crypta.platform.devtools.CryptaAppCli', 'verify', '--bundle-dir',
+                 str(stage / 'probe'), '--trusted-keys-file',
+                 str(output / 'trusted-app-keys.properties')],
+                environment={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'},
+                timeout=60, output_limit=65536)
+            _verify_probe_source(stage / 'probe', args.source)
+    value = {'schemaVersion': 4 if getattr(args, 'probe_app', None) is not None else 3,
+        'kind': 'pr315-workload-fixtures', 'classification': CLASSIFICATION,
         'runtimePolicy': preparation.launcher_policy(),
         'sourceCommit': subprocess.check_output(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
                                               text=True, timeout=10).strip(),
@@ -367,6 +399,8 @@ def prepare(args):
         'verifierDigest': runtime.tree_digest(tool, require_java=False),
         'maxSeconds': args.max_seconds, 'maxOperations': args.max_operations,
         'members': inventory(output)}
+    if getattr(args, 'probe_app', None) is not None:
+        value['probeDigest'] = runtime.digest_file(output / 'probe.zip')
     (output / MANIFEST).write_text(json.dumps(value, sort_keys=True) + '\n')
     return digest(output / MANIFEST)
 
@@ -383,10 +417,13 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
     if hashlib.sha256(raw).hexdigest() != expected_manifest_digest:
         raise ValueError('workload-fixture-manifest-mismatch')
     value = metadata.read_json(raw)
-    if (set(value) != {'schemaVersion', 'kind', 'classification', 'sourceCommit', 'products', 'roles',
-                      'runtimeDigest', 'jdkClosureDigest', 'mailDigest', 'trustDigest', 'verifierDigest',
-                      'maxSeconds', 'maxOperations', 'members', 'runtimePolicy'}
-            or type(value['schemaVersion']) is not int or value['schemaVersion'] != 3
+    fields = {'schemaVersion', 'kind', 'classification', 'sourceCommit', 'products', 'roles',
+              'runtimeDigest', 'jdkClosureDigest', 'mailDigest', 'trustDigest', 'verifierDigest',
+              'maxSeconds', 'maxOperations', 'members', 'runtimePolicy'}
+    if value.get('schemaVersion') == 4:
+        fields.add('probeDigest')
+    if (set(value) != fields
+            or type(value['schemaVersion']) is not int or value['schemaVersion'] not in (3, 4)
             or value['kind'] != 'pr315-workload-fixtures'
             or runtime.canonical_digest(value['runtimePolicy']) != runtime.canonical_digest(preparation.launcher_policy())
             or value['classification'] != CLASSIFICATION or value['roles'] != list(ROLES)
@@ -412,6 +449,13 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
             or runtime.digest_file(root / 'trusted-app-keys.properties') != value['trustDigest']
             or runtime.tree_digest(source / 'platform-devtools/build/install/crypta-app', require_java=False) != value['verifierDigest']):
         raise ValueError('workload-fixture-runtime-or-app-mismatch')
+    if value['schemaVersion'] == 4:
+        if runtime.digest_file(root / 'probe.zip') != value['probeDigest']:
+            raise ValueError('workload-fixture-probe-mismatch')
+        with tempfile.TemporaryDirectory(prefix='pr315-verified-probe-', dir=root.parent) as temporary:
+            runtime.extract_app_bundle(root / 'probe.zip', Path(temporary) / 'probe',
+                                       value['probeDigest'])
+            _verify_probe_source(Path(temporary) / 'probe', source)
     return value
 
 
@@ -431,6 +475,9 @@ def materialize_selection(root, source, expected_manifest_digest=None, product_s
         product = selected['products'][product_name]
         apps = [{'appId': 'mail-prototype', 'bundlePath': str(root / 'mail.zip'),
                  'bundleDigest': selected['mailDigest']}] if role.startswith('candidate-') else []
+        if role == 'candidate-sender' and selected.get('schemaVersion', 3) == 4:
+            apps.append({'appId': 'pr315-probe', 'bundlePath': str(root / 'probe.zip'),
+                         'bundleDigest': selected['probeDigest']})
         private['nodes'][role] = {'archivePath': str(root / (product_name + '.tar.gz')),
             'javaHome': str(root / 'jdk'), 'fnpPort': 19400, 'fcpPort': 19401, 'httpPort': 19402,
             'apps': apps, 'trustedKeysPath': str(root / 'trusted-app-keys.properties'),
@@ -456,6 +503,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'output', 'candidate', 'previous', 'java-home', 'mail-bundle', 'trusted-keys'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--probe-app', type=Path)
     for name in ('candidate-commit', 'previous-commit', 'jdk-digest'):
         parser.add_argument('--' + name, required=True)
     parser.add_argument('--max-seconds', type=int, required=True)

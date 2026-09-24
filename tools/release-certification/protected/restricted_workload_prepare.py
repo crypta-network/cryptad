@@ -120,15 +120,17 @@ def prepare(plan, private, authorization):
     for index, role in enumerate(workload.ROLES):
         selected = plan['nodes'][index]
         row = private['nodes'][role]
+        app_ids = [app.get('appId') for app in row.get('apps', [])] if isinstance(row.get('apps'), list) else []
         if (selected.get('product') != 'cryptad'
                 or set(row) != {'archivePath', 'javaHome', 'fnpPort', 'fcpPort', 'httpPort',
                                 'apps', 'trustedKeysPath', 'trustedKeysDigest'}
                 or (row['fnpPort'], row['fcpPort'], row['httpPort']) != (FNP_PORT, FCP_PORT, HTTP_PORT)
                 or not isinstance(row.get('apps'), list)
-                or len(row['apps']) > 1
-                or any(app.get('appId') != 'mail-prototype' for app in row['apps'])
-                or role == 'relay-no-apps' and row['apps']
-                or role in ('candidate-sender', 'candidate-recipient') and len(row['apps']) != 1
+                or role == 'candidate-sender' and app_ids not in
+                    (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
+                or role == 'candidate-recipient' and app_ids != ['mail-prototype']
+                or role == 'relay-no-apps' and app_ids != []
+                or role == 'previous' and app_ids not in ([], ['mail-prototype'])
                 or sorted(app.get('bundleDigest', '') for app in row['apps']) != sorted(selected.get('appDigests', []))):
             workload.reject('profile-app-selection-unsupported')
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -224,11 +226,16 @@ def prepare(plan, private, authorization):
             if sorted(app['bundleDigest'] for app in row['apps']) != sorted(selected['appDigests']):
                 workload.reject('app-selection-mismatch')
             for app in row['apps']:
-                if app['appId'] != 'mail-prototype' or role == 'relay-no-apps':
+                if (app['appId'] not in ('mail-prototype', 'pr315-probe')
+                        or app['appId'] == 'pr315-probe' and role != 'candidate-sender'
+                        or role == 'relay-no-apps'):
                     workload.reject('app-adapter-unsupported')
                 workload.secured(Path(app['bundlePath']))
                 runtime.extract_app_bundle(app['bundlePath'], apps / app['appId'], app['bundleDigest'])
-            if role in ('candidate-sender', 'candidate-recipient') and len(row['apps']) != 1:
+            if (role == 'candidate-sender' and [app['appId'] for app in row['apps']] not in
+                    (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
+                    or role == 'candidate-recipient' and
+                    [app['appId'] for app in row['apps']] != ['mail-prototype']):
                 workload.reject('mail-selection-required')
             trust = b''
             if row['apps']:

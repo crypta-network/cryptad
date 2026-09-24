@@ -113,6 +113,25 @@ class ScopedDaemonTests(unittest.TestCase):
 
 
 class KernelRosterTests(unittest.TestCase):
+    def test_signed_probe_pid_hint_requires_nested_kernel_process_without_capabilities(self):
+        process = {'hostPid': 123, 'namespacePids': [123, 22, 1],
+                   'startTicks': 456, 'noNewPrivileges': True,
+                   'effectiveCapabilities': 0, 'executableDigest': 'sha256:' + 'a' * 64}
+        observation = {'provenance': 'controller-kernel-sample',
+                       'managerInvocation': 'b' * 32,
+                       'cgroupIdentity': [1, 42], 'networkNamespaceIdentity': [1, 43],
+                       'processes': [process]}
+        bound = workload.bind_probe_worker(observation, 22)
+        self.assertEqual(123, bound['hostPid'])
+        self.assertEqual([123, 22, 1], bound['namespacePids'])
+        self.assertEqual('controller-kernel-sample', bound['provenance'])
+        shallow = dict(process, namespacePids=[123, 22])
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'outside-role'):
+            workload.bind_probe_worker(dict(observation, processes=[shallow]), 22)
+        privileged = dict(process, effectiveCapabilities=1)
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'kernel-boundary-invalid'):
+            workload.bind_probe_worker(dict(observation, processes=[privileged]), 22)
+
     def samples(self):
         result = {}
         for index, role in enumerate(workload.runtime.ROLES):

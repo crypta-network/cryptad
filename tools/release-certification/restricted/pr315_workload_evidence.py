@@ -341,6 +341,43 @@ def _fnp_counter_pair(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _probe_app_result(root, deadline):
+    """Project only the signed app's fixed candidate-origin syscall result."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'state/candidate-sender/data/node/apps/data/pr315-probe',
+                                 'pr315-probe-result.json', maximum=2048, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'pid', 'uid', 'gid',
+                                  'startedMonotonicNs', 'namespaceInodes', 'mountEscape'}
+                or value['schemaVersion'] != 1 or value['kind'] != 'pr315-signed-apphost-probe'
+                or any(type(value[key]) is not int or value[key] <= 0 for key in
+                       ('pid', 'uid', 'gid', 'startedMonotonicNs'))
+                or not isinstance(value['namespaceInodes'], dict)
+                or set(value['namespaceInodes']) != {'mnt', 'pid', 'net', 'user'}
+                or any(type(part) is not int or part <= 0 for part in
+                       value['namespaceInodes'].values())):
+            raise ValueError('probe-app-result-invalid')
+        probe = value['mountEscape']
+        if (not isinstance(probe, dict)
+                or set(probe) != {'operation', 'startedMonotonicNs', 'finishedMonotonicNs',
+                                  'returnCode', 'errno'}
+                or probe['operation'] != 'unshare-mount'
+                or any(type(probe[key]) is not int or probe[key] <= 0 for key in
+                       ('startedMonotonicNs', 'finishedMonotonicNs'))
+                or probe['startedMonotonicNs'] >= probe['finishedMonotonicNs']
+                or type(probe['returnCode']) is not int or probe['returnCode'] not in (-1, 0)
+                or probe['errno'] not in (None, 'EPERM', 'EACCES', 'UNKNOWN')):
+            raise ValueError('probe-app-syscall-result-invalid')
+        return {'status': 'captured',
+                'classification': 'signed-app-candidate-origin-not-acceptance', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -357,6 +394,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'exchangeAudits': {case: {'status': 'not-captured-cleanup-unverified'}
                            for case in EXCHANGE_CASES},
         'fnpCounterPair': {'status': 'not-captured-cleanup-unverified'},
+        'probeAppResult': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -380,6 +418,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['exchangeAudits'][case] = _record(root / 'authority',
                                                      case + '-exchange.json', EXCHANGE_FIELDS, deadline)
         result['fnpCounterPair'] = _fnp_counter_pair(root, deadline)
+        result['probeAppResult'] = _probe_app_result(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:

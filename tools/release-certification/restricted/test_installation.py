@@ -39,7 +39,8 @@ class InstallationArtifactTests(unittest.TestCase):
 
     def test_current_manifest_cannot_admit_a_declared_test_seam(self):
         for name in sorted(installation.TEST_SEAMS | {'test_hook.py', 'package/tests/helper.py',
-                                                       'tools/probe/test/helper.py'}):
+                                                       'tools/probe/test/helper.py',
+            'tools/release-certification/restricted/pr315-probe-app/bin/probe.py'}):
             with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.root) as temporary:
                 bundle = Path(temporary)
                 member = bundle / name
@@ -133,7 +134,8 @@ class InstallationArtifactTests(unittest.TestCase):
     def test_plan_excludes_committed_test_seams_without_changing_selected_blob_bytes(self):
         source = self.committed_source()
         excluded = sorted(installation.TEST_SEAMS | {'test_module.py', 'package/tests/helper.py',
-                                                      'tools/example/test/provider.py'})
+            'tools/example/test/provider.py',
+            'tools/release-certification/restricted/pr315-probe-app/bin/probe.py'})
         resource = 'platform-devtools/src/test/resources/runtime.db'
         for name in [*excluded, resource]:
             path = source / name

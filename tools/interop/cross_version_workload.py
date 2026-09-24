@@ -264,6 +264,60 @@ class InstalledAppHandle(runtime.AppHandle):
         fail('mail-consumer-adapter-unsupported')
 
 
+class InstalledProbeAppHandle(runtime.AppHandle):
+    """Normal signed AppHost installation with a separately measured child process."""
+
+    def __init__(self, supervisor, role):
+        if role != 'candidate-sender':
+            fail('probe-app-role-unsupported')
+        super().__init__(supervisor, role, 'pr315-probe')
+        self.base, self.api = 'http://127.0.0.1:19402', 'http://127.0.0.1:19402/api/v1'
+        self.opener = _RoleHttp(supervisor, role)
+
+    def observe_worker(self):
+        status, value = self.request('GET', '/api/v1/apps/pr315-probe/runtime')
+        reported = value.get('runtime', {})
+        if (status != 200 or reported.get('running') is not True
+                or reported.get('sandbox', {}).get('provider') != 'bubblewrap'
+                or reported.get('sandbox', {}).get('active') is not True):
+            fail('real-probe-sandbox-not-observed')
+        observation = self.supervisor.observe(self.role)
+        self.worker_identity = bind_probe_worker(observation, reported.get('pid'))
+        return self.worker_identity
+
+
+def bind_probe_worker(observation, api_pid):
+    """Resolve the app's PID hint only against the current controller kernel sample."""
+    if type(api_pid) is not int or api_pid <= 1 or observation.get('provenance') != 'controller-kernel-sample':
+        fail('probe-process-hint-invalid')
+    rows = observation.get('processes')
+    if not isinstance(rows, list) or len(rows) > 512:
+        fail('probe-process-sample-invalid')
+    matches = [row for row in rows if isinstance(row, dict)
+               and isinstance(row.get('namespacePids'), list)
+               and len(row['namespacePids']) >= 3
+               and row['namespacePids'][1] == api_pid]
+    if len(matches) != 1:
+        fail('probe-process-outside-role')
+    worker = matches[0]
+    if (type(worker.get('hostPid')) is not int or worker['hostPid'] <= 1
+            or worker['namespacePids'][0] != worker['hostPid']
+            or type(worker.get('startTicks')) is not int or worker['startTicks'] <= 0
+            or worker.get('noNewPrivileges') is not True
+            or worker.get('effectiveCapabilities') != 0
+            or not isinstance(worker.get('executableDigest'), str)
+            or not re.fullmatch('sha256:[0-9a-f]{64}', worker['executableDigest'])):
+        fail('probe-process-kernel-boundary-invalid')
+    return {'role': 'candidate-sender', 'hostPid': worker['hostPid'],
+            'namespacePid': api_pid, 'namespacePids': worker['namespacePids'],
+            'startTicks': worker['startTicks'],
+            'executableDigest': worker['executableDigest'],
+            'managerInvocation': observation['managerInvocation'],
+            'cgroupIdentity': observation['cgroupIdentity'],
+            'networkNamespaceIdentity': observation['networkNamespaceIdentity'],
+            'provenance': 'controller-kernel-sample'}
+
+
 def bind_worker(observation, api_pid, expected_jdk_digest):
     """API PID is a hint resolved only against the controller's current cgroup sample.
 
@@ -411,10 +465,13 @@ class InstalledWorkloadAdapter:
             fail('selection-identity-invalid')
         for role in runtime.ROLES:
             apps = private_config['nodes'][role].get('apps')
-            if (not isinstance(apps, list) or len(apps) > 1
-                    or any(app.get('appId') != 'mail-prototype' for app in apps)
-                    or (role == 'relay-no-apps' and apps)
-                    or (role in {'candidate-sender', 'candidate-recipient'} and len(apps) != 1)):
+            ids = [app.get('appId') for app in apps] if isinstance(apps, list) else []
+            if (not isinstance(apps, list)
+                    or role == 'candidate-sender' and ids not in
+                        (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
+                    or role == 'candidate-recipient' and ids != ['mail-prototype']
+                    or role == 'relay-no-apps' and ids != []
+                    or role == 'previous' and ids not in ([], ['mail-prototype'])):
                 fail('app-selection-unsupported')
         root = Path(private_config['root'])
         lock = getattr(journal, '_lock', None)
@@ -584,7 +641,8 @@ class InstalledWorkloadAdapter:
             selected_apps = self.private['nodes'][role]['apps']
             if not selected_apps:
                 continue
-            if len(selected_apps) != 1 or selected_apps[0]['appId'] != 'mail-prototype' or role == 'relay-no-apps':
+            if (selected_apps[0]['appId'] != 'mail-prototype'
+                    or role == 'relay-no-apps'):
                 fail('app-selection-unsupported')
             status, installed = handle.request('POST', '/api/v1/apps/install', {'stagedDir': '/inputs/apps/mail-prototype'})
             if status != 201 or installed.get('app', {}).get('appId') != 'mail-prototype':
@@ -595,6 +653,18 @@ class InstalledWorkloadAdapter:
             handle.observe_worker()
             handle.refresh_session()
             self.apps[(role, 'mail-prototype')] = handle
+            if role == 'candidate-sender' and len(selected_apps) == 2:
+                probe = InstalledProbeAppHandle(self, role)
+                probe.password = handle.password
+                status, installed = probe.request('POST', '/api/v1/apps/install',
+                    {'stagedDir': '/inputs/apps/pr315-probe'})
+                if status != 201 or installed.get('app', {}).get('appId') != 'pr315-probe':
+                    fail('signed-probe-install-not-admitted')
+                status, _ = probe.request('POST', '/api/v1/apps/pr315-probe/start')
+                if status not in {200, 201}:
+                    fail('signed-probe-start-failed')
+                probe.observe_worker()
+                self.apps[(role, 'pr315-probe')] = probe
 
     def stop(self, role):
         # Stop remains usable after observer deadline; controller ownership scopes it.
@@ -695,6 +765,8 @@ class InstalledWorkloadAdapter:
             after_fnp = self._fnp_sample('after') if before_fnp is not None else None
             app_started = time.monotonic_ns()
             app_worker = self.apps[('candidate-sender', 'mail-prototype')].observe_worker()
+            probe_handle = self.apps.get(('candidate-sender', 'pr315-probe'))
+            probe_worker = probe_handle.observe_worker() if probe_handle is not None else None
             app_finished = time.monotonic_ns()
             if app_finished <= app_started:
                 fail('app-kernel-clock-invalid')
@@ -716,6 +788,7 @@ class InstalledWorkloadAdapter:
                         'provenance': app_worker['provenance']},
                     'appKernelWindow': {'startedMonotonicNs': app_started,
                                         'finishedMonotonicNs': app_finished},
+                    'probeAppKernelProcess': probe_worker,
                     'controlExchanges': dict(self.control_exchanges),
                     'contentEvidence': getattr(self, 'content_evidence', None),
                     'fnpCounterPair': ({'before': before_fnp, 'after': after_fnp}
