@@ -1564,6 +1564,65 @@ sequence. Across retained bounded fatal excerpts through attempt 64, 39 files
 in 29 attempts show 21 `SIGILL` and 18 `SIGSEGV`, all naming C1 frames. The
 intermittent C1 failure has no established QEMU/JDK root cause.
 
+### Separate PVE KVM differential on the fixed candidate
+
+The PVE host diagnostic used the same `99cdda8` source-built candidate, pinned
+predecessor, JDK, signed fixture, `qemu64` CPU, four vCPUs, 5632-MiB guest and
+byte-identical QEMU executable as attempt 64. Its only intended execution-profile
+change was the accelerator: `kvm` on the isolated PVE host instead of the accepted
+`tcg-multi` profile in CT102. QEMU used restricted user networking with a loopback-only
+SSH forward. This profile is explicitly classified
+`pve-kvm-differential-not-acceptance`; none of its observations can pass a v8 case
+or replace the required TCG campaign.
+
+The host retained the 224-GiB task allocation budget, 16-GiB filesystem reserve,
+7-GiB guest/host memory budget and 1-GiB host-memory reserve. The task-private
+admission adapter read host `MemAvailable` because the PVE root cgroup exposes no
+`memory.current` or `memory.max`; it did not change those thresholds. Host-only
+process adapters supplied a byte-identical task-local Git executable and SSH UID
+lookup for the mapped CT user. The task-private QEMU library closure added resolved
+libraries missing from the PVE host. Source and fixture verification passed after
+these adapters; no PVE package, managed VM, CT configuration, LAN address or
+persistent service was changed.
+
+Diagnostic runs 01 and 02 failed before VM allocation at the boot-library snapshot
+and source Git lookup respectively. Run 03 booted the KVM guest but timed out at SSH
+readiness because the mapped UID had no host passwd entry. Run 04 reached the
+installed positive driver and exited 1 after cleanup; guest stop and all four role
+stop receipts were observed. Its first local CHK insert, sender-local byte control
+and recipient cross-node byte fetch completed. After sender restart, the second
+local insert and sender-local control also completed, but the recipient's second
+`ClientGet` received no terminal response within its 120-second read. The private
+observer records `TimeoutError` at `fetch_direct`, and the bounded FCP tails show
+the two recipient `ClientGet` requests with a terminal `AllData` only for the first.
+All four roles had zero new HotSpot fatal files in this one KVM guest. This narrows
+the observed run-04 failure to the second cross-node fetch; it does not establish
+whether KVM prevents the intermittent C1 failures seen under TCG.
+
+The complete stopped run-04 guest, diagnostics and reference inputs were copied
+into the ignored local private evidence directory and matched the CT102 originals
+by recursive checksum. The task-private host plans, summaries, transports and
+preflights were also retained locally. The original guest and backing QCOWs remain
+retained on the task dataset. No second KVM guest was allocated after the PVE host's
+available memory fell below the unchanged next-run admission requirement. The
+latest accepted-profile installed positive and full 45-case verdicts remain false.
+
+The installed observer previously started the second CHK immediately after the
+sender's new daemon and AppHost epoch was established. It did not check whether
+the restarted sender and relay had both returned to `CONNECTED`. The prospective
+helper now waits for that existing link from both ends within the original
+campaign deadline before sampling counters or issuing the second insert. It does
+not add a peer, change the 120-second fetch timeout or treat peer status as
+retrieval proof. Offline regressions confirm that an unconnected restarted peer
+blocks the second CHK and that the check uses the current sender reference. No
+installed run has yet exercised this helper revision, so its effect on the run-04
+timeout is unknown. On CT102 Linux, the affected PR-314 driver, protected workload
+and cross-version interop suites passed 71, 165 and 242 tests respectively; the
+latter two retained 21 and eight root/environment skips. The same broader suites
+were red on macOS because Linux `/proc`, peer-credential and cgroup semantics are
+absent there and local loopback binds were sandboxed. The focused changed-file
+interop suite passed 50 tests with nine skips on macOS.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

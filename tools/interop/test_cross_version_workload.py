@@ -1,6 +1,6 @@
 """Bounded protocol, invocation, and current scoped-process mapping regressions."""
 import array
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import copy
 import hashlib
 import json
@@ -409,6 +409,22 @@ class ObserverPolicyTests(unittest.TestCase):
         self.assertNotIn('private detail', str(adapter.fnp_sample_failure))
         adapter.control.request.assert_not_called()
 
+    def test_restarted_sender_peer_checks_both_current_endpoints(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {
+            'candidate-sender': {'reference': {'identity': 'new-sender'}},
+            'relay-no-apps': {'reference': {'identity': 'relay'}}}
+        sender, relay = object(), object()
+        adapter.remaining = mock.Mock(return_value=170)
+        adapter.client = mock.Mock(side_effect=lambda role: nullcontext({
+            'candidate-sender': sender, 'relay-no-apps': relay}[role]))
+        with (mock.patch.object(workload.runtime, 'absolute_deadline', return_value=nullcontext()) as bound,
+              mock.patch.object(workload.runtime.interop, 'wait_for_peer_connection') as connected):
+            adapter.wait_restarted_sender_peer()
+        adapter.client.assert_has_calls([mock.call('candidate-sender'), mock.call('relay-no-apps')])
+        bound.assert_called_once_with(170)
+        connected.assert_called_once_with(sender, relay, 'new-sender', 'relay', 150)
+
     def test_positive_result_requires_final_sample_of_each_running_daemon(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {'candidate-sender': dict(EPOCH)}
@@ -425,6 +441,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
                                                                'managerInvocation': 'f' * 32})
+        adapter.wait_restarted_sender_peer = mock.Mock()
         adapter.content_chk = mock.Mock()
         adapter._fnp_sample = mock.Mock(return_value=None)
         adapter.cleanup = mock.Mock(return_value='complete')
@@ -459,7 +476,11 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={
             'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})
+        adapter.wait_restarted_sender_peer = mock.Mock()
         adapter.content_chk = mock.Mock()
+        ordering = mock.Mock()
+        ordering.attach_mock(adapter.content_chk, 'content')
+        ordering.attach_mock(adapter.wait_restarted_sender_peer, 'peer')
         adapter._fnp_sample = mock.Mock(return_value=None)
         adapter.observe = mock.Mock(return_value={'state': 'running'})
         adapter.cleanup = mock.Mock(return_value='complete')
@@ -467,7 +488,30 @@ class ObserverPolicyTests(unittest.TestCase):
             result = adapter.run_positive(leave_running_for_administrator=True)
         self.assertTrue(result['newEpoch'])
         self.assertEqual('observed', result['contentRetrieval'])
+        self.assertEqual([mock.call.content(), mock.call.peer(), mock.call.content()],
+                         ordering.mock_calls)
         adapter.cleanup.assert_not_called()
+
+    def test_missing_restarted_sender_peer_blocks_second_chk(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {'candidate-sender': {'generation': 'old',
+            'managerInvocation': 'a' * 32, 'bootId': 'boot'}}
+        adapter.start = mock.Mock()
+        adapter.connect = mock.Mock()
+        adapter.capture_probe_target_roster = mock.Mock()
+        adapter.probe_observer_control = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.restart_with_witness = mock.Mock(return_value={
+            'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})
+        adapter.wait_restarted_sender_peer = mock.Mock(side_effect=workload.runtime.RuntimeFailure(
+            'restarted-sender-peer-unconnected'))
+        adapter.content_chk = mock.Mock()
+        adapter.cleanup = mock.Mock(return_value='complete')
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'restarted-sender-peer-unconnected'):
+            adapter.run_positive()
+        adapter.content_chk.assert_called_once_with()
+        adapter.cleanup.assert_called_once_with()
 
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})

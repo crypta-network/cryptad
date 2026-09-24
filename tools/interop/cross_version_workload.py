@@ -654,6 +654,16 @@ class InstalledWorkloadAdapter:
                 runtime.interop.add_peer(peer, 'peer-add', node)
                 runtime.interop.wait_for_peer_connection(client, peer, node['identity'], relay['identity'], 150)
 
+    def wait_restarted_sender_peer(self):
+        """Require both ends of the sender's existing relay link after its JVM restart."""
+        with (runtime.absolute_deadline(self.remaining(180)),
+              self.client('candidate-sender') as sender,
+              self.client('relay-no-apps') as relay):
+            sender_ref = self.nodes['candidate-sender']['reference']
+            relay_ref = self.nodes['relay-no-apps']['reference']
+            runtime.interop.wait_for_peer_connection(sender, relay,
+                sender_ref['identity'], relay_ref['identity'], 150)
+
     def capture_probe_target_roster(self):
         """Persist a pre-app active-target premise before any probe child runs."""
         if len(self.private['nodes']['candidate-sender']['apps']) != 2:
@@ -936,6 +946,7 @@ class InstalledWorkloadAdapter:
             new_epoch = (before['generation'] != after['generation']
                          and before['managerInvocation'] != after['managerInvocation']
                          and before['bootId'] == after['bootId'])
+            self.wait_restarted_sender_peer()
             before_fnp = self._fnp_sample('before')
             self.content_chk()
             after_fnp = self._fnp_sample('after') if before_fnp is not None else None
