@@ -328,6 +328,86 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(runner._fixed_role_access_attempt(
                 'package-expectation', report, result, fixture, changed, source))
 
+    def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-recipient',
+                  'managerInvocation': recipient['invocationId'],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 100], 'observedMonotonicNs': 40,
+                  'controlObservedNs': 45, 'controlDigest': 'e' * 64}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counter = {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                   'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                       'candidate-sender').encode()).hexdigest(),
+                   'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                   'roleNamespaceIdentity': [1, 200], 'observedMonotonicNs': 60,
+                   'counters': {name: {'packets': 0, 'bytes': 0}
+                                for name in names.values()}}
+        after_counter = copy.deepcopy(counter)
+        after_counter['observedMonotonicNs'] = 170
+        after_counter['counters'][names['sibling-fcp']] = {'packets': 1, 'bytes': 60}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-sibling-network-denial',
+                 'caseId': 'sibling-fcp',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'senderInvocationBefore': sender['invocationId'],
+                 'senderInvocationAfter': sender['invocationId'],
+                 'senderCgroupBefore': [1, 99], 'senderCgroupAfter': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=180,
+                                     controlObservedNs=190, controlDigest='f' * 64),
+                 'counterBefore': counter, 'counterAfter': after_counter,
+                 'triggerMonotonicNs': 70, 'attackStartedNs': 80,
+                 'attackFinishedNs': 90,
+                 'targetEndpointDigest': hashlib.sha256(b'10.231.0.2:19401').hexdigest(),
+                 'kernelConnectResult': {'connected': False, 'errno': 'ETIMEDOUT'},
+                 'counterName': names['sibling-fcp']}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=300, observedMonotonicNs=310)
+        terminal['siblingFcpAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner._sibling_network_attempt(
+                'sibling-fcp', report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'sibling-fcp'))
+            self.assertEqual(names['sibling-fcp'], sidecar['counterName'])
+            for mutate in (
+                    lambda row: row['siblingFcpAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-fcp']].update(packets=0),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-http']].update(packets=1, bytes=60),
+                    lambda row: row['siblingFcpAudit']['record']['targetAfter'].update(
+                        managerInvocation='0' * 32),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._sibling_network_attempt(
+                    'sibling-fcp', report, result, fixture, changed, source))
+
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

@@ -217,6 +217,34 @@ def _recipient_fcp_control(handle):
     return observed, time.monotonic_ns(), hashlib.sha256(response).hexdigest()
 
 
+def _recipient_http_control(handle):
+    """Prove the current sibling HTTP listener answers a fixed bounded HEAD."""
+    from restricted_workload_network import HTTP_PORT
+    observed = workload.observe(handle)
+    if (observed.get('state') != 'running'
+            or observed.get('provenance') != 'controller-kernel-sample'):
+        workload.reject('sibling-http-target-inactive')
+    with workload.connect(handle, 'http') as stream:
+        if stream.getpeername() != ('127.0.0.1', HTTP_PORT):
+            workload.reject('sibling-http-target-connection-invalid')
+        stream.sendall(b'HEAD / HTTP/1.1\r\nHost: 127.0.0.1:19402\r\nConnection: close\r\n\r\n')
+        deadline_ns = time.monotonic_ns() + 5_000_000_000
+        response = bytearray()
+        while b'\r\n' not in response and len(response) <= 512:
+            remaining = (deadline_ns - time.monotonic_ns()) / 1e9
+            if remaining <= 0:
+                workload.reject('sibling-http-target-response-timeout')
+            stream.settimeout(remaining)
+            block = stream.recv(min(256, 513 - len(response)))
+            if not block:
+                workload.reject('sibling-http-target-response-incomplete')
+            response.extend(block)
+        first = bytes(response).split(b'\r\n', 1)[0]
+        if re.fullmatch(rb'HTTP/1\.[01] [2-4][0-9]{2} [ -~]{1,80}', first) is None:
+            workload.reject('sibling-http-target-response-invalid')
+    return observed, time.monotonic_ns(), hashlib.sha256(first).hexdigest()
+
+
 def _observer_arbitrary_endpoint_denial(connection, handle, peer_pid, peer_uid,
                                         request_raw, target_before, request_received_ns):
     """Reject one fixed sibling-FCP selector at the actual connector boundary."""

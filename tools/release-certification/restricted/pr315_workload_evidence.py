@@ -22,7 +22,7 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 SENTINEL = 'pr315-retention-sentinel'
 MAX_RECORD = 32768
-MAX_OUTPUT = 96 * 1024
+MAX_OUTPUT = 128 * 1024
 MAX_WRAPPER_LOG = 2 * 1024 * 1024
 WRAPPER_TAIL = 4096
 OBSERVER_EXPERIMENTS = Path('/var/lib/cryptad-cross-version/experiments')
@@ -831,6 +831,55 @@ def _fixed_role_access_audit(root, deadline, case_id):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _sibling_network_audit(root, deadline, case_id):
+    """Retain one fixed root audit of role SYN and named kernel DROP counters."""
+    if case_id not in ('sibling-fcp', 'sibling-http'):
+        raise ValueError('sibling-network-audit-case-invalid')
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', case_id + '-denial.json',
+                                 maximum=12288, timeout=min(2, remaining))
+        value = json.loads(raw)
+        expected = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                    'actorUid', 'actorBefore', 'actorAfter',
+                    'senderInvocationBefore', 'senderInvocationAfter',
+                    'senderCgroupBefore', 'senderCgroupAfter',
+                    'senderStateBefore', 'senderStateAfter',
+                    'targetBefore', 'targetAfter', 'counterBefore', 'counterAfter',
+                    'triggerMonotonicNs', 'attackStartedNs', 'attackFinishedNs',
+                    'targetEndpointDigest', 'kernelConnectResult', 'counterName'}
+        target_fields = {'role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                         'observedMonotonicNs', 'controlObservedNs', 'controlDigest'}
+        counter_fields = {'schemaVersion', 'kind', 'policyDigest', 'bootId',
+                          'roleNamespaceIdentity', 'observedMonotonicNs', 'counters'}
+        if (not isinstance(value, dict) or set(value) != expected
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-sibling-network-denial'
+                or value['caseId'] != case_id
+                or value['counterName'] != 'pr315_' + case_id.replace('-', '_') + '_drop'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest', 'targetEndpointDigest',
+                                   'senderStateBefore', 'senderStateAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != ROLE_PROBE_ACTOR_FIELDS
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(not isinstance(value[key], dict) or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(not isinstance(value[key], dict) or set(value[key]) != counter_fields
+                       for key in ('counterBefore', 'counterAfter'))
+                or value['kernelConnectResult'] not in (
+                    {'connected': False, 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'errno': 'EACCES'})):
+            raise ValueError('sibling-network-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -863,6 +912,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'forgedRuntimeIdentityAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
+        'siblingFcpAudit': {'status': 'not-captured-cleanup-unverified'},
+        'siblingHttpAudit': {'status': 'not-captured-cleanup-unverified'},
         'packageExpectationAudit': {'status': 'not-captured-cleanup-unverified'},
         'cgroupMigrationAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
@@ -913,6 +964,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
             result[field] = _fixed_role_access_audit(root, deadline, case_id)
+        result['siblingFcpAudit'] = _sibling_network_audit(root, deadline, 'sibling-fcp')
+        result['siblingHttpAudit'] = _sibling_network_audit(root, deadline, 'sibling-http')
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -977,6 +1030,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
             result[field] = _fixed_role_access_audit(root, deadline, case_id)
+        result['siblingFcpAudit'] = _sibling_network_audit(root, deadline, 'sibling-fcp')
+        result['siblingHttpAudit'] = _sibling_network_audit(root, deadline, 'sibling-http')
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

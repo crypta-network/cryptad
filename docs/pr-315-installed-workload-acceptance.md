@@ -2190,6 +2190,26 @@ IDs lack a passing installed result on this helper. Historical
 `controller-restart` belongs to another source and cannot be pooled with
 suite 102.
 
+The next prospective v8 policy adds two real candidate-origin network
+denials, `sibling-fcp` and `sibling-http`. The installed sender role gains
+only a fixed route to the recipient for observing its own filter; its inet
+output and the switch bridge retain DROP policies, with no direct sibling
+accept rule. Two named nft counters match only the fixed recipient address
+and FCP/HTTP ports. The role child emits one bounded TCP attempt per
+administrator trigger; root checks the actual role child and invocation,
+the recipient's live FCP `NodeHello` or bounded HTTP HEAD before and after,
+the exact counter delta for that case, and the other counter's unchanged
+value. The host verifier additionally binds the root audit to current
+sender/recipient stop receipts and the fixed v8/v9 case contracts. A
+timeout or an unlistening target alone cannot pass. This revision raises
+only the fixed private volatile snapshot limit to 128 KiB; the controller's
+generic 64-KiB record limit and the host's 256-KiB transfer cap remain.
+Native Linux checks passed 96 protected tests with one skip, 152 restricted
+tests and 51 owning interop tests with eight skips. `nft --check` accepted
+the generated sender, recipient and relay rule sets without applying them.
+These are prospective implementation checks; neither network denial has an
+accepted-profile TCG witness yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2283,8 +2303,8 @@ role/AppHost boundary.
 | `resolver-authority` | candidate | Active installed resolver; valid fixed authority request from role process |
 | `provider-authority` | app | Active synthetic provider fixture; normal signed AppHost child attempts authority access |
 | `sibling-data` | candidate | Existing recipient sentinel; sender process attempts access |
-| `sibling-fcp` | candidate | Active recipient FCP; emitted cross-role probe with attributed filter evidence |
-| `sibling-http` | candidate | Active recipient HTTP; emitted cross-role probe with attributed filter evidence |
+| `sibling-fcp` | candidate | Prospective v8 sender SYN, active recipient `NodeHello` controls and own named nft DROP delta; no TCG result yet |
+| `sibling-http` | candidate | Prospective v8 sender SYN, active recipient HTTP HEAD controls and own named nft DROP delta; no TCG result yet |
 | `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
 | `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
@@ -2522,8 +2542,8 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Incomplete: `1a714f9d` suite 102 passed eight positive, eleven denial and `cancellation` on one original-profile TCG guest. Another 15 denial and ten lifecycle IDs lack an installed pass on that helper; `controller-restart` passed only on earlier `45d8b914` |
-| `installedPositiveExecuted` | True for `1a714f9d` suite 102's eight-case positive aggregate; no installed run has yet used the subsequent audit-document revision |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 102 has 20 of 45 passing rows on one source-bound guest, and 25 IDs remain without a pass on that helper |
+| `installedPositiveExecuted` | True for `1a714f9d` suite 102's eight-case positive aggregate; the prospective v8 network revision has no installed run yet |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 102 has 20 of 45 passing rows on one historical source-bound guest, and the prospective v8 source has no installed result |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

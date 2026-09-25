@@ -28,6 +28,8 @@ SWITCH = 'cryptad-role-switch'
 SWITCH_TABLE = 'cryptad_switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
+SIBLING_DROP_COUNTERS = {'sibling-fcp': 'pr315_sibling_fcp_drop',
+                         'sibling-http': 'pr315_sibling_http_drop'}
 MAX_STATE_BYTES = 8192
 FNP_COUNTERS = {
     **{(role, ROLES[-1]): 'fnp_role' + str(index) + '_to_relay'
@@ -163,16 +165,27 @@ def role_rules(role):
     """Own loopback plus the exact UDP peer matrix; no established-connection bypass."""
     peers = ', '.join(address(peer) for peer in _peers(role))
     own = address(role)
-    return ('table inet cryptad_role {\n'
-            ' chain input { type filter hook input priority 0; policy drop;\n'
-            '  iifname "lo" accept\n'
-            f'  iifname "data0" ip saddr {{ {peers} }} ip daddr {own} '
-            f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n'
-            ' chain output { type filter hook output priority 0; policy drop;\n'
-            '  oifname "lo" accept\n'
-            f'  oifname "data0" ip saddr {own} ip daddr {{ {peers} }} '
-            f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n'
-            ' chain forward { type filter hook forward priority 0; policy drop; }\n}\n')
+    sibling = ''
+    if role == 'candidate-sender':
+        target = address('candidate-recipient')
+        sibling = ''.join(
+            f'  oifname "data0" ip saddr {own} ip daddr {target} '
+            f'tcp dport {port} counter name {SIBLING_DROP_COUNTERS[case]} drop\n'
+            for case, port in (('sibling-fcp', FCP_PORT), ('sibling-http', HTTP_PORT)))
+    definitions = (''.join(f' counter {name} {{ }}\n'
+                           for name in SIBLING_DROP_COUNTERS.values())
+                   if role == 'candidate-sender' else '')
+    return ''.join(('table inet cryptad_role {\n', definitions,
+        ' chain input { type filter hook input priority 0; policy drop;\n',
+        '  iifname "lo" accept\n',
+        f'  iifname "data0" ip saddr {{ {peers} }} ip daddr {own} '
+        f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n',
+        ' chain output { type filter hook output priority 0; policy drop;\n',
+        '  oifname "lo" accept\n',
+        f'  oifname "data0" ip saddr {own} ip daddr {{ {peers} }} '
+        f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n',
+        sibling, ' }\n',
+        ' chain forward { type filter hook forward priority 0; policy drop; }\n}\n'))
 
 
 def switch_rules():
@@ -229,6 +242,46 @@ def read_fnp_counters():
         _reject()
 
 
+def read_sibling_drop_counters():
+    """Read only fixed sender-to-recipient TCP DROP witnesses in its retained netns."""
+    state = _load()
+    if state['phase'] != 'ready' or state['pending'] is not None:
+        _reject()
+    name = namespace('candidate-sender')
+    identity = _namespace_identity(name)
+    raw = _run([IP, 'netns', 'exec', name, NFT, '-j', 'list', 'counters',
+                'table', 'inet', 'cryptad_role'])
+    try:
+        parsed = json.loads(raw)
+        if (not isinstance(parsed, dict) or set(parsed) != {'nftables'}
+                or not isinstance(parsed['nftables'], list)):
+            _reject()
+        counters = {}
+        for entry in parsed['nftables']:
+            if not isinstance(entry, dict) or len(entry) != 1:
+                _reject()
+            if 'metainfo' in entry:
+                continue
+            row = entry.get('counter')
+            if (not isinstance(row, dict) or row.get('family') != 'inet'
+                    or row.get('table') != 'cryptad_role'
+                    or row.get('name') not in SIBLING_DROP_COUNTERS.values()
+                    or row['name'] in counters
+                    or any(type(row.get(key)) is not int or row[key] < 0
+                           for key in ('packets', 'bytes'))):
+                _reject()
+            counters[row['name']] = {'packets': row['packets'], 'bytes': row['bytes']}
+        if (set(counters) != set(SIBLING_DROP_COUNTERS.values())
+                or _namespace_identity(name) != identity):
+            _reject()
+        return {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                'policyDigest': hashlib.sha256(role_rules('candidate-sender').encode()).hexdigest(),
+                'bootId': _boot(), 'roleNamespaceIdentity': identity,
+                'observedMonotonicNs': time.monotonic_ns(), 'counters': counters}
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        _reject()
+
+
 def setup():
     """Create the one fixed fabric, retaining intent before each namespace mutation.
 
@@ -266,6 +319,11 @@ def setup():
         # Both namespace filters already exist; the switch bridge remains down.
         for peer in _peers(role):
             _run([IP, '-n', name, 'route', 'add', address(peer) + '/32', 'dev', 'data0'])
+        if role == 'candidate-sender':
+            # The only direct sibling route exists to exercise explicit DROP counters.
+            # Neither the role filter nor switch bridge accepts sibling IP traffic.
+            _run([IP, '-n', name, 'route', 'add',
+                  address('candidate-recipient') + '/32', 'dev', 'data0'])
     _run([IP, '-n', SWITCH, 'link', 'set', 'br0', 'up'])
     state['phase'] = 'ready'
     _save(state)

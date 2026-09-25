@@ -16,12 +16,14 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'protected'))
 import pr314_workload_driver as driver
+import restricted_workload_network as network
 
 
 class VolatilePublicationTest(unittest.TestCase):
     def test_large_private_snapshot_is_atomic_exclusive_and_keeps_generic_cap(self):
-        raw = b'x' * 70000  # Above restricted_workload.write's 64-KiB record limit.
+        raw = b'x' * 110000  # Above both the old 96-KiB and generic 64-KiB limits.
         self.assertLess(len(raw), driver.VOLATILE_MAX)
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'pr315-workload-volatile.private.json'
@@ -33,6 +35,32 @@ class VolatilePublicationTest(unittest.TestCase):
                 driver._write_volatile_bytes(target, b'replacement')
             self.assertEqual(raw, target.read_bytes())
             self.assertEqual([target], list(Path(directory).iterdir()))
+
+
+class SiblingNetworkCounterTest(unittest.TestCase):
+    def test_one_sibling_drop_cannot_be_supplied_by_other_case_or_changed_namespace(self):
+        before = {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                  'policyDigest': hashlib.sha256(
+                      network.role_rules('candidate-sender').encode()).hexdigest(),
+                  'bootId': 'boot', 'roleNamespaceIdentity': [1, 42],
+                  'observedMonotonicNs': 10,
+                  'counters': {name: {'packets': 0, 'bytes': 0}
+                      for name in network.SIBLING_DROP_COUNTERS.values()}}
+        after = json.loads(json.dumps(before))
+        after['observedMonotonicNs'] = 20
+        fcp = network.SIBLING_DROP_COUNTERS['sibling-fcp']
+        after['counters'][fcp] = {'packets': 2, 'bytes': 120}
+        driver._sibling_counter_pair('sibling-fcp', before, after, [1, 42])
+        for mutate in (
+                lambda value: value['counters'][fcp].update(packets=0),
+                lambda value: value['counters'][network.SIBLING_DROP_COUNTERS[
+                    'sibling-http']].update(packets=1, bytes=60),
+                lambda value: value.update(roleNamespaceIdentity=[1, 99]),
+                lambda value: value.update(policyDigest='0' * 64)):
+            changed = json.loads(json.dumps(after))
+            mutate(changed)
+            with self.assertRaises(ValueError):
+                driver._sibling_counter_pair('sibling-fcp', before, changed, [1, 42])
 
 
 class ObserverFailureTest(unittest.TestCase):

@@ -890,6 +890,26 @@ class ControllerRequestTest(unittest.TestCase):
             with self.assertRaises(workload.WorkloadError):
                 controller._recipient_fcp_control(HANDLE)
 
+    def test_sibling_http_control_requires_fixed_live_http_status(self):
+        recipient = {'state': 'running', 'provenance': 'controller-kernel-sample',
+                     'stateDigest': None, 'observedMonotonicNs': 10}
+        stream = MagicMock()
+        stream.__enter__.return_value = stream
+        stream.getpeername.return_value = ('127.0.0.1', 19402)
+        stream.recv.return_value = b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream) as connect:
+            observed, finished, digest = controller._recipient_http_control(HANDLE)
+        self.assertEqual(recipient, observed)
+        self.assertGreater(finished, 10)
+        self.assertEqual(hashlib.sha256(b'HTTP/1.1 200 OK').hexdigest(), digest)
+        connect.assert_called_once_with(HANDLE, 'http')
+        stream.recv.return_value = b'NOT HTTP\r\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream):
+            with self.assertRaises(workload.WorkloadError):
+                controller._recipient_http_control(HANDLE)
+
     def test_arbitrary_endpoint_denial_reaches_network_reject_and_retains_active_target(self):
         raw = b'{"method":"pr315-arbitrary-endpoint","handle":"' + HANDLE.encode() + b'"}\n'
         sender = {'state': 'running', 'stateDigest': 'c' * 64,

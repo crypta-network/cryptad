@@ -5,12 +5,26 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pr315_role_probe as probe
 
 
 class RoleProbeTest(unittest.TestCase):
+    def test_sibling_probe_sends_only_fixed_recipient_syn_and_records_real_timeout(self):
+        channel = MagicMock()
+        channel.__enter__.return_value = channel
+        channel.connect.side_effect = TimeoutError('fixed test timeout')
+        with patch.object(probe.socket, 'socket', return_value=channel) as created:
+            result = probe.attempt_network('sibling-fcp', 'a' * 64)
+        created.assert_called_once_with(probe.socket.AF_INET, probe.socket.SOCK_STREAM)
+        channel.connect.assert_called_once_with(('10.231.0.2', 19401))
+        self.assertEqual({'connected': False, 'errno': 'ETIMEDOUT'}, result['outcome'])
+        self.assertLess(result['startedMonotonicNs'], result['finishedMonotonicNs'])
+        self.assertEqual('sibling-fcp', result['caseId'])
+        with self.assertRaisesRegex(ValueError, 'network-case-invalid'):
+            probe.attempt_network('sibling-app', 'a' * 64)
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux proc namespaces required')
     def test_composed_role_record_fits_fixed_guest_capture_limit(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -27,15 +27,19 @@ class NetworkPolicyTests(unittest.TestCase):
             with self.subTest(role=bad), self.assertRaises(network.NetworkBoundaryError):
                 network.namespace(bad)
 
-    def test_leaf_udp_policy_has_only_relay_peer_and_drops_other_traffic(self):
+    def test_leaf_udp_policy_retains_relay_only_accept_and_fixed_sibling_drops(self):
         rules = network.role_rules('candidate-sender')
         self.assertIn('ip daddr { 10.231.0.4 }', rules)
-        self.assertNotIn('10.231.0.2', rules)
+        self.assertEqual(2, rules.count('ip daddr 10.231.0.2 tcp dport'))
+        for name in network.SIBLING_DROP_COUNTERS.values():
+            self.assertIn(f'counter {name} {{ }}', rules)
+            self.assertIn(f'counter name {name} drop', rules)
         self.assertNotIn('10.231.0.3', rules)
         self.assertEqual(rules.count('policy drop'), 3)
         self.assertEqual(rules.count('udp sport 19400 udp dport 19400'), 2)
         self.assertNotIn('ct state', rules)
-        self.assertNotIn('tcp', rules)
+        self.assertNotIn('tcp dport 19401 accept', rules)
+        self.assertNotIn('tcp dport 19402 accept', rules)
 
     def test_relay_rules_preserve_all_three_peer_links(self):
         rules = network.role_rules('relay-no-apps')
@@ -79,6 +83,30 @@ class NetworkPolicyTests(unittest.TestCase):
                         [*counters[:-1], {'counter': dict(counters[-1]['counter'], packets=-1)}]):
             with self.subTest(rows=changed), self.assertRaises(network.NetworkBoundaryError):
                 read(changed)
+
+    def test_fixed_sibling_drop_reader_rejects_missing_or_replaced_counters(self):
+        rows = [{'counter': {'family': 'inet', 'table': 'cryptad_role',
+                 'name': name, 'packets': 3, 'bytes': 180}}
+                for name in network.SIBLING_DROP_COUNTERS.values()]
+        command = [network.IP, 'netns', 'exec', network.namespace('candidate-sender'),
+                   network.NFT, '-j', 'list', 'counters', 'table', 'inet', 'cryptad_role']
+        def read(selected):
+            with patch.object(network, '_load', return_value={'phase': 'ready', 'pending': None}), \
+                    patch.object(network, '_namespace_identity', return_value=[1, 42]), \
+                    patch.object(network, '_boot', return_value='boot'), \
+                    patch.object(network, '_run', return_value=json.dumps({'nftables': [
+                        {'metainfo': {'version': '1.1.3'}}, *selected]}).encode()) as run:
+                result = network.read_sibling_drop_counters()
+                run.assert_called_once_with(command)
+                return result
+        observed = read(rows)
+        self.assertEqual(set(network.SIBLING_DROP_COUNTERS.values()), set(observed['counters']))
+        self.assertEqual([1, 42], observed['roleNamespaceIdentity'])
+        for invalid in (rows[:-1], rows + rows[:1],
+                        [*rows[:-1], {'counter': dict(rows[-1]['counter'], packets=-1)}],
+                        [*rows[:-1], {'counter': dict(rows[-1]['counter'], family='bridge')}]):
+            with self.subTest(rows=invalid), self.assertRaises(network.NetworkBoundaryError):
+                read(invalid)
 
     def test_non_root_setup_is_rejected_before_mutation(self):
         with patch.object(network.os, 'geteuid', return_value=1234), patch.object(network, '_run') as run:

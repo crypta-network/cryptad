@@ -118,6 +118,51 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('captured', retained['forgedRuntimeIdentityAudit']['status'])
         self.assertEqual('unavailable-or-unsafe', retained['forgedCountersAudit']['status'])
 
+    def test_sibling_drop_audit_retains_fixed_kernel_witness_and_rejects_extra_fields(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-recipient', 'managerInvocation': 'c' * 32,
+                  'bootId': 'boot', 'cgroupIdentity': [1, 100],
+                  'observedMonotonicNs': 10, 'controlObservedNs': 11,
+                  'controlDigest': 'd' * 64}
+        counters = {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                    'policyDigest': 'e' * 64, 'bootId': 'boot',
+                    'roleNamespaceIdentity': [1, 2], 'observedMonotonicNs': 12,
+                    'counters': {'pr315_sibling_fcp_drop': {'packets': 0, 'bytes': 0},
+                                 'pr315_sibling_http_drop': {'packets': 0, 'bytes': 0}}}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-sibling-network-denial',
+                 'caseId': 'sibling-fcp', 'sourceDigest': 'a' * 64,
+                 'nonceDigest': 'b' * 64, 'actorUid': 986,
+                 'actorBefore': actor, 'actorAfter': actor,
+                 'senderInvocationBefore': 'f' * 32,
+                 'senderInvocationAfter': 'f' * 32,
+                 'senderCgroupBefore': [1, 99], 'senderCgroupAfter': [1, 99],
+                 'senderStateBefore': 'a' * 64, 'senderStateAfter': 'a' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=20,
+                                     controlObservedNs=21),
+                 'counterBefore': counters,
+                 'counterAfter': dict(counters, observedMonotonicNs=19),
+                 'triggerMonotonicNs': 13, 'attackStartedNs': 14,
+                 'attackFinishedNs': 15,
+                 'targetEndpointDigest': '0' * 64,
+                 'kernelConnectResult': {'connected': False, 'errno': 'ETIMEDOUT'},
+                 'counterName': 'pr315_sibling_fcp_drop'}
+        path = self.root / 'authority/sibling-fcp-denial.json'
+        path.write_text(json.dumps(audit))
+        retained = evidence._capture(self.root, self.expected, True)
+        self.assertEqual(audit, retained['siblingFcpAudit']['record'])
+        self.assertLess(len(json.dumps(retained).encode()), evidence.MAX_OUTPUT)
+        path.write_text(json.dumps(dict(audit, browserToken='must-not-copy')))
+        rejected = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('unavailable-or-unsafe', rejected['siblingFcpAudit']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(rejected))
+
     def test_fixed_role_access_audits_reject_replaced_targets(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
                  'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
@@ -621,7 +666,8 @@ class VolatileEvidenceTest(unittest.TestCase):
         def read(root, name, **kwargs):
             reads.append(name)
             return original(root, name, **kwargs)
-        with patch.object(evidence.snapshot, 'read_file', side_effect=read):
+        with patch.object(evidence.snapshot, 'read_file', side_effect=read), \
+                patch.object(evidence, 'MAX_OUTPUT', 96 * 1024):
             result = evidence._capture(self.root, self.expected, True, observer_root=observer)
         self.assertEqual(expected, result['fatalLogs']['candidate-recipient'])
         self.assertEqual(2, len(expected['files']))
@@ -638,7 +684,7 @@ class VolatileEvidenceTest(unittest.TestCase):
                             for row in result['wrapperLogs'].values()))
         self.assertEqual('matched', result['sentinel']['status'])
         self.assertLessEqual(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
-                             evidence.MAX_OUTPUT)
+                             96 * 1024)
 
     def test_wrapper_excerpt_finds_buried_error_without_command_lines(self):
         command = b'INFO | wrapper | 2026 | Command[1] : private-command-value\n'
@@ -842,7 +888,7 @@ class VolatileEvidenceTest(unittest.TestCase):
             self.assertEqual(4096, log['tailBytes'])
             self.assertTrue(log['truncated'])
             self.assertEqual(raw[-4096:], base64.b64decode(log['tailBase64']))
-        self.assertEqual(96 * 1024, evidence.MAX_OUTPUT)
+        self.assertEqual(128 * 1024, evidence.MAX_OUTPUT)
         self.assertEqual(evidence.MAX_OUTPUT,
                          launcher.launcher_policy()['privateVolatileMaxBytes'])
         self.assertLessEqual(len(json.dumps(result).encode()), evidence.MAX_OUTPUT)

@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import socket
 import sys
 import time
 
@@ -19,6 +20,67 @@ CGROUP_TARGET = Path('/sys/fs/cgroup/system.slice/cryptad-workload@candidate-rec
 OUTPUT = Path('/node/tmp/pr315-observer-private-read.json')
 READY = Path('/node/tmp/pr315-observer-private-read-ready.json')
 TRIGGER = Path('/node/tmp/pr315-observer-private-read-trigger.json')
+SIBLING_ADDRESS = '10.231.0.2'
+NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
+                 'sibling-http': (19402, 'pr315-sibling-http')}
+
+
+def attempt_network(case_id: str, nonce: str) -> dict:
+    """Emit one finite TCP SYN from the actual candidate role network namespace."""
+    if case_id not in NETWORK_CASES:
+        raise ValueError('pr315-network-case-invalid')
+    port, _prefix = NETWORK_CASES[case_id]
+    started = time.monotonic_ns()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as channel:
+            channel.settimeout(2)
+            channel.connect((SIBLING_ADDRESS, port))
+    except TimeoutError:
+        outcome = {'connected': False, 'errno': 'ETIMEDOUT'}
+    except OSError as error:
+        outcome = {'connected': False,
+                   'errno': errno.errorcode.get(error.errno, 'UNKNOWN')}
+    else:
+        outcome = {'connected': True, 'errno': None}
+    return {'schemaVersion': 1, 'kind': 'pr315-candidate-network-probe',
+            'caseId': case_id, 'nonce': nonce, 'pid': os.getpid(),
+            'uid': os.getuid(), 'gid': os.getgid(),
+            'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns(),
+            'targetEndpointDigest': hashlib.sha256(
+                f'{SIBLING_ADDRESS}:{port}'.encode()).hexdigest(),
+            'outcome': outcome}
+
+
+def wait_network_trigger(case_id: str, nonce: str) -> Path:
+    if case_id not in NETWORK_CASES:
+        raise ValueError('pr315-network-case-invalid')
+    _port, prefix = NETWORK_CASES[case_id]
+    trigger = Path('/node/tmp') / (prefix + '-trigger.json')
+    until = time.monotonic() + 60
+    while not trigger.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-network-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(trigger, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': case_id, 'nonce': nonce}:
+        raise ValueError('pr315-network-trigger-invalid')
+    return Path('/node/tmp') / (prefix + '-result.json')
+
+
+def publish_network_result(case_id: str, nonce: str) -> None:
+    result_path = wait_network_trigger(case_id, nonce)
+    raw = json.dumps(attempt_network(case_id, nonce), sort_keys=True,
+                     separators=(',', ':')).encode()
+    if len(raw) > 4096:
+        raise ValueError('pr315-network-result-limit')
+    descriptor = os.open(result_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                         | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def attempt_read(nonce: str) -> dict:
@@ -146,6 +208,8 @@ def main() -> None:
         json.dump(record, stream, sort_keys=True, separators=(',', ':'))
         stream.flush()
         os.fsync(stream.fileno())
+    for case_id in NETWORK_CASES:
+        publish_network_result(case_id, sys.argv[1])
     while True:
         time.sleep(1)
 

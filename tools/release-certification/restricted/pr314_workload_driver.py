@@ -31,7 +31,7 @@ TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
-VOLATILE_MAX = 96 * 1024
+VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
@@ -64,7 +64,16 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-role-probe-sibling-data-invalid',
     'workload-role-probe-package-expectation-invalid',
     'workload-role-probe-cgroup-migration-invalid',
-    'workload-role-probe-fixed-access-timeline-invalid'))
+    'workload-role-probe-fixed-access-timeline-invalid',
+    'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
+    'workload-sibling-network-before-window-invalid',
+    'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
+    'workload-sibling-network-case-invalid',
+    'workload-sibling-network-counter-context-invalid',
+    'workload-sibling-network-counter-invalid',
+    'workload-sibling-network-counter-epoch-invalid',
+    'workload-sibling-network-drop-not-attributed',
+    'workload-sibling-network-other-case-changed'))
 
 
 class RoleProbeDiagnosticError(ValueError):
@@ -353,6 +362,166 @@ def _fixed_role_target(role, observation, digest):
             'controlDigest': digest}
 
 
+def _sibling_counter_pair(case_id, before, after, sender_namespace):
+    """Bind one denied sender SYN to its own named nft DROP counter."""
+    from restricted_workload_network import SIBLING_DROP_COUNTERS, role_rules
+    if case_id not in SIBLING_DROP_COUNTERS:
+        raise ValueError('workload-sibling-network-case-invalid')
+    expected = hashlib.sha256(role_rules('candidate-sender').encode()).hexdigest()
+    names = set(SIBLING_DROP_COUNTERS.values())
+    for row in (before, after):
+        if (not isinstance(row, dict) or row.get('schemaVersion') != 1
+                or row.get('kind') != 'pr315-fixed-sibling-drop-counters'
+                or row.get('policyDigest') != expected
+                or row.get('roleNamespaceIdentity') != sender_namespace
+                or not isinstance(row.get('counters'), dict)
+                or set(row['counters']) != names):
+            raise ValueError('workload-sibling-network-counter-context-invalid')
+        for counter in row['counters'].values():
+            if (not isinstance(counter, dict) or set(counter) != {'packets', 'bytes'}
+                    or any(type(counter[key]) is not int or counter[key] < 0
+                           for key in ('packets', 'bytes'))):
+                raise ValueError('workload-sibling-network-counter-invalid')
+    if (before['bootId'] != after['bootId']
+            or not before['observedMonotonicNs'] < after['observedMonotonicNs']):
+        raise ValueError('workload-sibling-network-counter-epoch-invalid')
+    selected = SIBLING_DROP_COUNTERS[case_id]
+    for name in names:
+        old, new = before['counters'][name], after['counters'][name]
+        packets, size = new['packets'] - old['packets'], new['bytes'] - old['bytes']
+        if name == selected:
+            if not 1 <= packets <= 8 or not 1 <= size <= 8192:
+                raise ValueError('workload-sibling-network-drop-not-attributed')
+        elif packets != 0 or size != 0:
+            raise ValueError('workload-sibling-network-other-case-changed')
+
+
+def _sibling_target_control(case_id, handle):
+    """Keep FCP and HTTP active-target checks on their approved recipient namespace."""
+    from restricted_workload_controller import _recipient_fcp_control, _recipient_http_control
+    if case_id == 'sibling-fcp':
+        observed, controlled_ns, digest = _recipient_fcp_control(handle)
+    elif case_id == 'sibling-http':
+        observed, controlled_ns, digest = _recipient_http_control(handle)
+    else:
+        raise ValueError('workload-sibling-network-case-invalid')
+    if (observed.get('state') != 'running'
+            or observed.get('provenance') != 'controller-kernel-sample'
+            or re.fullmatch('[0-9a-f]{64}', digest) is None):
+        raise ValueError('workload-sibling-network-target-inactive')
+    fields = ('managerInvocation', 'bootId', 'cgroupIdentity',
+              'observedMonotonicNs')
+    return {'role': 'candidate-recipient',
+            **{key: observed[key] for key in fields},
+            'controlObservedNs': controlled_ns, 'controlDigest': digest}
+
+
+def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_deadline_ns):
+    """Trigger two finite role-origin TCP attempts with separate root filter controls."""
+    import pr315_role_probe as role_probe
+    from restricted_workload_network import read_sibling_drop_counters, SIBLING_DROP_COUNTERS
+    sender_handle = handoff['handles']['candidate-sender']
+    recipient_handle = handoff['handles']['candidate-recipient']
+    sender_uid = workload.account('candidate-sender').pw_uid
+    root = workload.ROOT / 'state/candidate-sender/tmp'
+    audits = {}
+    for case_id, (port, prefix) in role_probe.NETWORK_CASES.items():
+        if time.monotonic_ns() >= campaign_deadline_ns:
+            raise ValueError('workload-sibling-network-deadline')
+        sender_before = workload.observe(sender_handle)
+        actor_before = _role_probe_actor(sender_before, nonce)
+        target_before = _sibling_target_control(case_id, recipient_handle)
+        counters_before = read_sibling_drop_counters()
+        if (target_before['observedMonotonicNs'] >= target_before['controlObservedNs']
+                or target_before['controlObservedNs'] >= counters_before['observedMonotonicNs']
+                or counters_before['roleNamespaceIdentity'] !=
+                   sender_before['networkNamespaceIdentity']):
+            raise ValueError('workload-sibling-network-before-window-invalid')
+        trigger_ns = time.monotonic_ns()
+        trigger = root / (prefix + '-trigger.json')
+        descriptor = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o444)
+        try:
+            with os.fdopen(descriptor, 'w', closefd=False) as stream:
+                json.dump({'caseId': case_id, 'nonce': nonce}, stream,
+                          sort_keys=True, separators=(',', ':'))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.fchmod(descriptor, 0o444)
+        finally:
+            os.close(descriptor)
+        result_path = root / (prefix + '-result.json')
+        until = min(time.monotonic() + 10, campaign_deadline_ns / 1e9)
+        while time.monotonic() < until and not result_path.exists():
+            time.sleep(.05)
+        if not result_path.exists():
+            raise ValueError('workload-sibling-network-result-timeout')
+        result = _candidate_probe_file(result_path, sender_uid)
+        counters_after = read_sibling_drop_counters()
+        sender_after = workload.observe(sender_handle)
+        actor_after = _role_probe_actor(sender_after, nonce)
+        target_after = _sibling_target_control(case_id, recipient_handle)
+        stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                        'networkNamespaceIdentity', 'mountNamespaceIdentity',
+                        'userNamespaceIdentity', 'executableDigest',
+                        'noNewPrivileges', 'effectiveCapabilities')
+        stable_target = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity')
+        if (not isinstance(result, dict) or set(result) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+                'startedMonotonicNs', 'finishedMonotonicNs', 'targetEndpointDigest',
+                'outcome'}
+                or result['schemaVersion'] != 1
+                or result['kind'] != 'pr315-candidate-network-probe'
+                or result['caseId'] != case_id or result['nonce'] != nonce
+                or result['pid'] != actor_before['namespacePids'][-1]
+                or result['uid'] != sender_uid
+                or result['targetEndpointDigest'] != hashlib.sha256(
+                    f'{role_probe.SIBLING_ADDRESS}:{port}'.encode()).hexdigest()
+                or result['outcome'] not in ({'connected': False, 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'errno': 'EACCES'})
+                or any(actor_before[key] != actor_after[key] for key in stable_actor)
+                or sender_before['managerInvocation'] != sender_after['managerInvocation']
+                or sender_before['cgroupIdentity'] != sender_after['cgroupIdentity']
+                or re.fullmatch('[0-9a-f]{64}', str(sender_before['stateDigest'])) is None
+                or sender_before['stateDigest'] != sender_after['stateDigest']
+                or any(target_before[key] != target_after[key] for key in stable_target)
+                or target_before['controlObservedNs'] >= counters_before['observedMonotonicNs']
+                or not counters_before['observedMonotonicNs'] < trigger_ns
+                    < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                    < counters_after['observedMonotonicNs']
+                    < target_after['observedMonotonicNs']
+                    < target_after['controlObservedNs']):
+            raise ValueError('workload-sibling-network-probe-invalid')
+        _sibling_counter_pair(case_id, counters_before, counters_after,
+                              sender_before['networkNamespaceIdentity'])
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-sibling-network-denial',
+                 'caseId': case_id, 'sourceDigest': source_digest,
+                 'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+                 'actorUid': sender_uid, 'actorBefore': actor_before,
+                 'actorAfter': actor_after,
+                 'senderInvocationBefore': sender_before['managerInvocation'],
+                 'senderInvocationAfter': sender_after['managerInvocation'],
+                 'senderCgroupBefore': sender_before['cgroupIdentity'],
+                 'senderCgroupAfter': sender_after['cgroupIdentity'],
+                 'senderStateBefore': sender_before['stateDigest'],
+                 'senderStateAfter': sender_after['stateDigest'],
+                 'targetBefore': target_before, 'targetAfter': target_after,
+                 'counterBefore': counters_before, 'counterAfter': counters_after,
+                 'triggerMonotonicNs': trigger_ns,
+                 'attackStartedNs': result['startedMonotonicNs'],
+                 'attackFinishedNs': result['finishedMonotonicNs'],
+                 'targetEndpointDigest': result['targetEndpointDigest'],
+                 'kernelConnectResult': result['outcome'],
+                 'counterName': SIBLING_DROP_COUNTERS[case_id]}
+        workload.write(workload.ROOT / 'authority' / (case_id + '-denial.json'),
+                       audit, create=True)
+        audits[case_id] = hashlib.sha256(json.dumps(audit,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return audits
+
+
 def probe_observer_private_read(workload, handoff, observer, source_digest,
                                 sibling_digest, campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
@@ -530,6 +699,8 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
                        fixed_audit, create=True)
         fixed_audits[case_id] = hashlib.sha256(json.dumps(fixed_audit,
             sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    network_audits = probe_sibling_network(
+        workload, handoff, nonce, source_digest, campaign_deadline_ns)
     return {'status': 'captured', 'caseId': 'observer-private-read',
             'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest(),
@@ -542,7 +713,8 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
             'counterStatus': 'captured',
             'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest(),
-            'fixedAccessAudits': fixed_audits}
+            'fixedAccessAudits': fixed_audits,
+            'networkAudits': network_audits}
 
 
 def _readiness_java_process(workload, handoff):
@@ -1595,6 +1767,10 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                                        ('cgroup-migration', 'cgroupMigration')):
                     diagnostics[field] = {'status': 'captured', 'caseId': case_id,
                                           'auditDigest': private_probe['fixedAccessAudits'][case_id]}
+                for case_id, field in (('sibling-fcp', 'siblingFcp'),
+                                       ('sibling-http', 'siblingHttp')):
+                    diagnostics[field] = {'status': 'captured', 'caseId': case_id,
+                                          'auditDigest': private_probe['networkAudits'][case_id]}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
                 diagnostic = {'status': 'unavailable-or-unsafe',
@@ -1609,6 +1785,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 diagnostics['forgedRuntimeIdentity'] = diagnostic
                 diagnostics['forgedCounters'] = diagnostic
                 for field in ('siblingData', 'packageExpectation', 'cgroupMigration'):
+                    diagnostics[field] = diagnostic
+                for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
