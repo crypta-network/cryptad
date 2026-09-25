@@ -32,6 +32,7 @@ SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
+READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart')
@@ -236,6 +237,69 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     return {'status': 'captured', 'caseId': 'observer-private-read',
             'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest()}
+
+
+def _readiness_java_process(workload, handoff):
+    """Select one current role JVM from trusted service and kernel observations."""
+    for role in reversed(ROLE_NAMES):
+        state = workload.manager(role, 'show')
+        if state['ActiveState'] != 'active' or state['SubState'] != 'running':
+            continue
+        observed = workload.observe(handoff['handles'][role])
+        expected = handoff['expectedJdkDigests'][role]
+        processes = [row for row in observed['processes']
+                     if row['executableDigest'] == expected]
+        if len(processes) != 1:
+            raise ValueError('workload-readiness-jvm-ambiguous-or-absent')
+        return role, observed['managerInvocation'], processes[0]
+    raise ValueError('workload-readiness-no-active-role')
+
+
+def capture_readiness_jcmd(workload, handoff):
+    """Collect two bounded JVM diagnostics before a failed role is stopped."""
+    from bounded_process import run
+    path = READINESS_JCMD
+    try:
+        role, invocation, process = _readiness_java_process(workload, handoff)
+        java = workload.ROOT / 'roles' / role / 'jdk/bin/jcmd'
+        if not java.is_file():
+            raise ValueError('workload-readiness-jcmd-unavailable')
+        record = {'schemaVersion': 1, 'kind': 'pr315-private-readiness-jcmd',
+                  'classification': 'private-diagnostic-not-acceptance',
+                  'role': role, 'managerInvocation': invocation,
+                  'hostPid': process['hostPid'], 'startTicks': process['startTicks'],
+                  'executableDigest': process['executableDigest'], 'commands': {}}
+        for name, limit, timeout in (('VM.command_line', 4096, 5),
+                                     ('Thread.print -l', 131072, 8)):
+            captured = {'stdout': b'', 'stderr': b''}
+            def retain(stdout, stderr):
+                captured.update(stdout=stdout, stderr=stderr)
+            try:
+                run([str(java), str(process['hostPid']), *name.split()],
+                    environment={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'},
+                    timeout=timeout, output_limit=limit, diagnostic_sink=retain)
+                status = 'completed'
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                status = (str(error) if str(error) in {
+                    'bounded_process_failed', 'bounded_process_deadline_exceeded',
+                    'bounded_process_output_exceeded'} else type(error).__name__)
+            record['commands'][name] = {'status': status,
+                'stdoutBase64': base64.b64encode(captured['stdout']).decode(),
+                'stderrBase64': base64.b64encode(captured['stderr'][:2048]).decode()}
+        raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+        if len(raw) > 262144:
+            raise ValueError('workload-readiness-jcmd-record-too-large')
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return {'status': 'retained', 'role': role,
+                'commandStatuses': {key: row['status'] for key, row in record['commands'].items()},
+                'privateDigest': hashlib.sha256(raw).hexdigest()}
+    except (OSError, ValueError, KeyError, TypeError, IndexError,
+            subprocess.SubprocessError) as error:
+        return {'status': 'unavailable-or-unsafe', 'exceptionType': type(error).__name__[:128]}
 
 
 def cleanup(workload):
@@ -1139,6 +1203,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
         if status != 0:
             diagnostics['observerFailure'] = {'exitStatus': status,
                 'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
+            try:
+                failure = json.loads(raw)
+                if (failure.get('observerFailure') == 'RuntimeFailure'
+                        and failure.get('privateDetail') == 'workload-daemon-readiness-timeout'):
+                    diagnostics['readinessJcmd'] = capture_readiness_jcmd(workload, handoff)
+            except (UnicodeError, ValueError, TypeError, AttributeError):
+                diagnostics['readinessJcmd'] = {'status': 'failure-transcript-invalid'}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
         if not startup_measurement and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True):

@@ -1806,6 +1806,45 @@ checked before deletion. Their CT102 reports and v8 evidence and the full
 local private guest copies remain. Failed attempt disks were retained. The
 task-private disposal audit records the exact paths and post-cleanup state.
 
+### Prospective TCG host admission and suite 72
+
+`cec96db` adds the versioned PVE TCG swap-admission receipt, exact-QEMU pidfd
+monitor, prospective 21-group v9 ledger and a fixed test-kit candidate-role
+`observer-private-read` probe. The probe and ledger passed offline checks but
+cannot grant installed acceptance. The schema-4 fixture was rebuilt from the
+same distinct candidate/predecessor products, pinned JDK and normally signed
+Mail/probe bundles, now measured with `workload-launcher-policy-v3`.
+
+Suite 71 was a no-VM preflight: the 224-GiB task cap, 16-GiB filesystem reserve,
+7-GiB guest/host budget and PVE host swap policy passed. Retained allocation was
+205,253,509,120 bytes and the next reservation 29,117,951,453 bytes. The
+separately pinned PVE receipt and monitor readiness were then verified from
+CT102 before allocating suite 72. An isolated no-VM monitor handshake had
+previously shown that a watcher which never sees QEMU cannot yield a passing
+completion receipt.
+
+Suite 72 ran the original `tcg-multi/qemu64`, four-vCPU, 5632-MiB guest with
+the same pinned QEMU/JDK/product bytes and the new host admission policy. It
+failed while the candidate recipient awaited its first FCP `GetNode`: the
+observer retained `workload-daemon-readiness-timeout` caused by an operation
+deadline. The sender and recipient services had started; predecessor and relay
+had not. Guest exit was 1, the guest stopped, root cleanup completed, the
+retention sentinel matched, and the launched roles had current stop receipts.
+No role had a captured HotSpot fatal file. Five-second sampling recorded no
+candidate-role cgroup OOM event; its sampling cannot prove continuous absence
+of pressure. The PVE watcher followed one exact task QEMU and finished without
+terminating it. The new candidate-role probe was not reached, so no new denial
+or positive case passed. The full failed guest and new fixture passed recursive
+checksum comparison after copying into the ignored local task directory; the
+separate host-admission and pressure records matched by SHA-256. The original
+failed disks remain on CT102.
+
+The readiness failure has no established root cause. The next source revision
+adds a bounded `VM.command_line` and `Thread.print -l` capture for the single
+kernel-measured JVM in the latest active role, before cleanup on this exact
+failure code. Its raw output is private and capped; the public verdict remains
+incomplete. This diagnostic has offline tests and has not yet run in a guest.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

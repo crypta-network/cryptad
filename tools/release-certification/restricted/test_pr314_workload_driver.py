@@ -719,6 +719,57 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
             self.assertEqual(0, copied.stat().st_mode & 0o222)
 
 
+class ReadinessJcmdDiagnosticTest(unittest.TestCase):
+    def test_latest_active_role_jvm_must_have_one_exact_staged_executable(self):
+        digest = 'sha256:' + 'a' * 64
+        handles = {role: role for role in driver.ROLE_NAMES}
+        handoff = {'handles': handles, 'expectedJdkDigests': {
+            role: digest for role in driver.ROLE_NAMES}}
+        workload = SimpleNamespace(
+            manager=lambda role, operation: {'ActiveState': 'active' if role in
+                {'candidate-sender', 'candidate-recipient'} else 'inactive',
+                'SubState': 'running' if role in
+                {'candidate-sender', 'candidate-recipient'} else 'dead'},
+            observe=lambda handle: {'managerInvocation': 'b' * 32,
+                'processes': [{'hostPid': 123, 'startTicks': 45,
+                               'executableDigest': digest}]})
+        role, invocation, process = driver._readiness_java_process(workload, handoff)
+        self.assertEqual('candidate-recipient', role)
+        self.assertEqual('b' * 32, invocation)
+        self.assertEqual(123, process['hostPid'])
+        workload.observe = lambda handle: {'managerInvocation': 'b' * 32,
+            'processes': [{'executableDigest': digest}, {'executableDigest': digest}]}
+        with self.assertRaisesRegex(ValueError, 'ambiguous-or-absent'):
+            driver._readiness_java_process(workload, handoff)
+
+    def test_jcmd_is_bounded_private_and_does_not_change_failure_class(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            jcmd = root / 'roles/candidate-recipient/jdk/bin/jcmd'
+            jcmd.parent.mkdir(parents=True)
+            jcmd.write_bytes(b'fixed-jcmd')
+            workload = SimpleNamespace(ROOT=root)
+            selected = ('candidate-recipient', 'b' * 32,
+                        {'hostPid': 123, 'startTicks': 45,
+                         'executableDigest': 'sha256:' + 'a' * 64})
+            called = []
+            def run(arguments, *, environment, timeout, output_limit, diagnostic_sink):
+                called.append((arguments[-2:], timeout, output_limit))
+                diagnostic_sink(b'private-thread-details', b'')
+                return b'private-thread-details'
+            with patch.object(driver, '_readiness_java_process', return_value=selected), \
+                    patch.object(driver, 'READINESS_JCMD', root / 'readiness.json'), \
+                    patch.dict('sys.modules', {'bounded_process': SimpleNamespace(run=run)}):
+                summary = driver.capture_readiness_jcmd(workload, {})
+            self.assertEqual('retained', summary['status'])
+            self.assertNotIn('private-thread-details', json.dumps(summary))
+            self.assertEqual([(['123', 'VM.command_line'], 5, 4096),
+                              (['Thread.print', '-l'], 8, 131072)], called)
+            retained = json.loads((root / 'readiness.json').read_bytes())
+            self.assertEqual('private-diagnostic-not-acceptance', retained['classification'])
+            self.assertEqual(0, (root / 'readiness.json').stat().st_mode & 0o077)
+
+
 class MemoryDiagnosticsTest(unittest.TestCase):
     def test_sampled_peaks_preserve_observed_demand_after_cgroup_disappears(self):
         diagnostics = {}
