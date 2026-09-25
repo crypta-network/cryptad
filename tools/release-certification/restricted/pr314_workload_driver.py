@@ -31,6 +31,7 @@ TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
+VOLATILE_MAX = 96 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
@@ -1404,6 +1405,44 @@ def probe_runner_control(workload, handoff, result):
     return {'status': 'captured'}
 
 
+def _write_volatile_bytes(path, raw):
+    """Link one fully synced private file without replacing prior evidence."""
+    temporary = path.with_name('.pr315-volatile-' + secrets.token_hex(16))
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            if stream.write(raw) != len(raw):
+                raise ValueError('workload-volatile-short-write')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path, follow_symlinks=False)
+        temporary.unlink()
+        parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def retain_volatile(workload, value):
+    """Publish only the fixed bounded private snapshot above the generic record cap.
+
+    The controller's ordinary authority writer remains capped at 64 KiB. The
+    administrator test kit alone owns this fixed root-only diagnostic path;
+    no control-socket caller can choose a destination or a new size limit.
+    """
+    if os.geteuid() != 0 or VOLATILE != Path('/root/pr315-workload-volatile.private.json'):
+        raise ValueError('workload-volatile-owner-or-path-invalid')
+    workload.secured(VOLATILE.parent, directory=True)
+    raw = json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+    if not 0 < len(raw) <= VOLATILE_MAX:
+        raise ValueError('workload-volatile-output-limit')
+    _write_volatile_bytes(VOLATILE, raw)
+
+
 def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
@@ -1420,6 +1459,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
     from restricted_workload_prepare import prepare
     from restricted_workload_launcher import launcher_policy
     import pr315_workload_evidence as evidence
+    if (evidence.MAX_OUTPUT != VOLATILE_MAX
+            or launcher_policy().get('privateVolatileMaxBytes') != VOLATILE_MAX):
+        raise ValueError('workload-volatile-policy-mismatch')
     identity = installation.verify_execution()
     kit = installation.read_json(installation.secured(TEST_KIT / '.test-kit.json'))
     relative = 'tools/release-certification/restricted/pr314_workload_driver.py'
@@ -1622,7 +1664,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
                 volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed',
                                             observer_root=root)
-                workload.write(VOLATILE, volatile, create=True)
+                retain_volatile(workload, volatile)
                 if (sentinel is not None and diagnostics['cleanup'] == 'completed'
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')

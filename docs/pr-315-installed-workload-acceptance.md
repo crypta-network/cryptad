@@ -2107,6 +2107,54 @@ interop tests (eight skips). A fresh accepted-profile TCG result is required
 before `arbitrary-endpoint` or any positive case can pass on this corrected
 source.
 
+The corrected `b9647beb` helper received a fresh source-bound fixture.
+Suite 94 passed no-VM preflight. Suite 95 then reached sender, recipient and
+previous readiness, but relay bootstrap exited after a HotSpot `SIGSEGV` in
+C1-compiled `sun.security.provider.SHA5.lf_sigma1`. Its wrapper reported an
+invalid bootstrap result. Suite 96 passed a new no-VM preflight; suite 97
+again reached three roles before relay bootstrap exited after a separate
+HotSpot `SIGSEGV` in C1-compiled
+`java.util.ImmutableCollections$SetN$SetNIterator.next`. Both failures
+preceded the observer endpoint request, so neither tests it. The guests
+exited 1 and stopped; the test kit reported cleanup complete, all four stop
+receipts and the sentinel were retained, and the exact-task PVE watchers
+completed. Full HotSpot files were copied privately before tmpfs shutdown.
+Each complete failed guest and four host records passed Mac byte checks.
+Only their stopped remote disk duplicates were released after independent
+hashes, zero QEMU/open descriptors and 87-QCOW backing scans; original
+failure bytes and offload receipts remain private. No QEMU, JDK, memory,
+timeout or pressure threshold was changed to obtain a pass.
+
+An isolated PVE KVM differential then used the same `b9647beb` source,
+candidate/predecessor products, signed apps, pinned JDK/QEMU, `qemu64`, four
+vCPUs and 5632-MiB guest; only the accelerator and separately identified
+host transport were KVM. Its no-VM preflight, task-wide storage reserve,
+swap/PSI admission and exact-QEMU PIDFD watcher passed. The guest reached
+the positive role sequence and fixed role-probe audits, then exited 1 while
+publishing the private volatile snapshot. The bounded failure receipt was
+`restricted-workload-record-limit`: the v7 evidence ceiling was 96 KiB, but
+the generic controller authority writer still capped every record at 64 KiB.
+The diagnostic wrapper's secondary attempt to parse the empty volatile file
+also failed; it is not the guest failure cause. From the stopped guest's
+QCOW2, a temporary sparse raw copy was mounted with
+`ro,noload,nodev,nosuid,noexec`. The root audit and observer checkpoint for
+`arbitrary-endpoint` were both retained and byte-checked on Mac: the root
+record contains pre/post active recipient FCP `NodeHello` controls and an
+actual `sibling-fcp` connector rejection. This is **KVM-only diagnostic
+proof**, never a TCG case pass or complete terminal acceptance result.
+The loop/mount and reconstructed raw were removed after audit, and the
+stopped remote QCOW duplicates were released after an 85-QCOW dependency
+scan; full original guest and private forensic records remain on Mac.
+
+The next narrow fix leaves the generic 64-KiB authority record limit and
+control socket unchanged. Only the fixed root-owned PR-315 volatile file
+uses a separate 96-KiB atomic, exclusive and fsynced private writer, still
+below the host's existing 256-KiB transfer cap. Native Linux PR-314/315
+driver, volatile-evidence, runner and fixture checks passed 142 tests,
+including a new over-64-KiB exclusive-write regression. This corrected
+source requires a fresh TCG run; the KVM differential does not grant an
+installed workload verdict.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2207,7 +2255,7 @@ role/AppHost boundary.
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
 | `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
 | `observer-control` | observer | Installed system manager; valid disallowed control request |
-| `arbitrary-endpoint` | observer | Existing nonapproved endpoint; valid disallowed connector selection |
+| `arbitrary-endpoint` | observer | Active recipient FCP `NodeHello` controls and one fixed disallowed connector selection; KVM diagnostic only, no accepted TCG pass |
 | `hostile-app-origin` | candidate | Active own app; valid request with hostile origin |
 | `package-expectation` | candidate | Admitted immutable package/identity; actual fixed mutation attempt |
 | `forged-runtime-identity` | candidate | Process observer; fixed false claim compared with independent kernel identity |

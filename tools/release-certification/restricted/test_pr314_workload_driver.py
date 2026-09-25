@@ -19,6 +19,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
 import pr314_workload_driver as driver
 
 
+class VolatilePublicationTest(unittest.TestCase):
+    def test_large_private_snapshot_is_atomic_exclusive_and_keeps_generic_cap(self):
+        raw = b'x' * 70000  # Above restricted_workload.write's 64-KiB record limit.
+        self.assertLess(len(raw), driver.VOLATILE_MAX)
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'pr315-workload-volatile.private.json'
+            driver._write_volatile_bytes(target, raw)
+            self.assertEqual(raw, target.read_bytes())
+            self.assertEqual(0o600, target.stat().st_mode & 0o777)
+            self.assertEqual(1, target.stat().st_nlink)
+            with self.assertRaises(FileExistsError):
+                driver._write_volatile_bytes(target, b'replacement')
+            self.assertEqual(raw, target.read_bytes())
+            self.assertEqual([target], list(Path(directory).iterdir()))
+
+
 class ObserverFailureTest(unittest.TestCase):
     def test_immediate_cause_survives_private_child_response(self):
         error = ValueError('workload-daemon-readiness-timeout')
@@ -641,8 +657,7 @@ class TerminalPublicationTest(unittest.TestCase):
             read=lambda path: selection if path == driver.SELECTION else
                 {'deadlineMonotonicNs': campaign_deadline},
             write=lambda path, *args, **kwargs: events.append(
-                'terminal-report' if path == driver.REPORT else
-                'volatile-diagnostics' if path == driver.VOLATILE else 'private-diagnostics'))
+                'terminal-report' if path == driver.REPORT else 'private-diagnostics'))
         def prepare(*args):
             events.append('prepare')
             if failure == 'prepare':
@@ -657,11 +672,13 @@ class TerminalPublicationTest(unittest.TestCase):
             self.assertEqual(Path(selection['private']['root']), observer_root)
             return {'sentinel': {'status': 'matched'}}
         modules = {'installation': installation, 'restricted_workload': workload,
-            'pr315_workload_evidence': SimpleNamespace(prepare_sentinel=lambda _: 'sha256:' + 'a' * 64,
+            'pr315_workload_evidence': SimpleNamespace(MAX_OUTPUT=driver.VOLATILE_MAX,
+                prepare_sentinel=lambda _: 'sha256:' + 'a' * 64,
                 capture=capture),
             'workload_installation': SimpleNamespace(install=lambda: None),
             'restricted_workload_prepare': SimpleNamespace(prepare=prepare),
-            'restricted_workload_launcher': SimpleNamespace(launcher_policy=lambda: {'revision': 'offline-test'}),
+            'restricted_workload_launcher': SimpleNamespace(launcher_policy=lambda: {
+                'revision': 'offline-test', 'privateVolatileMaxBytes': driver.VOLATILE_MAX}),
             'cross_version_workload': SimpleNamespace(InstalledWorkloadAdapter=Mock()),
             'cryptad_certification.cross_version_evidence': SimpleNamespace(Journal=Mock())}
         with ExitStack() as stack:
@@ -680,6 +697,8 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.object(driver, 'collect_child',
                 return_value=(b'{"contentRetrieval":"observed","newEpoch":true}', 0)))
             stack.enter_context(patch.object(driver, 'cleanup', side_effect=cleanup))
+            stack.enter_context(patch.object(driver, 'retain_volatile',
+                side_effect=lambda *_: events.append('volatile-diagnostics')))
             if failure:
                 with self.assertRaises((ValueError, subprocess.TimeoutExpired)):
                     driver.execute()
