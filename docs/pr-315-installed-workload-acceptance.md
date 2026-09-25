@@ -2,8 +2,8 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; `8d73168` TCG suite 81 passed eight positive,
-five denial and `cancellation` on one source-bound guest. Its 14 case IDs do
+**Implementation is incomplete; `fdcfe740` TCG suite 89 passed eight positive,
+ten denial and `cancellation` on one source-bound guest. Its 19 case IDs do
 not complete the 45-case contract.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -1949,7 +1949,7 @@ installed process observer and cgroup-v2 measurements, captures before/after
 role invocation and actor epoch, and writes separate bounded root audits.
 The host verifier can mark `forged-runtime-identity` and `forged-counters`
 only from those source-bound installed records. This path passed offline
-tests but has no accepted-profile TCG result yet.
+tests before the accepted-profile TCG result recorded below.
 
 The `846418c` v5 source first received a no-VM suite 83 PVE admission
 rejection: I/O full PSI `avg10` was 21.94 percent against the unchanged
@@ -1989,8 +1989,8 @@ canary read, a bounded write to the installed read-only daemon package, and
 a fixed cgroup migration. The administrator checks the active recipient
 role, package digest and original service cgroup before and after; the host
 requires separate source-bound v9 proofs for `sibling-data`,
-`package-expectation` and `cgroup-migration`. Offline tests pass. No v6
-accepted-profile TCG result exists yet.
+`package-expectation` and `cgroup-migration`. Offline tests pass; the
+source-bound v6 TCG result is recorded below.
 
 PVE KVM diagnostic 09 used clean `f589bf3`, a newly measured schema-4 v6
 fixture and the same pinned product/JDK/QEMU, `qemu64`, four-vCPU and
@@ -2011,6 +2011,31 @@ subsequently released only after their full local copies, 91-QCOW backing
 scan, ownership, QEMU and file-descriptor checks passed. This is still
 **KVM-only differential evidence** and grants no TCG case ID or 45-case
 acceptance result.
+
+The `fdcfe740` source adds a pre-allocation guard rejecting any non-TCG
+accelerator in the formal case runner. Its schema-4 v6 fixture retained the
+same candidate, predecessor, signed apps, pinned QEMU/JDK and original
+`tcg-multi/qemu64`, four-vCPU, 5632-MiB guest profile. A fresh no-VM suite 87
+passed with the expected exit 78. Suite 88 received a PVE preflight denial
+because I/O full PSI exceeded the unchanged 10-percent ceiling; it allocated
+no VM. After pressure subsided, suite 89 passed a new host swap-admission and
+pidfd-watcher handshake, then ran the fixed installed sequence. Its guest
+exited 0 and stopped. Host validation accepted all eight positive IDs, ten
+denials (`observer-private-read`, `observer-private-write`, `sibling-data`,
+`runner-control`, `observer-control`, `package-expectation`,
+`forged-runtime-identity`, `namespace-mount-escape`, `cgroup-migration`,
+`forged-counters`) and `cancellation`: **19/45** on one source-bound TCG
+attempt. Four current role stop receipts, a matching retention sentinel and
+completed exact-task QEMU monitoring were retained. The complete private
+suite passed a recursive byte comparison with its Mac archive; both QCOW2
+hashes matched independently. After guest stop, zero task QEMU/open file
+descriptors and a 91-QCOW backing scan found no external dependents, only
+suite 89's two remote disk duplicates were released. The full original bytes,
+failure history, fixture and offload plan/completion receipts remain private
+on Mac. The runner correctly reports `implementation-incomplete` and
+`installedWorkloadAcceptanceSatisfied=false`; another 16 denial and ten
+lifecycle IDs lack a current-source installed pass. `controller-restart` from
+an older source is historical evidence only.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2090,9 +2115,12 @@ verifier tests are not emitters.
 
 The denial rows below retain their fixed actor and target requirements.
 `runner-control`, `observer-control`, `namespace-mount-escape`,
-`observer-private-read` and `observer-private-write` have passing installed
-witnesses on `8d73168` suite 81; the other 21 still lack passing
-installed emitters. The actor column preserves the
+`observer-private-read`, `observer-private-write`, `sibling-data`,
+`package-expectation`, `cgroup-migration`, `forged-runtime-identity`,
+`forged-counters`, `runner-control`, `observer-control` and
+`namespace-mount-escape` have passing installed witnesses on `fdcfe740`
+suite 89; the other 16 still lack passing installed emitters. The actor
+column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -2126,8 +2154,8 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`cancellation` passed on `8d73168` suite 81. `controller-restart` passed on the
-older `db25340` source but remains unexecuted on `8d73168`; the other ten
+`cancellation` passed on `fdcfe740` suite 89. `controller-restart` passed on the
+older `db25340` source but remains unexecuted on `fdcfe740`; the other ten
 lifecycle IDs lack a current-source pass. Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.
@@ -2340,9 +2368,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `8d73168` suite 81 passed eight positive, five denial and `cancellation` on one original-profile TCG guest. Another 21 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
-| `installedPositiveExecuted` | True for the `8d73168` accepted-profile TCG suite 81; its eight-case positive aggregate completed |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 81 has 14 of 45 passing rows on one source-bound guest and 31 IDs remain without a pass |
+| `implementationCoverage` | Incomplete: `fdcfe740` suite 89 passed eight positive, ten denial and `cancellation` on one original-profile TCG guest. Another 16 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
+| `installedPositiveExecuted` | True for the `fdcfe740` accepted-profile TCG suite 89; its eight-case positive aggregate completed |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 89 has 19 of 45 passing rows on one source-bound guest and 26 IDs remain without a pass |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
