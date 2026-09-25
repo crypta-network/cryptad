@@ -2,10 +2,10 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; the latest completed TCG source, `45d8b914`
+**Implementation is incomplete; the latest passing TCG attempt, `45d8b914`
 suite 91, passed eight positive, ten denial and `controller-restart` on one
-source-bound guest. Its 19 case IDs do
-not complete the 45-case contract.** The first three installed
+source-bound guest. Its 19 case IDs do not complete the 45-case contract.**
+The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
@@ -2071,6 +2071,42 @@ root audits without granting a new installed verdict. A broader macOS test
 invocation failed in Linux-specific descriptor snapshot fixtures; its result
 is not substituted for the native Linux check.
 
+The `7203dc73` prospective v7 policy adds a closed observer request for
+`arbitrary-endpoint`. The actual observer UID asks the installed controller
+to select one fixed disallowed sibling-FCP endpoint; the controller first
+confirms the recipient's active FCP listener with bounded `ClientHello` /
+`NodeHello` exchanges, invokes the existing connector boundary and retains
+an independent root denial audit. No observer-supplied port, path, PID or
+arbitrary method reaches production dispatch. The private volatile capture
+ceiling is versioned at 96 KiB and remains below the host's fixed 256-KiB
+transfer cap. Offline native Linux checks passed 101 restricted tests, 67
+protected tests with one skip, 51 owning interop tests with eight skips, and
+70 adjacent guest/driver/host-policy tests. These are implementation checks,
+not installed acceptance.
+
+Suite 92 passed the no-VM preflight with the expected exit 78. Suite 93 then
+reached four-role readiness and the existing observer-control audit, but the
+new observer request stopped before attacking the connector:
+`workload-arbitrary-endpoint-premise-missing`. Source inspection and retained
+diagnostics established that `stateDigest` is deliberately populated only
+for the sender's fixed retention sentinel; recipient observations return
+`None`. The new probe had incorrectly required a recipient state digest.
+The guest exited 1 and stopped, cleanup was reported complete, and the PVE
+task-QEMU watcher completed. No positive or new denial row passed on that
+attempt. Its complete failure guest and four PVE host records passed local
+byte checks; after zero QEMU/open descriptors and an 89-QCOW dependency scan,
+only its two remote duplicate disks were released. Complete original bytes
+and offload receipts remain private on Mac.
+
+The next narrow correction removes only the nonexistent recipient sentinel
+premise. Recipient validity still requires its current invocation, cgroup,
+boot ID, running state and real FCP `NodeHello` controls before and after the
+fixed connector rejection. The sender's actual sentinel remains required.
+Native Linux reruns passed 77 restricted, 67 protected (one skip) and 51
+interop tests (eight skips). A fresh accepted-profile TCG result is required
+before `arbitrary-endpoint` or any positive case can pass on this corrected
+source.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2403,9 +2439,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the latest installed TCG helper `45d8b914` suite 91 passed eight positive, ten denial and `controller-restart` on one original-profile guest. Another 16 denial and ten lifecycle IDs lack a pass on that helper; `cancellation` passed only on the prior `fdcfe740` source |
-| `installedPositiveExecuted` | False for the post-suite-91 v9 source revision; true historically for `45d8b914` suite 91's eight-case positive aggregate |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 91 has 19 of 45 passing rows on one source-bound guest, and the revised source has no installed result yet |
+| `implementationCoverage` | Incomplete: the latest passing TCG helper `45d8b914` suite 91 passed eight positive, ten denial and `controller-restart` on one original-profile guest. Another 16 denial and ten lifecycle IDs lack a pass on that helper; `cancellation` passed only on the prior `fdcfe740` source. The new `arbitrary-endpoint` emitter remains unproven on corrected v7 source |
+| `installedPositiveExecuted` | False for the corrected v7 source revision; true historically for `45d8b914` suite 91's eight-case positive aggregate. Suite 93 failed before positive completion |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 91 has 19 of 45 passing rows on one historical source-bound guest, and the corrected source has no installed result yet |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

@@ -551,8 +551,7 @@ class InstalledWorkloadAdapter:
         self.control_exchanges = {}
         self.fnp_sample_failure = None
         self.restart_context = self.restart_window = None
-        self.initial_role_roster = self.initial_role_window = None
-        self.initial_sender_state = self.initial_recipient_state = None
+        self.initial_role_roster = self.initial_role_window = self.initial_sender_state = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
 
@@ -677,7 +676,6 @@ class InstalledWorkloadAdapter:
         self.initial_role_roster = kernel_roster(samples, self.expected_jdk_digests)
         self.initial_role_window = {'startedMonotonicNs': started, 'finishedMonotonicNs': finished}
         self.initial_sender_state = samples['candidate-sender'].get('stateDigest')
-        self.initial_recipient_state = samples['candidate-recipient'].get('stateDigest')
 
     def probe_observer_control(self):
         """Send one forbidden fixed method to the installed root controller."""
@@ -740,8 +738,7 @@ class InstalledWorkloadAdapter:
         """Ask the actual controller to reject one fixed sibling-FCP selector."""
         if len(self.private['nodes']['candidate-sender']['apps']) != 2:
             return
-        if (self.initial_role_roster is None or self.initial_role_window is None
-                or not isinstance(self.initial_recipient_state, str)):
+        if self.initial_role_roster is None or self.initial_role_window is None:
             fail('arbitrary-endpoint-premise-missing')
         request_raw = (b'{"method":"pr315-arbitrary-endpoint","handle":"'
                        + self.handles['candidate-sender'].encode() + b'"}\n')
@@ -774,7 +771,6 @@ class InstalledWorkloadAdapter:
                  'actorStartTicks': actor_start,
                  'roleKernelRoster': self.initial_role_roster,
                  'roleKernelRosterWindow': self.initial_role_window,
-                 'recipientStateBefore': self.initial_recipient_state,
                  'requestDigest': hashlib.sha256(request_raw).hexdigest(),
                  'responseDigest': hashlib.sha256(response_raw).hexdigest()}
         raw = json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()

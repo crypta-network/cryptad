@@ -539,7 +539,7 @@ def _arbitrary_endpoint_checkpoint(root, deadline):
         if (not isinstance(value, dict)
                 or set(value) != {'schemaVersion', 'kind', 'caseId', 'actorPid',
                                   'actorStartTicks', 'roleKernelRoster',
-                                  'roleKernelRosterWindow', 'recipientStateBefore',
+                                  'roleKernelRosterWindow',
                                   'requestDigest', 'responseDigest'}
                 or value['schemaVersion'] != 1
                 or value['kind'] != 'pr315-arbitrary-endpoint-denial-checkpoint'
@@ -547,7 +547,7 @@ def _arbitrary_endpoint_checkpoint(root, deadline):
                 or any(type(value[key]) is not int or value[key] <= 1
                        for key in ('actorPid', 'actorStartTicks'))
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
-                       for key in ('recipientStateBefore', 'requestDigest', 'responseDigest'))
+                       for key in ('requestDigest', 'responseDigest'))
                 or not isinstance(value['roleKernelRoster'], dict)
                 or not isinstance(value['roleKernelRosterWindow'], dict)):
             raise ValueError('arbitrary-endpoint-checkpoint-invalid')

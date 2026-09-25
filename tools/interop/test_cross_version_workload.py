@@ -240,7 +240,6 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.initial_role_window = {'startedMonotonicNs': 10,
                                            'finishedMonotonicNs': 20}
             adapter.initial_sender_state = 'c' * 64
-            adapter.initial_recipient_state = 'd' * 64
             adapter.remaining = lambda maximum: maximum
             channel = FakeChannel()
             with mock.patch.object(workload.socket, 'socket', return_value=channel):
@@ -267,8 +266,8 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.initial_role_roster = {'observerUid': 1001, 'roles': []}
             adapter.initial_role_window = {'startedMonotonicNs': 10,
                                            'finishedMonotonicNs': 20}
-            adapter.initial_recipient_state = 'd' * 64
             adapter.remaining = lambda maximum: maximum
+            self.assertFalse(hasattr(adapter, 'initial_recipient_state'))
             response = b'{"error":"restricted-workload-request-failed"}\n'
             channel = mock.MagicMock()
             channel.__enter__.return_value = channel
@@ -280,7 +279,6 @@ class ObserverPolicyTests(unittest.TestCase):
             value = json.loads(path.read_text())
             request = channel.sendall.call_args_list[1].args[0]
             self.assertEqual('arbitrary-endpoint', value['caseId'])
-            self.assertEqual('d' * 64, value['recipientStateBefore'])
             self.assertEqual(hashlib.sha256(request).hexdigest(), value['requestDigest'])
             self.assertEqual(hashlib.sha256(response).hexdigest(), value['responseDigest'])
             self.assertNotIn(HANDLE, path.read_text())
@@ -292,13 +290,12 @@ class ObserverPolicyTests(unittest.TestCase):
             {'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}}}
         adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
         adapter.observe = mock.Mock(side_effect=lambda role: {'role': role,
-                                                              'stateDigest': 'a' * 64})
+            'stateDigest': 'a' * 64 if role == 'candidate-sender' else None})
         expected = {'observerUid': 1001, 'roles': []}
         with mock.patch.object(workload, 'kernel_roster', return_value=expected) as roster:
             adapter.capture_probe_target_roster()
         self.assertEqual(expected, adapter.initial_role_roster)
         self.assertEqual('a' * 64, adapter.initial_sender_state)
-        self.assertEqual('a' * 64, adapter.initial_recipient_state)
         self.assertEqual(4, adapter.observe.call_count)
         self.assertLess(adapter.initial_role_window['startedMonotonicNs'],
                         adapter.initial_role_window['finishedMonotonicNs'])

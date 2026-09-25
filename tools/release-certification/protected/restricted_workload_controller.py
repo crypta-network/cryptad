@@ -195,8 +195,7 @@ def _recipient_fcp_control(handle):
     from restricted_workload_network import FCP_PORT
     observed = workload.observe(handle)
     if (observed.get('state') != 'running'
-            or observed.get('provenance') != 'controller-kernel-sample'
-            or not isinstance(observed.get('stateDigest'), str)):
+            or observed.get('provenance') != 'controller-kernel-sample'):
         workload.reject('arbitrary-endpoint-target-inactive')
     with workload.connect(handle, 'fcp') as stream:
         if stream.getpeername() != ('127.0.0.1', FCP_PORT):
@@ -268,10 +267,12 @@ def _observer_arbitrary_endpoint_denial(connection, handle, peer_pid, peer_uid,
         sender_after = workload.observe(handle)
         controller_after = _controller_process()
         after_peer = _observer_peer(peer_pid, peer_uid)
-        role_fields = ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest')
+        role_fields = ('managerInvocation', 'cgroupIdentity', 'bootId')
         if (before_peer != after_peer
                 or any(sender_before[key] != sender_after[key] for key in role_fields)
                 or any(recipient_before[key] != recipient_after[key] for key in role_fields)
+                or sender_before['stateDigest'] != sender_after['stateDigest']
+                or not isinstance(sender_before['stateDigest'], str)
                 or any(target_before[key] != controller_after[key]
                        for key in ('invocationId', 'cgroupIdentity', 'bootId'))
                 or not target_before['observedMonotonicNs'] < request_received_ns

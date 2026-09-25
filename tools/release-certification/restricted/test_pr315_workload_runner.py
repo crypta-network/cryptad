@@ -377,14 +377,13 @@ class RunnerTests(unittest.TestCase):
     def test_arbitrary_endpoint_needs_real_observer_denial_and_active_sibling_fcp(self):
         roster = synthetic_role_kernel_roster()
         sender, recipient = roster['roles'][:2]
-        sender_state, recipient_state = 'd' * 64, 'e' * 64
+        sender_state, recipient_state = 'd' * 64, None
         response = hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
         observer = {'schemaVersion': 1, 'kind': 'pr315-arbitrary-endpoint-denial-checkpoint',
                     'caseId': 'arbitrary-endpoint', 'actorPid': 123, 'actorStartTicks': 45,
                     'roleKernelRoster': roster,
                     'roleKernelRosterWindow': {'startedMonotonicNs': 10,
                                                'finishedMonotonicNs': 20},
-                    'recipientStateBefore': recipient_state,
                     'requestDigest': 'f' * 64, 'responseDigest': response}
         controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
                       'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -435,6 +434,8 @@ class RunnerTests(unittest.TestCase):
                         startTicks=46),
                     lambda row: row['arbitraryEndpointAudit']['record']['recipientAfter'].update(
                         managerInvocation='0' * 32),
+                    lambda row: row['arbitraryEndpointAudit']['record']['recipientBefore'].update(
+                        stateDigest='0' * 64),
                     lambda row: row['arbitraryEndpointAudit']['record'].update(
                         endpointSelection='host-fcp'),
                     lambda row: row['arbitraryEndpointAudit']['record'].update(

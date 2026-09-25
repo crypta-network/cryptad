@@ -973,13 +973,18 @@ def arbitrary_endpoint_denial_attempt(report, result, fixture, terminal):
         for role, principal in (('sender', sender), ('recipient', recipient)):
             before, after = root[role + 'Before'], root[role + 'After']
             if (any(before[key] != after[key] for key in
-                    ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest'))
+                    ('managerInvocation', 'cgroupIdentity', 'bootId'))
+                    or before['stateDigest'] != after['stateDigest']
                     or before['managerInvocation'] != principal['invocationId']
                     or before['bootId'].replace('-', '').lower() != principal['bootId']
                     or fixtures.runtime.canonical_digest({
                         'role': principal['role'],
-                        'identity': before['cgroupIdentity']})[7:] != principal['cgroupDigest']
-                    or re.fullmatch('[0-9a-f]{64}', before['stateDigest']) is None):
+                        'identity': before['cgroupIdentity']})[7:] != principal['cgroupDigest']):
+                return None
+            if (role == 'sender' and re.fullmatch('[0-9a-f]{64}',
+                    before['stateDigest']) is None):
+                return None
+            if role == 'recipient' and before['stateDigest'] is not None:
                 return None
             receipt = terminal['stopReceipts'][principal['role']]
             matching = [entry['record'] for entry in receipt.values()
@@ -993,8 +998,7 @@ def arbitrary_endpoint_denial_attempt(report, result, fixture, terminal):
                     or matching[0]['descendantCgroups'] != 0
                     or after['observedMonotonicNs'] >= matching[0]['startedMonotonicNs']):
                 return None
-        if (root['recipientBefore']['stateDigest'] != observer['recipientStateBefore']
-                or not window['finishedMonotonicNs']
+        if (not window['finishedMonotonicNs']
                     < controller_before['observedMonotonicNs']
                     < root['requestObservedNs']
                     < root['recipientBefore']['observedMonotonicNs']

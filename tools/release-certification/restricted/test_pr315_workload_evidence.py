@@ -313,7 +313,7 @@ class VolatileEvidenceTest(unittest.TestCase):
                       'kind': 'pr315-arbitrary-endpoint-denial-checkpoint',
                       'caseId': 'arbitrary-endpoint', 'actorPid': 123,
                       'actorStartTicks': 456, 'roleKernelRoster': {},
-                      'roleKernelRosterWindow': {}, 'recipientStateBefore': 'a' * 64,
+                      'roleKernelRosterWindow': {},
                       'requestDigest': 'b' * 64, 'responseDigest': 'c' * 64}
         controller = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
                       'bootId': 'boot', 'observedMonotonicNs': 10}

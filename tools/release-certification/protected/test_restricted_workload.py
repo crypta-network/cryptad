@@ -871,7 +871,7 @@ class ControllerRequestTest(unittest.TestCase):
 
     def test_arbitrary_endpoint_control_requires_recipient_fcp_hello(self):
         recipient = {'state': 'running', 'provenance': 'controller-kernel-sample',
-                     'stateDigest': 'a' * 64, 'observedMonotonicNs': 10}
+                     'stateDigest': None, 'observedMonotonicNs': 10}
         response = b'NodeHello\nFCPVersion=2.0\nEndMessage\n'
         stream = MagicMock()
         stream.__enter__.return_value = stream
@@ -896,7 +896,7 @@ class ControllerRequestTest(unittest.TestCase):
                   'provenance': 'controller-kernel-sample',
                   'managerInvocation': '1' * 32, 'cgroupIdentity': [1, 11],
                   'bootId': BOOT, 'observedMonotonicNs': 25}
-        recipient = dict(sender, stateDigest='d' * 64,
+        recipient = dict(sender, stateDigest=None,
                          managerInvocation='2' * 32, cgroupIdentity=[1, 12],
                          observedMonotonicNs=30)
         target = {'invocationId': '3' * 32, 'cgroupIdentity': [1, 13],
