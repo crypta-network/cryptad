@@ -1031,6 +1031,22 @@ def public_result(status, positive=False, reasons=(), statuses=None):
             'cases': acceptance.inventory(statuses)}
 
 
+def _v9_actor_epoch(observed, role):
+    """Carry the administrator's actual child and role epoch into each private case."""
+    return {'hostPid': observed['hostPid'], 'hostParentPid': observed['hostParentPid'],
+            'namespacePids': observed['namespacePids'], 'uid': role['uid'],
+            'gid': role['gid'], 'startTicks': observed['startTicks'],
+            'bootId': role['bootId'], 'systemdInvocation': role['invocationId'],
+            'cgroupDigest': role['cgroupDigest'],
+            'pidNamespace': observed['pidNamespace'],
+            'networkNamespaceIdentity': observed['networkNamespaceIdentity'],
+            'mountNamespaceIdentity': observed['mountNamespaceIdentity'],
+            'userNamespaceIdentity': observed['userNamespaceIdentity'],
+            'executableDigest': observed['executableDigest'],
+            'noNewPrivileges': observed['noNewPrivileges'],
+            'effectiveCapabilities': observed['effectiveCapabilities']}
+
+
 def _observer_private_attempt(case_id, report, result, fixture, terminal, source):
     """Bind one fixed role file operation and active canary to host transport."""
     try:
@@ -1042,7 +1058,7 @@ def _observer_private_attempt(case_id, report, result, fixture, terminal, source
         root = terminal[audit_field]['record']
         receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
         before, after = root['actorBefore'], root['actorAfter']
-        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids', 'pidNamespace',
                   'networkNamespaceIdentity', 'mountNamespaceIdentity',
                   'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
                   'effectiveCapabilities')
@@ -1078,6 +1094,13 @@ def _observer_private_attempt(case_id, report, result, fixture, terminal, source
                 'status': 'passed', 'actorUid': sender['uid'],
                 'actorHostPid': before['hostPid'], 'actorStartTicks': before['startTicks'],
                 'roleInvocation': sender['invocationId'],
+                'actorEpoch': _v9_actor_epoch(before, sender),
+                'operationWindow': {'startedMonotonicNs': root['attackStartedNs'],
+                                    'finishedMonotonicNs': root['attackFinishedNs']},
+                'targetEpoch': {'kind': 'observer-private-canary',
+                                'controlDigest': root['targetDigestBefore'],
+                                'controllerObservedBeforeNs': root['controllerObservedBeforeNs'],
+                                'controllerObservedAfterNs': root['controllerObservedAfterNs']},
                 'targetControlDigest': root['targetDigestBefore'],
                 'attackDigest': hashlib.sha256(json.dumps(root, sort_keys=True,
                     separators=(',', ':')).encode()).hexdigest(),
@@ -1106,7 +1129,7 @@ def _fixed_claim_attempt(case_id, report, result, fixture, terminal, source):
         audit = terminal[field]['record']
         receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
         before, after = audit['actorBefore'], audit['actorAfter']
-        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids', 'pidNamespace',
                   'networkNamespaceIdentity', 'mountNamespaceIdentity',
                   'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
                   'effectiveCapabilities')
@@ -1162,6 +1185,15 @@ def _fixed_claim_attempt(case_id, report, result, fixture, terminal, source):
                 'actorUid': sender['uid'], 'actorHostPid': before['hostPid'],
                 'actorStartTicks': before['startTicks'],
                 'roleInvocation': sender['invocationId'],
+                'actorEpoch': _v9_actor_epoch(before, sender),
+                'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                    'finishedMonotonicNs': audit['attackFinishedNs']},
+                'targetEpoch': {'kind': 'administrator-kernel-observation',
+                                'bootId': sender['bootId'],
+                                'systemdInvocation': sender['invocationId'],
+                                'cgroupDigest': sender['cgroupDigest'],
+                                'activeBeforeNs': audit['targetActiveBeforeNs'],
+                                'activeAfterNs': audit['targetActiveAfterNs']},
                 'targetControlDigest': target_digest,
                 'attackDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
                     separators=(',', ':')).encode()).hexdigest(),
@@ -1187,7 +1219,7 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
         first, last = audit['targetBefore'], audit['targetAfter']
         sender_receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
         target_receipt = terminal['stopReceipts'][target_role]['current']['record']
-        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids', 'pidNamespace',
                   'networkNamespaceIdentity', 'mountNamespaceIdentity',
                   'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
                   'effectiveCapabilities')
@@ -1253,6 +1285,17 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
                 'actorUid': sender['uid'], 'actorHostPid': before['hostPid'],
                 'actorStartTicks': before['startTicks'],
                 'roleInvocation': sender['invocationId'],
+                'actorEpoch': _v9_actor_epoch(before, sender),
+                'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                    'finishedMonotonicNs': audit['attackFinishedNs']},
+                'targetEpoch': {'kind': 'installed-role-or-package',
+                                'role': target_role, 'uid': target['uid'],
+                                'bootId': target['bootId'],
+                                'systemdInvocation': target['invocationId'],
+                                'cgroupDigest': target['cgroupDigest'],
+                                'controlDigest': first['controlDigest'],
+                                'activeBeforeNs': first['observedMonotonicNs'],
+                                'activeAfterNs': last['observedMonotonicNs']},
                 'targetInvocation': target['invocationId'],
                 'targetControlDigest': first['controlDigest'],
                 'attackDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,

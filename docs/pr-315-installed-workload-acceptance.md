@@ -2,8 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; `fdcfe740` TCG suite 89 passed eight positive,
-ten denial and `cancellation` on one source-bound guest. Its 19 case IDs do
+**Implementation is incomplete; the latest completed TCG source, `45d8b914`
+suite 91, passed eight positive, ten denial and `controller-restart` on one
+source-bound guest. Its 19 case IDs do
 not complete the 45-case contract.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -2037,6 +2038,39 @@ on Mac. The runner correctly reports `implementation-incomplete` and
 lifecycle IDs lack a current-source installed pass. `controller-restart` from
 an older source is historical evidence only.
 
+The subsequent documentation-only `45d8b914` source received a fresh schema-4
+fixture and a no-VM suite 90 preflight. Suite 91 then ran the same accepted
+TCG, product, JDK, signed-app and host-admission profile with the existing
+`controller-restart` scenario. Its guest exited 0 and stopped; all eight
+positive cases and the same ten denials passed, followed by a current-source
+`controller-restart` pass: **19/45** on this separate source-bound guest.
+The root administrator killed the old controller main process, observed all
+four bound roles stop before requesting the new controller start, and retained
+distinct old/new systemd invocation IDs, four stop receipts, zero populated
+cgroups and zero remaining descendants. The sentinel matched, and the PVE
+pidfd watcher completed without intervention. Suite 91's full private guest,
+fixture and four host records passed byte checks on Mac. After a 89-QCOW
+zero-dependency backing scan, stop/ownership/open-descriptor checks and
+independent matching hashes for both disks, only its remote disk duplicates
+were released; the complete local originals and audit receipts remain.
+Suite 89's `cancellation` and suite 91's `controller-restart` cannot be
+combined into one 20-case campaign because their helper source identities
+differ. The post-suite-91 v9 record change below is another source revision
+and needs fresh installed evidence.
+
+The next prospective v9 private case record carries the administrator's
+already checked child host/namespace PIDs and start epoch, UID/GID, boot ID,
+namespace identities, role cgroup and systemd invocation, plus the actual
+operation window and bounded active-target context for the seven currently
+emitted candidate-role denials. It also compares the PID namespace across
+the before/after root observations. This does not add a passed case or
+authorize accepting a candidate claim as trusted identity. On native Linux,
+86 owning runner, campaign, volatile-evidence and role-probe tests passed.
+The seven enriched records were reconstructed from suite 89's retained real
+root audits without granting a new installed verdict. A broader macOS test
+invocation failed in Linux-specific descriptor snapshot fixtures; its result
+is not substituted for the native Linux check.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2154,9 +2188,10 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`cancellation` passed on `fdcfe740` suite 89. `controller-restart` passed on the
-older `db25340` source but remains unexecuted on `fdcfe740`; the other ten
-lifecycle IDs lack a current-source pass. Triggers must follow observed
+`cancellation` passed on `fdcfe740` suite 89; `controller-restart` passed on
+`45d8b914` suite 91. These are separate helper identities. The other nine
+lifecycle IDs lack a source-bound TCG pass, and the eventual final source
+requires all eleven again. Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.
 
@@ -2368,9 +2403,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `fdcfe740` suite 89 passed eight positive, ten denial and `cancellation` on one original-profile TCG guest. Another 16 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
-| `installedPositiveExecuted` | True for the `fdcfe740` accepted-profile TCG suite 89; its eight-case positive aggregate completed |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 89 has 19 of 45 passing rows on one source-bound guest and 26 IDs remain without a pass |
+| `implementationCoverage` | Incomplete: the latest installed TCG helper `45d8b914` suite 91 passed eight positive, ten denial and `controller-restart` on one original-profile guest. Another 16 denial and ten lifecycle IDs lack a pass on that helper; `cancellation` passed only on the prior `fdcfe740` source |
+| `installedPositiveExecuted` | False for the post-suite-91 v9 source revision; true historically for `45d8b914` suite 91's eight-case positive aggregate |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 91 has 19 of 45 passing rows on one source-bound guest, and the revised source has no installed result yet |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

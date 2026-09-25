@@ -136,6 +136,7 @@ class RunnerTests(unittest.TestCase):
         sender = roster['roles'][0]
         source = Path(__file__).resolve().parents[3]
         actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
                  'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
                  'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
                  'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
@@ -163,8 +164,17 @@ class RunnerTests(unittest.TestCase):
         with patch.object(runner, 'positive_executed', return_value=True):
             case = runner.observer_private_read_attempt(report, value, fixture, terminal, source)
             self.assertEqual('passed', case['status'])
+            self.assertEqual(sender['invocationId'], case['actorEpoch']['systemdInvocation'])
+            self.assertEqual(sender['bootId'], case['actorEpoch']['bootId'])
+            self.assertEqual('pid:[4026532603]', case['actorEpoch']['pidNamespace'])
+            self.assertEqual({'startedMonotonicNs': 60, 'finishedMonotonicNs': 70},
+                             case['operationWindow'])
+            self.assertEqual({'controllerObservedBeforeNs': 40, 'controllerObservedAfterNs': 80},
+                             {key: case['targetEpoch'][key] for key in
+                              ('controllerObservedBeforeNs', 'controllerObservedAfterNs')})
             for mutate in (
                     lambda row: row['actorAfter'].update(startTicks=46),
+                    lambda row: row['actorAfter'].update(pidNamespace='pid:[4026539999]'),
                     lambda row: row.update(targetDigestAfter='d' * 64),
                     lambda row: row.update(kernelOpenResult={'opened': True, 'errno': None}),
                     lambda row: row.update(roleInvocationAfter='e' * 32)):
@@ -191,6 +201,7 @@ class RunnerTests(unittest.TestCase):
         sender = roster['roles'][0]
         source = Path(__file__).resolve().parents[3]
         actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
                  'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
                  'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
                  'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
@@ -231,6 +242,9 @@ class RunnerTests(unittest.TestCase):
                 'forged-counters', report, result, fixture, terminal, source)
             self.assertEqual('passed', first['status'])
             self.assertEqual('passed', second['status'])
+            self.assertEqual(sender['cgroupDigest'], first['actorEpoch']['cgroupDigest'])
+            self.assertEqual({'startedMonotonicNs': 78, 'finishedMonotonicNs': 79},
+                             second['operationWindow'])
             self.assertNotEqual(first['attackDigest'], second['attackDigest'])
             for field, key, value in (
                     ('forgedRuntimeIdentityAudit', 'claimedHostPid', 2),
@@ -248,6 +262,7 @@ class RunnerTests(unittest.TestCase):
         sender, recipient = roster['roles'][:2]
         source = Path(__file__).resolve().parents[3]
         actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
                  'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
                  'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
                  'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
@@ -297,6 +312,11 @@ class RunnerTests(unittest.TestCase):
                 case = runner._fixed_role_access_attempt(
                     case_id, report, result, fixture, terminal, source)
                 self.assertEqual('passed', case['status'])
+                self.assertEqual(sender['invocationId'], case['actorEpoch']['systemdInvocation'])
+                self.assertEqual(target['invocationId'], case['targetEpoch']['systemdInvocation'])
+                self.assertEqual(target['cgroupDigest'], case['targetEpoch']['cgroupDigest'])
+                self.assertEqual({'startedMonotonicNs': start,
+                                  'finishedMonotonicNs': start + 1}, case['operationWindow'])
                 found.append(case['attackDigest'])
                 changed = copy.deepcopy(terminal)
                 changed[field]['record']['targetAfter']['cgroupIdentity'] = [1, 999]
