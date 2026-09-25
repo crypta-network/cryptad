@@ -127,6 +127,10 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_private_kvm_diagnostic_cannot_enter_tcg_case_runner(self):
+        with self.assertRaisesRegex(ValueError, 'accepted-tcg-profile-required'):
+            runner.run(SimpleNamespace(profile='kvm-diagnostic'))
+
     def test_observer_private_read_requires_bound_role_child_and_active_canary(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]
@@ -801,7 +805,7 @@ class RunnerTests(unittest.TestCase):
                 prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
                 known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
                 min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
-                min_host_memory_bytes=1024**3, profile='tcg-single',
+                min_host_memory_bytes=1024**3, profile='tcg-multi',
                 fixture_manifest_digest='4' * 64, product_source_commit='d' * 40)
             host = synthetic_host_identity()
             report = {'mode': 'workload-positive', 'workloadPurpose': 'positive',
@@ -868,7 +872,7 @@ class RunnerTests(unittest.TestCase):
                 ssh_key=root / 'absent-key', known_hosts=root / 'absent-pin',
                 storage_budget_bytes=40 * 1024**3, min_free_bytes=8 * 1024**3,
                 memory_budget_bytes=7 * 1024**3, min_host_memory_bytes=1024**3,
-                profile='tcg-single')
+                profile='tcg-multi')
             with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
                     patch.object(runner, 'memory_snapshot', return_value={'effectiveAvailableBytes': 9 * 1024**3}), \
                     patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
@@ -891,7 +895,7 @@ class StartupPurposeTests(unittest.TestCase):
                 prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
                 known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
                 min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
-                min_host_memory_bytes=1024**3, profile='tcg-single')
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
             report = {'mode': 'workload-positive', 'workloadPurpose': 'positive',
                 'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0,
                 'hostVerifiedIdentity': {'bundleIdentity': 'a' * 64, 'helperSourceCommit': 'b' * 40}}

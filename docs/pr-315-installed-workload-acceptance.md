@@ -1980,6 +1980,9 @@ file. The task-only KVM QEMU pressure monitor finished without action. The
 complete guest and seven separate host records passed local byte checks.
 Its result remains **differential diagnostic only**: it grants no v8/v9 TCG
 case and does not establish the cause of the intermittent TCG JVM failures.
+The prospective installed acceptance runner now rejects a non-TCG accelerator
+before any case allocation; the separate direct KVM diagnostic produces only
+private shape and failure observations.
 
 The next prospective v6 role child also attempts a recipient-owned tmpfs
 canary read, a bounded write to the installed read-only daemon package, and
@@ -1987,7 +1990,27 @@ a fixed cgroup migration. The administrator checks the active recipient
 role, package digest and original service cgroup before and after; the host
 requires separate source-bound v9 proofs for `sibling-data`,
 `package-expectation` and `cgroup-migration`. Offline tests pass. No v6
-installed result exists yet.
+accepted-profile TCG result exists yet.
+
+PVE KVM diagnostic 09 used clean `f589bf3`, a newly measured schema-4 v6
+fixture and the same pinned product/JDK/QEMU, `qemu64`, four-vCPU and
+5632-MiB guest identities as the earlier differential. After a no-VM
+224-GiB capacity block, it passed the unchanged budget and swap-pressure
+checks following byte-verified release of KVM08's stopped duplicate disks.
+The KVM09 guest exited 0 and stopped, kept four current role stop receipts,
+matched the sentinel, and captured root audits for the previous four role
+probes plus the new `sibling-data`, `package-expectation` and
+`cgroup-migration` operations. The three actual denial errno values were
+`ENOENT`, `EACCES` and `ENOENT`, respectively; the attacker opened none of
+the targets or wrote bytes. Recipient invocation/cgroup/canary controls and
+candidate daemon jar bytes stayed fixed; the package digest matched the
+candidate fixture. No HotSpot fatal file was captured. The task-only QEMU
+watcher completed without intervention. Complete guest and seven host
+records passed local byte checks. The stopped KVM09 disk duplicates were
+subsequently released only after their full local copies, 91-QCOW backing
+scan, ownership, QEMU and file-descriptor checks passed. This is still
+**KVM-only differential evidence** and grants no TCG case ID or 45-case
+acceptance result.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop

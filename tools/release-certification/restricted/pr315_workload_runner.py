@@ -1266,6 +1266,8 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
+    if args.profile != 'tcg-multi':
+        raise ValueError('workload-accepted-tcg-profile-required')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
         if reference.sha256(module.__file__) != reference.sha256(expected):
