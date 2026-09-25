@@ -60,10 +60,11 @@ remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
 Suite 81 used `workload-launcher-policy-v4` for its measured candidate-role
-read/write pair. The next implementation uses `workload-launcher-policy-v5`
-to add two fixed false claims within the same TCG guest profile family. Its
-test-kit and installed results must be measured anew; historical v8 record
-interpretation remains unchanged.
+read/write pair. A separate KVM diagnostic exercised v5. The prospective
+`workload-launcher-policy-v6` adds three more fixed role boundary
+operations within the same TCG guest profile family. Its test-kit and TCG
+results must be measured anew; historical v8 record interpretation remains
+unchanged.
 
 ## Implemented preparation and positive orchestration
 
@@ -1947,8 +1948,46 @@ zero resource-counter claims. The administrator compares them with the current
 installed process observer and cgroup-v2 measurements, captures before/after
 role invocation and actor epoch, and writes separate bounded root audits.
 The host verifier can mark `forged-runtime-identity` and `forged-counters`
-only from those source-bound installed records. This path has offline tests
-but no installed result yet.
+only from those source-bound installed records. This path passed offline
+tests but has no accepted-profile TCG result yet.
+
+The `846418c` v5 source first received a no-VM suite 83 PVE admission
+rejection: I/O full PSI `avg10` was 21.94 percent against the unchanged
+10-percent preflight ceiling. Suite 84 then booted the accepted TCG profile
+but failed candidate-sender's first FCP readiness after a captured HotSpot
+`SIGSEGV` in C1-compiled `Unsafe.getShortUnaligned`. A fresh suite 85 no-VM
+admission passed. Suite 86 reached all four roles, but the sender's new JVM
+failed its post-restart FCP readiness with a captured HotSpot `SIGILL` in
+C1-compiled `SecP256R1Field.reduce32`. Both guest failures stopped, root
+cleanup and task-QEMU monitor completion were retained, and neither reached
+the v5 false-claim probes. Their complete private guests and PVE records
+passed local byte checks. After confirming exact ownership, zero task QEMU
+and open descriptors, and a 93-QCOW zero-dependency backing scan, only the
+CT102 disk duplicates for stopped failed suites 69 and 86 were released.
+Full exact-byte failure guests remain in the ignored local task directory.
+These distinct C1 fault locations do not identify a cause or change the TCG
+acceptance verdict.
+
+PVE KVM diagnostic 08 then used the same `846418c` helper, candidate and
+predecessor products, signed apps, pinned QEMU/JDK, `qemu64`, four vCPUs and
+5632-MiB guest; only the accelerator and separately identified host transport
+were KVM. Its source-bound no-VM preflight initially hit the unchanged 224-GiB
+task cap, then passed after the verified duplicate cleanup. The guest exited
+0, stopped and retained all four current role stop receipts, the sentinel,
+and fixed root audits for `observer-private-read`, `observer-private-write`,
+`forged-runtime-identity` and `forged-counters`. It captured no HotSpot fatal
+file. The task-only KVM QEMU pressure monitor finished without action. The
+complete guest and seven separate host records passed local byte checks.
+Its result remains **differential diagnostic only**: it grants no v8/v9 TCG
+case and does not establish the cause of the intermittent TCG JVM failures.
+
+The next prospective v6 role child also attempts a recipient-owned tmpfs
+canary read, a bounded write to the installed read-only daemon package, and
+a fixed cgroup migration. The administrator checks the active recipient
+role, package digest and original service cgroup before and after; the host
+requires separate source-bound v9 proofs for `sibling-data`,
+`package-expectation` and `cgroup-migration`. Offline tests pass. No v6
+installed result exists yet.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2064,8 +2103,8 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`cancellation` passed on `d8d66e7` suite 70. `controller-restart` passed on the
-older `db25340` source but remains unexecuted on `d8d66e7`; the other ten
+`cancellation` passed on `8d73168` suite 81. `controller-restart` passed on the
+older `db25340` source but remains unexecuted on `8d73168`; the other ten
 lifecycle IDs lack a current-source pass. Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.

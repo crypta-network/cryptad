@@ -117,6 +117,48 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('captured', retained['forgedRuntimeIdentityAudit']['status'])
         self.assertEqual('unavailable-or-unsafe', retained['forgedCountersAudit']['status'])
 
+    def test_fixed_role_access_audits_reject_replaced_targets(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1,
+                  'kind': 'pr315-administrator-fixed-role-access-denial',
+                  'sourceDigest': 'a' * 64, 'nonceDigest': 'b' * 64,
+                  'actorUid': 1001, 'actorBefore': actor, 'actorAfter': actor,
+                  'actorInvocationBefore': 'c' * 32,
+                  'actorInvocationAfter': 'c' * 32,
+                  'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99]}
+        for case_id, role, errno_code, start in (
+                ('sibling-data', 'candidate-recipient', 'ENOENT', 60),
+                ('package-expectation', 'candidate-sender', 'EACCES', 71),
+                ('cgroup-migration', 'candidate-recipient', 'ENOENT', 81)):
+            with self.subTest(case_id=case_id):
+                target = {'role': role, 'managerInvocation': 'd' * 32,
+                          'cgroupIdentity': [1, 100], 'observedMonotonicNs': 40,
+                          'controlDigest': 'e' * 64}
+                audit = {**common, 'caseId': case_id,
+                         'targetBefore': target,
+                         'targetAfter': dict(target, observedMonotonicNs=100),
+                         'attackStartedNs': start, 'attackFinishedNs': start + 1,
+                         'kernelOpenResult': {'opened': False, 'errno': errno_code},
+                         'writtenBytes': 0}
+                path = self.root / 'authority' / (case_id + '-denial.json')
+                path.write_text(json.dumps(audit))
+                retained = evidence._capture(self.root, self.expected, True)
+                field = {'sibling-data': 'siblingDataAudit',
+                         'package-expectation': 'packageExpectationAudit',
+                         'cgroup-migration': 'cgroupMigrationAudit'}[case_id]
+                self.assertEqual(audit, retained[field]['record'])
+                changed = dict(audit, targetAfter=dict(target,
+                    observedMonotonicNs=100, controlDigest='f' * 64))
+                path.write_text(json.dumps(changed))
+                retained = evidence._capture(self.root, self.expected, True)
+                self.assertEqual('unavailable-or-unsafe', retained[field]['status'])
+                path.unlink()
+
     def test_fixed_exchange_audits_are_private_bounded_projections_after_cleanup(self):
         import pr315_workload_runner as runner
         self.assertEqual(set(evidence.EXCHANGE_FIELDS), runner.EXCHANGE_AUDIT_FIELDS)

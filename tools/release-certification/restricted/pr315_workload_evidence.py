@@ -679,6 +679,86 @@ def _fixed_claim_audit(root, deadline, case_id):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _fixed_role_access_audit(root, deadline, case_id):
+    """Capture one fixed candidate syscall against an active role-owned target."""
+    roles = {'sibling-data': 'candidate-recipient',
+             'package-expectation': 'candidate-sender',
+             'cgroup-migration': 'candidate-recipient'}
+    if case_id not in roles:
+        raise ValueError('fixed-role-access-case-invalid')
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', case_id + '-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                  'actorUid', 'actorBefore', 'actorAfter',
+                  'actorInvocationBefore', 'actorInvocationAfter',
+                  'actorCgroupBefore', 'actorCgroupAfter',
+                  'targetBefore', 'targetAfter', 'attackStartedNs',
+                  'attackFinishedNs', 'kernelOpenResult', 'writtenBytes'}
+        target_fields = {'role', 'managerInvocation', 'cgroupIdentity',
+                         'observedMonotonicNs', 'controlDigest'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-fixed-role-access-denial'
+                or value['caseId'] != case_id
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest'))
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != ROLE_PROBE_ACTOR_FIELDS
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key])) is None
+                       for key in ('actorInvocationBefore', 'actorInvocationAfter'))
+                or value['actorInvocationBefore'] != value['actorInvocationAfter']
+                or value['actorCgroupBefore'] != value['actorCgroupAfter']
+                or any(not isinstance(value[key], list) or len(value[key]) != 2
+                       or any(type(part) is not int or part <= 0 for part in value[key])
+                       for key in ('actorCgroupBefore', 'actorCgroupAfter'))
+                or any(not isinstance(value[key], dict) or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or value['targetBefore']['role'] != roles[case_id]
+                or value['targetAfter']['role'] != roles[case_id]
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key]['managerInvocation'])) is None
+                       or re.fullmatch('[0-9a-f]{64}', str(value[key]['controlDigest'])) is None
+                       or type(value[key]['observedMonotonicNs']) is not int
+                       or value[key]['observedMonotonicNs'] <= 0
+                       for key in ('targetBefore', 'targetAfter'))
+                or value['targetBefore']['managerInvocation'] !=
+                    value['targetAfter']['managerInvocation']
+                or value['targetBefore']['cgroupIdentity'] !=
+                    value['targetAfter']['cgroupIdentity']
+                or value['targetBefore']['controlDigest'] !=
+                    value['targetAfter']['controlDigest']
+                or any(not isinstance(value[key]['cgroupIdentity'], list)
+                       or len(value[key]['cgroupIdentity']) != 2
+                       or any(type(part) is not int or part <= 0
+                              for part in value[key]['cgroupIdentity'])
+                       for key in ('targetBefore', 'targetAfter'))
+                or type(value['attackStartedNs']) is not int
+                or type(value['attackFinishedNs']) is not int
+                or not value['targetBefore']['observedMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['targetAfter']['observedMonotonicNs']
+                or type(value['writtenBytes']) is not int or value['writtenBytes'] != 0
+                or not isinstance(value['kernelOpenResult'], dict)
+                or set(value['kernelOpenResult']) != {'opened', 'errno'}
+                or value['kernelOpenResult']['opened'] is not False):
+            raise ValueError('fixed-role-access-audit-invalid')
+        if (case_id == 'package-expectation' and
+                value['kernelOpenResult']['errno'] not in ('EACCES', 'EPERM', 'EROFS')):
+            raise ValueError('fixed-package-denial-code-invalid')
+        if (case_id != 'package-expectation'
+                and value['kernelOpenResult']['errno'] != 'ENOENT'):
+            raise ValueError('fixed-role-denial-code-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -708,6 +788,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'observerPrivateWriteAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedRuntimeIdentityAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
+        'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
+        'packageExpectationAudit': {'status': 'not-captured-cleanup-unverified'},
+        'cgroupMigrationAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -749,6 +832,10 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
+        for case_id, field in (('sibling-data', 'siblingDataAudit'),
+                               ('package-expectation', 'packageExpectationAudit'),
+                               ('cgroup-migration', 'cgroupMigrationAudit')):
+            result[field] = _fixed_role_access_audit(root, deadline, case_id)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -808,6 +895,10 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
+        for case_id, field in (('sibling-data', 'siblingDataAudit'),
+                               ('package-expectation', 'packageExpectationAudit'),
+                               ('cgroup-migration', 'cgroupMigrationAudit')):
+            result[field] = _fixed_role_access_audit(root, deadline, case_id)
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

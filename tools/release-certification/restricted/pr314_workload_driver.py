@@ -41,6 +41,10 @@ STARTUP_MEASUREMENT_SECONDS = 120
 # Production limits and the retained campaign deadline remain unchanged.
 READINESS_SECONDS = 90
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
+SIBLING_CANARY = 'pr315-sibling-data-canary'
+SIBLING_PROBE_PATH = '/var/lib/cryptad-restricted-workload/state/candidate-recipient/pr315-sibling-data-canary'
+PACKAGE_PROBE_PATH = '/package/lib/cryptad.jar'
+CGROUP_PROBE_PATH = '/sys/fs/cgroup/system.slice/cryptad-workload@candidate-recipient.service/cgroup.procs'
 ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-observer-private-control-failed', 'workload-observer-private-control-mismatch',
     'workload-role-probe-ready-timeout', 'workload-role-probe-ready-invalid',
@@ -53,7 +57,13 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-role-probe-write-outcome-mismatch', 'workload-role-probe-write-timeline-invalid',
     'workload-role-probe-identity-claim-invalid', 'workload-role-probe-counter-claim-invalid',
     'workload-role-probe-counter-target-unavailable',
-    'workload-role-probe-claim-timeline-invalid'))
+    'workload-role-probe-claim-timeline-invalid',
+    'workload-sibling-data-control-failed', 'workload-sibling-data-target-changed',
+    'workload-package-target-changed', 'workload-cgroup-target-changed',
+    'workload-role-probe-sibling-data-invalid',
+    'workload-role-probe-package-expectation-invalid',
+    'workload-role-probe-cgroup-migration-invalid',
+    'workload-role-probe-fixed-access-timeline-invalid'))
 
 
 class RoleProbeDiagnosticError(ValueError):
@@ -115,6 +125,22 @@ def stage_role_probe(workload, kit):
     return hashlib.sha256(raw).hexdigest()
 
 
+def prepare_sibling_canary(workload):
+    """Place one recipient-owned 32-byte target in its real mounted role tmpfs."""
+    user = workload.account('candidate-recipient')
+    path = workload.ROOT / 'state/candidate-recipient' / SIBLING_CANARY
+    raw = secrets.token_bytes(32)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchown(descriptor, user.pw_uid, user.pw_gid)
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-sibling-canary-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return hashlib.sha256(raw).hexdigest()
+
+
 def _candidate_probe_file(path, uid):
     """Read a bounded role-owned file without following a candidate link."""
     info = path.lstat()
@@ -132,8 +158,11 @@ def _candidate_probe_file(path, uid):
         os.close(descriptor)
 
 
-def _observer_canary_control(path, user):
-    """Demonstrate that the current observer UID can read the target bytes."""
+def _observer_canary_control(path, user, failure_code='workload-observer-private-control-failed'):
+    """Demonstrate that the selected target owner can read the current bytes."""
+    if failure_code not in ('workload-observer-private-control-failed',
+                            'workload-sibling-data-control-failed'):
+        raise ValueError('workload-canary-control-selection-invalid')
     def drop():
         os.setgroups([])
         os.setgid(user.pw_gid)
@@ -144,8 +173,29 @@ def _observer_canary_control(path, user):
         preexec_fn=drop, timeout=5)
     if (selected.returncode != 0 or selected.stderr or len(selected.stdout) != 65
             or re.fullmatch(rb'[0-9a-f]{64}\n', selected.stdout) is None):
-        raise ValueError('workload-observer-private-control-failed')
+        raise ValueError(failure_code)
     return selected.stdout[:64].decode()
+
+
+def _staged_package_digest(workload):
+    path = workload.ROOT / 'roles/candidate-sender/package/lib/cryptad.jar'
+    before = path.lstat()
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_nlink != 1
+            or before.st_mode & 0o022 or not 0 < before.st_size <= 512 * 1024**2):
+        raise ValueError('workload-package-target-changed')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        with os.fdopen(descriptor, 'rb', closefd=False) as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        current = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    after = path.lstat()
+    fields = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_nlink')
+    if any(getattr(before, key) != getattr(after, key)
+           or getattr(before, key) != getattr(current, key) for key in fields):
+        raise ValueError('workload-package-target-changed')
+    return digest
 
 
 def _role_probe_actor(observation, nonce):
@@ -169,7 +219,7 @@ def _role_probe_actor(observation, nonce):
 def _safe_role_probe_outcome(value):
     if (not isinstance(value, dict) or set(value) != {'opened', 'errno'}
             or type(value['opened']) is not bool
-            or value['errno'] not in ('ENOENT', 'EACCES', 'EPERM', 'UNKNOWN', None)):
+            or value['errno'] not in ('ENOENT', 'EACCES', 'EPERM', 'EROFS', 'UNKNOWN', None)):
         return None
     return {'opened': value['opened'], 'errno': value['errno']}
 
@@ -251,8 +301,59 @@ def _validate_false_role_claims(result, before, after, actor, uid):
     return identity, counters
 
 
+def _validate_fixed_role_accesses(result, after):
+    selected = (
+        ('siblingRead', 'sibling-data', SIBLING_PROBE_PATH, ('ENOENT',)),
+        ('packageWrite', 'package-expectation', PACKAGE_PROBE_PATH,
+         ('EACCES', 'EPERM', 'EROFS')),
+        ('cgroupMigration', 'cgroup-migration', CGROUP_PROBE_PATH, ('ENOENT',)))
+    previous = result['counterClaim']['finishedMonotonicNs']
+    found = {}
+    for name, case_id, target, allowed in selected:
+        row = result.get(name)
+        if (not isinstance(row, dict) or set(row) != {
+                'operation', 'startedMonotonicNs', 'finishedMonotonicNs',
+                'writtenBytes', 'outcome', 'targetPathDigest'}
+                or row['operation'] != case_id or type(row['writtenBytes']) is not int
+                or row['writtenBytes'] != 0
+                or row['targetPathDigest'] != hashlib.sha256(target.encode()).hexdigest()):
+            raise RoleProbeDiagnosticError('workload-role-probe-' + case_id + '-invalid')
+        if (not isinstance(row['outcome'], dict)
+                or row['outcome'].get('opened') is not False
+                or row['outcome'].get('errno') not in allowed
+                or set(row['outcome']) != {'opened', 'errno'}):
+            raise RoleProbeDiagnosticError('workload-role-probe-' + case_id + '-invalid',
+                                           _safe_role_probe_outcome(row['outcome']))
+        times = (previous, row['startedMonotonicNs'], row['finishedMonotonicNs'],
+                 after['observedMonotonicNs'])
+        if (any(type(value) is not int or value <= 0 for value in times)
+                or list(times) != sorted(times) or len(set(times)) != len(times)):
+            raise RoleProbeDiagnosticError('workload-role-probe-fixed-access-timeline-invalid')
+        previous = row['finishedMonotonicNs']
+        found[case_id] = row
+    return found
+
+
+def _cgroup_control_digest(observation):
+    raw = json.dumps({'role': 'candidate-recipient',
+        'managerInvocation': observation['managerInvocation'],
+        'cgroupIdentity': observation['cgroupIdentity']},
+        sort_keys=True, separators=(',', ':')).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _fixed_role_target(role, observation, digest):
+    if (role not in ('candidate-sender', 'candidate-recipient')
+            or re.fullmatch('[0-9a-f]{64}', digest) is None):
+        raise ValueError('workload-fixed-role-target-invalid')
+    return {'role': role, 'managerInvocation': observation['managerInvocation'],
+            'cgroupIdentity': observation['cgroupIdentity'],
+            'observedMonotonicNs': observation['observedMonotonicNs'],
+            'controlDigest': digest}
+
+
 def probe_observer_private_read(workload, handoff, observer, source_digest,
-                                campaign_deadline_ns):
+                                sibling_digest, campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-role-probe-campaign-expired')
@@ -298,6 +399,14 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     target_before = _observer_canary_control(canary, observer)
     if target_before != expected:
         raise ValueError('workload-role-probe-target-changed')
+    sibling_path = workload.ROOT / 'state/candidate-recipient' / SIBLING_CANARY
+    recipient_user = workload.account('candidate-recipient')
+    recipient_before = workload.observe(handoff['handles']['candidate-recipient'])
+    sibling_before = _observer_canary_control(
+        sibling_path, recipient_user, 'workload-sibling-data-control-failed')
+    package_before = _staged_package_digest(workload)
+    if sibling_before != sibling_digest:
+        raise ValueError('workload-sibling-data-target-changed')
     trigger_ns = time.monotonic_ns()
     trigger = probe_root / 'pr315-observer-private-read-trigger.json'
     descriptor = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
@@ -317,6 +426,10 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     after = workload.observe(handoff['handles'][role])
     actor_after = _role_probe_actor(after, nonce)
     target_after = _observer_canary_control(canary, observer)
+    recipient_after = workload.observe(handoff['handles']['candidate-recipient'])
+    sibling_after = _observer_canary_control(
+        sibling_path, recipient_user, 'workload-sibling-data-control-failed')
+    package_after = _staged_package_digest(workload)
     _validate_role_probe_result(ready, before, actor_before, after, actor_after,
                                 result, expected, target_after, nonce, trigger_ns)
     audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
@@ -376,6 +489,46 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
         'actualTasksAfter': after['cgroupTasks']}
     workload.write(workload.ROOT / 'authority/forged-counters-denial.json',
                    counter_audit, create=True)
+    if (recipient_before['managerInvocation'] != recipient_after['managerInvocation']
+            or recipient_before['cgroupIdentity'] != recipient_after['cgroupIdentity']
+            or sibling_before != sibling_digest or sibling_after != sibling_digest):
+        raise ValueError('workload-sibling-data-target-changed')
+    if package_before != package_after:
+        raise ValueError('workload-package-target-changed')
+    if before['cgroupIdentity'] != after['cgroupIdentity']:
+        raise ValueError('workload-cgroup-target-changed')
+    accesses = _validate_fixed_role_accesses(result, after)
+    fixed_audits = {}
+    target_map = {
+        'sibling-data': ('candidate-recipient', recipient_before, recipient_after,
+                         sibling_before, sibling_after),
+        'package-expectation': ('candidate-sender', before, after,
+                                package_before, package_after),
+        'cgroup-migration': ('candidate-recipient', recipient_before, recipient_after,
+                             _cgroup_control_digest(recipient_before),
+                             _cgroup_control_digest(recipient_after))}
+    for case_id, row in accesses.items():
+        target_role, first, last, control_before, control_after = target_map[case_id]
+        target_first = _fixed_role_target(target_role, first, control_before)
+        target_last = _fixed_role_target(target_role, last, control_after)
+        if target_first['controlDigest'] != target_last['controlDigest']:
+            raise ValueError('workload-' + case_id + '-target-changed')
+        fixed_audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-fixed-role-access-denial', 'caseId': case_id,
+            'sourceDigest': source_digest, 'nonceDigest': audit['nonceDigest'],
+            'actorUid': uid, 'actorBefore': actor_before, 'actorAfter': actor_after,
+            'actorInvocationBefore': before['managerInvocation'],
+            'actorInvocationAfter': after['managerInvocation'],
+            'actorCgroupBefore': before['cgroupIdentity'],
+            'actorCgroupAfter': after['cgroupIdentity'],
+            'targetBefore': target_first, 'targetAfter': target_last,
+            'attackStartedNs': row['startedMonotonicNs'],
+            'attackFinishedNs': row['finishedMonotonicNs'],
+            'kernelOpenResult': row['outcome'], 'writtenBytes': row['writtenBytes']}
+        workload.write(workload.ROOT / 'authority' / (case_id + '-denial.json'),
+                       fixed_audit, create=True)
+        fixed_audits[case_id] = hashlib.sha256(json.dumps(fixed_audit,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return {'status': 'captured', 'caseId': 'observer-private-read',
             'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest(),
@@ -387,7 +540,8 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
                 separators=(',', ':')).encode()).hexdigest(),
             'counterStatus': 'captured',
             'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit, sort_keys=True,
-                separators=(',', ':')).encode()).hexdigest()}
+                separators=(',', ':')).encode()).hexdigest(),
+            'fixedAccessAudits': fixed_audits}
 
 
 def _readiness_java_process(workload, handoff):
@@ -1295,6 +1449,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         role_probe_digest = stage_role_probe(workload, kit)
+        sibling_digest = prepare_sibling_canary(workload)
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
         if type(campaign_deadline) is not int or campaign_deadline <= time.monotonic_ns():
             raise ValueError('workload-preparation-consumed-deadline')
@@ -1379,7 +1534,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                                                 'exceptionType': type(error).__name__[:128]}
             try:
                 private_probe = probe_observer_private_read(
-                    workload, handoff, observer, role_probe_digest, campaign_deadline)
+                    workload, handoff, observer, role_probe_digest, sibling_digest,
+                    campaign_deadline)
                 diagnostics['observerPrivateRead'] = {key: private_probe[key]
                     for key in ('status', 'caseId', 'auditDigest')}
                 diagnostics['observerPrivateWrite'] = {'status': private_probe['writeStatus'],
@@ -1392,6 +1548,11 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 diagnostics['forgedCounters'] = {'status': private_probe['counterStatus'],
                     'caseId': 'forged-counters',
                     'auditDigest': private_probe['counterAuditDigest']}
+                for case_id, field in (('sibling-data', 'siblingData'),
+                                       ('package-expectation', 'packageExpectation'),
+                                       ('cgroup-migration', 'cgroupMigration')):
+                    diagnostics[field] = {'status': 'captured', 'caseId': case_id,
+                                          'auditDigest': private_probe['fixedAccessAudits'][case_id]}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
                 diagnostic = {'status': 'unavailable-or-unsafe',
@@ -1405,6 +1566,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 diagnostics['observerPrivateWrite'] = diagnostic
                 diagnostics['forgedRuntimeIdentity'] = diagnostic
                 diagnostics['forgedCounters'] = diagnostic
+                for field in ('siblingData', 'packageExpectation', 'cgroupMigration'):
+                    diagnostics[field] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)

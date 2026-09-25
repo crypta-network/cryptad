@@ -239,6 +239,71 @@ class RunnerTests(unittest.TestCase):
                 self.assertIsNone(runner._fixed_claim_attempt(
                     case_id, report, result, fixture, changed, source))
 
+    def test_fixed_role_access_needs_active_sibling_or_package_and_stop_receipt(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1,
+                  'kind': 'pr315-administrator-fixed-role-access-denial',
+                  'sourceDigest': runner.reference.sha256(source /
+                      'tools/release-certification/restricted/pr315_role_probe.py'),
+                  'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                  'actorBefore': actor, 'actorAfter': dict(actor),
+                  'actorInvocationBefore': sender['invocationId'],
+                  'actorInvocationAfter': sender['invocationId'],
+                  'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99]}
+        terminal = synthetic_terminal_roster(roster)
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64,
+                   'products': {'candidate': {'daemonDigest': 'sha256:' + 'f' * 64}}}
+        cases = (
+            ('sibling-data', 'siblingDataAudit', recipient, [1, 100], 'e' * 64, 'ENOENT', 60),
+            ('package-expectation', 'packageExpectationAudit', sender, [1, 99], 'f' * 64,
+             'EACCES', 71),
+            ('cgroup-migration', 'cgroupMigrationAudit', recipient, [1, 100], None,
+             'ENOENT', 81))
+        found = []
+        with patch.object(runner, 'positive_executed', return_value=True):
+            for case_id, field, target, group, digest, errno_code, start in cases:
+                if digest is None:
+                    digest = hashlib.sha256(json.dumps({'role': target['role'],
+                        'managerInvocation': target['invocationId'],
+                        'cgroupIdentity': group}, sort_keys=True,
+                        separators=(',', ':')).encode()).hexdigest()
+                snapshot = {'role': target['role'],
+                            'managerInvocation': target['invocationId'],
+                            'cgroupIdentity': group,
+                            'observedMonotonicNs': 40, 'controlDigest': digest}
+                audit = {**common, 'caseId': case_id,
+                    'targetBefore': snapshot,
+                    'targetAfter': dict(snapshot, observedMonotonicNs=120),
+                    'attackStartedNs': start, 'attackFinishedNs': start + 1,
+                    'kernelOpenResult': {'opened': False, 'errno': errno_code},
+                    'writtenBytes': 0}
+                terminal[field] = {'status': 'captured', 'record': audit}
+                case = runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, terminal, source)
+                self.assertEqual('passed', case['status'])
+                found.append(case['attackDigest'])
+                changed = copy.deepcopy(terminal)
+                changed[field]['record']['targetAfter']['cgroupIdentity'] = [1, 999]
+                self.assertIsNone(runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, changed, source))
+            self.assertEqual(3, len(set(found)))
+            changed = copy.deepcopy(terminal)
+            changed['packageExpectationAudit']['record']['targetBefore']['controlDigest'] = '0' * 64
+            self.assertIsNone(runner._fixed_role_access_attempt(
+                'package-expectation', report, result, fixture, changed, source))
+
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

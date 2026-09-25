@@ -1171,6 +1171,98 @@ def _fixed_claim_attempt(case_id, report, result, fixture, terminal, source):
         return None
 
 
+def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, source):
+    """Bind a fixed candidate syscall to an independently active installed target."""
+    cases = {'sibling-data': ('siblingDataAudit', 'candidate-recipient'),
+             'package-expectation': ('packageExpectationAudit', 'candidate-sender'),
+             'cgroup-migration': ('cgroupMigrationAudit', 'candidate-recipient')}
+    try:
+        field, target_role = cases[case_id]
+        host = report['hostVerifiedIdentity']
+        roster = result['roleKernelRoster']['roles']
+        sender = next(row for row in roster if row['role'] == 'candidate-sender')
+        target = next(row for row in roster if row['role'] == target_role)
+        audit = terminal[field]['record']
+        before, after = audit['actorBefore'], audit['actorAfter']
+        first, last = audit['targetBefore'], audit['targetAfter']
+        sender_receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        target_receipt = terminal['stopReceipts'][target_role]['current']['record']
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                  'networkNamespaceIdentity', 'mountNamespaceIdentity',
+                  'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
+                  'effectiveCapabilities')
+        source_digest = reference.sha256(source /
+            'tools/release-certification/restricted/pr315_role_probe.py')
+        actor_cgroup_digest = fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
+        target_cgroup_digest = fixtures.runtime.canonical_digest({
+            'role': target_role, 'identity': first['cgroupIdentity']})[7:]
+        if (not positive_executed(report, result, terminal)
+                or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
+                or terminal[field]['status'] != 'captured'
+                or audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-fixed-role-access-denial'
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != source_digest
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['actorInvocationBefore'] != sender['invocationId']
+                or audit['actorInvocationAfter'] != sender['invocationId']
+                or audit['actorCgroupBefore'] != audit['actorCgroupAfter']
+                or actor_cgroup_digest != sender['cgroupDigest']
+                or first['role'] != target_role or last['role'] != target_role
+                or first['managerInvocation'] != target['invocationId']
+                or last['managerInvocation'] != target['invocationId']
+                or first['cgroupIdentity'] != last['cgroupIdentity']
+                or target_cgroup_digest != target['cgroupDigest']
+                or first['controlDigest'] != last['controlDigest']
+                or audit['writtenBytes'] != 0
+                or not first['observedMonotonicNs'] < audit['attackStartedNs']
+                    < audit['attackFinishedNs'] < last['observedMonotonicNs']
+                    < target_receipt['startedMonotonicNs']
+                or sender_receipt['managerInvocation'] != sender['invocationId']
+                or target_receipt['managerInvocation'] != target['invocationId']
+                or any(receipt['membership'] != 'only-stop-helper'
+                       or receipt['descendantCgroups'] != 0
+                       for receipt in (sender_receipt, target_receipt))
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        if case_id == 'package-expectation':
+            outcome = audit['kernelOpenResult']
+            if (not isinstance(outcome, dict) or set(outcome) != {'opened', 'errno'}
+                    or outcome['opened'] is not False
+                    or outcome['errno'] not in ('EACCES', 'EPERM', 'EROFS')
+                    or first['controlDigest'] != fixture['products']['candidate'][
+                        'daemonDigest'].removeprefix('sha256:')):
+                return None
+        elif audit['kernelOpenResult'] != {'opened': False, 'errno': 'ENOENT'}:
+            return None
+        if case_id == 'cgroup-migration':
+            control = hashlib.sha256(json.dumps({'role': target_role,
+                'managerInvocation': first['managerInvocation'],
+                'cgroupIdentity': first['cgroupIdentity']},
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            if first['controlDigest'] != control:
+                return None
+        return {'contract': campaign.CONTRACT, 'caseId': case_id, 'status': 'passed',
+                'actorUid': sender['uid'], 'actorHostPid': before['hostPid'],
+                'actorStartTicks': before['startTicks'],
+                'roleInvocation': sender['invocationId'],
+                'targetInvocation': target['invocationId'],
+                'targetControlDigest': first['controlDigest'],
+                'attackDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest(),
+                'hostVerifiedIdentity': host, 'guestStopped': True,
+                'stopReceiptObservedNs': target_receipt['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, StopIteration, OSError):
+        return None
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
@@ -1400,6 +1492,17 @@ def run(args):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
                         raise ValueError('workload-fixed-claim-verification-failed')
+                    native_runner._save(output / (case_id + '-v9-evidence.private.json'), case)
+                    statuses[case_id] = 'passed'
+            for case_id, field in (('sibling-data', 'siblingDataAudit'),
+                                   ('package-expectation', 'packageExpectationAudit'),
+                                   ('cgroup-migration', 'cgroupMigrationAudit')):
+                if (positive and isinstance(terminal, dict)
+                        and terminal.get(field, {}).get('status') == 'captured'):
+                    case = _fixed_role_access_attempt(
+                        case_id, report, value, fixture, terminal, args.source)
+                    if case is None:
+                        raise ValueError('workload-fixed-role-access-verification-failed')
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), case)
                     statuses[case_id] = 'passed'
             if startup_measurement:

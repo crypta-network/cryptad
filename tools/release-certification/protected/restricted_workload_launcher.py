@@ -24,8 +24,8 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v5',
-            'candidateRoleProbe': 'observer-private-file-and-false-claims-v3',
+    return {'revision': 'workload-launcher-policy-v6',
+            'candidateRoleProbe': 'fixed-role-file-and-false-claims-v4',
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role == 'previous' else 30 for role in ROLES}}
 

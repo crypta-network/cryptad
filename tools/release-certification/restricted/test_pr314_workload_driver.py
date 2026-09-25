@@ -668,6 +668,7 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.dict('sys.modules', modules))
             stack.enter_context(patch.object(driver, 'TEST_KIT', repository))
             stack.enter_context(patch.object(driver, 'stage_role_probe', return_value='f' * 64))
+            stack.enter_context(patch.object(driver, 'prepare_sibling_canary', return_value='d' * 64))
             stack.enter_context(patch.object(driver, 'prerequisites', return_value=[]))
             stack.enter_context(patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)))
             stack.enter_context(patch.object(Path, 'mkdir'))
@@ -700,6 +701,21 @@ class TerminalPublicationTest(unittest.TestCase):
 
 
 class MeasuredRoleProbeStagingTest(unittest.TestCase):
+    def test_recipient_canary_is_owned_and_created_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            recipient = root / 'state/candidate-recipient'
+            recipient.mkdir(parents=True)
+            user = SimpleNamespace(pw_uid=os.geteuid(), pw_gid=os.getegid())
+            workload = SimpleNamespace(ROOT=root, account=lambda role: user)
+            digest = driver.prepare_sibling_canary(workload)
+            target = recipient / driver.SIBLING_CANARY
+            self.assertEqual(32, target.stat().st_size)
+            self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(), digest)
+            self.assertEqual(user.pw_uid, target.stat().st_uid)
+            with self.assertRaises(FileExistsError):
+                driver.prepare_sibling_canary(workload)
+
     def test_only_the_exact_test_kit_script_can_be_staged(self):
         source = Path(driver.__file__).resolve().parents[3]
         relative = 'tools/release-certification/restricted/pr315_role_probe.py'
@@ -779,7 +795,7 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
         ready = {'startedMonotonicNs': 10}
         before = {'managerInvocation': 'b' * 32, 'cgroupIdentity': [1, 99],
                   'cgroupMemoryBytes': 200, 'cgroupTasks': 3}
-        after = {'managerInvocation': 'b' * 32, 'observedMonotonicNs': 50,
+        after = {'managerInvocation': 'b' * 32, 'observedMonotonicNs': 100,
                  'cgroupIdentity': [1, 99], 'cgroupMemoryBytes': 210, 'cgroupTasks': 3}
         result = {'nonce': 'c' * 64, 'caseId': 'observer-private-read', 'pid': 2,
                   'outcome': {'opened': False, 'errno': 'ENOENT'},
@@ -831,6 +847,27 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
                                     'counter-target-unavailable'):
             driver._validate_false_role_claims(claims, before,
                 dict(after, cgroupMemoryBytes=0), actor, 983)
+        def access(operation, path, start, finish, errno_code):
+            return {'operation': operation, 'startedMonotonicNs': start,
+                    'finishedMonotonicNs': finish, 'writtenBytes': 0,
+                    'outcome': {'opened': False, 'errno': errno_code},
+                    'targetPathDigest': hashlib.sha256(path.encode()).hexdigest()}
+        fixed = dict(claims,
+            siblingRead=access('sibling-data', driver.SIBLING_PROBE_PATH, 50, 60, 'ENOENT'),
+            packageWrite=access('package-expectation', driver.PACKAGE_PROBE_PATH, 61, 70, 'EACCES'),
+            cgroupMigration=access('cgroup-migration', driver.CGROUP_PROBE_PATH, 71, 80, 'ENOENT'))
+        self.assertEqual({'sibling-data', 'package-expectation', 'cgroup-migration'},
+                         set(driver._validate_fixed_role_accesses(fixed, after)))
+        invalid = dict(fixed, packageWrite=dict(fixed['packageWrite'],
+            outcome={'opened': False, 'errno': 'ENOENT'}))
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'package-expectation-invalid'):
+            driver._validate_fixed_role_accesses(invalid, after)
+        invalid = dict(fixed, cgroupMigration=dict(fixed['cgroupMigration'],
+            startedMonotonicNs=69))
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'fixed-access-timeline-invalid'):
+            driver._validate_fixed_role_accesses(invalid, after)
 
     def test_private_error_code_never_copies_unrecognized_candidate_text(self):
         self.assertEqual('workload-role-probe-ready-timeout',
