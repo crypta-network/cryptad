@@ -770,6 +770,43 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             self.assertEqual(0, (root / 'readiness.json').stat().st_mode & 0o077)
 
 
+class RoleProbeFinalBindingTest(unittest.TestCase):
+    def test_result_keeps_actor_target_and_denial_failures_distinct(self):
+        actor = {'hostPid': 123, 'startTicks': 45, 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200], 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400], 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        ready = {'startedMonotonicNs': 10}
+        before = {'managerInvocation': 'b' * 32}
+        after = {'managerInvocation': 'b' * 32, 'observedMonotonicNs': 50}
+        result = {'nonce': 'c' * 64, 'caseId': 'observer-private-read', 'pid': 2,
+                  'outcome': {'opened': False, 'errno': 'ENOENT'},
+                  'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}
+        args = (ready, before, actor, after, actor, result, 'd' * 64, 'd' * 64, 'c' * 64, 20)
+        self.assertIsNone(driver._validate_role_probe_result(*args))
+        changed_actor = dict(actor, startTicks=46)
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'actor-changed'):
+            driver._validate_role_probe_result(
+                ready, before, actor, after, changed_actor, result, 'd' * 64, 'd' * 64, 'c' * 64, 20)
+        denied = dict(result, outcome={'opened': False, 'errno': 'EACCES'})
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'outcome-mismatch') as caught:
+            driver._validate_role_probe_result(
+                ready, before, actor, after, actor, denied, 'd' * 64, 'd' * 64, 'c' * 64, 20)
+        self.assertEqual({'opened': False, 'errno': 'EACCES'}, caught.exception.observed_outcome)
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'timeline-invalid'):
+            driver._validate_role_probe_result(ready, before, actor, after, actor,
+                dict(result, finishedMonotonicNs=30), 'd' * 64, 'd' * 64, 'c' * 64, 20)
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'target-changed'):
+            driver._validate_role_probe_result(ready, before, actor, after, actor,
+                result, 'd' * 64, 'e' * 64, 'c' * 64, 20)
+
+    def test_private_error_code_never_copies_unrecognized_candidate_text(self):
+        self.assertEqual('workload-role-probe-ready-timeout',
+            driver._private_role_probe_code(ValueError('workload-role-probe-ready-timeout')))
+        self.assertIsNone(driver._private_role_probe_code(ValueError(
+            '/private/secret/path must not enter diagnostic')))
+
+
 class MemoryDiagnosticsTest(unittest.TestCase):
     def test_sampled_peaks_preserve_observed_demand_after_cgroup_disappears(self):
         diagnostics = {}

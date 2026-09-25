@@ -41,6 +41,28 @@ STARTUP_MEASUREMENT_SECONDS = 120
 # Production limits and the retained campaign deadline remain unchanged.
 READINESS_SECONDS = 90
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
+ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
+    'workload-observer-private-control-failed', 'workload-observer-private-control-mismatch',
+    'workload-role-probe-ready-timeout', 'workload-role-probe-ready-invalid',
+    'workload-role-probe-file-invalid', 'workload-role-probe-file-changed',
+    'workload-role-probe-actor-unavailable', 'workload-role-probe-pid-unbound',
+    'workload-role-probe-target-changed', 'workload-role-probe-result-timeout',
+    'workload-role-probe-actor-changed', 'workload-role-probe-invocation-changed',
+    'workload-role-probe-result-unbound', 'workload-role-probe-outcome-mismatch',
+    'workload-role-probe-timeline-invalid'))
+
+
+class RoleProbeDiagnosticError(ValueError):
+    """Fixed private classification; never include a candidate message in text."""
+
+    def __init__(self, code, observed_outcome=None):
+        super().__init__(code)
+        self.observed_outcome = observed_outcome
+
+
+def _private_role_probe_code(error):
+    code = str(error)
+    return code if code in ROLE_PROBE_CODES else None
 
 
 def prerequisites():
@@ -140,6 +162,41 @@ def _role_probe_actor(observation, nonce):
     return found[0]
 
 
+def _safe_role_probe_outcome(value):
+    if (not isinstance(value, dict) or set(value) != {'opened', 'errno'}
+            or type(value['opened']) is not bool
+            or value['errno'] not in ('ENOENT', 'EACCES', 'EPERM', 'UNKNOWN', None)):
+        return None
+    return {'opened': value['opened'], 'errno': value['errno']}
+
+
+def _validate_role_probe_result(ready, before, actor_before, after, actor_after,
+                                result, expected, target_after, nonce, trigger_ns):
+    """Bind the final role action with separately named failure conditions."""
+    stable = ('hostPid', 'startTicks', 'namespacePids', 'networkNamespaceIdentity',
+              'mountNamespaceIdentity', 'userNamespaceIdentity', 'executableDigest',
+              'noNewPrivileges', 'effectiveCapabilities')
+    if any(actor_before[key] != actor_after[key] for key in stable):
+        raise RoleProbeDiagnosticError('workload-role-probe-actor-changed')
+    if before['managerInvocation'] != after['managerInvocation']:
+        raise RoleProbeDiagnosticError('workload-role-probe-invocation-changed')
+    if target_after != expected:
+        raise RoleProbeDiagnosticError('workload-role-probe-target-changed')
+    if (not isinstance(result, dict) or result.get('nonce') != nonce
+            or result.get('caseId') != 'observer-private-read'
+            or result.get('pid') != actor_before['namespacePids'][-1]):
+        raise RoleProbeDiagnosticError('workload-role-probe-result-unbound')
+    if result.get('outcome') != {'opened': False, 'errno': 'ENOENT'}:
+        raise RoleProbeDiagnosticError('workload-role-probe-outcome-mismatch',
+                                       _safe_role_probe_outcome(result.get('outcome')))
+    times = (ready.get('startedMonotonicNs'), trigger_ns,
+             result.get('startedMonotonicNs'), result.get('finishedMonotonicNs'),
+             after.get('observedMonotonicNs'))
+    if (any(type(value) is not int or value <= 0 for value in times)
+            or list(times) != sorted(times) or len(set(times)) != len(times)):
+        raise RoleProbeDiagnosticError('workload-role-probe-timeline-invalid')
+
+
 def probe_observer_private_read(workload, handoff, observer, source_digest,
                                 campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
@@ -206,19 +263,8 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     after = workload.observe(handoff['handles'][role])
     actor_after = _role_probe_actor(after, nonce)
     target_after = _observer_canary_control(canary, observer)
-    stable = ('hostPid', 'startTicks', 'namespacePids', 'networkNamespaceIdentity',
-              'mountNamespaceIdentity', 'userNamespaceIdentity', 'executableDigest',
-              'noNewPrivileges', 'effectiveCapabilities')
-    if (any(actor_before[key] != actor_after[key] for key in stable)
-            or before['managerInvocation'] != after['managerInvocation']
-            or target_after != expected
-            or result.get('nonce') != nonce or result.get('caseId') != 'observer-private-read'
-            or result.get('pid') != actor_before['namespacePids'][-1]
-            or result.get('outcome') != {'opened': False, 'errno': 'ENOENT'}
-            or not ready['startedMonotonicNs'] < trigger_ns
-                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
-                < after['observedMonotonicNs']):
-        raise ValueError('workload-role-probe-evidence-invalid')
+    _validate_role_probe_result(ready, before, actor_before, after, actor_after,
+                                result, expected, target_after, nonce, trigger_ns)
     audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
              'caseId': 'observer-private-read', 'sourceDigest': source_digest,
              'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
@@ -1231,8 +1277,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                     workload, handoff, observer, role_probe_digest, campaign_deadline)
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
-                diagnostics['observerPrivateRead'] = {'status': 'unavailable-or-unsafe',
-                    'exceptionType': type(error).__name__[:128]}
+                diagnostic = {'status': 'unavailable-or-unsafe',
+                              'exceptionType': type(error).__name__[:128]}
+                code = _private_role_probe_code(error)
+                if code is not None:
+                    diagnostic['code'] = code
+                if isinstance(error, RoleProbeDiagnosticError):
+                    diagnostic['observedOutcome'] = error.observed_outcome
+                diagnostics['observerPrivateRead'] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)

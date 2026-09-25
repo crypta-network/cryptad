@@ -2,7 +2,7 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; `d8d66e7` TCG suite 70 passed eight positive,
+**Implementation is incomplete; `918b81a` TCG suite 76 passed eight positive,
 three denial and `cancellation` on one source-bound guest. Its 12 case IDs do
 not complete the 45-case contract.** The first three installed
 attempts failed before role staging; the next
@@ -1876,6 +1876,31 @@ decision and production control interface unchanged. Offline regressions
 exercise the fixed marker and reject extra fields; no installed result on this
 revision exists yet.
 
+That post-run diagnostic reached a new exact-source run. The `918b81a` fixture
+was prepared, verified and copied locally. Suite 75 passed no-VM admission;
+suite 76 ran with the same pinned TCG/QEMU/JDK/product/guest limits and the
+versioned PVE host swap policy. It exited 0 and its host verifier again passed
+the eight positive cases, `runner-control`, `observer-control`,
+`namespace-mount-escape` and `cancellation`. All four current stop receipts
+and the sentinel were retained; the host watcher completed without an action.
+The new `observer-private-read` probe did not pass: the administrator caught a
+`ValueError` before writing its root audit. This is still 12/45, not an
+incremental 13-case pass. The predecessor also produced one captured HotSpot
+`SIGSEGV` fatal file despite the completed positive sequence; this run does
+not establish continuous JVM stability. The complete stopped guest, fixture
+and PVE records passed byte checks after local private copying.
+
+A second task-only read-only inspection of the stopped suite 76 disk showed
+that the measured role probe source, root-owned request and observer-owned
+32-byte canary existed. The administrator success audit was absent. The role
+tmpfs containing ready/result records does not persist in the stopped QCOW,
+so the exact failed comparison cannot be recovered from that disk. The
+forensic summary remains private; loop/mount and temporary raw were removed,
+with original failure evidence retained. The next prospective change splits
+the final actor, invocation, target, result and timeline comparisons into
+fixed error codes, and retains only a closed denial errno when available.
+No installed result on that revision exists yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2203,9 +2228,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `d8d66e7` suite 70 passed eight positive, three denial and `cancellation` on one original-profile guest. Another 23 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
-| `installedPositiveExecuted` | True for the `d8d66e7` accepted-profile TCG suite 70; its eight-case positive aggregate completed |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 70 has 12 of 45 passing rows on one source-bound guest and 33 IDs remain without a pass |
+| `implementationCoverage` | Incomplete: `918b81a` suite 76 passed eight positive, three denial and `cancellation` on one original-profile TCG guest. Another 23 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
+| `installedPositiveExecuted` | True for the `918b81a` accepted-profile TCG suite 76; its eight-case positive aggregate completed |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 76 has 12 of 45 passing rows on one source-bound guest and 33 IDs remain without a pass |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
