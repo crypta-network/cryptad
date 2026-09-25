@@ -17,11 +17,12 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import restricted_workload as workload
 import restricted_workload_controller as controller
 import restricted_workload_launcher as launcher
+import restricted_workload_network as network
 import restricted_workload_prepare as preparation
 
 
@@ -848,6 +849,96 @@ class ControllerRequestTest(unittest.TestCase):
                 controller.serve(FakeConnection(b'P' + raw.replace(b'pr315-observer-control',
                                                             b'pr315-observer-control-extra')), 1000)
             denial.assert_called_once()
+
+    def test_only_exact_arbitrary_endpoint_probe_reaches_fixed_connector_boundary(self):
+        raw = b'{"method":"pr315-arbitrary-endpoint","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with patch.object(controller, '_controller_process', return_value=target), \
+                patch.object(controller, '_observer_arbitrary_endpoint_denial',
+                             return_value='pr315-arbitrary-endpoint') as denial:
+            connection = FakeConnection(b'P' + raw)
+            self.assertEqual('pr315-arbitrary-endpoint', controller.serve(connection, 1000))
+            self.assertEqual([b'R'], connection.sent)
+            self.assertEqual((HANDLE, 123, 1000, raw), denial.call_args.args[1:5])
+            self.assertEqual(target, denial.call_args.args[5])
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(raw), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw.replace(
+                    b'pr315-arbitrary-endpoint', b'pr315-arbitrary-endpoint-extra')), 1000)
+            denial.assert_called_once()
+
+    def test_arbitrary_endpoint_control_requires_recipient_fcp_hello(self):
+        recipient = {'state': 'running', 'provenance': 'controller-kernel-sample',
+                     'stateDigest': 'a' * 64, 'observedMonotonicNs': 10}
+        response = b'NodeHello\nFCPVersion=2.0\nEndMessage\n'
+        stream = MagicMock()
+        stream.__enter__.return_value = stream
+        stream.getpeername.return_value = ('127.0.0.1', 19401)
+        stream.recv.return_value = response
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream) as connect:
+            observed, finished, digest = controller._recipient_fcp_control(HANDLE)
+        self.assertEqual(recipient, observed)
+        self.assertGreater(finished, 10)
+        self.assertEqual(hashlib.sha256(response).hexdigest(), digest)
+        connect.assert_called_once_with(HANDLE, 'fcp')
+        stream.recv.return_value = b'ProtocolError\nEndMessage\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream):
+            with self.assertRaises(workload.WorkloadError):
+                controller._recipient_fcp_control(HANDLE)
+
+    def test_arbitrary_endpoint_denial_reaches_network_reject_and_retains_active_target(self):
+        raw = b'{"method":"pr315-arbitrary-endpoint","handle":"' + HANDLE.encode() + b'"}\n'
+        sender = {'state': 'running', 'stateDigest': 'c' * 64,
+                  'provenance': 'controller-kernel-sample',
+                  'managerInvocation': '1' * 32, 'cgroupIdentity': [1, 11],
+                  'bootId': BOOT, 'observedMonotonicNs': 25}
+        recipient = dict(sender, stateDigest='d' * 64,
+                         managerInvocation='2' * 32, cgroupIdentity=[1, 12],
+                         observedMonotonicNs=30)
+        target = {'invocationId': '3' * 32, 'cgroupIdentity': [1, 13],
+                  'bootId': BOOT, 'observedMonotonicNs': 10}
+        campaign = {'handles': {'candidate-recipient': 'b' * 64}}
+        connection = FakeConnection(b'')
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(controller, '_observer_peer',
+                return_value={'pid': 123, 'uid': 1000, 'startTicks': 45}))
+            stack.enter_context(patch.object(controller, '_controller_process',
+                side_effect=[target, dict(target, observedMonotonicNs=110)]))
+            stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+            stack.enter_context(patch.object(workload, 'retained', side_effect=[
+                (campaign, 'candidate-sender', {}),
+                (campaign, 'candidate-recipient', {})]))
+            stack.enter_context(patch.object(workload, 'read',
+                return_value={'probeIdentity': {'digest': 'fixed'}}))
+            for name in ('admit', 'exact', 'manager'):
+                stack.enter_context(patch.object(workload, name))
+            stack.enter_context(patch.object(workload, 'observe',
+                side_effect=[sender, dict(sender, observedMonotonicNs=105)]))
+            stack.enter_context(patch.object(controller, '_recipient_fcp_control',
+                side_effect=[(recipient, 40, 'a' * 64),
+                             (dict(recipient, observedMonotonicNs=90), 100, 'b' * 64)]))
+            attempted = stack.enter_context(patch.object(workload, 'connect',
+                side_effect=network.NetworkBoundaryError(
+                    'restricted-workload-network-rejected')))
+            stack.enter_context(patch.object(controller.time, 'monotonic_ns',
+                side_effect=[60, 70, 80]))
+            written = stack.enter_context(patch.object(workload, 'write'))
+            self.assertEqual('pr315-arbitrary-endpoint',
+                controller._observer_arbitrary_endpoint_denial(
+                    connection, HANDLE, 123, 1000, raw, target, 20))
+        attempted.assert_called_once_with(HANDLE, 'sibling-fcp')
+        self.assertEqual([controller.DENIED_RESPONSE], connection.sent)
+        path, audit = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/arbitrary-endpoint-denial.json', path)
+        self.assertEqual('restricted-workload-network-rejected', audit['denial'])
+        self.assertEqual('a' * 64, audit['recipientControlBeforeDigest'])
+        self.assertEqual('b' * 64, audit['recipientControlAfterDigest'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), audit['requestDigest'])
+        self.assertTrue(written.call_args.kwargs['create'])
 
     @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED'), 'Linux peer credentials required')
     def test_observer_control_request_follows_real_socket_readiness_barrier(self):

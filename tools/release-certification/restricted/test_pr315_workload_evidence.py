@@ -13,6 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'protected'))
 import pr315_workload_evidence as evidence
+import restricted_workload_launcher as launcher
 import restricted_workload_network as network
 
 
@@ -304,6 +305,46 @@ class VolatileEvidenceTest(unittest.TestCase):
         path.write_text(json.dumps(dict(audit, browserToken='must-not-copy')))
         rejected = evidence._capture(self.root, self.expected, True, observer_root=observer)
         self.assertEqual('unavailable-or-unsafe', rejected['observerControlAudit']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(rejected))
+
+    def test_arbitrary_endpoint_retains_only_fixed_observer_and_root_controls(self):
+        observer = self.observer()
+        checkpoint = {'schemaVersion': 1,
+                      'kind': 'pr315-arbitrary-endpoint-denial-checkpoint',
+                      'caseId': 'arbitrary-endpoint', 'actorPid': 123,
+                      'actorStartTicks': 456, 'roleKernelRoster': {},
+                      'roleKernelRosterWindow': {}, 'recipientStateBefore': 'a' * 64,
+                      'requestDigest': 'b' * 64, 'responseDigest': 'c' * 64}
+        controller = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                      'bootId': 'boot', 'observedMonotonicNs': 10}
+        role = {'managerInvocation': 'e' * 32, 'cgroupIdentity': [1, 3],
+                'bootId': 'boot', 'stateDigest': 'a' * 64,
+                'observedMonotonicNs': 11}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-arbitrary-endpoint-denial',
+                 'caseId': 'arbitrary-endpoint',
+                 'actor': {'pid': 123, 'uid': 987, 'startTicks': 456},
+                 'targetBefore': controller,
+                 'targetAfter': dict(controller, observedMonotonicNs=30),
+                 'senderBefore': role, 'senderAfter': dict(role, observedMonotonicNs=29),
+                 'recipientBefore': role, 'recipientAfter': dict(role, observedMonotonicNs=25),
+                 'recipientControlBeforeNs': 14, 'recipientControlAfterNs': 27,
+                 'recipientControlBeforeDigest': 'f' * 64,
+                 'recipientControlAfterDigest': 'f' * 64,
+                 'endpointSelection': 'sibling-fcp',
+                 'denial': 'restricted-workload-network-rejected',
+                 'requestObservedNs': 12, 'attackStartedNs': 16,
+                 'attackFinishedNs': 17, 'responseSentNs': 18,
+                 'requestDigest': 'b' * 64, 'responseDigest': 'c' * 64}
+        (observer / 'pr315-arbitrary-endpoint.private.json').write_text(json.dumps(checkpoint))
+        path = self.root / 'authority/arbitrary-endpoint-denial.json'
+        path.write_text(json.dumps(audit))
+        retained = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual(checkpoint, retained['arbitraryEndpointCheckpoint']['record'])
+        self.assertEqual(audit, retained['arbitraryEndpointAudit']['record'])
+        path.write_text(json.dumps(dict(audit, browserToken='must-not-copy')))
+        rejected = evidence._capture(self.root, self.expected, True, observer_root=observer)
+        self.assertEqual('unavailable-or-unsafe', rejected['arbitraryEndpointAudit']['status'])
         self.assertNotIn('must-not-copy', json.dumps(rejected))
 
     def test_runner_control_denial_requires_bounded_real_policy_response(self):
@@ -663,6 +704,7 @@ class VolatileEvidenceTest(unittest.TestCase):
             result = evidence._capture(self.root, self.expected, True, observer_root=observer)
         self.assertEqual(['pr315-probe-kernel.private.json',
                           'pr315-observer-control.private.json',
+                          'pr315-arbitrary-endpoint.private.json',
                           *['fcp-' + role + '.log' for role in evidence.ROLES]],
                          [name for root, name in reads if root == observer])
         names = [name for _root, name in reads]
@@ -800,7 +842,9 @@ class VolatileEvidenceTest(unittest.TestCase):
             self.assertEqual(4096, log['tailBytes'])
             self.assertTrue(log['truncated'])
             self.assertEqual(raw[-4096:], base64.b64decode(log['tailBase64']))
-        self.assertEqual(64 * 1024, evidence.MAX_OUTPUT)
+        self.assertEqual(96 * 1024, evidence.MAX_OUTPUT)
+        self.assertEqual(evidence.MAX_OUTPUT,
+                         launcher.launcher_policy()['privateVolatileMaxBytes'])
         self.assertLessEqual(len(json.dumps(result).encode()), evidence.MAX_OUTPUT)
 
     def test_short_and_missing_wrapper_logs_are_reported_without_invented_bytes(self):

@@ -374,6 +374,78 @@ class RunnerTests(unittest.TestCase):
             mutate(changed)
             self.assertIsNone(runner.observer_control_denial_attempt(report, fixture, changed))
 
+    def test_arbitrary_endpoint_needs_real_observer_denial_and_active_sibling_fcp(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        sender_state, recipient_state = 'd' * 64, 'e' * 64
+        response = hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        observer = {'schemaVersion': 1, 'kind': 'pr315-arbitrary-endpoint-denial-checkpoint',
+                    'caseId': 'arbitrary-endpoint', 'actorPid': 123, 'actorStartTicks': 45,
+                    'roleKernelRoster': roster,
+                    'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                               'finishedMonotonicNs': 20},
+                    'recipientStateBefore': recipient_state,
+                    'requestDigest': 'f' * 64, 'responseDigest': response}
+        controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'observedMonotonicNs': 30}
+        def role_record(principal, identity, state, observed):
+            return {'managerInvocation': principal['invocationId'],
+                    'cgroupIdentity': identity,
+                    'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    'stateDigest': state, 'observedMonotonicNs': observed}
+        root = {'schemaVersion': 1,
+                'kind': 'pr315-administrator-arbitrary-endpoint-denial',
+                'caseId': 'arbitrary-endpoint',
+                'actor': {'pid': 123, 'uid': roster['observerUid'], 'startTicks': 45},
+                'targetBefore': controller,
+                'targetAfter': dict(controller, observedMonotonicNs=70),
+                'senderBefore': role_record(sender, [1, 99], sender_state, 42),
+                'senderAfter': role_record(sender, [1, 99], sender_state, 67),
+                'recipientBefore': role_record(recipient, [1, 100], recipient_state, 45),
+                'recipientAfter': role_record(recipient, [1, 100], recipient_state, 60),
+                'recipientControlBeforeNs': 50, 'recipientControlAfterNs': 65,
+                'recipientControlBeforeDigest': '1' * 64,
+                'recipientControlAfterDigest': '2' * 64,
+                'endpointSelection': 'sibling-fcp',
+                'denial': 'restricted-workload-network-rejected',
+                'requestObservedNs': 40, 'attackStartedNs': 55,
+                'attackFinishedNs': 56, 'responseSentNs': 57,
+                'requestDigest': observer['requestDigest'], 'responseDigest': response}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + sender_state
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record']['startedMonotonicNs'] = 90
+        terminal['arbitraryEndpointCheckpoint'] = {'status': 'captured', 'record': observer}
+        terminal['arbitraryEndpointAudit'] = {'status': 'captured', 'record': root}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner.arbitrary_endpoint_denial_attempt(
+                report, result, fixture, terminal)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'arbitrary-endpoint'))
+            self.assertEqual(recipient['invocationId'],
+                             sidecar['recipientBefore']['managerInvocation'])
+            for mutate in (
+                    lambda row: row['arbitraryEndpointAudit']['record']['actor'].update(
+                        startTicks=46),
+                    lambda row: row['arbitraryEndpointAudit']['record']['recipientAfter'].update(
+                        managerInvocation='0' * 32),
+                    lambda row: row['arbitraryEndpointAudit']['record'].update(
+                        endpointSelection='host-fcp'),
+                    lambda row: row['arbitraryEndpointAudit']['record'].update(
+                        recipientControlAfterNs=54),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current']['record'].update(
+                        descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner.arbitrary_endpoint_denial_attempt(
+                    report, result, fixture, changed))
+
     def test_runner_control_denial_requires_real_runner_and_unchanged_active_unit(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

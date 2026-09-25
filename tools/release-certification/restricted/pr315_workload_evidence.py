@@ -22,7 +22,7 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 SENTINEL = 'pr315-retention-sentinel'
 MAX_RECORD = 32768
-MAX_OUTPUT = 64 * 1024
+MAX_OUTPUT = 96 * 1024
 MAX_WRAPPER_LOG = 2 * 1024 * 1024
 WRAPPER_TAIL = 4096
 OBSERVER_EXPERIMENTS = Path('/var/lib/cryptad-cross-version/experiments')
@@ -527,6 +527,78 @@ def _observer_control_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _arbitrary_endpoint_checkpoint(root, deadline):
+    """Retain the observer's fixed denied selector without its role handle."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root, 'pr315-arbitrary-endpoint.private.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict)
+                or set(value) != {'schemaVersion', 'kind', 'caseId', 'actorPid',
+                                  'actorStartTicks', 'roleKernelRoster',
+                                  'roleKernelRosterWindow', 'recipientStateBefore',
+                                  'requestDigest', 'responseDigest'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-arbitrary-endpoint-denial-checkpoint'
+                or value['caseId'] != 'arbitrary-endpoint'
+                or any(type(value[key]) is not int or value[key] <= 1
+                       for key in ('actorPid', 'actorStartTicks'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('recipientStateBefore', 'requestDigest', 'responseDigest'))
+                or not isinstance(value['roleKernelRoster'], dict)
+                or not isinstance(value['roleKernelRosterWindow'], dict)):
+            raise ValueError('arbitrary-endpoint-checkpoint-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
+def _arbitrary_endpoint_audit(root, deadline):
+    """Retain root's denied network selector and active recipient FCP controls."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'arbitrary-endpoint-denial.json',
+                                 maximum=12288, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'actor', 'targetBefore',
+                  'targetAfter', 'senderBefore', 'senderAfter', 'recipientBefore',
+                  'recipientAfter', 'recipientControlBeforeNs',
+                  'recipientControlAfterNs', 'recipientControlBeforeDigest',
+                  'recipientControlAfterDigest', 'endpointSelection', 'denial',
+                  'requestObservedNs', 'attackStartedNs', 'attackFinishedNs',
+                  'responseSentNs', 'requestDigest', 'responseDigest'}
+        role_fields = {'managerInvocation', 'cgroupIdentity', 'bootId',
+                       'stateDigest', 'observedMonotonicNs'}
+        controller_fields = {'invocationId', 'cgroupIdentity', 'bootId',
+                             'observedMonotonicNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-arbitrary-endpoint-denial'
+                or value['caseId'] != 'arbitrary-endpoint'
+                or value['endpointSelection'] != 'sibling-fcp'
+                or value['denial'] != 'restricted-workload-network-rejected'
+                or not isinstance(value['actor'], dict)
+                or set(value['actor']) != {'pid', 'uid', 'startTicks'}
+                or any(not isinstance(value[key], dict) or set(value[key]) != role_fields
+                       for key in ('senderBefore', 'senderAfter',
+                                   'recipientBefore', 'recipientAfter'))
+                or any(not isinstance(value[key], dict) or set(value[key]) != controller_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('requestDigest', 'responseDigest',
+                                   'recipientControlBeforeDigest',
+                                   'recipientControlAfterDigest'))):
+            raise ValueError('arbitrary-endpoint-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _runner_control_audit(root, deadline):
     """Read one fixed root-observed vmadmin denial of active systemd unit control."""
     remaining = deadline - time.monotonic()
@@ -783,6 +855,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'probeAdministratorRecord': {'status': 'not-captured-cleanup-unverified'},
         'observerControlCheckpoint': {'status': 'not-captured-cleanup-unverified'},
         'observerControlAudit': {'status': 'not-captured-cleanup-unverified'},
+        'arbitraryEndpointCheckpoint': {'status': 'not-captured-cleanup-unverified'},
+        'arbitraryEndpointAudit': {'status': 'not-captured-cleanup-unverified'},
         'runnerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerPrivateReadAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerPrivateWriteAudit': {'status': 'not-captured-cleanup-unverified'},
@@ -822,8 +896,11 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         if observer_root is not None:
             result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
             result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
+            result['arbitraryEndpointCheckpoint'] = _arbitrary_endpoint_checkpoint(
+                observer_root, deadline)
         result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
         result['observerControlAudit'] = _observer_control_audit(root, deadline)
+        result['arbitraryEndpointAudit'] = _arbitrary_endpoint_audit(root, deadline)
         result['runnerControlAudit'] = _runner_control_audit(root, deadline)
         result['observerPrivateReadAudit'] = _observer_private_audit(
             root, deadline, 'observer-private-read')
@@ -888,6 +965,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                        ROLE_FIELDS, deadline)
             result['stopReceipts'][role] = {'current': _record(
                 root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
+        result['arbitraryEndpointAudit'] = _arbitrary_endpoint_audit(root, deadline)
         result['observerPrivateReadAudit'] = _observer_private_audit(
             root, deadline, 'observer-private-read')
         result['observerPrivateWriteAudit'] = _observer_private_audit(

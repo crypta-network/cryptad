@@ -240,6 +240,7 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.initial_role_window = {'startedMonotonicNs': 10,
                                            'finishedMonotonicNs': 20}
             adapter.initial_sender_state = 'c' * 64
+            adapter.initial_recipient_state = 'd' * 64
             adapter.remaining = lambda maximum: maximum
             channel = FakeChannel()
             with mock.patch.object(workload.socket, 'socket', return_value=channel):
@@ -251,6 +252,37 @@ class ObserverPolicyTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(channel.request).hexdigest(), value['requestDigest'])
             self.assertEqual(hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest(),
                              value['responseDigest'])
+            self.assertNotIn(HANDLE, path.read_text())
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+
+    @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED') and Path('/proc/self/stat').is_file(),
+                         'Linux peer credentials and process epoch required')
+    def test_arbitrary_endpoint_checkpoint_uses_real_observer_socket_without_leaking_handle(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            adapter = object.__new__(workload.InstalledWorkloadAdapter)
+            adapter.root = Path(temporary)
+            adapter.private = {'nodes': {'candidate-sender': {'apps': [
+                {'appId': 'mail-prototype'}, {'appId': 'pr315-probe'}]}}}
+            adapter.handles = {'candidate-sender': HANDLE}
+            adapter.initial_role_roster = {'observerUid': 1001, 'roles': []}
+            adapter.initial_role_window = {'startedMonotonicNs': 10,
+                                           'finishedMonotonicNs': 20}
+            adapter.initial_recipient_state = 'd' * 64
+            adapter.remaining = lambda maximum: maximum
+            response = b'{"error":"restricted-workload-request-failed"}\n'
+            channel = mock.MagicMock()
+            channel.__enter__.return_value = channel
+            channel.getsockopt.return_value = struct.pack('3i', 1, 0, 0)
+            channel.recv.side_effect = [b'R', response]
+            with mock.patch.object(workload.socket, 'socket', return_value=channel):
+                adapter.probe_arbitrary_endpoint()
+            path = adapter.root / 'pr315-arbitrary-endpoint.private.json'
+            value = json.loads(path.read_text())
+            request = channel.sendall.call_args_list[1].args[0]
+            self.assertEqual('arbitrary-endpoint', value['caseId'])
+            self.assertEqual('d' * 64, value['recipientStateBefore'])
+            self.assertEqual(hashlib.sha256(request).hexdigest(), value['requestDigest'])
+            self.assertEqual(hashlib.sha256(response).hexdigest(), value['responseDigest'])
             self.assertNotIn(HANDLE, path.read_text())
             self.assertEqual(0o600, path.stat().st_mode & 0o777)
 
@@ -266,6 +298,7 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.capture_probe_target_roster()
         self.assertEqual(expected, adapter.initial_role_roster)
         self.assertEqual('a' * 64, adapter.initial_sender_state)
+        self.assertEqual('a' * 64, adapter.initial_recipient_state)
         self.assertEqual(4, adapter.observe.call_count)
         self.assertLess(adapter.initial_role_window['startedMonotonicNs'],
                         adapter.initial_role_window['finishedMonotonicNs'])
@@ -438,6 +471,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.connect = mock.Mock()
         adapter.capture_probe_target_roster = mock.Mock()
         adapter.probe_observer_control = mock.Mock()
+        adapter.probe_arbitrary_endpoint = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={**EPOCH, 'generation': 'e' * 64,
                                                                'managerInvocation': 'f' * 32})
@@ -473,6 +507,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.connect = mock.Mock()
         adapter.capture_probe_target_roster = mock.Mock()
         adapter.probe_observer_control = mock.Mock()
+        adapter.probe_arbitrary_endpoint = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={
             'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})
@@ -500,6 +535,7 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.connect = mock.Mock()
         adapter.capture_probe_target_roster = mock.Mock()
         adapter.probe_observer_control = mock.Mock()
+        adapter.probe_arbitrary_endpoint = mock.Mock()
         adapter.provision_apps = mock.Mock()
         adapter.restart_with_witness = mock.Mock(return_value={
             'generation': 'new', 'managerInvocation': 'b' * 32, 'bootId': 'boot'})

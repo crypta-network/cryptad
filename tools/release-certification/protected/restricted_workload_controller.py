@@ -33,6 +33,7 @@ METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp',
                      'connect-http', 'bootstrap-mail'})
 EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
 OBSERVER_CONTROL_REQUEST = re.compile(rb'\{"method":"pr315-observer-control","handle":"([0-9a-f]{64})"\}\n')
+OBSERVER_ENDPOINT_REQUEST = re.compile(rb'\{"method":"pr315-arbitrary-endpoint","handle":"([0-9a-f]{64})"\}\n')
 DENIED_RESPONSE = b'{"error":"restricted-workload-request-failed"}\n'
 
 
@@ -189,6 +190,126 @@ def _observer_control_denial(connection, handle, peer_pid, peer_uid, request_raw
     return 'pr315-observer-control'
 
 
+def _recipient_fcp_control(handle):
+    """Prove the exact sibling FCP listener is live through the approved connector."""
+    from restricted_workload_network import FCP_PORT
+    observed = workload.observe(handle)
+    if (observed.get('state') != 'running'
+            or observed.get('provenance') != 'controller-kernel-sample'
+            or not isinstance(observed.get('stateDigest'), str)):
+        workload.reject('arbitrary-endpoint-target-inactive')
+    with workload.connect(handle, 'fcp') as stream:
+        if stream.getpeername() != ('127.0.0.1', FCP_PORT):
+            workload.reject('arbitrary-endpoint-target-connection-invalid')
+        stream.sendall(b'ClientHello\nName=pr315-endpoint-control\nExpectedVersion=2.0\nEndMessage\n')
+        deadline_ns = time.monotonic_ns() + 5_000_000_000
+        response = bytearray()
+        while b'EndMessage\n' not in response and len(response) <= 16384:
+            remaining = (deadline_ns - time.monotonic_ns()) / 1e9
+            if remaining <= 0:
+                workload.reject('arbitrary-endpoint-target-response-timeout')
+            stream.settimeout(remaining)
+            block = stream.recv(min(1024, 16385 - len(response)))
+            if not block:
+                workload.reject('arbitrary-endpoint-target-response-incomplete')
+            response.extend(block)
+        if not response.startswith(b'NodeHello\n') or len(response) > 16384:
+            workload.reject('arbitrary-endpoint-target-response-invalid')
+    return observed, time.monotonic_ns(), hashlib.sha256(response).hexdigest()
+
+
+def _observer_arbitrary_endpoint_denial(connection, handle, peer_pid, peer_uid,
+                                        request_raw, target_before, request_received_ns):
+    """Reject one fixed sibling-FCP selector at the actual connector boundary."""
+    from restricted_workload_network import NetworkBoundaryError
+    before_peer = _observer_peer(peer_pid, peer_uid)
+    controller = _controller_process()
+    if (target_before['invocationId'] != controller['invocationId']
+            or target_before['cgroupIdentity'] != controller['cgroupIdentity']
+            or target_before['bootId'] != controller['bootId']
+            or target_before['observedMonotonicNs'] >= request_received_ns):
+        workload.reject('arbitrary-endpoint-controller-changed')
+    with workload.locked():
+        campaign, role, sender_record = workload.retained(handle)
+        if role != 'candidate-sender' or not isinstance(workload.read(
+                workload.ROOT / 'roles/candidate-sender/launch.json').get('probeIdentity'), dict):
+            workload.reject('arbitrary-endpoint-cohort-invalid')
+        recipient_handle = campaign['handles']['candidate-recipient']
+        _campaign, recipient_role, recipient_record = workload.retained(recipient_handle)
+        if recipient_role != 'candidate-recipient':
+            workload.reject('arbitrary-endpoint-recipient-invalid')
+        workload.admit(campaign)
+        workload.exact(role, sender_record, workload.manager(role, 'show'))
+        workload.exact(recipient_role, recipient_record,
+                       workload.manager(recipient_role, 'show'))
+    sender_before = workload.observe(handle)
+    recipient_before, control_before_ns, control_before_digest = _recipient_fcp_control(
+        recipient_handle)
+    if (sender_before.get('state') != 'running'
+            or sender_before.get('provenance') != 'controller-kernel-sample'
+            or not isinstance(sender_before.get('stateDigest'), str)
+            or recipient_before['observedMonotonicNs'] >= control_before_ns):
+        workload.reject('arbitrary-endpoint-role-inactive')
+    attack_started_ns = time.monotonic_ns()
+    try:
+        selected = workload.connect(handle, 'sibling-fcp')
+    except NetworkBoundaryError as error:
+        if str(error) != 'restricted-workload-network-rejected':
+            raise
+    else:
+        selected.close()
+        workload.reject('arbitrary-endpoint-unexpectedly-connected')
+    attack_finished_ns = time.monotonic_ns()
+    connection.sendall(DENIED_RESPONSE)
+    response_sent_ns = time.monotonic_ns()
+    try:
+        recipient_after, control_after_ns, control_after_digest = _recipient_fcp_control(
+            recipient_handle)
+        sender_after = workload.observe(handle)
+        controller_after = _controller_process()
+        after_peer = _observer_peer(peer_pid, peer_uid)
+        role_fields = ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest')
+        if (before_peer != after_peer
+                or any(sender_before[key] != sender_after[key] for key in role_fields)
+                or any(recipient_before[key] != recipient_after[key] for key in role_fields)
+                or any(target_before[key] != controller_after[key]
+                       for key in ('invocationId', 'cgroupIdentity', 'bootId'))
+                or not target_before['observedMonotonicNs'] < request_received_ns
+                    < recipient_before['observedMonotonicNs'] < control_before_ns
+                    < attack_started_ns < attack_finished_ns < response_sent_ns
+                    < recipient_after['observedMonotonicNs'] < control_after_ns
+                    < controller_after['observedMonotonicNs']):
+            return 'pr315-arbitrary-endpoint'
+        fields = ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest',
+                  'observedMonotonicNs')
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-arbitrary-endpoint-denial',
+                 'caseId': 'arbitrary-endpoint', 'actor': before_peer,
+                 'targetBefore': target_before, 'targetAfter': controller_after,
+                 'senderBefore': {key: sender_before[key] for key in fields},
+                 'senderAfter': {key: sender_after[key] for key in fields},
+                 'recipientBefore': {key: recipient_before[key] for key in fields},
+                 'recipientAfter': {key: recipient_after[key] for key in fields},
+                 'recipientControlBeforeNs': control_before_ns,
+                 'recipientControlAfterNs': control_after_ns,
+                 'recipientControlBeforeDigest': control_before_digest,
+                 'recipientControlAfterDigest': control_after_digest,
+                 'endpointSelection': 'sibling-fcp',
+                 'denial': 'restricted-workload-network-rejected',
+                 'requestObservedNs': request_received_ns,
+                 'attackStartedNs': attack_started_ns,
+                 'attackFinishedNs': attack_finished_ns,
+                 'responseSentNs': response_sent_ns,
+                 'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                 'responseDigest': hashlib.sha256(DENIED_RESPONSE).hexdigest()}
+        workload.write(workload.ROOT / 'authority/arbitrary-endpoint-denial.json',
+                       audit, create=True)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        # Delivered denial is not an installed witness without the root audit.
+        pass
+    return 'pr315-arbitrary-endpoint'
+
+
 def _http(sock, path, headers):
     connection = http.client.HTTPConnection('127.0.0.1', sock.getpeername()[1], timeout=5)
     connection.sock = sock
@@ -299,6 +420,13 @@ def serve(connection, expected_uid):
             workload.reject('observer-control-handshake-required')
         return _observer_control_denial(connection, probe[1].decode(), pid, uid, bytes(raw),
                                         target_before, request_received_ns)
+    probe = OBSERVER_ENDPOINT_REQUEST.fullmatch(bytes(raw))
+    if probe is not None:
+        if target_before is None:
+            workload.reject('arbitrary-endpoint-handshake-required')
+        return _observer_arbitrary_endpoint_denial(connection, probe[1].decode(), pid, uid,
+                                                   bytes(raw), target_before,
+                                                   request_received_ns)
     selected = request(bytes(raw[:-1]))
     method, handle = selected['method'], selected['handle']
     request_raw = bytes(raw)

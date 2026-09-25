@@ -928,6 +928,141 @@ def observer_control_denial_attempt(report, fixture, terminal):
         return None
 
 
+def arbitrary_endpoint_denial_attempt(report, result, fixture, terminal):
+    """Bind an observer's rejected selector to a live sibling FCP control."""
+    if (report.get('guestStopped') is not True or not isinstance(terminal, dict)
+            or terminal.get('cleanupReportedByCaller') is not True
+            or fixture.get('schemaVersion') != 4
+            or not positive_executed(report, result, terminal)):
+        return None
+    try:
+        checkpoint = terminal['arbitraryEndpointCheckpoint']
+        audit = terminal['arbitraryEndpointAudit']
+        if checkpoint['status'] != 'captured' or audit['status'] != 'captured':
+            return None
+        observer, root = checkpoint['record'], audit['record']
+        principals = observer['roleKernelRoster']
+        window = observer['roleKernelRosterWindow']
+        if not acceptance._principals(principals) or not _bounded_window(window):
+            return None
+        sender = next(row for row in principals['roles'] if row['role'] == 'candidate-sender')
+        recipient = next(row for row in principals['roles'] if row['role'] == 'candidate-recipient')
+        controller_before, controller_after = root['targetBefore'], root['targetAfter']
+        fixed_response = b'{"error":"restricted-workload-request-failed"}\n'
+        if (root['caseId'] != 'arbitrary-endpoint'
+                or observer['caseId'] != 'arbitrary-endpoint'
+                or root['actor'] != {'pid': observer['actorPid'],
+                                     'uid': principals['observerUid'],
+                                     'startTicks': observer['actorStartTicks']}
+                or root['requestDigest'] != observer['requestDigest']
+                or root['responseDigest'] != observer['responseDigest']
+                or root['responseDigest'] != hashlib.sha256(fixed_response).hexdigest()
+                or root['endpointSelection'] != 'sibling-fcp'
+                or root['denial'] != 'restricted-workload-network-rejected'
+                or any(re.fullmatch('[0-9a-f]{64}', root[key]) is None for key in
+                       ('requestDigest', 'recipientControlBeforeDigest',
+                        'recipientControlAfterDigest'))
+                or any(controller_before[key] != controller_after[key] for key in
+                       ('invocationId', 'cgroupIdentity', 'bootId'))
+                or re.fullmatch('[0-9a-f]{32}', controller_before['invocationId']) is None
+                or controller_before['bootId'].replace('-', '').lower() != sender['bootId']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + root['senderAfter']['stateDigest']):
+            return None
+        for role, principal in (('sender', sender), ('recipient', recipient)):
+            before, after = root[role + 'Before'], root[role + 'After']
+            if (any(before[key] != after[key] for key in
+                    ('managerInvocation', 'cgroupIdentity', 'bootId', 'stateDigest'))
+                    or before['managerInvocation'] != principal['invocationId']
+                    or before['bootId'].replace('-', '').lower() != principal['bootId']
+                    or fixtures.runtime.canonical_digest({
+                        'role': principal['role'],
+                        'identity': before['cgroupIdentity']})[7:] != principal['cgroupDigest']
+                    or re.fullmatch('[0-9a-f]{64}', before['stateDigest']) is None):
+                return None
+            receipt = terminal['stopReceipts'][principal['role']]
+            matching = [entry['record'] for entry in receipt.values()
+                        if isinstance(entry, dict) and entry.get('status') == 'captured'
+                        and isinstance(entry.get('record'), dict)
+                        and entry['record'].get('managerInvocation') == principal['invocationId']]
+            if (len(matching) != 1
+                    or matching[0]['bootId'].replace('-', '').lower() != principal['bootId']
+                    or matching[0]['cgroupIdentity'] != before['cgroupIdentity']
+                    or matching[0]['membership'] != 'only-stop-helper'
+                    or matching[0]['descendantCgroups'] != 0
+                    or after['observedMonotonicNs'] >= matching[0]['startedMonotonicNs']):
+                return None
+        if (root['recipientBefore']['stateDigest'] != observer['recipientStateBefore']
+                or not window['finishedMonotonicNs']
+                    < controller_before['observedMonotonicNs']
+                    < root['requestObservedNs']
+                    < root['recipientBefore']['observedMonotonicNs']
+                    < root['recipientControlBeforeNs']
+                    < root['attackStartedNs'] < root['attackFinishedNs']
+                    < root['responseSentNs']
+                    < root['recipientAfter']['observedMonotonicNs']
+                    < root['recipientControlAfterNs']
+                    < controller_after['observedMonotonicNs']):
+            return None
+        host = report['hostVerifiedIdentity']
+        if host['helperSourceCommit'] != result['identity']['sourceCommit']:
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        case_id = 'arbitrary-endpoint'
+        target = {'caseId': case_id, 'target': 'connector', 'role': None,
+                  'invocationId': controller_before['invocationId'],
+                  'cgroupDigest': fixtures.runtime.canonical_digest({
+                      'role': 'controller',
+                      'identity': controller_before['cgroupIdentity']})[7:],
+                  'bootId': sender['bootId'], 'probeDigest': '',
+                  'controlResponseDigest': root['responseDigest']}
+        attack_digest = hashlib.sha256(json.dumps(root, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        witness = {'actorUid': principals['observerUid'], 'attackDigest': attack_digest,
+                   'attackStartedNs': root['attackStartedNs'],
+                   'targetActiveBeforeNs': controller_before['observedMonotonicNs'],
+                   'targetActiveAfterNs': controller_after['observedMonotonicNs'],
+                   'controlResponseDigest': root['responseDigest'],
+                   'denialSource': 'controller', 'denialCode': 'policy-rejected',
+                   'unrelatedStateBefore': root['senderBefore']['stateDigest'],
+                   'unrelatedStateAfter': root['senderAfter']['stateDigest'],
+                   'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': window['startedMonotonicNs'],
+                       'finishedMonotonicNs': controller_after['observedMonotonicNs'],
+                       'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+                   'declaredCases': [case_id], 'observations': [observation],
+                   'guestStopped': True, 'attemptCompleted': True,
+                   'principals': principals, 'targets': {case_id: target},
+                   'caseCommitments': {}, 'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+                   'status': 'passed', 'hostVerifiedIdentity': host,
+                   'actorPid': root['actor']['pid'],
+                   'actorUid': root['actor']['uid'],
+                   'actorStartTicks': root['actor']['startTicks'],
+                   'controllerBefore': controller_before,
+                   'controllerAfter': controller_after,
+                   'recipientBefore': root['recipientBefore'],
+                   'recipientAfter': root['recipientAfter'],
+                   'recipientControlBeforeDigest': root['recipientControlBeforeDigest'],
+                   'recipientControlAfterDigest': root['recipientControlAfterDigest'],
+                   'operationWindow': {'startedMonotonicNs': root['attackStartedNs'],
+                                       'finishedMonotonicNs': root['attackFinishedNs']},
+                   'attackDigest': attack_digest, 'guestStopped': True}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def runner_control_denial_attempt(report, result, fixture, terminal):
     """Bind a real vmadmin systemd refusal to a live controller and sender epoch."""
     if (report.get('guestStopped') is not True or not isinstance(result, dict)
@@ -1502,6 +1637,23 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
+            if (positive and isinstance(terminal, dict)
+                    and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
+                    and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
+                denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
+                if denial is None:
+                    raise ValueError('workload-arbitrary-endpoint-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'arbitrary-endpoint') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-arbitrary-endpoint-case-invalid')
+                native_runner._save(output / 'arbitrary-endpoint-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
+                statuses['arbitrary-endpoint'] = 'passed'
             if (positive and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
                 denial = runner_control_denial_attempt(report, value, fixture, terminal)
