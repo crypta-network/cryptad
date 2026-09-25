@@ -777,8 +777,10 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
                  'userNamespaceIdentity': [1, 400], 'executableDigest': 'sha256:' + 'a' * 64,
                  'noNewPrivileges': True, 'effectiveCapabilities': 0}
         ready = {'startedMonotonicNs': 10}
-        before = {'managerInvocation': 'b' * 32}
-        after = {'managerInvocation': 'b' * 32, 'observedMonotonicNs': 50}
+        before = {'managerInvocation': 'b' * 32, 'cgroupIdentity': [1, 99],
+                  'cgroupMemoryBytes': 200, 'cgroupTasks': 3}
+        after = {'managerInvocation': 'b' * 32, 'observedMonotonicNs': 50,
+                 'cgroupIdentity': [1, 99], 'cgroupMemoryBytes': 210, 'cgroupTasks': 3}
         result = {'nonce': 'c' * 64, 'caseId': 'observer-private-read', 'pid': 2,
                   'outcome': {'opened': False, 'errno': 'ENOENT'},
                   'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}
@@ -812,6 +814,23 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
         with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'write-timeline-invalid'):
             driver._validate_role_probe_write(dict(result,
                 writeAttempt=dict(write, startedMonotonicNs=39)), after)
+        identity_claim = {'claimedHostPid': 1, 'claimedHostUid': 0,
+                          'startedMonotonicNs': 46, 'finishedMonotonicNs': 47}
+        counter_claim = {'claimedMemoryCurrentBytes': 0, 'claimedTasksCurrent': 0,
+                         'startedMonotonicNs': 48, 'finishedMonotonicNs': 49}
+        claims = dict(result, writeAttempt=write, identityClaim=identity_claim,
+                      counterClaim=counter_claim)
+        self.assertEqual((identity_claim, counter_claim),
+            driver._validate_false_role_claims(claims, before, after, actor, 983))
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'identity-claim-invalid'):
+            driver._validate_false_role_claims(dict(claims,
+                identityClaim=dict(identity_claim, claimedHostPid=123)),
+                before, after, actor, 983)
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'counter-target-unavailable'):
+            driver._validate_false_role_claims(claims, before,
+                dict(after, cgroupMemoryBytes=0), actor, 983)
 
     def test_private_error_code_never_copies_unrecognized_candidate_text(self):
         self.assertEqual('workload-role-probe-ready-timeout',

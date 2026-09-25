@@ -50,7 +50,10 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-role-probe-actor-changed', 'workload-role-probe-invocation-changed',
     'workload-role-probe-result-unbound', 'workload-role-probe-outcome-mismatch',
     'workload-role-probe-timeline-invalid', 'workload-role-probe-write-result-invalid',
-    'workload-role-probe-write-outcome-mismatch', 'workload-role-probe-write-timeline-invalid'))
+    'workload-role-probe-write-outcome-mismatch', 'workload-role-probe-write-timeline-invalid',
+    'workload-role-probe-identity-claim-invalid', 'workload-role-probe-counter-claim-invalid',
+    'workload-role-probe-counter-target-unavailable',
+    'workload-role-probe-claim-timeline-invalid'))
 
 
 class RoleProbeDiagnosticError(ValueError):
@@ -217,6 +220,37 @@ def _validate_role_probe_write(result, after):
     return write
 
 
+def _validate_false_role_claims(result, before, after, actor, uid):
+    identity, counters = result.get('identityClaim'), result.get('counterClaim')
+    if (not isinstance(identity, dict) or set(identity) != {
+            'claimedHostPid', 'claimedHostUid', 'startedMonotonicNs', 'finishedMonotonicNs'}
+            or type(identity['claimedHostPid']) is not int or identity['claimedHostPid'] != 1
+            or type(identity['claimedHostUid']) is not int or identity['claimedHostUid'] != 0
+            or actor['hostPid'] <= 1 or uid <= 0):
+        raise RoleProbeDiagnosticError('workload-role-probe-identity-claim-invalid')
+    if (not isinstance(counters, dict) or set(counters) != {
+            'claimedMemoryCurrentBytes', 'claimedTasksCurrent',
+            'startedMonotonicNs', 'finishedMonotonicNs'}
+            or type(counters['claimedMemoryCurrentBytes']) is not int
+            or counters['claimedMemoryCurrentBytes'] != 0
+            or type(counters['claimedTasksCurrent']) is not int
+            or counters['claimedTasksCurrent'] != 0):
+        raise RoleProbeDiagnosticError('workload-role-probe-counter-claim-invalid')
+    if (before['cgroupIdentity'] != after['cgroupIdentity']
+            or any(type(observed[key]) is not int or observed[key] <= 0
+                   for observed in (before, after)
+                   for key in ('cgroupMemoryBytes', 'cgroupTasks'))):
+        raise RoleProbeDiagnosticError('workload-role-probe-counter-target-unavailable')
+    times = (result['writeAttempt']['finishedMonotonicNs'],
+             identity.get('startedMonotonicNs'), identity.get('finishedMonotonicNs'),
+             counters.get('startedMonotonicNs'), counters.get('finishedMonotonicNs'),
+             after['observedMonotonicNs'])
+    if (any(type(value) is not int or value <= 0 for value in times)
+            or list(times) != sorted(times) or len(set(times)) != len(times)):
+        raise RoleProbeDiagnosticError('workload-role-probe-claim-timeline-invalid')
+    return identity, counters
+
+
 def probe_observer_private_read(workload, handoff, observer, source_digest,
                                 campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
@@ -308,11 +342,51 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
                    'kernelOpenResult': write['outcome']}
     workload.write(workload.ROOT / 'authority/observer-private-write-denial.json',
                    write_audit, create=True)
+    identity, counters = _validate_false_role_claims(result, before, after,
+                                                     actor_before, uid)
+    claim_base = {'schemaVersion': 1, 'sourceDigest': source_digest,
+                  'nonceDigest': audit['nonceDigest'], 'actorUid': uid,
+                  'actorBefore': actor_before, 'actorAfter': actor_after,
+                  'roleInvocationBefore': before['managerInvocation'],
+                  'roleInvocationAfter': after['managerInvocation'],
+                  'cgroupIdentityBefore': before['cgroupIdentity'],
+                  'cgroupIdentityAfter': after['cgroupIdentity'],
+                  'targetActiveBeforeNs': before['observedMonotonicNs'],
+                  'targetActiveAfterNs': after['observedMonotonicNs'],
+                  'denial': 'kernel-mismatch-observed'}
+    identity_audit = {**claim_base,
+        'kind': 'pr315-administrator-forged-runtime-identity',
+        'caseId': 'forged-runtime-identity',
+        'attackStartedNs': identity['startedMonotonicNs'],
+        'attackFinishedNs': identity['finishedMonotonicNs'],
+        'claimedHostPid': identity['claimedHostPid'],
+        'claimedHostUid': identity['claimedHostUid'],
+        'actualHostPid': actor_before['hostPid'], 'actualHostUid': uid}
+    workload.write(workload.ROOT / 'authority/forged-runtime-identity-denial.json',
+                   identity_audit, create=True)
+    counter_audit = {**claim_base, 'kind': 'pr315-administrator-forged-counters',
+        'caseId': 'forged-counters',
+        'attackStartedNs': counters['startedMonotonicNs'],
+        'attackFinishedNs': counters['finishedMonotonicNs'],
+        'claimedMemoryCurrentBytes': counters['claimedMemoryCurrentBytes'],
+        'claimedTasksCurrent': counters['claimedTasksCurrent'],
+        'actualMemoryBefore': before['cgroupMemoryBytes'],
+        'actualTasksBefore': before['cgroupTasks'],
+        'actualMemoryAfter': after['cgroupMemoryBytes'],
+        'actualTasksAfter': after['cgroupTasks']}
+    workload.write(workload.ROOT / 'authority/forged-counters-denial.json',
+                   counter_audit, create=True)
     return {'status': 'captured', 'caseId': 'observer-private-read',
             'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest(),
             'writeStatus': 'captured',
             'writeAuditDigest': hashlib.sha256(json.dumps(write_audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest(),
+            'identityStatus': 'captured',
+            'identityAuditDigest': hashlib.sha256(json.dumps(identity_audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest(),
+            'counterStatus': 'captured',
+            'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest()}
 
 
@@ -1311,6 +1385,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 diagnostics['observerPrivateWrite'] = {'status': private_probe['writeStatus'],
                     'caseId': 'observer-private-write',
                     'auditDigest': private_probe['writeAuditDigest']}
+                diagnostics['forgedRuntimeIdentity'] = {
+                    'status': private_probe['identityStatus'],
+                    'caseId': 'forged-runtime-identity',
+                    'auditDigest': private_probe['identityAuditDigest']}
+                diagnostics['forgedCounters'] = {'status': private_probe['counterStatus'],
+                    'caseId': 'forged-counters',
+                    'auditDigest': private_probe['counterAuditDigest']}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
                 diagnostic = {'status': 'unavailable-or-unsafe',
@@ -1322,6 +1403,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                     diagnostic['observedOutcome'] = error.observed_outcome
                 diagnostics['observerPrivateRead'] = diagnostic
                 diagnostics['observerPrivateWrite'] = diagnostic
+                diagnostics['forgedRuntimeIdentity'] = diagnostic
+                diagnostics['forgedCounters'] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)

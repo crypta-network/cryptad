@@ -1095,6 +1095,82 @@ def observer_private_write_attempt(report, result, fixture, terminal, source):
     return _observer_private_attempt('observer-private-write', report, result, fixture, terminal, source)
 
 
+def _fixed_claim_attempt(case_id, report, result, fixture, terminal, source):
+    """Bind one false candidate claim to current kernel observer measurements."""
+    try:
+        field = {'forged-runtime-identity': 'forgedRuntimeIdentityAudit',
+                 'forged-counters': 'forgedCountersAudit'}[case_id]
+        host = report['hostVerifiedIdentity']
+        roster = result['roleKernelRoster']
+        sender = next(row for row in roster['roles'] if row['role'] == 'candidate-sender')
+        audit = terminal[field]['record']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        before, after = audit['actorBefore'], audit['actorAfter']
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                  'networkNamespaceIdentity', 'mountNamespaceIdentity',
+                  'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
+                  'effectiveCapabilities')
+        source_digest = reference.sha256(source /
+            'tools/release-certification/restricted/pr315_role_probe.py')
+        cgroup_digest = fixtures.runtime.canonical_digest({'role': 'candidate-sender',
+            'identity': audit['cgroupIdentityBefore']})[7:]
+        if (not positive_executed(report, result, terminal)
+                or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
+                or terminal[field]['status'] != 'captured'
+                or audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-' + case_id
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != source_digest
+                or audit['denial'] != 'kernel-mismatch-observed'
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['roleInvocationBefore'] != sender['invocationId']
+                or audit['roleInvocationAfter'] != sender['invocationId']
+                or audit['cgroupIdentityBefore'] != audit['cgroupIdentityAfter']
+                or cgroup_digest != sender['cgroupDigest']
+                or not audit['targetActiveBeforeNs'] < audit['attackStartedNs']
+                    < audit['attackFinishedNs'] < audit['targetActiveAfterNs']
+                    < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        if case_id == 'forged-runtime-identity':
+            if (type(audit['claimedHostPid']) is not int or audit['claimedHostPid'] != 1
+                    or type(audit['claimedHostUid']) is not int or audit['claimedHostUid'] != 0
+                    or audit['actualHostPid'] != before['hostPid']
+                    or audit['actualHostUid'] != sender['uid']):
+                return None
+        elif (type(audit['claimedMemoryCurrentBytes']) is not int
+                or audit['claimedMemoryCurrentBytes'] != 0
+                or type(audit['claimedTasksCurrent']) is not int
+                or audit['claimedTasksCurrent'] != 0
+                or any(type(audit[key]) is not int or audit[key] <= 0 for key in
+                       ('actualMemoryBefore', 'actualTasksBefore',
+                        'actualMemoryAfter', 'actualTasksAfter'))):
+            return None
+        target_digest = hashlib.sha256(json.dumps({key: audit[key] for key in audit
+            if key.startswith('actual') or key.startswith('cgroupIdentity')},
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return {'contract': campaign.CONTRACT, 'caseId': case_id, 'status': 'passed',
+                'actorUid': sender['uid'], 'actorHostPid': before['hostPid'],
+                'actorStartTicks': before['startTicks'],
+                'roleInvocation': sender['invocationId'],
+                'targetControlDigest': target_digest,
+                'attackDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest(),
+                'hostVerifiedIdentity': host, 'guestStopped': True,
+                'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, StopIteration, OSError):
+        return None
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
@@ -1317,6 +1393,15 @@ def run(args):
                     raise ValueError('workload-observer-private-write-verification-failed')
                 native_runner._save(output / 'observer-private-write-v9-evidence.private.json', case)
                 statuses['observer-private-write'] = 'passed'
+            for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
+                                   ('forged-counters', 'forgedCountersAudit')):
+                if (positive and isinstance(terminal, dict)
+                        and terminal.get(field, {}).get('status') == 'captured'):
+                    case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
+                    if case is None:
+                        raise ValueError('workload-fixed-claim-verification-failed')
+                    native_runner._save(output / (case_id + '-v9-evidence.private.json'), case)
+                    statuses[case_id] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,

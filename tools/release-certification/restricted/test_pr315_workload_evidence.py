@@ -82,6 +82,41 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', result['observerPrivateReadAudit']['status'])
         self.assertNotIn('must-not-copy', json.dumps(result))
 
+    def test_fixed_false_claim_audits_require_current_kernel_comparison(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1, 'sourceDigest': 'a' * 64,
+                  'nonceDigest': 'b' * 64, 'actorUid': 1001,
+                  'actorBefore': actor, 'actorAfter': actor,
+                  'roleInvocationBefore': 'c' * 32, 'roleInvocationAfter': 'c' * 32,
+                  'cgroupIdentityBefore': [1, 99], 'cgroupIdentityAfter': [1, 99],
+                  'targetActiveBeforeNs': 10, 'targetActiveAfterNs': 60,
+                  'denial': 'kernel-mismatch-observed'}
+        identity = {**common, 'kind': 'pr315-administrator-forged-runtime-identity',
+                    'caseId': 'forged-runtime-identity', 'attackStartedNs': 46,
+                    'attackFinishedNs': 47, 'claimedHostPid': 1, 'claimedHostUid': 0,
+                    'actualHostPid': 123, 'actualHostUid': 1001}
+        counters = {**common, 'kind': 'pr315-administrator-forged-counters',
+                    'caseId': 'forged-counters', 'attackStartedNs': 48,
+                    'attackFinishedNs': 49, 'claimedMemoryCurrentBytes': 0,
+                    'claimedTasksCurrent': 0, 'actualMemoryBefore': 200,
+                    'actualTasksBefore': 3, 'actualMemoryAfter': 210,
+                    'actualTasksAfter': 3}
+        (self.root / 'authority/forged-runtime-identity-denial.json').write_text(json.dumps(identity))
+        counter_path = self.root / 'authority/forged-counters-denial.json'
+        counter_path.write_text(json.dumps(counters))
+        retained = evidence._capture(self.root, self.expected, True)
+        self.assertEqual(identity, retained['forgedRuntimeIdentityAudit']['record'])
+        self.assertEqual(counters, retained['forgedCountersAudit']['record'])
+        counter_path.write_text(json.dumps(dict(counters, actualMemoryAfter=0)))
+        retained = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('captured', retained['forgedRuntimeIdentityAudit']['status'])
+        self.assertEqual('unavailable-or-unsafe', retained['forgedCountersAudit']['status'])
+
     def test_fixed_exchange_audits_are_private_bounded_projections_after_cleanup(self):
         import pr315_workload_runner as runner
         self.assertEqual(set(evidence.EXCHANGE_FIELDS), runner.EXCHANGE_AUDIT_FIELDS)

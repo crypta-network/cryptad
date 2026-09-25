@@ -62,6 +62,17 @@ def attempt_write() -> dict:
             'finishedMonotonicNs': finished, 'writtenBytes': written, 'outcome': outcome}
 
 
+def fixed_false_claims() -> tuple[dict, dict]:
+    """Publish two deliberately false values for administrator kernel controls."""
+    started = time.monotonic_ns()
+    identity = {'claimedHostPid': 1, 'claimedHostUid': 0,
+                'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns()}
+    started = time.monotonic_ns()
+    counters = {'claimedMemoryCurrentBytes': 0, 'claimedTasksCurrent': 0,
+                'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns()}
+    return identity, counters
+
+
 def main() -> None:
     if (len(sys.argv) != 2 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
@@ -87,6 +98,7 @@ def main() -> None:
         raise ValueError('pr315-role-probe-trigger-invalid')
     record = attempt_read(sys.argv[1])
     record['writeAttempt'] = attempt_write()
+    record['identityClaim'], record['counterClaim'] = fixed_false_claims()
     descriptor = os.open(OUTPUT, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(record, stream, sort_keys=True, separators=(',', ':'))

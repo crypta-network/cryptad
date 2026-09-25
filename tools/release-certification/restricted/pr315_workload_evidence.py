@@ -615,6 +615,70 @@ def _observer_private_audit(root, deadline, case_id):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _fixed_claim_audit(root, deadline, case_id):
+    """Capture one root-measured false identity or counter comparison."""
+    if case_id not in ('forged-runtime-identity', 'forged-counters'):
+        raise ValueError('fixed-claim-case-invalid')
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', case_id + '-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        common = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                  'actorUid', 'actorBefore', 'actorAfter', 'roleInvocationBefore',
+                  'roleInvocationAfter', 'cgroupIdentityBefore', 'cgroupIdentityAfter',
+                  'targetActiveBeforeNs', 'targetActiveAfterNs', 'denial',
+                  'attackStartedNs', 'attackFinishedNs'}
+        extra = ({'claimedHostPid', 'claimedHostUid', 'actualHostPid', 'actualHostUid'}
+                 if case_id == 'forged-runtime-identity' else
+                 {'claimedMemoryCurrentBytes', 'claimedTasksCurrent',
+                  'actualMemoryBefore', 'actualTasksBefore',
+                  'actualMemoryAfter', 'actualTasksAfter'})
+        if (not isinstance(value, dict) or set(value) != common | extra
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-' + case_id
+                or value['caseId'] != case_id
+                or value['denial'] != 'kernel-mismatch-observed'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest'))
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key])) is None
+                       for key in ('roleInvocationBefore', 'roleInvocationAfter'))
+                or value['roleInvocationBefore'] != value['roleInvocationAfter']
+                or not isinstance(value['actorBefore'], dict)
+                or not isinstance(value['actorAfter'], dict)
+                or set(value['actorBefore']) != ROLE_PROBE_ACTOR_FIELDS
+                or set(value['actorAfter']) != ROLE_PROBE_ACTOR_FIELDS
+                or value['cgroupIdentityBefore'] != value['cgroupIdentityAfter']
+                or any(not isinstance(value[key], list) or len(value[key]) != 2
+                       or any(type(part) is not int or part <= 0 for part in value[key])
+                       for key in ('cgroupIdentityBefore', 'cgroupIdentityAfter'))
+                or any(type(value[key]) is not int or value[key] <= 0 for key in
+                       ('actorUid', 'targetActiveBeforeNs', 'targetActiveAfterNs',
+                        'attackStartedNs', 'attackFinishedNs'))
+                or not value['targetActiveBeforeNs'] < value['attackStartedNs']
+                    < value['attackFinishedNs'] < value['targetActiveAfterNs']):
+            raise ValueError('fixed-claim-audit-invalid')
+        if case_id == 'forged-runtime-identity':
+            if (type(value['claimedHostPid']) is not int or value['claimedHostPid'] != 1
+                    or type(value['claimedHostUid']) is not int or value['claimedHostUid'] != 0
+                    or value['actualHostPid'] != value['actorBefore']['hostPid']
+                    or value['actualHostUid'] != value['actorUid']):
+                raise ValueError('fixed-identity-claim-invalid')
+        elif (type(value['claimedMemoryCurrentBytes']) is not int
+                or value['claimedMemoryCurrentBytes'] != 0
+                or type(value['claimedTasksCurrent']) is not int
+                or value['claimedTasksCurrent'] != 0
+                or any(type(value[key]) is not int or value[key] <= 0 for key in
+                       ('actualMemoryBefore', 'actualTasksBefore',
+                        'actualMemoryAfter', 'actualTasksAfter'))):
+            raise ValueError('fixed-counter-claim-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -642,6 +706,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'runnerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerPrivateReadAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerPrivateWriteAudit': {'status': 'not-captured-cleanup-unverified'},
+        'forgedRuntimeIdentityAudit': {'status': 'not-captured-cleanup-unverified'},
+        'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -680,6 +746,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'observer-private-read')
         result['observerPrivateWriteAudit'] = _observer_private_audit(
             root, deadline, 'observer-private-write')
+        result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
+            root, deadline, 'forged-runtime-identity')
+        result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -736,6 +805,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'observer-private-read')
         result['observerPrivateWriteAudit'] = _observer_private_audit(
             root, deadline, 'observer-private-write')
+        result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
+            root, deadline, 'forged-runtime-identity')
+        result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

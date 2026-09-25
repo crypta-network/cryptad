@@ -182,6 +182,63 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(runner.observer_private_write_attempt(
                 report, value, fixture, invalid, source))
 
+    def test_false_claims_need_actual_role_kernel_identity_and_metrics(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1,
+                  'sourceDigest': runner.reference.sha256(source /
+                      'tools/release-certification/restricted/pr315_role_probe.py'),
+                  'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                  'actorBefore': actor, 'actorAfter': dict(actor),
+                  'roleInvocationBefore': sender['invocationId'],
+                  'roleInvocationAfter': sender['invocationId'],
+                  'cgroupIdentityBefore': [1, 99], 'cgroupIdentityAfter': [1, 99],
+                  'targetActiveBeforeNs': 40, 'targetActiveAfterNs': 80,
+                  'denial': 'kernel-mismatch-observed'}
+        identity_audit = {**common,
+            'kind': 'pr315-administrator-forged-runtime-identity',
+            'caseId': 'forged-runtime-identity', 'attackStartedNs': 76,
+            'attackFinishedNs': 77, 'claimedHostPid': 1, 'claimedHostUid': 0,
+            'actualHostPid': 123, 'actualHostUid': sender['uid']}
+        counter_audit = {**common, 'kind': 'pr315-administrator-forged-counters',
+            'caseId': 'forged-counters', 'attackStartedNs': 78,
+            'attackFinishedNs': 79, 'claimedMemoryCurrentBytes': 0,
+            'claimedTasksCurrent': 0, 'actualMemoryBefore': 200,
+            'actualTasksBefore': 3, 'actualMemoryAfter': 210,
+            'actualTasksAfter': 3}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=100, observedMonotonicNs=110)
+        terminal['forgedRuntimeIdentityAudit'] = {'status': 'captured', 'record': identity_audit}
+        terminal['forgedCountersAudit'] = {'status': 'captured', 'record': counter_audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            first = runner._fixed_claim_attempt(
+                'forged-runtime-identity', report, result, fixture, terminal, source)
+            second = runner._fixed_claim_attempt(
+                'forged-counters', report, result, fixture, terminal, source)
+            self.assertEqual('passed', first['status'])
+            self.assertEqual('passed', second['status'])
+            self.assertNotEqual(first['attackDigest'], second['attackDigest'])
+            for field, key, value in (
+                    ('forgedRuntimeIdentityAudit', 'claimedHostPid', 2),
+                    ('forgedCountersAudit', 'actualMemoryAfter', 0),
+                    ('forgedCountersAudit', 'cgroupIdentityAfter', [1, 100])):
+                changed = copy.deepcopy(terminal)
+                changed[field]['record'][key] = value
+                case_id = ('forged-runtime-identity' if field == 'forgedRuntimeIdentityAudit'
+                           else 'forged-counters')
+                self.assertIsNone(runner._fixed_claim_attempt(
+                    case_id, report, result, fixture, changed, source))
+
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]
