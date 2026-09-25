@@ -2,10 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; `db25340` TCG suites 66 and 68 each passed
-eight positive cases and two denial cases, with `cancellation` and
-`controller-restart` respectively. Their 12 distinct case IDs do not complete
-the 45-case contract.** The first three installed
+**Implementation is incomplete; `d8d66e7` TCG suite 70 passed eight positive,
+three denial and `cancellation` on one source-bound guest. Its 12 case IDs do
+not complete the 45-case contract.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
 controller readiness. The eighth observed readiness in a startup-only diagnostic. The ninth
@@ -1606,7 +1605,8 @@ by recursive checksum. The task-private host plans, summaries, transports and
 preflights were also retained locally. The original guest and backing QCOWs remain
 retained on the task dataset. At that cutoff, no second KVM guest was allocated after the PVE host's
 available memory fell below the unchanged next-run admission requirement. The
-latest accepted-profile installed positive and full 45-case verdicts remain false.
+accepted-profile installed positive was still false at that cutoff; the full
+45-case verdict remains false.
 
 The installed observer previously started the second CHK immediately after the
 sender's new daemon and AppHost epoch was established. It did not check whether
@@ -1767,13 +1767,44 @@ before it can mark `runner-control` passed. Failure leaves this row unexecuted
 or inconclusive; a successful forbidden stop or changed controller/sender epoch
 fails the guest attempt rather than preserving a positive result.
 
-This is prospective source work only. On CT102 Linux, final-source PR-314
+At the implementation cutoff this was prospective source work. On CT102 Linux, PR-314
 discovery passed 73 tests, PR-315 workload discovery passed 104, protected
 workload discovery passed 165 with 21 skips, and cross-version interop
 discovery passed 242 with eight skips. Offline tests also reject a forged runner
 UID, altered target invocation, modified response and oversized child output.
-No installed `runner-control` observation exists yet; the latest executed
-`db25340` 12-distinct-ID coverage and incomplete 45-case verdict are unchanged.
+The installed outcome is recorded below; offline results alone granted no case.
+
+The emitter was committed at `d8d66e718ef4569a90af1bff95993a8790754e8d`.
+Its fresh schema-4 fixture reused the verified `db25340` product and pinned
+predecessor/JDK/signed Mail/probe bytes while binding the new helper source.
+Original TCG suite 69 failed before the probe: relay readiness timed out after
+one `SIGSEGV` in a C1-compiled JDK method. It exited 1 with four current stop
+receipts, no runner-control audit and no passed case. The complete stopped
+failure and host pressure records were copied locally and passed recursive
+checksum comparison. No product, JDK, QEMU, CPU or timeout was changed.
+
+Unchanged suite 70 completed on the original `tcg-multi/qemu64` profile. Its
+host assessment passed all eight positives, `observer-control`,
+`namespace-mount-escape`, the genuine administrator `cancellation`, and the
+new `runner-control` denial on one guest. The fixed `vmadmin` systemd command
+returned a nonzero authorization rejection; the root audit captured that
+process UID/epoch, the actual response digest, matching active controller
+invocation/cgroup and unchanged sender state. The host verifier bound it to
+the exact source/fixture and sender stop receipt. Guest exit was 0, all four
+current stop receipts were captured and no role had a new HotSpot fatal file.
+The exact-QEMU host monitor took no termination action; minimum physical
+available memory was about 5.12 GB and minimum free swap about 9.80 GB.
+The complete stopped guest and private evidence were copied locally and
+matched CT102 byte-for-byte by recursive checksum. Its public status remains
+`implementation-incomplete` with `installedWorkloadAcceptanceSatisfied=false`.
+
+After verifying complete local copies, the task-owned stopped guest and
+backing QCOW copies for successful suites 66 and 68 were removed only from
+CT102. A read-only scan of 95 QCOWs found no other guest depending on those
+backing files; exact ownership, single-link status and zero task QEMU were
+checked before deletion. Their CT102 reports and v8 evidence and the full
+local private guest copies remain. Failed attempt disks were retained. The
+task-private disposal audit records the exact paths and post-cleanup state.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -1834,12 +1865,13 @@ required by `restart-durable-state`. The snapshot is diagnostic-only and cannot 
 
 ## Requirement-to-emitter mapping
 
-In the following tables, “positive path” identifies existing production actions reached by
-`pr314_workload_driver.py` and `InstalledWorkloadAdapter.run_positive()`. It does not mean that
-the action emits a complete trusted acceptance observation. “Missing” means there is no installed
-workload case driver at this audit cutoff. Synthetic verifier tests are not emitters.
+In the following tables, “positive path” identifies production actions reached by
+`pr314_workload_driver.py` and `InstalledWorkloadAdapter.run_positive()`. The third
+column names the evidence required for each row; suite 70 passed those eight rows.
+The denial and lifecycle tables retain the missing installed emitters. Synthetic
+verifier tests are not emitters.
 
-| Positive ID | Existing path | Missing installed acceptance evidence |
+| Positive ID | Existing path | Required evidence (passed in suite 70) |
 | --- | --- | --- |
 | `installed-ready` | Installation/test-kit checks in positive driver | Observed ready controller and exact installed before/after identity |
 | `four-role-start` | Adapter starts four fixed role services | Trusted UID/GID, invocation, cgroup and namespace roster |
@@ -1850,9 +1882,10 @@ workload case driver at this audit cutoff. Synthetic verifier tests are not emit
 | `kernel-resource-scope` | Controller kernel observation support | All four actual scoped cgroup measurements |
 | `restart-durable-state` | Sender restart and app-inventory retention | Selected durable sentinel before/after, original deadline, both invocation epochs |
 
-The denial rows below retain their fixed actor and target requirements. Only
-`observer-control` and `namespace-mount-escape` have passing installed witnesses
-on attempt 62; the other 24 still lack passing installed emitters. The actor column preserves the
+The denial rows below retain their fixed actor and target requirements.
+`runner-control`, `observer-control` and `namespace-mount-escape` have passing
+installed witnesses on `d8d66e7` suite 70; the other 23 still lack passing
+installed emitters. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -1867,7 +1900,7 @@ role/AppHost boundary.
 | `sibling-http` | candidate | Active recipient HTTP; emitted cross-role probe with attributed filter evidence |
 | `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
-| `runner-control` | runner | Prospective fixed vmadmin `systemctl` stop request against active controller unit; installed policy denial and root/host audit still unexecuted |
+| `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
 | `observer-control` | observer | Installed system manager; valid disallowed control request |
 | `arbitrary-endpoint` | observer | Existing nonapproved endpoint; valid disallowed connector selection |
 | `hostile-app-origin` | candidate | Active own app; valid request with hostile origin |
@@ -1886,8 +1919,9 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`controller-restart` passed on attempt 62 and `cancellation` passed on an older helper;
-the other nine remain without passing installed emitters. Triggers must follow observed
+`cancellation` passed on `d8d66e7` suite 70. `controller-restart` passed on the
+older `db25340` source but remains unexecuted on `d8d66e7`; the other ten
+lifecycle IDs lack a current-source pass. Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.
 
@@ -2075,9 +2109,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: suites 66 and 68 each passed eight positive, two denial and one different lifecycle row on the `db25340` helper/product. Across those separate attempts 12 distinct IDs have a pass; 24 denial and nine lifecycle IDs still lack one on this source |
-| `installedPositiveExecuted` | True for the latest `db25340` accepted-profile TCG suites 66 and 68; each completed the eight-case positive aggregate |
-| `installedWorkloadAcceptanceSatisfied` | False; each `db25340` attempt has 11 of 45 passing rows, the two raw attempts cannot be pooled with duplicate declarations, and 33 IDs still lack a pass |
+| `implementationCoverage` | Incomplete: `d8d66e7` suite 70 passed eight positive, three denial and `cancellation` on one original-profile guest. Another 23 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
+| `installedPositiveExecuted` | True for the `d8d66e7` accepted-profile TCG suite 70; its eight-case positive aggregate completed |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 70 has 12 of 45 passing rows on one source-bound guest and 33 IDs remain without a pass |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
