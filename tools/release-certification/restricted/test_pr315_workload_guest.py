@@ -13,6 +13,27 @@ import pr315_workload_guest as guest
 
 
 class PrivateFailureTest(unittest.TestCase):
+    def test_native_postrun_reason_is_closed_and_private(self):
+        record = {'schemaVersion': 1, 'kind': 'restricted-native-postrun-rejection',
+                  'reason': 'cgroup-membership', 'observedCount': 2, 'expectedCount': 1}
+        self.assertTrue(guest._valid_postrun(record))
+        self.assertFalse(guest._valid_postrun(dict(record, rawPid=123)))
+        self.assertFalse(guest._valid_postrun(dict(record, observedCount=True)))
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'failure.json'
+            error = type('NativeBoundaryError', (ValueError,), {})(
+                'restricted-native-execution-failed')
+            with patch.object(guest.os, 'geteuid', return_value=0), \
+                    patch.object(guest, 'FAILURE', path), \
+                    patch.object(guest, 'STAGE', 'installation'), \
+                    patch.object(guest, '_native_postrun_summary', return_value={
+                        'status': 'captured', 'failureStageCount': 1, 'records': [record]}):
+                guest.retain_failure(error)
+            value = json.loads(path.read_bytes())
+            self.assertEqual('cgroup-membership', value['nativePostrun']['records'][0]['reason'])
+            self.assertFalse(value['installedAcceptance'])
+            self.assertLessEqual(path.stat().st_size, 8000)
+
     def test_fixed_network_diagnostic_is_private_and_bounded(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'failure.json'

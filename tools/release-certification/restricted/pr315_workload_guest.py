@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 from pathlib import Path
+import pwd
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ FIXTURES = SOURCE / 'build/pr315-inputs'
 KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restricted')
 STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
+NATIVE_ROOT = Path('/var/lib/cryptad-restricted-native')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart')
 
 
@@ -80,6 +83,54 @@ def _bounded_text(value, maximum):
     return value
 
 
+def _valid_postrun(record):
+    return (isinstance(record, dict) and set(record) == {
+        'schemaVersion', 'kind', 'reason', 'observedCount', 'expectedCount'}
+        and type(record['schemaVersion']) is int and record['schemaVersion'] == 1
+        and record['kind'] == 'restricted-native-postrun-rejection'
+        and record['reason'] in ('cgroup-membership', 'native-output-roster')
+        and all(type(record[key]) is int and 0 <= record[key] <= 4096
+                for key in ('observedCount', 'expectedCount')))
+
+
+def _native_postrun_summary():
+    """Retain only fixed native worker rejection metadata after installation failure."""
+    try:
+        root = NATIVE_ROOT
+        info = root.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0:
+            raise ValueError('native-root-owner-invalid')
+        stages = [path for path in root.iterdir()
+                  if re.fullmatch('[0-9a-f]{64}', path.name)
+                  and path.is_dir() and not path.is_symlink()
+                  and (path / 'failure.json').is_file()]
+        if len(stages) > 64:
+            raise ValueError('native-stage-count-invalid')
+        stages.sort(key=lambda path: (path / 'failure.json').stat().st_mtime_ns)
+        uid = pwd.getpwnam('cryptad-native').pw_uid
+        records = []
+        for stage in stages[-2:]:
+            path = stage / 'diagnostics/postrun.json'
+            if not path.exists():
+                continue
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                info = os.fstat(descriptor)
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid
+                        or info.st_nlink != 1 or not 0 < info.st_size <= 512):
+                    raise ValueError('native-postrun-file-invalid')
+                record = json.loads(os.read(descriptor, 513))
+            finally:
+                os.close(descriptor)
+            if not _valid_postrun(record):
+                raise ValueError('native-postrun-record-invalid')
+            records.append(record)
+        return {'status': 'captured' if records else 'not-observed',
+                'failureStageCount': len(stages), 'records': records}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def retain_failure(error):
     """Bounded private setup diagnostics; never copy this exception into public output."""
     if os.geteuid() != 0:
@@ -89,6 +140,8 @@ def retain_failure(error):
              'privateDetail': _bounded_text(str(error), 1024), 'installedAcceptance': False,
              'exceptionChainMeaning': 'observed-python-propagation-not-causal-acceptance',
              'exceptionChain': [], 'networkFailures': [], 'networkFailuresOmitted': 0}
+    if STAGE == 'installation' and str(error) == 'restricted-native-execution-failed':
+        value['nativePostrun'] = _native_postrun_summary()
     seen, current, relationship = set(), error, 'top-level'
     for depth in range(4):
         if id(current) in seen:

@@ -1845,6 +1845,37 @@ kernel-measured JVM in the latest active role, before cleanup on this exact
 failure code. Its raw output is private and capped; the public verdict remains
 incomplete. This diagnostic has offline tests and has not yet run in a guest.
 
+The `f590849` revision carried that diagnostic. Its new schema-4 fixture was
+verified and archived locally; suite 73 passed no-VM task and PVE admission.
+Suite 74 reached the disposable guest but failed during base installation,
+before the controller or any workload role started. The guest exited 1 and
+stopped; its PVE monitor finished normally. The retained error chain is
+`restricted-native-execution-failed` from `restricted-native-boundary-rejected`.
+The readiness-specific jcmd branch therefore did not run and no new workload
+case passed. The complete failed guest, fixture and PVE records were copied
+locally and passed byte checks; original failed QCOWs remain on CT102.
+
+To narrow that installation failure without another guess, a temporary raw
+image was made from the stopped suite 74 QCOW/backing under a full 24-GiB
+capacity reservation. PVE attached and mounted only that task image read-only,
+without journal replay. The retained native stage showed two fixed `probe`
+operations: the first completed; the second had a manager invocation but no
+completion output and produced its fixed reconciliation failure about 1.16
+seconds after stage creation. Both diagnostic stdout/stderr files were empty.
+The guest's persistent journal reported the second native unit exiting with
+status 1. This places the failure after service start, but does not distinguish
+the launcher's cgroup-membership check from its fixed output-roster check.
+The bounded local forensic summary remains private. The task-only mount and
+loop device were detached; the temporary raw copy was removed and audited.
+The original suite 74 failed QCOWs and their checked local copies remain.
+
+The next prospective source writes a closed private reason and counts at
+those two actual post-run rejection branches, then captures only that small
+record in the guest installation failure evidence. It leaves the denial
+decision and production control interface unchanged. Offline regressions
+exercise the fixed marker and reject extra fields; no installed result on this
+revision exists yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

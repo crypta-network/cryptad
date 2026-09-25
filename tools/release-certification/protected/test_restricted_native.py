@@ -1,5 +1,6 @@
 """Offline native boundary contract checks; these do not claim multi-UID isolation."""
 import os
+import json
 from pathlib import Path
 import tempfile
 import sys
@@ -7,6 +8,27 @@ import unittest
 from unittest.mock import patch
 
 import restricted_native as native
+
+
+class NativePostrunDiagnosticTest(unittest.TestCase):
+    def test_fixed_postrun_rejection_is_private_and_keeps_denial(self):
+        import restricted_native_launcher as launcher
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            (stage / 'diagnostics').mkdir()
+            with self.assertRaisesRegex(ValueError, 'restricted-native-launch-rejected'):
+                launcher._postrun_reject(stage, 'cgroup-membership', 2, 1)
+            path = stage / 'diagnostics/postrun.json'
+            value = json.loads(path.read_bytes())
+            self.assertEqual({'schemaVersion': 1,
+                'kind': 'restricted-native-postrun-rejection',
+                'reason': 'cgroup-membership', 'observedCount': 2,
+                'expectedCount': 1}, value)
+            self.assertEqual(0, path.stat().st_mode & 0o077)
+            self.assertNotIn(str(stage), path.read_text())
+            with self.assertRaisesRegex(ValueError, 'restricted-native-launch-rejected'):
+                launcher._postrun_reject(stage, 'arbitrary-reason', 2, 1)
+            self.assertEqual(value, json.loads(path.read_bytes()))
 
 
 class PlatformAdmissionTest(unittest.TestCase):
