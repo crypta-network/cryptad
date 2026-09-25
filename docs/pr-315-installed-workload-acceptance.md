@@ -2,9 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; the latest passing TCG attempt, `45d8b914`
-suite 91, passed eight positive, ten denial and `controller-restart` on one
-source-bound guest. Its 19 case IDs do not complete the 45-case contract.**
+**Implementation is incomplete; the latest passing TCG attempt, `1a714f9d`
+suite 102, passed eight positive, eleven denial and `cancellation` on one
+source-bound guest. Its 20 case IDs do not complete the 45-case contract.**
 The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -2155,6 +2155,41 @@ including a new over-64-KiB exclusive-write regression. This corrected
 source requires a fresh TCG run; the KVM differential does not grant an
 installed workload verdict.
 
+The `1a714f9d` source received a fresh fixture and passed no-VM suite 98.
+Suite 99 started sender and recipient, but the recipient wrapper reported
+14 seconds without CPU time and its first JVM timed out waiting for a startup signal; its
+second JVM reached FProxy startup before the original FCP readiness deadline
+expired. No HotSpot fatal file was captured. The guest exited 1 and stopped,
+the new private volatile writer retained a 22.5-KiB record, cleanup and
+four stop receipts completed, the sentinel matched, and the task-QEMU watcher
+completed. Full failed guest and host records passed Mac byte checks; only
+the stopped remote disk duplicates were released after an 85-QCOW
+zero-dependency scan. Suite 100 passed a new no-VM preflight. Suite 101 was
+rejected by PVE PSI admission before VM allocation and retains its separate
+no-VM admission receipt.
+
+After PSI recovered, suite 102 passed a fresh host admission and PIDFD
+watcher handshake on the original `tcg-multi/qemu64`, four-vCPU,
+5632-MiB guest with the same pinned candidate, predecessor, JDK, QEMU and
+signed apps. The guest exited 0 and stopped. The host verifier accepted all
+eight positive IDs, the ten previously proven denials plus the new
+`arbitrary-endpoint`, and `cancellation`: **20/45**. The observer checkpoint
+and independent root audit bind the same actor PID/start epoch, fixed request
+and denial response; root captured real recipient `NodeHello` controls before
+and after the disallowed connector call. Both records also match the
+live-captured private copies and the v8/v9 host case files. The new writer
+published 92,587 bytes of private volatile evidence under its 96-KiB cap.
+Four current role stop receipts, a matching sentinel and completed exact
+PVE watcher were retained; no HotSpot fatal was captured. The complete guest
+and four host records passed Mac byte checks. Only suite 102's stopped remote
+disk duplicates were released after independent hashes, zero task QEMU/open
+descriptors and an 85-QCOW backing scan. Full original bytes and offload
+receipts remain private. `implementationCoverage` is still incomplete and
+`installedWorkloadAcceptanceSatisfied=false`; 15 denial and ten lifecycle
+IDs lack a passing installed result on this helper. Historical
+`controller-restart` belongs to another source and cannot be pooled with
+suite 102.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2232,13 +2267,12 @@ verifier tests are not emitters.
 | `restart-durable-state` | Sender restart and app-inventory retention | Selected durable sentinel before/after, original deadline, both invocation epochs |
 
 The denial rows below retain their fixed actor and target requirements.
-`runner-control`, `observer-control`, `namespace-mount-escape`,
 `observer-private-read`, `observer-private-write`, `sibling-data`,
-`package-expectation`, `cgroup-migration`, `forged-runtime-identity`,
-`forged-counters`, `runner-control`, `observer-control` and
-`namespace-mount-escape` have passing installed witnesses on `fdcfe740`
-suite 89; the other 16 still lack passing installed emitters. The actor
-column preserves the
+`runner-control`, `observer-control`, `arbitrary-endpoint`,
+`package-expectation`, `forged-runtime-identity`,
+`namespace-mount-escape`, `cgroup-migration` and `forged-counters`
+have passing installed witnesses on `1a714f9d` suite 102; the other 15
+still lack passing installed emitters. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -2255,7 +2289,7 @@ role/AppHost boundary.
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
 | `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
 | `observer-control` | observer | Installed system manager; valid disallowed control request |
-| `arbitrary-endpoint` | observer | Active recipient FCP `NodeHello` controls and one fixed disallowed connector selection; KVM diagnostic only, no accepted TCG pass |
+| `arbitrary-endpoint` | observer | Active recipient FCP `NodeHello` controls and one fixed disallowed connector selection; root/observer/host checks passed on TCG suite 102 |
 | `hostile-app-origin` | candidate | Active own app; valid request with hostile origin |
 | `package-expectation` | candidate | Admitted immutable package/identity; actual fixed mutation attempt |
 | `forged-runtime-identity` | candidate | Process observer; fixed false claim compared with independent kernel identity |
@@ -2272,7 +2306,7 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`cancellation` passed on `fdcfe740` suite 89; `controller-restart` passed on
+`cancellation` passed on `1a714f9d` suite 102; `controller-restart` passed on
 `45d8b914` suite 91. These are separate helper identities. The other nine
 lifecycle IDs lack a source-bound TCG pass, and the eventual final source
 requires all eleven again. Triggers must follow observed
@@ -2487,9 +2521,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the latest passing TCG helper `45d8b914` suite 91 passed eight positive, ten denial and `controller-restart` on one original-profile guest. Another 16 denial and ten lifecycle IDs lack a pass on that helper; `cancellation` passed only on the prior `fdcfe740` source. The new `arbitrary-endpoint` emitter remains unproven on corrected v7 source |
-| `installedPositiveExecuted` | False for the corrected v7 source revision; true historically for `45d8b914` suite 91's eight-case positive aggregate. Suite 93 failed before positive completion |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 91 has 19 of 45 passing rows on one historical source-bound guest, and the corrected source has no installed result yet |
+| `implementationCoverage` | Incomplete: `1a714f9d` suite 102 passed eight positive, eleven denial and `cancellation` on one original-profile TCG guest. Another 15 denial and ten lifecycle IDs lack an installed pass on that helper; `controller-restart` passed only on earlier `45d8b914` |
+| `installedPositiveExecuted` | True for `1a714f9d` suite 102's eight-case positive aggregate; no installed run has yet used the subsequent audit-document revision |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 102 has 20 of 45 passing rows on one source-bound guest, and 25 IDs remain without a pass on that helper |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
