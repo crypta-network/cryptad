@@ -4,12 +4,17 @@ import os
 from pathlib import Path
 import pwd
 import re
+import hashlib
+import json
+import stat
 import subprocess
 import sys
 import time
 
 ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
+PROBE_REQUEST = ROOT / 'probe-requests/candidate-sender.json'
+PROBE_SOURCE = ROOT / 'probe-source/pr315_role_probe.py'
 
 
 def launcher_policy():
@@ -19,9 +24,57 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v2',
+    return {'revision': 'workload-launcher-policy-v3',
+            'candidateRoleProbe': 'observer-private-read-v1',
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role == 'previous' else 30 for role in ROLES}}
+
+
+def _trusted_probe_request(spec):
+    """Read one root-only fixed request; no client supplies a program or target."""
+    if not PROBE_REQUEST.exists():
+        return None
+    source = PROBE_SOURCE.lstat()
+    if (not stat.S_ISREG(source.st_mode) or source.st_uid != 0
+            or source.st_mode & 0o222 or source.st_nlink != 1
+            or not 0 < source.st_size <= 32768):
+        raise ValueError('workload-role-probe-source-invalid')
+    info = PROBE_REQUEST.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o222 or info.st_nlink != 1
+            or not 0 < info.st_size <= 4096):
+        raise ValueError('workload-role-probe-request-invalid')
+    descriptor = os.open(PROBE_REQUEST, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        if os.fstat(descriptor).st_ino != info.st_ino:
+            raise ValueError('workload-role-probe-request-changed')
+        request = json.loads(os.read(descriptor, 4097))
+    finally:
+        os.close(descriptor)
+    if (not isinstance(request, dict) or set(request) != {
+            'schemaVersion', 'caseId', 'nonce', 'bootId', 'javaDigest', 'sourceDigest'}
+            or request['schemaVersion'] != 1 or request['caseId'] != 'observer-private-read'
+            or request['bootId'] != spec['bootId'] or request['javaDigest'] != spec['javaDigest']
+            or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None
+            or request['sourceDigest'] != hashlib.sha256(PROBE_SOURCE.read_bytes()).hexdigest()):
+        raise ValueError('workload-role-probe-request-mismatch')
+    return request
+
+
+def _start_probe(role, spec):
+    request = _trusted_probe_request(spec)
+    if request is None:
+        return None
+    arguments, environment = command(role)
+    separator = arguments.index('--')
+    if arguments[separator - 2:separator] != ['--remount-ro', '/']:
+        raise ValueError('workload-role-probe-sandbox-changed')
+    probe = [*arguments[:separator - 2], '--ro-bind', str(PROBE_SOURCE), '/probe.py',
+             *arguments[separator - 2:separator], '--', '/usr/bin/python3', '-I', '-S', '-B',
+             '/probe.py', request['nonce']]
+    return subprocess.Popen(probe, env=environment, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            close_fds=True)
 
 
 def verify_wrapper_options(package):
@@ -114,8 +167,18 @@ def main():
     # Candidate stdout/stderr are discarded, avoiding a privileged candidate-file collector.
     process = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
-    remaining = spec['deadlineMonotonicNs'] / 1e9 - time.monotonic()
-    return process.wait(timeout=max(.001, remaining))
+    probe = None
+    while True:
+        remaining = spec['deadlineMonotonicNs'] / 1e9 - time.monotonic()
+        if remaining <= 0:
+            raise ValueError('workload-expired')
+        try:
+            return process.wait(timeout=min(.25, remaining))
+        except subprocess.TimeoutExpired:
+            if role == 'candidate-sender' and 'probeIdentity' in spec and probe is None:
+                probe = _start_probe(role, spec)
+            if probe is not None and probe.poll() is not None:
+                raise ValueError('workload-role-probe-exited')
 
 
 if __name__ == '__main__':

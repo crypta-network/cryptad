@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import secrets
 import select
 import signal
 import socket
@@ -57,6 +58,184 @@ def prerequisites():
     if not (TEST_KIT / '.test-kit.json').is_file():
         reasons.append('separate-measured-test-kit-required')
     return reasons
+
+
+def stage_role_probe(workload, kit):
+    """Copy only the measured fixed test-kit actor into root-owned probe storage."""
+    import installation
+    relative = 'tools/release-certification/restricted/pr315_role_probe.py'
+    source = TEST_KIT / relative
+    raw = installation.secured(source).read_bytes()
+    if (not 0 < len(raw) <= 32768
+            or kit['files'].get(relative) != hashlib.sha256(raw).hexdigest()):
+        raise ValueError('workload-role-probe-test-kit-mismatch')
+    directory = workload.ROOT / 'probe-source'
+    requests = workload.ROOT / 'probe-requests'
+    directory.mkdir(mode=0o755)
+    requests.mkdir(mode=0o755)
+    directory.chmod(0o755)
+    requests.chmod(0o755)
+    target = directory / 'pr315_role_probe.py'
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
+    try:
+        with os.fdopen(descriptor, 'wb', closefd=False) as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.fchmod(descriptor, 0o444)
+    finally:
+        os.close(descriptor)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _candidate_probe_file(path, uid):
+    """Read a bounded role-owned file without following a candidate link."""
+    info = path.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_nlink != 1
+            or info.st_mode & 0o077 or not 0 < info.st_size <= 4096):
+        raise ValueError('workload-role-probe-file-invalid')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        current = os.fstat(descriptor)
+        if (info.st_dev, info.st_ino, info.st_size) != (
+                current.st_dev, current.st_ino, current.st_size):
+            raise ValueError('workload-role-probe-file-changed')
+        return json.loads(os.read(descriptor, 4097))
+    finally:
+        os.close(descriptor)
+
+
+def _observer_canary_control(path, user):
+    """Demonstrate that the current observer UID can read the target bytes."""
+    def drop():
+        os.setgroups([])
+        os.setgid(user.pw_gid)
+        os.setuid(user.pw_uid)
+    selected = subprocess.run(['/usr/bin/python3', '-I', '-S', '-B', '-c',
+        'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read(64)).hexdigest())',
+        str(path)], stdin=subprocess.DEVNULL, capture_output=True, env=ENV,
+        preexec_fn=drop, timeout=5)
+    if (selected.returncode != 0 or selected.stderr or len(selected.stdout) != 65
+            or re.fullmatch(rb'[0-9a-f]{64}\n', selected.stdout) is None):
+        raise ValueError('workload-observer-private-control-failed')
+    return selected.stdout[:64].decode()
+
+
+def _role_probe_actor(observation, nonce):
+    """Select the one measured Python actor in the active candidate service."""
+    found = []
+    for process in observation['processes']:
+        pid = process['hostPid']
+        try:
+            command = (Path('/proc') / str(pid) / 'cmdline').read_bytes().split(b'\0')
+        except OSError:
+            continue
+        if command[:6] == [b'/usr/bin/python3', b'-I', b'-S', b'-B',
+                            b'/probe.py', nonce.encode()]:
+            found.append(process)
+    if (len(found) != 1 or found[0]['noNewPrivileges'] is not True
+            or found[0]['effectiveCapabilities'] != 0):
+        raise ValueError('workload-role-probe-actor-unavailable')
+    return found[0]
+
+
+def probe_observer_private_read(workload, handoff, observer, source_digest,
+                                campaign_deadline_ns):
+    """Measure a real role child opening an active observer-owned canary."""
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-role-probe-campaign-expired')
+    canary = Path('/var/lib/cryptad-cross-version/experiments/pr315-installed-workload/observer-private-canary')
+    data = secrets.token_bytes(32)
+    descriptor = os.open(canary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.write(descriptor, data)
+        os.fsync(descriptor)
+        os.fchown(descriptor, observer.pw_uid, observer.pw_gid)
+    finally:
+        os.close(descriptor)
+    expected = hashlib.sha256(data).hexdigest()
+    if _observer_canary_control(canary, observer) != expected:
+        raise ValueError('workload-observer-private-control-mismatch')
+    nonce = secrets.token_hex(32)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    request = {'schemaVersion': 1, 'caseId': 'observer-private-read', 'nonce': nonce,
+               'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+               'sourceDigest': source_digest}
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+                   request, create=True, mode=0o444)
+    role = 'candidate-sender'
+    uid = workload.account(role).pw_uid
+    probe_root = workload.ROOT / 'state/candidate-sender/tmp'
+    ready_path = probe_root / 'pr315-observer-private-read-ready.json'
+    result_path = probe_root / 'pr315-observer-private-read.json'
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    while time.monotonic() < until and not ready_path.exists():
+        time.sleep(.05)
+    if not ready_path.exists():
+        raise ValueError('workload-role-probe-ready-timeout')
+    ready = _candidate_probe_file(ready_path, uid)
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
+            or ready['schemaVersion'] != 1 or ready['kind'] != 'pr315-candidate-role-probe-ready'
+            or ready['caseId'] != 'observer-private-read' or ready['nonce'] != nonce):
+        raise ValueError('workload-role-probe-ready-invalid')
+    before = workload.observe(handoff['handles'][role])
+    actor_before = _role_probe_actor(before, nonce)
+    if ready['pid'] != actor_before['namespacePids'][-1]:
+        raise ValueError('workload-role-probe-pid-unbound')
+    target_before = _observer_canary_control(canary, observer)
+    if target_before != expected:
+        raise ValueError('workload-role-probe-target-changed')
+    trigger_ns = time.monotonic_ns()
+    trigger = probe_root / 'pr315-observer-private-read-trigger.json'
+    descriptor = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
+    try:
+        with os.fdopen(descriptor, 'w', closefd=False) as stream:
+            json.dump({'caseId': 'observer-private-read', 'nonce': nonce}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.fchmod(descriptor, 0o444)
+    finally:
+        os.close(descriptor)
+    while time.monotonic() < until and not result_path.exists():
+        time.sleep(.05)
+    if not result_path.exists():
+        raise ValueError('workload-role-probe-result-timeout')
+    result = _candidate_probe_file(result_path, uid)
+    after = workload.observe(handoff['handles'][role])
+    actor_after = _role_probe_actor(after, nonce)
+    target_after = _observer_canary_control(canary, observer)
+    stable = ('hostPid', 'startTicks', 'namespacePids', 'networkNamespaceIdentity',
+              'mountNamespaceIdentity', 'userNamespaceIdentity', 'executableDigest',
+              'noNewPrivileges', 'effectiveCapabilities')
+    if (any(actor_before[key] != actor_after[key] for key in stable)
+            or before['managerInvocation'] != after['managerInvocation']
+            or target_after != expected
+            or result.get('nonce') != nonce or result.get('caseId') != 'observer-private-read'
+            or result.get('pid') != actor_before['namespacePids'][-1]
+            or result.get('outcome') != {'opened': False, 'errno': 'ENOENT'}
+            or not ready['startedMonotonicNs'] < trigger_ns
+                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                < after['observedMonotonicNs']):
+        raise ValueError('workload-role-probe-evidence-invalid')
+    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
+             'caseId': 'observer-private-read', 'sourceDigest': source_digest,
+             'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+             'actorUid': uid,
+             'actorBefore': actor_before, 'actorAfter': actor_after,
+             'roleInvocationBefore': before['managerInvocation'],
+             'roleInvocationAfter': after['managerInvocation'],
+             'targetDigestBefore': target_before, 'targetDigestAfter': target_after,
+             'triggerMonotonicNs': trigger_ns,
+             'attackStartedNs': result['startedMonotonicNs'],
+             'attackFinishedNs': result['finishedMonotonicNs'],
+             'kernelOpenResult': result['outcome'],
+             'controllerObservedBeforeNs': before['observedMonotonicNs'],
+             'controllerObservedAfterNs': after['observedMonotonicNs']}
+    workload.write(workload.ROOT / 'authority/observer-private-read-denial.json', audit, create=True)
+    return {'status': 'captured', 'caseId': 'observer-private-read',
+            'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}
 
 
 def cleanup(workload):
@@ -900,6 +1079,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
     controller_restart = None
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
+        role_probe_digest = stage_role_probe(workload, kit)
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
         if type(campaign_deadline) is not int or campaign_deadline <= time.monotonic_ns():
             raise ValueError('workload-preparation-consumed-deadline')
@@ -975,6 +1155,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                     subprocess.SubprocessError) as error:
                 diagnostics['runnerControl'] = {'status': 'unavailable-or-unsafe',
                                                 'exceptionType': type(error).__name__[:128]}
+            try:
+                diagnostics['observerPrivateRead'] = probe_observer_private_read(
+                    workload, handoff, observer, role_probe_digest, campaign_deadline)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['observerPrivateRead'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)

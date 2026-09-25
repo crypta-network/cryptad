@@ -38,6 +38,10 @@ EXCHANGE_CASES = ('own-management', 'dynamic-app-bootstrap')
 EXCHANGE_FIELDS = ('schemaVersion', 'kind', 'caseId', 'method', 'role', 'managerInvocation',
                    'bootId', 'cgroupIdentity', 'requestDigest', 'responseDigest',
                    'startedMonotonicNs', 'finishedMonotonicNs', 'serverRequests')
+ROLE_PROBE_ACTOR_FIELDS = frozenset(('hostPid', 'hostParentPid', 'pidNamespace',
+    'networkNamespaceIdentity', 'mountNamespaceIdentity', 'userNamespaceIdentity',
+    'namespacePids', 'startTicks', 'executableDigest', 'rssBytes', 'processThreads',
+    'noNewPrivileges', 'effectiveCapabilities'))
 FNP_COUNTER_NAMES = frozenset({*(f'fnp_role{index}_to_relay' for index in range(3)),
                                *(f'fnp_relay_to_role{index}' for index in range(3))})
 
@@ -566,6 +570,49 @@ def _runner_control_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _observer_private_read_audit(root, deadline):
+    """Retain the fixed administrator actor and live-target probe, privately."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'observer-private-read-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                  'actorUid',
+                  'actorBefore', 'actorAfter', 'roleInvocationBefore',
+                  'roleInvocationAfter', 'targetDigestBefore', 'targetDigestAfter',
+                  'triggerMonotonicNs', 'attackStartedNs', 'attackFinishedNs',
+                  'kernelOpenResult', 'controllerObservedBeforeNs',
+                  'controllerObservedAfterNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-observer-private-read'
+                or value['caseId'] != 'observer-private-read'
+                or value['kernelOpenResult'] != {'opened': False, 'errno': 'ENOENT'}
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None for key in
+                       ('sourceDigest', 'nonceDigest', 'targetDigestBefore', 'targetDigestAfter'))
+                or value['targetDigestBefore'] != value['targetDigestAfter']
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or not isinstance(value['actorBefore'], dict)
+                or not isinstance(value['actorAfter'], dict)
+                or set(value['actorBefore']) != ROLE_PROBE_ACTOR_FIELDS
+                or set(value['actorAfter']) != ROLE_PROBE_ACTOR_FIELDS
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key])) is None for key in
+                       ('roleInvocationBefore', 'roleInvocationAfter'))
+                or any(type(value[key]) is not int or value[key] <= 0 for key in
+                       ('triggerMonotonicNs', 'attackStartedNs', 'attackFinishedNs',
+                        'controllerObservedBeforeNs', 'controllerObservedAfterNs'))
+                or not value['controllerObservedBeforeNs'] < value['triggerMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['controllerObservedAfterNs']):
+            raise ValueError('observer-private-read-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _capture(root, expected, cleanup_complete, *, observer_root=None):
     """Internal acquisition over the fixed selection; tests use synthetic temporary roots."""
     if expected is not None and (not isinstance(expected, str)
@@ -591,6 +638,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'observerControlCheckpoint': {'status': 'not-captured-cleanup-unverified'},
         'observerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'runnerControlAudit': {'status': 'not-captured-cleanup-unverified'},
+        'observerPrivateReadAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -625,6 +673,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
         result['observerControlAudit'] = _observer_control_audit(root, deadline)
         result['runnerControlAudit'] = _runner_control_audit(root, deadline)
+        result['observerPrivateReadAudit'] = _observer_private_read_audit(root, deadline)
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -677,6 +726,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                        ROLE_FIELDS, deadline)
             result['stopReceipts'][role] = {'current': _record(
                 root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
+        result['observerPrivateReadAudit'] = _observer_private_read_audit(root, deadline)
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

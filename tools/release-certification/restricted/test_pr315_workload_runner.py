@@ -127,6 +127,48 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_observer_private_read_requires_bound_role_child_and_active_canary(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
+                 'caseId': 'observer-private-read',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'roleInvocationBefore': sender['invocationId'],
+                 'roleInvocationAfter': sender['invocationId'],
+                 'targetDigestBefore': 'c' * 64, 'targetDigestAfter': 'c' * 64,
+                 'triggerMonotonicNs': 50, 'attackStartedNs': 60,
+                 'attackFinishedNs': 70, 'controllerObservedBeforeNs': 40,
+                 'controllerObservedAfterNs': 80,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        terminal = synthetic_terminal_roster(roster)
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        receipt.update(startedMonotonicNs=100, observedMonotonicNs=110)
+        terminal['observerPrivateReadAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        value = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            case = runner.observer_private_read_attempt(report, value, fixture, terminal, source)
+            self.assertEqual('passed', case['status'])
+            for mutate in (
+                    lambda row: row['actorAfter'].update(startTicks=46),
+                    lambda row: row.update(targetDigestAfter='d' * 64),
+                    lambda row: row.update(kernelOpenResult={'opened': True, 'errno': None}),
+                    lambda row: row.update(roleInvocationAfter='e' * 32)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed['observerPrivateReadAudit']['record'])
+                self.assertIsNone(runner.observer_private_read_attempt(
+                    report, value, fixture, changed, source))
+
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

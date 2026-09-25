@@ -25,6 +25,9 @@ import pr312_reference_vm as reference
 import pr313_acceptance_runner as native_runner
 import pr314_acceptance as acceptance
 import pr315_workload_fixtures as fixtures
+import pr315_pve_host_admission as host_admission
+import pr315_pve_pressure_watch as pressure_watch
+import pr315_workload_campaign as campaign
 import restricted_workload_network as workload_network
 from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS, LIFECYCLE_SCENARIOS
 
@@ -1028,6 +1031,60 @@ def public_result(status, positive=False, reasons=(), statuses=None):
             'cases': acceptance.inventory(statuses)}
 
 
+def observer_private_read_attempt(report, result, fixture, terminal, source):
+    """Bind one actual role child and active observer canary to host transport."""
+    try:
+        host = report['hostVerifiedIdentity']
+        roster = result['roleKernelRoster']
+        sender = next(row for row in roster['roles'] if row['role'] == 'candidate-sender')
+        root = terminal['observerPrivateReadAudit']['record']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        before, after = root['actorBefore'], root['actorAfter']
+        stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                  'networkNamespaceIdentity', 'mountNamespaceIdentity',
+                  'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
+                  'effectiveCapabilities')
+        source_digest = reference.sha256(source / 'tools/release-certification/restricted/pr315_role_probe.py')
+        if (not positive_executed(report, result, terminal)
+                or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
+                or terminal['observerPrivateReadAudit']['status'] != 'captured'
+                or root['schemaVersion'] != 1
+                or root['kind'] != 'pr315-administrator-observer-private-read'
+                or root['caseId'] != 'observer-private-read'
+                or root['sourceDigest'] != source_digest
+                or root['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or root['roleInvocationBefore'] != sender['invocationId']
+                or root['roleInvocationAfter'] != sender['invocationId']
+                or root['targetDigestBefore'] != root['targetDigestAfter']
+                or re.fullmatch('[0-9a-f]{64}', root['targetDigestBefore']) is None
+                or root['kernelOpenResult'] != {'opened': False, 'errno': 'ENOENT'}
+                or not root['controllerObservedBeforeNs'] < root['triggerMonotonicNs']
+                    < root['attackStartedNs'] < root['attackFinishedNs']
+                    < root['controllerObservedAfterNs'] < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        return {'contract': campaign.CONTRACT, 'caseId': 'observer-private-read',
+                'status': 'passed', 'actorUid': sender['uid'],
+                'actorHostPid': before['hostPid'], 'actorStartTicks': before['startTicks'],
+                'roleInvocation': sender['invocationId'],
+                'targetControlDigest': root['targetDigestBefore'],
+                'attackDigest': hashlib.sha256(json.dumps(root, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest(),
+                'hostVerifiedIdentity': host, 'guestStopped': True,
+                'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, StopIteration, OSError):
+        return None
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
@@ -1038,6 +1095,15 @@ def run(args):
     if reference.sha256(__file__) != reference.sha256(
             args.source / 'tools/release-certification/restricted' / Path(__file__).name):
         raise ValueError('executing-workload-source-mismatch')
+    host_policy = getattr(args, 'host_memory_policy', 'legacy-physical-admission')
+    if host_policy == host_admission.POLICY:
+        relative = 'tools/release-certification/restricted'
+        if (args.profile != 'tcg-multi'
+                or reference.sha256(host_admission.__file__) != reference.sha256(
+                    args.source / relative / 'pr315_pve_host_admission.py')
+                or reference.sha256(pressure_watch.__file__) != reference.sha256(
+                    args.source / relative / 'pr315_pve_pressure_watch.py')):
+            raise ValueError('pve-tcg-admission-source-or-profile-mismatch')
     os.umask(0o077)
     output = args.output.absolute()
     root = native_runner.storage_policy(args, output)
@@ -1058,6 +1124,7 @@ def run(args):
         native_runner._save(output / 'plan.private.json', {
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
             'runtimePolicy': fixtures.preparation.launcher_policy(),
+            'hostAdmissionPolicy': host_policy,
             'executionPurpose': 'startup-measurement' if getattr(args, 'startup_measurement', False) else 'positive',
             'lifecycleScenario': getattr(args, 'lifecycle_scenario', 'cancellation'),
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
@@ -1078,6 +1145,20 @@ def run(args):
         except (OSError, ValueError):
             measured = {'status': 'unavailable'}
             reasons.append('memory-observation-unavailable')
+        watch_ready = None
+        host_commit = None
+        if host_policy == host_admission.POLICY:
+            try:
+                host_commit = subprocess.run(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
+                    check=True, capture_output=True, text=True, timeout=10).stdout.strip()
+                receipt = host_admission.verify_receipt(
+                    root / 'host-admission' / (output.name + '.json'), output.name, host_commit)
+                measured['pveHost'] = receipt['observation']
+                if not getattr(args, 'probe', False):
+                    watch_ready = pressure_watch.verify_ready(output.name, host_commit)
+            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError,
+                    subprocess.SubprocessError):
+                reasons.append('pve-host-admission-unavailable')
         capacity = {'allocatedBytes': native_runner.allocated_bytes(root), 'memory': measured}
         if not reasons:
             required = native_runner.required_attempt_bytes(args)
@@ -1096,6 +1177,21 @@ def run(args):
                 mode='workload-positive', case_group=None, fault_case=None)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
                 reference.run(selected)
+            if host_policy == host_admission.POLICY:
+                until = time.monotonic() + 20
+                while True:
+                    try:
+                        monitor = pressure_watch.verify_finished(output.name, host_commit, watch_ready)
+                        native_runner._save(output / 'host-monitor.private.json', monitor)
+                        break
+                    except (OSError, ValueError):
+                        if time.monotonic() >= until:
+                            result, code = public_result('monitor-incomplete',
+                                reasons=('pve-host-monitor-incomplete',)), 2
+                            native_runner._save(output / 'assessment.json', result)
+                            print(json.dumps(result, sort_keys=True))
+                            return code
+                        time.sleep(.25)
             report = native_runner.private_json(selected.attempt / 'attempt.private.json')
             observation = selected.attempt / 'pr314-workload-observation.private.json'
             value = native_runner.private_json(observation) if observation.exists() and observation.stat().st_size else None
@@ -1197,6 +1293,13 @@ def run(args):
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['runner-control'] = 'passed'
+            if (positive and isinstance(terminal, dict)
+                    and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
+                case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
+                if case is None:
+                    raise ValueError('workload-observer-private-read-verification-failed')
+                native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
+                statuses['observer-private-read'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,
@@ -1223,6 +1326,9 @@ def main():
     for name in ('storage-budget-bytes', 'min-free-bytes', 'memory-budget-bytes', 'min-host-memory-bytes'):
         parser.add_argument('--' + name, required=True, type=int)
     parser.add_argument('--profile', choices=tuple(reference.PROFILES), required=True)
+    parser.add_argument('--host-memory-policy',
+                        choices=('legacy-physical-admission', host_admission.POLICY),
+                        default='legacy-physical-admission')
     parser.add_argument('--port', type=int, default=23112)
     parser.add_argument('--timeout', type=int, default=3600)
     parser.add_argument('--development-snapshot', action='store_true')

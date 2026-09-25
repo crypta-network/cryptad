@@ -44,6 +44,33 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertLess(len(json.dumps(result)), evidence.MAX_OUTPUT)
 
+    def test_private_read_audit_keeps_only_fixed_root_process_evidence(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
+                 'caseId': 'observer-private-read', 'sourceDigest': 'a' * 64,
+                 'nonceDigest': 'b' * 64, 'actorUid': 1001,
+                 'actorBefore': actor, 'actorAfter': actor,
+                 'roleInvocationBefore': 'c' * 32, 'roleInvocationAfter': 'c' * 32,
+                 'targetDigestBefore': 'd' * 64, 'targetDigestAfter': 'd' * 64,
+                 'triggerMonotonicNs': 20, 'attackStartedNs': 30,
+                 'attackFinishedNs': 40, 'controllerObservedBeforeNs': 10,
+                 'controllerObservedAfterNs': 50,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        path = self.root / 'authority/observer-private-read-denial.json'
+        path.write_text(json.dumps(audit))
+        result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual(audit, result['observerPrivateReadAudit']['record'])
+        audit['actorBefore'] = dict(actor, candidateSecret='must-not-copy')
+        path.write_text(json.dumps(audit))
+        result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('unavailable-or-unsafe', result['observerPrivateReadAudit']['status'])
+        self.assertNotIn('must-not-copy', json.dumps(result))
+
     def test_fixed_exchange_audits_are_private_bounded_projections_after_cleanup(self):
         import pr315_workload_runner as runner
         self.assertEqual(set(evidence.EXCHANGE_FIELDS), runner.EXCHANGE_AUDIT_FIELDS)

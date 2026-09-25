@@ -59,10 +59,10 @@ The current [verifier](../tools/release-certification/restricted/pr314_acceptanc
 remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-New preparation additionally requires the explicit `workload-launcher-policy-v2` runtime
-revision described below. This is a prospective change within that profile family, not an
-unchanged v1 configuration. Earlier policy observations and performance results cannot be pooled
-with it; historical v8 record interpretation remains unchanged.
+The next source revision requires `workload-launcher-policy-v3`, adding one measured,
+fixed candidate-role test-kit probe to the v2 startup policy. This is a prospective
+change within the same TCG guest profile family. Its test-kit and installed results
+must be measured anew; historical v8 record interpretation remains unchanged.
 
 ## Implemented preparation and positive orchestration
 
@@ -1947,11 +1947,12 @@ signature verification before campaign preparation. The private selection remain
 and role handles. No arbitrary executable, shell, namespace, PID or systemd-property selection
 belongs on the production socket.
 
-Run the ordinary Mail positive profile separately from a prospective signed synthetic app cohort.
-The latter needs a clearly named, exact-byte-bound app with fixed probe operations launched through
-normal AppHost installation and sandboxing. Current preparation, adapter and bootstrap paths admit
-Mail only; therefore the four app-origin denial rows cannot honestly run yet. Do not modify Mail
-after signing or label a candidate-UID helper as an AppHost attack.
+Retain the ordinary Mail positive profile and the separately signed `pr315-probe`
+cohort. Preparation and AppHost installation now admit both exact bundles; the
+synthetic AppHost child has one installed mount-namespace denial witness. The
+other app-origin denial operations still need fixed probe modes and installed
+evidence. Do not modify either bundle after signing or label a candidate-UID
+helper as an AppHost attack.
 
 Use fixed bounded probe operations for file access, immutable-input mutation, namespace escape,
 cgroup migration and output hazards. Capture the actual process epoch, UID, namespaces and
@@ -1959,10 +1960,11 @@ current role invocation before and after each operation. For app actors, also ca
 AppHost parent/child and exact admitted bundle relationships. Administrator orchestration controls
 only the declared disposable resources and cannot substitute for the asserted attack actor.
 
-For network probes, keep DROP semantics. Add only fixed scenario-attributed counters or an
-equivalent bounded kernel observer in the task-owned namespaces. Record the actual emitted probe,
+For network probes, keep DROP semantics. The six approved FNP links already have
+named bridge counters; the denied scenarios still need fixed scenario-attributed
+counters or an equivalent bounded kernel observer. Record the actual emitted probe,
 exact ruleset/namespace identity, counter delta and causal interval, with an authorized active
-target control before and after. Current rules have no such counters. A recipient loopback
+target control before and after. A recipient loopback
 listener does not prove that the recipient namespace address is the same valid endpoint; bind
 the target and denied path explicitly. Timeout, missing listener and setup failure remain
 inconclusive or failed, never fabricated `EACCES`/`EPERM`.
@@ -1986,8 +1988,9 @@ execution; the cleanup-race driver remains unimplemented.
 ## Records, budgets and private evidence
 
 Version any new witness semantics prospectively while preserving v8 historical meaning. The
-current attempt has one role roster, so it cannot faithfully bind both pre-restart operations and
-post-restart observations to different epochs. Its denial actor proof is UID-only. It also
+v8 attempt has one role roster, so it cannot faithfully bind both pre-restart operations and
+post-restart observations to different epochs. Its generic denial actor proof is UID-only;
+the three passing denial emitters have additional fixed root audits. It also
 requires complete target/principal maps even for setup failures that never observed those
 subjects. A small successor must represent these failures honestly and bind each passed case to
 its actual process and invocation epoch; it must not invent missing target identities.
@@ -2008,9 +2011,30 @@ The guest remains 5632 MiB with the explicitly selected CPU/accelerator and pinn
 Each of four roles has a 1-GiB memory limit, zero swap and 512-task cap. Each role's 512-MiB,
 32768-inode tmpfs consumes real memory; it is not additional guaranteed headroom. Measure
 controller/JVM/AppHost demand and sibling/observer progress. Distinguish expected role-limit
-denial from guest-wide OOM or loss of observation. The current attempts measured host admission
-headroom, controller demand and first-role startup demand. They establish no running four-role
-memory observation or installed role-exhaustion result.
+denial from guest-wide OOM or loss of observation. Later positive attempts sampled
+all four running role cgroups; no installed role-exhaustion result exists yet.
+
+The next prospective TCG campaign uses `pve-tcg-swap-admission-v1` on the PVE host.
+It preserves the 7-GiB guest/overhead/reserve budget, 1-GiB physical reserve and
+2-GiB spare swap; only the observed physical shortfall can be covered by both
+host and CT102 cgroup swap headroom. Host memory and I/O full-pressure preflight
+ceilings are 5 and 10 percent. A root-owned, source-bound, 120-second host receipt
+is required before VM allocation. The task-specific pressure watcher must be
+ready first and must finish normally after the guest; it selects only the exact
+suite QEMU and signals through a pidfd. This policy has offline tests but has
+not yet produced installed acceptance evidence.
+
+The new `observer-private-read` test-kit path stages a measured fixed Python
+actor into the candidate sender's actual service cgroup and role sandbox. The
+administrator creates an observer-owned canary, proves the observer can read it,
+observes the role child and current invocation before triggering one bounded
+open, then checks the child, target and stop receipt. Its fixed root audit is
+copied into bounded private evidence and checked by the host. An absent path in
+the candidate mount namespace is retained as the actual `ENOENT` result; it is
+not relabelled `EACCES`. The v9 per-case record remains prospective until an
+installed run validates this path. The 21-group v9 campaign ledger partitions
+the unchanged 45 IDs and permits only bounded preparation-stage retries; its
+offline structural result cannot set installed acceptance.
 
 After exact role quiescence, extract only fixed bounded sentinels and necessary controller records
 with existing safe descriptor readers. Reject symlinks, FIFOs, sockets, hardlinks, races and

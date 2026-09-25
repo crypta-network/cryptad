@@ -667,6 +667,7 @@ class TerminalPublicationTest(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.dict('sys.modules', modules))
             stack.enter_context(patch.object(driver, 'TEST_KIT', repository))
+            stack.enter_context(patch.object(driver, 'stage_role_probe', return_value='f' * 64))
             stack.enter_context(patch.object(driver, 'prerequisites', return_value=[]))
             stack.enter_context(patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)))
             stack.enter_context(patch.object(Path, 'mkdir'))
@@ -696,6 +697,26 @@ class TerminalPublicationTest(unittest.TestCase):
 
     def test_terminal_report_follows_completed_cleanup(self):
         self.assertEqual(['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics', 'terminal-report'], self.exercise(None))
+
+
+class MeasuredRoleProbeStagingTest(unittest.TestCase):
+    def test_only_the_exact_test_kit_script_can_be_staged(self):
+        source = Path(driver.__file__).resolve().parents[3]
+        relative = 'tools/release-certification/restricted/pr315_role_probe.py'
+        expected = hashlib.sha256((source / relative).read_bytes()).hexdigest()
+        fake_installation = SimpleNamespace(secured=lambda path: path)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict('sys.modules', {'installation': fake_installation}), \
+                patch.object(driver, 'TEST_KIT', source):
+            workload = SimpleNamespace(ROOT=Path(directory))
+            with self.assertRaisesRegex(ValueError, 'test-kit-mismatch'):
+                driver.stage_role_probe(workload, {'files': {relative: '0' * 64}})
+            self.assertFalse((workload.ROOT / 'probe-source').exists())
+            self.assertEqual(expected, driver.stage_role_probe(
+                workload, {'files': {relative: expected}}))
+            copied = workload.ROOT / 'probe-source/pr315_role_probe.py'
+            self.assertEqual((source / relative).read_bytes(), copied.read_bytes())
+            self.assertEqual(0, copied.stat().st_mode & 0o222)
 
 
 class MemoryDiagnosticsTest(unittest.TestCase):
