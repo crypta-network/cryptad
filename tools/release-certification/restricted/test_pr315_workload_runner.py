@@ -168,6 +168,19 @@ class RunnerTests(unittest.TestCase):
                 mutate(changed['observerPrivateReadAudit']['record'])
                 self.assertIsNone(runner.observer_private_read_attempt(
                     report, value, fixture, changed, source))
+            write_audit = dict(audit, kind='pr315-administrator-observer-private-write',
+                               caseId='observer-private-write', attackStartedNs=71,
+                               attackFinishedNs=75)
+            terminal['observerPrivateWriteAudit'] = {'status': 'captured', 'record': write_audit}
+            write_case = runner.observer_private_write_attempt(
+                report, value, fixture, terminal, source)
+            self.assertEqual('passed', write_case['status'])
+            self.assertEqual('observer-private-write', write_case['caseId'])
+            self.assertNotEqual(case['attackDigest'], write_case['attackDigest'])
+            invalid = copy.deepcopy(terminal)
+            invalid['observerPrivateWriteAudit']['record']['actorAfter']['startTicks'] = 46
+            self.assertIsNone(runner.observer_private_write_attempt(
+                report, value, fixture, invalid, source))
 
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()

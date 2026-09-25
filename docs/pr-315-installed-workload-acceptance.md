@@ -2,8 +2,8 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; `918b81a` TCG suite 76 passed eight positive,
-three denial and `cancellation` on one source-bound guest. Its 12 case IDs do
+**Implementation is incomplete; `3a4ef89` TCG suite 78 passed eight positive,
+four denial and `cancellation` on one source-bound guest. Its 13 case IDs do
 not complete the 45-case contract.** The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -59,10 +59,11 @@ The current [verifier](../tools/release-certification/restricted/pr314_acceptanc
 remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-The next source revision requires `workload-launcher-policy-v3`, adding one measured,
-fixed candidate-role test-kit probe to the v2 startup policy. This is a prospective
-change within the same TCG guest profile family. Its test-kit and installed results
-must be measured anew; historical v8 record interpretation remains unchanged.
+Suite 78 used `workload-launcher-policy-v3` for its measured candidate-role
+read probe. The next implementation uses `workload-launcher-policy-v4` for
+the fixed read/write pair within the same TCG guest profile family. Its
+test-kit and installed results must be measured anew; historical v8 record
+interpretation remains unchanged.
 
 ## Implemented preparation and positive orchestration
 
@@ -1901,6 +1902,29 @@ the final actor, invocation, target, result and timeline comparisons into
 fixed error codes, and retains only a closed denial errno when available.
 No installed result on that revision exists yet.
 
+The `3a4ef89` revision completed as suite 78 on the same accepted TCG/QEMU,
+JDK, product and guest limits with the versioned PVE host admission. The guest
+exited 0 and stopped; the host verifier accepted all eight positive cases,
+`runner-control`, `observer-control`, `namespace-mount-escape`, `cancellation`
+and, for the first time, the actual candidate-role `observer-private-read`.
+The latter bound a root-observed role process UID/start epoch, unchanged active
+observer canary, actual `ENOENT` from the fixed open and matching current stop
+receipt. Its v9 private case record has a distinct attack commitment. The
+administrator root audit, sentinel, four current stop receipts and independent
+host-QEMU monitor completion were captured. No role had a captured HotSpot
+fatal file in this attempt. Complete guest, fixture and PVE records passed
+byte checks after local copying. This is **13/45** on one source-bound guest,
+not complete workload acceptance.
+
+The next prospective fixed test-kit role probe performs a bounded write
+attempt on the same existing observer canary after the proved read attempt.
+The administrator checks the canary is unchanged, the same actor/invocation
+remains active, and both operations have ordered times. Read and write obtain
+separate fixed root audits and v9 host records. This changes the measured
+launcher policy to `workload-launcher-policy-v4`; v3 installed observations
+cannot be pooled into its final campaign. The v4 implementation has offline
+tests but no installed case result yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -1978,15 +2002,16 @@ verifier tests are not emitters.
 | `restart-durable-state` | Sender restart and app-inventory retention | Selected durable sentinel before/after, original deadline, both invocation epochs |
 
 The denial rows below retain their fixed actor and target requirements.
-`runner-control`, `observer-control` and `namespace-mount-escape` have passing
-installed witnesses on `d8d66e7` suite 70; the other 23 still lack passing
+`runner-control`, `observer-control`, `namespace-mount-escape` and
+`observer-private-read` have passing installed witnesses on `3a4ef89` suite
+78; the other 22 still lack passing
 installed emitters. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
 | Denial ID | Actor | Fixed target and required executable probe |
 | --- | --- | --- |
-| `observer-private-read` | candidate | Existing observer canary; role process attempts read after authorized control |
+| `observer-private-read` | candidate | Existing observer canary; measured role process read and root/host audit passed in suite 78 |
 | `observer-private-write` | candidate | Existing observer canary; role process attempts write; control confirms unchanged bytes |
 | `resolver-authority` | candidate | Active installed resolver; valid fixed authority request from role process |
 | `provider-authority` | app | Active synthetic provider fixture; normal signed AppHost child attempts authority access |
@@ -2085,7 +2110,7 @@ execution; the cleanup-race driver remains unimplemented.
 Version any new witness semantics prospectively while preserving v8 historical meaning. The
 v8 attempt has one role roster, so it cannot faithfully bind both pre-restart operations and
 post-restart observations to different epochs. Its generic denial actor proof is UID-only;
-the three passing denial emitters have additional fixed root audits. It also
+the four passing denial emitters have additional fixed root audits. It also
 requires complete target/principal maps even for setup failures that never observed those
 subjects. A small successor must represent these failures honestly and bind each passed case to
 its actual process and invocation epoch; it must not invent missing target identities.
@@ -2228,9 +2253,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `918b81a` suite 76 passed eight positive, three denial and `cancellation` on one original-profile TCG guest. Another 23 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
-| `installedPositiveExecuted` | True for the `918b81a` accepted-profile TCG suite 76; its eight-case positive aggregate completed |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 76 has 12 of 45 passing rows on one source-bound guest and 33 IDs remain without a pass |
+| `implementationCoverage` | Incomplete: `3a4ef89` suite 78 passed eight positive, four denial and `cancellation` on one original-profile TCG guest. Another 22 denial and ten lifecycle IDs lack an installed pass on this helper; historical `controller-restart` on `db25340` is separate |
+| `installedPositiveExecuted` | True for the `3a4ef89` accepted-profile TCG suite 78; its eight-case positive aggregate completed |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 78 has 13 of 45 passing rows on one source-bound guest and 32 IDs remain without a pass |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

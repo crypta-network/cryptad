@@ -799,6 +799,19 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
         with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'target-changed'):
             driver._validate_role_probe_result(ready, before, actor, after, actor,
                 result, 'd' * 64, 'e' * 64, 'c' * 64, 20)
+        write = {'operation': 'observer-private-write', 'startedMonotonicNs': 41,
+                 'finishedMonotonicNs': 45, 'writtenBytes': 0,
+                 'outcome': {'opened': False, 'errno': 'ENOENT'}}
+        self.assertEqual(write, driver._validate_role_probe_write(
+            dict(result, writeAttempt=write), after))
+        invalid = dict(write, outcome={'opened': False, 'errno': 'EACCES'})
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'write-outcome-mismatch') as caught:
+            driver._validate_role_probe_write(dict(result, writeAttempt=invalid), after)
+        self.assertEqual(invalid['outcome'], caught.exception.observed_outcome)
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError, 'write-timeline-invalid'):
+            driver._validate_role_probe_write(dict(result,
+                writeAttempt=dict(write, startedMonotonicNs=39)), after)
 
     def test_private_error_code_never_copies_unrecognized_candidate_text(self):
         self.assertEqual('workload-role-probe-ready-timeout',

@@ -39,6 +39,29 @@ def attempt_read(nonce: str) -> dict:
                                 for name in ('mnt', 'pid', 'net', 'user')}}
 
 
+def attempt_write() -> dict:
+    """Attempt one finite write to the same observer-owned canary."""
+    started = time.monotonic_ns()
+    written = 0
+    try:
+        descriptor = os.open(TARGET, os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as error:
+        outcome = {'opened': False, 'errno': errno.errorcode.get(error.errno, 'UNKNOWN')}
+    else:
+        try:
+            try:
+                written = os.write(descriptor, b'pr315!')
+            except OSError as error:
+                outcome = {'opened': True, 'errno': errno.errorcode.get(error.errno, 'UNKNOWN')}
+            else:
+                outcome = {'opened': True, 'errno': None}
+        finally:
+            os.close(descriptor)
+    finished = time.monotonic_ns()
+    return {'operation': 'observer-private-write', 'startedMonotonicNs': started,
+            'finishedMonotonicNs': finished, 'writtenBytes': written, 'outcome': outcome}
+
+
 def main() -> None:
     if (len(sys.argv) != 2 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
@@ -63,6 +86,7 @@ def main() -> None:
     if trigger != {'caseId': 'observer-private-read', 'nonce': sys.argv[1]}:
         raise ValueError('pr315-role-probe-trigger-invalid')
     record = attempt_read(sys.argv[1])
+    record['writeAttempt'] = attempt_write()
     descriptor = os.open(OUTPUT, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(record, stream, sort_keys=True, separators=(',', ':'))

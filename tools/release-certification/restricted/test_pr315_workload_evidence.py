@@ -65,6 +65,17 @@ class VolatileEvidenceTest(unittest.TestCase):
         path.write_text(json.dumps(audit))
         result = evidence._capture(self.root, self.expected, True)
         self.assertEqual(audit, result['observerPrivateReadAudit']['record'])
+        write = dict(audit, kind='pr315-administrator-observer-private-write',
+                     caseId='observer-private-write', attackStartedNs=41,
+                     attackFinishedNs=45)
+        write_path = self.root / 'authority/observer-private-write-denial.json'
+        write_path.write_text(json.dumps(write))
+        result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual(write, result['observerPrivateWriteAudit']['record'])
+        write_path.write_text(json.dumps(dict(write, caseId='observer-private-read')))
+        result = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('unavailable-or-unsafe', result['observerPrivateWriteAudit']['status'])
+        self.assertEqual('captured', result['observerPrivateReadAudit']['status'])
         audit['actorBefore'] = dict(actor, candidateSecret='must-not-copy')
         path.write_text(json.dumps(audit))
         result = evidence._capture(self.root, self.expected, True)

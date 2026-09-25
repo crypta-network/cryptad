@@ -570,13 +570,15 @@ def _runner_control_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
-def _observer_private_read_audit(root, deadline):
-    """Retain the fixed administrator actor and live-target probe, privately."""
+def _observer_private_audit(root, deadline, case_id):
+    """Retain one of the two fixed administrator actor and target probes."""
+    if case_id not in ('observer-private-read', 'observer-private-write'):
+        raise ValueError('observer-private-case-invalid')
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return {'status': 'capture-deadline'}
     try:
-        raw = snapshot.read_file(root / 'authority', 'observer-private-read-denial.json',
+        raw = snapshot.read_file(root / 'authority', case_id + '-denial.json',
                                  maximum=8192, timeout=min(2, remaining))
         value = json.loads(raw)
         fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
@@ -588,8 +590,8 @@ def _observer_private_read_audit(root, deadline):
                   'controllerObservedAfterNs'}
         if (not isinstance(value, dict) or set(value) != fields
                 or value['schemaVersion'] != 1
-                or value['kind'] != 'pr315-administrator-observer-private-read'
-                or value['caseId'] != 'observer-private-read'
+                or value['kind'] != 'pr315-administrator-' + case_id
+                or value['caseId'] != case_id
                 or value['kernelOpenResult'] != {'opened': False, 'errno': 'ENOENT'}
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None for key in
                        ('sourceDigest', 'nonceDigest', 'targetDigestBefore', 'targetDigestAfter'))
@@ -639,6 +641,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'observerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'runnerControlAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerPrivateReadAudit': {'status': 'not-captured-cleanup-unverified'},
+        'observerPrivateWriteAudit': {'status': 'not-captured-cleanup-unverified'},
         'observerFcpLogs': ({} if observer_root is None else
                             {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES}),
         'wrapperLogs': {role: {'status': 'not-captured-cleanup-unverified'} for role in ROLES},
@@ -673,7 +676,10 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['probeAdministratorRecord'] = _probe_administrator_record(root, deadline)
         result['observerControlAudit'] = _observer_control_audit(root, deadline)
         result['runnerControlAudit'] = _runner_control_audit(root, deadline)
-        result['observerPrivateReadAudit'] = _observer_private_read_audit(root, deadline)
+        result['observerPrivateReadAudit'] = _observer_private_audit(
+            root, deadline, 'observer-private-read')
+        result['observerPrivateWriteAudit'] = _observer_private_audit(
+            root, deadline, 'observer-private-write')
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -726,7 +732,10 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                        ROLE_FIELDS, deadline)
             result['stopReceipts'][role] = {'current': _record(
                 root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
-        result['observerPrivateReadAudit'] = _observer_private_read_audit(root, deadline)
+        result['observerPrivateReadAudit'] = _observer_private_audit(
+            root, deadline, 'observer-private-read')
+        result['observerPrivateWriteAudit'] = _observer_private_audit(
+            root, deadline, 'observer-private-write')
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

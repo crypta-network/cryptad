@@ -1031,13 +1031,15 @@ def public_result(status, positive=False, reasons=(), statuses=None):
             'cases': acceptance.inventory(statuses)}
 
 
-def observer_private_read_attempt(report, result, fixture, terminal, source):
-    """Bind one actual role child and active observer canary to host transport."""
+def _observer_private_attempt(case_id, report, result, fixture, terminal, source):
+    """Bind one fixed role file operation and active canary to host transport."""
     try:
+        audit_field = {'observer-private-read': 'observerPrivateReadAudit',
+                       'observer-private-write': 'observerPrivateWriteAudit'}[case_id]
         host = report['hostVerifiedIdentity']
         roster = result['roleKernelRoster']
         sender = next(row for row in roster['roles'] if row['role'] == 'candidate-sender')
-        root = terminal['observerPrivateReadAudit']['record']
+        root = terminal[audit_field]['record']
         receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
         before, after = root['actorBefore'], root['actorAfter']
         stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
@@ -1047,10 +1049,10 @@ def observer_private_read_attempt(report, result, fixture, terminal, source):
         source_digest = reference.sha256(source / 'tools/release-certification/restricted/pr315_role_probe.py')
         if (not positive_executed(report, result, terminal)
                 or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
-                or terminal['observerPrivateReadAudit']['status'] != 'captured'
+                or terminal[audit_field]['status'] != 'captured'
                 or root['schemaVersion'] != 1
-                or root['kind'] != 'pr315-administrator-observer-private-read'
-                or root['caseId'] != 'observer-private-read'
+                or root['kind'] != 'pr315-administrator-' + case_id
+                or root['caseId'] != case_id
                 or root['sourceDigest'] != source_digest
                 or root['actorUid'] != sender['uid']
                 or any(before[key] != after[key] for key in stable)
@@ -1072,7 +1074,7 @@ def observer_private_read_attempt(report, result, fixture, terminal, source):
                 or receipt['descendantCgroups'] != 0
                 or host['helperSourceCommit'] != result['identity']['sourceCommit']):
             return None
-        return {'contract': campaign.CONTRACT, 'caseId': 'observer-private-read',
+        return {'contract': campaign.CONTRACT, 'caseId': case_id,
                 'status': 'passed', 'actorUid': sender['uid'],
                 'actorHostPid': before['hostPid'], 'actorStartTicks': before['startTicks'],
                 'roleInvocation': sender['invocationId'],
@@ -1083,6 +1085,14 @@ def observer_private_read_attempt(report, result, fixture, terminal, source):
                 'stopReceiptObservedNs': receipt['observedMonotonicNs']}
     except (AttributeError, KeyError, TypeError, ValueError, StopIteration, OSError):
         return None
+
+
+def observer_private_read_attempt(report, result, fixture, terminal, source):
+    return _observer_private_attempt('observer-private-read', report, result, fixture, terminal, source)
+
+
+def observer_private_write_attempt(report, result, fixture, terminal, source):
+    return _observer_private_attempt('observer-private-write', report, result, fixture, terminal, source)
 
 
 def run(args):
@@ -1300,6 +1310,13 @@ def run(args):
                     raise ValueError('workload-observer-private-read-verification-failed')
                 native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
                 statuses['observer-private-read'] = 'passed'
+            if (positive and isinstance(terminal, dict)
+                    and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
+                case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
+                if case is None:
+                    raise ValueError('workload-observer-private-write-verification-failed')
+                native_runner._save(output / 'observer-private-write-v9-evidence.private.json', case)
+                statuses['observer-private-write'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,

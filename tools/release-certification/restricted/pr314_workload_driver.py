@@ -49,7 +49,8 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-role-probe-target-changed', 'workload-role-probe-result-timeout',
     'workload-role-probe-actor-changed', 'workload-role-probe-invocation-changed',
     'workload-role-probe-result-unbound', 'workload-role-probe-outcome-mismatch',
-    'workload-role-probe-timeline-invalid'))
+    'workload-role-probe-timeline-invalid', 'workload-role-probe-write-result-invalid',
+    'workload-role-probe-write-outcome-mismatch', 'workload-role-probe-write-timeline-invalid'))
 
 
 class RoleProbeDiagnosticError(ValueError):
@@ -197,6 +198,25 @@ def _validate_role_probe_result(ready, before, actor_before, after, actor_after,
         raise RoleProbeDiagnosticError('workload-role-probe-timeline-invalid')
 
 
+def _validate_role_probe_write(result, after):
+    write = result.get('writeAttempt')
+    if (not isinstance(write, dict) or set(write) != {
+            'operation', 'startedMonotonicNs', 'finishedMonotonicNs',
+            'writtenBytes', 'outcome'}
+            or write['operation'] != 'observer-private-write'
+            or type(write['writtenBytes']) is not int or not 0 <= write['writtenBytes'] <= 6):
+        raise RoleProbeDiagnosticError('workload-role-probe-write-result-invalid')
+    if write['outcome'] != {'opened': False, 'errno': 'ENOENT'} or write['writtenBytes'] != 0:
+        raise RoleProbeDiagnosticError('workload-role-probe-write-outcome-mismatch',
+                                       _safe_role_probe_outcome(write['outcome']))
+    times = (result.get('finishedMonotonicNs'), write.get('startedMonotonicNs'),
+             write.get('finishedMonotonicNs'), after.get('observedMonotonicNs'))
+    if (any(type(value) is not int or value <= 0 for value in times)
+            or list(times) != sorted(times) or len(set(times)) != len(times)):
+        raise RoleProbeDiagnosticError('workload-role-probe-write-timeline-invalid')
+    return write
+
+
 def probe_observer_private_read(workload, handoff, observer, source_digest,
                                 campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
@@ -280,8 +300,19 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
              'controllerObservedBeforeNs': before['observedMonotonicNs'],
              'controllerObservedAfterNs': after['observedMonotonicNs']}
     workload.write(workload.ROOT / 'authority/observer-private-read-denial.json', audit, create=True)
+    write = _validate_role_probe_write(result, after)
+    write_audit = {**audit, 'kind': 'pr315-administrator-observer-private-write',
+                   'caseId': 'observer-private-write',
+                   'attackStartedNs': write['startedMonotonicNs'],
+                   'attackFinishedNs': write['finishedMonotonicNs'],
+                   'kernelOpenResult': write['outcome']}
+    workload.write(workload.ROOT / 'authority/observer-private-write-denial.json',
+                   write_audit, create=True)
     return {'status': 'captured', 'caseId': 'observer-private-read',
             'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest(),
+            'writeStatus': 'captured',
+            'writeAuditDigest': hashlib.sha256(json.dumps(write_audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest()}
 
 
@@ -1273,8 +1304,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 diagnostics['runnerControl'] = {'status': 'unavailable-or-unsafe',
                                                 'exceptionType': type(error).__name__[:128]}
             try:
-                diagnostics['observerPrivateRead'] = probe_observer_private_read(
+                private_probe = probe_observer_private_read(
                     workload, handoff, observer, role_probe_digest, campaign_deadline)
+                diagnostics['observerPrivateRead'] = {key: private_probe[key]
+                    for key in ('status', 'caseId', 'auditDigest')}
+                diagnostics['observerPrivateWrite'] = {'status': private_probe['writeStatus'],
+                    'caseId': 'observer-private-write',
+                    'auditDigest': private_probe['writeAuditDigest']}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
                 diagnostic = {'status': 'unavailable-or-unsafe',
@@ -1285,6 +1321,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                 if isinstance(error, RoleProbeDiagnosticError):
                     diagnostic['observedOutcome'] = error.observed_outcome
                 diagnostics['observerPrivateRead'] = diagnostic
+                diagnostics['observerPrivateWrite'] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)
