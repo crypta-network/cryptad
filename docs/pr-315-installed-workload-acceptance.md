@@ -2730,6 +2730,15 @@ reported one abnormal child exit under that artificial low limit. This
 diagnostic does not satisfy the installed case, which requires zero abnormal
 exits. No v28 TCG installed result exists.
 
+The subsequent selected-group audit found that shared AppHost and role
+preparation could also write private denial case files for groups that did
+not own those case IDs. The runner now writes denial case files only from
+their declared `role-boundary`, `authority` or `network-app` group; the
+resource group still checks the signed AppHost mount denial internally as
+a preparation premise. The selected public inventory already filtered
+other groups' statuses. The Linux PR-31x suite still passed 418 tests with
+seven environment skips after this correction. No new installed run followed.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

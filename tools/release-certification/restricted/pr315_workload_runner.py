@@ -3822,7 +3822,7 @@ def run(args):
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 statuses.update({case: 'passed' for case in expected})
-            if (not output_group and not diagnostic_mode and isinstance(terminal, dict)
+            if (network_app_ready and isinstance(terminal, dict)
                     and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -3845,7 +3845,7 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
-            if ((positive or authority_ready) and isinstance(terminal, dict)
+            if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -3868,7 +3868,7 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
-            if ((positive or authority_ready) and isinstance(terminal, dict)
+            if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
                     and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
                 denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
@@ -3885,7 +3885,7 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
                 statuses['arbitrary-endpoint'] = 'passed'
-            if ((positive or authority_ready) and isinstance(terminal, dict)
+            if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
                 denial = runner_control_denial_attempt(report, value, fixture, terminal)
                 if denial is not None:
@@ -3899,14 +3899,14 @@ def run(args):
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['runner-control'] = 'passed'
-            if ((positive or role_boundary_ready) and isinstance(terminal, dict)
+            if (role_boundary_ready and isinstance(terminal, dict)
                     and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
                 case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-read-verification-failed')
                 native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
                 statuses['observer-private-read'] = 'passed'
-            if ((positive or role_boundary_ready) and isinstance(terminal, dict)
+            if (role_boundary_ready and isinstance(terminal, dict)
                     and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
                 case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
@@ -3915,7 +3915,7 @@ def run(args):
                 statuses['observer-private-write'] = 'passed'
             for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
                                    ('forged-counters', 'forgedCountersAudit')):
-                if ((positive or authority_ready) and isinstance(terminal, dict)
+                if (authority_ready and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
@@ -3925,7 +3925,7 @@ def run(args):
             for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                    ('package-expectation', 'packageExpectationAudit'),
                                    ('cgroup-migration', 'cgroupMigrationAudit')):
-                if ((positive or role_boundary_ready) and isinstance(terminal, dict)
+                if (role_boundary_ready and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_role_access_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -3986,7 +3986,7 @@ def run(args):
                 statuses[group] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
-                if ((positive or network_app_ready) and isinstance(terminal, dict)
+                if (network_app_ready and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     denial = _sibling_network_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -4003,7 +4003,7 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
-            if ((positive or authority_ready) and isinstance(terminal, dict)
+            if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(
                     report, value, fixture, terminal, args.source)
