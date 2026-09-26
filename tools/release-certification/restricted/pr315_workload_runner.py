@@ -1191,6 +1191,14 @@ def selected_public_result(group, status, positive=False, reasons=(), statuses=N
                          positive and group == 'positive', reasons, owned)
 
 
+def selected_terminal_status(group, report, positive):
+    """Keep a failed guest operation distinct from partial case execution."""
+    if group is None or positive:
+        return 'implementation-incomplete'
+    return ('guest-operation-failed' if report.get('status') == 'guest-operation-failed'
+            else 'verification-inconclusive')
+
+
 def _v9_actor_epoch(observed, role):
     """Carry the administrator's actual child and role epoch into each private case."""
     return {'hostPid': observed['hostPid'], 'hostParentPid': observed['hostParentPid'],
@@ -2245,7 +2253,8 @@ def run(args):
                 statuses['output-symlink'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
-            result, code = selected_public_result(group, 'implementation-incomplete', positive,
+            result, code = selected_public_result(group,
+                selected_terminal_status(group, report, positive), positive,
                 statuses=statuses,
                 reasons=('startup-measurement-not-workload-execution',) if startup_measurement else ()), 2
         native_runner._save(output / 'assessment.json', result)

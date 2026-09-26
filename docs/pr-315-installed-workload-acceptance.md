@@ -2356,9 +2356,44 @@ requires the matching sender stop receipt before emitting v8/v9 private case
 records. The selected public result can claim only `output-symlink` and does
 not trigger a lifecycle fault. Native Linux checks passed 142 PR-315 tests,
 23 PR-312 tests with one skip, 42 PR-314 workload-driver tests and 170
-protected workload tests with 21 skips. No installed output-symlink result
+protected workload tests with 21 skips. No accepted-profile TCG output-symlink result
 exists on this prospective source; other output attacks and the complete
 campaign remain unimplemented.
+
+The isolated `c13b0801` KVM diagnostic 13 ran this one output group on the
+same pinned product/JDK/fixture family. Its guest exited zero and stopped;
+the candidate-created symlink, valid canary, actual descriptor-reader
+rejection and root audit were captured. A private poststop host check bound
+the actor to its role invocation and the collector to its real process epoch,
+and found the v8 case contract shape valid.
+
+The diagnostic driver's final
+summary step separately exited 1: it opened the PVE root-owned watcher
+completion file after creation but before its mode changed from 0600 to 0444.
+The original traceback and later completed watcher receipt are retained.
+The guest, host receipts and both disks passed complete Mac byte comparison;
+after an independent hash and 77-QCOW zero-dependency scan, only the remote
+duplicate disks were released. KVM diagnostic 13 cannot set formal TCG
+acceptance, and the original summary race must not be rewritten as success.
+
+Formal TCG suite 111 on the same `c13b0801` source selected only
+`output-symlink` and disabled lifecycle fault injection. Its guest exited 1
+before the output barrier: the observer timed out at initial role readiness
+after candidate sender and recipient startup, before predecessor launch.
+The retained wrapper tails show both candidate nodes initialized, but the
+original FCP readiness operation had no terminal success. No HotSpot fatal
+or role cgroup OOM was captured. The output case remained `inconclusive`;
+the other 44 rows were `not-executed`, and both installed verdict fields
+stayed false.
+
+Started roles were cleaned up, the sentinel matched and the
+PVE watcher completed. The complete failed attempt, four host records and
+both stopped disks matched Mac byte checks; a 77-QCOW zero-dependency scan
+preceded removal of only the remote disk duplicates. The task dataset then
+used 210,166,459,776 bytes. A subsequent offline correction preserves the
+explicit `guest-operation-failed` status for selected-group failures; it has
+not had an installed run. At the user's request, no suite after 111 was
+started.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2701,9 +2736,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the current `0d89f630` source has a prospective resolver emitter but still lacks the other missing denial and lifecycle emitters. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one original-profile TCG guest; `cancellation` passed only on earlier `04a09267` |
-| `installedPositiveExecuted` | False on current `0d89f630` formal TCG attempts; historical `7db8122b` suite 108 passed its eight-case positive aggregate, while KVM diagnostic 12 is excluded |
-| `installedWorkloadAcceptanceSatisfied` | False; no current-source TCG 45-case campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostic 12 cannot raise that count |
+| `implementationCoverage` | Incomplete: the current branch has prospective resolver and output-symlink emitters, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `installedPositiveExecuted` | False on current-source formal TCG suite 111; historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
+| `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

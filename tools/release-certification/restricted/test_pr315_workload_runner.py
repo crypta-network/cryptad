@@ -919,6 +919,12 @@ class RunnerTests(unittest.TestCase):
                                                if row['status'] == 'passed'})
         with self.assertRaisesRegex(ValueError, 'group-selection-invalid'):
             runner.selected_cases('arbitrary-new-group')
+        self.assertEqual('guest-operation-failed', runner.selected_terminal_status(
+            'output-symlink', {'status': 'guest-operation-failed'}, False))
+        failed = runner.selected_public_result('output-symlink',
+            'guest-operation-failed', statuses={'output-symlink': 'inconclusive'})
+        self.assertEqual('guest-operation-failed', failed['status'])
+        self.assertFalse(failed['installedWorkloadAcceptanceSatisfied'])
 
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
