@@ -2578,6 +2578,15 @@ not relabelled `EACCES`. The v9 per-case record remains prospective until an
 installed run validates this path. The 21-group v9 campaign ledger partitions
 the unchanged 45 IDs and permits only bounded preparation-stage retries; its
 offline structural result cannot set installed acceptance.
+The runner now writes the same 21 exclusive declarations and accepts a closed
+development `--case-group` selector. Selected public results project only
+their owned case IDs and cannot set complete acceptance; unsupported emitters
+return without a VM. This is scaffolding: the current guest driver still
+runs its aggregate preparation/probes for supported groups, and the default
+runner has not yet become a 21-group installed scheduler. Cross-group
+preparation must be narrowed before final campaign execution.
+A native CT102 `output-fifo` selection probe exited 78 with no guest
+allocation, zero passed rows, and both installed verdict fields false.
 
 After exact role quiescence, extract only fixed bounded sentinels and necessary controller records
 with existing safe descriptor readers. Reject symlinks, FIFOs, sockets, hardlinks, races and

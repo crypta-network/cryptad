@@ -813,10 +813,30 @@ class RunnerTests(unittest.TestCase):
 
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()
-        self.assertEqual([8, 26, 11], [len(names) for _, names in groups])
+        self.assertEqual(21, len(groups))
+        self.assertEqual([len(cases) for _, cases in runner.campaign.GROUPS],
+                         [len(names) for _, names in groups])
         names = [name for _, group in groups for name in group]
         self.assertEqual(45, len(set(names)))
         self.assertEqual(set(runner.acceptance.CASES), set(names))
+
+    def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
+        statuses = {'installed-ready': 'passed', 'resolver-authority': 'passed',
+                    'cancellation': 'passed'}
+        selected = runner.selected_public_result('authority', 'implementation-incomplete',
+                                                positive=True, statuses=statuses)
+        self.assertEqual('partial-execution', selected['status'])
+        self.assertFalse(selected['installedPositiveExecuted'])
+        self.assertFalse(selected['installedWorkloadAcceptanceSatisfied'])
+        passed = {row['caseId'] for row in selected['cases'] if row['status'] == 'passed'}
+        self.assertEqual({'resolver-authority'}, passed)
+        positive = runner.selected_public_result('positive', 'implementation-incomplete',
+                                                positive=True, statuses=statuses)
+        self.assertTrue(positive['installedPositiveExecuted'])
+        self.assertEqual({'installed-ready'}, {row['caseId'] for row in positive['cases']
+                                               if row['status'] == 'passed'})
+        with self.assertRaisesRegex(ValueError, 'group-selection-invalid'):
+            runner.selected_cases('arbitrary-new-group')
 
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):

@@ -41,11 +41,21 @@ EXCHANGE_AUDIT_FIELDS = frozenset(('schemaVersion', 'kind', 'caseId', 'method', 
 
 
 def groups():
-    """Predeclare the unchanged complete inventory, including absent emitters."""
-    return [('positive', [name for name, case in acceptance.CASES.items()
-                          if case.witness not in ('denial', 'lifecycle')]),
-            ('denial', [name for name, case in acceptance.CASES.items() if case.witness == 'denial']),
-            ('lifecycle', [name for name, case in acceptance.CASES.items() if case.witness == 'lifecycle'])]
+    """Predeclare each exclusive group of the fixed 45-case campaign."""
+    return [(name, list(cases)) for name, cases in campaign.GROUPS]
+
+
+SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
+                              'network-app', 'cancellation', 'controller-restart'))
+
+
+def selected_cases(group):
+    """A development selection can claim only its predeclared group IDs."""
+    if group is None:
+        return None
+    if group not in dict(campaign.GROUPS):
+        raise ValueError('workload-group-selection-invalid')
+    return frozenset(dict(campaign.GROUPS)[group])
 
 
 def memory_snapshot():
@@ -1170,6 +1180,16 @@ def public_result(status, positive=False, reasons=(), statuses=None):
             'cases': acceptance.inventory(statuses)}
 
 
+def selected_public_result(group, status, positive=False, reasons=(), statuses=None):
+    """Project a development run onto only its exclusive declared group."""
+    cases = selected_cases(group)
+    if cases is None:
+        return public_result(status, positive, reasons, statuses)
+    owned = {case: value for case, value in (statuses or {}).items() if case in cases}
+    return public_result('partial-execution' if status == 'implementation-incomplete' else status,
+                         positive and group == 'positive', reasons, owned)
+
+
 def _v9_actor_epoch(observed, role):
     """Carry the administrator's actual child and role epoch into each private case."""
     return {'hostPid': observed['hostPid'], 'hostParentPid': observed['hostParentPid'],
@@ -1735,6 +1755,12 @@ def run(args):
         raise ValueError('reference-unprivileged-host-required')
     if args.profile != 'tcg-multi':
         raise ValueError('workload-accepted-tcg-profile-required')
+    group = getattr(args, 'case_group', None)
+    selected_cases(group)
+    if group is not None and getattr(args, 'startup_measurement', False):
+        raise ValueError('workload-measurement-group-incompatible')
+    scenario = group if group in LIFECYCLE_SCENARIOS else getattr(
+        args, 'lifecycle_scenario', 'cancellation')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
         if reference.sha256(module.__file__) != reference.sha256(expected):
@@ -1772,8 +1798,9 @@ def run(args):
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
             'runtimePolicy': fixtures.preparation.launcher_policy(),
             'hostAdmissionPolicy': host_policy,
-            'executionPurpose': 'startup-measurement' if getattr(args, 'startup_measurement', False) else 'positive',
-            'lifecycleScenario': getattr(args, 'lifecycle_scenario', 'cancellation'),
+            'executionPurpose': ('startup-measurement' if getattr(args, 'startup_measurement', False)
+                                 else 'group-development' if group is not None else 'positive'),
+            'selectedGroup': group, 'lifecycleScenario': scenario,
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
             'groups': [{'group': name, 'declaredCases': cases} for name, cases in groups()],
             'storageBudgetBytes': args.storage_budget_bytes, 'minimumFreeBytes': args.min_free_bytes,
@@ -1783,6 +1810,12 @@ def run(args):
             'roleTmpfsMaxInodes': 32768, 'tmpfsAccounting': 'allocated-pages-charge-memory',
             'cpuModel': reference.CPU_MODEL, 'accelerator': args.profile,
             'retention': 'all-attempts-private-no-automatic-deletion'})
+        if group is not None and group not in SUPPORTED_GROUPS and not getattr(args, 'probe', False):
+            result = selected_public_result(group, 'group-emitter-unavailable',
+                reasons=('group-emitter-unavailable',))
+            native_runner._save(output / 'assessment.json', result)
+            print(json.dumps(result, sort_keys=True))
+            return 78
         reasons = prerequisites(args)
         try:
             measured = memory_snapshot()
@@ -1820,8 +1853,10 @@ def run(args):
             result, code = public_result('prerequisites-present-not-executed'), 78
         else:
             # Source and pinned transport checks remain in the reused reference runner.
-            selected = SimpleNamespace(**vars(args), attempt=output / 'attempt-01',
-                mode='workload-positive', case_group=None, fault_case=None)
+            selected_args = dict(vars(args))
+            selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
+                                 case_group=None, fault_case=None, lifecycle_scenario=scenario)
+            selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
                 reference.run(selected)
             if host_policy == host_admission.POLICY:
@@ -2029,7 +2064,8 @@ def run(args):
                 statuses['resolver-authority'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
-            result, code = public_result('implementation-incomplete', positive, statuses=statuses,
+            result, code = selected_public_result(group, 'implementation-incomplete', positive,
+                statuses=statuses,
                 reasons=('startup-measurement-not-workload-execution',) if startup_measurement else ()), 2
         native_runner._save(output / 'assessment.json', result)
         print(json.dumps(result, sort_keys=True))
@@ -2045,6 +2081,8 @@ def main():
         help='Measure only installed controller startup under a fixed diagnostic ceiling; no role launch or acceptance.')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
+    parser.add_argument('--case-group', choices=tuple(name for name, _ in campaign.GROUPS),
+                        help='Development run restricted to one predeclared 45-case group.')
     for name in ('source', 'output', 'prepared-image', 'qemu-root', 'seed', 'ssh-key', 'known-hosts',
                  'prepared-fixtures', 'storage-root'):
         parser.add_argument('--' + name, required=True, type=Path)
