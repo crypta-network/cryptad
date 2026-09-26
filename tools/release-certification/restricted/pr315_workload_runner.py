@@ -128,7 +128,7 @@ def positive_executed(report, result, terminal):
             and result.get('protectedExecutionEnabled') is False)
 
 
-def terminal_roster_matches(roster, terminal):
+def terminal_roster_matches(roster, terminal, *, require_sender_restart=True):
     """Cross-check final observer kernel roles against root-captured terminal authority."""
     if (not acceptance._principals(roster) or not isinstance(terminal, dict)
             or terminal.get('schemaVersion') != 1
@@ -157,11 +157,50 @@ def terminal_roster_matches(roster, terminal):
                     or stopped['membership'] != 'only-stop-helper'
                     or stopped['descendantCgroups'] != 0):
                 return False
-        if terminal['stopReceipts']['candidate-sender']['previous']['status'] != 'captured':
+        previous = terminal['stopReceipts']['candidate-sender'].get('previous')
+        if require_sender_restart and (not isinstance(previous, dict)
+                                       or previous.get('status') != 'captured'):
+            return False
+        if not require_sender_restart and previous is not None:
             return False
     except (AttributeError, KeyError, TypeError, ValueError):
         return False
     return True
+
+
+def group_prepared(report, result, terminal, group):
+    """Bind selected role preparation to this host transport and final cleanup."""
+    if (group not in ('output-symlink', 'role-readiness-diagnostic')
+            or not isinstance(report, dict) or not isinstance(result, dict)):
+        return False
+    host = report.get('hostVerifiedIdentity')
+    identity = result.get('identity')
+    return (report.get('mode') == 'workload-positive'
+            and report.get('workloadPurpose') == ('selected-group'
+                if group == 'output-symlink' else 'role-readiness-measurement')
+            and report.get('status') == 'guest-report-retained'
+            and report.get('guestStopped') is True and report.get('guestExitCode') == 0
+            and isinstance(host, dict) and isinstance(identity, dict)
+            and re.fullmatch('[0-9a-f]{64}', str(host.get('bundleIdentity'))) is not None
+            and re.fullmatch('[0-9a-f]{40}', str(host.get('helperSourceCommit'))) is not None
+            and identity.get('bundleIdentity') == host.get('bundleIdentity')
+            and identity.get('sourceCommit') == host.get('helperSourceCommit')
+            and result.get('groupPreparation') == group
+            and result.get('contentRetrieval') == 'not-executed-group'
+            and result.get('newEpoch') is False
+            and result.get('topologyRoles') == 4
+            and result.get('signedAppWorkers') == 0
+            and result.get('profile') == acceptance.PROFILE
+            and _bounded_window(result.get('roleKernelRosterWindow'))
+            and fixtures.runtime.canonical_digest(result.get('runtimePolicy'))
+                == fixtures.runtime.canonical_digest(fixtures.preparation.launcher_policy())
+            and acceptance._principals(result.get('roleKernelRoster'))
+            and terminal_roster_matches(result['roleKernelRoster'], terminal,
+                                        require_sender_restart=False)
+            and result.get('workloadAcceptance') == (
+                'incomplete-hostile-contract-not-executed' if group == 'output-symlink'
+                else 'not-executed-role-readiness-measurement')
+            and result.get('protectedExecutionEnabled') is False)
 
 
 def _bounded_window(value):
@@ -1199,6 +1238,20 @@ def selected_terminal_status(group, report, positive):
             else 'verification-inconclusive')
 
 
+def selected_probe_started(group, diagnostics):
+    """Classify a selected probe from the fixed administrator's private start marker."""
+    if not isinstance(diagnostics, dict):
+        return False
+    marker = diagnostics.get('probeStart')
+    return (isinstance(marker, dict) and set(marker) == {
+        'schemaVersion', 'kind', 'caseId', 'startedMonotonicNs'}
+        and marker['schemaVersion'] == 1
+        and marker['kind'] == 'pr315-workload-probe-start'
+        and marker['caseId'] == group
+        and type(marker['startedMonotonicNs']) is int
+        and marker['startedMonotonicNs'] > 0)
+
+
 def _v9_actor_epoch(observed, role):
     """Carry the administrator's actual child and role epoch into each private case."""
     return {'hostPid': observed['hostPid'], 'hostParentPid': observed['hostParentPid'],
@@ -1604,7 +1657,7 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
     """Bind candidate symlink creation to the real bounded descriptor reader."""
     case_id = 'output-symlink'
     try:
-        if (not positive_executed(report, result, terminal)
+        if (not group_prepared(report, result, terminal, case_id)
                 or fixture.get('schemaVersion') != 4
                 or terminal['outputSymlinkAudit']['status'] != 'captured'):
             return None
@@ -1668,6 +1721,8 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
                     for row in result['roleKernelRoster']['roles']}
                 or target_before['controlDigest'] != target_after['controlDigest']
                 or target_before['fileIdentity'] != target_after['fileIdentity']
+                or not result['roleKernelRosterWindow']['finishedMonotonicNs']
+                    < target_before['observedMonotonicNs']
                 or not isinstance(target_before['fileIdentity'], list)
                 or len(target_before['fileIdentity']) != 5
                 or any(type(part) is not int or part < 0
@@ -1915,12 +1970,15 @@ def run(args):
         raise ValueError('workload-accepted-tcg-profile-required')
     group = getattr(args, 'case_group', None)
     selected_cases(group)
-    if group is not None and getattr(args, 'startup_measurement', False):
+    role_measurement = getattr(args, 'role_readiness_measurement', False)
+    if (group is not None and (getattr(args, 'startup_measurement', False)
+                               or role_measurement)) or (
+            role_measurement and getattr(args, 'startup_measurement', False)):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = ('none' if group == 'output-symlink' else
+    scenario = ('none' if group == 'output-symlink' or role_measurement else
                 group if group in ('cancellation', 'controller-restart') else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
-    if (group == 'output-symlink') != (scenario == 'none'):
+    if (group == 'output-symlink' or role_measurement) != (scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
@@ -1960,6 +2018,7 @@ def run(args):
             'runtimePolicy': fixtures.preparation.launcher_policy(),
             'hostAdmissionPolicy': host_policy,
             'executionPurpose': ('startup-measurement' if getattr(args, 'startup_measurement', False)
+                                 else 'role-readiness-measurement' if role_measurement
                                  else 'group-development' if group is not None else 'positive'),
             'selectedGroup': group, 'lifecycleScenario': scenario,
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
@@ -1971,6 +2030,14 @@ def run(args):
             'roleTmpfsMaxInodes': 32768, 'tmpfsAccounting': 'allocated-pages-charge-memory',
             'cpuModel': reference.CPU_MODEL, 'accelerator': args.profile,
             'retention': 'all-attempts-private-no-automatic-deletion'})
+        if (group is None and not getattr(args, 'startup_measurement', False)
+                and not role_measurement
+                and SUPPORTED_GROUPS != frozenset(name for name, _ in campaign.GROUPS)):
+            result = public_result('implementation-incomplete',
+                reasons=('full-campaign-emitter-unavailable',))
+            native_runner._save(output / 'assessment.json', result)
+            print(json.dumps(result, sort_keys=True))
+            return 78
         if group is not None and group not in SUPPORTED_GROUPS and not getattr(args, 'probe', False):
             result = selected_public_result(group, 'group-emitter-unavailable',
                 reasons=('group-emitter-unavailable',))
@@ -1996,7 +2063,7 @@ def run(args):
                     root / 'host-admission' / (output.name + '.json'), output.name, host_commit)
                 measured['pveHost'] = receipt['observation']
                 if not getattr(args, 'probe', False):
-                    watch_ready = pressure_watch.verify_ready(output.name, host_commit)
+                    watch_ready = pressure_watch.wait_ready(output.name, host_commit)
             except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError,
                     subprocess.SubprocessError):
                 reasons.append('pve-host-admission-unavailable')
@@ -2017,7 +2084,9 @@ def run(args):
             selected_args = dict(vars(args))
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
                                  case_group=None, fault_case=None, lifecycle_scenario=scenario,
-                                 workload_group='output-symlink' if group == 'output-symlink' else None)
+                                 workload_group=('role-readiness-diagnostic' if role_measurement
+                                                 else 'output-symlink' if group == 'output-symlink'
+                                                 else None))
             selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
                 reference.run(selected)
@@ -2043,16 +2112,22 @@ def run(args):
             terminal = (native_runner.private_json(terminal_path)
                         if terminal_path.exists() and terminal_path.stat().st_size else None)
             startup_measurement = getattr(args, 'startup_measurement', False)
-            positive = not startup_measurement and positive_executed(report, value, terminal)
+            diagnostic_mode = startup_measurement or role_measurement
+            positive = not diagnostic_mode and positive_executed(report, value, terminal)
+            group_ready = (not diagnostic_mode and group == 'output-symlink'
+                           and group_prepared(report, value, terminal, group))
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
-            reached = diagnostic.exists() and diagnostic.stat().st_size > 0
+            resources = (native_runner.private_json(diagnostic)
+                         if diagnostic.exists() and diagnostic.stat().st_size else None)
+            reached = (selected_probe_started(group, resources) if group == 'output-symlink'
+                       else resources is not None)
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
             statuses = ({'output-symlink': 'inconclusive' if reached else 'setup-failed'}
                         if group == 'output-symlink' else
                         {case: 'inconclusive' if reached else 'setup-failed'
                          for case in groups()[0][1]})
-            if positive and group == 'output-symlink':
+            if group_ready:
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
                 host = report['hostVerifiedIdentity']
@@ -2070,8 +2145,6 @@ def run(args):
                 host_finished = time.monotonic_ns()
                 if checked != host:
                     raise ValueError('workload-host-identity-changed')
-                resources = (native_runner.private_json(diagnostic)
-                             if diagnostic.exists() and diagnostic.stat().st_size else None)
                 identity, case_attempt = positive_case_attempt(
                     report, value, fixture, host_started, host_finished, resources, terminal)
                 checked_cases = acceptance.verify_attempts(identity, [case_attempt])
@@ -2088,7 +2161,7 @@ def run(args):
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 statuses.update({case: 'passed' for case in expected})
-            if (group != 'output-symlink' and not startup_measurement and isinstance(terminal, dict)
+            if (group != 'output-symlink' and not diagnostic_mode and isinstance(terminal, dict)
                     and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2111,7 +2184,7 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
-            if (group != 'output-symlink' and not startup_measurement and isinstance(terminal, dict)
+            if (group != 'output-symlink' and not diagnostic_mode and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2235,7 +2308,7 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
                 statuses['resolver-authority'] = 'passed'
-            if (group == 'output-symlink' and positive and isinstance(terminal, dict)
+            if (group == 'output-symlink' and group_ready and isinstance(terminal, dict)
                     and terminal.get('outputSymlinkAudit', {}).get('status') == 'captured'):
                 denial = _output_symlink_attempt(report, value, fixture, terminal, args.source)
                 if denial is None:
@@ -2251,12 +2324,19 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'output-symlink-v9-evidence.private.json', sidecar)
                 statuses['output-symlink'] = 'passed'
-            if startup_measurement:
+            if diagnostic_mode:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = selected_public_result(group,
-                selected_terminal_status(group, report, positive), positive,
+                ('role-readiness-measurement-executed' if role_measurement
+                    and group_prepared(report, value, terminal, 'role-readiness-diagnostic') else
+                    'implementation-incomplete' if group_ready and
+                    statuses.get('output-symlink') == 'passed' else
+                    selected_terminal_status(group, report, positive)), positive,
                 statuses=statuses,
-                reasons=('startup-measurement-not-workload-execution',) if startup_measurement else ()), 2
+                reasons=(('startup-measurement-not-workload-execution',)
+                         if startup_measurement else
+                         ('role-readiness-measurement-not-workload-execution',)
+                         if role_measurement else ())), 2
         native_runner._save(output / 'assessment.json', result)
         print(json.dumps(result, sort_keys=True))
         return code
@@ -2269,6 +2349,8 @@ def main():
     parser.add_argument('--probe', action='store_true', help='Check capacity and inputs without allocating a VM.')
     parser.add_argument('--startup-measurement', action='store_true',
         help='Measure only installed controller startup under a fixed diagnostic ceiling; no role launch or acceptance.')
+    parser.add_argument('--role-readiness-measurement', action='store_true',
+        help='Observe four real role FCP readiness operations without workload case credit.')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--case-group', choices=tuple(name for name, _ in campaign.GROUPS),

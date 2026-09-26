@@ -546,6 +546,55 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.content_chk.assert_called_once_with()
         adapter.cleanup.assert_called_once_with()
 
+    def test_failed_role_readiness_is_diagnosed_before_cleanup(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        order = []
+
+        def fail_start(role):
+            adapter.active_start_role = role
+            adapter.active_start_stage = 'fcp-get-node'
+            order.append('start')
+            raise workload.runtime.RuntimeFailure('workload-daemon-readiness-timeout')
+
+        def diagnose(role, stage):
+            order.append('diagnose-' + role + '-' + stage)
+            raise ValueError('diagnostic-unavailable')
+
+        adapter.start = fail_start
+        adapter.cleanup = mock.Mock(side_effect=lambda: order.append('cleanup') or 'complete')
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'workload-daemon-readiness-timeout'):
+            adapter.run_positive(on_start_failure=diagnose)
+        self.assertEqual(['start', 'diagnose-candidate-sender-fcp-get-node', 'cleanup'], order)
+
+    def test_output_group_preparation_starts_real_roles_without_positive_traffic(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+
+        def start(role):
+            adapter.nodes[role] = {'role': role}
+
+        adapter.start = mock.Mock(side_effect=start)
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.connect = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.content_chk = mock.Mock()
+        adapter.cleanup = mock.Mock(return_value='complete')
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
+            result = adapter.run_group_preparation('output-symlink',
+                leave_running_for_administrator=True)
+        self.assertEqual([mock.call(role) for role in workload.runtime.ROLES],
+                         adapter.start.call_args_list)
+        self.assertEqual(4, adapter.observe.call_count)
+        self.assertEqual('output-symlink', result['groupPreparation'])
+        self.assertEqual('not-executed-group', result['contentRetrieval'])
+        self.assertFalse(result['newEpoch'])
+        adapter.connect.assert_not_called()
+        adapter.provision_apps.assert_not_called()
+        adapter.content_chk.assert_not_called()
+        adapter.cleanup.assert_not_called()
+
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
         app = workload.InstalledAppHandle(supervisor, 'candidate-sender')

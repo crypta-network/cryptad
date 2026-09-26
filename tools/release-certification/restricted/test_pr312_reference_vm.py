@@ -34,6 +34,10 @@ class ReferenceDriverTest(unittest.TestCase):
         args.startup_measurement = True
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)
+        args.startup_measurement = False
+        args.workload_group = 'role-readiness-diagnostic'
+        self.assertIn('--lifecycle-scenario none --workload-group role-readiness-diagnostic',
+                      driver.workload_guest_command(args))
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):

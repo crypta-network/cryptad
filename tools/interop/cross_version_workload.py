@@ -554,6 +554,8 @@ class InstalledWorkloadAdapter:
         self.initial_role_roster = self.initial_role_window = self.initial_sender_state = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
+        self.active_start_role = None
+        self.active_start_stage = None
 
     def remaining(self, limit=180):
         remaining = self.deadline - time.monotonic()
@@ -620,6 +622,8 @@ class InstalledWorkloadAdapter:
     def start(self, role):
         if role not in runtime.ROLES:
             fail('role-invalid')
+        self.active_start_role = role
+        self.active_start_stage = 'start-request'
         self.remaining()
         value = self.control.request('start', self.handles[role])
         if (value.get('handle') != self.handles[role] or value.get('state') != 'running'
@@ -628,6 +632,7 @@ class InstalledWorkloadAdapter:
                 or not re.fullmatch('[a-f0-9-]{36}', str(value.get('bootId')))):
             fail('start-identity-invalid')
         self.nodes[role] = value
+        self.active_start_stage = 'fcp-get-node'
         deadline = time.monotonic() + self.remaining(180)
         while True:
             try:
@@ -641,9 +646,13 @@ class InstalledWorkloadAdapter:
                 if time.monotonic() >= deadline:
                     raise runtime.RuntimeFailure('workload-daemon-readiness-timeout') from error
                 time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        self.active_start_stage = 'daemon-epoch'
         self.daemon_epochs[role] = bind_daemon(self.observe(role), self.expected_jdk_digests[role])
+        self.active_start_stage = 'journal-node-start'
         self.emit('node-start', role=role, node_epoch=runtime.canonical_digest({key: value[key] for key in EPOCH})[7:39])
         self._journal_started_roles.add(role)
+        self.active_start_role = None
+        self.active_start_stage = None
         return value
 
     def connect(self):
@@ -984,8 +993,45 @@ class InstalledWorkloadAdapter:
         self.emit('cleanup', outcome='pass' if complete else 'fail')
         return 'complete' if complete else 'reconciliation-required'
 
-    def run_positive(self, *, leave_running_for_administrator=False):
+    def run_group_preparation(self, group, *, leave_running_for_administrator=False,
+                              on_start_failure=None):
+        """Prove the four installed role epochs without claiming positive content work."""
+        if group not in ('output-symlink', 'role-readiness-diagnostic') or (
+                on_start_failure is not None and not callable(on_start_failure)):
+            fail('workload-group-preparation-invalid')
+        completed = False
+        try:
+            for role in runtime.ROLES:
+                self.start(role)
+            started = time.monotonic_ns()
+            samples = {role: self.observe(role) for role in runtime.ROLES}
+            finished = time.monotonic_ns()
+            if finished <= started:
+                fail('kernel-roster-clock-invalid')
+            result = {'profile': PROFILE, 'groupPreparation': group,
+                      'topologyRoles': len(self.nodes), 'signedAppWorkers': 0,
+                      'newEpoch': False, 'contentRetrieval': 'not-executed-group',
+                      'roleKernelRoster': kernel_roster(samples, self.expected_jdk_digests),
+                      'roleKernelRosterWindow': {'startedMonotonicNs': started,
+                                                 'finishedMonotonicNs': finished}}
+            completed = True
+            return result
+        except Exception:
+            if getattr(self, 'active_start_role', None) is not None and on_start_failure is not None:
+                try:
+                    on_start_failure(self.active_start_role,
+                                     getattr(self, 'active_start_stage', 'unavailable'))
+                except (OSError, ValueError, runtime.RuntimeFailure):
+                    pass
+            raise
+        finally:
+            if (not completed or not leave_running_for_administrator) and self.cleanup() != 'complete':
+                fail('terminal-reconciliation-required')
+
+    def run_positive(self, *, leave_running_for_administrator=False, on_start_failure=None):
         """Exercise normal transports, retaining active roles only for administrator teardown."""
+        if on_start_failure is not None and not callable(on_start_failure):
+            fail('readiness-diagnostic-callback-invalid')
         completed = False
         try:
             for role in runtime.ROLES:
@@ -1044,6 +1090,16 @@ class InstalledWorkloadAdapter:
                     'contentRetrieval': self.outcomes.get('network-chk')}
             completed = True
             return result
+        except Exception:
+            # The administrator must inspect the still-running role before cleanup.
+            # A diagnostic failure never changes the original workload error.
+            if getattr(self, 'active_start_role', None) is not None and on_start_failure is not None:
+                try:
+                    on_start_failure(self.active_start_role,
+                                     getattr(self, 'active_start_stage', 'unavailable'))
+                except (OSError, ValueError, runtime.RuntimeFailure):
+                    pass
+            raise
         finally:
             if (not completed or not leave_running_for_administrator) and self.cleanup() != 'complete':
                 fail('terminal-reconciliation-required')

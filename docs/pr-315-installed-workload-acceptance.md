@@ -2395,6 +2395,53 @@ explicit `guest-operation-failed` status for selected-group failures; it has
 not had an installed run. At the user's request, no suite after 111 was
 started.
 
+The post-111 prospective source now uses `workload-launcher-policy-v11` for
+the output group's fixed four-role preparation. This group starts and binds
+all four installed roles, then executes its actual descriptor-collector probe
+without first requiring CHK transfer, Mail bootstrap or sender restart.
+Its result explicitly records that content retrieval and positive restart
+were not executed; the host checks the four role epochs, current stop
+receipts, sentinel and output-specific root audit. This group cannot set
+`installedPositiveExecuted`. The administrator writes a fixed probe-start
+marker immediately before the output operation, so initial role-readiness
+failure is classified as preparation failure on the new source rather than
+mistaken for a completed probe. Suite 111 keeps its original historical
+`inconclusive` record.
+
+The PVE watcher now prepares each completion receipt privately, syncs it,
+sets its final read-only mode and publishes the complete inode exclusively.
+This closes the observed diagnostic-13 file-exists-before-readable race;
+an existing receipt is never replaced. The host gives the ready receipt a
+fixed five-second verification window before allocation; unreadable or
+malformed publication then blocks the run. On failed role startup, the observer
+requests a fixed administrator diagnostic before its role cleanup. The root
+sampler binds the selected active role JVM, captures bounded `jcmd` output
+and a bounded private FCP log tail, or records why either is unavailable.
+The original readiness failure and campaign deadline remain authoritative.
+An explicit `--role-readiness-measurement` path now runs the four real role
+FCP readiness operations under the same installed profile and returns no
+workload case credit. It gives the next separately identified TCG diagnostic
+an actual role-start path; the older controller-only startup measurement
+cannot reach the suite-111 failure point.
+These changes have passed offline checks only and have no TCG installed
+result. The default full-campaign entry now exits 78 before VM allocation
+while any declared group lacks an emitter; explicit supported development
+groups remain available. The suite-112 pause remains in effect.
+In a network-disabled, read-only Debian Docker test container, the latest
+focused source passed 150 PR-315, 44 PR-314 workload-driver, 23 PR-312
+reference-VM and 53 interop workload tests (eight interop skips). The
+selected protected-workload file passed 69 tests with one skip after the
+v11 policy change. These are offline checks, not installed results.
+Broader read-only Docker discovery ran 494 restricted tests with one skip
+and three errors, and 533 protected tests with 83 skips, two failures and
+twelve errors. The restricted errors were a missing container
+`/usr/bin/systemd-sysusers` and two temporary executables blocked by
+the container's `noexec` tmpfs; those two specific tests passed when
+rerun with executable tmpfs. The protected failures include unavailable
+container tooling, read-only `build/`, and container `/proc`/cgroup
+assumptions. This broad discovery is not a green gate and requires a
+suitable disposable Linux environment before final-source acceptance.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2736,8 +2783,8 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the current branch has prospective resolver and output-symlink emitters, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
-| `installedPositiveExecuted` | False on current-source formal TCG suite 111; historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
+| `implementationCoverage` | Incomplete: the current branch has prospective resolver and output-symlink emitters, including the v11 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |

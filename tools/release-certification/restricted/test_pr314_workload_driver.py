@@ -1,4 +1,5 @@
 """Local cleanup ordering and retention tests; no installed systemd execution."""
+import base64
 from contextlib import contextmanager, ExitStack, nullcontext
 import fcntl
 import hashlib
@@ -296,6 +297,18 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
                              json.loads(child.recv(8192)))
             self.assertEqual({'phase': 'probe', 'exceptionType': 'ValueError'},
                              sampler.diagnostics['probeAdminFailure'])
+            sampler.readiness = Mock(return_value={
+                'phase': 'readiness', 'role': 'candidate-recipient',
+                'stage': 'fcp-get-node', 'status': 'captured'})
+            child.sendall(b'J1F')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual('candidate-recipient', json.loads(child.recv(8192))['role'])
+            sampler.readiness.assert_called_once_with('candidate-recipient', 'fcp-get-node')
+            child.sendall(b'J4F')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual({'error': 'pr315-admin-fnp-sample-failed'},
+                             json.loads(child.recv(8192)))
+            sampler.readiness.assert_called_once()
         self.assertEqual('ValueError', sampler.diagnostics['fnpAdminFailure']['exceptionType'])
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
@@ -315,6 +328,26 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             worker.join(timeout=2)
             self.assertFalse(worker.is_alive())
         sampler.sample.assert_called_once_with('before')
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_failed_role_requests_exact_stage_before_cleanup(self):
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', {})
+        expected = {'phase': 'readiness', 'role': 'candidate-recipient',
+                    'stage': 'fcp-get-node', 'status': 'captured'}
+        sampler.readiness = Mock(return_value=expected)
+        with ExitStack() as stack:
+            parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            stack.enter_context(parent)
+            stack.enter_context(child)
+            worker = threading.Thread(target=sampler.serve, args=(parent,), daemon=True)
+            worker.start()
+            self.assertEqual(expected, driver.request_administrator_readiness(
+                child, 'candidate-recipient', 'fcp-get-node'))
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        sampler.readiness.assert_called_once_with('candidate-recipient', 'fcp-get-node')
+        with self.assertRaisesRegex(ValueError, 'role-invalid'):
+            driver.request_administrator_readiness(None, 'candidate-recipient', 'arbitrary-stage')
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
     def test_parent_collects_child_result_while_serving_fixed_counter_request(self):
@@ -784,6 +817,32 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
 
 
 class ReadinessJcmdDiagnosticTest(unittest.TestCase):
+    def test_root_captures_bounded_selected_role_log_before_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / 'fcp-candidate-recipient.log'
+            log.write_bytes(b'x' * 9000)
+            log.chmod(0o600)
+            diagnostic = {}
+            sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', diagnostic,
+                handoff={'handles': {}}, observer_root=root)
+            with patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(
+                    pw_uid=os.geteuid())), \
+                    patch.object(driver, 'memory_snapshot', return_value={'guest': {}}), \
+                    patch.object(driver, 'capture_readiness_jcmd', return_value={
+                        'status': 'unavailable-or-unsafe'}):
+                reply = sampler.readiness('candidate-recipient', 'fcp-get-node')
+                self.assertEqual('captured', reply['status'])
+                self.assertEqual('fcp-get-node', diagnostic['readinessAtFailure']['stage'])
+                captured = diagnostic['readinessAtFailure']['fcpLog']
+                self.assertEqual(9000, captured['sizeBytes'])
+                self.assertEqual(8192, len(base64.b64decode(captured['tailBase64'])))
+                log.unlink()
+                log.symlink_to(root / 'missing')
+                sampler.readiness('candidate-recipient', 'fcp-get-node')
+                self.assertEqual('unavailable-or-unsafe',
+                    diagnostic['readinessAtFailure']['fcpLog']['status'])
+
     def test_latest_active_role_jvm_must_have_one_exact_staged_executable(self):
         digest = 'sha256:' + 'a' * 64
         handles = {role: role for role in driver.ROLE_NAMES}
@@ -801,6 +860,11 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
         self.assertEqual('candidate-recipient', role)
         self.assertEqual('b' * 32, invocation)
         self.assertEqual(123, process['hostPid'])
+        selected_role, _, _ = driver._readiness_java_process(workload, handoff,
+                                                              'candidate-sender')
+        self.assertEqual('candidate-sender', selected_role)
+        with self.assertRaisesRegex(ValueError, 'no-active-role'):
+            driver._readiness_java_process(workload, handoff, 'previous')
         workload.observe = lambda handle: {'managerInvocation': 'b' * 32,
             'processes': [{'executableDigest': digest}, {'executableDigest': digest}]}
         with self.assertRaisesRegex(ValueError, 'ambiguous-or-absent'):

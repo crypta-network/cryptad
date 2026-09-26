@@ -1,13 +1,72 @@
 """Offline threshold and process-selection checks for the PVE task watcher."""
 import os
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pr315_pve_pressure_watch as watch
 
 
 class PressureWatchTest(unittest.TestCase):
+    def test_receipt_is_complete_and_readable_before_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'suite-111.finished.json'
+            value = {'kind': 'pr315-pve-watch-finished', 'suite': 'suite-111'}
+            original_link = os.link
+
+            def inspect_publication(pending, target, **options):
+                self.assertFalse(receipt.exists())
+                self.assertEqual(receipt, target)
+                self.assertEqual(value, json.loads(pending.read_bytes()))
+                self.assertEqual(0o444, pending.stat().st_mode & 0o777)
+                original_link(pending, target, **options)
+
+            with patch.object(watch.os, 'link', side_effect=inspect_publication):
+                watch._write_once(receipt, value, 0o444)
+            self.assertEqual(value, json.loads(receipt.read_bytes()))
+            self.assertEqual(1, receipt.stat().st_nlink)
+            self.assertFalse(receipt.with_name(receipt.name + '.pending').exists())
+
+    def test_existing_receipt_cannot_be_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'suite-111.finished.json'
+            receipt.write_bytes(b'original')
+            with self.assertRaises(FileExistsError):
+                watch._write_once(receipt, {'kind': 'replacement'}, 0o444)
+            self.assertEqual(b'original', receipt.read_bytes())
+            pending = receipt.with_name(receipt.name + '.pending')
+            self.assertEqual({'kind': 'replacement'}, json.loads(pending.read_bytes()))
+
+    def test_interrupted_write_never_publishes_partial_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / 'suite-111.finished.json'
+
+            def interrupt(_value, stream, **_options):
+                stream.write('{"incomplete":')
+                raise ValueError('interrupted-publication')
+
+            with patch.object(watch.json, 'dump', side_effect=interrupt), \
+                    self.assertRaisesRegex(ValueError, 'interrupted-publication'):
+                watch._write_once(receipt, {'kind': 'receipt'}, 0o444)
+            self.assertFalse(receipt.exists())
+            pending = receipt.with_name(receipt.name + '.pending')
+            self.assertEqual(b'{"incomplete":', pending.read_bytes())
+            self.assertEqual(0o600, pending.stat().st_mode & 0o777)
+
+    def test_prelaunch_ready_wait_handles_publication_then_fails_closed(self):
+        ready = {'suite': 'suite-111', 'kind': 'pr315-pve-watch-ready'}
+        with patch.object(watch, 'verify_ready', side_effect=[FileNotFoundError(),
+                PermissionError(), ValueError('partial'), ready]) as verify, \
+                patch.object(watch.time, 'sleep'):
+            self.assertEqual(ready, watch.wait_ready('suite-111', 'a' * 40))
+        self.assertEqual(4, verify.call_count)
+        with patch.object(watch, 'verify_ready', side_effect=ValueError('malformed')), \
+                patch.object(watch.time, 'monotonic', side_effect=[0, 5]):
+            with self.assertRaisesRegex(ValueError, 'ready-unavailable'):
+                watch.wait_ready('suite-111', 'a' * 40)
+
     def test_sustained_physical_and_swap_thresholds(self):
         counters = dict.fromkeys(watch.LIMITS, 0)
         observed = {'memAvailableBytes': watch.GIB - 1,

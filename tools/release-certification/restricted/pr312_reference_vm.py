@@ -318,8 +318,8 @@ def workload_guest_command(args):
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or scenario not in ('cancellation', 'controller-restart', 'none')
-            or workload_group not in (None, 'output-symlink')
-            or (workload_group == 'output-symlink') != (scenario == 'none')
+            or workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic')
+            or (workload_group is not None) != (scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
         raise ValueError('workload-guest-command-identity-invalid')
     return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
@@ -327,7 +327,7 @@ def workload_guest_command(args):
             + args.fixture_manifest_digest + ' --product-source-commit '
             + args.product_source_commit
             + ' --lifecycle-scenario ' + scenario
-            + (' --workload-group output-symlink' if workload_group == 'output-symlink' else '')
+            + (' --workload-group ' + workload_group if workload_group is not None else '')
             + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
             + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 
@@ -351,6 +351,10 @@ def run(args):
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
         report['workloadPurpose'] = ('startup-measurement' if getattr(args, 'startup_measurement', False)
+                                     else 'role-readiness-measurement'
+                                     if getattr(args, 'workload_group', None) == 'role-readiness-diagnostic'
+                                     else 'selected-group'
+                                     if getattr(args, 'workload_group', None) == 'output-symlink'
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

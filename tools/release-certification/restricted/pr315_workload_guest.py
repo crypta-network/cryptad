@@ -27,9 +27,9 @@ LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'none')
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
             lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink')
+    if (workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic')
             or (startup_measurement and workload_group)
-            or (workload_group == 'output-symlink') != (lifecycle_scenario == 'none')):
+            or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
@@ -62,9 +62,9 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
               lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink')
+    if (workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic')
             or (startup_measurement and workload_group)
-            or (workload_group == 'output-symlink') != (lifecycle_scenario == 'none')):
+            or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
@@ -79,7 +79,9 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     sys.path.insert(0, '/opt/cryptad-cross-version/current/tools/release-certification/protected')
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
-    STAGE = 'startup-measurement' if startup_measurement else 'positive-driver'
+    STAGE = ('startup-measurement' if startup_measurement else
+             'role-readiness-measurement' if workload_group == 'role-readiness-diagnostic' else
+             'selected-group-driver' if workload_group else 'positive-driver')
     return driver.execute(startup_measurement=startup_measurement,
                           lifecycle_scenario=lifecycle_scenario,
                           workload_group=workload_group), 0
@@ -222,7 +224,7 @@ def main():
     parser.add_argument('--startup-measurement', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink',))
+    parser.add_argument('--workload-group', choices=('output-symlink', 'role-readiness-diagnostic'))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):

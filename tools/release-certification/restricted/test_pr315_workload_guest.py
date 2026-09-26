@@ -231,6 +231,17 @@ class StartupTransportTests(unittest.TestCase):
         self.assertIn(['--lifecycle-scenario', 'none', '--workload-group', 'output-symlink'],
                       [run.call_args.args[0][index:index + 4]
                        for index in range(len(run.call_args.args[0]) - 3)])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='role-readiness-diagnostic'))
+        self.assertIn('--workload-group', run.call_args.args[0])
+        self.assertIn('role-readiness-diagnostic', run.call_args.args[0])
         with self.assertRaisesRegex(ValueError, 'group-invalid'):
             guest.execute('a' * 64, 'b' * 40, workload_group='output-symlink')
 

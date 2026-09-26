@@ -36,6 +36,7 @@ DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
+READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'none')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
@@ -1038,9 +1039,11 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
             'networkAudits': network_audits}
 
 
-def _readiness_java_process(workload, handoff):
+def _readiness_java_process(workload, handoff, selected_role=None):
     """Select one current role JVM from trusted service and kernel observations."""
-    for role in reversed(ROLE_NAMES):
+    if selected_role is not None and selected_role not in ROLE_NAMES:
+        raise ValueError('workload-readiness-role-invalid')
+    for role in ((selected_role,) if selected_role is not None else reversed(ROLE_NAMES)):
         state = workload.manager(role, 'show')
         if state['ActiveState'] != 'active' or state['SubState'] != 'running':
             continue
@@ -1054,12 +1057,12 @@ def _readiness_java_process(workload, handoff):
     raise ValueError('workload-readiness-no-active-role')
 
 
-def capture_readiness_jcmd(workload, handoff):
+def capture_readiness_jcmd(workload, handoff, role=None):
     """Collect two bounded JVM diagnostics before a failed role is stopped."""
     from bounded_process import run
     path = READINESS_JCMD
     try:
-        role, invocation, process = _readiness_java_process(workload, handoff)
+        role, invocation, process = _readiness_java_process(workload, handoff, role)
         java = workload.ROOT / 'roles' / role / 'jdk/bin/jcmd'
         if not java.is_file():
             raise ValueError('workload-readiness-jcmd-unavailable')
@@ -1093,7 +1096,8 @@ def capture_readiness_jcmd(workload, handoff):
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
-        return {'status': 'retained', 'role': role,
+        return {'status': 'retained', 'role': role, 'hostPid': process['hostPid'],
+                'startTicks': process['startTicks'], 'managerInvocation': invocation,
                 'commandStatuses': {key: row['status'] for key, row in record['commands'].items()},
                 'privateDigest': hashlib.sha256(raw).hexdigest()}
     except (OSError, ValueError, KeyError, TypeError, IndexError,
@@ -1325,7 +1329,7 @@ class AdministratorFnpSampler:
     """Fixed administrator observations over this attempt's inherited private socket."""
 
     def __init__(self, workload, recipient_handle, diagnostics, sender_handle=None,
-                 probe_digest=None, sender_jdk_digest=None):
+                 probe_digest=None, sender_jdk_digest=None, handoff=None, observer_root=None):
         self.workload = workload
         self.recipient_handle = recipient_handle
         self.diagnostics = diagnostics
@@ -1333,6 +1337,45 @@ class AdministratorFnpSampler:
         self.sender_handle = sender_handle
         self.probe_digest = probe_digest
         self.sender_jdk_digest = sender_jdk_digest
+        self.handoff = handoff
+        self.observer_root = observer_root
+
+    def readiness(self, role, stage):
+        """Capture one fixed failed role while the observer still owns its cleanup."""
+        if (role not in ROLE_NAMES or stage not in READINESS_STAGES
+                or self.handoff is None or self.observer_root is None):
+            raise ValueError('workload-admin-readiness-selection-invalid')
+        try:
+            memory = memory_snapshot()
+        except (OSError, ValueError, KeyError, TypeError):
+            memory = {'status': 'unavailable'}
+        record = {'role': role, 'stage': stage,
+                  'observedMonotonicNs': time.monotonic_ns(),
+                  'memory': memory,
+                  'jcmd': capture_readiness_jcmd(self.workload, self.handoff, role)}
+        log = self.observer_root / ('fcp-' + role + '.log')
+        try:
+            descriptor = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                info = os.fstat(descriptor)
+                owner = pwd.getpwnam('cryptad-soak').pw_uid
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner
+                        or info.st_nlink != 1 or info.st_mode & 0o077
+                        or info.st_size > 16 * 1024 * 1024):
+                    raise ValueError('workload-readiness-fcp-log-unsafe')
+                os.lseek(descriptor, max(0, info.st_size - 8192), os.SEEK_SET)
+                tail = os.read(descriptor, 8192)
+                if os.fstat(descriptor).st_size != info.st_size:
+                    raise ValueError('workload-readiness-fcp-log-changed')
+                record['fcpLog'] = {'status': 'captured', 'sizeBytes': info.st_size,
+                    'tailBase64': base64.b64encode(tail).decode('ascii')}
+            finally:
+                os.close(descriptor)
+        except (OSError, ValueError, KeyError):
+            record['fcpLog'] = {'status': 'unavailable-or-unsafe'}
+        self.diagnostics['readinessAtFailure'] = record
+        return {'phase': 'readiness', 'role': role, 'stage': stage,
+                'status': 'captured'}
 
     def probe(self):
         """Bind one live signed probe process, immutable app bytes and its first result."""
@@ -1486,17 +1529,30 @@ class AdministratorFnpSampler:
                 'snapshot': snapshot}
 
     def serve(self, channel):
-        message, _ancillary, flags, _address = channel.recvmsg(2)
+        message, _ancillary, flags, _address = channel.recvmsg(3)
         if not message:
             return False
         try:
-            if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or message not in (b'B', b'A', b'P'):
+            readiness_role = (ROLE_NAMES[int(message[1:2])] if len(message) == 3
+                              and message[:1] == b'J' and message[1:2] in (b'0', b'1', b'2', b'3')
+                              else None)
+            readiness_stage = ({b'S': 'start-request', b'F': 'fcp-get-node',
+                                b'E': 'daemon-epoch', b'J': 'journal-node-start'}.get(message[2:3])
+                               if readiness_role is not None else None)
+            if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or (
+                    message not in (b'B', b'A', b'P') and readiness_stage is None):
                 raise ValueError('workload-admin-fnp-request-invalid')
-            result = (self.probe() if message == b'P' else
+            result = (self.readiness(readiness_role, readiness_stage)
+                      if readiness_stage is not None else
+                      self.probe() if message == b'P' else
                       self.sample('before' if message == b'B' else 'after'))
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             private = getattr(error, 'private_diagnostics', None)
-            if message == b'P':
+            if readiness_role is not None:
+                self.diagnostics['readinessAdminFailure'] = {
+                    'role': readiness_role, 'exceptionType': type(error).__name__[:128]}
+                result = {'error': 'pr315-admin-readiness-capture-failed'}
+            elif message == b'P':
                 self.diagnostics['probeAdminFailure'] = {
                     'phase': 'probe', 'exceptionType': type(error).__name__[:128]}
                 result = {'error': 'pr315-admin-probe-sample-failed'}
@@ -1537,6 +1593,24 @@ def request_administrator_fnp(channel, phase, campaign_deadline):
         raise
     except (OSError, ValueError):
         raise RuntimeFailure('workload-admin-fnp-transport-failed') from None
+
+
+def request_administrator_readiness(channel, role, stage):
+    """Ask for one fixed private diagnostic after a failed start, before cleanup."""
+    if role not in ROLE_NAMES or stage not in READINESS_STAGES:
+        raise ValueError('workload-admin-readiness-role-invalid')
+    channel.settimeout(18)
+    channel.sendall(b'J' + str(ROLE_NAMES.index(role)).encode('ascii') + {
+        'start-request': b'S', 'fcp-get-node': b'F', 'daemon-epoch': b'E',
+        'journal-node-start': b'J'}[stage])
+    raw = channel.recv(8193)
+    if not 1 <= len(raw) <= 8192 or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
+        raise ValueError('workload-admin-readiness-response-invalid')
+    value = json.loads(raw)
+    if value != {'phase': 'readiness', 'role': role, 'stage': stage,
+                 'status': 'captured'}:
+        raise ValueError('workload-admin-readiness-capture-failed')
+    return value
 
 
 def collect_child(parent, pid, deadline, sample=None, *, admin_channel=None, admin_sampler=None):
@@ -1632,8 +1706,8 @@ def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False)
 
 
 def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
-                      startup_measurement=False, *, admin_channel=None):
-    """The diagnostic stops at the actual served readiness response, before any role start."""
+                      startup_measurement=False, *, admin_channel=None, workload_group=None):
+    """Observe controller readiness, then run the selected finite installed path."""
     controller_ready(readiness_deadline(campaign_deadline, startup_begin, startup_measurement))
     if startup_measurement:
         return {'classification': 'startup-measurement-not-workload-acceptance',
@@ -1649,7 +1723,15 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
             selected['authorization'], journal, handoff,
             counter_sampler=(lambda phase: request_administrator_fnp(
                 admin_channel, phase, campaign_deadline)) if admin_channel is not None else None)
-        result = adapter.run_positive(leave_running_for_administrator=True)
+        diagnostic = ((lambda role, stage: request_administrator_readiness(
+            admin_channel, role, stage))
+                      if admin_channel is not None else None)
+        if workload_group in ('output-symlink', 'role-readiness-diagnostic'):
+            result = adapter.run_group_preparation(workload_group,
+                leave_running_for_administrator=True, on_start_failure=diagnostic)
+        else:
+            result = adapter.run_positive(leave_running_for_administrator=True,
+                on_start_failure=diagnostic)
         journal.checkpoint('partial')
     return result
 
@@ -1940,9 +2022,10 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             workload_group=None):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
-    if workload_group not in (None, 'output-symlink') or (startup_measurement and workload_group):
+    if workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic') or (
+            startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
-    if (workload_group == 'output-symlink') != (lifecycle_scenario == 'none'):
+    if (workload_group is not None) != (lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
@@ -2019,7 +2102,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 os.umask(0o077)
                 result = observer_sequence(selected, root, handoff, campaign_deadline,
                                            startup_begin, startup_measurement,
-                                           admin_channel=admin_child)
+                                           admin_channel=admin_child,
+                                           workload_group=workload_group)
                 child.sendall(json.dumps(result, separators=(',', ':')).encode())
                 child.close()
                 admin_child.close()
@@ -2044,7 +2128,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             handoff['handles']['candidate-recipient'], diagnostics,
             sender_handle=handoff['handles'].get('candidate-sender') if probe_digest else None,
             probe_digest=probe_digest,
-            sender_jdk_digest=handoff.get('expectedJdkDigests', {}).get('candidate-sender'))
+            sender_jdk_digest=handoff.get('expectedJdkDigests', {}).get('candidate-sender'),
+            handoff=handoff, observer_root=root)
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
             admin_sampler=sampler)
@@ -2054,18 +2139,27 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             try:
                 failure = json.loads(raw)
                 if (failure.get('observerFailure') == 'RuntimeFailure'
-                        and failure.get('privateDetail') == 'workload-daemon-readiness-timeout'):
+                        and failure.get('privateDetail') == 'workload-daemon-readiness-timeout'
+                        and 'readinessAtFailure' not in diagnostics):
                     diagnostics['readinessJcmd'] = capture_readiness_jcmd(workload, handoff)
             except (UnicodeError, ValueError, TypeError, AttributeError):
                 diagnostics['readinessJcmd'] = {'status': 'failure-transcript-invalid'}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
-        if not startup_measurement and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True):
+        if (not startup_measurement and workload_group is None
+                and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
+        if (workload_group in ('output-symlink', 'role-readiness-diagnostic') and
+                (result.get('groupPreparation') != workload_group
+                 or result.get('contentRetrieval') != 'not-executed-group'
+                 or result.get('newEpoch') is not False)):
+            raise ValueError('workload-group-preparation-incomplete')
         result.update(identity=identity, runtimePolicy=launcher_policy(),
                       finiteNativeAcceptance='not-executed-by-this-driver',
                       campaignDeadlineMonotonicNs=campaign_deadline,
                       workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
+                          else 'not-executed-role-readiness-measurement'
+                          if workload_group == 'role-readiness-diagnostic'
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
         if not startup_measurement and workload_group is None:
             try:
@@ -2122,6 +2216,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostics[field] = diagnostic
                 diagnostics['resolverAuthority'] = diagnostic
         if not startup_measurement and workload_group == 'output-symlink':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': 'output-symlink',
+                'startedMonotonicNs': time.monotonic_ns()}
             try:
                 digest = probe_output_symlink(
                     workload, handoff, role_probe_digest, campaign_deadline)
@@ -2192,8 +2289,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
     workload.write(REPORT, result, create=True)
-    return {'status': 'startup-measurement-executed' if startup_measurement else 'positive-sequence-executed',
-            'workloadAcceptance': 'incomplete',
+    return {'status': ('startup-measurement-executed' if startup_measurement else
+                       'role-readiness-measurement-executed'
+                       if workload_group == 'role-readiness-diagnostic' else
+                       'group-sequence-executed' if workload_group else
+                       'positive-sequence-executed'),
+            'workloadAcceptance': ('not-executed' if workload_group == 'role-readiness-diagnostic'
+                                   else 'incomplete'),
             'protectedExecutionEnabled': False}
 
 
@@ -2202,7 +2304,7 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink',))
+    parser.add_argument('--workload-group', choices=('output-symlink', 'role-readiness-diagnostic'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

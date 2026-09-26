@@ -131,7 +131,8 @@ def _processes(suite: str) -> list[tuple[int, int]]:
 
 
 def _write_once(path: Path, value: dict, mode: int) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+    pending = path.with_name(path.name + '.pending')
+    descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         with os.fdopen(descriptor, 'w', closefd=False) as stream:
             json.dump(value, stream, sort_keys=True, separators=(',', ':'))
@@ -140,6 +141,15 @@ def _write_once(path: Path, value: dict, mode: int) -> None:
         os.fchmod(descriptor, mode)
     finally:
         os.close(descriptor)
+    # A hard link publishes the complete inode without replacing an earlier receipt.
+    # The private pending file remains available for diagnosis if publication fails.
+    os.link(pending, path, follow_symlinks=False)
+    pending.unlink()
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def watch(suite: str, source_commit: str) -> int:
@@ -231,6 +241,8 @@ def watch(suite: str, source_commit: str) -> int:
                         signal.pidfd_send_signal(descriptor, signal.SIGTERM)
             finally:
                 os.close(descriptor)
+        log.flush()
+        os.fsync(log.fileno())
         _write_once(finished, {'schemaVersion': 1, 'kind': 'pr315-pve-watch-finished',
                                'suite': suite, 'sourceCommit': source_commit,
                                'moduleDigest': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -277,6 +289,19 @@ def verify_ready(suite: str, source_commit: str) -> dict:
             or not 0 <= time.monotonic_ns() - ns <= 120_000_000_000):
         raise ValueError('pr315-pressure-watch-ready-invalid')
     return record
+
+
+def wait_ready(suite: str, source_commit: str) -> dict:
+    """Complete the fixed prelaunch handshake after atomic receipt publication."""
+    until = time.monotonic() + 5
+    while True:
+        try:
+            return verify_ready(suite, source_commit)
+        except (OSError, ValueError):
+            remaining = until - time.monotonic()
+            if remaining <= 0:
+                raise ValueError('pr315-pressure-watch-ready-unavailable') from None
+            time.sleep(min(.05, remaining))
 
 
 def verify_finished(suite: str, source_commit: str, ready: dict) -> dict:

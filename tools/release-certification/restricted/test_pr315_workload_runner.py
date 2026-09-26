@@ -127,6 +127,41 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_output_group_preparation_requires_four_bound_roles_without_restarting_sender(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        report = {'mode': 'workload-positive', 'workloadPurpose': 'selected-group',
+                  'status': 'guest-report-retained',
+                  'guestStopped': True, 'guestExitCode': 0,
+                  'hostVerifiedIdentity': synthetic_host_identity()}
+        result = {'identity': {'sourceCommit': 'b' * 40, 'bundleIdentity': 'a' * 64},
+                  'groupPreparation': 'output-symlink',
+                  'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                  'topologyRoles': 4, 'signedAppWorkers': 0,
+                  'profile': runner.acceptance.PROFILE,
+                  'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                  'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5},
+                  'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+                  'protectedExecutionEnabled': False}
+        self.assertTrue(runner.group_prepared(report, result, terminal, 'output-symlink'))
+        diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
+            workloadAcceptance='not-executed-role-readiness-measurement')
+        self.assertTrue(runner.group_prepared({**report,
+            'workloadPurpose': 'role-readiness-measurement'}, diagnostic, terminal,
+            'role-readiness-diagnostic'))
+        self.assertFalse(runner.group_prepared({**report, 'workloadPurpose': 'positive'},
+            result, terminal, 'output-symlink'))
+        terminal['stopReceipts']['candidate-sender']['previous'] = {'status': 'captured'}
+        self.assertFalse(runner.group_prepared(report, result, terminal, 'output-symlink'))
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        self.assertFalse(runner.group_prepared(report,
+            {**result, 'contentRetrieval': 'observed'}, terminal, 'output-symlink'))
+        self.assertFalse(runner.group_prepared({**report, 'guestStopped': False},
+            result, terminal, 'output-symlink'))
+
     def test_private_kvm_diagnostic_cannot_enter_tcg_case_runner(self):
         with self.assertRaisesRegex(ValueError, 'accepted-tcg-profile-required'):
             runner.run(SimpleNamespace(profile='kvm-diagnostic'))
@@ -449,9 +484,11 @@ class RunnerTests(unittest.TestCase):
             startedMonotonicNs=150, observedMonotonicNs=160)
         terminal['outputSymlinkAudit'] = {'status': 'captured', 'record': audit}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
-        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5}}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
-        with patch.object(runner, 'positive_executed', return_value=True):
+        with patch.object(runner, 'group_prepared', return_value=True):
             identity, attempt, sidecar = runner._output_symlink_attempt(
                 report, result, fixture, terminal, source)
             checked = runner.acceptance.verify_attempts(identity, [attempt])
@@ -474,6 +511,10 @@ class RunnerTests(unittest.TestCase):
                 mutate(changed)
                 self.assertIsNone(runner._output_symlink_attempt(
                     report, result, fixture, changed, source))
+            late_roster = copy.deepcopy(result)
+            late_roster['roleKernelRosterWindow']['finishedMonotonicNs'] = 10
+            self.assertIsNone(runner._output_symlink_attempt(
+                report, late_roster, fixture, terminal, source))
 
     def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
         roster = synthetic_role_kernel_roster()
@@ -925,6 +966,13 @@ class RunnerTests(unittest.TestCase):
             'guest-operation-failed', statuses={'output-symlink': 'inconclusive'})
         self.assertEqual('guest-operation-failed', failed['status'])
         self.assertFalse(failed['installedWorkloadAcceptanceSatisfied'])
+        marker = {'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                  'caseId': 'output-symlink', 'startedMonotonicNs': 123}
+        self.assertFalse(runner.selected_probe_started('output-symlink', {'before': {}}))
+        self.assertTrue(runner.selected_probe_started('output-symlink', {'probeStart': marker}))
+        self.assertFalse(runner.selected_probe_started('output-fifo', {'probeStart': marker}))
+        self.assertFalse(runner.selected_probe_started('output-symlink',
+            {'probeStart': {**marker, 'startedMonotonicNs': True}}))
 
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
@@ -1147,6 +1195,7 @@ class RunnerTests(unittest.TestCase):
             root.chmod(0o700)
             args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
                 output=root / 'suite', storage_root=root, startup_measurement=False,
+                case_group='positive',
                 prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
                 prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
                 known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
@@ -1207,12 +1256,41 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn('private-', json.dumps(report))
         self.assertFalse(report['installedWorkloadAcceptanceSatisfied'])
 
+    def test_default_full_campaign_stops_before_vm_while_emitters_are_missing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
+                    patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            result = json.loads((args.output / 'assessment.json').read_text())
+            self.assertEqual('implementation-incomplete', result['status'])
+            self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+            self.assertFalse((args.output / 'attempt-01').exists())
+            args.output = root / 'probe'
+            args.probe = True
+            with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
+                    patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            self.assertEqual('implementation-incomplete',
+                json.loads((args.output / 'assessment.json').read_text())['status'])
+
     def test_missing_inputs_return_78_without_reference_allocation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             root.chmod(0o700)
             source = Path(__file__).resolve().parents[3]
             args = SimpleNamespace(source=source, output=root / 'suite', storage_root=root,
+                case_group='positive',
                 prepared_fixtures=root / 'absent-fixtures', qemu_root=root / 'absent-qemu',
                 prepared_image=root / 'absent-image', seed=root / 'absent-seed',
                 ssh_key=root / 'absent-key', known_hosts=root / 'absent-pin',
@@ -1231,6 +1309,65 @@ class RunnerTests(unittest.TestCase):
 
 
 class StartupPurposeTests(unittest.TestCase):
+    def test_role_readiness_diagnostic_starts_no_case_or_positive_credit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root,
+                role_readiness_measurement=True, startup_measurement=False,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            selections = []
+            roster = synthetic_role_kernel_roster()
+            terminal = synthetic_terminal_roster(roster)
+            del terminal['stopReceipts']['candidate-sender']['previous']
+
+            def fake_transport(selected):
+                selections.append(selected)
+                selected.attempt.mkdir(mode=0o700)
+                runner.native_runner._save(selected.attempt / 'attempt.private.json', {
+                    'mode': 'workload-positive',
+                    'workloadPurpose': 'role-readiness-measurement',
+                    'status': 'guest-report-retained', 'guestStopped': True,
+                    'guestExitCode': 0,
+                    'hostVerifiedIdentity': synthetic_host_identity()})
+                runner.native_runner._save(selected.attempt /
+                    'pr314-workload-observation.private.json', {
+                        'groupPreparation': 'role-readiness-diagnostic',
+                        'identity': {'sourceCommit': 'b' * 40, 'bundleIdentity': 'a' * 64},
+                        'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                        'topologyRoles': 4, 'signedAppWorkers': 0,
+                        'profile': runner.acceptance.PROFILE,
+                        'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                        'roleKernelRoster': roster,
+                        'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                                   'finishedMonotonicNs': 5},
+                        'workloadAcceptance': 'not-executed-role-readiness-measurement',
+                        'protectedExecutionEnabled': False})
+                runner.native_runner._save(selected.attempt /
+                    'pr315-workload-volatile.private.json', terminal)
+                return 0
+
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={
+                        'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertEqual('role-readiness-diagnostic', selections[0].workload_group)
+            self.assertEqual('none', selections[0].lifecycle_scenario)
+            result = json.loads((args.output / 'assessment.json').read_text())
+            self.assertEqual('role-readiness-measurement-executed', result['status'])
+            self.assertFalse(result['installedPositiveExecuted'])
+            self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual({'not-executed'}, {row['status'] for row in result['cases']})
+
     def test_host_startup_selection_rejects_forged_successful_guest_aggregate(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
