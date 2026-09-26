@@ -189,7 +189,7 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
         for lifecycle in ('cancellation', 'controller-restart', 'deadline',
-                          'revocation-running'):
+                          'revocation-running', 'setsid-double-fork'):
             self.assertTrue(runner.group_prepared(report,
                 {**result, 'groupPreparation': lifecycle}, terminal, lifecycle))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
@@ -1270,6 +1270,74 @@ class RunnerTests(unittest.TestCase):
                 'record']['startedMonotonicNs'] = 220
             self.assertIsNone(runner._lifecycle_group_attempt(
                 'revocation-running', report, result, fixture, private, early, source))
+
+    def test_setsid_group_binds_detached_child_and_preserves_siblings(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        terminal = synthetic_terminal_roster(roster)
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        child = dict(actor, hostPid=124, hostParentPid=1, startTicks=50,
+                     namespacePids=[124, 3], executableDigest='sha256:' + 'b' * 64)
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=210, observedMonotonicNs=220)
+        before, after = {}, {}
+        for index, row in enumerate(roster['roles'][1:]):
+            role = row['role']
+            selected = {'InvocationID': row['invocationId'],
+                        'ActiveState': 'active', 'SubState': 'running',
+                        'MainPID': str(1000 + index)}
+            before[role] = selected
+            after[role] = dict(selected)
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=250 + index,
+                observedMonotonicNs=260 + index)
+        source = Path(__file__).resolve().parents[3]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-setsid-double-fork',
+            'caseId': 'setsid-double-fork',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'actorUid': sender['uid'], 'actorBefore': actor,
+            'actorAfter': dict(actor), 'childEpoch': child,
+            'childSession': 2, 'parentSession': 1,
+            'roleInvocation': sender['invocationId'],
+            'roleCgroupIdentity': [1, 99],
+            'triggerMonotonicNs': 100, 'attackStartedNs': 110,
+            'attackFinishedNs': 120, 'stopStartedNs': 130,
+            'stopFinishedNs': 230, 'stopReceiptObservedNs': 220,
+            'childAbsentObservedNs': 240,
+            'otherRolesBefore': before, 'otherRolesAfter': after}
+        private = {'setsidDoubleFork': {'status': 'captured', 'record': audit},
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 90),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350),
+                   'cleanupFinishedNs': 300}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 80}}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'setsid-double-fork'))
+            self.assertEqual(child, sidecar['targetEpoch']['detachedChildEpoch'])
+            reused = copy.deepcopy(private)
+            reused['setsidDoubleFork']['record']['childSession'] = 1
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, reused, terminal, source))
+            missing = copy.deepcopy(terminal)
+            missing['stopReceipts']['candidate-sender']['current'][
+                'record']['descendantCgroups'] = 1
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, private, missing, source))
 
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()

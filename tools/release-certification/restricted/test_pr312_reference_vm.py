@@ -75,6 +75,10 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'revocation-running'
         self.assertIn('--lifecycle-scenario revocation-running --workload-group revocation-running',
                       driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'setsid-double-fork'
+        args.workload_group = 'setsid-double-fork'
+        self.assertIn('--lifecycle-scenario setsid-double-fork --workload-group setsid-double-fork',
+                      driver.workload_guest_command(args))
         args.lifecycle_scenario = 'cancellation'
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)

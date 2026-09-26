@@ -28,6 +28,10 @@ AUTHORITY_OUTPUT = Path('/node/tmp/pr315-authority.json')
 AUTHORITY_READY = Path('/node/tmp/pr315-authority-ready.json')
 AUTHORITY_TRIGGER = Path('/node/tmp/pr315-authority-trigger.json')
 NETWORK_APP_READY = Path('/node/tmp/pr315-network-app-ready.json')
+SETSID_READY = Path('/node/tmp/pr315-setsid-double-fork-ready.json')
+SETSID_TRIGGER = Path('/node/tmp/pr315-setsid-double-fork-trigger.json')
+SETSID_RESULT = Path('/node/tmp/pr315-setsid-double-fork-result.json')
+SETSID_CHILD_READY = Path('/node/tmp/pr315-setsid-double-fork-child.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
@@ -381,17 +385,69 @@ def publish_output_replacement(nonce: str) -> None:
     _publish_record(OUTPUT_REPLACEMENT_SWAP_RESULT, swapped)
 
 
+def publish_setsid_double_fork(nonce: str) -> None:
+    """Create one detached session descendant inside the same role service cgroup."""
+    until = time.monotonic() + 30
+    while not SETSID_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-setsid-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(SETSID_TRIGGER, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'setsid-double-fork', 'nonce': nonce}:
+        raise ValueError('pr315-setsid-trigger-invalid')
+    started = time.monotonic_ns()
+    first = os.fork()
+    if first == 0:
+        try:
+            os.setsid()
+            if os.fork() == 0:
+                os.execv('/usr/bin/python3', ['/usr/bin/python3', '-I', '-S', '-B',
+                          __file__, nonce, 'setsid-child'])
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    until = time.monotonic() + 5
+    while True:
+        child, status = os.waitpid(first, os.WNOHANG)
+        if child == first:
+            if status != 0:
+                raise ValueError('pr315-setsid-first-child-failed')
+            break
+        if time.monotonic() >= until:
+            os.kill(first, 9)
+            os.waitpid(first, 0)
+            raise ValueError('pr315-setsid-first-child-timeout')
+        time.sleep(.02)
+    _publish_record(SETSID_RESULT,
+        {'schemaVersion': 1, 'kind': 'pr315-candidate-setsid-double-fork',
+         'caseId': 'setsid-double-fork', 'nonce': nonce,
+         'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+         'firstPid': first, 'startedMonotonicNs': started,
+         'finishedMonotonicNs': time.monotonic_ns()})
+
+
 def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
             or sys.argv[2] not in ('observer-private-read', 'role-boundary',
                                    'authority', 'network-app',
+                                   'setsid-double-fork', 'setsid-child',
                                    'output-symlink',
                                    'output-fifo', 'output-hardlink', 'output-flood',
                                    'output-replacement')
             or not sys.flags.isolated or not sys.flags.no_site):
         raise ValueError('pr315-role-probe-fixed-invocation-required')
     case_id = sys.argv[2]
+    if case_id == 'setsid-child':
+        _publish_record(SETSID_CHILD_READY,
+            {'schemaVersion': 1, 'kind': 'pr315-candidate-setsid-child',
+             'caseId': 'setsid-double-fork', 'nonce': sys.argv[1],
+             'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+             'startedMonotonicNs': time.monotonic_ns()})
+        while True:
+            time.sleep(1)
     ready = {'schemaVersion': 1, 'kind': 'pr315-candidate-role-probe-ready',
              'caseId': case_id, 'nonce': sys.argv[1],
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
@@ -399,6 +455,7 @@ def main() -> None:
                   ROLE_BOUNDARY_READY if case_id == 'role-boundary' else
                   AUTHORITY_READY if case_id == 'authority' else
                   NETWORK_APP_READY if case_id == 'network-app' else
+                  SETSID_READY if case_id == 'setsid-double-fork' else
                   OUTPUT_FIFO_READY if case_id == 'output-fifo' else
                   OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
                   OUTPUT_FLOOD_READY if case_id == 'output-flood' else
@@ -428,6 +485,10 @@ def main() -> None:
     if case_id == 'network-app':
         for network_case in NETWORK_CASES:
             publish_network_result(network_case, sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'setsid-double-fork':
+        publish_setsid_double_fork(sys.argv[1])
         while True:
             time.sleep(1)
     if case_id == 'authority':

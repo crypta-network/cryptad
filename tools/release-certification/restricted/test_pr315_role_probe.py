@@ -107,6 +107,52 @@ class RoleProbeTest(unittest.TestCase):
             read.assert_not_called()
             claims.assert_not_called()
 
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0
+                         and Path('/node/tmp').is_dir(),
+                         'requires disposable Linux root and isolated /node/tmp')
+    def test_real_double_fork_child_keeps_cgroup_after_setsid(self):
+        nonce = 'a' * 64
+        ready = Path('/node/tmp/pr315-setsid-double-fork-child.json')
+        self.assertFalse(ready.exists())
+        child_pid = None
+        with tempfile.TemporaryDirectory(dir='/node/tmp') as directory:
+            root = Path(directory)
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            trigger.write_text(json.dumps({'caseId': 'setsid-double-fork',
+                                            'nonce': nonce}))
+            with patch.object(probe, 'SETSID_TRIGGER', trigger), \
+                    patch.object(probe, 'SETSID_RESULT', result):
+                probe.publish_setsid_double_fork(nonce)
+            until = time.monotonic() + 5
+            while not ready.exists() and time.monotonic() < until:
+                time.sleep(.01)
+            self.assertTrue(ready.exists())
+            child_pid = json.loads(ready.read_text())['pid']
+            expected_tail = (b'-I\0-S\0-B\0'
+                        + os.fsencode(probe.__file__) + b'\0'
+                        + nonce.encode() + b'\0setsid-child\0')
+            proc = Path('/proc') / str(child_pid)
+            try:
+                command = proc.joinpath('cmdline').read_bytes()
+                self.assertIn(b'/usr/bin/python3\0', command)
+                self.assertTrue(command.endswith(expected_tail))
+                self.assertNotEqual(os.getsid(0), os.getsid(child_pid))
+                self.assertEqual(Path('/proc/self/cgroup').read_bytes(),
+                                 proc.joinpath('cgroup').read_bytes())
+                self.assertEqual('setsid-double-fork',
+                                 json.loads(result.read_text())['caseId'])
+            finally:
+                if (proc.joinpath('cmdline').exists() and
+                        proc.joinpath('cmdline').read_bytes().endswith(expected_tail)):
+                    os.kill(child_pid, 15)
+                    until = time.monotonic() + 5
+                    while proc.exists() and time.monotonic() < until:
+                        time.sleep(.02)
+                    if (proc.exists() and
+                            proc.joinpath('cmdline').read_bytes().endswith(expected_tail)):
+                        os.kill(child_pid, 9)
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_fifo_is_real_and_collector_rejects_without_blocking(self):
         with tempfile.TemporaryDirectory() as directory:

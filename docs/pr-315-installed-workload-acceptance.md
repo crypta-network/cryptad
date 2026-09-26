@@ -2521,8 +2521,18 @@ instances remain unchanged. The administrator then shuts down the owned
 campaign and binds unchanged marker bytes, the observer and test-kit process
 epochs, controller identity and all exact terminal receipts in its private
 record. No v21 installed result exists.
+
+The prospective v22 `setsid-double-fork` group starts a measured candidate
+role child, which creates one detached-session grandchild through a fixed
+double fork. The administrator resolves that grandchild against the actual
+role cgroup, observes its session and process epoch, stops the sender through
+the installed controller and requires the child to disappear with an exact
+stop receipt. It also proves the three other roles remained active until
+ordinary campaign cleanup. A disposable Linux root-only regression exercised
+the real double fork and cgroup inheritance; no v22 TCG result exists.
 In a network-disabled, read-only Debian Docker test container, the latest
-focused source passed 160 PR-315, 47 PR-314 workload-driver (two skips in
+focused source passed 162 PR-315 (one skip in the unprivileged container;
+the setsid test passed separately as root), 47 PR-314 workload-driver (two skips in
 the disposable root container), 23 PR-312
 reference-VM, 11 interop snapshot and 55 interop workload tests (eight
 interop workload skips). The
@@ -2879,7 +2889,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and four standalone lifecycle groups under v21 selected-group preparation. Three authority, three network/AppHost, other denial and seven lifecycle emitters and the default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and five standalone lifecycle groups under v22 selected-group preparation. Three authority, three network/AppHost, other denial and six lifecycle emitters and the default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

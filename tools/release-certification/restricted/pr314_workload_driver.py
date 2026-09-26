@@ -39,7 +39,7 @@ CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
-                       'revocation-running', 'none')
+                       'revocation-running', 'setsid-double-fork', 'none')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -126,6 +126,8 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-output-replacement-swap-timeout',
     'workload-authority-actor-or-window-invalid',
     'workload-authority-operation-order-invalid',
+    'workload-setsid-ready-invalid', 'workload-setsid-child-invalid',
+    'workload-setsid-stop-invalid', 'workload-setsid-descendant-retained',
     'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
     'workload-sibling-network-before-window-invalid',
     'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
@@ -729,6 +731,164 @@ def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_
     return audits
 
 
+def _setsid_process_epoch(pid):
+    fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
+    if (len(fields) <= 19 or not fields[3].isdecimal()
+            or not fields[19].isdecimal()):
+        raise ValueError('workload-setsid-child-invalid')
+    return {'session': int(fields[3]), 'startTicks': int(fields[19])}
+
+
+def probe_setsid_double_fork(workload, handoff, source_digest,
+                             campaign_deadline_ns):
+    """Stop one actual role after observing its detached cgroup descendant."""
+    import cross_version_runtime as runtime
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-role-probe-campaign-expired')
+    role = 'candidate-sender'
+    nonce = secrets.token_hex(32)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+        {'schemaVersion': 1, 'caseId': 'setsid-double-fork', 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+         'sourceDigest': source_digest}, create=True, mode=0o444)
+    account = workload.account(role)
+    root = workload.ROOT / 'state/candidate-sender/tmp'
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    ready = _wait_output_record(root / 'pr315-setsid-double-fork-ready.json',
+        account.pw_uid, until, 'workload-role-probe-ready-timeout')
+    handle = handoff['handles'][role]
+    before = workload.observe(handle)
+    actor_before = _role_probe_actor(before, nonce, 'setsid-double-fork')
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
+            or ready['schemaVersion'] != 1
+            or ready['kind'] != 'pr315-candidate-role-probe-ready'
+            or ready['caseId'] != 'setsid-double-fork'
+            or ready['nonce'] != nonce
+            or ready['pid'] != actor_before['namespacePids'][-1]
+            or ready['startedMonotonicNs'] >= before['observedMonotonicNs']):
+        raise ValueError('workload-setsid-ready-invalid')
+    other_roles = tuple(name for name in ROLE_NAMES if name != role)
+    others_before = {name: workload.manager(name, 'show') for name in other_roles}
+    trigger_ns = time.monotonic_ns()
+    _publish_output_trigger(root, 'pr315-setsid-double-fork-trigger.json',
+                            'setsid-double-fork', nonce)
+    result = _wait_output_record(root / 'pr315-setsid-double-fork-result.json',
+        account.pw_uid, until, 'workload-role-probe-result-timeout')
+    child_ready = _wait_output_record(root / 'pr315-setsid-double-fork-child.json',
+        account.pw_uid, until, 'workload-role-probe-result-timeout')
+    after = workload.observe(handle)
+    actor_after = _role_probe_actor(after, nonce, 'setsid-double-fork')
+    if (not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'firstPid', 'startedMonotonicNs', 'finishedMonotonicNs'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-candidate-setsid-double-fork'
+            or result['caseId'] != 'setsid-double-fork'
+            or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
+            or type(result['firstPid']) is not int or result['firstPid'] <= 1
+            or not isinstance(child_ready, dict) or set(child_ready) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+                'startedMonotonicNs'}
+            or child_ready['schemaVersion'] != 1
+            or child_ready['kind'] != 'pr315-candidate-setsid-child'
+            or child_ready['caseId'] != 'setsid-double-fork'
+            or child_ready['nonce'] != nonce
+            or child_ready['uid'] != account.pw_uid
+            or child_ready['gid'] != account.pw_gid
+            or actor_before['hostPid'] != actor_after['hostPid']
+            or actor_before['startTicks'] != actor_after['startTicks']
+            or before['managerInvocation'] != after['managerInvocation']
+            or before['cgroupIdentity'] != after['cgroupIdentity']
+            or not before['observedMonotonicNs'] < trigger_ns
+                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                < after['observedMonotonicNs']
+            or not result['startedMonotonicNs'] < child_ready['startedMonotonicNs']
+                < after['observedMonotonicNs']):
+        raise ValueError('workload-setsid-child-invalid')
+    found = [row for row in after['processes']
+             if isinstance(row.get('namespacePids'), list)
+             and row['namespacePids'][-1] == child_ready['pid']]
+    if len(found) != 1:
+        raise ValueError('workload-setsid-child-invalid')
+    child = found[0]
+    child_pid = child['hostPid']
+    descriptor = os.open(Path('/proc') / str(child_pid) / 'cmdline',
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        command = os.read(descriptor, 4097)
+    finally:
+        os.close(descriptor)
+    child_session = _setsid_process_epoch(child_pid)
+    parent_session = _setsid_process_epoch(actor_before['hostPid'])
+    if (command != (b'/usr/bin/python3\0-I\0-S\0-B\0/probe.py\0'
+                   + nonce.encode() + b'\0setsid-child\0')
+            or child['hostParentPid'] == actor_before['hostPid']
+            or child['startTicks'] != child_session['startTicks']
+            or child_session['session'] == parent_session['session']
+            or child['executableDigest'] != runtime.digest_file('/usr/bin/python3')
+            or child['networkNamespaceIdentity'] != actor_before['networkNamespaceIdentity']
+            or child['mountNamespaceIdentity'] != actor_before['mountNamespaceIdentity']
+            or child['userNamespaceIdentity'] != actor_before['userNamespaceIdentity']
+            or child['noNewPrivileges'] is not True
+            or child['effectiveCapabilities'] != 0
+            or child['startTicks'] < actor_before['startTicks']):
+        raise ValueError('workload-setsid-child-invalid')
+    stop_started = time.monotonic_ns()
+    stopped = workload.stop(handle)
+    stop_finished = time.monotonic_ns()
+    state = workload.manager(role, 'show')
+    receipt = workload.read(workload.ROOT / 'authority/candidate-sender-stop.json')
+    if (stopped.get('state') != 'quiescent'
+            or state['ActiveState'] not in {'inactive', 'failed'}
+            or state['SubState'] not in {'dead', 'failed'}
+            or state['MainPID'] != '0' or not workload.quiescent(role)
+            or receipt['managerInvocation'] != before['managerInvocation']
+            or receipt['cgroupIdentity'] != before['cgroupIdentity']
+            or receipt['membership'] != 'only-stop-helper'
+            or receipt['descendantCgroups'] != 0
+            or not stop_started < receipt['startedMonotonicNs']
+                <= receipt['observedMonotonicNs'] <= stop_finished):
+        raise ValueError('workload-setsid-stop-invalid')
+    until = time.monotonic() + 10
+    while time.monotonic() < until:
+        try:
+            current = _setsid_process_epoch(child_pid)
+        except FileNotFoundError:
+            break
+        if current['startTicks'] != child['startTicks']:
+            break
+        time.sleep(.05)
+    else:
+        raise ValueError('workload-setsid-descendant-retained')
+    others_after = {name: workload.manager(name, 'show') for name in other_roles}
+    stable = ('InvocationID', 'ActiveState', 'SubState', 'MainPID')
+    if any(others_before[name][key] != others_after[name][key]
+           for name in other_roles for key in stable):
+        raise ValueError('workload-setsid-sibling-changed')
+    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-setsid-double-fork',
+        'caseId': 'setsid-double-fork', 'sourceDigest': source_digest,
+        'actorUid': account.pw_uid, 'actorBefore': actor_before,
+        'actorAfter': actor_after, 'childEpoch': child,
+        'childSession': child_session['session'],
+        'parentSession': parent_session['session'],
+        'roleInvocation': before['managerInvocation'],
+        'roleCgroupIdentity': before['cgroupIdentity'],
+        'triggerMonotonicNs': trigger_ns,
+        'attackStartedNs': result['startedMonotonicNs'],
+        'attackFinishedNs': child_ready['startedMonotonicNs'],
+        'stopStartedNs': stop_started, 'stopFinishedNs': stop_finished,
+        'stopReceiptObservedNs': receipt['observedMonotonicNs'],
+        'childAbsentObservedNs': time.monotonic_ns(),
+        'otherRolesBefore': others_before, 'otherRolesAfter': others_after}
+    workload.write(workload.ROOT / 'authority/setsid-double-fork-denial.json',
+                   audit, create=True)
+    return audit
+
+
 def _administrator_collector_epoch(case_id):
     """Measure this fixed root test-kit process, never an asserted PID."""
     import cross_version_runtime as runtime
@@ -752,7 +912,7 @@ def _administrator_collector_epoch(case_id):
             'cgroupDigest': runtime.canonical_digest({
                 'role': ('lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
-                          'revocation-running')
+                          'revocation-running', 'setsid-double-fork')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -2380,7 +2540,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline', 'revocation-running'):
+                              'controller-restart', 'deadline', 'revocation-running',
+                              'setsid-double-fork'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2680,14 +2841,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
-                             'controller-restart', 'deadline', 'revocation-running') or (
+                             'controller-restart', 'deadline', 'revocation-running',
+                             'setsid-double-fork') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group in ('cancellation', 'controller-restart', 'deadline',
-                           'revocation-running') and
+                           'revocation-running', 'setsid-double-fork') and
             lifecycle_scenario != workload_group or
             workload_group not in (None, 'cancellation', 'controller-restart',
-                                   'deadline', 'revocation-running')
+                                   'deadline', 'revocation-running',
+                                   'setsid-double-fork')
             and lifecycle_scenario != 'none' or
             workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
@@ -2820,7 +2983,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
                               'controller-restart', 'deadline',
-                              'revocation-running') and
+                              'revocation-running', 'setsid-double-fork') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2997,7 +3160,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
         if not startup_measurement and workload_group in ('cancellation',
-                'controller-restart', 'deadline', 'revocation-running'):
+                'controller-restart', 'deadline', 'revocation-running',
+                'setsid-double-fork'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
@@ -3038,6 +3202,15 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['revocationRunning'] = {'status': 'unavailable-or-unsafe',
                                                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'setsid-double-fork':
+            try:
+                diagnostics['setsidDoubleFork'] = {'status': 'captured',
+                    'record': probe_setsid_double_fork(workload, handoff,
+                        role_probe_digest, campaign_deadline)}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['setsidDoubleFork'] = {'status': 'unavailable-or-unsafe',
+                                                    'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -3055,6 +3228,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['controllerStartup'] = controller_startup_snapshot(workload)
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
+                diagnostics['cleanupFinishedNs'] = time.monotonic_ns()
                 if cancellation is not None:
                     try:
                         diagnostics['cancellation'] = complete_cancellation(workload, cancellation)
@@ -3080,7 +3254,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             'status': 'unavailable-or-unsafe',
                             'exceptionType': type(error).__name__[:128]}
                 if workload_group in ('cancellation', 'controller-restart', 'deadline',
-                                      'revocation-running'):
+                                      'revocation-running', 'setsid-double-fork'):
                     try:
                         diagnostics['lifecycleActorAfter'] = _administrator_collector_epoch(
                             workload_group)
@@ -3119,7 +3293,8 @@ def main():
                                                     'role-boundary', 'authority',
                                                     'network-app', 'cancellation',
                                                     'controller-restart', 'deadline',
-                                                    'revocation-running'))
+                                                    'revocation-running',
+                                                    'setsid-double-fork'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

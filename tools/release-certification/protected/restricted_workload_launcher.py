@@ -24,8 +24,8 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v21',
-            'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-v14',
+    return {'revision': 'workload-launcher-policy-v22',
+            'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-v15',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-drop-v1',
             'resolverAuthorityProbe': 'fixed-installed-resolver-canary-v1',
@@ -62,6 +62,7 @@ def _trusted_probe_request(spec):
             or request['schemaVersion'] != 1
             or request['caseId'] not in ('observer-private-read', 'role-boundary',
                                          'authority', 'network-app',
+                                         'setsid-double-fork',
                                          'output-symlink',
                                          'output-fifo', 'output-hardlink', 'output-flood',
                                          'output-replacement')
