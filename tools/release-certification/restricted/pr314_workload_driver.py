@@ -122,6 +122,8 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-output-replacement-target-invalid',
     'workload-output-replacement-collector-invalid',
     'workload-output-replacement-swap-timeout',
+    'workload-authority-actor-or-window-invalid',
+    'workload-authority-operation-order-invalid',
     'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
     'workload-sibling-network-before-window-invalid',
     'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
@@ -425,7 +427,7 @@ def _validate_role_probe_write(result, after):
     return write
 
 
-def _validate_false_role_claims(result, before, after, actor, uid):
+def _validate_false_role_claims(result, before, after, actor, uid, *, authority_only=False):
     identity, counters = result.get('identityClaim'), result.get('counterClaim')
     if (not isinstance(identity, dict) or set(identity) != {
             'claimedHostPid', 'claimedHostUid', 'startedMonotonicNs', 'finishedMonotonicNs'}
@@ -446,7 +448,9 @@ def _validate_false_role_claims(result, before, after, actor, uid):
                    for observed in (before, after)
                    for key in ('cgroupMemoryBytes', 'cgroupTasks'))):
         raise RoleProbeDiagnosticError('workload-role-probe-counter-target-unavailable')
-    times = (result['writeAttempt']['finishedMonotonicNs'],
+    prior = (result['startedMonotonicNs'] if authority_only else
+             result['writeAttempt']['finishedMonotonicNs'])
+    times = (prior,
              identity.get('startedMonotonicNs'), identity.get('finishedMonotonicNs'),
              counters.get('startedMonotonicNs'), counters.get('finishedMonotonicNs'),
              after['observedMonotonicNs'])
@@ -1033,6 +1037,132 @@ def probe_output_flood(workload, handoff, source_digest, campaign_deadline_ns):
 def probe_output_replacement(workload, handoff, source_digest, campaign_deadline_ns):
     return _probe_output_artifact(workload, handoff, source_digest,
                                   campaign_deadline_ns, 'output-replacement')
+
+
+def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
+                           campaign_deadline_ns):
+    """Bind one fixed candidate authority probe to the live resolver and kernel."""
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-role-probe-campaign-expired')
+    case_id = 'authority'
+    nonce = secrets.token_hex(32)
+    role = 'candidate-sender'
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+        {'schemaVersion': 1, 'caseId': case_id, 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+         'sourceDigest': source_digest}, create=True, mode=0o444)
+    account = workload.account(role)
+    probe_root = workload.ROOT / 'state/candidate-sender/tmp'
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    ready = _wait_output_record(probe_root / 'pr315-authority-ready.json',
+        account.pw_uid, until, 'workload-role-probe-ready-timeout')
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
+            or ready['schemaVersion'] != 1
+            or ready['kind'] != 'pr315-candidate-role-probe-ready'
+            or ready['caseId'] != case_id or ready['nonce'] != nonce):
+        raise ValueError('workload-role-probe-ready-invalid')
+    handle = handoff['handles'][role]
+    before = workload.observe(handle)
+    actor_before = _role_probe_actor(before, nonce, case_id)
+    if ready['pid'] != actor_before['namespacePids'][-1]:
+        raise ValueError('workload-role-probe-pid-unbound')
+    resolver_before = _resolver_target_control(resolver_digest)
+    trigger_ns = time.monotonic_ns()
+    _publish_output_trigger(probe_root, 'pr315-authority-trigger.json', case_id, nonce)
+    result = _wait_output_record(probe_root / 'pr315-authority.json',
+        account.pw_uid, until, 'workload-role-probe-result-timeout')
+    resolver_after = _resolver_target_control(resolver_digest)
+    after = workload.observe(handle)
+    actor_after = _role_probe_actor(after, nonce, case_id)
+    stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                    'pidNamespace', 'networkNamespaceIdentity',
+                    'mountNamespaceIdentity', 'userNamespaceIdentity',
+                    'executableDigest', 'noNewPrivileges', 'effectiveCapabilities')
+    if (not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'startedMonotonicNs', 'finishedMonotonicNs', 'identityClaim',
+            'counterClaim', 'resolverRead'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-candidate-authority-probe'
+            or result['caseId'] != case_id or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
+            or any(actor_before[key] != actor_after[key] for key in stable_actor)
+            or actor_before['noNewPrivileges'] is not True
+            or actor_before['effectiveCapabilities'] != 0
+            or before['managerInvocation'] != after['managerInvocation']
+            or before['cgroupIdentity'] != after['cgroupIdentity']
+            or before['stateDigest'] != after['stateDigest']
+            or not ready['startedMonotonicNs'] < before['observedMonotonicNs']
+                < resolver_before['observedMonotonicNs'] < trigger_ns
+                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                < resolver_after['observedMonotonicNs'] < after['observedMonotonicNs']):
+        raise ValueError('workload-authority-actor-or-window-invalid')
+    identity, counters = _validate_false_role_claims(result, before, after,
+        actor_before, account.pw_uid, authority_only=True)
+    resolver_read = _validate_resolver_read(
+        result, before, after, resolver_before, resolver_after)
+    if not (counters['finishedMonotonicNs'] < resolver_read['startedMonotonicNs']
+            < resolver_read['finishedMonotonicNs'] < result['finishedMonotonicNs']):
+        raise ValueError('workload-authority-operation-order-invalid')
+    nonce_digest = hashlib.sha256(nonce.encode()).hexdigest()
+    claim_base = {'schemaVersion': 1, 'sourceDigest': source_digest,
+                  'nonceDigest': nonce_digest, 'actorUid': account.pw_uid,
+                  'actorBefore': actor_before, 'actorAfter': actor_after,
+                  'roleInvocationBefore': before['managerInvocation'],
+                  'roleInvocationAfter': after['managerInvocation'],
+                  'cgroupIdentityBefore': before['cgroupIdentity'],
+                  'cgroupIdentityAfter': after['cgroupIdentity'],
+                  'targetActiveBeforeNs': before['observedMonotonicNs'],
+                  'targetActiveAfterNs': after['observedMonotonicNs'],
+                  'denial': 'kernel-mismatch-observed'}
+    identity_audit = {**claim_base,
+        'kind': 'pr315-administrator-forged-runtime-identity',
+        'caseId': 'forged-runtime-identity',
+        'attackStartedNs': identity['startedMonotonicNs'],
+        'attackFinishedNs': identity['finishedMonotonicNs'],
+        'claimedHostPid': identity['claimedHostPid'],
+        'claimedHostUid': identity['claimedHostUid'],
+        'actualHostPid': actor_before['hostPid'],
+        'actualHostUid': account.pw_uid}
+    counter_audit = {**claim_base,
+        'kind': 'pr315-administrator-forged-counters',
+        'caseId': 'forged-counters',
+        'attackStartedNs': counters['startedMonotonicNs'],
+        'attackFinishedNs': counters['finishedMonotonicNs'],
+        'claimedMemoryCurrentBytes': counters['claimedMemoryCurrentBytes'],
+        'claimedTasksCurrent': counters['claimedTasksCurrent'],
+        'actualMemoryBefore': before['cgroupMemoryBytes'],
+        'actualTasksBefore': before['cgroupTasks'],
+        'actualMemoryAfter': after['cgroupMemoryBytes'],
+        'actualTasksAfter': after['cgroupTasks']}
+    resolver_audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-resolver-authority-denial',
+        'caseId': 'resolver-authority', 'sourceDigest': source_digest,
+        'nonceDigest': nonce_digest, 'actorUid': account.pw_uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'actorInvocationBefore': before['managerInvocation'],
+        'actorInvocationAfter': after['managerInvocation'],
+        'actorCgroupBefore': before['cgroupIdentity'],
+        'actorCgroupAfter': after['cgroupIdentity'],
+        'actorStateBefore': before['stateDigest'],
+        'actorStateAfter': after['stateDigest'],
+        'targetBefore': resolver_before, 'targetAfter': resolver_after,
+        'targetPathDigest': resolver_read['targetPathDigest'],
+        'attackStartedNs': resolver_read['startedMonotonicNs'],
+        'attackFinishedNs': resolver_read['finishedMonotonicNs'],
+        'kernelOpenResult': resolver_read['outcome']}
+    for audit in (identity_audit, counter_audit, resolver_audit):
+        workload.write(workload.ROOT / 'authority' /
+            (audit['caseId'] + '-denial.json'), audit, create=True)
+    return {'identityAuditDigest': hashlib.sha256(json.dumps(identity_audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'resolverAuditDigest': hashlib.sha256(json.dumps(resolver_audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
 
 def probe_observer_private_read(workload, handoff, observer, source_digest,
@@ -1987,7 +2117,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                       if admin_channel is not None else None)
         if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic', 'role-boundary'):
+                              'role-readiness-diagnostic', 'role-boundary',
+                              'authority'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2285,7 +2416,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
-                             'role-readiness-diagnostic', 'role-boundary') or (
+                             'role-readiness-diagnostic', 'role-boundary',
+                             'authority') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group is not None) != (lifecycle_scenario == 'none'):
@@ -2324,7 +2456,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         raise ValueError('workload-observer-root-not-new')
     workload_installation.install()
     resolver_digest = (prepare_resolver_canary()
-                       if not startup_measurement and workload_group is None else None)
+                       if not startup_measurement and workload_group in (None, 'authority')
+                       else None)
     parent = child = admin_parent = admin_child = None
     pid = None
     status = None
@@ -2414,7 +2547,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic', 'role-boundary') and
+                              'role-readiness-diagnostic', 'role-boundary',
+                              'authority') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2508,6 +2642,39 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostic['code'] = code
                 for field in ('observerPrivateRead', 'observerPrivateWrite',
                               'siblingData', 'packageExpectation', 'cgroupMigration'):
+                    diagnostics[field] = diagnostic
+        if not startup_measurement and workload_group == 'authority':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                diagnostics['runnerControl'] = probe_runner_control(
+                    workload, handoff, result)
+            except (OSError, ValueError, KeyError, TypeError, IndexError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['runnerControl'] = {'status': 'unavailable-or-unsafe',
+                                                'exceptionType': type(error).__name__[:128]}
+            try:
+                claims = probe_authority_claims(
+                    workload, handoff, role_probe_digest, resolver_digest,
+                    campaign_deadline)
+                for field, case_id, digest_key in (
+                        ('forgedRuntimeIdentity', 'forged-runtime-identity',
+                         'identityAuditDigest'),
+                        ('forgedCounters', 'forged-counters', 'counterAuditDigest'),
+                        ('resolverAuthority', 'resolver-authority',
+                         'resolverAuditDigest')):
+                    diagnostics[field] = {'status': 'captured', 'caseId': case_id,
+                                          'auditDigest': claims[digest_key]}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostic = {'status': 'unavailable-or-unsafe',
+                              'exceptionType': type(error).__name__[:128]}
+                code = _private_role_probe_code(error)
+                if code is not None:
+                    diagnostic['code'] = code
+                for field in ('forgedRuntimeIdentity', 'forgedCounters',
+                              'resolverAuthority'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
@@ -2616,7 +2783,7 @@ def main():
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',
-                                                    'role-boundary'))
+                                                    'role-boundary', 'authority'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

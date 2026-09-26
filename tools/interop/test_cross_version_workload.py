@@ -595,6 +595,32 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.content_chk.assert_not_called()
         adapter.cleanup.assert_not_called()
 
+    def test_authority_preparation_runs_only_fixed_observer_denials(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+        adapter.start = mock.Mock(side_effect=lambda role: adapter.nodes.update({role: {}}))
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.capture_probe_target_roster = mock.Mock()
+        adapter.probe_observer_control = mock.Mock()
+        adapter.probe_arbitrary_endpoint = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.content_chk = mock.Mock()
+        adapter.cleanup = mock.Mock(return_value='complete')
+        order = mock.Mock()
+        order.attach_mock(adapter.capture_probe_target_roster, 'roster')
+        order.attach_mock(adapter.probe_observer_control, 'observer')
+        order.attach_mock(adapter.probe_arbitrary_endpoint, 'endpoint')
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
+            result = adapter.run_group_preparation('authority',
+                leave_running_for_administrator=True)
+        self.assertEqual('authority', result['groupPreparation'])
+        self.assertEqual([mock.call.roster(), mock.call.observer(), mock.call.endpoint()],
+                         order.mock_calls)
+        adapter.provision_apps.assert_not_called()
+        adapter.content_chk.assert_not_called()
+        adapter.cleanup.assert_not_called()
+
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
         app = workload.InstalledAppHandle(supervisor, 'candidate-sender')

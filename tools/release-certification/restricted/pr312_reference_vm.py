@@ -321,7 +321,8 @@ def workload_guest_command(args):
             or workload_group not in (None, 'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
-                                      'role-readiness-diagnostic', 'role-boundary')
+                                      'role-readiness-diagnostic', 'role-boundary',
+                                      'authority')
             or (workload_group is not None) != (scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
         raise ValueError('workload-guest-command-identity-invalid')
@@ -359,7 +360,8 @@ def run(args):
                                      else 'selected-group'
                                      if getattr(args, 'workload_group', None) in
                                      ('output-symlink', 'output-fifo', 'output-hardlink',
-                                      'output-flood', 'output-replacement', 'role-boundary')
+                                      'output-flood', 'output-replacement',
+                                      'role-boundary', 'authority')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

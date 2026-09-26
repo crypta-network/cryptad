@@ -161,6 +161,9 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report,
             {**result, 'groupPreparation': 'role-boundary'}, terminal,
             'role-boundary'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'authority'}, terminal,
+            'authority'))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -317,6 +320,11 @@ class RunnerTests(unittest.TestCase):
                            else 'forged-counters')
                 self.assertIsNone(runner._fixed_claim_attempt(
                     case_id, report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            for case_id in ('forged-runtime-identity', 'forged-counters'):
+                self.assertEqual('passed', runner._fixed_claim_attempt(
+                    case_id, report, result, fixture, terminal, source)['status'])
 
     def test_fixed_role_access_needs_active_sibling_or_package_and_stop_receipt(self):
         roster = synthetic_role_kernel_roster()
@@ -464,6 +472,13 @@ class RunnerTests(unittest.TestCase):
                 mutate(changed)
                 self.assertIsNone(runner._resolver_authority_attempt(
                     report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner._resolver_authority_attempt(
+                report, result, fixture, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'resolver-authority'))
 
     def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
         roster = synthetic_role_kernel_roster()
@@ -842,6 +857,13 @@ class RunnerTests(unittest.TestCase):
                 mutate(changed)
                 self.assertIsNone(runner.arbitrary_endpoint_denial_attempt(
                     report, result, fixture, changed))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner.arbitrary_endpoint_denial_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'arbitrary-endpoint'))
 
     def test_runner_control_denial_requires_real_runner_and_unchanged_active_unit(self):
         roster = synthetic_role_kernel_roster()

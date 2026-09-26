@@ -173,7 +173,7 @@ def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
     if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                       'output-flood', 'output-replacement', 'role-boundary',
-                      'role-readiness-diagnostic')
+                      'authority', 'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
@@ -181,7 +181,8 @@ def group_prepared(report, result, terminal, group):
     return (report.get('mode') == 'workload-positive'
             and report.get('workloadPurpose') == ('selected-group'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
-                             'output-flood', 'output-replacement', 'role-boundary')
+                             'output-flood', 'output-replacement',
+                             'role-boundary', 'authority')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -205,7 +206,8 @@ def group_prepared(report, result, terminal, group):
             and result.get('workloadAcceptance') == (
                 'incomplete-hostile-contract-not-executed'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
-                             'output-flood', 'output-replacement', 'role-boundary')
+                             'output-flood', 'output-replacement',
+                             'role-boundary', 'authority')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -990,7 +992,8 @@ def arbitrary_endpoint_denial_attempt(report, result, fixture, terminal):
     if (report.get('guestStopped') is not True or not isinstance(terminal, dict)
             or terminal.get('cleanupReportedByCaller') is not True
             or fixture.get('schemaVersion') != 4
-            or not positive_executed(report, result, terminal)):
+            or not (positive_executed(report, result, terminal)
+                    or group_prepared(report, result, terminal, 'authority'))):
         return None
     try:
         checkpoint = terminal['arbitraryEndpointCheckpoint']
@@ -1369,7 +1372,8 @@ def _fixed_claim_attempt(case_id, report, result, fixture, terminal, source):
             'tools/release-certification/restricted/pr315_role_probe.py')
         cgroup_digest = fixtures.runtime.canonical_digest({'role': 'candidate-sender',
             'identity': audit['cgroupIdentityBefore']})[7:]
-        if (not positive_executed(report, result, terminal)
+        if (not (positive_executed(report, result, terminal)
+                 or group_prepared(report, result, terminal, 'authority'))
                 or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
                 or terminal[field]['status'] != 'captured'
                 or audit['schemaVersion'] != 1
@@ -1546,7 +1550,8 @@ def _resolver_authority_attempt(report, result, fixture, terminal, source):
     """Bind a real role syscall to the active installed resolver's root canary."""
     case_id = 'resolver-authority'
     try:
-        if (not positive_executed(report, result, terminal)
+        if (not (positive_executed(report, result, terminal)
+                 or group_prepared(report, result, terminal, 'authority'))
                 or fixture.get('schemaVersion') != 4
                 or terminal['resolverAuthorityAudit']['status'] != 'captured'):
             return None
@@ -2076,7 +2081,7 @@ def run(args):
     selected_cases(group)
     output_group = group in ('output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement')
-    selected_preparation = output_group or group == 'role-boundary'
+    selected_preparation = output_group or group in ('role-boundary', 'authority')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -2224,6 +2229,7 @@ def run(args):
             group_ready = (not diagnostic_mode and selected_preparation
                            and group_prepared(report, value, terminal, group))
             role_boundary_ready = group == 'role-boundary' and group_ready
+            authority_ready = group == 'authority' and group_ready
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
@@ -2293,7 +2299,7 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
-            if (not output_group and not diagnostic_mode and isinstance(terminal, dict)
+            if ((positive or authority_ready) and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2316,7 +2322,7 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
-            if (not output_group and positive and isinstance(terminal, dict)
+            if ((positive or authority_ready) and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
                     and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
                 denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
@@ -2333,7 +2339,7 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
                 statuses['arbitrary-endpoint'] = 'passed'
-            if (not output_group and positive and isinstance(terminal, dict)
+            if ((positive or authority_ready) and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
                 denial = runner_control_denial_attempt(report, value, fixture, terminal)
                 if denial is not None:
@@ -2363,7 +2369,7 @@ def run(args):
                 statuses['observer-private-write'] = 'passed'
             for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
                                    ('forged-counters', 'forgedCountersAudit')):
-                if (not output_group and positive and isinstance(terminal, dict)
+                if ((positive or authority_ready) and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
@@ -2400,7 +2406,7 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
-            if (not output_group and positive and isinstance(terminal, dict)
+            if ((positive or authority_ready) and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(
                     report, value, fixture, terminal, args.source)

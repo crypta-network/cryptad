@@ -55,6 +55,38 @@ class RoleProbeTest(unittest.TestCase):
             claims.assert_not_called()
             network.assert_not_called()
 
+    def test_authority_mode_emits_only_fixed_claims_and_resolver_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ready = root / 'ready.json'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            trigger.write_text(json.dumps({'caseId': 'authority', 'nonce': 'a' * 64}))
+            claims = ({'claimedHostPid': 1}, {'claimedTasksCurrent': 0})
+            with patch.object(probe, 'AUTHORITY_READY', ready), \
+                    patch.object(probe, 'AUTHORITY_TRIGGER', trigger), \
+                    patch.object(probe, 'AUTHORITY_OUTPUT', result), \
+                    patch.object(probe.sys, 'argv', ['probe.py', 'a' * 64,
+                                                      'authority']), \
+                    patch.object(probe.sys, 'flags', SimpleNamespace(isolated=1,
+                                                                       no_site=1)), \
+                    patch.object(probe, 'fixed_false_claims', return_value=claims), \
+                    patch.object(probe, 'attempt_fixed_access', return_value={
+                        'operation': 'resolver-authority'}) as access, \
+                    patch.object(probe, 'attempt_read') as read, \
+                    patch.object(probe, 'publish_network_result') as network, \
+                    patch.object(probe.time, 'sleep', side_effect=StopIteration):
+                with self.assertRaises(StopIteration):
+                    probe.main()
+            record = json.loads(result.read_text())
+            self.assertEqual({'schemaVersion', 'kind', 'caseId', 'nonce', 'pid',
+                              'uid', 'gid', 'startedMonotonicNs',
+                              'finishedMonotonicNs', 'identityClaim',
+                              'counterClaim', 'resolverRead'}, set(record))
+            access.assert_called_once_with('resolver-authority', probe.RESOLVER_TARGET)
+            read.assert_not_called()
+            network.assert_not_called()
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_fifo_is_real_and_collector_rejects_without_blocking(self):
         with tempfile.TemporaryDirectory() as directory:

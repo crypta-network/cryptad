@@ -973,6 +973,16 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
                       counterClaim=counter_claim)
         self.assertEqual((identity_claim, counter_claim),
             driver._validate_false_role_claims(claims, before, after, actor, 983))
+        authority_claims = {'startedMonotonicNs': 40,
+            'identityClaim': identity_claim, 'counterClaim': counter_claim}
+        self.assertEqual((identity_claim, counter_claim),
+            driver._validate_false_role_claims(authority_claims, before, after,
+                                               actor, 983, authority_only=True))
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'claim-timeline-invalid'):
+            driver._validate_false_role_claims(dict(authority_claims,
+                startedMonotonicNs=46), before, after, actor, 983,
+                authority_only=True)
         with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
                                     'identity-claim-invalid'):
             driver._validate_false_role_claims(dict(claims,

@@ -998,6 +998,7 @@ class InstalledWorkloadAdapter:
         """Prove the four installed role epochs without claiming positive content work."""
         if group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                          'output-flood', 'output-replacement', 'role-boundary',
+                         'authority',
                          'role-readiness-diagnostic') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
@@ -1016,6 +1017,10 @@ class InstalledWorkloadAdapter:
                       'roleKernelRoster': kernel_roster(samples, self.expected_jdk_digests),
                       'roleKernelRosterWindow': {'startedMonotonicNs': started,
                                                  'finishedMonotonicNs': finished}}
+            if group == 'authority':
+                self.capture_probe_target_roster()
+                self.probe_observer_control()
+                self.probe_arbitrary_endpoint()
             completed = True
             return result
         except Exception:

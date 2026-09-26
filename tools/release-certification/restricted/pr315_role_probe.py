@@ -24,6 +24,9 @@ TRIGGER = Path('/node/tmp/pr315-observer-private-read-trigger.json')
 ROLE_BOUNDARY_OUTPUT = Path('/node/tmp/pr315-role-boundary.json')
 ROLE_BOUNDARY_READY = Path('/node/tmp/pr315-role-boundary-ready.json')
 ROLE_BOUNDARY_TRIGGER = Path('/node/tmp/pr315-role-boundary-trigger.json')
+AUTHORITY_OUTPUT = Path('/node/tmp/pr315-authority.json')
+AUTHORITY_READY = Path('/node/tmp/pr315-authority-ready.json')
+AUTHORITY_TRIGGER = Path('/node/tmp/pr315-authority-trigger.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
@@ -390,6 +393,7 @@ def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
             or sys.argv[2] not in ('observer-private-read', 'role-boundary',
+                                   'authority',
                                    'output-symlink',
                                    'output-fifo', 'output-hardlink', 'output-flood',
                                    'output-replacement')
@@ -401,6 +405,7 @@ def main() -> None:
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
     ready_path = (READY if case_id == 'observer-private-read' else
                   ROLE_BOUNDARY_READY if case_id == 'role-boundary' else
+                  AUTHORITY_READY if case_id == 'authority' else
                   OUTPUT_FIFO_READY if case_id == 'output-fifo' else
                   OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
                   OUTPUT_FLOOD_READY if case_id == 'output-flood' else
@@ -425,6 +430,30 @@ def main() -> None:
             time.sleep(1)
     if case_id == 'output-replacement':
         publish_output_replacement(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'authority':
+        deadline = time.monotonic() + 30
+        while not AUTHORITY_TRIGGER.exists():
+            if time.monotonic() >= deadline:
+                raise ValueError('pr315-authority-trigger-timeout')
+            time.sleep(.05)
+        descriptor = os.open(AUTHORITY_TRIGGER, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor) as stream:
+            trigger = json.load(stream)
+        if trigger != {'caseId': 'authority', 'nonce': sys.argv[1]}:
+            raise ValueError('pr315-authority-trigger-invalid')
+        started = time.monotonic_ns()
+        identity, counters = fixed_false_claims()
+        resolver = attempt_fixed_access('resolver-authority', RESOLVER_TARGET)
+        record = {'schemaVersion': 1, 'kind': 'pr315-candidate-authority-probe',
+                  'caseId': 'authority', 'nonce': sys.argv[1],
+                  'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+                  'startedMonotonicNs': started,
+                  'finishedMonotonicNs': time.monotonic_ns(),
+                  'identityClaim': identity, 'counterClaim': counters,
+                  'resolverRead': resolver}
+        _publish_record(AUTHORITY_OUTPUT, record)
         while True:
             time.sleep(1)
     role_boundary = case_id == 'role-boundary'
