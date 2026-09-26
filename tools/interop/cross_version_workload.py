@@ -1000,7 +1000,7 @@ class InstalledWorkloadAdapter:
                          'output-flood', 'output-replacement', 'role-boundary',
                          'authority', 'network-app', 'cancellation',
                          'controller-restart', 'deadline', 'revocation-running',
-                         'setsid-double-fork',
+                         'setsid-double-fork', 'observer-death',
                          'role-readiness-diagnostic') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')

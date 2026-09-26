@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pwd
+import signal
 import socket
 import sys
 import threading
@@ -506,6 +507,50 @@ class RevocationRequestTest(unittest.TestCase):
             self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
             self.assertEqual(hashlib.sha256(seen[0]).hexdigest(),
                              record['requestDigest'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0
+                         and hasattr(os, 'pidfd_open')
+                         and hasattr(signal, 'pidfd_send_signal'),
+                         'requires disposable Linux root and pidfd')
+    def test_real_observer_activity_is_followed_by_exact_pidfd_death(self):
+        handle = 'a' * 64
+        invocation = 'b' * 32
+        response = (json.dumps({'handle': handle, 'state': 'running',
+            'managerInvocation': invocation,
+            'provenance': 'controller-kernel-sample'},
+            separators=(',', ':')).encode() + b'\n')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o755)
+            path = root / 'control.sock'
+            seen = []
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(path))
+                path.chmod(0o666)
+                listener.listen(1)
+                listener.settimeout(5)
+
+                def serve():
+                    with listener.accept()[0] as channel:
+                        raw = bytearray()
+                        while not raw.endswith(b'\n'):
+                            raw.extend(channel.recv(128))
+                        seen.append(bytes(raw))
+                        channel.sendall(response)
+
+                worker = threading.Thread(target=serve, daemon=True)
+                worker.start()
+                with patch.object(driver, 'OBSERVER_DEATH_CONTROL_SOCKET', str(path)):
+                    record = driver._observer_death_request(
+                        pwd.getpwnam('nobody'), handle, os.getpid(), invocation)
+                worker.join(timeout=2)
+                self.assertFalse(worker.is_alive())
+            self.assertEqual([b'{"method":"observe","handle":"' +
+                              handle.encode() + b'"}\n'], seen)
+            self.assertTrue(record['pidfdUsed'])
+            self.assertEqual(hashlib.sha256(response).hexdigest(),
+                             record['responseDigest'])
+            self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
 
 
 class ControllerRestartObservationTest(unittest.TestCase):

@@ -318,20 +318,23 @@ def workload_guest_command(args):
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
-                                'revocation-running', 'setsid-double-fork', 'none')
+                                'revocation-running', 'setsid-double-fork',
+                                'observer-death', 'none')
             or workload_group not in (None, 'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
                                       'role-readiness-diagnostic', 'role-boundary',
                                       'authority', 'network-app', 'cancellation',
                                       'controller-restart', 'deadline',
-                                      'revocation-running', 'setsid-double-fork')
+                                      'revocation-running', 'setsid-double-fork',
+                                      'observer-death')
             or (workload_group in ('cancellation', 'controller-restart', 'deadline',
-                                   'revocation-running', 'setsid-double-fork')
+                                   'revocation-running', 'setsid-double-fork',
+                                   'observer-death')
                 and scenario != workload_group)
             or (workload_group not in (None, 'cancellation', 'controller-restart',
                                       'deadline', 'revocation-running',
-                                      'setsid-double-fork')
+                                      'setsid-double-fork', 'observer-death')
                 and scenario != 'none')
             or (workload_group is None and scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
@@ -373,7 +376,8 @@ def run(args):
                                       'output-flood', 'output-replacement',
                                       'role-boundary', 'authority', 'network-app',
                                       'cancellation', 'controller-restart', 'deadline',
-                                      'revocation-running', 'setsid-double-fork')
+                                      'revocation-running', 'setsid-double-fork',
+                                      'observer-death')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

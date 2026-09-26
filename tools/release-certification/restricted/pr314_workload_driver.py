@@ -35,11 +35,13 @@ VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 REVOCATION_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
+OBSERVER_DEATH_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
-                       'revocation-running', 'setsid-double-fork', 'none')
+                       'revocation-running', 'setsid-double-fork',
+                       'observer-death', 'none')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -912,7 +914,8 @@ def _administrator_collector_epoch(case_id):
             'cgroupDigest': runtime.canonical_digest({
                 'role': ('lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
-                          'revocation-running', 'setsid-double-fork')
+                          'revocation-running', 'setsid-double-fork',
+                          'observer-death')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -1921,6 +1924,118 @@ def _revocation_request(observer, handle, controller_pid):
             stop_child(pid)
 
 
+def _observer_death_request(observer, handle, controller_pid, invocation):
+    """Kill the exact observer after one successful installed controller request."""
+    if (observer.pw_uid <= 0 or observer.pw_gid <= 0
+            or re.fullmatch('[0-9a-f]{64}', handle) is None
+            or type(controller_pid) is not int or controller_pid <= 1
+            or re.fullmatch('[0-9a-f]{32}', invocation) is None
+            or not hasattr(os, 'pidfd_open')
+            or not hasattr(signal, 'pidfd_send_signal')):
+        raise ValueError('workload-observer-death-selection-invalid')
+    request = (b'{"method":"observe","handle":"' + handle.encode() + b'"}\n')
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    pid = os.fork()
+    if pid == 0:
+        parent.close()
+        try:
+            allowed = {0, 1, 2, child.fileno()}
+            for name in os.listdir('/proc/self/fd'):
+                if name.isdecimal() and int(name) not in allowed:
+                    try:
+                        os.close(int(name))
+                    except OSError:
+                        pass
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            child.sendall(b'R')
+            child.settimeout(40)
+            if child.recv(1) != b'G':
+                raise ValueError('workload-observer-death-barrier-invalid')
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+                channel.settimeout(40)
+                channel.connect(OBSERVER_DEATH_CONTROL_SOCKET)
+                peer, uid, _gid = struct.unpack('3i', channel.getsockopt(
+                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+                if peer != controller_pid or uid != 0:
+                    raise ValueError('workload-observer-death-controller-peer-invalid')
+                channel.sendall(request)
+                raw = bytearray()
+                while len(raw) <= 1024 * 1024 and not raw.endswith(b'\n'):
+                    block = channel.recv(min(65536, 1024 * 1024 + 1 - len(raw)))
+                    if not block:
+                        break
+                    raw.extend(block)
+                if not 0 < len(raw) <= 1024 * 1024 or not raw.endswith(b'\n'):
+                    raise ValueError('workload-observer-death-response-invalid')
+                value = json.loads(raw)
+                if (not isinstance(value, dict) or value.get('handle') != handle
+                        or value.get('state') != 'running'
+                        or value.get('managerInvocation') != invocation
+                        or value.get('provenance') != 'controller-kernel-sample'):
+                    raise ValueError('workload-observer-death-response-invalid')
+            child.sendall(b'1' + hashlib.sha256(raw).hexdigest().encode())
+            child.settimeout(None)
+            while child.recv(1):
+                pass
+            os._exit(1)
+        except BaseException:
+            try:
+                child.sendall(b'0')
+            except OSError:
+                pass
+            os._exit(1)
+    child.close()
+    reaped = False
+    pidfd = None
+    try:
+        parent.settimeout(5)
+        if parent.recv(1) != b'R':
+            raise ValueError('workload-observer-death-child-not-ready')
+        proc = Path('/proc') / str(pid)
+        status = next(line for line in proc.joinpath('status').read_text().splitlines()
+                      if line.startswith('Uid:'))
+        if set(map(int, status.split()[1:])) != {observer.pw_uid}:
+            raise ValueError('workload-observer-death-child-uid-invalid')
+        start_ticks = int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        started = time.monotonic_ns()
+        parent.sendall(b'G')
+        parent.settimeout(40)
+        response = parent.recv(65)
+        finished = time.monotonic_ns()
+        if (len(response) != 65 or response[:1] != b'1'
+                or re.fullmatch(b'[0-9a-f]{64}', response[1:]) is None
+                or start_ticks <= 0 or finished <= started):
+            raise ValueError('workload-observer-death-activity-unobserved')
+        pidfd = os.pidfd_open(pid)
+        if int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19]) != start_ticks:
+            raise ValueError('workload-observer-death-child-replaced')
+        kill_started = time.monotonic_ns()
+        signal.pidfd_send_signal(pidfd, signal.SIGTERM)
+        status = wait_child(pid, time.monotonic() + 5)
+        reaped = True
+        kill_finished = time.monotonic_ns()
+        if (not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGTERM
+                or kill_finished <= kill_started):
+            raise ValueError('workload-observer-death-child-not-killed')
+        return {'actor': {'pid': pid, 'uid': observer.pw_uid,
+                          'startTicks': start_ticks},
+                'requestDigest': hashlib.sha256(request).hexdigest(),
+                'responseDigest': response[1:].decode(),
+                'requestStartedNs': started, 'responseObservedNs': finished,
+                'killStartedNs': kill_started, 'killFinishedNs': kill_finished,
+                'pidfdUsed': True}
+    finally:
+        if pidfd is not None:
+            os.close(pidfd)
+        parent.close()
+        if not reaped:
+            stop_child(pid)
+
+
 def begin_revocation_running(workload, handoff, result, observer):
     """Revoke one live campaign and observe the installed controller refuse work."""
     from cross_version_runtime import canonical_digest
@@ -2004,6 +2119,109 @@ def complete_revocation_running(workload, context):
     return {**context, 'terminalObservedNs': finished,
             'populatedCgroups': [], 'remainingDescendants': 0,
             'retention': 'retained'}
+
+
+def _observer_death_controller_state():
+    selected = subprocess.run(['/usr/bin/systemctl', 'show',
+        'cryptad-workload-controller.service',
+        '--property=InvocationID,ActiveState,SubState,MainPID', '--no-pager'],
+        stdin=subprocess.DEVNULL, capture_output=True, check=True,
+        timeout=5, env=ENV)
+    if len(selected.stdout) > 8192 or selected.stderr:
+        raise ValueError('workload-observer-death-controller-state-invalid')
+    state = dict(line.split('=', 1) for line in selected.stdout.decode().splitlines()
+                 if '=' in line)
+    if set(state) != {'InvocationID', 'ActiveState', 'SubState', 'MainPID'}:
+        raise ValueError('workload-observer-death-controller-state-invalid')
+    return {'invocationId': state['InvocationID'],
+            'activeState': state['ActiveState'],
+            'subState': state['SubState'], 'mainPid': state['MainPID'],
+            'observedMonotonicNs': time.monotonic_ns()}
+
+
+def probe_observer_death(workload, handoff, result, observer):
+    """Observe real 240-second controller inactivity after exact observer death."""
+    from cross_version_runtime import canonical_digest
+    active = begin_cancellation(workload, handoff, result)
+    if active['campaignDeadlineNs'] - time.monotonic_ns() <= 300 * 10**9:
+        raise ValueError('workload-observer-death-budget-insufficient')
+    sender = next(row for row in active['preRoles']
+                  if row['role'] == 'candidate-sender')
+    controller_before = controller_unit_identity(workload)
+    activity = _observer_death_request(observer,
+        handoff['handles']['candidate-sender'], controller_before['mainPid'],
+        sender['managerInvocation'])
+    controller_active = controller_unit_identity(workload)
+    stable = ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
+              'mainStartTicks')
+    if (any(controller_before[key] != controller_active[key] for key in stable)
+            or not controller_before['observedMonotonicNs']
+                < activity['requestStartedNs'] < activity['responseObservedNs']
+                < activity['killStartedNs'] < activity['killFinishedNs']
+                < controller_active['observedMonotonicNs']):
+        raise ValueError('workload-observer-death-controller-changed')
+    target_ns = activity['responseObservedNs'] + 240 * 10**9
+    if active['campaignDeadlineNs'] <= target_ns + 40 * 10**9:
+        raise ValueError('workload-observer-death-budget-insufficient')
+    until_ns = min(target_ns + 40 * 10**9, active['campaignDeadlineNs'])
+    final_state = None
+    stops = []
+    while time.monotonic_ns() < until_ns:
+        current = _observer_death_controller_state()
+        if (current['activeState'] in {'inactive', 'failed'}
+                and current['subState'] in {'dead', 'failed'}
+                and current['mainPid'] == '0'):
+            observed = []
+            for row in active['preRoles']:
+                role = row['role']
+                state = workload.manager(role, 'show')
+                if (state['ActiveState'] not in {'inactive', 'failed'}
+                        or state['SubState'] not in {'dead', 'failed'}
+                        or state['MainPID'] != '0' or not workload.quiescent(role)):
+                    break
+                try:
+                    receipt = workload.read(workload.ROOT / 'authority' /
+                                            (role + '-stop.json'))
+                except FileNotFoundError:
+                    break
+                if (any(receipt[key] != row[key] for key in
+                        ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                        or receipt['membership'] != 'only-stop-helper'
+                        or receipt['descendantCgroups'] != 0
+                        or receipt['startedMonotonicNs'] < target_ns):
+                    raise ValueError('workload-observer-death-receipt-invalid')
+                observed.append({'role': role,
+                    'managerInvocation': row['managerInvocation'],
+                    'receiptStartedNs': receipt['startedMonotonicNs'],
+                    'receiptObservedNs': receipt['observedMonotonicNs']})
+            if len(observed) == len(ROLE_NAMES):
+                final_state = current
+                stops = observed
+                break
+        time.sleep(1)
+    if final_state is None:
+        raise ValueError('workload-observer-death-owner-stop-unobserved')
+    terminal_ns = time.monotonic_ns()
+    if terminal_ns < target_ns:
+        raise ValueError('workload-observer-death-premature-stop')
+    event = {'kind': 'observer-death', 'roles': active['preRoles'],
+             'observerPid': activity['actor']['pid'],
+             'observerStartTicks': activity['actor']['startTicks'],
+             'campaignDeadlineNs': active['campaignDeadlineNs'],
+             'policySeconds': 240}
+    return {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-death',
+        'triggerStartedNs': activity['killStartedNs'],
+        'triggerEventDigest': canonical_digest(event)[7:],
+        'campaignDeadlineNs': active['campaignDeadlineNs'],
+        'preRoles': active['preRoles'],
+        'controllerBefore': controller_before,
+        'controllerActiveAfterRequest': controller_active,
+        'controllerAfter': final_state,
+        'policySeconds': 240, 'policyThresholdNs': target_ns,
+        'stopObservations': stops,
+        'terminalObservedNs': terminal_ns,
+        'populatedCgroups': [], 'remainingDescendants': 0,
+        'retention': 'retained', **activity}
 
 
 def controller_unit_state():
@@ -2541,7 +2759,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
                               'controller-restart', 'deadline', 'revocation-running',
-                              'setsid-double-fork'):
+                              'setsid-double-fork', 'observer-death'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2842,15 +3060,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
                              'controller-restart', 'deadline', 'revocation-running',
-                             'setsid-double-fork') or (
+                             'setsid-double-fork', 'observer-death') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group in ('cancellation', 'controller-restart', 'deadline',
-                           'revocation-running', 'setsid-double-fork') and
+                           'revocation-running', 'setsid-double-fork',
+                           'observer-death') and
             lifecycle_scenario != workload_group or
             workload_group not in (None, 'cancellation', 'controller-restart',
                                    'deadline', 'revocation-running',
-                                   'setsid-double-fork')
+                                   'setsid-double-fork', 'observer-death')
             and lifecycle_scenario != 'none' or
             workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
@@ -2983,7 +3202,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
                               'controller-restart', 'deadline',
-                              'revocation-running', 'setsid-double-fork') and
+                              'revocation-running', 'setsid-double-fork',
+                              'observer-death') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -3161,7 +3381,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     'code': _private_role_probe_code(error)}
         if not startup_measurement and workload_group in ('cancellation',
                 'controller-restart', 'deadline', 'revocation-running',
-                'setsid-double-fork'):
+                'setsid-double-fork', 'observer-death'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
@@ -3211,6 +3431,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['setsidDoubleFork'] = {'status': 'unavailable-or-unsafe',
                                                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'observer-death':
+            try:
+                diagnostics['observerDeath'] = probe_observer_death(
+                    workload, handoff, result, observer)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['observerDeath'] = {'status': 'unavailable-or-unsafe',
+                                                'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -3254,7 +3482,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             'status': 'unavailable-or-unsafe',
                             'exceptionType': type(error).__name__[:128]}
                 if workload_group in ('cancellation', 'controller-restart', 'deadline',
-                                      'revocation-running', 'setsid-double-fork'):
+                                      'revocation-running', 'setsid-double-fork',
+                                      'observer-death'):
                     try:
                         diagnostics['lifecycleActorAfter'] = _administrator_collector_epoch(
                             workload_group)
@@ -3294,7 +3523,8 @@ def main():
                                                     'network-app', 'cancellation',
                                                     'controller-restart', 'deadline',
                                                     'revocation-running',
-                                                    'setsid-double-fork'))
+                                                    'setsid-double-fork',
+                                                    'observer-death'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:
