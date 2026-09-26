@@ -28,6 +28,9 @@ class ReferenceDriverTest(unittest.TestCase):
                          shlex.split(driver.workload_guest_command(args))[base.index('cancellation')])
         args.startup_measurement = False
         args.lifecycle_scenario = 'none'
+        args.workload_group = 'positive'
+        self.assertIn('--lifecycle-scenario none --workload-group positive',
+                      driver.workload_guest_command(args))
         args.workload_group = 'output-symlink'
         selected = driver.workload_guest_command(args)
         self.assertIn('--lifecycle-scenario none --workload-group output-symlink', selected)

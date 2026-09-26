@@ -211,6 +211,27 @@ class StartupTransportTests(unittest.TestCase):
             '--startup-measurement'], run.call_args.args[0])
         fixtures.verify.assert_called_once_with(guest.FIXTURES, 'a' * 64, guest.SOURCE, 'b' * 40)
 
+    def test_positive_group_reexec_omits_lifecycle_trigger(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        integration = SimpleNamespace(load_installation=Mock(), provision=Mock(), ENV={'LANG': 'C'})
+        fixtures = SimpleNamespace(verify=Mock())
+        driver = SimpleNamespace(prerequisites=lambda: [
+            'fixed-installed-source-required', 'separate-measured-test-kit-required'])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='positive'))
+        arguments = run.call_args.args[0]
+        self.assertIn(['--lifecycle-scenario', 'none', '--workload-group', 'positive'],
+                      [arguments[index:index + 4] for index in range(len(arguments) - 3)])
+
     def test_output_group_reexec_requires_closed_mode_without_lifecycle_trigger(self):
         from contextlib import nullcontext
         from types import SimpleNamespace

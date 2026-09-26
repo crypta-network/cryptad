@@ -2686,12 +2686,12 @@ def run(args):
     scenario = (group if group in ('cancellation', 'controller-restart',
                                   'deadline', 'revocation-running',
                                   'setsid-double-fork', 'observer-death') else
-                'none' if selected_preparation or role_measurement else
+                'none' if selected_preparation or role_measurement or group == 'positive' else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
     requires_none = (selected_preparation and group not in
                      ('cancellation', 'controller-restart', 'deadline',
                       'revocation-running', 'setsid-double-fork',
-                      'observer-death')) or role_measurement
+                      'observer-death')) or role_measurement or group == 'positive'
     if (requires_none != (scenario == 'none')
             or (group in ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
@@ -2803,7 +2803,7 @@ def run(args):
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
                                  case_group=None, fault_case=None, lifecycle_scenario=scenario,
                                  workload_group=('role-readiness-diagnostic' if role_measurement
-                                                 else group if selected_preparation
+                                                 else group if selected_preparation or group == 'positive'
                                                  else None))
             selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):

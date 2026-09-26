@@ -1746,6 +1746,8 @@ class RunnerTests(unittest.TestCase):
             terminal = synthetic_terminal_roster(roster)
             terminal['exchangeAudits'], observation['controlExchanges'] = synthetic_exchange_audits(roster)
             def fake_transport(selected):
+                self.assertEqual('positive', selected.workload_group)
+                self.assertEqual('none', selected.lifecycle_scenario)
                 selected.attempt.mkdir(mode=0o700)
                 for name, value in (('attempt.private.json', report),
                     ('pr314-workload-observation.private.json', observation),

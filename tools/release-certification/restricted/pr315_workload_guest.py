@@ -29,7 +29,7 @@ LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
             lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink', 'output-fifo',
+    if (workload_group not in (None, 'positive', 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
@@ -77,7 +77,7 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
               lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink', 'output-fifo',
+    if (workload_group not in (None, 'positive', 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
@@ -109,7 +109,8 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     workload.write(driver.SELECTION, selection, create=True)
     STAGE = ('startup-measurement' if startup_measurement else
              'role-readiness-measurement' if workload_group == 'role-readiness-diagnostic' else
-             'selected-group-driver' if workload_group else 'positive-driver')
+             'selected-group-driver' if workload_group not in (None, 'positive')
+             else 'positive-driver')
     return driver.execute(startup_measurement=startup_measurement,
                           lifecycle_scenario=lifecycle_scenario,
                           workload_group=workload_group), 0
@@ -252,7 +253,7 @@ def main():
     parser.add_argument('--startup-measurement', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
+    parser.add_argument('--workload-group', choices=('positive', 'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',

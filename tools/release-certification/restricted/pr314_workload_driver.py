@@ -3072,7 +3072,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             workload_group=None):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
-    if workload_group not in (None, 'output-symlink', 'output-fifo',
+    if workload_group not in (None, 'positive', 'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
@@ -3211,7 +3211,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['readinessJcmd'] = {'status': 'failure-transcript-invalid'}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
-        if (not startup_measurement and workload_group is None
+        if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
@@ -3520,7 +3520,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     return {'status': ('startup-measurement-executed' if startup_measurement else
                        'role-readiness-measurement-executed'
                        if workload_group == 'role-readiness-diagnostic' else
-                       'group-sequence-executed' if workload_group else
+                       'group-sequence-executed' if workload_group not in (None, 'positive') else
                        'positive-sequence-executed'),
             'workloadAcceptance': ('not-executed' if workload_group == 'role-readiness-diagnostic'
                                    else 'incomplete'),
@@ -3532,7 +3532,7 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
+    parser.add_argument('--workload-group', choices=('positive', 'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',

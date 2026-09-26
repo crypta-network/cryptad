@@ -320,7 +320,7 @@ def workload_guest_command(args):
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
-            or workload_group not in (None, 'output-symlink', 'output-fifo',
+            or workload_group not in (None, 'positive', 'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
                                       'role-readiness-diagnostic', 'role-boundary',
