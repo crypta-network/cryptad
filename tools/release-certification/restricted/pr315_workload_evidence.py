@@ -1385,6 +1385,44 @@ def _stale_handle_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _stale_pid_uid_audit(root, deadline):
+    """Retain both actual observer and sender epochs across one manager restart."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'stale-pid-uid-denial.json', maximum=16384,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'oldObserver',
+            'oldObserverAfter', 'newObserver', 'oldObserverFirst',
+            'oldObserverRejected', 'newObserverResult',
+            'oldSenderInvocation', 'newSenderInvocation',
+            'oldSenderCgroup', 'newSenderCgroup',
+            'oldQuiescentAuthority', 'oldStopReceipt',
+            'oldSenderState', 'newSenderState', 'stopStartedNs',
+            'restartStartedNs', 'newFcpControlledNs',
+            'newFcpControlDigest', 'rosterWindow',
+            'finishedMonotonicNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-stale-pid-uid-denial'
+                or value['caseId'] != 'stale-pid-uid'
+                or any(not isinstance(value[key], dict) for key in (
+                    'oldObserver', 'oldObserverAfter', 'newObserver',
+                    'oldObserverFirst', 'oldObserverRejected',
+                    'newObserverResult', 'oldQuiescentAuthority',
+                    'oldStopReceipt', 'rosterWindow'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('oldSenderState', 'newSenderState',
+                                   'newFcpControlDigest'))):
+            raise ValueError('stale-pid-uid-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _stuck_output_audit(root, deadline):
     """Retain the real role writer, bounded collector timeout and stop receipt."""
     remaining = deadline - time.monotonic()
@@ -1914,6 +1952,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/stale-handle-denial.json'):
             result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stale-pid-uid-denial.json'):
+            result['stalePidUidAudit'] = _stale_pid_uid_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
@@ -2005,6 +2045,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/stale-handle-denial.json'):
             result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stale-pid-uid-denial.json'):
+            result['stalePidUidAudit'] = _stale_pid_uid_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):

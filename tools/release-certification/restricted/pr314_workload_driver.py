@@ -2075,6 +2075,238 @@ def probe_stale_handle(workload, handoff, retired, result,
         separators=(',', ':')).encode()).hexdigest()
 
 
+def _stale_pid_observer_reply(channel, maximum=4096):
+    """Receive one bounded line while the child remains behind its barrier."""
+    raw = bytearray()
+    while b'\n' not in raw and len(raw) <= maximum:
+        block = channel.recv(min(1024, maximum + 1 - len(raw)))
+        if not block:
+            raise ValueError('workload-stale-pid-observer-disconnected')
+        raw.extend(block)
+    if len(raw) > maximum or raw.count(b'\n') != 1 or not raw.endswith(b'\n'):
+        raise ValueError('workload-stale-pid-observer-framing-invalid')
+    return json.loads(raw)
+
+
+def _stale_pid_observer_process(handle, expected_jdk, old, observer):
+    """Run the installed adapter epoch check as the actual soak account."""
+    from cross_version_workload import (WorkloadClient, InstalledWorkloadAdapter,
+                                        bind_daemon)
+    from cross_version_runtime import RuntimeFailure
+    role = 'candidate-sender'
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        pid = os.fork()
+    except BaseException:
+        parent.close()
+        child.close()
+        raise
+    if pid == 0:
+        parent.close()
+        try:
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            child.sendall(b'R')
+            if child.recv(1) != b'G':
+                raise ValueError('workload-stale-pid-start-invalid')
+            client = WorkloadClient()
+            started = time.monotonic_ns()
+            observed = client.request('observe', handle)
+            adapter = object.__new__(InstalledWorkloadAdapter)
+            adapter.handles = {role: handle}
+            adapter.nodes = {role: observed}
+            adapter._bound(role, observed)
+            daemon = bind_daemon(observed, expected_jdk)
+            first = {'target': {key: observed[key] for key in
+                ('state', 'generation', 'managerInvocation',
+                 'bootId', 'cgroupIdentity', 'stateDigest')},
+                'daemon': daemon, 'exchange': client.last_exchange,
+                'startedMonotonicNs': started,
+                'finishedMonotonicNs': time.monotonic_ns()}
+            if old:
+                child.sendall(json.dumps(first, sort_keys=True,
+                    separators=(',', ':')).encode() + b'\n')
+                if child.recv(1) != b'G':
+                    raise ValueError('workload-stale-pid-release-invalid')
+                started = time.monotonic_ns()
+                changed = client.request('observe', handle)
+                try:
+                    adapter._bound(role, changed)
+                except RuntimeFailure as error:
+                    if str(error) != 'workload-role-invocation-changed':
+                        raise
+                else:
+                    raise ValueError('workload-stale-pid-old-observer-accepted')
+                first['rejected'] = {'reason': 'workload-role-invocation-changed',
+                    'target': {key: changed[key] for key in
+                        ('state', 'generation', 'managerInvocation',
+                         'bootId', 'cgroupIdentity', 'stateDigest')},
+                    'exchange': client.last_exchange,
+                    'startedMonotonicNs': started,
+                    'finishedMonotonicNs': time.monotonic_ns()}
+                payload = first['rejected']
+            else:
+                payload = first
+            child.sendall(json.dumps(payload, sort_keys=True,
+                separators=(',', ':')).encode())
+            child.close()
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    child.close()
+    return parent, pid
+
+
+def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
+    """Keep the old observer alive across a real sender manager restart."""
+    from cross_version_workload import principal_row
+    from restricted_workload_controller import _recipient_fcp_control
+    role = 'candidate-sender'
+    handle = handoff['handles'][role]
+    expected_jdk = handoff['expectedJdkDigests'][role]
+    observer = pwd.getpwnam('cryptad-soak')
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-stale-pid-deadline')
+    sender_before = workload.observe(handle)
+    old_parent, old_pid = _stale_pid_observer_process(
+        handle, expected_jdk, True, observer)
+    new_parent = new_pid = None
+    try:
+        old_parent.settimeout(min(5, max(.001,
+            campaign_deadline_ns / 1e9 - time.monotonic())))
+        if old_parent.recv(1) != b'R':
+            raise ValueError('workload-stale-pid-old-not-ready')
+        old_actor = _positive_observer_epoch(old_pid, observer.pw_uid,
+                                              campaign_deadline_ns)
+        old_parent.sendall(b'G')
+        old_first = _stale_pid_observer_reply(old_parent)
+        if (old_first['target']['managerInvocation'] !=
+                sender_before['managerInvocation']):
+            raise ValueError('workload-stale-pid-old-instance-changed')
+        stop_started = time.monotonic_ns()
+        stopped = workload.stop(handle)
+        old_quiescent = workload.read(workload.ROOT /
+            'authority/candidate-sender.json')
+        old_receipt = workload.stop_receipt(role, old_quiescent)
+        restart_started = time.monotonic_ns()
+        started = workload.start(handle)
+        until = min(time.monotonic() + 180, campaign_deadline_ns / 1e9)
+        while True:
+            try:
+                ready, controlled_ns, control_digest = _recipient_fcp_control(handle)
+                break
+            except (OSError, ValueError):
+                if time.monotonic() >= until:
+                    raise ValueError('workload-stale-pid-new-fcp-unavailable') from None
+                time.sleep(.2)
+        sender_after = workload.observe(handle)
+        old_actor_after = _positive_observer_epoch(old_pid, observer.pw_uid,
+                                                    campaign_deadline_ns)
+        if (any(old_actor[key] != old_actor_after[key] for key in
+                ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+                 'namespaces', 'sourceDigest'))
+                or sender_after['managerInvocation'] ==
+                    sender_before['managerInvocation']
+                or old_receipt['managerInvocation'] !=
+                    sender_before['managerInvocation']
+                or old_receipt['membership'] != 'only-stop-helper'
+                or old_receipt['descendantCgroups'] != 0
+                or started['managerInvocation'] !=
+                    sender_after['managerInvocation']):
+            raise ValueError('workload-stale-pid-manager-transition-invalid')
+        new_parent, new_pid = _stale_pid_observer_process(
+            handle, expected_jdk, False, observer)
+        new_parent.settimeout(min(5, max(.001,
+            campaign_deadline_ns / 1e9 - time.monotonic())))
+        if new_parent.recv(1) != b'R':
+            raise ValueError('workload-stale-pid-new-not-ready')
+        new_actor = _positive_observer_epoch(new_pid, observer.pw_uid,
+                                              campaign_deadline_ns)
+        new_parent.sendall(b'G')
+        new_raw, new_status = collect_child(new_parent, new_pid,
+            min(time.monotonic() + 50, campaign_deadline_ns / 1e9))
+        new_pid = None
+        if new_status != 0 or not 0 < len(new_raw) <= 4096:
+            raise ValueError('workload-stale-pid-new-observer-failed')
+        new_result = json.loads(new_raw)
+        old_parent.sendall(b'G')
+        old_raw, old_status = collect_child(old_parent, old_pid,
+            min(time.monotonic() + 50, campaign_deadline_ns / 1e9))
+        old_pid = None
+        if old_status != 0 or not 0 < len(old_raw) <= 4096:
+            raise ValueError('workload-stale-pid-old-observer-failed')
+        rejected = json.loads(old_raw)
+        roster_started = time.monotonic_ns()
+        samples = {selected_role: workload.observe(handoff['handles'][selected_role])
+                   for selected_role in ROLE_NAMES}
+        roster_finished = time.monotonic_ns()
+        final_roster = {'observerUid': result['roleKernelRoster']['observerUid'],
+            'runnerUid': result['roleKernelRoster']['runnerUid'],
+            'roles': [principal_row(selected_role, samples[selected_role],
+                handoff['expectedJdkDigests'][selected_role])
+                for selected_role in ROLE_NAMES]}
+        if (new_result['target']['managerInvocation'] !=
+                sender_after['managerInvocation']
+                or rejected['target'] != new_result['target']
+                or old_first['target']['managerInvocation'] ==
+                    new_result['target']['managerInvocation']
+                or (old_first['daemon']['hostPid'],
+                    old_first['daemon']['startTicks']) == (
+                    new_result['daemon']['hostPid'],
+                    new_result['daemon']['startTicks'])
+                or old_actor['uid'] != new_actor['uid']
+                or (old_actor['pid'], old_actor['startTicks']) == (
+                    new_actor['pid'], new_actor['startTicks'])
+                or final_roster['roles'][0]['invocationId'] !=
+                    sender_after['managerInvocation']):
+            raise ValueError('workload-stale-pid-observer-proof-invalid')
+        result['authorityFinalRoleRoster'] = final_roster
+        result['authorityFinalRosterWindow'] = {
+            'startedMonotonicNs': roster_started,
+            'finishedMonotonicNs': roster_finished}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stale-pid-uid-denial',
+            'caseId': 'stale-pid-uid',
+            'oldObserver': old_actor, 'oldObserverAfter': old_actor_after,
+            'newObserver': new_actor,
+            'oldObserverFirst': old_first,
+            'oldObserverRejected': rejected,
+            'newObserverResult': new_result,
+            'oldSenderInvocation': sender_before['managerInvocation'],
+            'newSenderInvocation': sender_after['managerInvocation'],
+            'oldSenderCgroup': sender_before['cgroupIdentity'],
+            'newSenderCgroup': sender_after['cgroupIdentity'],
+            'oldQuiescentAuthority': {key: old_quiescent[key]
+                for key in ('generation', 'bootId', 'state',
+                            'managerInvocation', 'cgroupIdentity',
+                            'previousStopGeneration', 'stopReason')},
+            'oldStopReceipt': old_receipt,
+            'oldSenderState': sender_before['stateDigest'],
+            'newSenderState': sender_after['stateDigest'],
+            'stopStartedNs': stop_started,
+            'restartStartedNs': restart_started,
+            'newFcpControlledNs': controlled_ns,
+            'newFcpControlDigest': control_digest,
+            'rosterWindow': result['authorityFinalRosterWindow'],
+            'finishedMonotonicNs': time.monotonic_ns()}
+        workload.write(workload.ROOT / 'authority/stale-pid-uid-denial.json',
+                       audit, create=True)
+        return hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+    finally:
+        for channel, pid in ((old_parent, old_pid), (new_parent, new_pid)):
+            if channel is not None:
+                channel.close()
+            if pid is not None:
+                try:
+                    stop_child(pid)
+                except ChildProcessError:
+                    pass
+
+
 def probe_stuck_output(workload, handoff, result, role_probe_digest,
                        campaign_deadline_ns):
     """Time out the installed pipe collector while an owned role writer lives."""
@@ -5591,6 +5823,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostics['staleHandle'] = {
                         'status': 'unavailable-or-unsafe',
                         'exceptionType': type(error).__name__[:128]}
+            try:
+                digest = probe_stale_pid_uid(workload, handoff, result,
+                    campaign_deadline)
+                diagnostics['stalePidUid'] = {'status': 'captured',
+                    'caseId': 'stale-pid-uid', 'auditDigest': digest}
+            except Exception as error:
+                diagnostics['stalePidUid'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group == 'network-app':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

@@ -2676,8 +2676,8 @@ class RunnerTests(unittest.TestCase):
         import pr315_case_v10 as case_v10
         supported = (set(case_v10.POSITIVE) | {'output-symlink'}
                      | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
-        self.assertEqual(43, len(supported))
-        self.assertEqual({'stale-pid-uid', 'cleanup-race'},
+        self.assertEqual(44, len(supported))
+        self.assertEqual({'cleanup-race'},
                          set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
@@ -2891,6 +2891,120 @@ class RunnerTests(unittest.TestCase):
         with patch.object(runner, 'group_prepared', return_value=True):
             self.assertIsNone(runner.stale_handle_attempt(report, result,
                 changed, diagnostics, handoff, old_input, source))
+
+    def test_authority_restart_preserves_early_roster_and_rejects_old_observer(self):
+        source = Path(__file__).resolve().parents[3]
+        initial = synthetic_role_kernel_roster()
+        final = copy.deepcopy(initial)
+        first, last = initial['roles'][0], final['roles'][0]
+        last['invocationId'] = 'f' * 32
+        last['processEpoch'] = 200
+        last['cgroupDigest'] = runner.fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': [1, 199]})[7:]
+        terminal = synthetic_terminal_roster(initial)
+        previous = copy.deepcopy(terminal['stopReceipts'][
+            'candidate-sender']['current'])
+        previous['record'].update(startedMonotonicNs=50,
+                                  observedMonotonicNs=60)
+        old_authority = copy.deepcopy(terminal['controllerRecords'][
+            'candidate-sender']['record'])
+        terminal['stopReceipts']['candidate-sender']['previous'] = previous
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            generation='e' * 64, managerInvocation='f' * 32,
+            cgroupIdentity=[1, 199], startedMonotonicNs=180,
+            observedMonotonicNs=190)
+        terminal['controllerRecords']['candidate-sender']['record'].update(
+            generation='e' * 64, managerInvocation='f' * 32,
+            cgroupIdentity=[1, 199])
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        actor = {'kind': 'installed-observer-process', 'pid': 600,
+            'uid': initial['observerUid'], 'startTicks': 10,
+            'bootId': boot, 'sourceDigest': source_digest,
+            'cgroupIdentity': [1, 50],
+            'namespaces': {'pid': 1, 'net': 2, 'mnt': 3, 'user': 4},
+            'observedMonotonicNs': 10}
+        old_target = {'managerInvocation': first['invocationId']}
+        new_target = {'managerInvocation': last['invocationId']}
+        exchange = {'method': 'observe', 'requestDigest': '1' * 64,
+                    'responseDigest': '2' * 64}
+        old_first = {'target': old_target,
+            'daemon': {'managerInvocation': first['invocationId'],
+                       'hostPid': 1000, 'startTicks': 100},
+            'exchange': exchange, 'startedMonotonicNs': 20,
+            'finishedMonotonicNs': 30}
+        new_result = {'target': new_target,
+            'daemon': {'managerInvocation': last['invocationId'],
+                       'hostPid': 2000, 'startTicks': 200},
+            'exchange': exchange, 'startedMonotonicNs': 110,
+            'finishedMonotonicNs': 120}
+        rejected = {'target': new_target,
+            'reason': 'workload-role-invocation-changed',
+            'exchange': exchange, 'startedMonotonicNs': 130,
+            'finishedMonotonicNs': 140}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stale-pid-uid-denial',
+            'caseId': 'stale-pid-uid',
+            'oldObserver': actor,
+            'oldObserverAfter': dict(actor, observedMonotonicNs=90),
+            'newObserver': dict(actor, pid=700, startTicks=20,
+                                observedMonotonicNs=100),
+            'oldObserverFirst': old_first,
+            'oldObserverRejected': rejected,
+            'newObserverResult': new_result,
+            'oldSenderInvocation': first['invocationId'],
+            'newSenderInvocation': last['invocationId'],
+            'oldSenderCgroup': [1, 99], 'newSenderCgroup': [1, 199],
+            'oldQuiescentAuthority': old_authority,
+            'oldStopReceipt': previous['record'],
+            'oldSenderState': 'd' * 64, 'newSenderState': 'd' * 64,
+            'stopStartedNs': 40, 'restartStartedNs': 70,
+            'newFcpControlledNs': 80,
+            'newFcpControlDigest': 'a' * 64,
+            'rosterWindow': {'startedMonotonicNs': 150,
+                             'finishedMonotonicNs': 160},
+            'finishedMonotonicNs': 170}
+        terminal['stalePidUidAudit'] = {'status': 'captured', 'record': audit}
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        host = synthetic_host_identity()
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'authority',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 3,
+            'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'},
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': initial,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                       'finishedMonotonicNs': 2},
+            'authorityFinalRoleRoster': final,
+            'authorityFinalRosterWindow': audit['rosterWindow'],
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'stalePidUid': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}}
+        views = runner.authority_epoch_views(report, result, terminal)
+        self.assertIsNotNone(views)
+        self.assertEqual(first['invocationId'], views[0]['stopReceipts'][
+            'candidate-sender']['current']['record']['managerInvocation'])
+        self.assertEqual(last['invocationId'], views[2]['stopReceipts'][
+            'candidate-sender']['current']['record']['managerInvocation'])
+        selected = runner.stale_pid_uid_attempt(report, result, terminal,
+            diagnostics, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('stale-pid-uid', selected['caseId'])
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['candidate-sender']['previous']['record'][
+            'managerInvocation'] = '0' * 32
+        self.assertIsNone(runner.stale_pid_uid_attempt(report, result,
+            changed, diagnostics, source))
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
             self.assertFalse(installation.production_member(Path(

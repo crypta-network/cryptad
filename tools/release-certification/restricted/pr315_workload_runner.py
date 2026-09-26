@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import copy
 from contextlib import redirect_stdout
 import fcntl
 import hashlib
@@ -278,6 +279,55 @@ def group_prepared(report, result, terminal, group):
             and result.get('protectedExecutionEnabled') is False)
 
 
+def authority_epoch_views(report, result, terminal):
+    """Project two real sender epochs without reassigning earlier case identity."""
+    try:
+        if (not isinstance(result, dict) or not isinstance(terminal, dict)
+                or terminal.get('stalePidUidAudit', {}).get('status') != 'captured'
+                or not acceptance._principals(result.get('roleKernelRoster'))
+                or not acceptance._principals(
+                    result.get('authorityFinalRoleRoster'))):
+            return None
+        audit = terminal['stalePidUidAudit']['record']
+        first = next(row for row in result['roleKernelRoster']['roles']
+                     if row['role'] == 'candidate-sender')
+        last = next(row for row in result['authorityFinalRoleRoster']['roles']
+                    if row['role'] == 'candidate-sender')
+        previous = terminal['stopReceipts']['candidate-sender']['previous']
+        current = terminal['stopReceipts']['candidate-sender']['current']
+        old = audit['oldQuiescentAuthority']
+        if (previous['status'] != 'captured'
+                or current['status'] != 'captured'
+                or audit['oldStopReceipt'] != previous['record']
+                or old['state'] != 'quiescent'
+                or any(old[key] != previous['record'][key] for key in
+                       ('generation', 'bootId', 'managerInvocation',
+                        'cgroupIdentity'))
+                or audit['oldSenderInvocation'] != first['invocationId']
+                or audit['newSenderInvocation'] != last['invocationId']
+                or first['invocationId'] == last['invocationId']
+                or current['record']['managerInvocation'] != last['invocationId']
+                or first['bootId'] != last['bootId']):
+            return None
+        early = copy.deepcopy(terminal)
+        early['controllerRecords']['candidate-sender'] = {
+            'status': 'captured', 'record': old}
+        early['stopReceipts']['candidate-sender'] = {'current': previous}
+        final = copy.deepcopy(terminal)
+        final['stopReceipts']['candidate-sender'] = {'current': current}
+        final_result = {**result,
+            'roleKernelRoster': result['authorityFinalRoleRoster'],
+            'roleKernelRosterWindow': result['authorityFinalRosterWindow']}
+        if (not group_prepared(report, result, early, 'authority')
+                or not group_prepared(report, final_result, final,
+                                      'authority')):
+            return None
+        return early, final_result, final
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration):
+        return None
+
+
 def partial_launch_prepared(report, result, terminal):
     """Admit only the deliberate two-role setup and its final owned cleanup."""
     if (not isinstance(report, dict) or not isinstance(result, dict)
@@ -525,6 +575,155 @@ def stale_handle_attempt(report, result, terminal, diagnostics, handoff,
             'attackDigest': replies[1]['exchange']['requestDigest'],
             'hostVerifiedIdentity': host, 'guestStopped': True,
             'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
+def stale_pid_uid_attempt(report, result, terminal, diagnostics, source):
+    """Verify an old observer rejects a real replacement sender invocation."""
+    try:
+        views = authority_epoch_views(report, result, terminal)
+        if (views is None or not isinstance(diagnostics, dict)
+                or diagnostics.get('stalePidUid', {}).get('status') != 'captured'):
+            return None
+        audit = terminal['stalePidUidAudit']['record']
+        first_roster = result['roleKernelRoster']
+        last_roster = result['authorityFinalRoleRoster']
+        first = next(row for row in first_roster['roles']
+                     if row['role'] == 'candidate-sender')
+        last = next(row for row in last_roster['roles']
+                    if row['role'] == 'candidate-sender')
+        old_actor = audit['oldObserver']
+        old_after = audit['oldObserverAfter']
+        new_actor = audit['newObserver']
+        old_first = audit['oldObserverFirst']
+        rejected = audit['oldObserverRejected']
+        new_result = audit['newObserverResult']
+        previous = terminal['stopReceipts']['candidate-sender']['previous']['record']
+        current = terminal['stopReceipts']['candidate-sender']['current']['record']
+        host = report['hostVerifiedIdentity']
+        audit_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        source_digest = reference.sha256(Path(source) /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        stable_actor = ('kind', 'pid', 'uid', 'startTicks', 'bootId',
+                        'cgroupIdentity', 'namespaces', 'sourceDigest')
+        early_roles = {row['role']: row for row in first_roster['roles']}
+        late_roles = {row['role']: row for row in last_roster['roles']}
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-stale-pid-uid-denial'
+                or audit['caseId'] != 'stale-pid-uid'
+                or audit_digest != diagnostics['stalePidUid']['auditDigest']
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']
+                or any(old_actor[key] != old_after[key]
+                       for key in stable_actor)
+                or old_actor['kind'] != 'installed-observer-process'
+                or new_actor['kind'] != 'installed-observer-process'
+                or old_actor['uid'] != first_roster['observerUid']
+                or new_actor['uid'] != first_roster['observerUid']
+                or old_actor['sourceDigest'] != source_digest
+                or new_actor['sourceDigest'] != source_digest
+                or old_actor['bootId'].replace('-', '').lower() != first['bootId']
+                or new_actor['bootId'].replace('-', '').lower() != last['bootId']
+                or old_actor['pid'] == new_actor['pid']
+                or old_actor['startTicks'] <= 0
+                or new_actor['startTicks'] <= 0
+                or first_roster['observerUid'] != last_roster['observerUid']
+                or first_roster['runnerUid'] != last_roster['runnerUid']
+                or any(early_roles[role] != late_roles[role]
+                       for role in acceptance.ROLES if role != 'candidate-sender')
+                or audit['oldSenderInvocation'] != first['invocationId']
+                or audit['newSenderInvocation'] != last['invocationId']
+                or first['invocationId'] == last['invocationId']
+                or first['uid'] != last['uid']
+                or first['bootId'] != last['bootId']
+                or audit['oldSenderCgroup'] != previous['cgroupIdentity']
+                or audit['newSenderCgroup'] != current['cgroupIdentity']
+                or audit['oldStopReceipt'] != previous
+                or audit['oldQuiescentAuthority']['managerInvocation'] !=
+                    previous['managerInvocation']
+                or previous['membership'] != 'only-stop-helper'
+                or previous['descendantCgroups'] != 0
+                or current['membership'] != 'only-stop-helper'
+                or current['descendantCgroups'] != 0
+                or audit['oldSenderState'] != audit['newSenderState']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['newSenderState']
+                or old_first['target']['managerInvocation'] !=
+                    first['invocationId']
+                or new_result['target']['managerInvocation'] !=
+                    last['invocationId']
+                or rejected['target'] != new_result['target']
+                or rejected['reason'] != 'workload-role-invocation-changed'
+                or old_first['daemon']['managerInvocation'] !=
+                    first['invocationId']
+                or new_result['daemon']['managerInvocation'] !=
+                    last['invocationId']
+                or old_first['daemon']['startTicks'] !=
+                    first['processEpoch']
+                or new_result['daemon']['startTicks'] !=
+                    last['processEpoch']
+                or (old_first['daemon']['hostPid'],
+                    old_first['daemon']['startTicks']) == (
+                    new_result['daemon']['hostPid'],
+                    new_result['daemon']['startTicks'])
+                or not all(row['exchange']['method'] == 'observe'
+                    and re.fullmatch('[0-9a-f]{64}',
+                        str(row['exchange']['requestDigest'])) is not None
+                    and re.fullmatch('[0-9a-f]{64}',
+                        str(row['exchange']['responseDigest'])) is not None
+                    for row in (old_first, rejected, new_result))
+                or len({row['exchange']['requestDigest'] for row in
+                    (old_first, rejected, new_result)}) != 1
+                or not old_actor['observedMonotonicNs']
+                    < old_first['startedMonotonicNs']
+                    < old_first['finishedMonotonicNs']
+                    < audit['stopStartedNs']
+                    < previous['startedMonotonicNs']
+                    < previous['observedMonotonicNs']
+                    < audit['restartStartedNs']
+                    < audit['newFcpControlledNs']
+                    < old_after['observedMonotonicNs']
+                    < new_actor['observedMonotonicNs']
+                    < new_result['startedMonotonicNs']
+                    < new_result['finishedMonotonicNs']
+                    < rejected['startedMonotonicNs']
+                    < rejected['finishedMonotonicNs']
+                    < audit['rosterWindow']['startedMonotonicNs']
+                    < audit['rosterWindow']['finishedMonotonicNs']
+                    < audit['finishedMonotonicNs']
+                    < current['startedMonotonicNs']
+                or audit['rosterWindow'] != result['authorityFinalRosterWindow']
+                or re.fullmatch('[0-9a-f]{64}',
+                    str(audit['newFcpControlDigest'])) is None):
+            return None
+        controller_digest = fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender',
+            'identity': audit['newSenderCgroup']})[7:]
+        if controller_digest != last['cgroupDigest']:
+            return None
+        return {'contract': campaign.CONTRACT,
+            'caseId': 'stale-pid-uid', 'status': 'passed',
+            'actorEpoch': old_actor,
+            'targetEpoch': {'kind': 'installed-process-observer-epoch-check',
+                'oldObserverPid': old_actor['pid'],
+                'newObserverPid': new_actor['pid'],
+                'oldSenderInvocation': first['invocationId'],
+                'newSenderInvocation': last['invocationId'],
+                'oldDaemonPid': old_first['daemon']['hostPid'],
+                'newDaemonPid': new_result['daemon']['hostPid'],
+                'newDaemonStartTicks': new_result['daemon']['startTicks'],
+                'uid': first['uid'], 'bootId': first['bootId'],
+                'cgroupDigest': last['cgroupDigest'],
+                'newFcpControlDigest': audit['newFcpControlDigest']},
+            'operationWindow': {
+                'startedMonotonicNs': old_first['startedMonotonicNs'],
+                'finishedMonotonicNs': rejected['finishedMonotonicNs']},
+            'attackDigest': audit_digest,
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': current['observedMonotonicNs']}
     except (AttributeError, KeyError, TypeError, ValueError, IndexError,
             StopIteration, OSError):
         return None
@@ -4887,12 +5086,20 @@ def run(args):
             startup_measurement = getattr(args, 'startup_measurement', False)
             diagnostic_mode = startup_measurement or role_measurement
             positive = not diagnostic_mode and positive_executed(report, value, terminal)
+            authority_views = (authority_epoch_views(report, value, terminal)
+                if group == 'authority' and isinstance(terminal, dict)
+                and terminal.get('stalePidUidAudit', {}).get('status') == 'captured'
+                else None)
             group_ready = (not diagnostic_mode and selected_preparation
                            and (partial_launch_prepared(report, value, terminal)
                                 if group == 'partial-launch' else
+                                authority_views is not None
+                                if group == 'authority' else
                                 group_prepared(report, value, terminal, group)))
             role_boundary_ready = group == 'role-boundary' and group_ready
             authority_ready = group == 'authority' and group_ready
+            authority_terminal = (authority_views[0]
+                if authority_views is not None else terminal)
             network_app_ready = group == 'network-app' and group_ready
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
@@ -5091,7 +5298,8 @@ def run(args):
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
                     raise ValueError('workload-observer-control-host-identity-changed')
-                denial = observer_control_denial_attempt(report, fixture, terminal)
+                denial = observer_control_denial_attempt(report, fixture,
+                    authority_terminal)
                 if denial is not None:
                     identity, case_attempt = denial
                     checked_cases = acceptance.verify_attempts(identity, [case_attempt])
@@ -5104,7 +5312,8 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     if campaign_plan_path is not None:
                         sidecar = _v10_legacy_sidecar('observer-control',
-                            report, fixture, terminal, resources, identity, case_attempt)
+                            report, fixture, authority_terminal, resources,
+                            identity, case_attempt)
                         if sidecar is None:
                             raise ValueError('workload-observer-control-v10-epoch-unavailable')
                         save_v9_case(output / 'observer-control-v9-evidence.private.json',
@@ -5114,7 +5323,8 @@ def run(args):
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
                     and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
-                denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
+                denial = arbitrary_endpoint_denial_attempt(report, value,
+                    fixture, authority_terminal)
                 if denial is None:
                     raise ValueError('workload-arbitrary-endpoint-verification-failed')
                 identity, case_attempt, sidecar = denial
@@ -5128,7 +5338,8 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 if campaign_plan_path is not None:
                     sidecar = _v10_legacy_sidecar('arbitrary-endpoint',
-                        report, fixture, terminal, resources, identity, case_attempt)
+                        report, fixture, authority_terminal, resources,
+                        identity, case_attempt)
                     if sidecar is None:
                         raise ValueError('workload-arbitrary-endpoint-v10-epoch-unavailable')
                 save_v9_case(output / 'arbitrary-endpoint-v9-evidence.private.json',
@@ -5137,7 +5348,8 @@ def run(args):
                 statuses['arbitrary-endpoint'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
-                denial = runner_control_denial_attempt(report, value, fixture, terminal)
+                denial = runner_control_denial_attempt(report, value, fixture,
+                    authority_terminal)
                 if denial is not None:
                     identity, case_attempt = denial
                     checked_cases = acceptance.verify_attempts(identity, [case_attempt])
@@ -5150,7 +5362,8 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     if campaign_plan_path is not None:
                         sidecar = _v10_legacy_sidecar('runner-control',
-                            report, fixture, terminal, resources, identity, case_attempt)
+                            report, fixture, authority_terminal, resources,
+                            identity, case_attempt)
                         if sidecar is None:
                             raise ValueError('workload-runner-control-v10-epoch-unavailable')
                         save_v9_case(output / 'runner-control-v9-evidence.private.json',
@@ -5177,7 +5390,8 @@ def run(args):
                                    ('forged-counters', 'forgedCountersAudit')):
                 if (authority_ready and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
-                    case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
+                    case = _fixed_claim_attempt(case_id, report, value, fixture,
+                        authority_terminal, args.source)
                     if case is None:
                         raise ValueError('workload-fixed-claim-verification-failed')
                     save_v9_case(output / (case_id + '-v9-evidence.private.json'),
@@ -5304,7 +5518,7 @@ def run(args):
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(
-                    report, value, fixture, terminal, args.source)
+                    report, value, fixture, authority_terminal, args.source)
                 if denial is None:
                     raise ValueError('workload-resolver-authority-verification-failed')
                 identity, case_attempt, sidecar = denial
@@ -5325,17 +5539,26 @@ def run(args):
                         or terminal.get('staleHandleAudit', {}).get('status') !=
                             'captured'):
                     raise ValueError('workload-stale-handle-audit-unavailable')
-                case = stale_handle_attempt(report, value, terminal,
+                case = stale_handle_attempt(report, value, authority_terminal,
                     resources, retired_handoff, raw_input, args.source)
                 if case is None:
                     raise ValueError('workload-stale-handle-verification-failed')
                 save_v9_case(output / 'stale-handle-v9-evidence.private.json',
                     case, 'stale-handle', roster=value['roleKernelRoster'])
                 statuses['stale-handle'] = 'passed'
+            if authority_ready:
+                case = stale_pid_uid_attempt(report, value, terminal,
+                    resources, args.source)
+                if case is None:
+                    raise ValueError('workload-stale-pid-uid-verification-failed')
+                save_v9_case(output / 'stale-pid-uid-v9-evidence.private.json',
+                    case, 'stale-pid-uid', roster=value['roleKernelRoster'])
+                statuses['stale-pid-uid'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('hostileAppOriginAudit', {}).get('status') == 'captured'):
                 denial = _hostile_origin_attempt(
-                    report, value, fixture, terminal, args.source, resources)
+                    report, value, fixture, authority_terminal,
+                    args.source, resources)
                 if denial is None:
                     raise ValueError('workload-hostile-origin-verification-failed')
                 identity, case_attempt, sidecar = denial
