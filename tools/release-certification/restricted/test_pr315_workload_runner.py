@@ -1724,7 +1724,8 @@ class RunnerTests(unittest.TestCase):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]
         host = synthetic_host_identity()
-        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + '6' * 64}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + '6' * 64,
+                   'mailDigest': 'sha256:' + '5' * 64}
         cgroup = [1, 99]
         actor = {'role': 'candidate-sender', 'hostPid': 300,
             'namespacePid': 19, 'namespacePids': [300, 19, 2],
@@ -1849,6 +1850,26 @@ class RunnerTests(unittest.TestCase):
                          if row['caseId'] == 'resource-exhaustion'))
         self.assertEqual(1, sidecar['targetEpoch']['pidsMaxEventsDuring'])
         self.assertEqual(500, sidecar['targetEpoch']['childEpochCount'])
+        import pr315_case_v10 as case_v10
+        campaign_identity = {**identity,
+            'admittedAppDigest': fixture['mailDigest'][7:]}
+        campaign_plan = runner.campaign_seal.plan(campaign_identity,
+            '4' * 64, runner.host_admission.POLICY,
+            fixture['probeDigest'][7:], '7' * 64, '8' * 64)
+        raw_digests = {'guestReport': '1' * 64,
+                       'volatile': '2' * 64,
+                       'hostMonitor': '3' * 64}
+        record = case_v10.generic_case_record(campaign_plan,
+            'suite-201', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw_digests)
+        self.assertEqual('resource-exhaustion', record['caseId'])
+        with self.assertRaisesRegex(ValueError, 'generic-contract-invalid'):
+            changed = runner.campaign_seal.plan(campaign_identity,
+                '4' * 64, runner.host_admission.POLICY,
+                '9' * 64, '7' * 64, '8' * 64)
+            case_v10.generic_case_record(changed,
+                'suite-201', identity, attempt, sidecar,
+                Path(__file__).resolve().parents[3], raw_digests)
         for change in (
                 lambda row: row['resourceAudit']['record']['roleDuring'].update(
                     pidsMaxEvents=0),

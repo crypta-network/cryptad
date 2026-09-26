@@ -158,7 +158,13 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
                    for value in raw_evidence_digests.values())):
         raise ValueError('pr315-v10-generic-input-invalid')
     case_id = sidecar.get('caseId')
-    if (case_id not in GENERIC or identity != campaign.get('identity')
+    expected_identity = campaign.get('identity')
+    if case_id == 'resource-exhaustion' and isinstance(expected_identity, dict):
+        # V8 names the probed signed app in this case. The campaign separately
+        # pins both normally signed Mail and probe bytes; retain V8 semantics.
+        expected_identity = {**expected_identity,
+            'admittedAppDigest': campaign.get('probeDigest')}
+    if (case_id not in GENERIC or identity != expected_identity
             or sidecar.get('contract') != historical.CONTRACT
             or sidecar.get('status') != 'passed'
             or sidecar.get('guestStopped') is not True
