@@ -47,7 +47,8 @@ def groups():
 
 SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'network-app', 'cancellation', 'controller-restart',
-                              'output-symlink', 'output-fifo'))
+                              'output-symlink', 'output-fifo', 'output-hardlink',
+                              'output-flood', 'output-replacement'))
 
 
 def selected_cases(group):
@@ -170,14 +171,17 @@ def terminal_roster_matches(roster, terminal, *, require_sender_restart=True):
 
 def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
-    if (group not in ('output-symlink', 'output-fifo', 'role-readiness-diagnostic')
+    if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
+                      'output-flood', 'output-replacement',
+                      'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
     identity = result.get('identity')
     return (report.get('mode') == 'workload-positive'
             and report.get('workloadPurpose') == ('selected-group'
-                if group in ('output-symlink', 'output-fifo')
+                if group in ('output-symlink', 'output-fifo', 'output-hardlink',
+                             'output-flood', 'output-replacement')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -200,7 +204,8 @@ def group_prepared(report, result, terminal, group):
                                         require_sender_restart=False)
             and result.get('workloadAcceptance') == (
                 'incomplete-hostile-contract-not-executed'
-                if group in ('output-symlink', 'output-fifo')
+                if group in ('output-symlink', 'output-fifo', 'output-hardlink',
+                             'output-flood', 'output-replacement')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -1657,10 +1662,15 @@ def _resolver_authority_attempt(report, result, fixture, terminal, source):
 
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
-    if case_id not in ('output-symlink', 'output-fifo'):
+    if case_id not in ('output-symlink', 'output-fifo',
+                       'output-hardlink', 'output-flood', 'output-replacement'):
         return None
     try:
-        field = 'outputSymlinkAudit' if case_id == 'output-symlink' else 'outputFifoAudit'
+        field = {'output-symlink': 'outputSymlinkAudit',
+                 'output-fifo': 'outputFifoAudit',
+                 'output-hardlink': 'outputHardlinkAudit',
+                 'output-flood': 'outputFloodAudit',
+                 'output-replacement': 'outputReplacementAudit'}[case_id]
         if (not group_prepared(report, result, terminal, case_id)
                 or fixture.get('schemaVersion') != 4
                 or terminal[field]['status'] != 'captured'):
@@ -1724,7 +1734,16 @@ def _output_artifact_attempt(report, result, fixture, terminal, source, case_id)
                 or collector_group in {row['cgroupDigest']
                     for row in result['roleKernelRoster']['roles']}
                 or target_before['controlDigest'] != target_after['controlDigest']
-                or target_before['fileIdentity'] != target_after['fileIdentity']
+                or (case_id != 'output-hardlink' and
+                    target_before['fileIdentity'] != target_after['fileIdentity'])
+                or (case_id == 'output-hardlink' and
+                    (target_before['fileIdentity'][:4] != target_after['fileIdentity'][:4]
+                     or target_after['fileIdentity'][4] < target_before['fileIdentity'][4]
+                     or type(target_before['linkCount']) is not int
+                     or type(target_after['linkCount']) is not int
+                     or target_before['linkCount'] != 1
+                     or target_after['linkCount'] != 2
+                     or audit['artifactIdentity'] != target_after['fileIdentity'][:2]))
                 or not result['roleKernelRosterWindow']['finishedMonotonicNs']
                     < target_before['observedMonotonicNs']
                 or not isinstance(target_before['fileIdentity'], list)
@@ -1741,7 +1760,33 @@ def _output_artifact_attempt(report, result, fixture, terminal, source, case_id)
                     hashlib.sha256(b'/node/tmp/pr315-output-target-canary').hexdigest())
                 or (case_id == 'output-fifo' and
                     (audit['artifactType'] != 'fifo' or audit['artifactMode'] != 0o600))
-                or audit['collectorDenial'] != 'workload-snapshot-file-invalid'
+                or (case_id == 'output-hardlink' and
+                    (audit['artifactType'] != 'hardlink'
+                     or audit['artifactMode'] != 0o600
+                     or audit['artifactLinkCount'] != 2))
+                or (case_id == 'output-flood' and
+                    (audit['artifactType'] != 'regular'
+                     or audit['artifactMode'] != 0o600
+                     or type(audit['artifactSize']) is not int
+                     or audit['artifactSize'] != 65537
+                     or audit['artifactDigest'] != hashlib.sha256(
+                         b'F' * 65537).hexdigest()))
+                or (case_id == 'output-replacement' and
+                    (audit['artifactType'] != 'replacement'
+                     or audit['artifactMode'] != 0o600
+                     or not isinstance(audit['replacementIdentity'], list)
+                     or len(audit['replacementIdentity']) != 2
+                     or any(type(part) is not int or part <= 0
+                            for part in audit['replacementIdentity'])
+                     or audit['replacementIdentity'][0] != audit['artifactIdentity'][0]
+                     or audit['replacementIdentity'][1] == audit['artifactIdentity'][1]
+                     or audit['initialDigest'] != hashlib.sha256(b'A' * 32).hexdigest()
+                     or audit['replacementDigest'] != hashlib.sha256(b'B' * 32).hexdigest()
+                     or not audit['attackFinishedNs'] < audit['collectorStartedNs']
+                         < audit['swapTriggerNs'] < audit['swapStartedNs']
+                         < audit['swapFinishedNs'] < audit['collectorFinishedNs']))
+                or audit['collectorDenial'] != ('workload-snapshot-changed'
+                    if case_id == 'output-replacement' else 'workload-snapshot-file-invalid')
                 or not target_before['observedMonotonicNs']
                     < collector['observedMonotonicNs'] < audit['triggerMonotonicNs']
                     < audit['attackStartedNs'] < audit['attackFinishedNs']
@@ -1807,6 +1852,23 @@ def _output_artifact_attempt(report, result, fixture, terminal, source, case_id)
         if case_id == 'output-fifo':
             sidecar['targetEpoch']['artifactType'] = 'fifo'
             sidecar['targetEpoch']['artifactMode'] = audit['artifactMode']
+        if case_id == 'output-hardlink':
+            sidecar['targetEpoch']['artifactType'] = 'hardlink'
+            sidecar['targetEpoch']['artifactMode'] = audit['artifactMode']
+            sidecar['targetEpoch']['artifactLinkCount'] = audit['artifactLinkCount']
+        if case_id == 'output-flood':
+            sidecar['targetEpoch']['artifactType'] = 'regular'
+            sidecar['targetEpoch']['artifactMode'] = audit['artifactMode']
+            sidecar['targetEpoch']['artifactSize'] = audit['artifactSize']
+            sidecar['targetEpoch']['artifactDigest'] = audit['artifactDigest']
+        if case_id == 'output-replacement':
+            sidecar['targetEpoch']['artifactType'] = 'replacement'
+            sidecar['targetEpoch']['artifactMode'] = audit['artifactMode']
+            sidecar['targetEpoch']['replacementIdentity'] = audit['replacementIdentity']
+            sidecar['targetEpoch']['initialDigest'] = audit['initialDigest']
+            sidecar['targetEpoch']['replacementDigest'] = audit['replacementDigest']
+            sidecar['targetEpoch']['swapTriggerNs'] = audit['swapTriggerNs']
+            sidecar['targetEpoch']['swapFinishedNs'] = audit['swapFinishedNs']
         return identity, attempt, sidecar
     except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
             OSError):
@@ -1821,6 +1883,21 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
 def _output_fifo_attempt(report, result, fixture, terminal, source):
     return _output_artifact_attempt(report, result, fixture, terminal, source,
                                     'output-fifo')
+
+
+def _output_hardlink_attempt(report, result, fixture, terminal, source):
+    return _output_artifact_attempt(report, result, fixture, terminal, source,
+                                    'output-hardlink')
+
+
+def _output_flood_attempt(report, result, fixture, terminal, source):
+    return _output_artifact_attempt(report, result, fixture, terminal, source,
+                                    'output-flood')
+
+
+def _output_replacement_attempt(report, result, fixture, terminal, source):
+    return _output_artifact_attempt(report, result, fixture, terminal, source,
+                                    'output-replacement')
 
 
 def _sibling_network_attempt(case_id, report, result, fixture, terminal, source):
@@ -1989,7 +2066,8 @@ def run(args):
         raise ValueError('workload-accepted-tcg-profile-required')
     group = getattr(args, 'case_group', None)
     selected_cases(group)
-    output_group = group in ('output-symlink', 'output-fifo')
+    output_group = group in ('output-symlink', 'output-fifo',
+                             'output-hardlink', 'output-flood', 'output-replacement')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -2329,8 +2407,12 @@ def run(args):
                 native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
                 statuses['resolver-authority'] = 'passed'
             if (output_group and group_ready and isinstance(terminal, dict)
-                    and terminal.get('outputSymlinkAudit' if group == 'output-symlink'
-                                     else 'outputFifoAudit', {}).get('status') == 'captured'):
+                    and terminal.get({'output-symlink': 'outputSymlinkAudit',
+                                      'output-fifo': 'outputFifoAudit',
+                                      'output-hardlink': 'outputHardlinkAudit',
+                                      'output-flood': 'outputFloodAudit',
+                                      'output-replacement': 'outputReplacementAudit'}[group],
+                                     {}).get('status') == 'captured'):
                 denial = _output_artifact_attempt(report, value, fixture, terminal,
                                                   args.source, group)
                 if denial is None:

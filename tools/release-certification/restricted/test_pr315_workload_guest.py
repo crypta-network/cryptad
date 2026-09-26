@@ -252,6 +252,36 @@ class StartupTransportTests(unittest.TestCase):
             self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
                 lifecycle_scenario='none', workload_group='output-fifo'))
         self.assertIn('output-fifo', run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='output-hardlink'))
+        self.assertIn('output-hardlink', run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='output-flood'))
+        self.assertIn('output-flood', run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='output-replacement'))
+        self.assertIn('output-replacement', run.call_args.args[0])
         with self.assertRaisesRegex(ValueError, 'group-invalid'):
             guest.execute('a' * 64, 'b' * 40, workload_group='output-symlink')
 

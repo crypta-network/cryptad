@@ -5,6 +5,8 @@ import stat
 from pathlib import Path
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -35,6 +37,99 @@ class RoleProbeTest(unittest.TestCase):
             self.assertEqual(b'x' * 32, snapshot.read_file(
                 root, canary.name, maximum=64, timeout=2))
             self.assertEqual('output-fifo', json.loads(result.read_text())['caseId'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_fixed_output_hardlink_preserves_canary_and_collector_rejects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / 'canary'
+            artifact = root / 'artifact'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            canary.write_bytes(b'x' * 32)
+            trigger.write_text(json.dumps({'caseId': 'output-hardlink', 'nonce': 'a' * 64}))
+            with patch.object(probe, 'OUTPUT_CANARY', canary), \
+                    patch.object(probe, 'OUTPUT_HARDLINK', artifact), \
+                    patch.object(probe, 'OUTPUT_HARDLINK_TRIGGER', trigger), \
+                    patch.object(probe, 'OUTPUT_HARDLINK_RESULT', result):
+                probe.publish_output_hardlink('a' * 64)
+            self.assertTrue(stat.S_ISREG(artifact.lstat().st_mode))
+            self.assertEqual(2, artifact.stat().st_nlink)
+            self.assertEqual((canary.stat().st_dev, canary.stat().st_ino),
+                             (artifact.stat().st_dev, artifact.stat().st_ino))
+            with self.assertRaisesRegex(snapshot.SnapshotError, 'file-invalid'):
+                snapshot.read_file(root, artifact.name, maximum=64, timeout=2)
+            self.assertEqual(b'x' * 32, canary.read_bytes())
+            self.assertEqual('output-hardlink', json.loads(result.read_text())['caseId'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_fixed_output_flood_exceeds_collector_cap_by_one_byte(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / 'canary'
+            artifact = root / 'artifact'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            canary.write_bytes(b'x' * 32)
+            trigger.write_text(json.dumps({'caseId': 'output-flood', 'nonce': 'a' * 64}))
+            with patch.object(probe, 'OUTPUT_CANARY', canary), \
+                    patch.object(probe, 'OUTPUT_FLOOD', artifact), \
+                    patch.object(probe, 'OUTPUT_FLOOD_TRIGGER', trigger), \
+                    patch.object(probe, 'OUTPUT_FLOOD_RESULT', result):
+                probe.publish_output_flood('a' * 64)
+            self.assertEqual(65537, artifact.stat().st_size)
+            self.assertEqual(b'F' * 65537, artifact.read_bytes())
+            with self.assertRaisesRegex(snapshot.SnapshotError, 'file-invalid'):
+                snapshot.read_file(root, artifact.name, maximum=65536, timeout=2)
+            self.assertEqual(b'x' * 32, snapshot.read_file(
+                root, canary.name, maximum=64, timeout=2))
+            self.assertEqual(65537, json.loads(result.read_text())['writtenBytes'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux descriptor pinning required')
+    def test_fixed_output_replacement_waits_for_second_barrier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / 'canary'
+            artifact = root / 'artifact'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            swap_trigger = root / 'swap-trigger.json'
+            swap_result = root / 'swap-result.json'
+            next_file = root / 'next'
+            canary.write_bytes(b'x' * 32)
+            trigger.write_text(json.dumps({'caseId': 'output-replacement',
+                                            'nonce': 'a' * 64}))
+            failures = []
+
+            def run():
+                try:
+                    probe.publish_output_replacement('a' * 64)
+                except Exception as error:
+                    failures.append(error)
+
+            with patch.object(probe, 'OUTPUT_CANARY', canary), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT', artifact), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT_TRIGGER', trigger), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT_RESULT', result), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT_SWAP_TRIGGER', swap_trigger), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT_SWAP_RESULT', swap_result), \
+                    patch.object(probe, 'OUTPUT_REPLACEMENT_NEXT', next_file):
+                worker = threading.Thread(target=run, daemon=True)
+                worker.start()
+                until = time.monotonic() + 2
+                while not result.exists() and time.monotonic() < until:
+                    time.sleep(.01)
+                self.assertTrue(result.exists())
+                self.assertEqual(b'A' * 32, artifact.read_bytes())
+                first = artifact.stat().st_ino
+                swap_trigger.write_text(json.dumps({'caseId': 'output-replacement',
+                                                    'nonce': 'a' * 64}))
+                worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+            self.assertFalse(failures)
+            self.assertNotEqual(first, artifact.stat().st_ino)
+            self.assertEqual(b'B' * 32, artifact.read_bytes())
+            self.assertEqual('output-replacement', json.loads(swap_result.read_text())['caseId'])
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_symlink_is_real_and_descriptor_collector_rejects_it(self):

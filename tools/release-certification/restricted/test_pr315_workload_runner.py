@@ -149,6 +149,15 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report, result, terminal, 'output-symlink'))
         self.assertTrue(runner.group_prepared(report,
             {**result, 'groupPreparation': 'output-fifo'}, terminal, 'output-fifo'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-hardlink'}, terminal,
+            'output-hardlink'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-flood'}, terminal,
+            'output-flood'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-replacement'}, terminal,
+            'output-replacement'))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -534,6 +543,80 @@ class RunnerTests(unittest.TestCase):
             fifo_audit['artifactMode'] = 0o666
             self.assertIsNone(runner._output_fifo_attempt(
                 report, result, fixture, fifo_terminal, source))
+            hardlink_terminal = copy.deepcopy(terminal)
+            hardlink_audit = hardlink_terminal.pop('outputSymlinkAudit')['record']
+            hardlink_audit['kind'] = 'pr315-administrator-output-hardlink-denial'
+            hardlink_audit['caseId'] = 'output-hardlink'
+            del hardlink_audit['linkTargetDigest']
+            hardlink_audit['artifactType'] = 'hardlink'
+            hardlink_audit['artifactMode'] = 0o600
+            hardlink_audit['artifactLinkCount'] = 2
+            hardlink_audit['artifactIdentity'] = target['fileIdentity'][:2]
+            hardlink_audit['targetBefore']['linkCount'] = 1
+            hardlink_audit['targetAfter']['linkCount'] = 2
+            hardlink_audit['targetAfter']['fileIdentity'] = list(
+                hardlink_audit['targetBefore']['fileIdentity'])
+            hardlink_audit['targetAfter']['fileIdentity'][4] = 102
+            hardlink_terminal['outputHardlinkAudit'] = {
+                'status': 'captured', 'record': hardlink_audit}
+            hardlink_identity, hardlink_attempt, hardlink_sidecar = (
+                runner._output_hardlink_attempt(report, result, fixture,
+                                                hardlink_terminal, source))
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(hardlink_identity,
+                    [hardlink_attempt])['cases'] if row['caseId'] == 'output-hardlink'))
+            self.assertEqual(2, hardlink_sidecar['targetEpoch']['artifactLinkCount'])
+            hardlink_audit['targetAfter']['linkCount'] = 1
+            self.assertIsNone(runner._output_hardlink_attempt(
+                report, result, fixture, hardlink_terminal, source))
+            flood_terminal = copy.deepcopy(terminal)
+            flood_audit = flood_terminal.pop('outputSymlinkAudit')['record']
+            flood_audit['kind'] = 'pr315-administrator-output-flood-denial'
+            flood_audit['caseId'] = 'output-flood'
+            del flood_audit['linkTargetDigest']
+            flood_audit['artifactType'] = 'regular'
+            flood_audit['artifactMode'] = 0o600
+            flood_audit['artifactSize'] = 65537
+            flood_audit['artifactDigest'] = hashlib.sha256(b'F' * 65537).hexdigest()
+            flood_terminal['outputFloodAudit'] = {'status': 'captured',
+                                                  'record': flood_audit}
+            flood_identity, flood_attempt, flood_sidecar = runner._output_flood_attempt(
+                report, result, fixture, flood_terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(flood_identity,
+                    [flood_attempt])['cases'] if row['caseId'] == 'output-flood'))
+            self.assertEqual(65537, flood_sidecar['targetEpoch']['artifactSize'])
+            flood_audit['artifactSize'] = 65536
+            self.assertIsNone(runner._output_flood_attempt(
+                report, result, fixture, flood_terminal, source))
+            replacement_terminal = copy.deepcopy(terminal)
+            replacement_audit = replacement_terminal.pop('outputSymlinkAudit')['record']
+            replacement_audit['kind'] = 'pr315-administrator-output-replacement-denial'
+            replacement_audit['caseId'] = 'output-replacement'
+            del replacement_audit['linkTargetDigest']
+            replacement_audit['artifactType'] = 'replacement'
+            replacement_audit['artifactMode'] = 0o600
+            replacement_audit['collectorDenial'] = 'workload-snapshot-changed'
+            replacement_audit['replacementIdentity'] = [3, 8]
+            replacement_audit['initialDigest'] = hashlib.sha256(b'A' * 32).hexdigest()
+            replacement_audit['replacementDigest'] = hashlib.sha256(b'B' * 32).hexdigest()
+            replacement_audit['swapTriggerNs'] = 62
+            replacement_audit['swapStartedNs'] = 63
+            replacement_audit['swapFinishedNs'] = 64
+            replacement_terminal['outputReplacementAudit'] = {
+                'status': 'captured', 'record': replacement_audit}
+            replaced_identity, replaced_attempt, replaced_sidecar = (
+                runner._output_replacement_attempt(report, result, fixture,
+                                                   replacement_terminal, source))
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(replaced_identity,
+                    [replaced_attempt])['cases']
+                    if row['caseId'] == 'output-replacement'))
+            self.assertEqual([3, 8],
+                replaced_sidecar['targetEpoch']['replacementIdentity'])
+            replacement_audit['swapStartedNs'] = 61
+            self.assertIsNone(runner._output_replacement_attempt(
+                report, result, fixture, replacement_terminal, source))
 
     def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
         roster = synthetic_role_kernel_roster()

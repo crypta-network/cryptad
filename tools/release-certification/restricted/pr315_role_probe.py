@@ -33,6 +33,38 @@ OUTPUT_FIFO = Path('/node/tmp/pr315-output-fifo-artifact')
 OUTPUT_FIFO_READY = Path('/node/tmp/pr315-output-fifo-ready.json')
 OUTPUT_FIFO_TRIGGER = Path('/node/tmp/pr315-output-fifo-trigger.json')
 OUTPUT_FIFO_RESULT = Path('/node/tmp/pr315-output-fifo-result.json')
+OUTPUT_HARDLINK = Path('/node/tmp/pr315-output-hardlink-artifact')
+OUTPUT_HARDLINK_READY = Path('/node/tmp/pr315-output-hardlink-ready.json')
+OUTPUT_HARDLINK_TRIGGER = Path('/node/tmp/pr315-output-hardlink-trigger.json')
+OUTPUT_HARDLINK_RESULT = Path('/node/tmp/pr315-output-hardlink-result.json')
+OUTPUT_FLOOD = Path('/node/tmp/pr315-output-flood-artifact')
+OUTPUT_FLOOD_READY = Path('/node/tmp/pr315-output-flood-ready.json')
+OUTPUT_FLOOD_TRIGGER = Path('/node/tmp/pr315-output-flood-trigger.json')
+OUTPUT_FLOOD_RESULT = Path('/node/tmp/pr315-output-flood-result.json')
+OUTPUT_FLOOD_BYTES = 65537
+OUTPUT_REPLACEMENT = Path('/node/tmp/pr315-output-replacement-artifact')
+OUTPUT_REPLACEMENT_READY = Path('/node/tmp/pr315-output-replacement-ready.json')
+OUTPUT_REPLACEMENT_TRIGGER = Path('/node/tmp/pr315-output-replacement-trigger.json')
+OUTPUT_REPLACEMENT_RESULT = Path('/node/tmp/pr315-output-replacement-result.json')
+OUTPUT_REPLACEMENT_SWAP_TRIGGER = Path('/node/tmp/pr315-output-replacement-swap-trigger.json')
+OUTPUT_REPLACEMENT_SWAP_RESULT = Path('/node/tmp/pr315-output-replacement-swap-result.json')
+OUTPUT_REPLACEMENT_NEXT = Path('/node/tmp/pr315-output-replacement-next')
+
+
+def _publish_record(path: Path, value: dict) -> None:
+    """Expose complete, exclusive role output after the inode is synced."""
+    raw = json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+    if not 0 < len(raw) <= 4096:
+        raise ValueError('pr315-role-probe-output-limit')
+    pending = path.with_name(path.name + '.pending')
+    descriptor = os.open(pending,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.link(pending, path, follow_symlinks=False)
+    pending.unlink()
 
 
 def attempt_network(case_id: str, nonce: str) -> dict:
@@ -205,15 +237,7 @@ def publish_output_symlink(nonce: str) -> None:
               'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
               'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_SYMLINK)).hexdigest(),
               'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
-    raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
-    if len(raw) > 4096:
-        raise ValueError('pr315-output-symlink-result-limit')
-    descriptor = os.open(OUTPUT_SYMLINK_RESULT,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
-    with os.fdopen(descriptor, 'wb') as stream:
-        stream.write(raw)
-        stream.flush()
-        os.fsync(stream.fileno())
+    _publish_record(OUTPUT_SYMLINK_RESULT, record)
 
 
 def publish_output_fifo(nonce: str) -> None:
@@ -237,21 +261,134 @@ def publish_output_fifo(nonce: str) -> None:
               'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
               'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_FIFO)).hexdigest(),
               'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
-    raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
-    if len(raw) > 4096:
-        raise ValueError('pr315-output-fifo-result-limit')
-    descriptor = os.open(OUTPUT_FIFO_RESULT,
+    _publish_record(OUTPUT_FIFO_RESULT, record)
+
+
+def publish_output_hardlink(nonce: str) -> None:
+    """Link the fixed role canary after the root barrier without changing its bytes."""
+    until = time.monotonic() + 60
+    while not OUTPUT_HARDLINK_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-hardlink-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(OUTPUT_HARDLINK_TRIGGER,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-hardlink', 'nonce': nonce}:
+        raise ValueError('pr315-output-hardlink-trigger-invalid')
+    started = time.monotonic_ns()
+    os.link(OUTPUT_CANARY, OUTPUT_HARDLINK, follow_symlinks=False)
+    finished = time.monotonic_ns()
+    record = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-hardlink',
+              'caseId': 'output-hardlink', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+              'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_HARDLINK)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
+    _publish_record(OUTPUT_HARDLINK_RESULT, record)
+
+
+def publish_output_flood(nonce: str) -> None:
+    """Write a fixed 65,537-byte role artifact beyond the collector's 64-KiB cap."""
+    until = time.monotonic() + 60
+    while not OUTPUT_FLOOD_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-flood-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(OUTPUT_FLOOD_TRIGGER,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-flood', 'nonce': nonce}:
+        raise ValueError('pr315-output-flood-trigger-invalid')
+    started = time.monotonic_ns()
+    descriptor = os.open(OUTPUT_FLOOD,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    written = 0
+    try:
+        for _ in range(16):
+            written += os.write(descriptor, b'F' * 4096)
+        written += os.write(descriptor, b'F')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    finished = time.monotonic_ns()
+    if written != OUTPUT_FLOOD_BYTES:
+        raise ValueError('pr315-output-flood-write-incomplete')
+    record = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-flood',
+              'caseId': 'output-flood', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+              'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_FLOOD)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest(),
+              'writtenBytes': written}
+    _publish_record(OUTPUT_FLOOD_RESULT, record)
+
+
+def publish_output_replacement(nonce: str) -> None:
+    """Create one fixed file, then atomically replace it at the root barrier."""
+    until = time.monotonic() + 60
+    while not OUTPUT_REPLACEMENT_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-replacement-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(OUTPUT_REPLACEMENT_TRIGGER,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-replacement', 'nonce': nonce}:
+        raise ValueError('pr315-output-replacement-trigger-invalid')
+    started = time.monotonic_ns()
+    descriptor = os.open(OUTPUT_REPLACEMENT,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     with os.fdopen(descriptor, 'wb') as stream:
-        stream.write(raw)
+        if stream.write(b'A' * 32) != 32:
+            raise ValueError('pr315-output-replacement-initial-short-write')
         stream.flush()
         os.fsync(stream.fileno())
+    finished = time.monotonic_ns()
+    record = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-replacement',
+              'caseId': 'output-replacement', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+              'artifactPathDigest': hashlib.sha256(
+                  os.fsencode(OUTPUT_REPLACEMENT)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
+    _publish_record(OUTPUT_REPLACEMENT_RESULT, record)
+    while not OUTPUT_REPLACEMENT_SWAP_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-replacement-swap-timeout')
+        time.sleep(.02)
+    descriptor = os.open(OUTPUT_REPLACEMENT_SWAP_TRIGGER,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-replacement', 'nonce': nonce}:
+        raise ValueError('pr315-output-replacement-swap-invalid')
+    swap_started = time.monotonic_ns()
+    descriptor = os.open(OUTPUT_REPLACEMENT_NEXT,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        if stream.write(b'B' * 32) != 32:
+            raise ValueError('pr315-output-replacement-next-short-write')
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(OUTPUT_REPLACEMENT_NEXT, OUTPUT_REPLACEMENT)
+    swap_finished = time.monotonic_ns()
+    swapped = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-replacement-swap',
+               'caseId': 'output-replacement', 'nonce': nonce, 'pid': os.getpid(),
+               'startedMonotonicNs': swap_started,
+               'finishedMonotonicNs': swap_finished}
+    _publish_record(OUTPUT_REPLACEMENT_SWAP_RESULT, swapped)
 
 
 def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
-            or sys.argv[2] not in ('observer-private-read', 'output-symlink', 'output-fifo')
+            or sys.argv[2] not in ('observer-private-read', 'output-symlink',
+                                   'output-fifo', 'output-hardlink', 'output-flood',
+                                   'output-replacement')
             or not sys.flags.isolated or not sys.flags.no_site):
         raise ValueError('pr315-role-probe-fixed-invocation-required')
     case_id = sys.argv[2]
@@ -259,18 +396,30 @@ def main() -> None:
              'caseId': case_id, 'nonce': sys.argv[1],
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
     ready_path = (READY if case_id == 'observer-private-read' else
-                  OUTPUT_FIFO_READY if case_id == 'output-fifo' else OUTPUT_SYMLINK_READY)
-    descriptor = os.open(ready_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, 'w') as stream:
-        json.dump(ready, stream, sort_keys=True, separators=(',', ':'))
-        stream.flush()
-        os.fsync(stream.fileno())
+                  OUTPUT_FIFO_READY if case_id == 'output-fifo' else
+                  OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
+                  OUTPUT_FLOOD_READY if case_id == 'output-flood' else
+                  OUTPUT_REPLACEMENT_READY if case_id == 'output-replacement' else
+                  OUTPUT_SYMLINK_READY)
+    _publish_record(ready_path, ready)
     if case_id == 'output-symlink':
         publish_output_symlink(sys.argv[1])
         while True:
             time.sleep(1)
     if case_id == 'output-fifo':
         publish_output_fifo(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'output-hardlink':
+        publish_output_hardlink(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'output-flood':
+        publish_output_flood(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'output-replacement':
+        publish_output_replacement(sys.argv[1])
         while True:
             time.sleep(1)
     deadline = time.monotonic() + 30

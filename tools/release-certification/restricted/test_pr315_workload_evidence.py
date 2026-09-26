@@ -150,6 +150,54 @@ class VolatileEvidenceTest(unittest.TestCase):
             retained = evidence._capture(self.root, self.expected, True)
             self.assertEqual('unavailable-or-unsafe', retained['outputFifoAudit']['status'])
             self.assertNotIn('must-not-copy', json.dumps(retained))
+        hardlink = dict(fifo, kind='pr315-administrator-output-hardlink-denial',
+                        caseId='output-hardlink', artifactType='hardlink',
+                        artifactLinkCount=2, artifactIdentity=target['fileIdentity'][:2],
+                        targetBefore=dict(target, linkCount=1),
+                        targetAfter=dict(target, observedMonotonicNs=70,
+                            fileIdentity=[1, 21, 32, 100, 102], linkCount=2))
+        hardlink_path = self.root / 'authority/output-hardlink-denial.json'
+        hardlink_path.write_text(json.dumps(hardlink))
+        self.assertEqual(hardlink, evidence._capture(
+            self.root, self.expected, True)['outputHardlinkAudit']['record'])
+        for changed in (dict(hardlink, artifactLinkCount=1),
+                        dict(hardlink, targetAfter=dict(hardlink['targetAfter'], linkCount=1)),
+                        dict(hardlink, artifactIdentity=[1, 22])):
+            hardlink_path.write_text(json.dumps(changed))
+            self.assertEqual('unavailable-or-unsafe', evidence._capture(
+                self.root, self.expected, True)['outputHardlinkAudit']['status'])
+        flood = dict(fifo, kind='pr315-administrator-output-flood-denial',
+                     caseId='output-flood', artifactType='regular',
+                     artifactSize=65537,
+                     artifactDigest=hashlib.sha256(b'F' * 65537).hexdigest())
+        flood_path = self.root / 'authority/output-flood-denial.json'
+        flood_path.write_text(json.dumps(flood))
+        self.assertEqual(flood, evidence._capture(
+            self.root, self.expected, True)['outputFloodAudit']['record'])
+        for changed in (dict(flood, artifactSize=65536),
+                        dict(flood, artifactDigest='0' * 64),
+                        dict(flood, artifactMode=0o666)):
+            flood_path.write_text(json.dumps(changed))
+            self.assertEqual('unavailable-or-unsafe', evidence._capture(
+                self.root, self.expected, True)['outputFloodAudit']['status'])
+        replacement = dict(fifo,
+            kind='pr315-administrator-output-replacement-denial',
+            caseId='output-replacement', artifactType='replacement',
+            collectorDenial='workload-snapshot-changed',
+            replacementIdentity=[1, 23],
+            initialDigest=hashlib.sha256(b'A' * 32).hexdigest(),
+            replacementDigest=hashlib.sha256(b'B' * 32).hexdigest(),
+            swapTriggerNs=56, swapStartedNs=57, swapFinishedNs=58)
+        replacement_path = self.root / 'authority/output-replacement-denial.json'
+        replacement_path.write_text(json.dumps(replacement))
+        self.assertEqual(replacement, evidence._capture(
+            self.root, self.expected, True)['outputReplacementAudit']['record'])
+        for changed in (dict(replacement, swapStartedNs=54),
+                        dict(replacement, replacementIdentity=[1, 22]),
+                        dict(replacement, replacementDigest='0' * 64)):
+            replacement_path.write_text(json.dumps(changed))
+            self.assertEqual('unavailable-or-unsafe', evidence._capture(
+                self.root, self.expected, True)['outputReplacementAudit']['status'])
 
     def test_private_read_audit_keeps_only_fixed_root_process_evidence(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',

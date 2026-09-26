@@ -24,12 +24,12 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v12',
-            'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-v8',
+    return {'revision': 'workload-launcher-policy-v15',
+            'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-v11',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-drop-v1',
             'resolverAuthorityProbe': 'fixed-installed-resolver-canary-v1',
-            'outputCollectorProbe': 'fixed-role-symlink-fifo-descriptor-v2',
+            'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-without-positive-traffic-v1',
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
@@ -60,7 +60,9 @@ def _trusted_probe_request(spec):
     if (not isinstance(request, dict) or set(request) != {
             'schemaVersion', 'caseId', 'nonce', 'bootId', 'javaDigest', 'sourceDigest'}
             or request['schemaVersion'] != 1
-            or request['caseId'] not in ('observer-private-read', 'output-symlink', 'output-fifo')
+            or request['caseId'] not in ('observer-private-read', 'output-symlink',
+                                         'output-fifo', 'output-hardlink', 'output-flood',
+                                         'output-replacement')
             or request['bootId'] != spec['bootId'] or request['javaDigest'] != spec['javaDigest']
             or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None
             or request['sourceDigest'] != hashlib.sha256(PROBE_SOURCE.read_bytes()).hexdigest()):

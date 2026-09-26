@@ -903,7 +903,8 @@ def _resolver_authority_audit(root, deadline):
 
 def _output_artifact_audit(root, deadline, case_id):
     """Retain only one fixed role artifact and actual safe-reader rejection."""
-    if case_id not in ('output-symlink', 'output-fifo'):
+    if case_id not in ('output-symlink', 'output-fifo',
+                       'output-hardlink', 'output-flood', 'output-replacement'):
         raise ValueError('output-artifact-case-invalid')
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -923,22 +924,60 @@ def _output_artifact_audit(root, deadline, case_id):
                   'artifactOwnerUid', 'triggerMonotonicNs',
                   'attackStartedNs', 'attackFinishedNs'}
         fields |= ({'linkTargetDigest'} if case_id == 'output-symlink' else
-                   {'artifactType', 'artifactMode'})
+                   {'artifactType', 'artifactMode'} if case_id == 'output-fifo' else
+                   {'artifactType', 'artifactMode', 'artifactLinkCount'}
+                   if case_id == 'output-hardlink' else
+                   {'artifactType', 'artifactMode', 'artifactSize', 'artifactDigest'}
+                   if case_id == 'output-flood' else
+                   {'artifactType', 'artifactMode', 'replacementIdentity',
+                    'initialDigest', 'replacementDigest', 'swapTriggerNs',
+                    'swapStartedNs', 'swapFinishedNs'})
         collector_fields = {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
                             'cgroupDigest', 'invocationId', 'sourceDigest',
                             'observedMonotonicNs'}
         target_fields = {'controlDigest', 'fileIdentity', 'observedMonotonicNs'}
+        if case_id == 'output-hardlink':
+            target_fields.add('linkCount')
         if (not isinstance(value, dict) or set(value) != fields
                 or value['schemaVersion'] != 1
                 or value['kind'] != 'pr315-administrator-' + case_id + '-denial'
                 or value['caseId'] != case_id
-                or value['collectorDenial'] != 'workload-snapshot-file-invalid'
+                or value['collectorDenial'] != ('workload-snapshot-changed'
+                    if case_id == 'output-replacement'
+                    else 'workload-snapshot-file-invalid')
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
                        for key in ('sourceDigest', 'nonceDigest'))
                 or (case_id == 'output-symlink' and
                     re.fullmatch('[0-9a-f]{64}', str(value['linkTargetDigest'])) is None)
                 or (case_id == 'output-fifo' and
                     (value['artifactType'] != 'fifo' or value['artifactMode'] != 0o600))
+                or (case_id == 'output-hardlink' and
+                    (value['artifactType'] != 'hardlink'
+                     or value['artifactMode'] != 0o600
+                     or value['artifactLinkCount'] != 2))
+                or (case_id == 'output-flood' and
+                    (value['artifactType'] != 'regular'
+                     or value['artifactMode'] != 0o600
+                     or type(value['artifactSize']) is not int
+                     or value['artifactSize'] != 65537
+                     or value['artifactDigest'] != hashlib.sha256(
+                         b'F' * 65537).hexdigest()))
+                or (case_id == 'output-replacement' and
+                    (value['artifactType'] != 'replacement'
+                     or value['artifactMode'] != 0o600
+                     or not isinstance(value['replacementIdentity'], list)
+                     or len(value['replacementIdentity']) != 2
+                     or any(type(part) is not int or part <= 0
+                            for part in value['replacementIdentity'])
+                     or not isinstance(value['artifactIdentity'], list)
+                     or len(value['artifactIdentity']) != 2
+                     or value['replacementIdentity'][0] != value['artifactIdentity'][0]
+                     or value['replacementIdentity'][1] == value['artifactIdentity'][1]
+                     or value['initialDigest'] != hashlib.sha256(b'A' * 32).hexdigest()
+                     or value['replacementDigest'] != hashlib.sha256(b'B' * 32).hexdigest()
+                     or any(type(value[key]) is not int or value[key] <= 0
+                            for key in ('swapTriggerNs', 'swapStartedNs',
+                                        'swapFinishedNs'))))
                 or type(value['actorUid']) is not int or value['actorUid'] <= 0
                 or value['artifactOwnerUid'] != value['actorUid']
                 or any(not isinstance(value[key], dict)
@@ -976,11 +1015,27 @@ def _output_artifact_audit(root, deadline, case_id):
                               for part in value[key]['fileIdentity'])
                        for key in ('targetBefore', 'targetAfter'))
                 or value['targetBefore']['controlDigest'] != value['targetAfter']['controlDigest']
-                or value['targetBefore']['fileIdentity'] != value['targetAfter']['fileIdentity']
+                or (case_id != 'output-hardlink' and
+                    value['targetBefore']['fileIdentity'] != value['targetAfter']['fileIdentity'])
+                or (case_id == 'output-hardlink' and
+                    (value['targetBefore']['fileIdentity'][:4] !=
+                     value['targetAfter']['fileIdentity'][:4]
+                     or value['targetAfter']['fileIdentity'][4] <
+                     value['targetBefore']['fileIdentity'][4]
+                     or type(value['targetBefore']['linkCount']) is not int
+                     or type(value['targetAfter']['linkCount']) is not int
+                     or value['targetBefore']['linkCount'] != 1
+                     or value['targetAfter']['linkCount'] != 2
+                     or value['artifactIdentity'] !=
+                     value['targetAfter']['fileIdentity'][:2]))
                 or any(type(value[key]) is not int or value[key] <= 0
                        for key in ('collectorStartedNs', 'collectorFinishedNs',
                                    'triggerMonotonicNs', 'attackStartedNs',
                                    'attackFinishedNs'))
+                or (case_id == 'output-replacement' and
+                    not value['attackFinishedNs'] < value['collectorStartedNs']
+                        < value['swapTriggerNs'] < value['swapStartedNs']
+                        < value['swapFinishedNs'] < value['collectorFinishedNs'])
                 or not value['targetBefore']['observedMonotonicNs']
                     < value['collectorBefore']['observedMonotonicNs']
                     < value['triggerMonotonicNs']
@@ -1000,6 +1055,18 @@ def _output_symlink_audit(root, deadline):
 
 def _output_fifo_audit(root, deadline):
     return _output_artifact_audit(root, deadline, 'output-fifo')
+
+
+def _output_hardlink_audit(root, deadline):
+    return _output_artifact_audit(root, deadline, 'output-hardlink')
+
+
+def _output_flood_audit(root, deadline):
+    return _output_artifact_audit(root, deadline, 'output-flood')
+
+
+def _output_replacement_audit(root, deadline):
+    return _output_artifact_audit(root, deadline, 'output-replacement')
 
 
 def _sibling_network_audit(root, deadline, case_id):
@@ -1085,6 +1152,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'resolverAuthorityAudit': {'status': 'not-captured-cleanup-unverified'},
         'outputSymlinkAudit': {'status': 'not-captured-cleanup-unverified'},
         'outputFifoAudit': {'status': 'not-captured-cleanup-unverified'},
+        'outputHardlinkAudit': {'status': 'not-captured-cleanup-unverified'},
+        'outputFloodAudit': {'status': 'not-captured-cleanup-unverified'},
+        'outputReplacementAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingFcpAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingHttpAudit': {'status': 'not-captured-cleanup-unverified'},
@@ -1137,6 +1207,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
+        result['outputHardlinkAudit'] = _output_hardlink_audit(root, deadline)
+        result['outputFloodAudit'] = _output_flood_audit(root, deadline)
+        result['outputReplacementAudit'] = _output_replacement_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
@@ -1206,6 +1279,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
+        result['outputHardlinkAudit'] = _output_hardlink_audit(root, deadline)
+        result['outputFloodAudit'] = _output_flood_audit(root, deadline)
+        result['outputReplacementAudit'] = _output_replacement_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):

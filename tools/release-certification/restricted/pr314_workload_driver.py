@@ -57,11 +57,32 @@ OUTPUT_FIFO = 'pr315-output-fifo-artifact'
 OUTPUT_FIFO_READY = 'pr315-output-fifo-ready.json'
 OUTPUT_FIFO_TRIGGER = 'pr315-output-fifo-trigger.json'
 OUTPUT_FIFO_RESULT = 'pr315-output-fifo-result.json'
+OUTPUT_HARDLINK = 'pr315-output-hardlink-artifact'
+OUTPUT_HARDLINK_READY = 'pr315-output-hardlink-ready.json'
+OUTPUT_HARDLINK_TRIGGER = 'pr315-output-hardlink-trigger.json'
+OUTPUT_HARDLINK_RESULT = 'pr315-output-hardlink-result.json'
+OUTPUT_FLOOD = 'pr315-output-flood-artifact'
+OUTPUT_FLOOD_READY = 'pr315-output-flood-ready.json'
+OUTPUT_FLOOD_TRIGGER = 'pr315-output-flood-trigger.json'
+OUTPUT_FLOOD_RESULT = 'pr315-output-flood-result.json'
+OUTPUT_FLOOD_BYTES = 65537
+OUTPUT_REPLACEMENT = 'pr315-output-replacement-artifact'
+OUTPUT_REPLACEMENT_READY = 'pr315-output-replacement-ready.json'
+OUTPUT_REPLACEMENT_TRIGGER = 'pr315-output-replacement-trigger.json'
+OUTPUT_REPLACEMENT_RESULT = 'pr315-output-replacement-result.json'
+OUTPUT_REPLACEMENT_SWAP_TRIGGER = 'pr315-output-replacement-swap-trigger.json'
+OUTPUT_REPLACEMENT_SWAP_RESULT = 'pr315-output-replacement-swap-result.json'
 OUTPUT_ARTIFACTS = {
     'output-symlink': (OUTPUT_SYMLINK, OUTPUT_SYMLINK_READY,
                        OUTPUT_SYMLINK_TRIGGER, OUTPUT_SYMLINK_RESULT),
     'output-fifo': (OUTPUT_FIFO, OUTPUT_FIFO_READY,
                     OUTPUT_FIFO_TRIGGER, OUTPUT_FIFO_RESULT),
+    'output-hardlink': (OUTPUT_HARDLINK, OUTPUT_HARDLINK_READY,
+                        OUTPUT_HARDLINK_TRIGGER, OUTPUT_HARDLINK_RESULT),
+    'output-flood': (OUTPUT_FLOOD, OUTPUT_FLOOD_READY,
+                     OUTPUT_FLOOD_TRIGGER, OUTPUT_FLOOD_RESULT),
+    'output-replacement': (OUTPUT_REPLACEMENT, OUTPUT_REPLACEMENT_READY,
+                           OUTPUT_REPLACEMENT_TRIGGER, OUTPUT_REPLACEMENT_RESULT),
 }
 ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-observer-private-control-failed', 'workload-observer-private-control-mismatch',
@@ -89,6 +110,18 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-output-fifo-ready-timeout', 'workload-output-fifo-result-timeout',
     'workload-output-fifo-actor-invalid', 'workload-output-fifo-target-invalid',
     'workload-output-fifo-collector-invalid',
+    'workload-output-hardlink-ready-timeout', 'workload-output-hardlink-result-timeout',
+    'workload-output-hardlink-actor-invalid', 'workload-output-hardlink-target-invalid',
+    'workload-output-hardlink-collector-invalid',
+    'workload-output-flood-ready-timeout', 'workload-output-flood-result-timeout',
+    'workload-output-flood-actor-invalid', 'workload-output-flood-target-invalid',
+    'workload-output-flood-collector-invalid',
+    'workload-output-replacement-ready-timeout',
+    'workload-output-replacement-result-timeout',
+    'workload-output-replacement-actor-invalid',
+    'workload-output-replacement-target-invalid',
+    'workload-output-replacement-collector-invalid',
+    'workload-output-replacement-swap-timeout',
     'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
     'workload-sibling-network-before-window-invalid',
     'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
@@ -265,6 +298,19 @@ def _candidate_probe_file(path, uid):
         return json.loads(os.read(descriptor, 4097))
     finally:
         os.close(descriptor)
+
+
+def _wait_output_record(path, uid, until, timeout_code):
+    """Wait only for the atomic publisher's transient second link to disappear."""
+    while time.monotonic() < until:
+        if path.exists():
+            try:
+                return _candidate_probe_file(path, uid)
+            except ValueError:
+                if path.lstat().st_nlink != 2:
+                    raise
+        time.sleep(.01)
+    raise ValueError(timeout_code)
 
 
 def _observer_canary_control(path, user, failure_code='workload-observer-private-control-failed'):
@@ -672,20 +718,64 @@ def _administrator_collector_epoch(case_id):
             'observedMonotonicNs': time.monotonic_ns()}
 
 
-def _output_canary_control(root, uid, expected, case_id):
+def _output_canary_control(root, uid, expected, case_id, expected_links=1):
     import runtime_snapshot as snapshot
     path = root / OUTPUT_CANARY
     info = path.lstat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid
-            or info.st_nlink != 1 or info.st_size != 32 or info.st_mode & 0o077):
+            or info.st_nlink != expected_links or info.st_size != 32
+            or info.st_mode & 0o777 != 0o600):
         raise ValueError('workload-' + case_id + '-target-invalid')
-    raw = snapshot.read_file(root, OUTPUT_CANARY, maximum=32, timeout=2)
+    if case_id == 'output-hardlink' and expected_links == 2:
+        with snapshot._directory(root) as parent:
+            descriptor = os.open(OUTPUT_CANARY,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                dir_fd=parent)
+            try:
+                opened = os.fstat(descriptor)
+                if ((opened.st_dev, opened.st_ino, opened.st_size,
+                     opened.st_mtime_ns, opened.st_ctime_ns, opened.st_nlink)
+                        != (info.st_dev, info.st_ino, info.st_size,
+                            info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)):
+                    raise ValueError('workload-output-hardlink-target-changed')
+                raw = os.read(descriptor, 33)
+                closed = os.fstat(descriptor)
+                if ((closed.st_dev, closed.st_ino, closed.st_size,
+                     closed.st_mtime_ns, closed.st_ctime_ns, closed.st_nlink)
+                        != (info.st_dev, info.st_ino, info.st_size,
+                            info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)):
+                    raise ValueError('workload-output-hardlink-target-changed')
+            finally:
+                os.close(descriptor)
+    else:
+        raw = snapshot.read_file(root, OUTPUT_CANARY, maximum=32, timeout=2)
     digest = hashlib.sha256(raw).hexdigest()
     if len(raw) != 32 or digest != expected:
         raise ValueError('workload-' + case_id + '-target-invalid')
-    return {'controlDigest': digest, 'fileIdentity': [info.st_dev, info.st_ino,
+    result = {'controlDigest': digest, 'fileIdentity': [info.st_dev, info.st_ino,
         info.st_size, info.st_mtime_ns, info.st_ctime_ns],
             'observedMonotonicNs': time.monotonic_ns()}
+    if case_id == 'output-hardlink':
+        result['linkCount'] = info.st_nlink
+    return result
+
+
+def _publish_output_trigger(root, name, case_id, nonce):
+    """Publish one complete root-owned barrier only after its final read mode is set."""
+    pending = root / (name + '.pending')
+    descriptor = os.open(pending,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, 'w', closefd=False) as stream:
+            json.dump({'caseId': case_id, 'nonce': nonce}, stream,
+                      sort_keys=True, separators=(',', ':'))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.fchmod(descriptor, 0o444)
+    finally:
+        os.close(descriptor)
+    os.link(pending, root / name, follow_symlinks=False)
+    pending.unlink()
 
 
 def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_ns, case_id):
@@ -717,11 +807,8 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
          'sourceDigest': source_digest}, create=True, mode=0o444)
     ready_path = root / ready_name
     until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
-    while time.monotonic() < until and not ready_path.exists():
-        time.sleep(.05)
-    if not ready_path.exists():
-        raise ValueError('workload-' + case_id + '-ready-timeout')
-    ready = _candidate_probe_file(ready_path, uid)
+    ready = _wait_output_record(ready_path, uid, until,
+                                'workload-' + case_id + '-ready-timeout')
     if (not isinstance(ready, dict) or set(ready) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
             or ready['schemaVersion'] != 1
@@ -736,41 +823,91 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
     target_before = _output_canary_control(root, uid, digest, case_id)
     collector_before = _administrator_collector_epoch(case_id)
     trigger_ns = time.monotonic_ns()
-    trigger = root / trigger_name
-    fd = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
-    try:
-        with os.fdopen(fd, 'w', closefd=False) as stream:
-            json.dump({'caseId': case_id, 'nonce': nonce}, stream,
-                      sort_keys=True, separators=(',', ':'))
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.fchmod(fd, 0o444)
-    finally:
-        os.close(fd)
+    _publish_output_trigger(root, trigger_name, case_id, nonce)
     result_path = root / result_name
-    while time.monotonic() < until and not result_path.exists():
-        time.sleep(.05)
-    if not result_path.exists():
-        raise ValueError('workload-' + case_id + '-result-timeout')
-    result = _candidate_probe_file(result_path, uid)
+    result = _wait_output_record(result_path, uid, until,
+                                 'workload-' + case_id + '-result-timeout')
     artifact = root / artifact_name
     info = artifact.lstat()
-    if (info.st_uid != uid or info.st_nlink != 1
+    if (info.st_uid != uid
+            or info.st_nlink != (2 if case_id == 'output-hardlink' else 1)
             or (case_id == 'output-symlink' and
                 (not stat.S_ISLNK(info.st_mode)
                  or os.readlink(artifact) != '/node/tmp/' + OUTPUT_CANARY))
             or (case_id == 'output-fifo' and
-                (not stat.S_ISFIFO(info.st_mode) or info.st_mode & 0o777 != 0o600))):
+                (not stat.S_ISFIFO(info.st_mode) or info.st_mode & 0o777 != 0o600))
+            or (case_id == 'output-hardlink' and
+                (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o777 != 0o600
+                 or [info.st_dev, info.st_ino] != target_before['fileIdentity'][:2]))
+            or (case_id == 'output-flood' and
+                (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o777 != 0o600
+                 or info.st_size != OUTPUT_FLOOD_BYTES))
+            or (case_id == 'output-replacement' and
+                (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o777 != 0o600
+                 or info.st_size != 32))):
         raise ValueError('workload-' + case_id + '-target-invalid')
+    flood_digest = None
+    initial_digest = None
+    if case_id == 'output-flood':
+        controlled = snapshot.read_file(root, artifact_name,
+                                        maximum=OUTPUT_FLOOD_BYTES, timeout=2)
+        if controlled != b'F' * OUTPUT_FLOOD_BYTES:
+            raise ValueError('workload-output-flood-target-invalid')
+        flood_digest = hashlib.sha256(controlled).hexdigest()
+    if case_id == 'output-replacement':
+        controlled = snapshot.read_file(root, artifact_name, maximum=32, timeout=2)
+        if controlled != b'A' * 32:
+            raise ValueError('workload-output-replacement-target-invalid')
+        initial_digest = hashlib.sha256(controlled).hexdigest()
+    swap_record = None
+    swap_trigger_ns = None
+
+    def after_pin():
+        nonlocal swap_record, swap_trigger_ns
+        swap_trigger_ns = time.monotonic_ns()
+        _publish_output_trigger(root, OUTPUT_REPLACEMENT_SWAP_TRIGGER, case_id, nonce)
+        swap_path = root / OUTPUT_REPLACEMENT_SWAP_RESULT
+        swap_until = min(time.monotonic() + 20, campaign_deadline_ns / 1e9)
+        swap_record = _wait_output_record(swap_path, uid, swap_until,
+                                          'workload-output-replacement-swap-timeout')
+        if (not isinstance(swap_record, dict) or set(swap_record) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid',
+                'startedMonotonicNs', 'finishedMonotonicNs'}
+                or swap_record['schemaVersion'] != 1
+                or swap_record['kind'] != 'pr315-candidate-output-replacement-swap'
+                or swap_record['caseId'] != case_id or swap_record['nonce'] != nonce
+                or swap_record['pid'] != actor_before['namespacePids'][-1]
+                or not swap_trigger_ns < swap_record['startedMonotonicNs']
+                    < swap_record['finishedMonotonicNs']):
+            raise ValueError('workload-output-replacement-actor-invalid')
     started = time.monotonic_ns()
     try:
-        snapshot.read_file(root, artifact_name, maximum=64, timeout=2)
+        snapshot.read_file(root, artifact_name, maximum=64,
+            timeout=25 if case_id == 'output-replacement' else 2,
+            pinned_hook=after_pin if case_id == 'output-replacement' else None)
     except snapshot.SnapshotError as error:
         denial = str(error)
     else:
         raise ValueError('workload-' + case_id + '-collector-invalid')
     finished = time.monotonic_ns()
-    target_after = _output_canary_control(root, uid, digest, case_id)
+    info_after = artifact.lstat()
+    stable_file = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_nlink',
+                   'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    replacement_digest = None
+    if case_id == 'output-replacement':
+        if (info_after.st_dev != info.st_dev or info_after.st_ino == info.st_ino
+                or not stat.S_ISREG(info_after.st_mode) or info_after.st_uid != uid
+                or info_after.st_mode & 0o777 != 0o600
+                or info_after.st_nlink != 1 or info_after.st_size != 32):
+            raise ValueError('workload-output-replacement-target-invalid')
+        controlled = snapshot.read_file(root, artifact_name, maximum=32, timeout=2)
+        if controlled != b'B' * 32:
+            raise ValueError('workload-output-replacement-target-invalid')
+        replacement_digest = hashlib.sha256(controlled).hexdigest()
+    elif any(getattr(info, key) != getattr(info_after, key) for key in stable_file):
+        raise ValueError('workload-' + case_id + '-target-invalid')
+    target_after = _output_canary_control(root, uid, digest, case_id,
+        expected_links=2 if case_id == 'output-hardlink' else 1)
     collector_after = _administrator_collector_epoch(case_id)
     after = workload.observe(handle)
     actor_after = _role_probe_actor(after, nonce, case_id)
@@ -780,10 +917,11 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
                     'executableDigest', 'noNewPrivileges', 'effectiveCapabilities')
     stable_collector = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
                         'cgroupDigest', 'invocationId', 'sourceDigest')
-    if (not isinstance(result, dict) or set(result) != {
+    if (not isinstance(result, dict) or set(result) != ({
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
             'startedMonotonicNs', 'finishedMonotonicNs',
-            'artifactPathDigest', 'targetPathDigest'}
+            'artifactPathDigest', 'targetPathDigest'} |
+            ({'writtenBytes'} if case_id == 'output-flood' else set()))
             or result['schemaVersion'] != 1
             or result['kind'] != 'pr315-candidate-' + case_id
             or result['caseId'] != case_id or result['nonce'] != nonce
@@ -793,7 +931,9 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
                 os.fsencode(Path('/node/tmp') / artifact_name)).hexdigest()
             or result['targetPathDigest'] != hashlib.sha256(
                 b'/node/tmp/pr315-output-target-canary').hexdigest()
-            or denial != 'workload-snapshot-file-invalid'
+            or (case_id == 'output-flood' and result['writtenBytes'] != OUTPUT_FLOOD_BYTES)
+            or denial != ('workload-snapshot-changed' if case_id == 'output-replacement'
+                          else 'workload-snapshot-file-invalid')
             or any(actor_before[key] != actor_after[key] for key in stable_actor)
             or any(collector_before[key] != collector_after[key]
                    for key in stable_collector)
@@ -802,7 +942,18 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
             or re.fullmatch('[0-9a-f]{64}', str(before['stateDigest'])) is None
             or before['stateDigest'] != after['stateDigest']
             or target_before['controlDigest'] != target_after['controlDigest']
-            or target_before['fileIdentity'] != target_after['fileIdentity']
+            or (case_id != 'output-hardlink' and
+                target_before['fileIdentity'] != target_after['fileIdentity'])
+            or (case_id == 'output-hardlink' and
+                (target_before['fileIdentity'][:4] != target_after['fileIdentity'][:4]
+                 or target_after['fileIdentity'][4] < target_before['fileIdentity'][4]
+                 or target_before['linkCount'] != 1 or target_after['linkCount'] != 2
+                 or [info.st_dev, info.st_ino] != target_after['fileIdentity'][:2]))
+            or (case_id == 'output-replacement' and
+                (not isinstance(swap_record, dict) or swap_trigger_ns is None
+                 or not result['finishedMonotonicNs'] < started
+                    < swap_trigger_ns < swap_record['startedMonotonicNs']
+                    < swap_record['finishedMonotonicNs'] < finished))
             or not before['observedMonotonicNs'] < target_before['observedMonotonicNs']
                 < collector_before['observedMonotonicNs'] < trigger_ns
                 < result['startedMonotonicNs'] < result['finishedMonotonicNs']
@@ -832,9 +983,26 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
     if case_id == 'output-symlink':
         audit['linkTargetDigest'] = hashlib.sha256(
             b'/node/tmp/pr315-output-target-canary').hexdigest()
-    else:
+    elif case_id == 'output-fifo':
         audit['artifactType'] = 'fifo'
         audit['artifactMode'] = info.st_mode & 0o777
+    elif case_id == 'output-replacement':
+        audit['artifactType'] = 'replacement'
+        audit['artifactMode'] = info.st_mode & 0o777
+        audit['replacementIdentity'] = [info_after.st_dev, info_after.st_ino]
+        audit['initialDigest'] = initial_digest
+        audit['replacementDigest'] = replacement_digest
+        audit['swapTriggerNs'] = swap_trigger_ns
+        audit['swapStartedNs'] = swap_record['startedMonotonicNs']
+        audit['swapFinishedNs'] = swap_record['finishedMonotonicNs']
+    else:
+        audit['artifactType'] = 'hardlink' if case_id == 'output-hardlink' else 'regular'
+        audit['artifactMode'] = info.st_mode & 0o777
+        if case_id == 'output-hardlink':
+            audit['artifactLinkCount'] = info.st_nlink
+        else:
+            audit['artifactSize'] = info.st_size
+            audit['artifactDigest'] = flood_digest
     workload.write(workload.ROOT / 'authority' / (case_id + '-denial.json'),
                    audit, create=True)
     return hashlib.sha256(json.dumps(audit, sort_keys=True,
@@ -849,6 +1017,21 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
 def probe_output_fifo(workload, handoff, source_digest, campaign_deadline_ns):
     return _probe_output_artifact(workload, handoff, source_digest,
                                   campaign_deadline_ns, 'output-fifo')
+
+
+def probe_output_hardlink(workload, handoff, source_digest, campaign_deadline_ns):
+    return _probe_output_artifact(workload, handoff, source_digest,
+                                  campaign_deadline_ns, 'output-hardlink')
+
+
+def probe_output_flood(workload, handoff, source_digest, campaign_deadline_ns):
+    return _probe_output_artifact(workload, handoff, source_digest,
+                                  campaign_deadline_ns, 'output-flood')
+
+
+def probe_output_replacement(workload, handoff, source_digest, campaign_deadline_ns):
+    return _probe_output_artifact(workload, handoff, source_digest,
+                                  campaign_deadline_ns, 'output-replacement')
 
 
 def probe_observer_private_read(workload, handoff, observer, source_digest,
@@ -1759,7 +1942,9 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('output-symlink', 'output-fifo', 'role-readiness-diagnostic'):
+        if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
+                              'output-flood', 'output-replacement',
+                              'role-readiness-diagnostic'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2056,6 +2241,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'output-symlink', 'output-fifo',
+                             'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
@@ -2183,7 +2369,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group is None
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('output-symlink', 'output-fifo',
+        if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
+                              'output-flood', 'output-replacement',
                               'role-readiness-diagnostic') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
@@ -2250,20 +2437,31 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
                 diagnostics['resolverAuthority'] = diagnostic
-        if not startup_measurement and workload_group in ('output-symlink', 'output-fifo'):
+        if not startup_measurement and workload_group in (
+                'output-symlink', 'output-fifo', 'output-hardlink',
+                'output-flood', 'output-replacement'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
             try:
-                probe = (probe_output_fifo if workload_group == 'output-fifo'
-                         else probe_output_symlink)
+                probe = {'output-symlink': probe_output_symlink,
+                         'output-fifo': probe_output_fifo,
+                         'output-hardlink': probe_output_hardlink,
+                         'output-flood': probe_output_flood,
+                         'output-replacement': probe_output_replacement}[workload_group]
                 digest = probe(workload, handoff, role_probe_digest, campaign_deadline)
-                field = 'outputFifo' if workload_group == 'output-fifo' else 'outputSymlink'
+                field = {'output-symlink': 'outputSymlink', 'output-fifo': 'outputFifo',
+                         'output-hardlink': 'outputHardlink',
+                         'output-flood': 'outputFlood',
+                         'output-replacement': 'outputReplacement'}[workload_group]
                 diagnostics[field] = {'status': 'captured',
                     'caseId': workload_group, 'auditDigest': digest}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
-                field = 'outputFifo' if workload_group == 'output-fifo' else 'outputSymlink'
+                field = {'output-symlink': 'outputSymlink', 'output-fifo': 'outputFifo',
+                         'output-hardlink': 'outputHardlink',
+                         'output-flood': 'outputFlood',
+                         'output-replacement': 'outputReplacement'}[workload_group]
                 diagnostics[field] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
@@ -2343,6 +2541,8 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
+                                                    'output-hardlink', 'output-flood',
+                                                    'output-replacement',
                                                     'role-readiness-diagnostic'))
     args = parser.parse_args()
     reasons = prerequisites()

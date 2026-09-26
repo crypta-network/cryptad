@@ -2439,9 +2439,38 @@ checks this root audit, final stop receipts and guest stop before producing
 the case's v8 and v9 private records. The group cannot claim positive or any
 other denial case. Linux offline checks passed for the role, evidence and
 host verifier paths; no v12 TCG installed result exists.
+
+The following prospective v13 revision adds an isolated `output-hardlink`
+group. The role child creates a second directory entry for the fixed canary;
+the administrator proves the same inode now has exactly two links and the
+canary's 32 bytes are unchanged. It calls the real bounded collector on the
+attacking entry and requires its file-type/link-count rejection. The host
+binds both entries, the live role and collector epochs, root audit, stop
+receipt and guest stop. This group has offline checks only and does not
+inherit any installed result from the earlier output groups.
+
+The prospective v14 revision adds one isolated `output-flood` group. The
+actual role child writes exactly 65,537 bytes to one fixed regular file.
+The administrator byte-checks that object through the real descriptor
+reader with a 65,537-byte bound, then invokes the same reader with the
+case's 65,536-byte collection limit and requires rejection. The root and
+host bind the file's owner, inode, size, digest, role and collector epochs,
+unmodified canary, stop receipt and guest stop. No v14 TCG result exists.
+
+The prospective v15 revision adds an isolated `output-replacement` group.
+The candidate creates a fixed 32-byte file and waits at a second root
+barrier. The actual descriptor collector pins that file; its measured
+test-kit hook then releases the candidate to atomically replace the path
+with a distinct fixed 32-byte inode. The collector must reject the changed
+path after reading its pinned descriptor. Root and host checks bind both
+inodes, exact A/B content digests, barrier order, role/collector epochs,
+unchanged canary and terminal receipts. The hook is an optional local
+callable in the descriptor reader; it does not add a production control
+socket method. No v15 TCG result exists.
 In a network-disabled, read-only Debian Docker test container, the latest
-focused source passed 151 PR-315, 44 PR-314 workload-driver, 23 PR-312
-reference-VM and 53 interop workload tests (eight interop skips). The
+focused source passed 154 PR-315, 45 PR-314 workload-driver, 23 PR-312
+reference-VM, 11 interop snapshot and 53 interop workload tests (eight
+interop workload skips). The
 selected protected-workload file passed 69 tests with one skip after the
 v11 policy change. These are offline checks, not installed results.
 Broader read-only Docker discovery ran 494 restricted tests with one skip
@@ -2795,7 +2824,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver, output-symlink and output-fifo emitters, including the v12 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver and all five output emitters, including the v15 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

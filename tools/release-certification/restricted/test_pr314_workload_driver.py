@@ -898,6 +898,29 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             self.assertEqual(0, (root / 'readiness.json').stat().st_mode & 0o077)
 
 
+class OutputHardlinkControlTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux descriptor pinning required')
+    def test_canary_remains_byte_checked_after_actor_creates_second_link(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / driver.OUTPUT_CANARY
+            artifact = root / driver.OUTPUT_HARDLINK
+            canary.write_bytes(b'x' * 32)
+            canary.chmod(0o600)
+            expected = hashlib.sha256(b'x' * 32).hexdigest()
+            before = driver._output_canary_control(root, os.geteuid(), expected,
+                                                   'output-hardlink')
+            os.link(canary, artifact)
+            after = driver._output_canary_control(root, os.geteuid(), expected,
+                                                  'output-hardlink', expected_links=2)
+            self.assertEqual((1, 2), (before['linkCount'], after['linkCount']))
+            self.assertEqual(before['fileIdentity'][:4], after['fileIdentity'][:4])
+            canary.write_bytes(b'y' * 32)
+            with self.assertRaisesRegex(ValueError, 'target-invalid'):
+                driver._output_canary_control(root, os.geteuid(), expected,
+                                              'output-hardlink', expected_links=2)
+
+
 class RoleProbeFinalBindingTest(unittest.TestCase):
     def test_result_keeps_actor_target_and_denial_failures_distinct(self):
         actor = {'hostPid': 123, 'startTicks': 45, 'namespacePids': [123, 2],
