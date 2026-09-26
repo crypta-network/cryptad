@@ -774,6 +774,15 @@ def _host_canary_epoch(workload):
 def _host_canary_control(listener, workload):
     """Connect to the live guest host socket and retain only its fixed echo digest."""
     from restricted_workload_network import HOST_CANARY_ADDRESS, HOST_CANARY_PORT
+    def receive_exact(channel, count):
+        body = bytearray()
+        while len(body) < count:
+            block = channel.recv(count - len(body))
+            if not block:
+                raise ValueError('workload-host-canary-truncated')
+            body.extend(block)
+        return bytes(body)
+
     before = _host_canary_epoch(workload)
     with socket.create_connection((HOST_CANARY_ADDRESS, HOST_CANARY_PORT),
                                   timeout=2) as client:
@@ -783,10 +792,10 @@ def _host_canary_control(listener, workload):
             if address[0] != HOST_CANARY_ADDRESS:
                 raise ValueError('workload-host-canary-peer-invalid')
             client.sendall(b'pr315-host-probe')
-            if accepted.recv(17) != b'pr315-host-probe':
+            if receive_exact(accepted, len(b'pr315-host-probe')) != b'pr315-host-probe':
                 raise ValueError('workload-host-canary-request-invalid')
             accepted.sendall(b'pr315-host-ready')
-            if client.recv(16) != b'pr315-host-ready':
+            if receive_exact(client, len(b'pr315-host-ready')) != b'pr315-host-ready':
                 raise ValueError('workload-host-canary-response-invalid')
     after = _host_canary_epoch(workload)
     if before != after:
