@@ -2288,7 +2288,7 @@ sentinel and final stop receipt, and emits separate v8 and v9 case files.
 Wrong actor, service epoch, canary, successful open and incomplete cleanup
 cannot pass the offline checks. Native Linux PR-315 discovery passed 138
 tests and PR-314 workload-driver discovery passed 42 after this change.
-No installed `resolver-authority` result exists for this prospective source;
+No accepted-profile TCG `resolver-authority` result exists for this source;
 the source-bound suite 108 result remains historical.
 
 The first resolver-source TCG attempt, `3d4fc2ef` suite 109, passed PVE
@@ -2316,6 +2316,33 @@ SHA-256. A one-use 79-QCOW scan found zero task QEMU processes, open file
 descriptors or external backing dependents. Only its two remote duplicate
 disks were released; Mac originals and private plan/completion receipts
 remain. PVE task dataset allocation fell to 208,413,494,016 bytes.
+
+The `0d89f630` policy-v9 formal TCG suite 110 passed PVE admission and
+watcher binding but again failed before the resolver syscall. Its sender
+daemon readiness expired under the original operation deadline, and the
+retained HotSpot report records SIGILL inside another C1-compiled Java base
+method. The guest exited 1 and stopped; role cleanup, sentinel and PVE
+watcher completion were retained. The complete failure and host records
+passed Mac byte comparison, both disks matched independent SHA-256, and a
+79-QCOW zero-dependency/no-open-descriptor scan preceded removal of only
+the stopped remote duplicate disks. No positive, denial or lifecycle row
+passed in suite 110. The repeated unrelated C1 crash frames do not establish
+a product-source defect or justify changing the pinned QEMU/JDK/timeouts.
+
+The separately identified `0d89f630` PVE KVM diagnostic 12 then used the
+same source, candidate/predecessor, signed fixture and JDK on a 4-vCPU,
+5632-MiB `qemu64` guest. It exited zero, stopped, retained four-role cleanup
+and completed its exact-process pressure watcher. The actual candidate role
+probe and root `resolver-authority` audit were captured; a private
+host-side shape check bound the candidate and live resolver service to
+distinct PID/start/systemd epochs and found the fixed v8 case contract
+valid. No HotSpot fatal was captured. The 114,122-byte volatile record,
+complete guest and host receipts passed Mac byte checks. After an independent
+disk hash and 79-QCOW zero-dependency scan, only the two stopped remote
+duplicates were released. **KVM diagnostic 12 is not a TCG acceptance
+witness:** it cannot increase the accepted 45-case count or change the
+false installed-acceptance verdict. The TCG-specific JVM failure remains
+unresolved.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2649,9 +2676,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one original-profile TCG guest. Another thirteen denial and ten lifecycle IDs lack an installed pass on that source; `cancellation` passed only on earlier `04a09267` |
-| `installedPositiveExecuted` | True for `7db8122b` suite 108's eight-case positive aggregate; later tracked changes require a fresh source-bound result |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 108 has 22 of 45 passing rows on its source-bound guest, with thirteen denial and ten lifecycle results still missing |
+| `implementationCoverage` | Incomplete: the current `0d89f630` source has a prospective resolver emitter but still lacks the other missing denial and lifecycle emitters. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one original-profile TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `installedPositiveExecuted` | False on current `0d89f630` formal TCG attempts; historical `7db8122b` suite 108 passed its eight-case positive aggregate, while KVM diagnostic 12 is excluded |
+| `installedWorkloadAcceptanceSatisfied` | False; no current-source TCG 45-case campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostic 12 cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
