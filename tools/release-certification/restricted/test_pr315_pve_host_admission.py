@@ -12,15 +12,15 @@ class PveHostAdmissionTest(unittest.TestCase):
         self.observed = {
             'policy': admission.POLICY, 'observedMonotonicNs': 123,
             'hostAvailableBytes': 6 * admission.GIB,
-            'hostSwapFreeBytes': 3 * admission.GIB,
+            'hostSwapFreeBytes': 4 * admission.GIB,
             'memoryFullAvg10Pct': 5.0, 'ioFullAvg10Pct': 10.0,
             'ctMemoryMaxBytes': 10 * admission.GIB,
             'ctMemoryCurrentBytes': 4 * admission.GIB,
             'ctSwapMaxBytes': 12 * admission.GIB,
-            'ctSwapCurrentBytes': 11 * admission.GIB,
+            'ctSwapCurrentBytes': 10 * admission.GIB,
         }
 
-    def test_swap_covers_only_the_physical_shortfall_at_exact_reserves(self):
+    def test_swap_covers_shortfall_after_physical_reserve_at_exact_reserves(self):
         self.assertIsNone(admission.admission_reason(self.observed))
         for key, expected in (
                 ('hostSwapFreeBytes', 'pve-admission-host-swap-unavailable'),
@@ -29,6 +29,16 @@ class PveHostAdmissionTest(unittest.TestCase):
             changed = copy.deepcopy(self.observed)
             changed[key] -= 1
             self.assertEqual(expected, admission.admission_reason(changed))
+
+    def test_seven_gib_available_still_requires_one_gib_swap_besides_swap_reserve(self):
+        observed = dict(self.observed, hostAvailableBytes=7 * admission.GIB,
+                        hostSwapFreeBytes=3 * admission.GIB,
+                        ctSwapCurrentBytes=11 * admission.GIB)
+        self.assertIsNone(admission.admission_reason(observed))
+        self.assertEqual('pve-admission-host-swap-unavailable', admission.admission_reason(
+            dict(observed, hostSwapFreeBytes=3 * admission.GIB - 1)))
+        self.assertEqual('pve-admission-ct-swap-unavailable', admission.admission_reason(
+            dict(observed, ctSwapCurrentBytes=11 * admission.GIB + 1)))
 
     def test_physical_reserve_and_pressure_cannot_be_replaced_by_swap(self):
         changed = dict(self.observed, hostAvailableBytes=admission.GIB - 1,
@@ -48,7 +58,7 @@ class PveHostAdmissionTest(unittest.TestCase):
             pressure = root / 'pressure'
             cgroup.mkdir(parents=True)
             pressure.mkdir()
-            (root / 'meminfo').write_text('MemAvailable: 6291456 kB\nSwapFree: 3145728 kB\n')
+            (root / 'meminfo').write_text('MemAvailable: 6291456 kB\nSwapFree: 4194304 kB\n')
             (pressure / 'memory').write_text('some avg10=2.00\nfull avg10=5.00 avg60=0.00\n')
             (pressure / 'io').write_text('full avg10=10.00 avg60=0.00\n')
             for name, key in (('memory.max', 'ctMemoryMaxBytes'),

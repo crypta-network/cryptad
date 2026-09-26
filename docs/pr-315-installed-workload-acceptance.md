@@ -2,9 +2,9 @@
 
 This page records the PR-315 workload inventory, executable-path gaps, and the remaining
 installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; the latest passing TCG attempt, `1a714f9d`
-suite 102, passed eight positive, eleven denial and `cancellation` on one
-source-bound guest. Its 20 case IDs do not complete the 45-case contract.**
+**Implementation is incomplete; the latest passing TCG attempt, `04a09267`
+suite 106, passed eight positive, thirteen denial and `cancellation` on one
+source-bound guest. Its 22 case IDs do not complete the 45-case contract.**
 The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -2207,8 +2207,56 @@ generic 64-KiB record limit and the host's 256-KiB transfer cap remain.
 Native Linux checks passed 96 protected tests with one skip, 152 restricted
 tests and 51 owning interop tests with eight skips. `nft --check` accepted
 the generated sender, recipient and relay rule sets without applying them.
-These are prospective implementation checks; neither network denial has an
-accepted-profile TCG witness yet.
+Suite 106 below supplies accepted-profile TCG witnesses for both network
+denials; the preceding checks alone were prospective.
+
+The source-bound `04a09267` KVM diagnostic 11 exercised the two new probes,
+but is excluded from formal acceptance. The first formal TCG run, suite 104,
+stopped before the network probes during ordinary signed Mail startup. Its
+three candidate/predecessor HotSpot records report SIGILL in different C1
+compiled Java methods. The guest stopped, and its complete failed attempt,
+volatile records and host receipts were archived privately before two verified
+remote duplicate disks were released. The same pinned source, products, JDK,
+QEMU, guest size and admission profile passed the next formal TCG attempt,
+suite 106. Its host assessment accepted eight positive cases, thirteen denial
+cases including `sibling-fcp` and `sibling-http`, and `cancellation`: **22/45**.
+Each network case used the actual sender role and live recipient FCP/HTTP
+control, while its own exact nft DROP counter gained two packets (120 bytes)
+and the other case counter stayed unchanged. The guest exited zero and stopped;
+four role stop receipts, a matching sentinel, the live volatile capture and
+completed PIDFD host watcher were retained. The 121,400-byte volatile record
+was within its 128-KiB limit. A sender HotSpot SIGSEGV in C1-compiled
+`sun.security.provider.SHA5.lf_delta0` was also captured and remains an
+unresolved intermittent diagnostic, not a claim of JVM stability or an extra
+acceptance row. The complete attempt passed recursive Mac byte comparison;
+four PVE host records and both stopped disks matched independent SHA-256
+checks. After zero task QEMU/open descriptors and an 83-QCOW backing scan,
+only the two remote duplicate disks were released, with full Mac originals
+and plan/completion receipts retained privately. The current source still
+lacks thirteen denial and ten lifecycle installed passes; historical
+`controller-restart` cannot be pooled with suite 106.
+
+Subsequent source review found that the `04a09267` PVE preflight counted all
+`MemAvailable` toward the 7-GiB requirement before checking the separate
+1-GiB physical reserve. The corrected calculation reserves that 1 GiB first
+and covers the remaining shortfall with swap above the 2-GiB swap reserve;
+boundary tests now reject the old result. The task watcher also checks the
+kernel executable inode against the copied loader and the exact fixed QEMU
+drive argument, in addition to its PIDFD and start-epoch binding. These
+tracked changes have not yet had an installed TCG run; suite 106 remains a
+historical `04a09267` result and cannot be attributed to the revised source.
+Before another VM allocation, the mounted CT102 task dataset reported
+211,724,271,616 allocated bytes; adding the unchanged 29,124,241,553-byte
+reservation would exceed the 224-GiB task cap. The early stopped suite 33
+success attempt had a complete Mac archive and passed a fresh recursive
+checksum comparison. Independent SHA-256 checks matched its two remote disks;
+the one-use cleanup plan found zero matching task QEMU processes, open
+descriptors or external backing dependents among 81 QCOW images. Only those
+two remote duplicate disks were removed. The Mac originals and private
+plan/completion receipts remain, and the task dataset allocation fell to
+208,757,587,584 bytes. A root-only historical forensic directory was made
+enumerable to the mapped CT task group for capacity inventory, while its
+three original records remain root-only and unreadable by CT102.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2290,9 +2338,10 @@ The denial rows below retain their fixed actor and target requirements.
 `observer-private-read`, `observer-private-write`, `sibling-data`,
 `runner-control`, `observer-control`, `arbitrary-endpoint`,
 `package-expectation`, `forged-runtime-identity`,
-`namespace-mount-escape`, `cgroup-migration` and `forged-counters`
-have passing installed witnesses on `1a714f9d` suite 102; the other 15
-still lack passing installed emitters. The actor column preserves the
+`namespace-mount-escape`, `cgroup-migration`, `forged-counters`,
+`sibling-fcp` and `sibling-http` have passing installed witnesses on
+`04a09267` suite 106; the other thirteen still lack passing installed
+emitters. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -2303,8 +2352,8 @@ role/AppHost boundary.
 | `resolver-authority` | candidate | Active installed resolver; valid fixed authority request from role process |
 | `provider-authority` | app | Active synthetic provider fixture; normal signed AppHost child attempts authority access |
 | `sibling-data` | candidate | Existing recipient sentinel; sender process attempts access |
-| `sibling-fcp` | candidate | Prospective v8 sender SYN, active recipient `NodeHello` controls and own named nft DROP delta; no TCG result yet |
-| `sibling-http` | candidate | Prospective v8 sender SYN, active recipient HTTP HEAD controls and own named nft DROP delta; no TCG result yet |
+| `sibling-fcp` | candidate | Suite 106 sender SYN, active recipient `NodeHello` controls and own named nft DROP delta passed TCG |
+| `sibling-http` | candidate | Suite 106 sender SYN, active recipient HTTP HEAD controls and own named nft DROP delta passed TCG |
 | `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
 | `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
 | `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
@@ -2326,7 +2375,7 @@ role/AppHost boundary.
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
-`cancellation` passed on `1a714f9d` suite 102; `controller-restart` passed on
+`cancellation` passed on `04a09267` suite 106; `controller-restart` passed on
 `45d8b914` suite 91. These are separate helper identities. The other nine
 lifecycle IDs lack a source-bound TCG pass, and the eventual final source
 requires all eleven again. Triggers must follow observed
@@ -2541,9 +2590,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: `1a714f9d` suite 102 passed eight positive, eleven denial and `cancellation` on one original-profile TCG guest. Another 15 denial and ten lifecycle IDs lack an installed pass on that helper; `controller-restart` passed only on earlier `45d8b914` |
-| `installedPositiveExecuted` | True for `1a714f9d` suite 102's eight-case positive aggregate; the prospective v8 network revision has no installed run yet |
-| `installedWorkloadAcceptanceSatisfied` | False; suite 102 has 20 of 45 passing rows on one historical source-bound guest, and the prospective v8 source has no installed result |
+| `implementationCoverage` | Incomplete: `04a09267` suite 106 passed eight positive, thirteen denial and `cancellation` on one original-profile TCG guest. Another thirteen denial and ten lifecycle IDs lack an installed pass on that helper; `controller-restart` passed only on earlier `45d8b914` |
+| `installedPositiveExecuted` | True for historical `04a09267` suite 106's eight-case positive aggregate; not yet re-executed after the subsequent admission and watcher source changes |
+| `installedWorkloadAcceptanceSatisfied` | False; suite 106 has 22 of 45 passing rows on its historical source-bound guest, with thirteen denial and ten lifecycle results still missing, and no installed result yet on the revised source |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

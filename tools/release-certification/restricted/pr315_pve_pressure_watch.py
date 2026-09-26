@@ -76,10 +76,26 @@ def _start_ticks(pid: int) -> int:
 def _matches_command(command: list[bytes], uid: int, suite: str) -> bool:
     attempt = CT_ROOT / suite / 'attempt-01'
     executable = str(attempt / 'tools/qemu-system-x86_64').encode()
-    return (uid == 101000 and len(command) > 4
-            and command[0].endswith(b'/ld-linux-x86-64.so.2')
-            and command[4] == executable and b'pr312-disposable' in command
-            and any(str(attempt).encode() in argument for argument in command))
+    library = str(attempt / 'boot-runtime/usr/lib/x86_64-linux-gnu').encode()
+    loader = library + b'/ld-linux-x86-64.so.2'
+    drive = b'file=' + str(attempt / 'guest.qcow2').encode() + b',if=virtio,format=qcow2'
+    return (uid == 101000 and len(command) > 8
+            and command[:7] == [loader, b'--inhibit-cache', b'--library-path',
+                                library, executable, b'-name', b'pr312-disposable']
+            and any(command[index:index + 2] == [b'-drive', drive]
+                    for index in range(7, len(command) - 1)))
+
+
+def _loader_matches_process(executable: Path, loader: Path, expected_uid: int = 101000) -> bool:
+    """Bind the observed kernel executable inode to the task's copied loader."""
+    try:
+        expected = loader.lstat()
+        actual = executable.stat()
+        return (stat.S_ISREG(expected.st_mode) and expected.st_uid == expected_uid
+                and expected.st_nlink == 1 and expected.st_mode & 0o022 == 0
+                and (actual.st_dev, actual.st_ino) == (expected.st_dev, expected.st_ino))
+    except OSError:
+        return False
 
 
 def _exact_process(pid: int, suite: str) -> tuple[int, int] | None:
@@ -90,8 +106,14 @@ def _exact_process(pid: int, suite: str) -> tuple[int, int] | None:
         status = (directory / 'status').read_text()
         uid_line = next(line for line in status.splitlines() if line.startswith('Uid:'))
         uid = int(uid_line.split()[1])
-        local_executable = TASK_ROOT / suite / 'attempt-01/tools/qemu-system-x86_64'
-        if not _matches_command(command, uid, suite) or not local_executable.is_file():
+        attempt = TASK_ROOT / suite / 'attempt-01'
+        local_executable = attempt / 'tools/qemu-system-x86_64'
+        loader = attempt / 'boot-runtime/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+        qemu = local_executable.lstat()
+        if (not _matches_command(command, uid, suite)
+                or not stat.S_ISREG(qemu.st_mode) or qemu.st_uid != 101000
+                or qemu.st_nlink != 1 or qemu.st_mode & 0o022
+                or not _loader_matches_process(directory / 'exe', loader)):
             return None
         return pid, _start_ticks(pid)
     except (OSError, StopIteration, ValueError):

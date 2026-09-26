@@ -86,9 +86,11 @@ def admission_reason(observed: dict) -> str | None:
     if observed['memoryFullAvg10Pct'] > 5 or observed['ioFullAvg10Pct'] > 10:
         return 'pve-admission-pressure-high'
     physical = observed['hostAvailableBytes']
-    shortfall = max(0, TOTAL_BUDGET - physical)
     if physical < PHYSICAL_RESERVE:
         return 'pve-admission-physical-reserve-unavailable'
+    # Keep the physical reserve available to the host after admitting the VM.
+    # Only the remainder may count toward the unchanged total requirement.
+    shortfall = max(0, TOTAL_BUDGET - (physical - PHYSICAL_RESERVE))
     if observed['hostSwapFreeBytes'] < shortfall + SWAP_RESERVE:
         return 'pve-admission-host-swap-unavailable'
     if observed['ctMemoryMaxBytes'] - observed['ctMemoryCurrentBytes'] < GUEST_AND_OVERHEAD:
