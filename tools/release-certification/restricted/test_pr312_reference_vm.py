@@ -71,6 +71,10 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'deadline'
         self.assertIn('--lifecycle-scenario deadline --workload-group deadline',
                       driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'revocation-running'
+        args.workload_group = 'revocation-running'
+        self.assertIn('--lifecycle-scenario revocation-running --workload-group revocation-running',
+                      driver.workload_guest_command(args))
         args.lifecycle_scenario = 'cancellation'
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)

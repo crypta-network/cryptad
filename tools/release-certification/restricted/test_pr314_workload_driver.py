@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import os
+import pwd
 import socket
 import sys
 import threading
@@ -467,6 +468,44 @@ class DeadlineObservationTest(unittest.TestCase):
         receipts['candidate-sender']['startedMonotonicNs'] = 999
         with self.assertRaisesRegex(ValueError, 'receipt-invalid'):
             driver.complete_deadline(workload, armed)
+
+
+class RevocationRequestTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for observer UID transition')
+    def test_fixed_observer_child_reaches_exact_root_controller_peer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o755)
+            path = root / 'control.sock'
+            seen = []
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(path))
+                path.chmod(0o666)
+                listener.listen(1)
+                listener.settimeout(5)
+
+                def serve():
+                    with listener.accept()[0] as channel:
+                        raw = bytearray()
+                        while not raw.endswith(b'\n'):
+                            raw.extend(channel.recv(128))
+                        seen.append(bytes(raw))
+                        channel.sendall(
+                            b'{"error":"restricted-workload-request-failed"}\n')
+
+                worker = threading.Thread(target=serve, daemon=True)
+                worker.start()
+                with patch.object(driver, 'REVOCATION_CONTROL_SOCKET', str(path)):
+                    record = driver._revocation_request(
+                        pwd.getpwnam('nobody'), 'a' * 64, os.getpid())
+                worker.join(timeout=2)
+                self.assertFalse(worker.is_alive())
+            self.assertEqual([b'{"method":"start","handle":"' +
+                              b'a' * 64 + b'"}\n'], seen)
+            self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
+            self.assertEqual(hashlib.sha256(seen[0]).hexdigest(),
+                             record['requestDigest'])
 
 
 class ControllerRestartObservationTest(unittest.TestCase):

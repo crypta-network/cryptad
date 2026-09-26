@@ -188,7 +188,8 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
-        for lifecycle in ('cancellation', 'controller-restart', 'deadline'):
+        for lifecycle in ('cancellation', 'controller-restart', 'deadline',
+                          'revocation-running'):
             self.assertTrue(runner.group_prepared(report,
                 {**result, 'groupPreparation': lifecycle}, terminal, lifecycle))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
@@ -1205,6 +1206,70 @@ class RunnerTests(unittest.TestCase):
             stale['lifecycleActorAfter']['startTicks'] = 34
             self.assertIsNone(runner._lifecycle_group_attempt(
                 'deadline', report, result, fixture, stale, terminal, source))
+
+    def test_revocation_group_needs_live_denial_and_owned_terminal_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            terminal['controllerRecords'][role]['record'][
+                'stopReason'] = 'controller-reconciliation'
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 250 + index
+            receipt['observedMonotonicNs'] = 260 + index
+        event = {'kind': 'revocation-running', 'roles': rows,
+                 'campaignDeadlineNs': 1000, 'markerDigest': 'e' * 64}
+        controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 30],
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'mainPid': 100, 'mainStartTicks': 40,
+                      'observedMonotonicNs': 190}
+        context = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-revocation-running',
+            'triggerStartedNs': 200,
+            'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
+            'campaignDeadlineNs': 1000, 'preRoles': rows,
+            'markerIdentity': [1, 55, 32], 'markerDigest': 'e' * 64,
+            'controllerBefore': controller,
+            'controllerAfter': dict(controller, observedMonotonicNs=240),
+            'actor': {'pid': 501, 'uid': roster['observerUid'], 'startTicks': 45},
+            'requestDigest': 'd' * 64,
+            'responseDigest': hashlib.sha256(
+                b'{"error":"restricted-workload-request-failed"}\n').hexdigest(),
+            'requestStartedNs': 220, 'responseObservedNs': 230,
+            'terminalObservedNs': 300, 'populatedCgroups': [],
+            'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 100}}
+        source = Path(__file__).resolve().parents[3]
+        private = {'revocationRunning': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'revocation-running'))
+            self.assertEqual('e' * 64,
+                             sidecar['targetEpoch']['revocationMarkerDigest'])
+            forged = copy.deepcopy(private)
+            forged['revocationRunning']['actor']['uid'] = 0
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, forged, terminal, source))
+            early = copy.deepcopy(terminal)
+            early['stopReceipts']['candidate-sender']['current'][
+                'record']['startedMonotonicNs'] = 220
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, early, source))
 
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()

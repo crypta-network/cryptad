@@ -21,7 +21,8 @@ KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restric
 STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
 NATIVE_ROOT = Path('/var/lib/cryptad-restricted-native')
-LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline', 'none')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
+                       'revocation-running', 'none')
 
 
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
@@ -31,12 +32,13 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline')
+                              'controller-restart', 'deadline', 'revocation-running')
             or (startup_measurement and workload_group)
-            or (workload_group in ('cancellation', 'controller-restart', 'deadline') and
+            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
+                                   'revocation-running') and
                 lifecycle_scenario != workload_group)
             or (workload_group not in (None, 'cancellation', 'controller-restart',
-                                       'deadline')
+                                       'deadline', 'revocation-running')
                 and lifecycle_scenario != 'none')
             or (workload_group is None and lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -75,12 +77,13 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline')
+                              'controller-restart', 'deadline', 'revocation-running')
             or (startup_measurement and workload_group)
-            or (workload_group in ('cancellation', 'controller-restart', 'deadline') and
+            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
+                                   'revocation-running') and
                 lifecycle_scenario != workload_group)
             or (workload_group not in (None, 'cancellation', 'controller-restart',
-                                       'deadline')
+                                       'deadline', 'revocation-running')
                 and lifecycle_scenario != 'none')
             or (workload_group is None and lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -248,7 +251,8 @@ def main():
                                                     'role-readiness-diagnostic',
                                                     'role-boundary', 'authority',
                                                     'network-app', 'cancellation',
-                                                    'controller-restart', 'deadline'))
+                                                    'controller-restart', 'deadline',
+                                                    'revocation-running'))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):

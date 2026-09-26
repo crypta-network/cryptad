@@ -317,17 +317,20 @@ def workload_guest_command(args):
     workload_group = getattr(args, 'workload_group', None)
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
-            or scenario not in ('cancellation', 'controller-restart', 'deadline', 'none')
+            or scenario not in ('cancellation', 'controller-restart', 'deadline',
+                                'revocation-running', 'none')
             or workload_group not in (None, 'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
                                       'role-readiness-diagnostic', 'role-boundary',
                                       'authority', 'network-app', 'cancellation',
-                                      'controller-restart', 'deadline')
-            or (workload_group in ('cancellation', 'controller-restart', 'deadline')
+                                      'controller-restart', 'deadline',
+                                      'revocation-running')
+            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
+                                   'revocation-running')
                 and scenario != workload_group)
             or (workload_group not in (None, 'cancellation', 'controller-restart',
-                                      'deadline')
+                                      'deadline', 'revocation-running')
                 and scenario != 'none')
             or (workload_group is None and scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
@@ -368,7 +371,8 @@ def run(args):
                                      ('output-symlink', 'output-fifo', 'output-hardlink',
                                       'output-flood', 'output-replacement',
                                       'role-boundary', 'authority', 'network-app',
-                                      'cancellation', 'controller-restart', 'deadline')
+                                      'cancellation', 'controller-restart', 'deadline',
+                                      'revocation-running')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

@@ -47,7 +47,7 @@ def groups():
 
 SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'network-app', 'cancellation', 'controller-restart',
-                              'deadline',
+                              'deadline', 'revocation-running',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -175,7 +175,8 @@ def group_prepared(report, result, terminal, group):
     if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                       'output-flood', 'output-replacement', 'role-boundary',
                       'authority', 'network-app', 'cancellation',
-                      'controller-restart', 'deadline', 'role-readiness-diagnostic')
+                      'controller-restart', 'deadline',
+                      'revocation-running', 'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
@@ -185,7 +186,8 @@ def group_prepared(report, result, terminal, group):
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
                              'role-boundary', 'authority', 'network-app',
-                             'cancellation', 'controller-restart', 'deadline')
+                             'cancellation', 'controller-restart', 'deadline',
+                             'revocation-running')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -215,7 +217,8 @@ def group_prepared(report, result, terminal, group):
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
                              'role-boundary', 'authority', 'network-app',
-                             'cancellation', 'controller-restart', 'deadline')
+                             'cancellation', 'controller-restart', 'deadline',
+                             'revocation-running')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -653,6 +656,109 @@ def _deadline_case(report, diagnostics, terminal, principals):
                      'finishedMonotonicNs': context['terminalObservedNs']}, commitment
 
 
+def _revocation_case(report, diagnostics, terminal, principals):
+    """Bind the live revocation marker and refused controller request to owned cleanup."""
+    if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
+            or report.get('guestStopped') is not True
+            or terminal.get('cleanupReportedByCaller') is not True):
+        return None
+    context = diagnostics.get('revocationRunning')
+    try:
+        fields = {'schemaVersion', 'kind', 'triggerStartedNs', 'triggerEventDigest',
+            'campaignDeadlineNs', 'preRoles', 'markerIdentity', 'markerDigest',
+            'controllerBefore', 'controllerAfter', 'actor', 'requestDigest',
+            'responseDigest', 'requestStartedNs', 'responseObservedNs',
+            'terminalObservedNs', 'populatedCgroups', 'remainingDescendants',
+            'retention'}
+        if (not isinstance(context, dict) or set(context) != fields
+                or context['schemaVersion'] != 1
+                or context['kind'] != 'pr315-administrator-revocation-running'
+                or context['populatedCgroups'] != []
+                or context['remainingDescendants'] != 0
+                or context['retention'] != 'retained'
+                or not 0 < context['triggerStartedNs'] < context['campaignDeadlineNs']
+                or not context['triggerStartedNs'] < context['requestStartedNs']
+                    < context['responseObservedNs'] < context['terminalObservedNs']
+                or re.fullmatch('[0-9a-f]{64}', context['markerDigest']) is None
+                or not isinstance(context['markerIdentity'], list)
+                or len(context['markerIdentity']) != 3
+                or any(type(part) is not int or part <= 0
+                       for part in context['markerIdentity'])
+                or context['markerIdentity'][2] != 32
+                or len(context['preRoles']) != len(acceptance.ROLES)):
+            return None
+        campaign = terminal['controllerRecords']['campaign']
+        if (campaign['status'] != 'captured'
+                or campaign['record']['state'] != 'terminalizing'
+                or campaign['record']['deadlineMonotonicNs'] !=
+                    context['campaignDeadlineNs']):
+            return None
+        before, after = context['controllerBefore'], context['controllerAfter']
+        stable = ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
+                  'mainStartTicks')
+        actor = context['actor']
+        if (any(before[key] != after[key] for key in stable)
+                or not before['observedMonotonicNs'] < context['triggerStartedNs']
+                    < context['requestStartedNs'] < context['responseObservedNs']
+                    < after['observedMonotonicNs']
+                or actor['uid'] != principals['observerUid']
+                or type(actor['pid']) is not int or actor['pid'] <= 1
+                or type(actor['startTicks']) is not int or actor['startTicks'] <= 0
+                or context['responseDigest'] != hashlib.sha256(
+                    b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+                or re.fullmatch('[0-9a-f]{64}', context['requestDigest']) is None):
+            return None
+        rows = context['preRoles']
+        if (not all(isinstance(row, dict) and set(row) == {
+                'role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid'}
+                for row in rows)
+                or {row['role'] for row in rows} != set(acceptance.ROLES)):
+            return None
+        event = {'kind': 'revocation-running', 'roles': rows,
+                 'campaignDeadlineNs': context['campaignDeadlineNs'],
+                 'markerDigest': context['markerDigest']}
+        if context['triggerEventDigest'] != fixtures.runtime.canonical_digest(event)[7:]:
+            return None
+        for row in rows:
+            role = row['role']
+            principal = next(item for item in principals['roles']
+                             if item['role'] == role)
+            receipt = terminal['stopReceipts'][role]['current']
+            record = terminal['controllerRecords'][role]
+            if (type(row['mainPid']) is not int or row['mainPid'] <= 0
+                    or row['managerInvocation'] != principal['invocationId']
+                    or row['bootId'].replace('-', '').lower() != principal['bootId']
+                    or fixtures.runtime.canonical_digest({
+                        'role': role, 'identity': row['cgroupIdentity']})[7:] !=
+                        principal['cgroupDigest']
+                    or receipt['status'] != 'captured'
+                    or record['status'] != 'captured'
+                    or record['record']['stopReason'] != 'controller-reconciliation'):
+                return None
+            stopped = receipt['record']
+            if (any(stopped[key] != row[key] for key in
+                    ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                    or stopped['membership'] != 'only-stop-helper'
+                    or stopped['descendantCgroups'] != 0
+                    or not context['responseObservedNs'] < stopped['startedMonotonicNs']
+                        <= stopped['observedMonotonicNs']
+                        <= context['terminalObservedNs']):
+                return None
+    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+    witness = {'caseId': 'revocation-running', 'triggerDigest': '',
+        'trigger': {'kind': 'revocation-running',
+                    'eventDigest': context['triggerEventDigest']},
+        'triggerStartedNs': context['triggerStartedNs'],
+        'terminalObservedNs': context['terminalObservedNs'],
+        'roles': principals['roles'], 'populatedCgroups': [],
+        'remainingDescendants': 0, 'retention': 'retained'}
+    commitment = acceptance.payload_commitment('revocation-running', witness)
+    witness['triggerDigest'] = commitment
+    return witness, {'startedMonotonicNs': context['triggerStartedNs'],
+                     'finishedMonotonicNs': context['terminalObservedNs']}, commitment
+
+
 def _controller_restart_case(report, diagnostics, terminal, principals):
     """Bind actual controller invocation replacement to all four terminal role receipts."""
     if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
@@ -857,7 +963,8 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
 def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                              terminal, source):
     """Bind one real controller transition to its root test-kit process epoch."""
-    if group not in ('cancellation', 'controller-restart', 'deadline'):
+    if group not in ('cancellation', 'controller-restart', 'deadline',
+                     'revocation-running'):
         return None
     try:
         if (not group_prepared(report, result, terminal, group)
@@ -868,12 +975,15 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
         principals = result['roleKernelRoster']
         context = diagnostics[{'cancellation': 'cancellation',
                                'controller-restart': 'controllerRestart',
-                               'deadline': 'deadline'}[group]]
+                               'deadline': 'deadline',
+                               'revocation-running': 'revocationRunning'}[group]]
         case = (_cancellation_case(report, result, diagnostics, terminal, principals)
                 if group == 'cancellation' else
                 _controller_restart_case(report, diagnostics, terminal, principals)
                 if group == 'controller-restart' else
-                _deadline_case(report, diagnostics, terminal, principals))
+                _deadline_case(report, diagnostics, terminal, principals)
+                if group == 'deadline' else
+                _revocation_case(report, diagnostics, terminal, principals))
         if case is None:
             return None
         witness, window, commitment = case
@@ -938,7 +1048,10 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                    'targetEpoch': {'roles': principals['roles'],
                                    'controllerBefore': context.get('beforeController'),
                                    'controllerAfter': context.get('afterController'),
-                                   'roleStops': context.get('roleStops')},
+                                   'roleStops': context.get('roleStops'),
+                                   'revocationMarkerDigest': context.get('markerDigest'),
+                                   'revocationActor': context.get('actor'),
+                                   'revocationRequestDigest': context.get('requestDigest')},
                    'operationWindow': window,
                    'triggerDigest': commitment,
                    'stopReceiptObservedNs': max(row['observedMonotonicNs']
@@ -2271,19 +2384,22 @@ def run(args):
                              'output-hardlink', 'output-flood', 'output-replacement')
     selected_preparation = output_group or group in (
         'role-boundary', 'authority', 'network-app',
-        'cancellation', 'controller-restart', 'deadline')
+        'cancellation', 'controller-restart', 'deadline', 'revocation-running')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
             role_measurement and getattr(args, 'startup_measurement', False)):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = (group if group in ('cancellation', 'controller-restart', 'deadline') else
+    scenario = (group if group in ('cancellation', 'controller-restart',
+                                  'deadline', 'revocation-running') else
                 'none' if selected_preparation or role_measurement else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
     requires_none = (selected_preparation and group not in
-                     ('cancellation', 'controller-restart', 'deadline')) or role_measurement
+                     ('cancellation', 'controller-restart', 'deadline',
+                      'revocation-running')) or role_measurement
     if (requires_none != (scenario == 'none')
-            or (group in ('cancellation', 'controller-restart', 'deadline')
+            or (group in ('cancellation', 'controller-restart', 'deadline',
+                          'revocation-running')
                 and scenario != group)):
         raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
@@ -2445,7 +2561,8 @@ def run(args):
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
                     raise ValueError('workload-group-host-identity-changed')
-            if (group in ('cancellation', 'controller-restart', 'deadline') and group_ready
+            if (group in ('cancellation', 'controller-restart', 'deadline',
+                          'revocation-running') and group_ready
                     and isinstance(terminal, dict)):
                 lifecycle = _lifecycle_group_attempt(group, report, value, fixture,
                                                      resources, terminal, args.source)

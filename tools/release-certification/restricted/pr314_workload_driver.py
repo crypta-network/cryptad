@@ -34,10 +34,12 @@ VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
+REVOCATION_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
-LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline', 'none')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
+                       'revocation-running', 'none')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -749,7 +751,8 @@ def _administrator_collector_epoch(case_id):
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
                 'role': ('lifecycle-administrator' if case_id in
-                         ('cancellation', 'controller-restart', 'deadline')
+                         ('cancellation', 'controller-restart', 'deadline',
+                          'revocation-running')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -1674,6 +1677,175 @@ def complete_deadline(workload, context):
     raise ValueError('workload-deadline-service-stop-unobserved')
 
 
+def _revocation_request(observer, handle, controller_pid):
+    """Use one exact observer UID and fixed controller method after root revocation."""
+    if (observer.pw_uid <= 0 or observer.pw_gid <= 0
+            or re.fullmatch('[0-9a-f]{64}', handle) is None
+            or type(controller_pid) is not int or controller_pid <= 1):
+        raise ValueError('workload-revocation-observer-selection-invalid')
+    request = (b'{"method":"start","handle":"' + handle.encode() + b'"}\n')
+    response = b'{"error":"restricted-workload-request-failed"}\n'
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    pid = os.fork()
+    if pid == 0:
+        parent.close()
+        try:
+            allowed = {0, 1, 2, child.fileno()}
+            for name in os.listdir('/proc/self/fd'):
+                if name.isdecimal() and int(name) not in allowed:
+                    try:
+                        os.close(int(name))
+                    except OSError:
+                        pass
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            child.sendall(b'R')
+            child.settimeout(5)
+            if child.recv(1) != b'G':
+                raise ValueError('workload-revocation-barrier-invalid')
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+                channel.settimeout(5)
+                channel.connect(REVOCATION_CONTROL_SOCKET)
+                peer, uid, _gid = struct.unpack('3i', channel.getsockopt(
+                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+                if peer != controller_pid or uid != 0:
+                    raise ValueError('workload-revocation-controller-peer-invalid')
+                channel.sendall(request)
+                raw = bytearray()
+                while len(raw) <= len(response) and not raw.endswith(b'\n'):
+                    block = channel.recv(len(response) + 1 - len(raw))
+                    if not block:
+                        break
+                    raw.extend(block)
+                if bytes(raw) != response:
+                    raise ValueError('workload-revocation-denial-not-observed')
+            child.sendall(b'1')
+            os._exit(0)
+        except BaseException:
+            try:
+                child.sendall(b'0')
+            except OSError:
+                pass
+            os._exit(1)
+    child.close()
+    reaped = False
+    try:
+        parent.settimeout(5)
+        if parent.recv(1) != b'R':
+            raise ValueError('workload-revocation-observer-not-ready')
+        proc = Path('/proc') / str(pid)
+        status = next(line for line in proc.joinpath('status').read_text().splitlines()
+                      if line.startswith('Uid:'))
+        if set(map(int, status.split()[1:])) != {observer.pw_uid}:
+            raise ValueError('workload-revocation-observer-uid-invalid')
+        start_ticks = int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        started = time.monotonic_ns()
+        parent.sendall(b'G')
+        observed = parent.recv(1)
+        finished = time.monotonic_ns()
+        status = wait_child(pid, time.monotonic() + 5)
+        reaped = True
+        if observed != b'1' or status != 0 or start_ticks <= 0 or finished <= started:
+            raise ValueError('workload-revocation-denial-not-observed')
+        return {'actor': {'pid': pid, 'uid': observer.pw_uid,
+                          'startTicks': start_ticks},
+                'requestDigest': hashlib.sha256(request).hexdigest(),
+                'responseDigest': hashlib.sha256(response).hexdigest(),
+                'requestStartedNs': started, 'responseObservedNs': finished}
+    finally:
+        parent.close()
+        if not reaped:
+            stop_child(pid)
+
+
+def begin_revocation_running(workload, handoff, result, observer):
+    """Revoke one live campaign and observe the installed controller refuse work."""
+    from cross_version_runtime import canonical_digest
+    import runtime_snapshot as snapshot
+    active = begin_cancellation(workload, handoff, result)
+    before = controller_unit_identity(workload)
+    marker = workload.ROOT / 'revoked'
+    raw = secrets.token_bytes(32)
+    descriptor = os.open(marker,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-revocation-marker-short-write')
+        os.fsync(descriptor)
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+                or info.st_nlink != 1 or info.st_mode & 0o077):
+            raise ValueError('workload-revocation-marker-invalid')
+    finally:
+        os.close(descriptor)
+    trigger = time.monotonic_ns()
+    digest = hashlib.sha256(raw).hexdigest()
+    denial = _revocation_request(observer,
+        handoff['handles']['candidate-sender'], before['mainPid'])
+    after = controller_unit_identity(workload)
+    stable = ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
+              'mainStartTicks')
+    if (any(before[key] != after[key] for key in stable)
+            or not before['observedMonotonicNs'] < trigger
+                < denial['requestStartedNs'] < denial['responseObservedNs']
+                < after['observedMonotonicNs']
+            or snapshot.read_file(workload.ROOT, 'revoked', maximum=32,
+                                  timeout=2) != raw):
+        raise ValueError('workload-revocation-target-changed')
+    marker_after = marker.lstat()
+    if ((marker_after.st_dev, marker_after.st_ino, marker_after.st_size)
+            != (info.st_dev, info.st_ino, info.st_size)):
+        raise ValueError('workload-revocation-marker-changed')
+    for row in active['preRoles']:
+        state = workload.manager(row['role'], 'show')
+        if (state['ActiveState'] != 'active' or state['SubState'] != 'running'
+                or state['MainPID'] != str(row['mainPid'])
+                or state['InvocationID'] != row['managerInvocation']):
+            raise ValueError('workload-revocation-sibling-changed')
+    event = {'kind': 'revocation-running', 'roles': active['preRoles'],
+             'campaignDeadlineNs': active['campaignDeadlineNs'],
+             'markerDigest': digest}
+    return {'schemaVersion': 1, 'kind': 'pr315-administrator-revocation-running',
+        'triggerStartedNs': trigger,
+        'triggerEventDigest': canonical_digest(event)[7:],
+        'campaignDeadlineNs': active['campaignDeadlineNs'],
+        'preRoles': active['preRoles'],
+        'markerIdentity': [info.st_dev, info.st_ino, info.st_size],
+        'markerDigest': digest, 'controllerBefore': before,
+        'controllerAfter': after, **denial}
+
+
+def complete_revocation_running(workload, context):
+    """Bind the refusal to exact owned termination and unchanged revocation."""
+    import runtime_snapshot as snapshot
+    marker = workload.ROOT / 'revoked'
+    info = marker.lstat()
+    if ([info.st_dev, info.st_ino, info.st_size] != context['markerIdentity']
+            or hashlib.sha256(snapshot.read_file(workload.ROOT, 'revoked',
+                maximum=32, timeout=2)).hexdigest() != context['markerDigest']):
+        raise ValueError('workload-revocation-marker-changed')
+    for row in context['preRoles']:
+        role = row['role']
+        state = workload.manager(role, 'show')
+        receipt = workload.read(workload.ROOT / 'authority' / (role + '-stop.json'))
+        if (state['ActiveState'] not in {'inactive', 'failed'}
+                or state['SubState'] not in {'dead', 'failed'}
+                or state['MainPID'] != '0' or not workload.quiescent(role)
+                or any(receipt[key] != row[key] for key in
+                       ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or receipt['startedMonotonicNs'] <= context['responseObservedNs']):
+            raise ValueError('workload-revocation-terminal-mismatch')
+    finished = time.monotonic_ns()
+    return {**context, 'terminalObservedNs': finished,
+            'populatedCgroups': [], 'remainingDescendants': 0,
+            'retention': 'retained'}
+
+
 def controller_unit_state():
     """Project the fixed installed controller's actual systemd invocation."""
     command = ['/usr/bin/systemctl', 'show', 'cryptad-workload-controller.service',
@@ -2208,7 +2380,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline'):
+                              'controller-restart', 'deadline', 'revocation-running'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2508,13 +2680,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
-                             'controller-restart', 'deadline') or (
+                             'controller-restart', 'deadline', 'revocation-running') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
-    if (workload_group in ('cancellation', 'controller-restart', 'deadline') and
+    if (workload_group in ('cancellation', 'controller-restart', 'deadline',
+                           'revocation-running') and
             lifecycle_scenario != workload_group or
             workload_group not in (None, 'cancellation', 'controller-restart',
-                                   'deadline')
+                                   'deadline', 'revocation-running')
             and lifecycle_scenario != 'none' or
             workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
@@ -2563,6 +2736,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     sentinel = None
     cancellation = None
     controller_restart = None
+    revocation = None
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         role_probe_digest = stage_role_probe(workload, kit)
@@ -2645,7 +2819,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline') and
+                              'controller-restart', 'deadline',
+                              'revocation-running') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2822,7 +2997,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
         if not startup_measurement and workload_group in ('cancellation',
-                                                           'controller-restart', 'deadline'):
+                'controller-restart', 'deadline', 'revocation-running'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
@@ -2855,6 +3030,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['deadline'] = {'status': 'unavailable-or-unsafe',
                                            'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'revocation-running':
+            try:
+                revocation = begin_revocation_running(workload, handoff, result, observer)
+                diagnostics['revocationRunning'] = revocation
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['revocationRunning'] = {'status': 'unavailable-or-unsafe',
+                                                    'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -2887,7 +3070,17 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             subprocess.SubprocessError) as error:
                         diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
                                                             'exceptionType': type(error).__name__[:128]}
-                if workload_group in ('cancellation', 'controller-restart', 'deadline'):
+                if revocation is not None:
+                    try:
+                        diagnostics['revocationRunning'] = complete_revocation_running(
+                            workload, revocation)
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                            subprocess.SubprocessError) as error:
+                        diagnostics['revocationRunning'] = {
+                            'status': 'unavailable-or-unsafe',
+                            'exceptionType': type(error).__name__[:128]}
+                if workload_group in ('cancellation', 'controller-restart', 'deadline',
+                                      'revocation-running'):
                     try:
                         diagnostics['lifecycleActorAfter'] = _administrator_collector_epoch(
                             workload_group)
@@ -2925,7 +3118,8 @@ def main():
                                                     'role-readiness-diagnostic',
                                                     'role-boundary', 'authority',
                                                     'network-app', 'cancellation',
-                                                    'controller-restart', 'deadline'))
+                                                    'controller-restart', 'deadline',
+                                                    'revocation-running'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:
