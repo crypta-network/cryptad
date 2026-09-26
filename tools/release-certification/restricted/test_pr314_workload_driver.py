@@ -1004,7 +1004,8 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             with patch.object(driver, '_readiness_java_process', return_value=selected), \
                     patch.object(driver, 'READINESS_JCMD', root / 'readiness.json'), \
                     patch.dict('sys.modules', {'bounded_process': SimpleNamespace(run=run)}):
-                summary = driver.capture_readiness_jcmd(workload, {})
+                summary = driver.capture_readiness_jcmd(workload, {
+                    'deadlineMonotonicNs': time.monotonic_ns() + 10_000_000_000})
             self.assertEqual('retained', summary['status'])
             self.assertNotIn('private-thread-details', json.dumps(summary))
             self.assertEqual([(['123', 'VM.command_line'], 5, 4096),
@@ -1012,6 +1013,24 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             retained = json.loads((root / 'readiness.json').read_bytes())
             self.assertEqual('private-diagnostic-not-acceptance', retained['classification'])
             self.assertEqual(0, (root / 'readiness.json').stat().st_mode & 0o077)
+
+    def test_busy_authority_lease_is_retried_before_the_original_deadline(self):
+        selected = ('previous', 'a' * 32,
+                    {'hostPid': 79, 'startTicks': 42,
+                     'executableDigest': 'sha256:' + 'b' * 64})
+        handoff = {'deadlineMonotonicNs': time.monotonic_ns() + 1_000_000_000}
+        with patch.object(driver, '_readiness_java_process', side_effect=[
+                BlockingIOError(), selected]) as observe:
+            self.assertEqual(selected, driver._readiness_java_process_retry(
+                SimpleNamespace(), handoff, 'previous'))
+        self.assertEqual(2, observe.call_count)
+
+    def test_expired_campaign_cannot_extend_jcmd_observation(self):
+        handoff = {'deadlineMonotonicNs': time.monotonic_ns() - 1}
+        with patch.object(driver, '_readiness_java_process') as observe:
+            with self.assertRaisesRegex(ValueError, 'deadline-unavailable'):
+                driver._readiness_java_process_retry(SimpleNamespace(), handoff, 'previous')
+        observe.assert_not_called()
 
 
 class OutputHardlinkControlTest(unittest.TestCase):

@@ -1649,7 +1649,7 @@ def capture_readiness_jcmd(workload, handoff, role=None):
     from bounded_process import run
     path = READINESS_JCMD
     try:
-        role, invocation, process = _readiness_java_process(workload, handoff, role)
+        role, invocation, process = _readiness_java_process_retry(workload, handoff, role)
         java = workload.ROOT / 'roles' / role / 'jdk/bin/jcmd'
         if not java.is_file():
             raise ValueError('workload-readiness-jcmd-unavailable')
@@ -1690,6 +1690,23 @@ def capture_readiness_jcmd(workload, handoff, role=None):
     except (OSError, ValueError, KeyError, TypeError, IndexError,
             subprocess.SubprocessError) as error:
         return {'status': 'unavailable-or-unsafe', 'exceptionType': type(error).__name__[:128]}
+
+
+def _readiness_java_process_retry(workload, handoff, role=None):
+    """Retry only a busy authority lease within the original campaign deadline."""
+    deadline_ns = handoff.get('deadlineMonotonicNs')
+    now_ns = time.monotonic_ns()
+    if type(deadline_ns) is not int or deadline_ns <= now_ns:
+        raise ValueError('workload-readiness-jcmd-deadline-unavailable')
+    until_ns = min(deadline_ns, now_ns + 2_000_000_000)
+    while True:
+        try:
+            return _readiness_java_process(workload, handoff, role)
+        except BlockingIOError:
+            remaining_ns = until_ns - time.monotonic_ns()
+            if remaining_ns <= 0:
+                raise
+            time.sleep(min(.05, remaining_ns / 1e9))
 
 
 def cleanup(workload):
