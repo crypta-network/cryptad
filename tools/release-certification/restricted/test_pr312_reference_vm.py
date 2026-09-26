@@ -59,6 +59,17 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'network-app'
         self.assertIn('--lifecycle-scenario none --workload-group network-app',
                       driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'cancellation'
+        args.workload_group = 'cancellation'
+        self.assertIn('--lifecycle-scenario cancellation --workload-group cancellation',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'controller-restart'
+        args.workload_group = 'controller-restart'
+        self.assertIn('--lifecycle-scenario controller-restart --workload-group controller-restart',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'cancellation'
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):

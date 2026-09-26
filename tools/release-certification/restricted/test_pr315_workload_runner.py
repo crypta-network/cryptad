@@ -53,6 +53,24 @@ def synthetic_host_identity():
             'preparedImageDigest': '3' * 64, 'fixtureManifestDigest': '4' * 64}
 
 
+def synthetic_lifecycle_actor(source, observed_ns):
+    """Offline root test-kit epoch fixture; never an installed identity."""
+    boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    cgroup = [1, 50]
+    digest = runner.reference.sha256(source /
+        'tools/release-certification/restricted/pr314_workload_driver.py')
+    invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': 500,
+        'startTicks': 33, 'cgroupIdentity': cgroup,
+        'sourceDigest': digest}, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()[:32]
+    return {'pid': 500, 'uid': 0, 'startTicks': 33, 'bootId': boot,
+            'cgroupIdentity': cgroup, 'cgroupDigest':
+                runner.fixtures.runtime.canonical_digest({
+                    'role': 'lifecycle-administrator', 'identity': cgroup})[7:],
+            'invocationId': invocation, 'sourceDigest': digest,
+            'observedMonotonicNs': observed_ns}
+
+
 def synthetic_resource_diagnostics(roster):
     return {'during': {'services': {
         'cryptad-workload@' + row['role'] + '.service': {
@@ -170,6 +188,9 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
+        for lifecycle in ('cancellation', 'controller-restart'):
+            self.assertTrue(runner.group_prepared(report,
+                {**result, 'groupPreparation': lifecycle}, terminal, lifecycle))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -1039,6 +1060,24 @@ class RunnerTests(unittest.TestCase):
         _, rejected = runner.positive_case_attempt(
             report, result, fixture, 10, 20, {'cancellation': invalid_context}, terminal)
         self.assertNotIn('cancellation', rejected['declaredCases'])
+        source = Path(__file__).resolve().parents[3]
+        private = {'cancellation': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'cancellation', report, result, dict(fixture, schemaVersion=4),
+                private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'cancellation'))
+            self.assertEqual(private['lifecycleActorBefore']['invocationId'],
+                             sidecar['actorEpoch']['testKitInvocation'])
+            tampered = copy.deepcopy(private)
+            tampered['lifecycleActorAfter']['pid'] = 501
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'cancellation', report, result, dict(fixture, schemaVersion=4),
+                tampered, terminal, source))
 
     def test_controller_restart_requires_changed_invocation_and_reconciled_role_receipts(self):
         roster = synthetic_role_kernel_roster()
@@ -1086,6 +1125,24 @@ class RunnerTests(unittest.TestCase):
         _, rejected = runner.positive_case_attempt(
             report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
         self.assertNotIn('controller-restart', rejected['declaredCases'])
+        source = Path(__file__).resolve().parents[3]
+        private = {'controllerRestart': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'controller-restart', report, result, dict(fixture, schemaVersion=4),
+                private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'controller-restart'))
+            self.assertEqual(context['beforeController'],
+                             sidecar['targetEpoch']['controllerBefore'])
+            tampered = copy.deepcopy(private)
+            tampered['lifecycleActorAfter']['cgroupIdentity'] = [1, 51]
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'controller-restart', report, result, dict(fixture, schemaVersion=4),
+                tampered, terminal, source))
         invalid = copy.deepcopy(context)
         invalid['preStartBoundRoles'][0]['activeState'] = 'active'
         _, rejected = runner.positive_case_attempt(

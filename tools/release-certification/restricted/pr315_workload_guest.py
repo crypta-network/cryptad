@@ -30,9 +30,14 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
     if (workload_group not in (None, 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority', 'network-app')
+                              'authority', 'network-app', 'cancellation',
+                              'controller-restart')
             or (startup_measurement and workload_group)
-            or (workload_group is not None) != (lifecycle_scenario == 'none')):
+            or (workload_group in ('cancellation', 'controller-restart') and
+                lifecycle_scenario != workload_group)
+            or (workload_group not in (None, 'cancellation', 'controller-restart')
+                and lifecycle_scenario != 'none')
+            or (workload_group is None and lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
@@ -68,9 +73,14 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     if (workload_group not in (None, 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority', 'network-app')
+                              'authority', 'network-app', 'cancellation',
+                              'controller-restart')
             or (startup_measurement and workload_group)
-            or (workload_group is not None) != (lifecycle_scenario == 'none')):
+            or (workload_group in ('cancellation', 'controller-restart') and
+                lifecycle_scenario != workload_group)
+            or (workload_group not in (None, 'cancellation', 'controller-restart')
+                and lifecycle_scenario != 'none')
+            or (workload_group is None and lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
@@ -235,7 +245,8 @@ def main():
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',
                                                     'role-boundary', 'authority',
-                                                    'network-app'))
+                                                    'network-app', 'cancellation',
+                                                    'controller-restart'))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):

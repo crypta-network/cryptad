@@ -728,7 +728,7 @@ def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_
 
 
 def _administrator_collector_epoch(case_id):
-    """Measure the real test-kit descriptor reader process, not an asserted PID."""
+    """Measure this fixed root test-kit process, never an asserted PID."""
     import cross_version_runtime as runtime
     pid = os.getpid()
     proc = Path('/proc/self')
@@ -748,7 +748,9 @@ def _administrator_collector_epoch(case_id):
     return {'pid': pid, 'uid': 0, 'startTicks': start, 'bootId': boot,
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
-                'role': 'output-collector', 'identity': identity})[7:],
+                'role': ('lifecycle-administrator' if case_id in
+                         ('cancellation', 'controller-restart')
+                         else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
 
@@ -2148,7 +2150,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority', 'network-app'):
+                              'authority', 'network-app', 'cancellation',
+                              'controller-restart'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2447,10 +2450,15 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if workload_group not in (None, 'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
-                             'authority', 'network-app') or (
+                             'authority', 'network-app', 'cancellation',
+                             'controller-restart') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
-    if (workload_group is not None) != (lifecycle_scenario == 'none'):
+    if (workload_group in ('cancellation', 'controller-restart') and
+            lifecycle_scenario != workload_group or
+            workload_group not in (None, 'cancellation', 'controller-restart')
+            and lifecycle_scenario != 'none' or
+            workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
@@ -2578,7 +2586,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority', 'network-app') and
+                              'authority', 'network-app', 'cancellation',
+                              'controller-restart') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2754,7 +2763,15 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics[field] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
-        if not startup_measurement and workload_group is None and lifecycle_scenario == 'cancellation':
+        if not startup_measurement and workload_group in ('cancellation',
+                                                           'controller-restart'):
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            diagnostics['lifecycleActorBefore'] = _administrator_collector_epoch(
+                workload_group)
+        if (not startup_measurement and workload_group in (None, 'cancellation')
+                and lifecycle_scenario == 'cancellation'):
             try:
                 cancellation = begin_cancellation(workload, handoff, result)
                 diagnostics['cancellation'] = cancellation
@@ -2762,7 +2779,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['cancellation'] = {'status': 'unavailable-or-unsafe',
                                                'exceptionType': type(error).__name__[:128]}
-        if not startup_measurement and workload_group is None and lifecycle_scenario == 'controller-restart':
+        if (not startup_measurement and workload_group in (None, 'controller-restart')
+                and lifecycle_scenario == 'controller-restart'):
             try:
                 active = begin_controller_restart(workload, handoff, result)
                 controller_restart = trigger_controller_restart(workload, active)
@@ -2803,6 +2821,12 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             subprocess.SubprocessError) as error:
                         diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
                                                             'exceptionType': type(error).__name__[:128]}
+                if workload_group in ('cancellation', 'controller-restart'):
+                    try:
+                        diagnostics['lifecycleActorAfter'] = _administrator_collector_epoch(
+                            workload_group)
+                    except (OSError, ValueError, KeyError, TypeError):
+                        diagnostics['lifecycleActorAfter'] = {'status': 'unavailable-or-unsafe'}
             finally:
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
@@ -2834,7 +2858,8 @@ def main():
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',
                                                     'role-boundary', 'authority',
-                                                    'network-app'))
+                                                    'network-app', 'cancellation',
+                                                    'controller-restart'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

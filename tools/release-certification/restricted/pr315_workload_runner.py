@@ -173,7 +173,8 @@ def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
     if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                       'output-flood', 'output-replacement', 'role-boundary',
-                      'authority', 'network-app', 'role-readiness-diagnostic')
+                      'authority', 'network-app', 'cancellation',
+                      'controller-restart', 'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
@@ -182,7 +183,8 @@ def group_prepared(report, result, terminal, group):
             and report.get('workloadPurpose') == ('selected-group'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
-                             'role-boundary', 'authority', 'network-app')
+                             'role-boundary', 'authority', 'network-app',
+                             'cancellation', 'controller-restart')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -211,7 +213,8 @@ def group_prepared(report, result, terminal, group):
                 'incomplete-hostile-contract-not-executed'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
-                             'role-boundary', 'authority', 'network-app')
+                             'role-boundary', 'authority', 'network-app',
+                             'cancellation', 'controller-restart')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -765,6 +768,98 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
         'principals': principals, 'targets': {}, 'caseCommitments': commitments,
         'appProcess': app_process, 'restartContext': restart_context}
     return identity, attempt
+
+
+def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
+                             terminal, source):
+    """Bind one real controller transition to its root test-kit process epoch."""
+    if group not in ('cancellation', 'controller-restart'):
+        return None
+    try:
+        if (not group_prepared(report, result, terminal, group)
+                or fixture.get('schemaVersion') != 4
+                or not isinstance(diagnostics, dict)):
+            return None
+        host = report['hostVerifiedIdentity']
+        principals = result['roleKernelRoster']
+        context = diagnostics['cancellation' if group == 'cancellation'
+                              else 'controllerRestart']
+        case = (_cancellation_case(report, result, diagnostics, terminal, principals)
+                if group == 'cancellation' else
+                _controller_restart_case(report, diagnostics, terminal, principals))
+        if case is None:
+            return None
+        witness, window, commitment = case
+        before, after = (diagnostics['lifecycleActorBefore'],
+                         diagnostics['lifecycleActorAfter'])
+        stable = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+                  'cgroupDigest', 'invocationId', 'sourceDigest')
+        source_digest = reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        cgroup_digest = fixtures.runtime.canonical_digest({
+            'role': 'lifecycle-administrator',
+            'identity': before['cgroupIdentity']})[7:]
+        invocation = hashlib.sha256(json.dumps({
+            'bootId': before['bootId'], 'pid': before['pid'],
+            'startTicks': before['startTicks'],
+            'cgroupIdentity': before['cgroupIdentity'],
+            'sourceDigest': source_digest}, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()[:32]
+        if (any(before[key] != after[key] for key in stable)
+                or before['pid'] <= 1 or before['uid'] != 0
+                or before['startTicks'] <= 0
+                or before['sourceDigest'] != source_digest
+                or before['cgroupDigest'] != cgroup_digest
+                or before['invocationId'] != invocation
+                or not isinstance(before['cgroupIdentity'], list)
+                or len(before['cgroupIdentity']) != 2
+                or any(type(part) is not int or part <= 0
+                       for part in before['cgroupIdentity'])
+                or any(row['bootId'] != before['bootId'].replace('-', '').lower()
+                       for row in principals['roles'])
+                or not before['observedMonotonicNs'] < window['startedMonotonicNs']
+                    < window['finishedMonotonicNs'] < after['observedMonotonicNs']):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit',
+            'helperSourceTree', 'bundleIdentity', 'testKitDigest',
+            'profileDigest', 'bootClosureDigest', 'preparedImageDigest',
+            'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        spec = acceptance.CASES[group]
+        observation = {'caseId': group, 'status': 'passed', 'actor': spec.actor,
+                       'target': spec.target, 'outcome': spec.outcome,
+                       **window, 'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+                   'declaredCases': [group], 'observations': [observation],
+                   'guestStopped': True, 'attemptCompleted': True,
+                   'principals': principals, 'targets': {},
+                   'caseCommitments': {group: commitment},
+                   'appProcess': None, 'restartContext': None}
+        receipts = [terminal['stopReceipts'][role]['current']['record']
+                    for role in acceptance.ROLES]
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': group,
+                   'status': 'passed',
+                   'actorEpoch': {'kind': 'administrator-test-kit',
+                                  'pid': before['pid'], 'uid': before['uid'],
+                                  'startTicks': before['startTicks'],
+                                  'bootId': before['bootId'],
+                                  'cgroupDigest': cgroup_digest,
+                                  'systemdInvocation': None,
+                                  'testKitInvocation': invocation,
+                                  'sourceDigest': source_digest},
+                   'targetEpoch': {'roles': principals['roles'],
+                                   'controllerBefore': context.get('beforeController'),
+                                   'controllerAfter': context.get('afterController')},
+                   'operationWindow': window,
+                   'triggerDigest': commitment,
+                   'stopReceiptObservedNs': max(row['observedMonotonicNs']
+                                                for row in receipts),
+                   'hostVerifiedIdentity': host, 'guestStopped': True}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
+            OSError):
+        return None
 
 
 def probe_denial_attempt(report, fixture, terminal):
@@ -2087,16 +2182,20 @@ def run(args):
     output_group = group in ('output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement')
     selected_preparation = output_group or group in (
-        'role-boundary', 'authority', 'network-app')
+        'role-boundary', 'authority', 'network-app',
+        'cancellation', 'controller-restart')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
             role_measurement and getattr(args, 'startup_measurement', False)):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = ('none' if selected_preparation or role_measurement else
-                group if group in ('cancellation', 'controller-restart') else
+    scenario = (group if group in ('cancellation', 'controller-restart') else
+                'none' if selected_preparation or role_measurement else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
-    if (selected_preparation or role_measurement) != (scenario == 'none'):
+    requires_none = (selected_preparation and group not in
+                     ('cancellation', 'controller-restart')) or role_measurement
+    if (requires_none != (scenario == 'none')
+            or (group in ('cancellation', 'controller-restart') and scenario != group)):
         raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
@@ -2257,6 +2356,23 @@ def run(args):
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
                     raise ValueError('workload-group-host-identity-changed')
+            if (group in ('cancellation', 'controller-restart') and group_ready
+                    and isinstance(terminal, dict)):
+                lifecycle = _lifecycle_group_attempt(group, report, value, fixture,
+                                                     resources, terminal, args.source)
+                if lifecycle is None:
+                    raise ValueError('workload-lifecycle-group-verification-failed')
+                identity, case_attempt, sidecar = lifecycle
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == group) != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-lifecycle-group-case-invalid')
+                native_runner._save(output / (group + '-v8-evidence.private.json'),
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                statuses[group] = 'passed'
             if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,

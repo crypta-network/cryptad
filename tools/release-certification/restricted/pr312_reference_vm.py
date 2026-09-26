@@ -322,8 +322,13 @@ def workload_guest_command(args):
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
                                       'role-readiness-diagnostic', 'role-boundary',
-                                      'authority', 'network-app')
-            or (workload_group is not None) != (scenario == 'none')
+                                      'authority', 'network-app', 'cancellation',
+                                      'controller-restart')
+            or (workload_group in ('cancellation', 'controller-restart')
+                and scenario != workload_group)
+            or (workload_group not in (None, 'cancellation', 'controller-restart')
+                and scenario != 'none')
+            or (workload_group is None and scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
         raise ValueError('workload-guest-command-identity-invalid')
     return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
@@ -361,7 +366,8 @@ def run(args):
                                      if getattr(args, 'workload_group', None) in
                                      ('output-symlink', 'output-fifo', 'output-hardlink',
                                       'output-flood', 'output-replacement',
-                                      'role-boundary', 'authority', 'network-app')
+                                      'role-boundary', 'authority', 'network-app',
+                                      'cancellation', 'controller-restart')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')
