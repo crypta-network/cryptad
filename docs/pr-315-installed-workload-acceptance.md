@@ -2344,6 +2344,22 @@ witness:** it cannot increase the accepted 45-case count or change the
 false installed-acceptance verdict. The TCG-specific JVM failure remains
 unresolved.
 
+The next prospective output revision measures `workload-launcher-policy-v10`
+and adds a closed `--case-group output-symlink` path. A fixed test-kit child
+inside the candidate-sender service and role sandbox creates one symlink to
+an existing 32-byte role-owned canary after an administrator barrier. The
+administrator calls the actual bounded `runtime_snapshot.read_file`
+descriptor collector, requires its fixed symlink rejection, and rechecks the
+canary inode, timestamps and bytes. The root audit binds the candidate actor
+and the collector process epochs to the operation, and the host verifier
+requires the matching sender stop receipt before emitting v8/v9 private case
+records. The selected public result can claim only `output-symlink` and does
+not trigger a lifecycle fault. Native Linux checks passed 142 PR-315 tests,
+23 PR-312 tests with one skip, 42 PR-314 workload-driver tests and 170
+protected workload tests with 21 skips. No installed output-symlink result
+exists on this prospective source; other output attacks and the complete
+campaign remain unimplemented.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2451,7 +2467,7 @@ role/AppHost boundary.
 | `namespace-mount-escape` | app | Outer role boundary; bounded nested namespace/mount escape attempt |
 | `cgroup-migration` | candidate | Existing fixed cgroup target; actual migration attempt and unchanged ownership |
 | `resource-exhaustion` | app | Role resource cap; finite allocation/task probe and actual cgroup events |
-| `output-symlink` | candidate | Descriptor-based collector; role-created symlink |
+| `output-symlink` | candidate | Prospective isolated role-created symlink to active canary, actual bounded descriptor collector, root/host epoch and stop checks; no installed result yet |
 | `output-fifo` | candidate | Descriptor-based collector; role-created FIFO and bounded rejection |
 | `output-hardlink` | candidate | Descriptor-based collector; actual multiply linked file |
 | `output-replacement` | candidate | Descriptor-based collector; coordinated replacement during pinned read |

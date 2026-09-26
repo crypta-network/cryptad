@@ -46,7 +46,8 @@ def groups():
 
 
 SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
-                              'network-app', 'cancellation', 'controller-restart'))
+                              'network-app', 'cancellation', 'controller-restart',
+                              'output-symlink'))
 
 
 def selected_cases(group):
@@ -1591,6 +1592,155 @@ def _resolver_authority_attempt(report, result, fixture, terminal, source):
         return None
 
 
+def _output_symlink_attempt(report, result, fixture, terminal, source):
+    """Bind candidate symlink creation to the real bounded descriptor reader."""
+    case_id = 'output-symlink'
+    try:
+        if (not positive_executed(report, result, terminal)
+                or fixture.get('schemaVersion') != 4
+                or terminal['outputSymlinkAudit']['status'] != 'captured'):
+            return None
+        audit = terminal['outputSymlinkAudit']['record']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        before, after = audit['actorBefore'], audit['actorAfter']
+        collector, collector_after = audit['collectorBefore'], audit['collectorAfter']
+        target_before, target_after = audit['targetBefore'], audit['targetAfter']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        host = report['hostVerifiedIdentity']
+        actor_stable = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                        'pidNamespace', 'networkNamespaceIdentity',
+                        'mountNamespaceIdentity', 'userNamespaceIdentity',
+                        'executableDigest', 'noNewPrivileges',
+                        'effectiveCapabilities')
+        collector_stable = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+                            'cgroupDigest', 'invocationId', 'sourceDigest')
+        actor_group = fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
+        collector_group = fixtures.runtime.canonical_digest({
+            'role': 'output-collector', 'identity': collector['cgroupIdentity']})[7:]
+        collector_invocation = hashlib.sha256(json.dumps({
+            'bootId': collector['bootId'], 'pid': collector['pid'],
+            'startTicks': collector['startTicks'],
+            'cgroupIdentity': collector['cgroupIdentity'],
+            'sourceDigest': collector['sourceDigest']},
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-output-symlink-denial'
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr315_role_probe.py')
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in actor_stable)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['actorInvocationBefore'] != sender['invocationId']
+                or audit['actorInvocationAfter'] != sender['invocationId']
+                or audit['actorCgroupBefore'] != audit['actorCgroupAfter']
+                or actor_group != sender['cgroupDigest']
+                or audit['senderStateBefore'] != audit['senderStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['senderStateBefore']
+                or any(collector[key] != collector_after[key]
+                       for key in collector_stable)
+                or collector['pid'] <= 1 or collector['uid'] != 0
+                or collector['startTicks'] <= 0
+                or collector['bootId'].replace('-', '').lower() != sender['bootId']
+                or collector['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py')
+                or collector['cgroupDigest'] != collector_group
+                or collector['invocationId'] != collector_invocation
+                or collector['invocationId'] in {row['invocationId']
+                    for row in result['roleKernelRoster']['roles']}
+                or collector_group in {row['cgroupDigest']
+                    for row in result['roleKernelRoster']['roles']}
+                or target_before['controlDigest'] != target_after['controlDigest']
+                or target_before['fileIdentity'] != target_after['fileIdentity']
+                or not isinstance(target_before['fileIdentity'], list)
+                or len(target_before['fileIdentity']) != 5
+                or any(type(part) is not int or part < 0
+                       for part in target_before['fileIdentity'])
+                or re.fullmatch('[0-9a-f]{64}', target_before['controlDigest']) is None
+                or audit['artifactOwnerUid'] != sender['uid']
+                or not isinstance(audit['artifactIdentity'], list)
+                or len(audit['artifactIdentity']) != 2
+                or any(type(part) is not int or part <= 0
+                       for part in audit['artifactIdentity'])
+                or audit['linkTargetDigest'] != hashlib.sha256(
+                    b'/node/tmp/pr315-output-target-canary').hexdigest()
+                or audit['collectorDenial'] != 'workload-snapshot-file-invalid'
+                or not target_before['observedMonotonicNs']
+                    < collector['observedMonotonicNs'] < audit['triggerMonotonicNs']
+                    < audit['attackStartedNs'] < audit['attackFinishedNs']
+                    < audit['collectorStartedNs'] < audit['collectorFinishedNs']
+                    < target_after['observedMonotonicNs']
+                    < collector_after['observedMonotonicNs']
+                    < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        attack_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id, 'target': acceptance.CASES[case_id].target,
+                  'role': None, 'invocationId': collector_invocation,
+                  'cgroupDigest': collector_group, 'bootId': sender['bootId'],
+                  'probeDigest': '',
+                  'controlResponseDigest': target_before['controlDigest']}
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+                   'attackStartedNs': audit['attackStartedNs'],
+                   'targetActiveBeforeNs': collector['observedMonotonicNs'],
+                   'targetActiveAfterNs': collector_after['observedMonotonicNs'],
+                   'controlResponseDigest': target_before['controlDigest'],
+                   'denialSource': 'controller', 'denialCode': 'policy-rejected',
+                   'unrelatedStateBefore': audit['senderStateBefore'],
+                   'unrelatedStateAfter': audit['senderStateAfter'],
+                   'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': collector['observedMonotonicNs'],
+                       'finishedMonotonicNs': collector_after['observedMonotonicNs'],
+                       'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+                   'declaredCases': [case_id], 'observations': [observation],
+                   'guestStopped': True, 'attemptCompleted': True,
+                   'principals': result['roleKernelRoster'], 'targets': {case_id: target},
+                   'caseCommitments': {}, 'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+                   'status': 'passed', 'actorEpoch': _v9_actor_epoch(before, sender),
+                   'targetEpoch': {'kind': 'administrator-descriptor-collector',
+                                   'bootId': sender['bootId'],
+                                   'testKitInvocation': collector_invocation,
+                                   'systemdInvocation': None,
+                                   'pid': collector['pid'], 'uid': collector['uid'],
+                                   'startTicks': collector['startTicks'],
+                                   'cgroupDigest': collector_group,
+                                   'canaryDigestBefore': target_before['controlDigest'],
+                                   'canaryDigestAfter': target_after['controlDigest'],
+                                   'artifactIdentity': audit['artifactIdentity']},
+                   'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                       'finishedMonotonicNs': audit['collectorFinishedNs']},
+                   'attackDigest': attack_digest, 'hostVerifiedIdentity': host,
+                   'guestStopped': True,
+                   'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
+            OSError):
+        return None
+
+
 def _sibling_network_attempt(case_id, report, result, fixture, terminal, source):
     """Bind one role TCP denial to active recipient controls and exact nft DROP."""
     cases = {'sibling-fcp': ('siblingFcpAudit', workload_network.FCP_PORT),
@@ -1759,8 +1909,11 @@ def run(args):
     selected_cases(group)
     if group is not None and getattr(args, 'startup_measurement', False):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = group if group in LIFECYCLE_SCENARIOS else getattr(
-        args, 'lifecycle_scenario', 'cancellation')
+    scenario = ('none' if group == 'output-symlink' else
+                group if group in ('cancellation', 'controller-restart') else
+                getattr(args, 'lifecycle_scenario', 'cancellation'))
+    if (group == 'output-symlink') != (scenario == 'none'):
+        raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
         if reference.sha256(module.__file__) != reference.sha256(expected):
@@ -1855,7 +2008,8 @@ def run(args):
             # Source and pinned transport checks remain in the reused reference runner.
             selected_args = dict(vars(args))
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
-                                 case_group=None, fault_case=None, lifecycle_scenario=scenario)
+                                 case_group=None, fault_case=None, lifecycle_scenario=scenario,
+                                 workload_group='output-symlink' if group == 'output-symlink' else None)
             selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
                 reference.run(selected)
@@ -1886,8 +2040,19 @@ def run(args):
             reached = diagnostic.exists() and diagnostic.stat().st_size > 0
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
-            statuses = {case: 'inconclusive' if reached else 'setup-failed' for case in groups()[0][1]}
-            if positive:
+            statuses = ({'output-symlink': 'inconclusive' if reached else 'setup-failed'}
+                        if group == 'output-symlink' else
+                        {case: 'inconclusive' if reached else 'setup-failed'
+                         for case in groups()[0][1]})
+            if positive and group == 'output-symlink':
+                fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
+                    args.source, args.product_source_commit)
+                host = report['hostVerifiedIdentity']
+                checked = reference.verified_attempt_identity(report, selected.attempt,
+                    host['bundleIdentity'], host['testKitDigest'])
+                if checked != host:
+                    raise ValueError('workload-output-host-identity-changed')
+            if positive and group != 'output-symlink':
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -1915,7 +2080,7 @@ def run(args):
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 statuses.update({case: 'passed' for case in expected})
-            if (not startup_measurement and isinstance(terminal, dict)
+            if (group != 'output-symlink' and not startup_measurement and isinstance(terminal, dict)
                     and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -1938,7 +2103,7 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
-            if (not startup_measurement and isinstance(terminal, dict)
+            if (group != 'output-symlink' and not startup_measurement and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -1961,7 +2126,7 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
-            if (positive and isinstance(terminal, dict)
+            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
                     and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
                 denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
@@ -1978,7 +2143,7 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
                 statuses['arbitrary-endpoint'] = 'passed'
-            if (positive and isinstance(terminal, dict)
+            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
                 denial = runner_control_denial_attempt(report, value, fixture, terminal)
                 if denial is not None:
@@ -1992,14 +2157,14 @@ def run(args):
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['runner-control'] = 'passed'
-            if (positive and isinstance(terminal, dict)
+            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                     and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
                 case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-read-verification-failed')
                 native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
                 statuses['observer-private-read'] = 'passed'
-            if (positive and isinstance(terminal, dict)
+            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                     and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
                 case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
@@ -2008,7 +2173,7 @@ def run(args):
                 statuses['observer-private-write'] = 'passed'
             for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
                                    ('forged-counters', 'forgedCountersAudit')):
-                if (positive and isinstance(terminal, dict)
+                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
@@ -2018,7 +2183,7 @@ def run(args):
             for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                    ('package-expectation', 'packageExpectationAudit'),
                                    ('cgroup-migration', 'cgroupMigrationAudit')):
-                if (positive and isinstance(terminal, dict)
+                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_role_access_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -2028,7 +2193,7 @@ def run(args):
                     statuses[case_id] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
-                if (positive and isinstance(terminal, dict)
+                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     denial = _sibling_network_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -2045,7 +2210,7 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
-            if (positive and isinstance(terminal, dict)
+            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(
                     report, value, fixture, terminal, args.source)
@@ -2062,6 +2227,22 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
                 statuses['resolver-authority'] = 'passed'
+            if (group == 'output-symlink' and positive and isinstance(terminal, dict)
+                    and terminal.get('outputSymlinkAudit', {}).get('status') == 'captured'):
+                denial = _output_symlink_attempt(report, value, fixture, terminal, args.source)
+                if denial is None:
+                    raise ValueError('workload-output-symlink-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'output-symlink') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-output-symlink-case-invalid')
+                native_runner._save(output / 'output-symlink-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'output-symlink-v9-evidence.private.json', sidecar)
+                statuses['output-symlink'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = selected_public_result(group, 'implementation-incomplete', positive,

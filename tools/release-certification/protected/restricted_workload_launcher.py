@@ -24,11 +24,12 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v9',
-            'candidateRoleProbe': 'fixed-role-file-claims-sibling-network-resolver-v6',
+    return {'revision': 'workload-launcher-policy-v10',
+            'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-v7',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-drop-v1',
             'resolverAuthorityProbe': 'fixed-installed-resolver-canary-v1',
+            'outputCollectorProbe': 'fixed-role-symlink-descriptor-v1',
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role == 'previous' else 30 for role in ROLES}}
@@ -57,7 +58,8 @@ def _trusted_probe_request(spec):
         os.close(descriptor)
     if (not isinstance(request, dict) or set(request) != {
             'schemaVersion', 'caseId', 'nonce', 'bootId', 'javaDigest', 'sourceDigest'}
-            or request['schemaVersion'] != 1 or request['caseId'] != 'observer-private-read'
+            or request['schemaVersion'] != 1
+            or request['caseId'] not in ('observer-private-read', 'output-symlink')
             or request['bootId'] != spec['bootId'] or request['javaDigest'] != spec['javaDigest']
             or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None
             or request['sourceDigest'] != hashlib.sha256(PROBE_SOURCE.read_bytes()).hexdigest()):
@@ -75,7 +77,7 @@ def _start_probe(role, spec):
         raise ValueError('workload-role-probe-sandbox-changed')
     probe = [*arguments[:separator - 2], '--ro-bind', str(PROBE_SOURCE), '/probe.py',
              *arguments[separator - 2:separator], '--', '/usr/bin/python3', '-I', '-S', '-B',
-             '/probe.py', request['nonce']]
+             '/probe.py', request['nonce'], request['caseId']]
     return subprocess.Popen(probe, env=environment, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             close_fds=True)

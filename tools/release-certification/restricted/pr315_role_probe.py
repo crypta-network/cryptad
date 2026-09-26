@@ -24,6 +24,11 @@ TRIGGER = Path('/node/tmp/pr315-observer-private-read-trigger.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
+OUTPUT_CANARY = Path('/node/tmp/pr315-output-target-canary')
+OUTPUT_SYMLINK = Path('/node/tmp/pr315-output-symlink-artifact')
+OUTPUT_SYMLINK_READY = Path('/node/tmp/pr315-output-symlink-ready.json')
+OUTPUT_SYMLINK_TRIGGER = Path('/node/tmp/pr315-output-symlink-trigger.json')
+OUTPUT_SYMLINK_RESULT = Path('/node/tmp/pr315-output-symlink-result.json')
 
 
 def attempt_network(case_id: str, nonce: str) -> dict:
@@ -175,19 +180,58 @@ def attempt_fixed_access(operation: str, path: Path, payload: bytes | None = Non
             'targetPathDigest': hashlib.sha256(os.fsencode(path)).hexdigest()}
 
 
+def publish_output_symlink(nonce: str) -> None:
+    """Create one fixed candidate-owned attack object after the root barrier."""
+    until = time.monotonic() + 60
+    while not OUTPUT_SYMLINK_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-symlink-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(OUTPUT_SYMLINK_TRIGGER, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-symlink', 'nonce': nonce}:
+        raise ValueError('pr315-output-symlink-trigger-invalid')
+    started = time.monotonic_ns()
+    os.symlink(OUTPUT_CANARY, OUTPUT_SYMLINK)
+    finished = time.monotonic_ns()
+    record = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-symlink',
+              'caseId': 'output-symlink', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+              'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_SYMLINK)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
+    raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+    if len(raw) > 4096:
+        raise ValueError('pr315-output-symlink-result-limit')
+    descriptor = os.open(OUTPUT_SYMLINK_RESULT,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def main() -> None:
-    if (len(sys.argv) != 2 or len(sys.argv[1]) != 64
+    if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
+            or sys.argv[2] not in ('observer-private-read', 'output-symlink')
             or not sys.flags.isolated or not sys.flags.no_site):
         raise ValueError('pr315-role-probe-fixed-invocation-required')
+    case_id = sys.argv[2]
     ready = {'schemaVersion': 1, 'kind': 'pr315-candidate-role-probe-ready',
-             'caseId': 'observer-private-read', 'nonce': sys.argv[1],
+             'caseId': case_id, 'nonce': sys.argv[1],
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
-    descriptor = os.open(READY, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    ready_path = READY if case_id == 'observer-private-read' else OUTPUT_SYMLINK_READY
+    descriptor = os.open(ready_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(ready, stream, sort_keys=True, separators=(',', ':'))
         stream.flush()
         os.fsync(stream.fileno())
+    if case_id == 'output-symlink':
+        publish_output_symlink(sys.argv[1])
+        while True:
+            time.sleep(1)
     deadline = time.monotonic() + 30
     while not TRIGGER.exists():
         if time.monotonic() >= deadline:

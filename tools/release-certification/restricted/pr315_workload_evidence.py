@@ -901,6 +901,91 @@ def _resolver_authority_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _output_symlink_audit(root, deadline):
+    """Retain only one fixed role artifact and actual safe-reader rejection."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'output-symlink-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                  'actorUid', 'actorBefore', 'actorAfter',
+                  'actorInvocationBefore', 'actorInvocationAfter',
+                  'actorCgroupBefore', 'actorCgroupAfter',
+                  'senderStateBefore', 'senderStateAfter',
+                  'collectorBefore', 'collectorAfter', 'collectorStartedNs',
+                  'collectorFinishedNs', 'collectorDenial',
+                  'targetBefore', 'targetAfter', 'artifactIdentity',
+                  'artifactOwnerUid', 'linkTargetDigest', 'triggerMonotonicNs',
+                  'attackStartedNs', 'attackFinishedNs'}
+        collector_fields = {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+                            'cgroupDigest', 'invocationId', 'sourceDigest',
+                            'observedMonotonicNs'}
+        target_fields = {'controlDigest', 'fileIdentity', 'observedMonotonicNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-output-symlink-denial'
+                or value['caseId'] != 'output-symlink'
+                or value['collectorDenial'] != 'workload-snapshot-file-invalid'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest', 'linkTargetDigest'))
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or value['artifactOwnerUid'] != value['actorUid']
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != ROLE_PROBE_ACTOR_FIELDS
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(not isinstance(value[key], list) or len(value[key]) != 2
+                       or any(type(part) is not int or part <= 0 for part in value[key])
+                       for key in ('actorCgroupBefore', 'actorCgroupAfter',
+                                   'artifactIdentity'))
+                or value['actorCgroupBefore'] != value['actorCgroupAfter']
+                or value['senderStateBefore'] != value['senderStateAfter']
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('senderStateBefore', 'senderStateAfter'))
+                or value['actorInvocationBefore'] != value['actorInvocationAfter']
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key])) is None
+                       for key in ('actorInvocationBefore', 'actorInvocationAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != collector_fields
+                       or value[key]['uid'] != 0
+                       or any(type(value[key][name]) is not int or value[key][name] <= 0
+                              for name in ('pid', 'startTicks', 'observedMonotonicNs'))
+                       or not isinstance(value[key]['cgroupIdentity'], list)
+                       or len(value[key]['cgroupIdentity']) != 2
+                       or any(type(part) is not int or part <= 0
+                              for part in value[key]['cgroupIdentity'])
+                       for key in ('collectorBefore', 'collectorAfter'))
+                or any(value['collectorBefore'][key] != value['collectorAfter'][key]
+                       for key in collector_fields - {'observedMonotonicNs'})
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != target_fields
+                       or re.fullmatch('[0-9a-f]{64}', str(value[key]['controlDigest'])) is None
+                       or not isinstance(value[key]['fileIdentity'], list)
+                       or len(value[key]['fileIdentity']) != 5
+                       or any(type(part) is not int or part < 0
+                              for part in value[key]['fileIdentity'])
+                       for key in ('targetBefore', 'targetAfter'))
+                or value['targetBefore']['controlDigest'] != value['targetAfter']['controlDigest']
+                or value['targetBefore']['fileIdentity'] != value['targetAfter']['fileIdentity']
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('collectorStartedNs', 'collectorFinishedNs',
+                                   'triggerMonotonicNs', 'attackStartedNs',
+                                   'attackFinishedNs'))
+                or not value['targetBefore']['observedMonotonicNs']
+                    < value['collectorBefore']['observedMonotonicNs']
+                    < value['triggerMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['collectorStartedNs'] < value['collectorFinishedNs']
+                    < value['targetAfter']['observedMonotonicNs']
+                    < value['collectorAfter']['observedMonotonicNs']):
+            raise ValueError('output-symlink-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _sibling_network_audit(root, deadline, case_id):
     """Retain one fixed root audit of role SYN and named kernel DROP counters."""
     if case_id not in ('sibling-fcp', 'sibling-http'):
@@ -982,6 +1067,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'forgedRuntimeIdentityAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
         'resolverAuthorityAudit': {'status': 'not-captured-cleanup-unverified'},
+        'outputSymlinkAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingFcpAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingHttpAudit': {'status': 'not-captured-cleanup-unverified'},
@@ -1032,6 +1118,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
@@ -1099,6 +1186,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):

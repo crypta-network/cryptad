@@ -21,12 +21,16 @@ KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restric
 STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
 NATIVE_ROOT = Path('/var/lib/cryptad-restricted-native')
-LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'none')
 
 
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
-            lifecycle_scenario='cancellation'):
+            lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
+    if (workload_group not in (None, 'output-symlink')
+            or (startup_measurement and workload_group)
+            or (workload_group == 'output-symlink') != (lifecycle_scenario == 'none')):
+        raise ValueError('workload-guest-group-invalid')
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
     # installation. Check the OS/VM boundary before any account or service mutation here.
@@ -49,14 +53,19 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
         '--installed', '--fixture-manifest-digest', manifest_digest,
         '--product-source-commit', product_commit,
         '--lifecycle-scenario', lifecycle_scenario,
+        *(['--workload-group', workload_group] if workload_group else []),
         *(['--startup-measurement'] if startup_measurement else [])], stdin=subprocess.DEVNULL,
         timeout=3900, env=integration.ENV, check=False)
     return None, result.returncode
 
 
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
-              lifecycle_scenario='cancellation'):
+              lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
+    if (workload_group not in (None, 'output-symlink')
+            or (startup_measurement and workload_group)
+            or (workload_group == 'output-symlink') != (lifecycle_scenario == 'none')):
+        raise ValueError('workload-guest-group-invalid')
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
         sys.path.insert(0, str(Path('/opt/cryptad-cross-version/current') / relative))
@@ -72,7 +81,8 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     workload.write(driver.SELECTION, selection, create=True)
     STAGE = 'startup-measurement' if startup_measurement else 'positive-driver'
     return driver.execute(startup_measurement=startup_measurement,
-                          lifecycle_scenario=lifecycle_scenario), 0
+                          lifecycle_scenario=lifecycle_scenario,
+                          workload_group=workload_group), 0
 
 
 def _bounded_text(value, maximum):
@@ -212,6 +222,7 @@ def main():
     parser.add_argument('--startup-measurement', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
+    parser.add_argument('--workload-group', choices=('output-symlink',))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):
@@ -219,7 +230,8 @@ def main():
     operation = installed if args.installed else execute
     result, code = operation(args.fixture_manifest_digest, args.product_source_commit,
                              startup_measurement=args.startup_measurement,
-                             lifecycle_scenario=args.lifecycle_scenario)
+                             lifecycle_scenario=args.lifecycle_scenario,
+                             workload_group=args.workload_group)
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return code

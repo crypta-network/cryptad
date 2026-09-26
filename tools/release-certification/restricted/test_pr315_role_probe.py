@@ -7,10 +7,35 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
 import pr315_role_probe as probe
+import runtime_snapshot as snapshot
 
 
 class RoleProbeTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_fixed_output_symlink_is_real_and_descriptor_collector_rejects_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / 'canary'
+            artifact = root / 'artifact'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            canary.write_bytes(b'x' * 32)
+            trigger.write_text(json.dumps({'caseId': 'output-symlink', 'nonce': 'a' * 64}))
+            with patch.object(probe, 'OUTPUT_CANARY', canary), \
+                    patch.object(probe, 'OUTPUT_SYMLINK', artifact), \
+                    patch.object(probe, 'OUTPUT_SYMLINK_TRIGGER', trigger), \
+                    patch.object(probe, 'OUTPUT_SYMLINK_RESULT', result):
+                probe.publish_output_symlink('a' * 64)
+            self.assertTrue(artifact.is_symlink())
+            self.assertEqual(str(canary), os.readlink(artifact))
+            with self.assertRaisesRegex(snapshot.SnapshotError, 'file-invalid'):
+                snapshot.read_file(root, artifact.name, maximum=64, timeout=2)
+            self.assertEqual(b'x' * 32, snapshot.read_file(
+                root, canary.name, maximum=64, timeout=2))
+            self.assertEqual('output-symlink', json.loads(result.read_text())['caseId'])
+
     def test_sibling_probe_sends_only_fixed_recipient_syn_and_records_real_timeout(self):
         channel = MagicMock()
         channel.__enter__.return_value = channel
@@ -32,7 +57,8 @@ class RoleProbeTest(unittest.TestCase):
             with patch.object(probe, 'TARGET', root / 'missing-observer'), \
                     patch.object(probe, 'SIBLING', root / 'missing-sibling'), \
                     patch.object(probe, 'PACKAGE', root / 'missing-package'), \
-                    patch.object(probe, 'CGROUP_TARGET', root / 'missing-cgroup'):
+                    patch.object(probe, 'CGROUP_TARGET', root / 'missing-cgroup'), \
+                    patch.object(probe, 'RESOLVER_TARGET', root / 'missing-resolver'):
                 record = probe.attempt_read('a' * 64)
                 record['writeAttempt'] = probe.attempt_write()
                 record['identityClaim'], record['counterClaim'] = probe.fixed_false_claims()
@@ -42,6 +68,8 @@ class RoleProbeTest(unittest.TestCase):
                     'package-expectation', probe.PACKAGE, b'pr315!')
                 record['cgroupMigration'] = probe.attempt_fixed_access(
                     'cgroup-migration', probe.CGROUP_TARGET, b'2')
+                record['resolverRead'] = probe.attempt_fixed_access(
+                    'resolver-authority', probe.RESOLVER_TARGET)
             self.assertLessEqual(len(json.dumps(record).encode()), 4096)
 
     def test_fixed_role_access_rejects_arbitrary_target_and_reports_kernel_denial(self):

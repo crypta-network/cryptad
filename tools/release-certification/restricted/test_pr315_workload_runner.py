@@ -393,6 +393,88 @@ class RunnerTests(unittest.TestCase):
                 self.assertIsNone(runner._resolver_authority_attempt(
                     report, result, fixture, changed, source))
 
+    def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        cgroup = [3, 5]
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': 211,
+            'startTicks': 42, 'cgroupIdentity': cgroup,
+            'sourceDigest': source_digest}, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()[:32]
+        collector = {'pid': 211, 'uid': 0, 'startTicks': 42, 'bootId': boot,
+                     'cgroupIdentity': cgroup,
+                     'cgroupDigest': runner.fixtures.runtime.canonical_digest({
+                         'role': 'output-collector', 'identity': cgroup})[7:],
+                     'invocationId': invocation, 'sourceDigest': source_digest,
+                     'observedMonotonicNs': 20}
+        target = {'controlDigest': 'e' * 64,
+                  'fileIdentity': [3, 6, 32, 100, 101],
+                  'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-output-symlink-denial',
+                 'caseId': 'output-symlink',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'collectorBefore': collector,
+                 'collectorAfter': dict(collector, observedMonotonicNs=90),
+                 'collectorStartedNs': 60, 'collectorFinishedNs': 70,
+                 'collectorDenial': 'workload-snapshot-file-invalid',
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=80),
+                 'artifactIdentity': [3, 7], 'artifactOwnerUid': sender['uid'],
+                 'linkTargetDigest': hashlib.sha256(
+                     b'/node/tmp/pr315-output-target-canary').hexdigest(),
+                 'triggerMonotonicNs': 30, 'attackStartedNs': 40,
+                 'attackFinishedNs': 50}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['outputSymlinkAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner._output_symlink_attempt(
+                report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'output-symlink'))
+            self.assertEqual(invocation, sidecar['targetEpoch']['testKitInvocation'])
+            for mutate in (
+                    lambda row: row['outputSymlinkAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['outputSymlinkAudit']['record']['collectorAfter'].update(
+                        pid=212),
+                    lambda row: row['outputSymlinkAudit']['record'].update(
+                        collectorDenial='workload-snapshot-deadline'),
+                    lambda row: row['outputSymlinkAudit']['record']['targetAfter'].update(
+                        controlDigest='f' * 64),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._output_symlink_attempt(
+                    report, result, fixture, changed, source))
+
     def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender, recipient = roster['roles'][:2]

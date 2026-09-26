@@ -26,6 +26,14 @@ class ReferenceDriverTest(unittest.TestCase):
         args.lifecycle_scenario = 'controller-restart'
         self.assertEqual('controller-restart',
                          shlex.split(driver.workload_guest_command(args))[base.index('cancellation')])
+        args.startup_measurement = False
+        args.lifecycle_scenario = 'none'
+        args.workload_group = 'output-symlink'
+        selected = driver.workload_guest_command(args)
+        self.assertIn('--lifecycle-scenario none --workload-group output-symlink', selected)
+        args.startup_measurement = True
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):
@@ -36,6 +44,10 @@ class ReferenceDriverTest(unittest.TestCase):
                 driver.workload_guest_command(args)
         args = SimpleNamespace(fixture_manifest_digest='a' * 64,
             product_source_commit='b' * 40, lifecycle_scenario='; unselected-command')
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+        args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+            product_source_commit='b' * 40, workload_group='output-fifo')
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)
 

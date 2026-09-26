@@ -1076,6 +1076,19 @@ class ControllerRequestTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_fixed_output_probe_stays_in_real_role_sandbox_and_closed_mode(self):
+        request = {'nonce': 'a' * 64, 'caseId': 'output-symlink'}
+        with patch.object(launcher, '_trusted_probe_request', return_value=request), \
+                patch.object(launcher.subprocess, 'Popen') as started:
+            launcher._start_probe('candidate-sender', {})
+        command = started.call_args.args[0]
+        self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B', '/probe.py',
+                          'a' * 64, 'output-symlink'], command[-7:])
+        self.assertIn(['--ro-bind', str(launcher.PROBE_SOURCE), '/probe.py'],
+                      [command[index:index + 3] for index in range(len(command) - 2)])
+        self.assertIn('--unshare-user', command)
+        self.assertIn('--unshare-pid', command)
+
     def test_reserved_logging_option_never_overwrites_or_skips_product_options(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

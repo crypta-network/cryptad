@@ -211,6 +211,29 @@ class StartupTransportTests(unittest.TestCase):
             '--startup-measurement'], run.call_args.args[0])
         fixtures.verify.assert_called_once_with(guest.FIXTURES, 'a' * 64, guest.SOURCE, 'b' * 40)
 
+    def test_output_group_reexec_requires_closed_mode_without_lifecycle_trigger(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        integration = SimpleNamespace(load_installation=Mock(), provision=Mock(), ENV={'LANG': 'C'})
+        fixtures = SimpleNamespace(verify=Mock())
+        driver = SimpleNamespace(prerequisites=lambda: [
+            'fixed-installed-source-required', 'separate-measured-test-kit-required'])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='output-symlink'))
+        self.assertIn(['--lifecycle-scenario', 'none', '--workload-group', 'output-symlink'],
+                      [run.call_args.args[0][index:index + 4]
+                       for index in range(len(run.call_args.args[0]) - 3)])
+        with self.assertRaisesRegex(ValueError, 'group-invalid'):
+            guest.execute('a' * 64, 'b' * 40, workload_group='output-symlink')
+
     def test_installed_guest_passes_measurement_to_driver_without_changing_selection(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -225,7 +248,8 @@ class StartupTransportTests(unittest.TestCase):
                 patch.object(guest, 'KIT', Path(guest.__file__).resolve().parent):
             result, code = guest.installed('a' * 64, 'b' * 40, startup_measurement=True)
         driver.execute.assert_called_once_with(startup_measurement=True,
-                                               lifecycle_scenario='cancellation')
+                                               lifecycle_scenario='cancellation',
+                                               workload_group=None)
         fixtures.materialize_selection.assert_called_once_with(guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
         workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
         self.assertFalse(result['installedPositiveExecuted'])
