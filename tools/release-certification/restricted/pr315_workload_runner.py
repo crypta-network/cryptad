@@ -1963,6 +1963,21 @@ def selected_public_result(group, status, positive=False, reasons=(), statuses=N
                          positive and group == 'positive', reasons, owned)
 
 
+def prospective_campaign_result(result, frozen_campaign):
+    """Version a partial public result without granting campaign acceptance."""
+    if frozen_campaign is None:
+        return result
+    if (result.get('schemaVersion') != 1
+            or result.get('installedWorkloadAcceptanceSatisfied') is not False
+            or frozen_campaign.get('kind') != campaign_seal.CAMPAIGN):
+        raise ValueError('workload-campaign-public-result-invalid')
+    return {**result, 'schemaVersion': 2,
+            'contract': campaign_seal.CONTRACT,
+            'campaignPlanDigest': frozen_campaign['planDigest'],
+            'campaignNonce': frozen_campaign['campaignNonce'],
+            'hostKeyFingerprint': frozen_campaign['hostKeyFingerprint']}
+
+
 def selected_terminal_status(group, report, positive):
     """Keep a failed guest operation distinct from partial case execution."""
     if group is None or positive:
@@ -3797,6 +3812,7 @@ def run(args):
             args.source / 'tools/release-certification/restricted' / Path(__file__).name):
         raise ValueError('executing-workload-source-mismatch')
     campaign_plan_path = getattr(args, 'campaign_plan', None)
+    frozen_campaign = None
     if campaign_plan_path is not None:
         for module in (campaign_seal, case_v10):
             expected = (args.source / 'tools/release-certification/restricted' /
@@ -3869,12 +3885,14 @@ def run(args):
                 and SUPPORTED_GROUPS != frozenset(name for name, _ in campaign.GROUPS)):
             result = public_result('implementation-incomplete',
                 reasons=('full-campaign-emitter-unavailable',))
+            result = prospective_campaign_result(result, frozen_campaign)
             native_runner._save(output / 'assessment.json', result)
             print(json.dumps(result, sort_keys=True))
             return 78
         if group is not None and group not in SUPPORTED_GROUPS and not getattr(args, 'probe', False):
             result = selected_public_result(group, 'group-emitter-unavailable',
                 reasons=('group-emitter-unavailable',))
+            result = prospective_campaign_result(result, frozen_campaign)
             native_runner._save(output / 'assessment.json', result)
             print(json.dumps(result, sort_keys=True))
             return 78
@@ -3935,6 +3953,7 @@ def run(args):
                         if time.monotonic() >= until:
                             result, code = public_result('monitor-incomplete',
                                 reasons=('pve-host-monitor-incomplete',)), 2
+                            result = prospective_campaign_result(result, frozen_campaign)
                             native_runner._save(output / 'assessment.json', result)
                             print(json.dumps(result, sort_keys=True))
                             return code
@@ -4295,6 +4314,7 @@ def run(args):
                          if startup_measurement else
                          ('role-readiness-measurement-not-workload-execution',)
                          if role_measurement else ())), 2
+        result = prospective_campaign_result(result, frozen_campaign)
         native_runner._save(output / 'assessment.json', result)
         print(json.dumps(result, sort_keys=True))
         return code

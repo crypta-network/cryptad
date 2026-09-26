@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import fcntl
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ CONTRACT = 'pr314-workload-roles-v10'
 RECEIPT = 'pr315-host-attempt-receipt-v2'
 SIGNATURE_DOMAIN = 'pr315-campaign-v2'
 KEY_NAME = 'campaign-ed25519'
+LEDGER_NAME = 'sealed-attempt-ledger.json'
 _HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 _HEX40 = re.compile(r'[0-9a-f]{40}\Z')
 _ATTEMPT_ID = re.compile(r'[a-z0-9][a-z0-9-]{0,79}\Z')
@@ -114,7 +116,8 @@ def _check_plan(value, pinned_source_commit, pinned_fingerprint):
 
 def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
                     probe_started, case_digests, evidence_digest,
-                    stop_digest, monitor_digest, archive_digest):
+                    stop_digest, monitor_digest, archive_digest, *,
+                    sequence=1, previous_digest='0' * 64):
     """Build a closed receipt; only the live owner may supply verified digests."""
     if (not isinstance(campaign, dict)
             or campaign.get('kind') != CAMPAIGN
@@ -124,6 +127,9 @@ def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
             or _HEX40.fullmatch(str(source_commit)) is None
             or source_commit != campaign['identity']['helperSourceCommit']
             or status not in ('setup-failed', 'failed', 'completed')
+            or type(sequence) is not int or sequence < 1
+            or _HEX64.fullmatch(str(previous_digest)) is None
+            or (sequence == 1) != (previous_digest == '0' * 64)
             or type(probe_started) is not bool
             or not isinstance(case_digests, dict)
             or any(_HEX64.fullmatch(str(digest)) is None
@@ -133,6 +139,8 @@ def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
                                  monitor_digest, archive_digest))):
         raise ValueError('pr315-campaign-v2-attempt-invalid')
     owned = set(dict(historical.GROUPS)[group_id])
+    if not set(case_digests).issubset(owned):
+        raise ValueError('pr315-campaign-v2-case-ownership-invalid')
     if (status == 'completed' and (probe_started is not True
             or set(case_digests) != owned
             or any(value is None for value in (evidence_digest, stop_digest,
@@ -148,6 +156,7 @@ def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
         'groupId': group_id, 'attemptId': attempt_id,
         'declaredCases': list(dict(historical.GROUPS)[group_id]),
         'sourceCommit': source_commit, 'status': status,
+        'sequence': sequence, 'previousReceiptDigest': previous_digest,
         'probeStarted': probe_started, 'caseDigests': case_digests,
         'evidenceDigest': evidence_digest, 'stopDigest': stop_digest,
         'monitorDigest': monitor_digest, 'archiveDigest': archive_digest}
@@ -164,7 +173,9 @@ def sign(root, campaign, receipt, *, pinned_source_commit, pinned_fingerprint):
         expected = attempt_receipt(campaign, receipt['groupId'], receipt['attemptId'],
             receipt['sourceCommit'], receipt['status'], receipt['probeStarted'],
             receipt['caseDigests'], receipt['evidenceDigest'], receipt['stopDigest'],
-            receipt['monitorDigest'], receipt['archiveDigest'])
+            receipt['monitorDigest'], receipt['archiveDigest'],
+            sequence=receipt['sequence'],
+            previous_digest=receipt['previousReceiptDigest'])
     except KeyError as error:
         raise ValueError('pr315-campaign-receipt-invalid') from error
     if receipt != expected:
@@ -210,7 +221,9 @@ def verify(root, campaign, envelope, *, pinned_source_commit, pinned_fingerprint
         expected = attempt_receipt(campaign, receipt['groupId'], receipt['attemptId'],
             receipt['sourceCommit'], receipt['status'], receipt['probeStarted'],
             receipt['caseDigests'], receipt['evidenceDigest'], receipt['stopDigest'],
-            receipt['monitorDigest'], receipt['archiveDigest'])
+            receipt['monitorDigest'], receipt['archiveDigest'],
+            sequence=receipt['sequence'],
+            previous_digest=receipt['previousReceiptDigest'])
     except KeyError as error:
         raise ValueError('pr315-campaign-receipt-invalid') from error
     if receipt != expected:
@@ -232,3 +245,140 @@ def verify(root, campaign, envelope, *, pinned_source_commit, pinned_fingerprint
     if checked.returncode != 0:
         raise ValueError('pr315-campaign-signature-mismatch')
     return receipt
+
+
+def verify_history(root, campaign, ledger, *, pinned_source_commit,
+                   pinned_fingerprint):
+    """Verify an append-only signed chain; do not infer installed success."""
+    _check_plan(campaign, pinned_source_commit, pinned_fingerprint)
+    public = _public_key((_private_directory(root) / (KEY_NAME + '.pub')).read_bytes())
+    if hashlib.sha256(public).hexdigest() != pinned_fingerprint:
+        raise ValueError('pr315-campaign-public-key-changed')
+    if (not isinstance(ledger, dict) or set(ledger) != {
+            'schemaVersion', 'kind', 'planDigest', 'headReceiptDigest', 'envelopes'}
+            or ledger['schemaVersion'] != 2
+            or ledger['kind'] != 'pr315-host-sealed-ledger-v2'
+            or ledger['planDigest'] != campaign.get('planDigest')
+            or not isinstance(ledger['envelopes'], list)
+            or len(ledger['envelopes']) > 3 * len(historical.GROUPS)):
+        raise ValueError('pr315-campaign-ledger-invalid')
+    previous = '0' * 64
+    receipts = []
+    last_group_index = -1
+    attempts_in_group = 0
+    seen = set()
+    ordering = {group: index for index, (group, _) in enumerate(historical.GROUPS)}
+    for envelope in ledger['envelopes']:
+        receipt = verify(root, campaign, envelope,
+            pinned_source_commit=pinned_source_commit,
+            pinned_fingerprint=pinned_fingerprint)
+        index = ordering[receipt['groupId']]
+        if (receipt['sequence'] != len(receipts) + 1
+                or receipt['previousReceiptDigest'] != previous
+                or receipt['attemptId'] in seen or index < last_group_index):
+            raise ValueError('pr315-campaign-ledger-chain-invalid')
+        if index != last_group_index:
+            if receipts and receipts[-1]['status'] != 'completed':
+                raise ValueError('pr315-campaign-ledger-unfinished-group')
+            attempts_in_group = 0
+        elif receipts and receipts[-1]['status'] != 'setup-failed':
+            raise ValueError('pr315-campaign-post-probe-retry')
+        attempts_in_group += 1
+        if attempts_in_group > 3:
+            raise ValueError('pr315-campaign-retry-limit')
+        previous = _digest(receipt)
+        seen.add(receipt['attemptId'])
+        last_group_index = index
+        receipts.append(receipt)
+    if ledger['headReceiptDigest'] != previous:
+        raise ValueError('pr315-campaign-ledger-head-changed')
+    return receipts
+
+
+def _load_ledger(root, campaign):
+    path = root / LEDGER_NAME
+    if (root / ('.' + LEDGER_NAME + '.pending')).exists():
+        raise ValueError('pr315-campaign-ledger-reconciliation-required')
+    if not path.exists():
+        return {'schemaVersion': 2, 'kind': 'pr315-host-sealed-ledger-v2',
+            'planDigest': campaign['planDigest'],
+            'headReceiptDigest': '0' * 64, 'envelopes': []}
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or info.st_nlink != 1
+                or not 0 < info.st_size <= 512 * 1024):
+            raise ValueError('pr315-campaign-ledger-file-invalid')
+        raw = os.read(descriptor, 512 * 1024 + 1)
+        if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+            raise ValueError('pr315-campaign-ledger-file-changed')
+        value = json.loads(raw)
+        if raw != _canonical(value):
+            raise ValueError('pr315-campaign-ledger-bytes-changed')
+        return value
+    finally:
+        os.close(descriptor)
+
+
+def append_verified_attempt(root, campaign, *, pinned_source_commit,
+                            pinned_fingerprint, group_id, attempt_id, status,
+                            probe_started, case_digests, evidence_digest,
+                            stop_digest, monitor_digest, archive_digest):
+    """Atomically append a signed receipt after the caller verified live inputs."""
+    root = _private_directory(root)
+    lock = os.open(root / 'campaign-ledger.lock',
+        os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(lock)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise ValueError('pr315-campaign-ledger-lock-invalid')
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        ledger = _load_ledger(root, campaign)
+        receipts = verify_history(root, campaign, ledger,
+            pinned_source_commit=pinned_source_commit,
+            pinned_fingerprint=pinned_fingerprint)
+        receipt = attempt_receipt(campaign, group_id, attempt_id,
+            pinned_source_commit, status, probe_started, case_digests,
+            evidence_digest, stop_digest, monitor_digest, archive_digest,
+            sequence=len(receipts) + 1,
+            previous_digest=ledger['headReceiptDigest'])
+        envelope = sign(root, campaign, receipt,
+            pinned_source_commit=pinned_source_commit,
+            pinned_fingerprint=pinned_fingerprint)
+        updated = {**ledger, 'headReceiptDigest': _digest(receipt),
+                   'envelopes': [*ledger['envelopes'], envelope]}
+        verify_history(root, campaign, updated,
+            pinned_source_commit=pinned_source_commit,
+            pinned_fingerprint=pinned_fingerprint)
+        raw = _canonical(updated)
+        if len(raw) > 512 * 1024:
+            raise ValueError('pr315-campaign-ledger-limit')
+        pending = root / ('.' + LEDGER_NAME + '.pending')
+        descriptor = os.open(pending,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600)
+        try:
+            if os.write(descriptor, raw) != len(raw):
+                raise ValueError('pr315-campaign-ledger-short-write')
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(pending, root / LEDGER_NAME)
+        directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return receipt
+    finally:
+        os.close(lock)
+
+
+def load_verified_history(root, campaign, *, pinned_source_commit,
+                          pinned_fingerprint):
+    """Recover authenticated attempts; caller still rechecks their raw evidence."""
+    root = _private_directory(root)
+    return verify_history(root, campaign, _load_ledger(root, campaign),
+        pinned_source_commit=pinned_source_commit,
+        pinned_fingerprint=pinned_fingerprint)

@@ -2211,6 +2211,17 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(result['finiteNativeAcceptance'])
         self.assertFalse(result['phaseComplete'])
         self.assertEqual({'not-executed'}, {row['status'] for row in result['cases']})
+        pinned = {'kind': runner.campaign_seal.CAMPAIGN,
+                  'planDigest': 'a' * 64, 'campaignNonce': 'b' * 64,
+                  'hostKeyFingerprint': 'c' * 64}
+        upgraded = runner.prospective_campaign_result(result, pinned)
+        self.assertEqual(2, upgraded['schemaVersion'])
+        self.assertEqual('pr314-workload-roles-v10', upgraded['contract'])
+        self.assertFalse(upgraded['installedWorkloadAcceptanceSatisfied'])
+        self.assertEqual(1, result['schemaVersion'])
+        with self.assertRaisesRegex(ValueError, 'public-result-invalid'):
+            runner.prospective_campaign_result(
+                {**result, 'installedWorkloadAcceptanceSatisfied': True}, pinned)
 
     def test_real_verifier_accepts_only_two_well_bound_positive_records(self):
         roster = synthetic_role_kernel_roster()

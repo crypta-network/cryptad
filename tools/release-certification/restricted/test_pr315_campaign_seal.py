@@ -1,5 +1,6 @@
 """Offline host receipt authentication tests; no installed acceptance credit."""
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -84,6 +85,11 @@ class CampaignSealTest(unittest.TestCase):
             seal.attempt_receipt(self.plan, 'output-symlink',
                 'suite-201', SOURCE, 'failed', False, {},
                 None, None, None, None)
+        with self.assertRaisesRegex(ValueError, 'case-ownership-invalid'):
+            seal.attempt_receipt(self.plan, 'output-symlink',
+                'suite-201', SOURCE, 'failed', True,
+                {'installed-ready': '1' * 64},
+                None, None, None, None)
 
     def test_private_directory_and_existing_key_are_required(self):
         with self.assertRaisesRegex(ValueError, 'key-already-exists'):
@@ -105,6 +111,67 @@ class CampaignSealTest(unittest.TestCase):
                 (alternate / (seal.KEY_NAME + '.pub')).read_bytes())
         with self.assertRaisesRegex(ValueError, 'public-key-changed'):
             self.sign(self.receipt())
+
+    def test_append_only_history_selects_first_valid_attempt_after_setup_failure(self):
+        common = {'pinned_source_commit': SOURCE,
+                  'pinned_fingerprint': self.fingerprint,
+                  'group_id': 'output-symlink'}
+        first = seal.append_verified_attempt(self.root, self.plan,
+            **common, attempt_id='suite-201', status='setup-failed',
+            probe_started=False, case_digests={}, evidence_digest='2' * 64,
+            stop_digest='3' * 64, monitor_digest='4' * 64,
+            archive_digest='5' * 64)
+        second = seal.append_verified_attempt(self.root, self.plan,
+            **common, attempt_id='suite-202', status='completed',
+            probe_started=True, case_digests={'output-symlink': '1' * 64},
+            evidence_digest='2' * 64, stop_digest='3' * 64,
+            monitor_digest='4' * 64, archive_digest='5' * 64)
+        self.assertEqual(1, first['sequence'])
+        self.assertEqual(2, second['sequence'])
+        self.assertEqual([first, second], seal.load_verified_history(
+            self.root, self.plan, pinned_source_commit=SOURCE,
+            pinned_fingerprint=self.fingerprint))
+        with self.assertRaisesRegex(ValueError, 'post-probe-retry'):
+            seal.append_verified_attempt(self.root, self.plan,
+                **common, attempt_id='suite-203', status='completed',
+                probe_started=True, case_digests={'output-symlink': '1' * 64},
+                evidence_digest='2' * 64, stop_digest='3' * 64,
+                monitor_digest='4' * 64, archive_digest='5' * 64)
+
+    def test_deleted_or_modified_ledger_history_is_rejected(self):
+        common = {'pinned_source_commit': SOURCE,
+                  'pinned_fingerprint': self.fingerprint,
+                  'group_id': 'output-symlink', 'probe_started': False,
+                  'case_digests': {}, 'evidence_digest': None,
+                  'stop_digest': None, 'monitor_digest': None,
+                  'archive_digest': None, 'status': 'setup-failed'}
+        seal.append_verified_attempt(self.root, self.plan,
+            **common, attempt_id='suite-201')
+        seal.append_verified_attempt(self.root, self.plan,
+            **common, attempt_id='suite-202')
+        path = self.root / seal.LEDGER_NAME
+        original = path.read_bytes()
+        changed = json.loads(original)
+        changed['envelopes'].pop(0)
+        path.write_bytes(seal._canonical(changed))
+        with self.assertRaisesRegex(ValueError, 'ledger-chain-invalid'):
+            seal.load_verified_history(self.root, self.plan,
+                pinned_source_commit=SOURCE,
+                pinned_fingerprint=self.fingerprint)
+        path.write_bytes(original)
+        changed = json.loads(original)
+        changed['envelopes'][0]['receipt']['status'] = 'completed'
+        path.write_bytes(seal._canonical(changed))
+        with self.assertRaises(ValueError):
+            seal.load_verified_history(self.root, self.plan,
+                pinned_source_commit=SOURCE,
+                pinned_fingerprint=self.fingerprint)
+        path.write_bytes(original.replace(b'"status":"setup-failed"',
+            b'"status":"completed","status":"setup-failed"', 1))
+        with self.assertRaisesRegex(ValueError, 'ledger-bytes-changed'):
+            seal.load_verified_history(self.root, self.plan,
+                pinned_source_commit=SOURCE,
+                pinned_fingerprint=self.fingerprint)
 
 
 if __name__ == '__main__':

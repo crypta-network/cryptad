@@ -2775,6 +2775,18 @@ path, not the default 21-group dispatcher or a complete verdict. The Linux
 PR-31x offline set passed 425 tests with eight environment skips; no new
 installed run has used this revision.
 
+The v2 host receipt helper now writes an atomic, canonical, append-only
+signature chain. Recovery validates the pinned source and Mac public key,
+each signature, sequence, predecessor digest, group order and three-attempt
+limit; it refuses a retry after a started probe and leaves interrupted
+pending writes for explicit reconciliation. Signed history still reports
+only authenticated attempt bytes: the Mac owner must recheck transported
+raw evidence and stopped guests before granting any case credit. A selected
+v2 group emits schema-2 partial public summaries with the frozen plan
+digest; its acceptance field remains false. The Linux PR-31x offline set
+passed 427 tests with eight environment skips. No default campaign execution
+or v2 installed result exists yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
