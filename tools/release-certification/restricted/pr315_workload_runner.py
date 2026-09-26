@@ -1616,6 +1616,89 @@ def probe_denial_attempt(report, fixture, terminal):
         return None
 
 
+def _v10_legacy_sidecar(case_id, report, fixture, terminal, diagnostics,
+                        identity, attempt):
+    """Carry four previously v8-only root proofs into the prospective v10 record."""
+    if case_id not in ('namespace-mount-escape', 'runner-control',
+                       'observer-control', 'arbitrary-endpoint'):
+        return None
+    try:
+        if (report.get('guestStopped') is not True
+                or attempt['declaredCases'] != [case_id]
+                or attempt['identity'] != identity
+                or not isinstance(diagnostics, dict)):
+            return None
+        sender = next(row for row in attempt['principals']['roles']
+                      if row['role'] == 'candidate-sender')
+        stop = terminal['stopReceipts']['candidate-sender']['current']
+        if (stop['status'] != 'captured'
+                or stop['record']['managerInvocation'] != sender['invocationId']
+                or stop['record']['membership'] != 'only-stop-helper'
+                or stop['record']['descendantCgroups'] != 0):
+            return None
+        if case_id == 'namespace-mount-escape':
+            admin = terminal['probeAdministratorRecord']['record']
+            first = terminal['probeAppFirstResult']['record']
+            checkpoint = terminal['probeKernelCheckpoint']['record']
+            worker = admin['worker']
+            actor = {'kind': 'normally-signed-apphost-child',
+                'uid': sender['uid'], 'hostPid': worker['hostPid'],
+                'startTicks': worker['startTicks'],
+                'namespacePids': worker['namespacePids'],
+                'sandboxLeader': checkpoint['probeWorker']['sandboxLeader'],
+                'bundleDigest': fixture['probeDigest'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest']}
+            target = {'kind': 'installed-outer-role-mount-boundary',
+                'role': 'candidate-sender', 'bootId': sender['bootId'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest'],
+                'outerMountNamespaceIdentity': checkpoint['probeWorker'][
+                    'outerMountNamespaceIdentity'],
+                'sandboxLeader': actor['sandboxLeader']}
+            window = {'startedMonotonicNs': first['mountEscape']['startedMonotonicNs'],
+                'finishedMonotonicNs': first['mountEscape']['finishedMonotonicNs']}
+        else:
+            field = {'runner-control': 'runnerControlAudit',
+                     'observer-control': 'observerControlAudit',
+                     'arbitrary-endpoint': 'arbitraryEndpointAudit'}[case_id]
+            audit = terminal[field]['record']
+            observed = audit['actor']
+            actor = (diagnostics['runnerControl']['actorEpoch']
+                     if case_id == 'runner-control' else
+                     diagnostics['authorityObserverEpoch'])
+            if (actor['pid'] != observed['pid']
+                    or actor['uid'] != observed['uid']
+                    or actor['startTicks'] != observed['startTicks']):
+                return None
+            target = {'kind': 'active-installed-controller',
+                'before': audit['targetBefore'],
+                'after': audit['targetAfter']}
+            if case_id == 'arbitrary-endpoint':
+                target['recipientBefore'] = audit['recipientBefore']
+                target['recipientAfter'] = audit['recipientAfter']
+                target['endpointSelection'] = audit['endpointSelection']
+            window = ({'startedMonotonicNs': audit['requestStartedNs'],
+                       'finishedMonotonicNs': audit['responseObservedNs']}
+                      if case_id == 'runner-control' else
+                      {'startedMonotonicNs': audit['requestObservedNs'],
+                       'finishedMonotonicNs': audit['responseSentNs']}
+                      if case_id == 'observer-control' else
+                      {'startedMonotonicNs': audit['attackStartedNs'],
+                       'finishedMonotonicNs': audit['attackFinishedNs']})
+        if not _bounded_window(window) or window['finishedMonotonicNs'] >= stop['record']['observedMonotonicNs']:
+            return None
+        return {'contract': campaign.CONTRACT, 'caseId': case_id,
+            'status': 'passed', 'actorEpoch': actor, 'targetEpoch': target,
+            'operationWindow': window,
+            'attackDigest': attempt['observations'][0]['witness']['attackDigest'],
+            'hostVerifiedIdentity': report['hostVerifiedIdentity'],
+            'guestStopped': True,
+            'stopReceiptObservedNs': stop['record']['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def observer_control_denial_attempt(report, fixture, terminal):
     """Bind a real forbidden observer request to its root serving process and role epoch."""
     if (report.get('guestStopped') is not True or not isinstance(terminal, dict)
@@ -3989,6 +4072,28 @@ def run(args):
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
+            v10_raw_digests = None
+            def save_v9_case(path, sidecar, case_id, *, identity=None,
+                             case_attempt=None, roster=None):
+                nonlocal v10_raw_digests
+                native_runner._save(path, sidecar)
+                if campaign_plan_path is None or case_id not in case_v10.GENERIC:
+                    return
+                if host_policy != host_admission.POLICY:
+                    raise ValueError('workload-v10-host-policy-required')
+                if v10_raw_digests is None:
+                    v10_raw_digests = {
+                        'guestReport': reference.sha256(
+                            selected.attempt / 'attempt.private.json'),
+                        'volatile': reference.sha256(terminal_path),
+                        'hostMonitor': reference.sha256(
+                            output / 'host-monitor.private.json')}
+                record = case_v10.generic_case_record(frozen_campaign,
+                    output.name, identity or frozen_campaign['identity'],
+                    case_attempt, sidecar, args.source, v10_raw_digests,
+                    roster=roster)
+                native_runner._save(output /
+                    (case_id + '-v10-evidence.private.json'), record)
             reached = (selected_probe_started(group, resources) if selected_preparation
                        else resources is not None)
             # A reached aggregate without per-case witnesses is inconclusive. An
@@ -4023,7 +4128,8 @@ def run(args):
                     raise ValueError('workload-lifecycle-group-case-invalid')
                 native_runner._save(output / (group + '-v8-evidence.private.json'),
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                save_v9_case(output / (group + '-v9-evidence.private.json'),
+                    sidecar, group, identity=identity, case_attempt=case_attempt)
                 statuses[group] = 'passed'
             if positive and not output_group:
                 host_started = time.monotonic_ns()
@@ -4087,6 +4193,14 @@ def run(args):
                         raise ValueError('workload-denial-case-verification-failed')
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
+                    if campaign_plan_path is not None:
+                        sidecar = _v10_legacy_sidecar('namespace-mount-escape',
+                            report, fixture, terminal, resources, identity, case_attempt)
+                        if sidecar is None:
+                            raise ValueError('workload-namespace-v10-epoch-unavailable')
+                        save_v9_case(output / 'namespace-mount-escape-v9-evidence.private.json',
+                            sidecar, 'namespace-mount-escape', identity=identity,
+                            case_attempt=case_attempt)
                     statuses['namespace-mount-escape'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
@@ -4110,6 +4224,14 @@ def run(args):
                         raise ValueError('workload-observer-control-verification-failed')
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
+                    if campaign_plan_path is not None:
+                        sidecar = _v10_legacy_sidecar('observer-control',
+                            report, fixture, terminal, resources, identity, case_attempt)
+                        if sidecar is None:
+                            raise ValueError('workload-observer-control-v10-epoch-unavailable')
+                        save_v9_case(output / 'observer-control-v9-evidence.private.json',
+                            sidecar, 'observer-control', identity=identity,
+                            case_attempt=case_attempt)
                     statuses['observer-control'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
@@ -4126,7 +4248,14 @@ def run(args):
                     raise ValueError('workload-arbitrary-endpoint-case-invalid')
                 native_runner._save(output / 'arbitrary-endpoint-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
+                if campaign_plan_path is not None:
+                    sidecar = _v10_legacy_sidecar('arbitrary-endpoint',
+                        report, fixture, terminal, resources, identity, case_attempt)
+                    if sidecar is None:
+                        raise ValueError('workload-arbitrary-endpoint-v10-epoch-unavailable')
+                save_v9_case(output / 'arbitrary-endpoint-v9-evidence.private.json',
+                    sidecar, 'arbitrary-endpoint', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['arbitrary-endpoint'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
@@ -4141,20 +4270,30 @@ def run(args):
                         raise ValueError('workload-runner-control-verification-failed')
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
+                    if campaign_plan_path is not None:
+                        sidecar = _v10_legacy_sidecar('runner-control',
+                            report, fixture, terminal, resources, identity, case_attempt)
+                        if sidecar is None:
+                            raise ValueError('workload-runner-control-v10-epoch-unavailable')
+                        save_v9_case(output / 'runner-control-v9-evidence.private.json',
+                            sidecar, 'runner-control', identity=identity,
+                            case_attempt=case_attempt)
                     statuses['runner-control'] = 'passed'
             if (role_boundary_ready and isinstance(terminal, dict)
                     and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
                 case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-read-verification-failed')
-                native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
+                save_v9_case(output / 'observer-private-read-v9-evidence.private.json',
+                    case, 'observer-private-read', roster=value['roleKernelRoster'])
                 statuses['observer-private-read'] = 'passed'
             if (role_boundary_ready and isinstance(terminal, dict)
                     and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
                 case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-write-verification-failed')
-                native_runner._save(output / 'observer-private-write-v9-evidence.private.json', case)
+                save_v9_case(output / 'observer-private-write-v9-evidence.private.json',
+                    case, 'observer-private-write', roster=value['roleKernelRoster'])
                 statuses['observer-private-write'] = 'passed'
             for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
                                    ('forged-counters', 'forgedCountersAudit')):
@@ -4163,7 +4302,8 @@ def run(args):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
                         raise ValueError('workload-fixed-claim-verification-failed')
-                    native_runner._save(output / (case_id + '-v9-evidence.private.json'), case)
+                    save_v9_case(output / (case_id + '-v9-evidence.private.json'),
+                        case, case_id, roster=value['roleKernelRoster'])
                     statuses[case_id] = 'passed'
             for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                    ('package-expectation', 'packageExpectationAudit'),
@@ -4174,7 +4314,8 @@ def run(args):
                         case_id, report, value, fixture, terminal, args.source)
                     if case is None:
                         raise ValueError('workload-fixed-role-access-verification-failed')
-                    native_runner._save(output / (case_id + '-v9-evidence.private.json'), case)
+                    save_v9_case(output / (case_id + '-v9-evidence.private.json'),
+                        case, case_id, roster=value['roleKernelRoster'])
                     statuses[case_id] = 'passed'
             if (network_app_ready and isinstance(terminal, dict)
                     and terminal.get('providerAuthorityAudit', {}).get('status') == 'captured'
@@ -4191,7 +4332,9 @@ def run(args):
                     raise ValueError('workload-provider-authority-case-invalid')
                 native_runner._save(output / 'provider-authority-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'provider-authority-v9-evidence.private.json', sidecar)
+                save_v9_case(output / 'provider-authority-v9-evidence.private.json',
+                    sidecar, 'provider-authority', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['provider-authority'] = 'passed'
             if (network_app_ready and isinstance(terminal, dict)
                     and terminal.get('siblingAppAudit', {}).get('status') == 'captured'
@@ -4208,7 +4351,9 @@ def run(args):
                     raise ValueError('workload-sibling-app-case-invalid')
                 native_runner._save(output / 'sibling-app-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'sibling-app-v9-evidence.private.json', sidecar)
+                save_v9_case(output / 'sibling-app-v9-evidence.private.json',
+                    sidecar, 'sibling-app', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['sibling-app'] = 'passed'
             if (group == 'resource-exhaustion' and group_ready
                     and isinstance(terminal, dict)):
@@ -4225,7 +4370,8 @@ def run(args):
                     raise ValueError('workload-resource-exhaustion-case-invalid')
                 native_runner._save(output / (group + '-v8-evidence.private.json'),
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                save_v9_case(output / (group + '-v9-evidence.private.json'),
+                    sidecar, group, identity=identity, case_attempt=case_attempt)
                 statuses[group] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
@@ -4244,7 +4390,9 @@ def run(args):
                         raise ValueError('workload-sibling-network-case-invalid')
                     native_runner._save(output / (case_id + '-v8-evidence.private.json'),
                         {'attempt': case_attempt, 'assessment': checked_cases})
-                    native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
+                    save_v9_case(output / (case_id + '-v9-evidence.private.json'),
+                        sidecar, case_id, identity=identity,
+                        case_attempt=case_attempt)
                     statuses[case_id] = 'passed'
             if (network_app_ready and isinstance(terminal, dict)
                     and terminal.get('hostNetworkAudit', {}).get('status') == 'captured'):
@@ -4261,7 +4409,9 @@ def run(args):
                     raise ValueError('workload-host-network-case-invalid')
                 native_runner._save(output / 'host-network-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'host-network-v9-evidence.private.json', sidecar)
+                save_v9_case(output / 'host-network-v9-evidence.private.json',
+                    sidecar, 'host-network', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['host-network'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
@@ -4278,7 +4428,9 @@ def run(args):
                     raise ValueError('workload-resolver-authority-case-invalid')
                 native_runner._save(output / 'resolver-authority-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
+                save_v9_case(output / 'resolver-authority-v9-evidence.private.json',
+                    sidecar, 'resolver-authority', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['resolver-authority'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('hostileAppOriginAudit', {}).get('status') == 'captured'):
@@ -4295,7 +4447,9 @@ def run(args):
                     raise ValueError('workload-hostile-origin-case-invalid')
                 native_runner._save(output / 'hostile-app-origin-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'hostile-app-origin-v9-evidence.private.json', sidecar)
+                save_v9_case(output / 'hostile-app-origin-v9-evidence.private.json',
+                    sidecar, 'hostile-app-origin', identity=identity,
+                    case_attempt=case_attempt)
                 statuses['hostile-app-origin'] = 'passed'
             if (output_group and group_ready and isinstance(terminal, dict)
                     and terminal.get({'output-symlink': 'outputSymlinkAudit',
@@ -4317,7 +4471,8 @@ def run(args):
                     raise ValueError('workload-output-artifact-case-invalid')
                 native_runner._save(output / (group + '-v8-evidence.private.json'),
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                save_v9_case(output / (group + '-v9-evidence.private.json'),
+                    sidecar, group, identity=identity, case_attempt=case_attempt)
                 if group == 'output-symlink' and campaign_plan_path is not None:
                     if host_policy != host_admission.POLICY:
                         raise ValueError('workload-v10-host-policy-required')

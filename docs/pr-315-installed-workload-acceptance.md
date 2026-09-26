@@ -2802,6 +2802,17 @@ The Linux PR-31x focused set passed 429 tests with nine environment skips;
 the interop workload file passed 58 tests with nine skips, and the test-kit
 driver file passed 61 with seven skips. This code has no installed TCG result.
 
+The v10 normalization now covers all 39 prospective emitter paths in the
+current source registry. Existing case-specific host verifiers remain the
+source of each observation. The four earlier v8-only denial paths now have
+private v9 process/operation sidecars; the seven role and claim sidecars
+with no v8 record carry an explicit null v8 digest. Each normalized case
+binds its true group, host identity, guest boot time domain, actor and
+target epochs, operation window and original evidence digests. This does
+not claim 39 installed passes. The six missing emitters, provider/resource/
+host-network semantic strengthening, the Mac coordinator and final trusted
+verdict are still outstanding.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

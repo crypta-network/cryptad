@@ -183,8 +183,11 @@ class RunnerControlProbeTest(unittest.TestCase):
                 patch.object(driver, 'controller_unit_identity', side_effect=[before, after]), \
                 patch.object(driver, 'bounded_runner_control_output', return_value=(b'', denied)), \
                 patch.object(driver.subprocess, 'Popen', return_value=process) as launched:
-            self.assertEqual({'status': 'captured'},
-                             driver.probe_runner_control(workload, handoff, result))
+            captured = driver.probe_runner_control(workload, handoff, result)
+            self.assertEqual('captured', captured['status'])
+            self.assertEqual('installed-runner-process',
+                             captured['actorEpoch']['kind'])
+            self.assertEqual(os.getpid(), captured['actorEpoch']['pid'])
         self.assertEqual('/usr/bin/systemctl', launched.call_args.args[0][0])
         self.assertEqual('stop', launched.call_args.args[0][2])
         audit = workload.write.call_args.args[1]

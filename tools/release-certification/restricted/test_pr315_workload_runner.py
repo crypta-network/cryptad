@@ -374,6 +374,25 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual('pid:[4026532603]', case['actorEpoch']['pidNamespace'])
             self.assertEqual({'startedMonotonicNs': 60, 'finishedMonotonicNs': 70},
                              case['operationWindow'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            host = report['hostVerifiedIdentity']
+            identity = {key: host[key] for key in (
+                'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+                'testKitDigest', 'profileDigest', 'bootClosureDigest',
+                'preparedImageDigest', 'fixtureManifestDigest')}
+            identity['productSelectionDigest'] = host['productDigest']
+            identity['admittedAppDigest'] = '5' * 64
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'd' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            v10 = case_v10.generic_case_record(frozen,
+                'suite-205', identity, None, case, source, raw,
+                roster=value['roleKernelRoster'])
+            self.assertEqual('observer-private-read', v10['caseId'])
+            self.assertIsNone(v10['v8AttemptDigest'])
             self.assertEqual({'controllerObservedBeforeNs': 40, 'controllerObservedAfterNs': 80},
                              {key: case['targetEpoch'][key] for key in
                               ('controllerObservedBeforeNs', 'controllerObservedAfterNs')})
@@ -819,6 +838,18 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(checked['recordContractValid'])
         self.assertEqual('passed', next(row['status'] for row in checked['cases']
                          if row['caseId'] == 'provider-authority'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        v10 = case_v10.generic_case_record(frozen,
+            'suite-204', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw)
+        self.assertEqual('normally-signed-apphost-child',
+                         v10['actorEpoch']['kind'])
 
     def test_sibling_app_requires_signed_actor_active_mail_and_own_drop_counter(self):
         roster = synthetic_role_kernel_roster()
@@ -1067,6 +1098,15 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual('passed', next(row['status'] for row in
                 runner.acceptance.verify_attempts(fifo_identity,
                     [fifo_attempt])['cases'] if row['caseId'] == 'output-fifo'))
+            fifo_v10 = case_v10.generic_case_record(frozen,
+                'suite-202', fifo_identity, fifo_attempt, fifo_sidecar,
+                source, raw)
+            self.assertEqual('output-fifo', fifo_v10['caseId'])
+            bad_sidecar = copy.deepcopy(fifo_sidecar)
+            bad_sidecar['actorEpoch']['systemdInvocation'] = 'f' * 32
+            with self.assertRaisesRegex(ValueError, 'candidate-epoch-invalid'):
+                case_v10.generic_case_record(frozen, 'suite-202',
+                    fifo_identity, fifo_attempt, bad_sidecar, source, raw)
             self.assertEqual('fifo', fifo_sidecar['targetEpoch']['artifactType'])
             fifo_audit['artifactMode'] = 0o666
             self.assertIsNone(runner._output_fifo_attempt(
@@ -1366,6 +1406,7 @@ class RunnerTests(unittest.TestCase):
         terminal = synthetic_terminal_roster(roster)
         terminal['sentinel']['observedDigest'] = 'sha256:' + state
         terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
         terminal['observerControlCheckpoint'] = {'status': 'captured', 'record': observer}
         terminal['observerControlAudit'] = {'status': 'captured', 'record': root}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
@@ -1375,6 +1416,29 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(assessment['recordContractValid'])
         self.assertEqual('passed', next(row['status'] for row in assessment['cases']
                          if row['caseId'] == 'observer-control'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        diagnostic = {'authorityObserverEpoch': {
+            'kind': 'installed-observer-process', 'pid': 123,
+            'uid': roster['observerUid'], 'startTicks': 45,
+            'bootId': target['bootId'], 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'a' * 64,
+            'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr314_workload_driver.py'),
+            'observedMonotonicNs': 25}}
+        sidecar = runner._v10_legacy_sidecar('observer-control', report,
+            fixture, terminal, diagnostic, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertEqual('observer-control', case_v10.generic_case_record(
+            frozen, 'suite-207', identity, attempt, sidecar,
+            source, raw)['caseId'])
         for mutate in (
                 lambda row: row['observerControlAudit']['record']['actor'].update(startTicks=46),
                 lambda row: row['observerControlAudit']['record'].update(responseDigest='0' * 64),
@@ -1426,6 +1490,7 @@ class RunnerTests(unittest.TestCase):
         terminal['sentinel']['observedDigest'] = 'sha256:' + sender_state
         for role in ('candidate-sender', 'candidate-recipient'):
             terminal['stopReceipts'][role]['current']['record']['startedMonotonicNs'] = 90
+            terminal['stopReceipts'][role]['current']['record']['observedMonotonicNs'] = 100
         terminal['arbitraryEndpointCheckpoint'] = {'status': 'captured', 'record': observer}
         terminal['arbitraryEndpointAudit'] = {'status': 'captured', 'record': root}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
@@ -1440,6 +1505,29 @@ class RunnerTests(unittest.TestCase):
                              if row['caseId'] == 'arbitrary-endpoint'))
             self.assertEqual(recipient['invocationId'],
                              sidecar['recipientBefore']['managerInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            source = Path(__file__).resolve().parents[3]
+            diagnostic = {'authorityObserverEpoch': {
+                'kind': 'installed-observer-process', 'pid': 123,
+                'uid': roster['observerUid'], 'startTicks': 45,
+                'bootId': controller['bootId'], 'cgroupIdentity': [1, 50],
+                'cgroupDigest': 'a' * 64,
+                'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+                'sourceDigest': runner.reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py'),
+                'observedMonotonicNs': 25}}
+            converted = runner._v10_legacy_sidecar('arbitrary-endpoint',
+                report, fixture, terminal, diagnostic, identity, attempt)
+            self.assertIsNotNone(converted)
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            self.assertEqual('arbitrary-endpoint',
+                case_v10.generic_case_record(frozen, 'suite-209',
+                    identity, attempt, converted, source, raw)['caseId'])
             for mutate in (
                     lambda row: row['arbitraryEndpointAudit']['record']['actor'].update(
                         startTicks=46),
@@ -1492,6 +1580,7 @@ class RunnerTests(unittest.TestCase):
         terminal = synthetic_terminal_roster(roster)
         terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
         terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
         terminal['runnerControlAudit'] = {'status': 'captured', 'record': audit}
         result = {'roleKernelRoster': roster, 'roleKernelRosterWindow': window}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
@@ -1502,6 +1591,29 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(assessment['recordContractValid'])
         self.assertEqual('passed', next(row['status'] for row in assessment['cases']
                          if row['caseId'] == 'runner-control'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        diagnostic = {'runnerControl': {'status': 'captured',
+            'actorEpoch': {'kind': 'installed-runner-process',
+                'pid': 300, 'uid': roster['runnerUid'], 'startTicks': 45,
+                'bootId': target['bootId'], 'cgroupIdentity': [1, 50],
+                'cgroupDigest': 'a' * 64,
+                'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+                'sourceDigest': runner.reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py'),
+                'observedMonotonicNs': 45}}}
+        sidecar = runner._v10_legacy_sidecar('runner-control', report,
+            fixture, terminal, diagnostic, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertEqual('runner-control', case_v10.generic_case_record(
+            frozen, 'suite-208', identity, attempt, sidecar,
+            source, raw)['caseId'])
         for mutate in (
                 lambda row: row['runnerControlAudit']['record']['actor'].update(uid=roster['observerUid']),
                 lambda row: row['runnerControlAudit']['record'].update(responseDigest='0' * 64),
@@ -1567,6 +1679,7 @@ class RunnerTests(unittest.TestCase):
         terminal = synthetic_terminal_roster(roster)
         terminal['sentinel']['observedDigest'] = 'sha256:' + state
         terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
         for name, record in (('probeKernelCheckpoint', checkpoint),
                              ('probeAdministratorRecord', admin), ('probeAppFirstResult', result)):
             terminal[name] = {'status': 'captured', 'record': record}
@@ -1576,6 +1689,21 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(assessment['recordContractValid'])
         self.assertEqual('passed', next(row['status'] for row in assessment['cases']
                          if row['caseId'] == 'namespace-mount-escape'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        sidecar = runner._v10_legacy_sidecar('namespace-mount-escape',
+            report, fixture, terminal, {}, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '6' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        v10 = case_v10.generic_case_record(frozen,
+            'suite-206', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw)
+        self.assertEqual('normally-signed-apphost-child',
+                         v10['actorEpoch']['kind'])
         for mutate in (
                 lambda row: row['probeAppFirstResult']['record'].update(uid=9999),
                 lambda row: row['probeAdministratorRecord']['record'].update(activeAfterNs=81),
@@ -1768,6 +1896,16 @@ class RunnerTests(unittest.TestCase):
                 if row['caseId'] == 'cancellation'))
             self.assertEqual(private['lifecycleActorBefore']['invocationId'],
                              sidecar['actorEpoch']['testKitInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            v10 = case_v10.generic_case_record(frozen,
+                'suite-203', identity, selected, sidecar, source, raw)
+            self.assertEqual('cancellation', v10['caseId'])
             tampered = copy.deepcopy(private)
             tampered['lifecycleActorAfter']['pid'] = 501
             self.assertIsNone(runner._lifecycle_group_attempt(
@@ -2119,6 +2257,12 @@ class RunnerTests(unittest.TestCase):
         names = [name for _, group in groups for name in group]
         self.assertEqual(45, len(set(names)))
         self.assertEqual(set(runner.acceptance.CASES), set(names))
+        import pr315_case_v10 as case_v10
+        supported = set(case_v10.POSITIVE) | {'output-symlink'} | set(case_v10.GENERIC)
+        self.assertEqual(39, len(supported))
+        self.assertEqual({'stale-handle', 'stale-pid-uid', 'late-child',
+                          'partial-launch', 'stuck-output', 'cleanup-race'},
+                         set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
         statuses = {'installed-ready': 'passed', 'resolver-authority': 'passed',

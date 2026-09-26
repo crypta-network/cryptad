@@ -18,6 +18,22 @@ KIND = 'pr315-installed-case-v10'
 _DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 _RAW_FIELDS = frozenset(('guestReport', 'volatile', 'hostMonitor'))
 POSITIVE = tuple(dict(historical.GROUPS)['positive'])
+GENERIC = frozenset((
+    *dict(historical.GROUPS)['role-boundary'],
+    'resolver-authority', 'hostile-app-origin',
+    'forged-runtime-identity', 'forged-counters',
+    'provider-authority', 'sibling-fcp', 'sibling-http',
+    'sibling-app', 'host-network', 'namespace-mount-escape',
+    'runner-control', 'observer-control', 'arbitrary-endpoint',
+    'output-fifo', 'output-hardlink', 'output-flood',
+    'output-replacement', 'resource-exhaustion',
+    'lost-start-response', 'observer-death', 'controller-restart',
+    'setsid-double-fork', 'deadline', 'revocation-running',
+    'cancellation'))
+SIDECAR_ONLY = frozenset((
+    'observer-private-read', 'observer-private-write',
+    'sibling-data', 'package-expectation', 'cgroup-migration',
+    'forged-runtime-identity', 'forged-counters'))
 
 
 def _digest(value):
@@ -120,6 +136,142 @@ def verify_output_symlink_record(campaign, attempt_id, identity, attempt,
     if record != expected:
         raise ValueError('pr315-v10-case-record-changed')
     return _digest(expected)
+
+
+def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
+                        source_root, raw_evidence_digests, *, roster=None):
+    """Normalize one already verified v9 case without granting acceptance."""
+    from pathlib import Path
+    from pr312_reference_vm import sha256
+
+    if (not isinstance(campaign, dict) or campaign.get('kind') != seal.CAMPAIGN
+            or campaign.get('contract') != seal.CONTRACT
+            or not isinstance(attempt_id, str)
+            or seal._ATTEMPT_ID.fullmatch(attempt_id) is None
+            or not isinstance(sidecar, dict)
+            or not isinstance(raw_evidence_digests, dict)
+            or set(raw_evidence_digests) != _RAW_FIELDS
+            or any(_DIGEST.fullmatch(str(value)) is None
+                   for value in raw_evidence_digests.values())):
+        raise ValueError('pr315-v10-generic-input-invalid')
+    case_id = sidecar.get('caseId')
+    if (case_id not in GENERIC or identity != campaign.get('identity')
+            or sidecar.get('contract') != historical.CONTRACT
+            or sidecar.get('status') != 'passed'
+            or sidecar.get('guestStopped') is not True
+            or not isinstance(sidecar.get('actorEpoch'), dict)
+            or not isinstance(sidecar.get('targetEpoch'), dict)
+            or not sidecar['targetEpoch']
+            or not isinstance(sidecar.get('operationWindow'), dict)):
+        raise ValueError('pr315-v10-generic-contract-invalid')
+    if attempt is None:
+        if (case_id not in SIDECAR_ONLY or not acceptance._principals(roster)):
+            raise ValueError('pr315-v10-generic-sidecar-source-invalid')
+        principals = roster['roles']
+        observation = None
+    else:
+        if (not isinstance(attempt, dict)
+                or attempt.get('identity') != identity
+                or attempt.get('declaredCases') != [case_id]
+                or attempt.get('guestStopped') is not True
+                or attempt.get('attemptCompleted') is not True):
+            raise ValueError('pr315-v10-generic-v8-input-invalid')
+        checked = acceptance.verify_attempts(identity, [attempt])
+        if (checked['recordContractValid'] is not True
+                or next((row['status'] for row in checked['cases']
+                         if row['caseId'] == case_id), None) != 'passed'
+                or checked['installedWorkloadAcceptanceSatisfied'] is not False):
+            raise ValueError('pr315-v10-generic-v8-verification-failed')
+        principals = attempt['principals']['roles']
+        observation = attempt['observations'][0]
+    host = sidecar.get('hostVerifiedIdentity')
+    if (not isinstance(host, dict)
+            or host.get('helperSourceCommit') != identity['helperSourceCommit']
+            or host.get('testKitDigest') != identity['testKitDigest']):
+        raise ValueError('pr315-v10-generic-host-identity-invalid')
+    sender = next((row for row in principals if row['role'] == 'candidate-sender'), None)
+    if sender is None:
+        raise ValueError('pr315-v10-generic-sender-unavailable')
+    actor = sidecar['actorEpoch']
+    spec = acceptance.CASES[case_id]
+    if spec.actor == 'candidate':
+        if (actor.get('uid') != sender['uid']
+                or actor.get('bootId') != sender['bootId']
+                or actor.get('systemdInvocation') != sender['invocationId']
+                or actor.get('cgroupDigest') != sender['cgroupDigest']
+                or type(actor.get('hostPid')) is not int or actor['hostPid'] <= 1
+                or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0):
+            raise ValueError('pr315-v10-generic-candidate-epoch-invalid')
+    elif spec.actor == 'app':
+        if (actor.get('kind') != 'normally-signed-apphost-child'
+                or actor.get('uid') != sender['uid']
+                or actor.get('systemdInvocation') != sender['invocationId']
+                or actor.get('cgroupDigest') != sender['cgroupDigest']
+                or actor.get('bundleDigest') != 'sha256:' + campaign['probeDigest']
+                or type(actor.get('hostPid')) is not int or actor['hostPid'] <= 1
+                or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0):
+            raise ValueError('pr315-v10-generic-signed-app-epoch-invalid')
+    elif spec.actor == 'administrator':
+        source_digest = sha256(Path(source_root) /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        if (actor.get('kind') != 'administrator-test-kit'
+                or actor.get('uid') != 0
+                or actor.get('bootId', '').replace('-', '').lower() != sender['bootId']
+                or actor.get('sourceDigest') != source_digest
+                or type(actor.get('pid')) is not int or actor['pid'] <= 1
+                or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0):
+            raise ValueError('pr315-v10-generic-administrator-epoch-invalid')
+    elif spec.actor in ('observer', 'runner'):
+        expected_uid = (attempt['principals']['observerUid']
+                        if spec.actor == 'observer' else
+                        attempt['principals']['runnerUid'])
+        expected_kind = ('installed-observer-process' if spec.actor == 'observer'
+                         else 'installed-runner-process')
+        source_digest = sha256(Path(source_root) /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        if (actor.get('kind') != expected_kind
+                or actor.get('uid') != expected_uid
+                or actor.get('sourceDigest') != source_digest
+                or actor.get('bootId', '').replace('-', '').lower() != sender['bootId']
+                or not isinstance(actor.get('namespaces'), dict)
+                or set(actor['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                or type(actor.get('pid')) is not int or actor['pid'] <= 1
+                or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0):
+            raise ValueError('pr315-v10-generic-observer-epoch-invalid')
+    else:
+        raise ValueError('pr315-v10-generic-actor-unsupported')
+    window = sidecar['operationWindow']
+    stop_ns = sidecar.get('stopReceiptObservedNs')
+    if (type(window.get('startedMonotonicNs')) is not int
+            or type(window.get('finishedMonotonicNs')) is not int
+            or type(stop_ns) is not int
+            or not 0 < window['startedMonotonicNs'] < window['finishedMonotonicNs']
+            or stop_ns <= 0):
+        raise ValueError('pr315-v10-generic-window-invalid')
+    if spec.witness == 'lifecycle':
+        if (stop_ns > window['finishedMonotonicNs']
+                or sidecar['targetEpoch'].get('roles') != principals):
+            raise ValueError('pr315-v10-generic-lifecycle-target-invalid')
+    elif window['finishedMonotonicNs'] >= stop_ns:
+        raise ValueError('pr315-v10-generic-stop-window-invalid')
+    record = {'schemaVersion': 10, 'kind': KIND,
+        'contract': seal.CONTRACT, 'campaignPlanDigest': campaign['planDigest'],
+        'campaignNonce': campaign['campaignNonce'], 'attemptId': attempt_id,
+        'groupId': historical.CASE_TO_GROUP[case_id], 'caseId': case_id,
+        'status': 'passed', 'sourceCommit': identity['helperSourceCommit'],
+        'actorEpoch': actor, 'targetEpoch': sidecar['targetEpoch'],
+        'operationWindow': window,
+        'operationTimeDomain': 'guest:' + sender['bootId'],
+        'v8AttemptDigest': _digest(attempt) if attempt is not None else None,
+        'v8ObservationDigest': _digest(observation) if observation is not None else None,
+        'v9SidecarDigest': _digest(sidecar),
+        'hostIdentityDigest': _digest(host),
+        'rawEvidenceDigests': raw_evidence_digests,
+        'stopReceiptObservedNs': stop_ns,
+        'classification': 'private-host-verified-candidate-not-standalone-acceptance'}
+    if len(json.dumps(record, sort_keys=True, separators=(',', ':'))) > 32768:
+        raise ValueError('pr315-v10-generic-record-limit')
+    return record
 
 
 def _positive_roles(attempt, result):

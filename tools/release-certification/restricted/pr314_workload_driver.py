@@ -1627,11 +1627,14 @@ def _administrator_collector_epoch(case_id):
             'observedMonotonicNs': time.monotonic_ns()}
 
 
-def _positive_observer_epoch(pid, expected_uid, deadline_ns):
-    """Bind the actual forked observer through a pidfd before workload work."""
+def _positive_observer_epoch(pid, expected_uid, deadline_ns,
+                             kind='installed-observer-process'):
+    """Bind a fixed unprivileged test actor through a pidfd."""
     import cross_version_runtime as runtime
     if (type(pid) is not int or pid <= 1 or type(expected_uid) is not int
-            or expected_uid <= 0 or type(deadline_ns) is not int):
+            or expected_uid <= 0 or type(deadline_ns) is not int
+            or kind not in ('installed-observer-process',
+                            'installed-runner-process')):
         raise ValueError('workload-positive-observer-selection-invalid')
     descriptor = os.pidfd_open(pid)
     try:
@@ -1663,7 +1666,7 @@ def _positive_observer_epoch(pid, expected_uid, deadline_ns):
             raise ValueError('workload-positive-observer-epoch-changed')
         boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
         source = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-        return {'kind': 'installed-observer-process', 'pid': pid,
+        return {'kind': kind, 'pid': pid,
             'uid': expected_uid, 'startTicks': int(first[19]), 'bootId': boot,
             'cgroupIdentity': cgroup_identity,
             'cgroupDigest': runtime.canonical_digest({
@@ -4194,6 +4197,10 @@ def probe_runner_control(workload, handoff, result):
         if set(map(int, status['Uid'].split())) != {runner.pw_uid}:
             raise ValueError('runner-control-actor-uid-changed')
         actor_start = int(actor_path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        actor_epoch = _positive_observer_epoch(process.pid, runner.pw_uid,
+            time.monotonic_ns() + 2 * 10**9, kind='installed-runner-process')
+        if actor_epoch['startTicks'] != actor_start:
+            raise ValueError('runner-control-actor-epoch-changed')
         stdout, stderr = bounded_runner_control_output(process)
     finally:
         if process.poll() is None:
@@ -4231,7 +4238,7 @@ def probe_runner_control(workload, handoff, result):
              'responseBase64': base64.b64encode(stderr).decode('ascii'),
              'exitCode': process.returncode, 'stdoutBytes': len(stdout)}
     workload.write(workload.ROOT / 'authority/runner-control-denial.json', audit, create=True)
-    return {'status': 'captured'}
+    return {'status': 'captured', 'actorEpoch': actor_epoch}
 
 
 def _write_volatile_bytes(path, raw):
@@ -4417,6 +4424,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         admin_child.close()
         if not startup_measurement and workload_group in (None, 'positive'):
             diagnostics['positiveObserverEpoch'] = _positive_observer_epoch(
+                pid, observer.pw_uid, campaign_deadline)
+        if not startup_measurement and workload_group == 'authority':
+            diagnostics['authorityObserverEpoch'] = _positive_observer_epoch(
                 pid, observer.pw_uid, campaign_deadline)
         # Preparation already started the campaign clock. Observation gets only the
         # original deadline plus bounded teardown grace, never a new execution budget.
