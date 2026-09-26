@@ -4264,7 +4264,8 @@ def _host_network_attempt(report, result, fixture, terminal, source):
             'mountNamespaceIdentity', 'userNamespaceIdentity',
             'executableDigest', 'noNewPrivileges', 'effectiveCapabilities')
         stable_target = ('pid', 'uid', 'startTicks', 'bootId',
-            'cgroupIdentity', 'networkNamespace', 'sourceDigest',
+            'cgroupIdentity', 'networkNamespace', 'initNetworkNamespace',
+            'addressBinding', 'sourceDigest',
             'invocationId', 'controlDigest')
         expected_control = hashlib.sha256(
             b'pr315-host-probe\0pr315-host-ready').hexdigest()
@@ -4295,6 +4296,15 @@ def _host_network_attempt(report, result, fixture, terminal, source):
                 or first['invocationId'] != target_invocation
                 or first['bootId'].replace('-', '').lower() != sender['bootId']
                 or first['networkNamespace'] == sender['networkNamespace']
+                or first['networkNamespace'] != first['initNetworkNamespace']
+                or not isinstance(first['addressBinding'], dict)
+                or set(first['addressBinding']) != {'ifindex', 'ifname', 'address'}
+                or type(first['addressBinding']['ifindex']) is not int
+                or first['addressBinding']['ifindex'] <= 0
+                or re.fullmatch('[a-zA-Z0-9_.-]{1,15}',
+                    str(first['addressBinding']['ifname'])) is None
+                or first['addressBinding']['address'] !=
+                    workload_network.HOST_CANARY_ADDRESS
                 or first['controlDigest'] != expected_control
                 or target_group in {row['cgroupDigest']
                                     for row in result['roleKernelRoster']['roles']}

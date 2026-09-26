@@ -780,6 +780,7 @@ def probe_sibling_network(workload, handoff, nonce, source_digest,
 
 def _host_canary_epoch(workload):
     """Bind the guest host-namespace canary to this root test-kit process."""
+    from restricted_workload_network import HOST_CANARY_ADDRESS, IP
     pid = os.getpid()
     stat_fields = (Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split())
     start = int(stat_fields[19])
@@ -791,6 +792,24 @@ def _host_canary_epoch(workload):
     source = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     boot = workload.boot()
     network = os.stat('/proc/self/ns/net').st_ino
+    init_network = os.stat('/proc/1/ns/net').st_ino
+    if network != init_network:
+        raise ValueError('workload-host-canary-not-in-guest-host-namespace')
+    addresses = subprocess.run([IP, '-j', '-4', 'address', 'show', 'to',
+        HOST_CANARY_ADDRESS + '/32'], capture_output=True, check=True,
+        timeout=5, env=ENV)
+    if len(addresses.stdout) > 16384:
+        raise ValueError('workload-host-canary-address-observation-limit')
+    interfaces = json.loads(addresses.stdout)
+    bound = [(row['ifindex'], row['ifname'], entry['local'])
+        for row in interfaces for entry in row['addr_info']
+        if entry.get('family') == 'inet'
+        and entry.get('local') == HOST_CANARY_ADDRESS]
+    if (len(bound) != 1 or type(bound[0][0]) is not int
+            or bound[0][0] <= 0
+            or not isinstance(bound[0][1], str)
+            or re.fullmatch('[a-zA-Z0-9_.-]{1,15}', bound[0][1]) is None):
+        raise ValueError('workload-host-canary-address-not-assigned')
     identity = [info.st_dev, info.st_ino]
     invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': pid,
         'startTicks': start, 'cgroupIdentity': identity,
@@ -798,6 +817,9 @@ def _host_canary_epoch(workload):
         separators=(',', ':')).encode()).hexdigest()[:32]
     return {'pid': pid, 'uid': 0, 'startTicks': start, 'bootId': boot,
         'cgroupIdentity': identity, 'networkNamespace': network,
+        'initNetworkNamespace': init_network,
+        'addressBinding': {'ifindex': bound[0][0],
+                           'ifname': bound[0][1], 'address': bound[0][2]},
         'sourceDigest': source, 'invocationId': invocation}
 
 
@@ -814,6 +836,8 @@ def _host_canary_control(listener, workload):
         return bytes(body)
 
     before = _host_canary_epoch(workload)
+    if listener.getsockname() != (HOST_CANARY_ADDRESS, HOST_CANARY_PORT):
+        raise ValueError('workload-host-canary-listener-address-changed')
     with socket.create_connection((HOST_CANARY_ADDRESS, HOST_CANARY_PORT),
                                   timeout=2) as client:
         listener.settimeout(2)
@@ -878,7 +902,8 @@ def probe_host_network(workload, handoff, nonce, source_digest,
         'userNamespaceIdentity', 'executableDigest',
         'noNewPrivileges', 'effectiveCapabilities')
     stable_target = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
-        'networkNamespace', 'sourceDigest', 'invocationId', 'controlDigest')
+        'networkNamespace', 'initNetworkNamespace', 'addressBinding',
+        'sourceDigest', 'invocationId', 'controlDigest')
     if (not isinstance(result, dict) or set(result) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
             'startedMonotonicNs', 'finishedMonotonicNs',

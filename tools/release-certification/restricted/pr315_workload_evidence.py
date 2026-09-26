@@ -1733,7 +1733,8 @@ def _sibling_network_audit(root, deadline, case_id):
                           'observedMonotonicNs', 'controlObservedNs', 'controlDigest'}
                          if case_id != 'host-network' else
                          {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
-                          'networkNamespace', 'sourceDigest', 'invocationId',
+                          'networkNamespace', 'initNetworkNamespace',
+                          'addressBinding', 'sourceDigest', 'invocationId',
                           'controlDigest', 'observedMonotonicNs'})
         counter_fields = {'schemaVersion', 'kind', 'policyDigest', 'bootId',
                           'roleNamespaceIdentity', 'observedMonotonicNs', 'counters'}

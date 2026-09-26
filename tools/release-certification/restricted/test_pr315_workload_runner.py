@@ -1289,7 +1289,10 @@ class RunnerTests(unittest.TestCase):
         control = hashlib.sha256(b'pr315-host-probe\0pr315-host-ready').hexdigest()
         target = {'pid': 500, 'uid': 0, 'startTicks': 33,
             'bootId': boot, 'cgroupIdentity': [1, 50],
-            'networkNamespace': 3000, 'sourceDigest': driver_digest,
+            'networkNamespace': 3000, 'initNetworkNamespace': 3000,
+            'addressBinding': {'ifindex': 2, 'ifname': 'eth0',
+                               'address': '10.0.2.15'},
+            'sourceDigest': driver_digest,
             'invocationId': invocation, 'controlDigest': control,
             'observedMonotonicNs': 40}
         actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
@@ -1365,6 +1368,10 @@ class RunnerTests(unittest.TestCase):
         for mutate in (
                 lambda row: row['hostNetworkAudit']['record']['targetAfter'].update(
                     networkNamespace=200),
+                lambda row: row['hostNetworkAudit']['record']['targetBefore'].update(
+                    initNetworkNamespace=999),
+                lambda row: row['hostNetworkAudit']['record']['targetBefore']
+                    ['addressBinding'].update(address='10.0.2.16'),
                 lambda row: row['hostNetworkAudit']['record']['counterAfter']
                     ['counters'][names['host-network']].update(packets=0),
                 lambda row: row['hostNetworkAudit']['record']['counterAfter']

@@ -128,11 +128,19 @@ class SiblingNetworkCounterTest(unittest.TestCase):
             listener.bind(('127.0.0.1', 0))
             listener.listen(2)
             port = listener.getsockname()[1]
+            address_rows = json.dumps([{'ifindex': 1, 'ifname': 'lo',
+                'addr_info': [{'family': 'inet', 'local': '127.0.0.1'}]}]).encode()
             with patch.object(network, 'HOST_CANARY_ADDRESS', '127.0.0.1'), \
-                    patch.object(network, 'HOST_CANARY_PORT', port):
+                    patch.object(network, 'HOST_CANARY_PORT', port), \
+                    patch.object(driver.subprocess, 'run',
+                        return_value=SimpleNamespace(stdout=address_rows)) as address:
                 selected = SimpleNamespace(boot=lambda: 'a' * 32)
                 first = driver._host_canary_control(listener, selected)
                 second = driver._host_canary_control(listener, selected)
+                address.return_value = SimpleNamespace(stdout=b'[]')
+                with self.assertRaisesRegex(ValueError,
+                                            'address-not-assigned'):
+                    driver._host_canary_control(listener, selected)
         self.assertEqual(0, first['uid'])
         self.assertEqual(os.getpid(), first['pid'])
         self.assertEqual(first['invocationId'], second['invocationId'])
