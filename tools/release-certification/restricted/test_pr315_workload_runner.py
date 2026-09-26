@@ -1842,6 +1842,137 @@ class RunnerTests(unittest.TestCase):
                 self.assertIsNone(runner._resource_exhaustion_attempt(
                     report, result, fixture, changed, diagnostics))
 
+    def test_partial_launch_v10_requires_two_live_roles_failed_previous_and_absent_relay(self):
+        import pr315_campaign_seal as seal
+        roster = synthetic_role_kernel_roster()
+        source = Path(__file__).resolve().parents[3]
+        host = synthetic_host_identity()
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = '5' * 64
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        roles = roster['roles'][:2]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        sender_state = 'd' * 64
+        def role_control(row, cgroup, observed):
+            return {'state': 'running', 'managerInvocation': row['invocationId'],
+                'bootId': boot, 'cgroupIdentity': cgroup,
+                'stateDigest': sender_state,
+                'observedMonotonicNs': observed}
+        marker = {'generation': 'c' * 64, 'bootId': boot,
+            'managerInvocation': 'd' * 32, 'cgroupIdentity': [1, 101]}
+        receipt = {**marker, 'membership': 'only-stop-helper',
+                   'descendantCgroups': 0, 'startedMonotonicNs': 180,
+                   'observedMonotonicNs': 210}
+        prepared = {'state': 'prepared', 'generation': None,
+            'managerInvocation': None, 'cgroupIdentity': None, 'bootId': boot}
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        launcher_digest = runner.reference.sha256(source /
+            'tools/release-certification/protected/restricted_workload_launcher.py')
+        administrator = {'pid': 500, 'uid': 0, 'startTicks': 33,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'a' * 64, 'invocationId': 'f' * 32,
+            'sourceDigest': driver_digest, 'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-partial-launch',
+            'caseId': 'partial-launch', 'nonceDigest': hashlib.sha256(
+                ('c' * 64).encode()).hexdigest(),
+            'administratorBefore': administrator,
+            'administratorAfter': dict(administrator, observedMonotonicNs=300),
+            'observerUid': roster['observerUid'],
+            'observerActor': {'kind': 'installed-observer-process',
+                'pid': 301, 'uid': roster['observerUid'],
+                'startTicks': 40, 'bootId': boot,
+                'sourceDigest': driver_digest},
+            'senderBefore': role_control(roles[0], [1, 99], 20),
+            'senderAfter': role_control(roles[0], [1, 99], 260),
+            'recipientBefore': role_control(roles[1], [1, 100], 21),
+            'recipientAfter': role_control(roles[1], [1, 100], 270),
+            'previousBefore': prepared, 'previousStartMarker': marker,
+            'previousFault': {'kind': 'pr315-previous-launch-fault',
+                'caseId': 'partial-launch', 'nonce': 'c' * 64, 'pid': 300,
+                'uid': roster['roles'][2]['uid'], 'startTicks': 50,
+                'sourceDigest': launcher_digest,
+                'observedMonotonicNs': 60},
+            'previousActor': {'hostPid': 300, 'startTicks': 50,
+                'cgroupIdentity': [1, 101],
+                'executableDigest': 'sha256:' + 'e' * 64,
+                'observedMonotonicNs': 70},
+            'previousStopReceipt': receipt,
+            'relayBefore': prepared, 'relayAfter': dict(prepared),
+            'controllerResponse': 'controller-rejected-launch',
+            'probeStartedNs': 40, 'releasePublishedNs': 100,
+            'terminalObservedNs': 310,
+            'launcherSourceDigest': launcher_digest}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + sender_state
+        for row in roles:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=400, observedMonotonicNs=410)
+        terminal['stopReceipts']['previous']['current'] = {
+            'status': 'captured', 'record': receipt}
+        terminal['stopReceipts']['relay-no-apps']['current'] = {
+            'status': 'unavailable-or-unsafe'}
+        terminal['controllerRecords']['previous']['record'].update(
+            state='quiescent', managerInvocation=marker['managerInvocation'],
+            cgroupIdentity=marker['cgroupIdentity'])
+        terminal['controllerRecords']['relay-no-apps']['record'].update(
+            state='prepared', generation=None, managerInvocation=None,
+            cgroupIdentity=None)
+        terminal['partialLaunchAudit'] = {'status': 'captured', 'record': audit}
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group', 'status': 'guest-report-retained',
+            'guestExitCode': 0, 'guestStopped': True,
+            'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit']},
+            'groupPreparation': 'partial-launch', 'topologyRoles': 2,
+            'signedAppWorkers': 0, 'contentRetrieval': 'not-executed-group',
+            'newEpoch': False, 'partialRoleRoster': roles,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 25,
+                                       'finishedMonotonicNs': 35},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start', 'caseId': 'partial-launch',
+            'startedMonotonicNs': 9},
+            'partialLaunch': {'status': 'captured',
+                'auditDigest': hashlib.sha256(json.dumps(audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertTrue(runner.partial_launch_prepared(report, result, terminal))
+        record = runner._partial_launch_record(frozen, 'suite-210', report,
+            result, terminal, diagnostics, source, raw)
+        self.assertIsNotNone(record)
+        self.assertEqual('partial-launch', record['caseId'])
+        self.assertTrue(record['targetEpoch']['relayNeverStarted'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                private_root = Path(directory)
+                (private_root / 'authority').mkdir()
+                (private_root / 'authority/partial-launch.json').write_text(
+                    json.dumps(audit))
+                self.assertEqual('captured', evidence._partial_launch_audit(
+                    private_root, time.monotonic() + 3)['status'])
+        for mutate in (
+                lambda row: row['partialLaunchAudit']['record']['relayAfter'].update(
+                    generation='a' * 64),
+                lambda row: row['partialLaunchAudit']['record']['previousActor'].update(
+                    startTicks=51),
+                lambda row: row['stopReceipts']['previous']['current']['record'].update(
+                    descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner._partial_launch_record(frozen,
+                'suite-210', report, result, changed, diagnostics, source, raw))
+
     def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)
@@ -2258,10 +2389,11 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(45, len(set(names)))
         self.assertEqual(set(runner.acceptance.CASES), set(names))
         import pr315_case_v10 as case_v10
-        supported = set(case_v10.POSITIVE) | {'output-symlink'} | set(case_v10.GENERIC)
-        self.assertEqual(39, len(supported))
+        supported = (set(case_v10.POSITIVE) | {'output-symlink'}
+                     | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
+        self.assertEqual(40, len(supported))
         self.assertEqual({'stale-handle', 'stale-pid-uid', 'late-child',
-                          'partial-launch', 'stuck-output', 'cleanup-race'},
+                          'stuck-output', 'cleanup-race'},
                          set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):

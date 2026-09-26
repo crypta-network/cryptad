@@ -1438,6 +1438,206 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
         sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def _partial_role_projection(workload, handle):
+    observed = workload.observe(handle)
+    if (observed.get('state') != 'running'
+            or observed.get('provenance') != 'controller-kernel-sample'):
+        raise ValueError('workload-partial-launch-sibling-inactive')
+    return {key: observed[key] for key in ('state', 'managerInvocation',
+        'bootId', 'cgroupIdentity', 'stateDigest', 'observedMonotonicNs')}
+
+
+def probe_partial_launch(workload, handoff, result, observer_uid,
+                         campaign_deadline_ns):
+    """Fail previous after its real start marker while two roles remain live."""
+    import restricted_workload_launcher as launcher
+    from cross_version_workload import WorkloadClient, runtime
+
+    if (result.get('groupPreparation') != 'partial-launch'
+            or result.get('topologyRoles') != 2
+            or [row['role'] for row in result.get('partialRoleRoster', [])]
+                != ['candidate-sender', 'candidate-recipient']):
+        raise ValueError('workload-partial-launch-preparation-invalid')
+    administrator_before = _administrator_collector_epoch('partial-launch')
+    sender = _partial_role_projection(workload, handoff['handles']['candidate-sender'])
+    recipient = _partial_role_projection(workload, handoff['handles']['candidate-recipient'])
+    root = workload.ROOT
+    previous = workload.read(root / 'authority/previous.json')
+    relay = workload.read(root / 'authority/relay-no-apps.json')
+    previous_state = workload.manager('previous', 'show')
+    relay_state = workload.manager('relay-no-apps', 'show')
+    if (any(row.get('state') != 'prepared' or row.get('generation') is not None
+            or row.get('managerInvocation') is not None for row in (previous, relay))
+            or any(row['ActiveState'] != 'inactive' or row['MainPID'] != '0'
+                   for row in (previous_state, relay_state))
+            or os.path.lexists(root / 'authority/previous-start.json')
+            or os.path.lexists(root / 'authority/relay-no-apps-start.json')):
+        raise ValueError('workload-partial-launch-roles-not-prepared')
+    spec = workload.read(root / 'roles/previous/launch.json')
+    nonce = secrets.token_hex(32)
+    source_digest = hashlib.sha256(Path(launcher.__file__).read_bytes()).hexdigest()
+    workload.write(launcher.PARTIAL_LAUNCH_REQUEST,
+        {'schemaVersion': 1, 'caseId': 'partial-launch', 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': spec['javaDigest'],
+         'sourceDigest': source_digest}, create=True, mode=0o444)
+    ready_ns = time.monotonic_ns()
+    previous_uid = workload.account('previous').pw_uid
+    observer = pwd.getpwnam('cryptad-soak')
+    if observer.pw_uid != observer_uid or observer_uid <= 0:
+        raise ValueError('workload-partial-launch-observer-invalid')
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        pid = os.fork()
+    except BaseException:
+        parent.close()
+        child.close()
+        raise
+    if pid == 0:
+        parent.close()
+        try:
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            try:
+                response = WorkloadClient().request('start',
+                    handoff['handles']['previous'])
+                classification = ('transient-start-response'
+                    if response.get('state') == 'running' else
+                    'unexpected-start-response')
+            except runtime.RuntimeFailure:
+                classification = 'controller-rejected-launch'
+            child.sendall(json.dumps({'classification': classification},
+                separators=(',', ':')).encode())
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    child.close()
+    actor = None
+    observer_actor = None
+    released_ns = None
+    sample_error = None
+    try:
+        until = min(time.monotonic() + 9, campaign_deadline_ns / 1e9)
+        fault = _wait_output_record(launcher.PARTIAL_LAUNCH_RECORD,
+            previous_uid, until, 'workload-partial-launch-fault-timeout')
+        marker = workload.read(root / 'authority/previous-start.json')
+        current = workload.read(root / 'authority/previous.json')
+        info = workload.group('previous').stat()
+        actor = workload._process(fault['pid'], 'previous', previous_uid)
+        actor['cgroupIdentity'] = [info.st_dev, info.st_ino]
+        actor['observedMonotonicNs'] = time.monotonic_ns()
+        observer_actor = _positive_observer_epoch(
+            pid, observer_uid, campaign_deadline_ns)
+        if (not isinstance(fault, dict) or set(fault) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid',
+                'startTicks', 'sourceDigest', 'observedMonotonicNs'}
+                or fault['schemaVersion'] != 1
+                or fault['kind'] != 'pr315-previous-launch-fault'
+                or fault['caseId'] != 'partial-launch' or fault['nonce'] != nonce
+                or fault['uid'] != previous_uid or fault['pid'] != actor['hostPid']
+                or fault['startTicks'] != actor['startTicks']
+                or fault['sourceDigest'] != source_digest
+                or marker['generation'] != current['generation']
+                or marker['bootId'] != current['bootId']
+                or marker['cgroupIdentity'] != actor['cgroupIdentity']
+                or current['state'] not in ('launching', 'running')
+                or not ready_ns < fault['observedMonotonicNs']
+                    <= actor['observedMonotonicNs']):
+            raise ValueError('workload-partial-launch-fault-epoch-invalid')
+    except BaseException as error:
+        sample_error = error
+    finally:
+        try:
+            release = launcher.PARTIAL_LAUNCH_RELEASE
+            pending = release.with_name('.pr315-partial-launch-release.pending')
+            raw = json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-partial-launch-release', 'nonce': nonce},
+                sort_keys=True, separators=(',', ':')).encode()
+            descriptor = os.open(pending,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW |
+                os.O_CLOEXEC, 0o600)
+            try:
+                os.fchown(descriptor, previous_uid, workload.account('previous').pw_gid)
+                if os.write(descriptor, raw) != len(raw):
+                    raise ValueError('workload-partial-launch-release-short-write')
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            if os.path.lexists(release):
+                raise ValueError('workload-partial-launch-release-already-published')
+            os.replace(pending, release)
+            released_ns = time.monotonic_ns()
+        except (OSError, ValueError):
+            pass
+    try:
+        raw, status = collect_child(parent, pid,
+            min(time.monotonic() + 45, campaign_deadline_ns / 1e9))
+    except BaseException:
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        raise
+    finally:
+        parent.close()
+    if sample_error is not None:
+        raise sample_error
+    if status != 0 or len(raw) > 512:
+        raise ValueError('workload-partial-launch-start-response-invalid')
+    response = json.loads(raw)
+    if (response.get('classification') not in (
+            'controller-rejected-launch', 'transient-start-response')
+            or released_ns is None or actor is None or observer_actor is None):
+        raise ValueError('workload-partial-launch-transition-invalid')
+    stopped = workload.stop(handoff['handles']['previous'])
+    current = workload.read(root / 'authority/previous.json')
+    receipt = workload.stop_receipt('previous', current)
+    sender_after = _partial_role_projection(workload,
+        handoff['handles']['candidate-sender'])
+    recipient_after = _partial_role_projection(workload,
+        handoff['handles']['candidate-recipient'])
+    relay_after = workload.read(root / 'authority/relay-no-apps.json')
+    if (stopped['state'] != 'quiescent' or current['state'] != 'quiescent'
+            or current['generation'] != marker['generation']
+            or current['managerInvocation'] != marker['managerInvocation']
+            or receipt['managerInvocation'] != marker['managerInvocation']
+            or receipt['cgroupIdentity'] != marker['cgroupIdentity']
+            or receipt['membership'] != 'only-stop-helper'
+            or receipt['descendantCgroups'] != 0
+            or relay_after != relay
+            or os.path.lexists(root / 'authority/relay-no-apps-start.json')
+            or any(before[key] != after[key] for before, after in
+                   ((sender, sender_after), (recipient, recipient_after))
+                   for key in ('managerInvocation', 'cgroupIdentity',
+                               'bootId', 'stateDigest'))):
+        raise ValueError('workload-partial-launch-reconciliation-invalid')
+    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-partial-launch',
+        'caseId': 'partial-launch', 'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'administratorBefore': administrator_before,
+        'administratorAfter': _administrator_collector_epoch('partial-launch'),
+        'observerUid': observer_uid, 'senderBefore': sender,
+        'observerActor': observer_actor,
+        'senderAfter': sender_after, 'recipientBefore': recipient,
+        'recipientAfter': recipient_after,
+        'previousBefore': {key: previous[key] for key in
+            ('state', 'generation', 'managerInvocation', 'cgroupIdentity', 'bootId')},
+        'previousStartMarker': marker, 'previousFault': fault,
+        'previousActor': actor, 'previousStopReceipt': receipt,
+        'relayBefore': {key: relay[key] for key in
+            ('state', 'generation', 'managerInvocation', 'cgroupIdentity', 'bootId')},
+        'relayAfter': {key: relay_after[key] for key in
+            ('state', 'generation', 'managerInvocation', 'cgroupIdentity', 'bootId')},
+        'controllerResponse': response['classification'],
+        'probeStartedNs': ready_ns, 'releasePublishedNs': released_ns,
+        'terminalObservedNs': time.monotonic_ns(),
+        'launcherSourceDigest': source_digest}
+    workload.write(root / 'authority/partial-launch.json', audit, create=True)
+    return hashlib.sha256(json.dumps(audit, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()
+
+
 def _setsid_process_epoch(pid):
     fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
     if (len(fields) <= 19 or not fields[3].isdecimal()
@@ -1621,7 +1821,8 @@ def _administrator_collector_epoch(case_id):
                          else 'lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
-                          'observer-death', 'lost-start-response')
+                          'observer-death', 'lost-start-response',
+                          'partial-launch')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -3977,7 +4178,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('lost-start-response', 'resource-exhaustion',
+        if workload_group in ('lost-start-response', 'partial-launch', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4284,6 +4485,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
+                             'partial-launch',
                              'resource-exhaustion',
                              'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
@@ -4463,7 +4665,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('lost-start-response', 'resource-exhaustion',
+        if (workload_group in ('lost-start-response', 'partial-launch', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4669,6 +4871,20 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['resourceExhaustion'] = {
                     'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'partial-launch':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_partial_launch(workload, handoff, result,
+                    observer.pw_uid, campaign_deadline)
+                diagnostics['partialLaunch'] = {'status': 'captured',
+                    'caseId': 'partial-launch', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['partialLaunch'] = {
+                    'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -4838,6 +5054,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
+                                                    'partial-launch',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

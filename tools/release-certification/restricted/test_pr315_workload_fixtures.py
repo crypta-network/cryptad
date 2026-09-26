@@ -60,6 +60,7 @@ class AdmissionTests(unittest.TestCase):
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v26')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v27')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v28')},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v29')},
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'resolverAuthorityProbe'}},
                            {'runtimePolicy': {key: item for key, item in policy.items()
@@ -76,6 +77,8 @@ class AdmissionTests(unittest.TestCase):
                                               if key != 'resourceExhaustionProbe'}},
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'hostNetworkCanary'}},
+                           {'runtimePolicy': {key: item for key, item in policy.items()
+                                              if key != 'partialLaunchFault'}},
                            {'runtimePolicy': dict(policy, command='/bin/sh')}):
                 with self.subTest(change=change):
                     manifest = root / fixtures.MANIFEST

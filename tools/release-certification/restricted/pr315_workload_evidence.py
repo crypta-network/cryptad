@@ -1268,6 +1268,75 @@ def _resource_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _partial_launch_audit(root, deadline):
+    """Retain a real two-role startup, failed previous launch and absent relay."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'partial-launch.json', maximum=32768,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'nonceDigest',
+            'administratorBefore', 'administratorAfter',
+            'observerUid', 'observerActor', 'senderBefore', 'senderAfter',
+            'recipientBefore', 'recipientAfter', 'previousBefore',
+            'previousStartMarker', 'previousFault', 'previousActor',
+            'previousStopReceipt', 'relayBefore', 'relayAfter',
+            'controllerResponse', 'probeStartedNs', 'releasePublishedNs',
+            'terminalObservedNs', 'launcherSourceDigest'}
+        prepared = {'state': 'prepared', 'generation': None,
+                    'managerInvocation': None, 'cgroupIdentity': None}
+        before = value['previousBefore']
+        relay = value['relayBefore']
+        fault = value['previousFault']
+        actor = value['previousActor']
+        marker = value['previousStartMarker']
+        receipt = value['previousStopReceipt']
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-partial-launch'
+                or value['caseId'] != 'partial-launch'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('nonceDigest', 'launcherSourceDigest'))
+                or type(value['observerUid']) is not int
+                or value['observerUid'] <= 0
+                or any(not isinstance(value[key], dict) for key in (
+                    'administratorBefore', 'administratorAfter',
+                    'observerActor', 'senderBefore', 'senderAfter',
+                    'recipientBefore', 'recipientAfter', 'previousBefore',
+                    'previousStartMarker', 'previousFault', 'previousActor',
+                    'previousStopReceipt', 'relayBefore', 'relayAfter'))
+                or any(before.get(key) != expected for key, expected in prepared.items())
+                or any(relay.get(key) != expected for key, expected in prepared.items())
+                or value['relayAfter'] != relay
+                or value['controllerResponse'] not in (
+                    'controller-rejected-launch', 'transient-start-response')
+                or fault.get('kind') != 'pr315-previous-launch-fault'
+                or fault.get('caseId') != 'partial-launch'
+                or hashlib.sha256(str(fault.get('nonce')).encode()).hexdigest()
+                    != value['nonceDigest']
+                or fault.get('sourceDigest') != value['launcherSourceDigest']
+                or actor.get('hostPid') != fault.get('pid')
+                or actor.get('startTicks') != fault.get('startTicks')
+                or marker.get('generation') != receipt.get('generation')
+                or marker.get('managerInvocation') != receipt.get('managerInvocation')
+                or marker.get('cgroupIdentity') != receipt.get('cgroupIdentity')
+                or receipt.get('membership') != 'only-stop-helper'
+                or receipt.get('descendantCgroups') != 0
+                or not 0 < value['probeStartedNs']
+                    < fault['observedMonotonicNs']
+                    <= actor['observedMonotonicNs']
+                    < value['releasePublishedNs']
+                    < receipt['observedMonotonicNs']
+                    < value['terminalObservedNs']):
+            raise ValueError('partial-launch-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1672,6 +1741,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
         if os.path.lexists(root / 'authority/resource-exhaustion-denial.json'):
             result['resourceAudit'] = _resource_audit(root, deadline)
+        if os.path.lexists(root / 'authority/partial-launch.json'):
+            result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1755,6 +1826,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
         if os.path.lexists(root / 'authority/resource-exhaustion-denial.json'):
             result['resourceAudit'] = _resource_audit(root, deadline)
+        if os.path.lexists(root / 'authority/partial-launch.json'):
+            result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

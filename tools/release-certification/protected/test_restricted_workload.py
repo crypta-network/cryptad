@@ -1076,6 +1076,50 @@ class ControllerRequestTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for fixed launch request')
+    def test_previous_launch_fault_is_one_use_and_source_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            requests = root / 'probe-requests'
+            requests.mkdir(mode=0o711)
+            output = root / 'state/previous/tmp'
+            output.mkdir(parents=True, mode=0o700)
+            marker = requests / 'previous.json'
+            record = output / 'pr315-partial-launch-fault.json'
+            release = output / 'pr315-partial-launch-release.json'
+            source = hashlib.sha256(Path(launcher.__file__).read_bytes()).hexdigest()
+            spec = {'bootId': 'a' * 36, 'javaDigest': 'sha256:' + 'b' * 64}
+            marker.write_text(json.dumps({'schemaVersion': 1,
+                'caseId': 'partial-launch', 'nonce': 'c' * 64,
+                'bootId': spec['bootId'], 'javaDigest': spec['javaDigest'],
+                'sourceDigest': source}))
+            marker.chmod(0o444)
+            with patch.object(launcher, 'PARTIAL_LAUNCH_REQUEST', marker), \
+                    patch.object(launcher, 'PARTIAL_LAUNCH_RECORD', record), \
+                    patch.object(launcher, 'PARTIAL_LAUNCH_RELEASE', release):
+                self.assertIsNone(launcher._partial_launch_request('candidate-sender', spec))
+                self.assertEqual('c' * 64,
+                    launcher._partial_launch_request('previous', spec))
+                launcher._publish_partial_launch_fault('c' * 64, 0)
+                value = json.loads(record.read_text())
+                self.assertEqual('pr315-previous-launch-fault', value['kind'])
+                self.assertEqual(os.getpid(), value['pid'])
+                self.assertEqual(source, value['sourceDigest'])
+                release.write_text(json.dumps({'schemaVersion': 1,
+                    'kind': 'pr315-partial-launch-release', 'nonce': 'c' * 64}))
+                release.chmod(0o600)
+                launcher._wait_partial_launch_release('c' * 64,
+                    time.monotonic_ns() + 2 * 10**9)
+                with self.assertRaisesRegex(ValueError, 'release-mismatch'):
+                    launcher._wait_partial_launch_release('d' * 64,
+                        time.monotonic_ns() + 2 * 10**9)
+                with self.assertRaises(FileExistsError):
+                    launcher._publish_partial_launch_fault('c' * 64, 0)
+                marker.chmod(0o644)
+                with self.assertRaisesRegex(ValueError, 'request-invalid'):
+                    launcher._partial_launch_request('previous', spec)
+
     def test_fixed_output_probe_stays_in_real_role_sandbox_and_closed_mode(self):
         request = {'nonce': 'a' * 64, 'caseId': 'output-symlink'}
         with patch.object(launcher, '_trusted_probe_request', return_value=request), \

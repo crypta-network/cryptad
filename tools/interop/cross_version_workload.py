@@ -1031,14 +1031,14 @@ class InstalledWorkloadAdapter:
 
     def run_group_preparation(self, group, *, leave_running_for_administrator=False,
                               on_start_failure=None):
-        """Prove the four installed role epochs without claiming positive content work."""
+        """Prove the selected installed role epochs before its own fixed probe."""
         if group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                          'output-flood', 'output-replacement', 'role-boundary',
                          'authority', 'network-app', 'cancellation',
                          'controller-restart', 'deadline', 'revocation-running',
                          'setsid-double-fork', 'observer-death',
                          'role-readiness-diagnostic', 'lost-start-response',
-                         'resource-exhaustion') or (
+                         'resource-exhaustion', 'partial-launch') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
         completed = False
@@ -1084,19 +1084,28 @@ class InstalledWorkloadAdapter:
                               'droppedRequest': dropped,
                               'administratorBarrier': barrier}
             else:
-                for role in runtime.ROLES:
+                for role in (runtime.ROLES[:2] if group == 'partial-launch'
+                             else runtime.ROLES):
                     self.start(role)
             started = time.monotonic_ns()
-            samples = {role: self.observe(role) for role in runtime.ROLES}
+            samples = {role: self.observe(role) for role in
+                       (runtime.ROLES[:2] if group == 'partial-launch'
+                        else runtime.ROLES)}
             finished = time.monotonic_ns()
             if finished <= started:
                 fail('kernel-roster-clock-invalid')
             result = {'profile': PROFILE, 'groupPreparation': group,
                       'topologyRoles': len(self.nodes), 'signedAppWorkers': 0,
                       'newEpoch': False, 'contentRetrieval': 'not-executed-group',
-                      'roleKernelRoster': kernel_roster(samples, self.expected_jdk_digests),
                       'roleKernelRosterWindow': {'startedMonotonicNs': started,
                                                  'finishedMonotonicNs': finished}}
+            if group == 'partial-launch':
+                result['partialRoleRoster'] = [principal_row(role, samples[role],
+                    self.expected_jdk_digests[role], self.daemon_epochs[role])
+                    for role in runtime.ROLES[:2]]
+            else:
+                result['roleKernelRoster'] = kernel_roster(samples,
+                    self.expected_jdk_digests)
             if lost_start is not None:
                 result['lostStartResponse'] = lost_start
             if group == 'authority':

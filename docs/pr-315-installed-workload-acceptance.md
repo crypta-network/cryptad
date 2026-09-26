@@ -2813,6 +2813,21 @@ not claim 39 installed passes. The six missing emitters, provider/resource/
 host-network semantic strengthening, the Mac coordinator and final trusted
 verdict are still outstanding.
 
+The next prospective lifecycle revision adds `partial-launch` as a distinct
+two-role preparation, without manufacturing a four-role roster. Sender and
+recipient reach their real controller-managed epochs; previous is selected
+for one root-owned, source-bound fault after its actual `ExecStartPre` marker
+and before daemon fork, while relay remains prepared and unstarted. A finite
+root barrier holds that launcher for a live PID/start-time/cgroup sample,
+then releases it to fail. The administrator observes the installed control
+request, previous stop receipt, unchanged sender/recipient and absent relay
+start. The host's v10 record requires those facts plus all three launched
+roles' terminal receipts. The Linux PR-31x offline set passed 430 tests with
+nine environment skips; protected workload tests passed 70 with two skips,
+and the interop workload file passed 59 with nine skips. A disposable root
+check passed the launch request and release marker. This is a source-built
+candidate path; it has no installed TCG result yet.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3154,7 +3169,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and seven standalone lifecycle groups under v29 selected-group preparation. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and eight standalone lifecycle groups including `partial-launch`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), three lifecycle emitters (`late-child`, `stuck-output`, `cleanup-race`), semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

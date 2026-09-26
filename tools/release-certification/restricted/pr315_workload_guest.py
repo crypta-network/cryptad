@@ -30,6 +30,7 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
             lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
+                              'partial-launch',
                               'resource-exhaustion',
                               'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
@@ -80,6 +81,7 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
               lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
+                              'partial-launch',
                               'resource-exhaustion',
                               'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
@@ -258,6 +260,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
+                                                    'partial-launch',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

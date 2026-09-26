@@ -52,7 +52,7 @@ SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death',
                               'lost-start-response',
-                              'resource-exhaustion',
+                              'resource-exhaustion', 'partial-launch',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -275,6 +275,36 @@ def group_prepared(report, result, terminal, group):
                              'resource-exhaustion')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
+
+
+def partial_launch_prepared(report, result, terminal):
+    """Admit only the deliberate two-role setup and its final owned cleanup."""
+    if (not isinstance(report, dict) or not isinstance(result, dict)
+            or not isinstance(terminal, dict)):
+        return False
+    host = report.get('hostVerifiedIdentity')
+    roles = result.get('partialRoleRoster')
+    return (report.get('mode') == 'workload-positive'
+        and report.get('workloadPurpose') == 'selected-group'
+        and report.get('status') == 'guest-report-retained'
+        and report.get('guestExitCode') == 0
+        and report.get('guestStopped') is True
+        and isinstance(host, dict)
+        and result.get('identity', {}).get('sourceCommit') ==
+            host.get('helperSourceCommit')
+        and result.get('groupPreparation') == 'partial-launch'
+        and result.get('topologyRoles') == 2
+        and result.get('signedAppWorkers') == 0
+        and result.get('newEpoch') is False
+        and result.get('contentRetrieval') == 'not-executed-group'
+        and isinstance(roles, list) and len(roles) == 2
+        and [row.get('role') for row in roles] ==
+            ['candidate-sender', 'candidate-recipient']
+        and 'roleKernelRoster' not in result
+        and _bounded_window(result.get('roleKernelRosterWindow'))
+        and terminal.get('cleanupReportedByCaller') is True
+        and terminal.get('sentinel', {}).get('status') == 'matched'
+        and result.get('protectedExecutionEnabled') is False)
 
 
 def _bounded_window(value):
@@ -3301,6 +3331,181 @@ def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics)
         return None
 
 
+def _partial_launch_record(campaign_plan, attempt_id, report, result,
+                           terminal, diagnostics, source, raw_digests):
+    """Verify the intentionally partial roster and genuine failed launch."""
+    try:
+        if (campaign_plan.get('kind') != campaign_seal.CAMPAIGN
+                or not isinstance(attempt_id, str)
+                or campaign_seal._ATTEMPT_ID.fullmatch(attempt_id) is None
+                or report.get('mode') != 'workload-positive'
+                or report.get('workloadPurpose') != 'selected-group'
+                or report.get('status') != 'guest-report-retained'
+                or report.get('guestExitCode') != 0
+                or report.get('guestStopped') is not True
+                or result.get('groupPreparation') != 'partial-launch'
+                or result.get('topologyRoles') != 2
+                or result.get('signedAppWorkers') != 0
+                or result.get('contentRetrieval') != 'not-executed-group'
+                or result.get('newEpoch') is not False
+                or 'roleKernelRoster' in result
+                or result.get('identity', {}).get('sourceCommit') !=
+                   campaign_plan['identity']['helperSourceCommit']
+                or fixtures.runtime.canonical_digest(result['runtimePolicy']) !=
+                   fixtures.runtime.canonical_digest(
+                       fixtures.preparation.launcher_policy())
+                or diagnostics.get('partialLaunch', {}).get('status') != 'captured'
+                or not selected_probe_started('partial-launch', diagnostics)
+                or terminal.get('cleanupReportedByCaller') is not True
+                or terminal.get('sentinel', {}).get('status') != 'matched'
+                or terminal.get('partialLaunchAudit', {}).get('status') != 'captured'
+                or not isinstance(raw_digests, dict)
+                or set(raw_digests) != {'guestReport', 'volatile', 'hostMonitor'}
+                or any(re.fullmatch('[0-9a-f]{64}', str(digest)) is None
+                       for digest in raw_digests.values())):
+            return None
+        host = report['hostVerifiedIdentity']
+        identity = campaign_plan['identity']
+        if (host['helperSourceCommit'] != identity['helperSourceCommit']
+                or host['testKitDigest'] != identity['testKitDigest']
+                or host['bundleIdentity'] != identity['bundleIdentity']):
+            return None
+        roles = result['partialRoleRoster']
+        fields = {'role', 'uid', 'gid', 'invocationId', 'processEpoch',
+                  'bootId', 'cgroupDigest', 'networkNamespace'}
+        if (not isinstance(roles, list) or len(roles) != 2
+                or [row['role'] for row in roles] !=
+                    ['candidate-sender', 'candidate-recipient']
+                or any(set(row) != fields or row['uid'] <= 0
+                       or row['gid'] <= 0 or row['processEpoch'] <= 0
+                       or row['networkNamespace'] <= 0
+                       or re.fullmatch('[0-9a-f]{32}', row['invocationId']) is None
+                       or re.fullmatch('[0-9a-f]{64}', row['cgroupDigest']) is None
+                       for row in roles)
+                or roles[0]['bootId'] != roles[1]['bootId']):
+            return None
+        audit = terminal['partialLaunchAudit']['record']
+        if terminal['sentinel'].get('observedDigest') != (
+                'sha256:' + audit['senderAfter']['stateDigest']):
+            return None
+        audit_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        marker = audit['previousStartMarker']
+        fault = audit['previousFault']
+        actor = audit['previousActor']
+        observer = audit['observerActor']
+        administrator = audit['administratorBefore']
+        administrator_after = audit['administratorAfter']
+        previous_receipt = audit['previousStopReceipt']
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-partial-launch'
+                or audit['caseId'] != 'partial-launch'
+                or audit_digest != diagnostics['partialLaunch']['auditDigest']
+                or audit['launcherSourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/protected/restricted_workload_launcher.py')
+                or administrator['uid'] != 0
+                or administrator['pid'] <= 1
+                or administrator['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py')
+                or any(administrator[key] != administrator_after[key]
+                       for key in ('pid', 'uid', 'startTicks', 'bootId',
+                                   'cgroupIdentity', 'cgroupDigest',
+                                   'invocationId', 'sourceDigest'))
+                or administrator['bootId'].replace('-', '').lower() != roles[0]['bootId']
+                or observer['uid'] != audit['observerUid']
+                or observer['kind'] != 'installed-observer-process'
+                or observer['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py')
+                or observer['bootId'].replace('-', '').lower() != roles[0]['bootId']
+                or actor['hostPid'] != fault['pid']
+                or actor['startTicks'] != fault['startTicks']
+                or actor['cgroupIdentity'] != marker['cgroupIdentity']
+                or actor['executableDigest'].startswith('sha256:') is not True
+                or hashlib.sha256(fault['nonce'].encode()).hexdigest() !=
+                    audit['nonceDigest']
+                or fault['sourceDigest'] != audit['launcherSourceDigest']
+                or audit['previousBefore']['state'] != 'prepared'
+                or audit['previousBefore']['generation'] is not None
+                or audit['previousBefore']['bootId'] != marker['bootId']
+                or audit['relayBefore'] != audit['relayAfter']
+                or audit['relayBefore']['state'] != 'prepared'
+                or audit['relayBefore']['generation'] is not None
+                or audit['relayBefore']['bootId'] != marker['bootId']
+                or previous_receipt['managerInvocation'] != marker['managerInvocation']
+                or previous_receipt['cgroupIdentity'] != marker['cgroupIdentity']
+                or previous_receipt['membership'] != 'only-stop-helper'
+                or previous_receipt['descendantCgroups'] != 0
+                or audit['controllerResponse'] not in (
+                    'controller-rejected-launch', 'transient-start-response')
+                or not diagnostics['probeStart']['startedMonotonicNs']
+                    <= administrator['observedMonotonicNs']
+                    < audit['probeStartedNs'] < fault['observedMonotonicNs']
+                    <= actor['observedMonotonicNs'] < audit['releasePublishedNs']
+                    < previous_receipt['observedMonotonicNs']
+                    < administrator_after['observedMonotonicNs']
+                    < audit['terminalObservedNs']):
+            return None
+        for row, key in zip(roles, ('sender', 'recipient')):
+            first, last = audit[key + 'Before'], audit[key + 'After']
+            receipt = terminal['stopReceipts'][row['role']]['current']
+            if (first['managerInvocation'] != row['invocationId']
+                    or last['managerInvocation'] != row['invocationId']
+                    or first['stateDigest'] != last['stateDigest']
+                    or first['cgroupIdentity'] != last['cgroupIdentity']
+                    or fixtures.runtime.canonical_digest({'role': row['role'],
+                        'identity': first['cgroupIdentity']})[7:] != row['cgroupDigest']
+                    or receipt['status'] != 'captured'
+                    or receipt['record']['managerInvocation'] != row['invocationId']
+                    or receipt['record']['membership'] != 'only-stop-helper'
+                    or receipt['record']['descendantCgroups'] != 0
+                    or last['observedMonotonicNs'] >=
+                        receipt['record']['startedMonotonicNs']):
+                return None
+        previous_terminal = terminal['stopReceipts']['previous']['current']
+        relay_terminal = terminal['stopReceipts']['relay-no-apps']['current']
+        if (previous_terminal['status'] != 'captured'
+                or previous_terminal['record'] != previous_receipt
+                or relay_terminal['status'] == 'captured'
+                or terminal['controllerRecords']['previous']['status'] != 'captured'
+                or terminal['controllerRecords']['previous']['record']['state'] != 'quiescent'
+                or terminal['controllerRecords']['previous']['record']['managerInvocation']
+                    != marker['managerInvocation']
+                or terminal['controllerRecords']['relay-no-apps']['status'] != 'captured'
+                or terminal['controllerRecords']['relay-no-apps']['record']['state'] != 'prepared'
+                or terminal['controllerRecords']['relay-no-apps']['record']['generation'] is not None
+                or terminal['controllerRecords']['relay-no-apps']['record']['managerInvocation']
+                    is not None):
+            return None
+        stop_ns = max(terminal['stopReceipts'][row['role']]['current']
+            ['record']['observedMonotonicNs'] for row in roles)
+        stop_ns = max(stop_ns, previous_receipt['observedMonotonicNs'])
+        record = {'schemaVersion': 10, 'kind': case_v10.KIND,
+            'contract': campaign_seal.CONTRACT,
+            'campaignPlanDigest': campaign_plan['planDigest'],
+            'campaignNonce': campaign_plan['campaignNonce'],
+            'attemptId': attempt_id, 'groupId': 'partial-launch',
+            'caseId': 'partial-launch', 'status': 'passed',
+            'sourceCommit': identity['helperSourceCommit'],
+            'actorEpoch': administrator,
+            'targetEpoch': {'startedRoles': roles,
+                'observerEpoch': observer,
+                'previousLauncher': actor, 'previousStartMarker': marker,
+                'previousStopReceipt': previous_receipt,
+                'relayNeverStarted': True},
+            'operationWindow': {'startedMonotonicNs': audit['probeStartedNs'],
+                'finishedMonotonicNs': audit['terminalObservedNs']},
+            'operationTimeDomain': 'guest:' + roles[0]['bootId'],
+            'v8AttemptDigest': None, 'v8ObservationDigest': None,
+            'v9SidecarDigest': audit_digest,
+            'hostIdentityDigest': case_v10._digest(host),
+            'rawEvidenceDigests': raw_digests,
+            'stopReceiptObservedNs': stop_ns,
+            'classification': 'private-host-verified-candidate-not-standalone-acceptance'}
+        return record
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration):
+        return None
+
+
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -3880,7 +4085,7 @@ def run(args):
         'role-boundary', 'authority', 'network-app',
         'cancellation', 'controller-restart', 'deadline', 'revocation-running',
         'setsid-double-fork', 'observer-death', 'lost-start-response',
-        'resource-exhaustion')
+        'resource-exhaustion', 'partial-launch')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -3993,6 +4198,12 @@ def run(args):
             native_runner._save(output / 'assessment.json', result)
             print(json.dumps(result, sort_keys=True))
             return 78
+        if group == 'partial-launch' and campaign_plan_path is None and not getattr(args, 'probe', False):
+            result = selected_public_result(group, 'group-v10-plan-required',
+                reasons=('partial-launch-v10-plan-required',))
+            native_runner._save(output / 'assessment.json', result)
+            print(json.dumps(result, sort_keys=True))
+            return 78
         reasons = prerequisites(args)
         try:
             measured = memory_snapshot()
@@ -4065,7 +4276,9 @@ def run(args):
             diagnostic_mode = startup_measurement or role_measurement
             positive = not diagnostic_mode and positive_executed(report, value, terminal)
             group_ready = (not diagnostic_mode and selected_preparation
-                           and group_prepared(report, value, terminal, group))
+                           and (partial_launch_prepared(report, value, terminal)
+                                if group == 'partial-launch' else
+                                group_prepared(report, value, terminal, group)))
             role_boundary_ready = group == 'role-boundary' and group_ready
             authority_ready = group == 'authority' and group_ready
             network_app_ready = group == 'network-app' and group_ready
@@ -4131,6 +4344,19 @@ def run(args):
                 save_v9_case(output / (group + '-v9-evidence.private.json'),
                     sidecar, group, identity=identity, case_attempt=case_attempt)
                 statuses[group] = 'passed'
+            if group == 'partial-launch' and group_ready:
+                if host_policy != host_admission.POLICY:
+                    raise ValueError('workload-partial-launch-host-policy-required')
+                raw_digests = {
+                    'guestReport': reference.sha256(selected.attempt / 'attempt.private.json'),
+                    'volatile': reference.sha256(terminal_path),
+                    'hostMonitor': reference.sha256(output / 'host-monitor.private.json')}
+                record = _partial_launch_record(frozen_campaign, output.name,
+                    report, value, terminal, resources, args.source, raw_digests)
+                if record is None:
+                    raise ValueError('workload-partial-launch-verification-failed')
+                native_runner._save(output / 'partial-launch-v10-evidence.private.json', record)
+                statuses['partial-launch'] = 'passed'
             if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,

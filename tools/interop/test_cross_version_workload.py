@@ -595,6 +595,32 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.content_chk.assert_not_called()
         adapter.cleanup.assert_not_called()
 
+    def test_partial_launch_preparation_keeps_unstarted_roles_absent(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+        adapter.daemon_epochs = {}
+
+        def start(role):
+            adapter.nodes[role] = {'role': role}
+            adapter.daemon_epochs[role] = {'hostPid': 100 + len(adapter.nodes)}
+
+        adapter.start = mock.Mock(side_effect=start)
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.cleanup = mock.Mock(return_value='complete')
+        with mock.patch.object(workload, 'principal_row',
+                               side_effect=lambda role, *_: {'role': role}):
+            result = adapter.run_group_preparation('partial-launch',
+                leave_running_for_administrator=True)
+        self.assertEqual([mock.call(role) for role in workload.runtime.ROLES[:2]],
+                         adapter.start.call_args_list)
+        self.assertEqual(2, adapter.observe.call_count)
+        self.assertEqual(2, result['topologyRoles'])
+        self.assertEqual([{'role': role} for role in workload.runtime.ROLES[:2]],
+                         result['partialRoleRoster'])
+        self.assertNotIn('roleKernelRoster', result)
+        adapter.cleanup.assert_not_called()
+
     def test_lost_start_barrier_binds_first_invocation_before_retry(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.handles = {'candidate-sender': HANDLE}

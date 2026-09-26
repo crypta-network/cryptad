@@ -15,6 +15,9 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 PROBE_REQUEST = ROOT / 'probe-requests/candidate-sender.json'
 PROBE_SOURCE = ROOT / 'probe-source/pr315_role_probe.py'
+PARTIAL_LAUNCH_REQUEST = ROOT / 'probe-requests/previous.json'
+PARTIAL_LAUNCH_RECORD = ROOT / 'state/previous/tmp/pr315-partial-launch-fault.json'
+PARTIAL_LAUNCH_RELEASE = ROOT / 'state/previous/tmp/pr315-partial-launch-release.json'
 
 
 def launcher_policy():
@@ -24,7 +27,7 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v29',
+    return {'revision': 'workload-launcher-policy-v30',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -34,6 +37,7 @@ def launcher_policy():
             'providerAuthorityProbe': 'fixed-signed-apphost-private-provider-canary-v1',
             'siblingAppProbe': 'fixed-signed-apphost-source-port-drop-v1',
             'resourceExhaustionProbe': 'fixed-signed-apphost-pids-barrier-v1',
+            'partialLaunchFault': 'fixed-previous-after-start-marker-before-daemon-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
             'privateVolatileMaxBytes': 128 * 1024,
@@ -92,6 +96,94 @@ def _start_probe(role, spec):
     return subprocess.Popen(probe, env=environment, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             close_fds=True)
+
+
+def _partial_launch_request(role, spec):
+    """Read one root-owned previous-role failure selection, without a command."""
+    if role != 'previous' or not os.path.lexists(PARTIAL_LAUNCH_REQUEST):
+        return None
+    info = PARTIAL_LAUNCH_REQUEST.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o222 or info.st_nlink != 1
+            or not 0 < info.st_size <= 512):
+        raise ValueError('workload-partial-launch-request-invalid')
+    descriptor = os.open(PARTIAL_LAUNCH_REQUEST,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        current = os.fstat(descriptor)
+        if (current.st_dev, current.st_ino, current.st_size) != (
+                info.st_dev, info.st_ino, info.st_size):
+            raise ValueError('workload-partial-launch-request-changed')
+        value = json.loads(os.read(descriptor, 513))
+    finally:
+        os.close(descriptor)
+    nonce = value.get('nonce') if isinstance(value, dict) else None
+    if (not isinstance(value, dict) or set(value) != {
+            'schemaVersion', 'caseId', 'nonce', 'bootId', 'javaDigest',
+            'sourceDigest'}
+            or value['schemaVersion'] != 1 or value['caseId'] != 'partial-launch'
+            or not isinstance(nonce, str)
+            or re.fullmatch('[0-9a-f]{64}', nonce) is None
+            or value['bootId'] != spec['bootId']
+            or value['javaDigest'] != spec['javaDigest']
+            or value['sourceDigest'] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()):
+        raise ValueError('workload-partial-launch-request-mismatch')
+    return nonce
+
+
+def _publish_partial_launch_fault(nonce, expected_uid):
+    """Publish this actual ExecStart process epoch before any daemon fork."""
+    directory = PARTIAL_LAUNCH_RECORD.parent
+    info = directory.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != expected_uid
+            or info.st_mode & 0o077):
+        raise ValueError('workload-partial-launch-output-root-invalid')
+    fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+    if len(fields) <= 19 or not fields[19].isdecimal():
+        raise ValueError('workload-partial-launch-process-epoch-invalid')
+    record = {'schemaVersion': 1, 'kind': 'pr315-previous-launch-fault',
+        'caseId': 'partial-launch', 'nonce': nonce, 'pid': os.getpid(),
+        'uid': os.getuid(), 'startTicks': int(fields[19]),
+        'sourceDigest': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        'observedMonotonicNs': time.monotonic_ns()}
+    pending = directory / '.pr315-partial-launch-fault.pending'
+    descriptor = os.open(pending,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-partial-launch-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.link(pending, PARTIAL_LAUNCH_RECORD, follow_symlinks=False)
+    pending.unlink()
+
+
+def _wait_partial_launch_release(nonce, deadline_ns):
+    """Hold the real launcher only until root samples its live cgroup epoch."""
+    until = min(time.monotonic() + 10, deadline_ns / 1e9)
+    while not os.path.lexists(PARTIAL_LAUNCH_RELEASE):
+        if time.monotonic() >= until:
+            raise ValueError('workload-partial-launch-release-timeout')
+        time.sleep(.01)
+    descriptor = os.open(PARTIAL_LAUNCH_RELEASE,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or info.st_mode & 0o077 or info.st_nlink != 1
+                or not 0 < info.st_size <= 512):
+            raise ValueError('workload-partial-launch-release-invalid')
+        raw = os.read(descriptor, 513)
+        if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+            raise ValueError('workload-partial-launch-release-changed')
+    finally:
+        os.close(descriptor)
+    if json.loads(raw) != {'schemaVersion': 1,
+            'kind': 'pr315-partial-launch-release', 'nonce': nonce}:
+        raise ValueError('workload-partial-launch-release-mismatch')
 
 
 def verify_wrapper_options(package):
@@ -180,6 +272,11 @@ def main():
     arguments, environment = command(role)
     if spec['deadlineMonotonicNs'] <= time.monotonic_ns():
         raise ValueError('workload-expired')
+    fault_nonce = _partial_launch_request(role, spec)
+    if fault_nonce is not None:
+        _publish_partial_launch_fault(fault_nonce, user.pw_uid)
+        _wait_partial_launch_release(fault_nonce, spec['deadlineMonotonicNs'])
+        return 73
     # A main-process exit causes systemd to terminate the entire nondelegated role cgroup.
     # Candidate stdout/stderr are discarded, avoiding a privileged candidate-file collector.
     process = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
