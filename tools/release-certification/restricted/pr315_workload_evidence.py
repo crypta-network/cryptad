@@ -1423,6 +1423,47 @@ def _stale_pid_uid_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _cleanup_race_audit(root, deadline):
+    """Retain a fixed manager replacement, denied old stop and final receipt."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'cleanup-race.json', maximum=32768,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId',
+            'administratorBefore', 'administratorAfter',
+            'senderBefore', 'managerBefore', 'managerReplacement',
+            'replacementCgroupIdentity',
+            'managerReset', 'stopActor', 'stopPhase', 'restart',
+            'releasePublishedNs', 'observerDenial',
+            'reconciliationState', 'oldStopReceipt',
+            'finalStopReceipt', 'siblingsBefore', 'siblingsAfter',
+            'finishedMonotonicNs', 'barrierSourceDigest',
+            'nonceDigest'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-cleanup-race'
+                or value['caseId'] != 'cleanup-race'
+                or any(not isinstance(value[key], dict) for key in (
+                    'administratorBefore', 'administratorAfter',
+                    'senderBefore', 'managerBefore', 'managerReplacement',
+                    'managerReset', 'stopActor', 'stopPhase', 'restart',
+                    'observerDenial', 'reconciliationState',
+                    'oldStopReceipt', 'finalStopReceipt'))
+                or any(not isinstance(value[key], list)
+                       or len(value[key]) != 3 for key in
+                       ('siblingsBefore', 'siblingsAfter'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('barrierSourceDigest', 'nonceDigest'))):
+            raise ValueError('cleanup-race-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _stuck_output_audit(root, deadline):
     """Retain the real role writer, bounded collector timeout and stop receipt."""
     remaining = deadline - time.monotonic()
@@ -1954,6 +1995,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
         if os.path.lexists(root / 'authority/stale-pid-uid-denial.json'):
             result['stalePidUidAudit'] = _stale_pid_uid_audit(root, deadline)
+        if os.path.lexists(root / 'authority/cleanup-race.json'):
+            result['cleanupRaceAudit'] = _cleanup_race_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
@@ -2047,6 +2090,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
         if os.path.lexists(root / 'authority/stale-pid-uid-denial.json'):
             result['stalePidUidAudit'] = _stale_pid_uid_audit(root, deadline)
+        if os.path.lexists(root / 'authority/cleanup-race.json'):
+            result['cleanupRaceAudit'] = _cleanup_race_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):

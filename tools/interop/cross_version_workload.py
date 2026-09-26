@@ -1036,7 +1036,7 @@ class InstalledWorkloadAdapter:
                          'setsid-double-fork', 'observer-death',
                          'role-readiness-diagnostic', 'lost-start-response',
                          'resource-exhaustion', 'partial-launch',
-                         'stuck-output', 'late-child') or (
+                         'stuck-output', 'late-child', 'cleanup-race') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
         completed = False

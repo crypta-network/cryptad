@@ -322,6 +322,7 @@ def workload_guest_command(args):
                                 'observer-death', 'none')
             or workload_group not in (None, 'positive', 'lost-start-response',
                                       'partial-launch', 'stuck-output', 'late-child',
+                                      'cleanup-race',
                                       'resource-exhaustion',
                                       'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
@@ -386,7 +387,8 @@ def run(args):
                                       'revocation-running', 'setsid-double-fork',
                                       'observer-death', 'lost-start-response',
                                       'resource-exhaustion', 'partial-launch',
-                                      'stuck-output', 'late-child')
+                                      'stuck-output', 'late-child',
+                                      'cleanup-race')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

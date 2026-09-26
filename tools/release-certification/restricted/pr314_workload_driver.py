@@ -2631,6 +2631,222 @@ def probe_late_child(workload, handoff, result, lifecycle_probe_digest,
             os.close(child_fd)
 
 
+def _begin_cleanup_race_stop(handle, observer, campaign_deadline_ns):
+    """Start an actual observer stop; the fixed root barrier holds its response."""
+    from cross_version_workload import WorkloadClient
+    from cross_version_runtime import RuntimeFailure
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        pid = os.fork()
+    except BaseException:
+        parent.close()
+        child.close()
+        raise
+    if pid == 0:
+        parent.close()
+        try:
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            client = WorkloadClient()
+            started = time.monotonic_ns()
+            try:
+                client.request('stop', handle)
+            except RuntimeFailure as error:
+                if str(error) != 'workload-controller-request-rejected':
+                    raise
+            else:
+                raise ValueError('workload-cleanup-race-old-stop-accepted')
+            child.sendall(json.dumps({'status': 'rejected',
+                'reason': 'workload-controller-request-rejected',
+                'exchange': client.last_exchange,
+                'startedMonotonicNs': started,
+                'finishedMonotonicNs': time.monotonic_ns()},
+                sort_keys=True, separators=(',', ':')).encode())
+            child.close()
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    child.close()
+    try:
+        actor = _positive_observer_epoch(pid, observer.pw_uid,
+                                         campaign_deadline_ns)
+    except BaseException:
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        parent.close()
+        raise
+    return parent, pid, actor
+
+
+def probe_cleanup_race(workload, handoff, result, campaign_deadline_ns):
+    """Replace the real manager epoch between stop intent and manager stop."""
+    import restricted_workload_lifecycle_barrier as barrier
+    if (result.get('groupPreparation') != 'cleanup-race'
+            or time.monotonic_ns() >= campaign_deadline_ns):
+        raise ValueError('workload-cleanup-race-preparation-invalid')
+    role = 'candidate-sender'
+    handle = handoff['handles'][role]
+    observer = pwd.getpwnam('cryptad-soak')
+    administrator_before = _administrator_collector_epoch('cleanup-race')
+    sender_before = workload.observe(handle)
+    siblings_before = _resource_sibling_controls(workload, handoff)
+    record = workload.read(workload.ROOT / 'authority/candidate-sender.json')
+    manager_before = workload.manager(role, 'show')
+    if (record['state'] != 'running'
+            or record['managerInvocation'] !=
+                sender_before['managerInvocation']
+            or record['cgroupIdentity'] !=
+                sender_before['cgroupIdentity']):
+        raise ValueError('workload-cleanup-race-old-instance-invalid')
+    nonce = secrets.token_hex(32)
+    source_digest = hashlib.sha256(Path(barrier.__file__).read_bytes()).hexdigest()
+    selected = {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-barrier',
+        'caseId': 'cleanup-race', 'role': role,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'sourceDigest': source_digest,
+        **{key: record[key] for key in ('campaign', 'generation',
+            'managerInvocation', 'bootId', 'cgroupIdentity')}}
+    workload.write(barrier.REQUEST, selected, create=True)
+    started = _begin_cleanup_race_stop(handle, observer,
+                                       campaign_deadline_ns)
+    parent, pid, stop_actor = started
+    phase = None
+    release_ns = None
+    restart_result = None
+    try:
+        phase = _wait_output_record(barrier.PHASE, 0,
+            min(time.monotonic() + 8, campaign_deadline_ns / 1e9),
+            'workload-cleanup-race-stop-phase-timeout')
+        stopping = workload.read(workload.ROOT /
+            'authority/candidate-sender.json')
+        if (phase['caseId'] != 'cleanup-race'
+                or phase['nonceDigest'] != selected['nonceDigest']
+                or stopping['state'] != 'stopping'
+                or any(phase[key] != record[key] for key in (
+                    'campaign', 'generation', 'managerInvocation',
+                    'bootId', 'cgroupIdentity'))):
+            raise ValueError('workload-cleanup-race-intent-invalid')
+        restart_started = time.monotonic_ns()
+        restarted = subprocess.run(['/usr/bin/systemctl', 'restart',
+            'cryptad-workload@candidate-sender.service'],
+            stdin=subprocess.DEVNULL, capture_output=True,
+            env=ENV, timeout=min(40, max(.001,
+                campaign_deadline_ns / 1e9 - time.monotonic())))
+        if len(restarted.stdout) > 8192 or len(restarted.stderr) > 8192:
+            raise ValueError('workload-cleanup-race-manager-output-limit')
+        manager_replacement = workload.manager(role, 'show')
+        try:
+            replacement_group = workload.group(role).stat()
+            replacement_cgroup = [replacement_group.st_dev,
+                                  replacement_group.st_ino]
+        except FileNotFoundError:
+            replacement_cgroup = None
+        if (manager_replacement['InvocationID'] ==
+                manager_before['InvocationID']
+                or manager_replacement['ActiveState'] == 'active'
+                or manager_replacement['MainPID'] != '0'
+                or replacement_cgroup == record['cgroupIdentity']):
+            raise ValueError('workload-cleanup-race-manager-not-replaced')
+        restart_result = {'exitStatus': restarted.returncode,
+            'startedMonotonicNs': restart_started,
+            'finishedMonotonicNs': time.monotonic_ns()}
+    except BaseException:
+        parent.close()
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        raise
+    finally:
+        if not os.path.lexists(barrier.RELEASE):
+            workload.write(barrier.RELEASE,
+                {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-release',
+                 'caseId': 'cleanup-race', 'nonce': nonce}, create=True)
+            release_ns = time.monotonic_ns()
+    try:
+        raw, status = collect_child(parent, pid,
+            min(time.monotonic() + 50, campaign_deadline_ns / 1e9))
+        pid = None
+    finally:
+        parent.close()
+        if pid is not None:
+            try:
+                stop_child(pid)
+            except ChildProcessError:
+                pass
+    if status != 0 or not 0 < len(raw) <= 1024 or restart_result is None:
+        raise ValueError('workload-cleanup-race-stop-response-invalid')
+    observer_denial = json.loads(raw)
+    reconciled = workload.read(workload.ROOT /
+        'authority/candidate-sender.json')
+    old_receipt = workload.stop_receipt(role, reconciled)
+    siblings_after = _resource_sibling_controls(workload, handoff)
+    if (observer_denial['status'] != 'rejected'
+            or observer_denial['reason'] !=
+                'workload-controller-request-rejected'
+            or observer_denial['exchange']['method'] != 'stop'
+            or observer_denial['exchange']['responseDigest'] !=
+                hashlib.sha256(
+                    b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+            or reconciled['state'] != 'reconciliation-required'
+            or old_receipt['managerInvocation'] !=
+                sender_before['managerInvocation']
+            or old_receipt['membership'] != 'only-stop-helper'
+            or old_receipt['descendantCgroups'] != 0
+            or any(first['managerInvocation'] != last['managerInvocation']
+                   or first['stateDigest'] != last['stateDigest']
+                   for first, last in zip(siblings_before, siblings_after))):
+        raise ValueError('workload-cleanup-race-rejection-invalid')
+    subprocess.run(['/usr/bin/systemctl', 'reset-failed',
+        'cryptad-workload@candidate-sender.service'],
+        stdin=subprocess.DEVNULL, capture_output=True, check=True,
+        timeout=10, env=ENV)
+    manager_reset = workload.manager(role, 'show')
+    workload.reconcile()
+    current = workload.read(workload.ROOT /
+        'authority/candidate-sender.json')
+    final_receipt = workload.stop_receipt(role, current)
+    if (current['state'] != 'quiescent'
+            or final_receipt != old_receipt
+            or manager_reset['ActiveState'] not in ('inactive', 'failed')):
+        raise ValueError('workload-cleanup-race-final-reconciliation-invalid')
+    audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-cleanup-race',
+        'caseId': 'cleanup-race',
+        'administratorBefore': administrator_before,
+        'administratorAfter': _administrator_collector_epoch('cleanup-race'),
+        'senderBefore': {key: sender_before[key] for key in
+            ('managerInvocation', 'bootId', 'cgroupIdentity', 'stateDigest',
+             'observedMonotonicNs')},
+        'managerBefore': manager_before,
+        'managerReplacement': manager_replacement,
+        'replacementCgroupIdentity': replacement_cgroup,
+        'managerReset': manager_reset,
+        'stopActor': stop_actor, 'stopPhase': phase,
+        'restart': restart_result,
+        'releasePublishedNs': release_ns,
+        'observerDenial': observer_denial,
+        'reconciliationState': {key: reconciled[key] for key in
+            ('state', 'generation', 'managerInvocation',
+             'bootId', 'cgroupIdentity')},
+        'oldStopReceipt': old_receipt,
+        'finalStopReceipt': final_receipt,
+        'siblingsBefore': siblings_before,
+        'siblingsAfter': siblings_after,
+        'finishedMonotonicNs': time.monotonic_ns(),
+        'barrierSourceDigest': source_digest,
+        'nonceDigest': selected['nonceDigest']}
+    workload.write(workload.ROOT / 'authority/cleanup-race.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()
+
+
 def _setsid_process_epoch(pid):
     fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
     if (len(fields) <= 19 or not fields[3].isdecimal()
@@ -2816,7 +3032,7 @@ def _administrator_collector_epoch(case_id):
                           'revocation-running', 'setsid-double-fork',
                           'observer-death', 'lost-start-response',
                           'partial-launch', 'stuck-output',
-                          'late-child')
+                          'late-child', 'cleanup-race')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -5173,7 +5389,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
             admin_channel, role, stage))
                       if admin_channel is not None else None)
         if workload_group in ('lost-start-response', 'partial-launch',
-                              'stuck-output', 'late-child', 'resource-exhaustion',
+                              'stuck-output', 'late-child', 'cleanup-race',
+                              'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -5481,6 +5698,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
                              'partial-launch', 'stuck-output', 'late-child',
+                             'cleanup-race',
                              'resource-exhaustion',
                              'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
@@ -5665,7 +5883,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('lost-start-response', 'partial-launch',
-                              'stuck-output', 'late-child', 'resource-exhaustion',
+                              'stuck-output', 'late-child', 'cleanup-race',
+                              'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -5930,6 +6149,19 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['lateChild'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'cleanup-race':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_cleanup_race(workload, handoff, result,
+                    campaign_deadline)
+                diagnostics['cleanupRace'] = {'status': 'captured',
+                    'caseId': 'cleanup-race', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['cleanupRace'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -6133,6 +6365,7 @@ def main():
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
                                                     'partial-launch', 'stuck-output', 'late-child',
+                                                    'cleanup-race',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

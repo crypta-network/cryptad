@@ -14,7 +14,7 @@ CASES = frozenset(('late-child', 'cleanup-race'))
 
 
 def await_release(role, record, campaign_deadline_ns):
-    """Pause only an exact selected sender stop for at most ten seconds."""
+    """Pause only an exact selected sender stop within its fixed case ceiling."""
     import restricted_workload as workload
     if (role != 'candidate-sender' or record.get('state') != 'stopping'
             or type(campaign_deadline_ns) is not int
@@ -43,7 +43,10 @@ def await_release(role, record, campaign_deadline_ns):
         'managerInvocation': record['managerInvocation'],
         'bootId': record['bootId'], 'cgroupIdentity': record['cgroupIdentity'],
         'observedMonotonicNs': started}, create=True)
-    until = min(time.monotonic() + 10, campaign_deadline_ns / 1e9)
+    # A real manager restart may consume its fixed 20-second stop/start budgets.
+    # The cleanup race still inherits the original campaign deadline.
+    ceiling = 45 if selected['caseId'] == 'cleanup-race' else 10
+    until = min(time.monotonic() + ceiling, campaign_deadline_ns / 1e9)
     while not os.path.lexists(RELEASE):
         if time.monotonic() >= until:
             workload.reject('lifecycle-barrier-release-timeout')

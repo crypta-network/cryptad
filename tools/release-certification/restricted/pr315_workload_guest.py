@@ -32,6 +32,7 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
                               'partial-launch', 'stuck-output', 'late-child',
+                              'cleanup-race',
                               'resource-exhaustion',
                               'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
@@ -87,6 +88,7 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
                               'partial-launch', 'stuck-output', 'late-child',
+                              'cleanup-race',
                               'resource-exhaustion',
                               'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
@@ -271,6 +273,7 @@ def main():
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
                                                     'partial-launch', 'stuck-output', 'late-child',
+                                                    'cleanup-race',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

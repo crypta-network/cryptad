@@ -2676,8 +2676,8 @@ class RunnerTests(unittest.TestCase):
         import pr315_case_v10 as case_v10
         supported = (set(case_v10.POSITIVE) | {'output-symlink'}
                      | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
-        self.assertEqual(44, len(supported))
-        self.assertEqual({'cleanup-race'},
+        self.assertEqual(45, len(supported))
+        self.assertEqual(set(),
                          set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
@@ -3004,6 +3004,127 @@ class RunnerTests(unittest.TestCase):
         changed['stopReceipts']['candidate-sender']['previous']['record'][
             'managerInvocation'] = '0' * 32
         self.assertIsNone(runner.stale_pid_uid_attempt(report, result,
+            changed, diagnostics, source))
+
+    def test_cleanup_race_rejects_changed_manager_and_requires_reconciliation(self):
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=60, observedMonotonicNs=70)
+        for role in roster['roles'][1:]:
+            terminal['stopReceipts'][role['role']]['current']['record'].update(
+                startedMonotonicNs=120, observedMonotonicNs=125)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        barrier_digest = runner.reference.sha256(source /
+            'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py')
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        admin = {'pid': 500, 'uid': 0, 'startTicks': 55,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'cgroupDigest': runner.fixtures.runtime.canonical_digest({
+                'role': 'lifecycle-administrator', 'identity': [1, 50]})[7:],
+            'invocationId': 'b' * 32,
+            'sourceDigest': source_digest, 'observedMonotonicNs': 15}
+        siblings = [{'role': row['role'],
+            'managerInvocation': row['invocationId'],
+            'bootId': boot, 'cgroupIdentity': [1, 100 + index],
+            'stateDigest': 'e' * 64,
+            'observedMonotonicNs': 25 + index,
+            'controlObservedNs': 30 + index,
+            'controlDigest': 'f' * 64}
+            for index, row in enumerate(roster['roles'][1:])]
+        manager = {'InvocationID': sender['invocationId'],
+            'ActiveState': 'active', 'SubState': 'running',
+            'MainPID': '400', 'ControlGroup':
+                '/system.slice/cryptad-workload@candidate-sender.service'}
+        receipt = terminal['stopReceipts']['candidate-sender'][
+            'current']['record']
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-cleanup-race',
+            'caseId': 'cleanup-race',
+            'administratorBefore': admin,
+            'administratorAfter': dict(admin, observedMonotonicNs=130),
+            'senderBefore': {'managerInvocation': sender['invocationId'],
+                'bootId': boot, 'cgroupIdentity': [1, 99],
+                'stateDigest': 'd' * 64, 'observedMonotonicNs': 20},
+            'managerBefore': manager,
+            'managerReplacement': dict(manager, InvocationID='f' * 32,
+                ActiveState='failed', SubState='failed', MainPID='0',
+                ControlGroup=''),
+            'replacementCgroupIdentity': None,
+            'managerReset': dict(manager, InvocationID='',
+                ActiveState='inactive', SubState='dead', MainPID='0',
+                ControlGroup=''),
+            'stopActor': {'kind': 'installed-observer-process',
+                'uid': roster['observerUid'], 'pid': 600,
+                'bootId': boot, 'sourceDigest': source_digest,
+                'observedMonotonicNs': 40},
+            'stopPhase': {'caseId': 'cleanup-race',
+                'nonceDigest': 'a' * 64,
+                'managerInvocation': sender['invocationId'],
+                'cgroupIdentity': [1, 99], 'bootId': boot,
+                'observedMonotonicNs': 50},
+            'restart': {'exitStatus': 1,
+                'startedMonotonicNs': 55,
+                'finishedMonotonicNs': 80},
+            'releasePublishedNs': 90,
+            'observerDenial': {'status': 'rejected',
+                'reason': 'workload-controller-request-rejected',
+                'exchange': {'method': 'stop',
+                    'requestDigest': '1' * 64,
+                    'responseDigest': hashlib.sha256(
+                        b'{"error":"restricted-workload-request-failed"}\n').hexdigest()},
+                'startedMonotonicNs': 45,
+                'finishedMonotonicNs': 100},
+            'reconciliationState': {'state': 'reconciliation-required',
+                'generation': 'c' * 64,
+                'managerInvocation': sender['invocationId'],
+                'bootId': boot, 'cgroupIdentity': [1, 99]},
+            'oldStopReceipt': receipt, 'finalStopReceipt': receipt,
+            'siblingsBefore': siblings,
+            'siblingsAfter': [dict(row, observedMonotonicNs=110 + index,
+                controlObservedNs=115 + index)
+                for index, row in enumerate(siblings)],
+            'finishedMonotonicNs': 140,
+            'barrierSourceDigest': barrier_digest,
+            'nonceDigest': 'a' * 64}
+        terminal['cleanupRaceAudit'] = {'status': 'captured',
+            'record': audit}
+        host = synthetic_host_identity()
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'cleanup-race',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 0,
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                       'finishedMonotonicNs': 2},
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start',
+            'caseId': 'cleanup-race', 'startedMonotonicNs': 10},
+            'cleanupRace': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        selected = runner.cleanup_race_attempt(report, result, terminal,
+            diagnostics, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('cleanup-race', selected['caseId'])
+        changed = copy.deepcopy(terminal)
+        changed['cleanupRaceAudit']['record']['managerReplacement'][
+            'InvocationID'] = sender['invocationId']
+        self.assertIsNone(runner.cleanup_race_attempt(report, result,
             changed, diagnostics, source))
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
@@ -3428,7 +3549,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn('private-', json.dumps(report))
         self.assertFalse(report['installedWorkloadAcceptanceSatisfied'])
 
-    def test_default_full_campaign_stops_before_vm_while_emitters_are_missing(self):
+    def test_default_full_campaign_stops_before_vm_without_required_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             root.chmod(0o700)
@@ -3444,7 +3565,7 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(78, runner.run(args))
             launch.assert_not_called()
             result = json.loads((args.output / 'assessment.json').read_text())
-            self.assertEqual('implementation-incomplete', result['status'])
+            self.assertEqual('setup-blocked', result['status'])
             self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
             self.assertFalse((args.output / 'attempt-01').exists())
             args.output = root / 'probe'
@@ -3453,7 +3574,7 @@ class RunnerTests(unittest.TestCase):
                     patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
                 self.assertEqual(78, runner.run(args))
             launch.assert_not_called()
-            self.assertEqual('implementation-incomplete',
+            self.assertEqual('setup-blocked',
                 json.loads((args.output / 'assessment.json').read_text())['status'])
 
     def test_role_boundary_group_claims_only_its_five_started_cases(self):

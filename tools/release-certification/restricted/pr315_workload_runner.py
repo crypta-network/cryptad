@@ -54,7 +54,7 @@ SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'setsid-double-fork', 'observer-death',
                               'lost-start-response',
                               'resource-exhaustion', 'partial-launch',
-                              'stuck-output', 'late-child',
+                              'stuck-output', 'late-child', 'cleanup-race',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -221,6 +221,7 @@ def group_prepared(report, result, terminal, group):
                       'revocation-running', 'setsid-double-fork',
                       'observer-death', 'lost-start-response',
                       'resource-exhaustion', 'stuck-output', 'late-child',
+                      'cleanup-race',
                       'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
@@ -234,7 +235,8 @@ def group_prepared(report, result, terminal, group):
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
                              'observer-death', 'lost-start-response',
-                             'resource-exhaustion', 'stuck-output', 'late-child')
+                             'resource-exhaustion', 'stuck-output', 'late-child',
+                             'cleanup-race')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -274,7 +276,8 @@ def group_prepared(report, result, terminal, group):
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
                              'observer-death', 'lost-start-response',
-                             'resource-exhaustion', 'stuck-output', 'late-child')
+                             'resource-exhaustion', 'stuck-output', 'late-child',
+                             'cleanup-race')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -724,6 +727,152 @@ def stale_pid_uid_attempt(report, result, terminal, diagnostics, source):
             'attackDigest': audit_digest,
             'hostVerifiedIdentity': host, 'guestStopped': True,
             'stopReceiptObservedNs': current['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
+def cleanup_race_attempt(report, result, terminal, diagnostics, source):
+    """Require a real replaced manager, rejected old stop and exact cleanup."""
+    try:
+        if (not group_prepared(report, result, terminal, 'cleanup-race')
+                or not selected_probe_started('cleanup-race', diagnostics)
+                or terminal.get('cleanupRaceAudit', {}).get('status') !=
+                    'captured'
+                or diagnostics.get('cleanupRace', {}).get('status') !=
+                    'captured'):
+            return None
+        audit = terminal['cleanupRaceAudit']['record']
+        host = report['hostVerifiedIdentity']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        admin = audit['administratorBefore']
+        admin_after = audit['administratorAfter']
+        observer = audit['stopActor']
+        phase = audit['stopPhase']
+        before = audit['managerBefore']
+        replacement = audit['managerReplacement']
+        reset = audit['managerReset']
+        denied = audit['observerDenial']
+        record = audit['reconciliationState']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        source_digest = reference.sha256(Path(source) /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        barrier_digest = reference.sha256(Path(source) /
+            'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py')
+        audit_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        stable_admin = ('pid', 'uid', 'startTicks', 'bootId',
+                        'cgroupIdentity', 'cgroupDigest',
+                        'invocationId', 'sourceDigest')
+        stable_sibling = ('role', 'managerInvocation', 'bootId',
+                          'cgroupIdentity', 'stateDigest')
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-cleanup-race'
+                or audit['caseId'] != 'cleanup-race'
+                or audit_digest != diagnostics['cleanupRace']['auditDigest']
+                or audit['barrierSourceDigest'] != barrier_digest
+                or re.fullmatch('[0-9a-f]{64}',
+                    str(audit['nonceDigest'])) is None
+                or any(admin[key] != admin_after[key]
+                       for key in stable_admin)
+                or admin['uid'] != 0 or admin['pid'] <= 1
+                or admin['sourceDigest'] != source_digest
+                or admin['bootId'].replace('-', '').lower() != sender['bootId']
+                or observer['kind'] != 'installed-observer-process'
+                or observer['uid'] != result['roleKernelRoster']['observerUid']
+                or observer['sourceDigest'] != source_digest
+                or observer['bootId'].replace('-', '').lower() !=
+                    sender['bootId']
+                or before['InvocationID'] != sender['invocationId']
+                or before['ActiveState'] != 'active'
+                or before['SubState'] != 'running'
+                or before['ControlGroup'] !=
+                    '/system.slice/cryptad-workload@candidate-sender.service'
+                or replacement['InvocationID'] == before['InvocationID']
+                or replacement['ActiveState'] == 'active'
+                or replacement['MainPID'] != '0'
+                or audit['replacementCgroupIdentity'] ==
+                    audit['senderBefore']['cgroupIdentity']
+                or (audit['replacementCgroupIdentity'] is not None
+                    and (not isinstance(audit['replacementCgroupIdentity'], list)
+                         or len(audit['replacementCgroupIdentity']) != 2
+                         or any(type(value) is not int or value <= 0
+                                for value in
+                                audit['replacementCgroupIdentity'])))
+                or reset['ActiveState'] not in ('inactive', 'failed')
+                or reset['MainPID'] != '0'
+                or phase['caseId'] != 'cleanup-race'
+                or phase['nonceDigest'] != audit['nonceDigest']
+                or phase['managerInvocation'] != sender['invocationId']
+                or phase['cgroupIdentity'] !=
+                    audit['senderBefore']['cgroupIdentity']
+                or phase['bootId'].replace('-', '').lower() != sender['bootId']
+                or audit['senderBefore']['managerInvocation'] !=
+                    sender['invocationId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': audit['senderBefore']['cgroupIdentity']})[7:]
+                    != sender['cgroupDigest']
+                or audit['senderBefore']['stateDigest'] !=
+                    terminal['sentinel']['observedDigest'].removeprefix('sha256:')
+                or denied['status'] != 'rejected'
+                or denied['reason'] != 'workload-controller-request-rejected'
+                or denied['exchange']['method'] != 'stop'
+                or denied['exchange']['responseDigest'] != hashlib.sha256(
+                    b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+                or record['state'] != 'reconciliation-required'
+                or record['managerInvocation'] != sender['invocationId']
+                or record['cgroupIdentity'] !=
+                    audit['senderBefore']['cgroupIdentity']
+                or audit['oldStopReceipt'] != receipt
+                or audit['finalStopReceipt'] != receipt
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or not isinstance(audit['siblingsBefore'], list)
+                or len(audit['siblingsBefore']) != 3
+                or not isinstance(audit['siblingsAfter'], list)
+                or len(audit['siblingsAfter']) != 3
+                or any(any(first[key] != last[key]
+                           for key in stable_sibling)
+                       for first, last in zip(audit['siblingsBefore'],
+                                              audit['siblingsAfter']))
+                or not diagnostics['probeStart']['startedMonotonicNs']
+                    < audit['senderBefore']['observedMonotonicNs']
+                    < audit['siblingsBefore'][-1]['controlObservedNs']
+                    < observer['observedMonotonicNs']
+                    < phase['observedMonotonicNs']
+                    < audit['restart']['startedMonotonicNs']
+                    < receipt['startedMonotonicNs']
+                    <= receipt['observedMonotonicNs']
+                    < audit['restart']['finishedMonotonicNs']
+                    < audit['releasePublishedNs']
+                    < denied['finishedMonotonicNs']
+                    < audit['siblingsAfter'][0]['observedMonotonicNs']
+                    < admin_after['observedMonotonicNs']
+                    < audit['finishedMonotonicNs']
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        return {'contract': campaign.CONTRACT,
+            'caseId': 'cleanup-race', 'status': 'passed',
+            'actorEpoch': {**admin, 'kind': 'administrator-test-kit'},
+            'targetEpoch': {'kind': 'owned-roles-reconciled-after-manager-replacement',
+                'roles': result['roleKernelRoster'],
+                'oldInvocation': sender['invocationId'],
+                'replacementInvocation': replacement['InvocationID'],
+                'oldStopReceiptDigest': hashlib.sha256(json.dumps(
+                    receipt, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest()},
+            'operationWindow': {
+                'startedMonotonicNs': phase['observedMonotonicNs'],
+                'finishedMonotonicNs': audit['finishedMonotonicNs']},
+            'attackDigest': audit_digest,
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': max(
+                terminal['stopReceipts'][row['role']]['current']
+                    ['record']['observedMonotonicNs']
+                for row in result['roleKernelRoster']['roles'])}
     except (AttributeError, KeyError, TypeError, ValueError, IndexError,
             StopIteration, OSError):
         return None
@@ -4841,7 +4990,7 @@ def run(args):
         'cancellation', 'controller-restart', 'deadline', 'revocation-running',
         'setsid-double-fork', 'observer-death', 'lost-start-response',
         'resource-exhaustion', 'partial-launch', 'stuck-output',
-        'late-child')
+        'late-child', 'cleanup-race')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     retired_preparation = getattr(args, 'retired_authority_preparation', False)
     retired_input_paths = tuple(getattr(args, name, None) for name in (
@@ -5005,7 +5154,8 @@ def run(args):
             native_runner._save(output / 'assessment.json', result)
             print(json.dumps(result, sort_keys=True))
             return 78
-        if group in ('partial-launch', 'stuck-output', 'late-child') and campaign_plan_path is None and not getattr(args, 'probe', False):
+        if group in ('partial-launch', 'stuck-output', 'late-child',
+                     'cleanup-race') and campaign_plan_path is None and not getattr(args, 'probe', False):
             result = selected_public_result(group, 'group-v10-plan-required',
                 reasons=(group + '-v10-plan-required',))
             native_runner._save(output / 'assessment.json', result)
@@ -5216,6 +5366,14 @@ def run(args):
                     raise ValueError('workload-late-child-verification-failed')
                 native_runner._save(output / 'late-child-v10-evidence.private.json', record)
                 statuses['late-child'] = 'passed'
+            if group == 'cleanup-race' and group_ready:
+                case = cleanup_race_attempt(report, value, terminal,
+                    resources, args.source)
+                if case is None:
+                    raise ValueError('workload-cleanup-race-verification-failed')
+                save_v9_case(output / 'cleanup-race-v9-evidence.private.json',
+                    case, 'cleanup-race', roster=value['roleKernelRoster'])
+                statuses['cleanup-race'] = 'passed'
             if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
