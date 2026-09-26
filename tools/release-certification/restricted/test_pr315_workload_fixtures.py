@@ -47,6 +47,8 @@ class AdmissionTests(unittest.TestCase):
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v12')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v13')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v14')},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v15')},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v15')},
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'resolverAuthorityProbe'}},
                            {'runtimePolicy': {key: item for key, item in policy.items()

@@ -172,7 +172,7 @@ def terminal_roster_matches(roster, terminal, *, require_sender_restart=True):
 def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
     if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
-                      'output-flood', 'output-replacement',
+                      'output-flood', 'output-replacement', 'role-boundary',
                       'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
@@ -181,7 +181,7 @@ def group_prepared(report, result, terminal, group):
     return (report.get('mode') == 'workload-positive'
             and report.get('workloadPurpose') == ('selected-group'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
-                             'output-flood', 'output-replacement')
+                             'output-flood', 'output-replacement', 'role-boundary')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -205,7 +205,7 @@ def group_prepared(report, result, terminal, group):
             and result.get('workloadAcceptance') == (
                 'incomplete-hostile-contract-not-executed'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
-                             'output-flood', 'output-replacement')
+                             'output-flood', 'output-replacement', 'role-boundary')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -1291,7 +1291,8 @@ def _observer_private_attempt(case_id, report, result, fixture, terminal, source
                   'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
                   'effectiveCapabilities')
         source_digest = reference.sha256(source / 'tools/release-certification/restricted/pr315_role_probe.py')
-        if (not positive_executed(report, result, terminal)
+        if (not (positive_executed(report, result, terminal)
+                 or group_prepared(report, result, terminal, 'role-boundary'))
                 or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
                 or terminal[audit_field]['status'] != 'captured'
                 or root['schemaVersion'] != 1
@@ -1310,6 +1311,9 @@ def _observer_private_attempt(case_id, report, result, fixture, terminal, source
                 or root['targetDigestBefore'] != root['targetDigestAfter']
                 or re.fullmatch('[0-9a-f]{64}', root['targetDigestBefore']) is None
                 or root['kernelOpenResult'] != {'opened': False, 'errno': 'ENOENT'}
+                or (group_prepared(report, result, terminal, 'role-boundary')
+                    and result['roleKernelRosterWindow']['finishedMonotonicNs'] >=
+                    root['controllerObservedBeforeNs'])
                 or not root['controllerObservedBeforeNs'] < root['triggerMonotonicNs']
                     < root['attackStartedNs'] < root['attackFinishedNs']
                     < root['controllerObservedAfterNs'] < receipt['startedMonotonicNs']
@@ -1457,7 +1461,8 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
             'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
         target_cgroup_digest = fixtures.runtime.canonical_digest({
             'role': target_role, 'identity': first['cgroupIdentity']})[7:]
-        if (not positive_executed(report, result, terminal)
+        if (not (positive_executed(report, result, terminal)
+                 or group_prepared(report, result, terminal, 'role-boundary'))
                 or fixture.get('schemaVersion') != 4 or 'probeDigest' not in fixture
                 or terminal[field]['status'] != 'captured'
                 or audit['schemaVersion'] != 1
@@ -1481,6 +1486,9 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
                 or first['cgroupIdentity'] != last['cgroupIdentity']
                 or target_cgroup_digest != target['cgroupDigest']
                 or first['controlDigest'] != last['controlDigest']
+                or (group_prepared(report, result, terminal, 'role-boundary')
+                    and result['roleKernelRosterWindow']['finishedMonotonicNs'] >=
+                    first['observedMonotonicNs'])
                 or audit['writtenBytes'] != 0
                 or not first['observedMonotonicNs'] < audit['attackStartedNs']
                     < audit['attackFinishedNs'] < last['observedMonotonicNs']
@@ -2068,15 +2076,16 @@ def run(args):
     selected_cases(group)
     output_group = group in ('output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement')
+    selected_preparation = output_group or group == 'role-boundary'
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
             role_measurement and getattr(args, 'startup_measurement', False)):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = ('none' if output_group or role_measurement else
+    scenario = ('none' if selected_preparation or role_measurement else
                 group if group in ('cancellation', 'controller-restart') else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
-    if (output_group or role_measurement) != (scenario == 'none'):
+    if (selected_preparation or role_measurement) != (scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
@@ -2183,7 +2192,7 @@ def run(args):
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
                                  case_group=None, fault_case=None, lifecycle_scenario=scenario,
                                  workload_group=('role-readiness-diagnostic' if role_measurement
-                                                 else group if output_group
+                                                 else group if selected_preparation
                                                  else None))
             selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
@@ -2212,17 +2221,19 @@ def run(args):
             startup_measurement = getattr(args, 'startup_measurement', False)
             diagnostic_mode = startup_measurement or role_measurement
             positive = not diagnostic_mode and positive_executed(report, value, terminal)
-            group_ready = (not diagnostic_mode and output_group
+            group_ready = (not diagnostic_mode and selected_preparation
                            and group_prepared(report, value, terminal, group))
+            role_boundary_ready = group == 'role-boundary' and group_ready
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
-            reached = (selected_probe_started(group, resources) if output_group
+            reached = (selected_probe_started(group, resources) if selected_preparation
                        else resources is not None)
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
-            statuses = ({group: 'inconclusive' if reached else 'setup-failed'}
-                        if output_group else
+            statuses = ({case: 'inconclusive' if reached else 'setup-failed'
+                         for case in selected_cases(group)}
+                        if selected_preparation else
                         {case: 'inconclusive' if reached else 'setup-failed'
                          for case in groups()[0][1]})
             if group_ready:
@@ -2232,7 +2243,7 @@ def run(args):
                 checked = reference.verified_attempt_identity(report, selected.attempt,
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
-                    raise ValueError('workload-output-host-identity-changed')
+                    raise ValueError('workload-group-host-identity-changed')
             if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
@@ -2336,14 +2347,14 @@ def run(args):
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['runner-control'] = 'passed'
-            if (not output_group and positive and isinstance(terminal, dict)
+            if ((positive or role_boundary_ready) and isinstance(terminal, dict)
                     and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
                 case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-read-verification-failed')
                 native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
                 statuses['observer-private-read'] = 'passed'
-            if (not output_group and positive and isinstance(terminal, dict)
+            if ((positive or role_boundary_ready) and isinstance(terminal, dict)
                     and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
                 case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
@@ -2362,7 +2373,7 @@ def run(args):
             for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                    ('package-expectation', 'packageExpectationAudit'),
                                    ('cgroup-migration', 'cgroupMigrationAudit')):
-                if (not output_group and positive and isinstance(terminal, dict)
+                if ((positive or role_boundary_ready) and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_role_access_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -2434,7 +2445,7 @@ def run(args):
                 ('role-readiness-measurement-executed' if role_measurement
                     and group_prepared(report, value, terminal, 'role-readiness-diagnostic') else
                     'implementation-incomplete' if group_ready and
-                    statuses.get(group) == 'passed' else
+                    all(statuses.get(case) == 'passed' for case in selected_cases(group)) else
                     selected_terminal_status(group, report, positive)), positive,
                 statuses=statuses,
                 reasons=(('startup-measurement-not-workload-execution',)

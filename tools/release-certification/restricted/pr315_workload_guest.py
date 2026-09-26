@@ -29,7 +29,7 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
     global STAGE
     if (workload_group not in (None, 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic')
+                              'role-readiness-diagnostic', 'role-boundary')
             or (startup_measurement and workload_group)
             or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -66,7 +66,7 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     global STAGE
     if (workload_group not in (None, 'output-symlink', 'output-fifo',
                               'output-hardlink', 'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic')
+                              'role-readiness-diagnostic', 'role-boundary')
             or (startup_measurement and workload_group)
             or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -231,7 +231,8 @@ def main():
     parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
-                                                    'role-readiness-diagnostic'))
+                                                    'role-readiness-diagnostic',
+                                                    'role-boundary'))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):

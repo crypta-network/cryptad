@@ -158,6 +158,9 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report,
             {**result, 'groupPreparation': 'output-replacement'}, terminal,
             'output-replacement'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'role-boundary'}, terminal,
+            'role-boundary'))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -205,7 +208,9 @@ class RunnerTests(unittest.TestCase):
         receipt.update(startedMonotonicNs=100, observedMonotonicNs=110)
         terminal['observerPrivateReadAudit'] = {'status': 'captured', 'record': audit}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
-        value = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        value = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                 'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                            'finishedMonotonicNs': 5}}
         fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64}
         with patch.object(runner, 'positive_executed', return_value=True):
             case = runner.observer_private_read_attempt(report, value, fixture, terminal, source)
@@ -241,6 +246,16 @@ class RunnerTests(unittest.TestCase):
             invalid['observerPrivateWriteAudit']['record']['actorAfter']['startTicks'] = 46
             self.assertIsNone(runner.observer_private_write_attempt(
                 report, value, fixture, invalid, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            self.assertEqual('passed', runner.observer_private_read_attempt(
+                report, value, fixture, terminal, source)['status'])
+            self.assertEqual('passed', runner.observer_private_write_attempt(
+                report, value, fixture, terminal, source)['status'])
+            late = copy.deepcopy(value)
+            late['roleKernelRosterWindow']['finishedMonotonicNs'] = 40
+            self.assertIsNone(runner.observer_private_read_attempt(
+                report, late, fixture, terminal, source))
 
     def test_false_claims_need_actual_role_kernel_identity_and_metrics(self):
         roster = synthetic_role_kernel_roster()
@@ -327,7 +342,9 @@ class RunnerTests(unittest.TestCase):
             terminal['stopReceipts'][role]['current']['record'].update(
                 startedMonotonicNs=150, observedMonotonicNs=160)
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
-        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5}}
         fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64,
                    'products': {'candidate': {'daemonDigest': 'sha256:' + 'f' * 64}}}
         cases = (
@@ -373,6 +390,15 @@ class RunnerTests(unittest.TestCase):
             changed['packageExpectationAudit']['record']['targetBefore']['controlDigest'] = '0' * 64
             self.assertIsNone(runner._fixed_role_access_attempt(
                 'package-expectation', report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            for case_id, *_ in cases:
+                self.assertEqual('passed', runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, terminal, source)['status'])
+            late = copy.deepcopy(result)
+            late['roleKernelRosterWindow']['finishedMonotonicNs'] = 40
+            self.assertIsNone(runner._fixed_role_access_attempt(
+                'sibling-data', report, late, fixture, terminal, source))
 
     def test_resolver_denial_needs_real_role_epoch_active_service_and_stable_canary(self):
         roster = synthetic_role_kernel_roster()
@@ -1385,6 +1411,74 @@ class RunnerTests(unittest.TestCase):
             launch.assert_not_called()
             self.assertEqual('implementation-incomplete',
                 json.loads((args.output / 'assessment.json').read_text())['status'])
+
+    def test_role_boundary_group_claims_only_its_five_started_cases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, case_group='role-boundary',
+                fixture_manifest_digest='4' * 64, product_source_commit='d' * 40,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            host = synthetic_host_identity()
+            roster = synthetic_role_kernel_roster()
+            terminal = synthetic_terminal_roster(roster)
+            del terminal['stopReceipts']['candidate-sender']['previous']
+            observation = {'identity': {'sourceCommit': host['helperSourceCommit'],
+                'bundleIdentity': host['bundleIdentity']},
+                'groupPreparation': 'role-boundary',
+                'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                'topologyRoles': 4, 'signedAppWorkers': 0,
+                'profile': runner.acceptance.PROFILE,
+                'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                'roleKernelRoster': roster,
+                'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                           'finishedMonotonicNs': 5},
+                'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+                'protectedExecutionEnabled': False}
+            selected = []
+
+            def fake_transport(attempt):
+                selected.append(attempt)
+                attempt.attempt.mkdir(mode=0o700)
+                for name, value in (('attempt.private.json', {
+                        'mode': 'workload-positive', 'workloadPurpose': 'selected-group',
+                        'status': 'guest-report-retained', 'guestStopped': True,
+                        'guestExitCode': 0, 'hostVerifiedIdentity': host}),
+                    ('pr314-workload-observation.private.json', observation),
+                    ('pr315-workload-volatile.private.json', terminal),
+                    ('pr315-workload-memory.private.json', {'probeStart': {
+                        'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                        'caseId': 'role-boundary', 'startedMonotonicNs': 10}})):
+                    runner.native_runner._save(attempt.attempt / name, value)
+                return 0
+
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={
+                        'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    patch.object(runner.reference, 'verified_attempt_identity',
+                                 return_value=host), \
+                    patch.object(runner.fixtures, 'verify', return_value={
+                        'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertEqual('role-boundary', selected[0].workload_group)
+            self.assertEqual('none', selected[0].lifecycle_scenario)
+            report = json.loads((args.output / 'assessment.json').read_text())
+            self.assertFalse(report['installedPositiveExecuted'])
+            self.assertFalse(report['installedWorkloadAcceptanceSatisfied'])
+            inconclusive = {row['caseId'] for row in report['cases']
+                            if row['status'] == 'inconclusive'}
+            self.assertEqual(set(dict(runner.campaign.GROUPS)['role-boundary']), inconclusive)
+            self.assertEqual(40, sum(row['status'] == 'not-executed'
+                                     for row in report['cases']))
 
     def test_missing_inputs_return_78_without_reference_allocation(self):
         with tempfile.TemporaryDirectory() as temporary:

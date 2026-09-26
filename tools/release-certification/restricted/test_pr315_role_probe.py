@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,44 @@ import runtime_snapshot as snapshot
 
 
 class RoleProbeTest(unittest.TestCase):
+    def test_role_boundary_mode_runs_only_its_five_fixed_operations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ready = root / 'ready.json'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            trigger.write_text(json.dumps({'caseId': 'role-boundary', 'nonce': 'a' * 64}))
+            fixed = {'sibling-data', 'package-expectation', 'cgroup-migration'}
+
+            def access(case_id, *_args):
+                self.assertIn(case_id, fixed)
+                return {'operation': case_id}
+
+            with patch.object(probe, 'ROLE_BOUNDARY_READY', ready), \
+                    patch.object(probe, 'ROLE_BOUNDARY_TRIGGER', trigger), \
+                    patch.object(probe, 'ROLE_BOUNDARY_OUTPUT', result), \
+                    patch.object(probe.sys, 'argv', ['probe.py', 'a' * 64,
+                                                      'role-boundary']), \
+                    patch.object(probe.sys, 'flags', SimpleNamespace(isolated=1,
+                                                                       no_site=1)), \
+                    patch.object(probe, 'attempt_read', return_value={
+                        'caseId': 'observer-private-read'}), \
+                    patch.object(probe, 'attempt_write', return_value={
+                        'operation': 'observer-private-write'}), \
+                    patch.object(probe, 'attempt_fixed_access', side_effect=access) as operations, \
+                    patch.object(probe, 'fixed_false_claims') as claims, \
+                    patch.object(probe, 'publish_network_result') as network, \
+                    patch.object(probe.time, 'sleep', side_effect=StopIteration):
+                with self.assertRaises(StopIteration):
+                    probe.main()
+            self.assertTrue(ready.exists())
+            record = json.loads(result.read_text())
+            self.assertEqual({'caseId', 'writeAttempt', 'siblingRead',
+                              'packageWrite', 'cgroupMigration'}, set(record))
+            self.assertEqual(3, operations.call_count)
+            claims.assert_not_called()
+            network.assert_not_called()
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_fifo_is_real_and_collector_rejects_without_blocking(self):
         with tempfile.TemporaryDirectory() as directory:

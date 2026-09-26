@@ -2467,8 +2467,17 @@ inodes, exact A/B content digests, barrier order, role/collector epochs,
 unchanged canary and terminal receipts. The hook is an optional local
 callable in the descriptor reader; it does not add a production control
 socket method. No v15 TCG result exists.
+
+The prospective v16 `role-boundary` group uses a separate candidate probe
+mode. After four real role starts, that mode performs only the observer
+private read/write and the fixed sibling-data, package and cgroup operations.
+The administrator binds the active canaries, candidate child, recipient
+service, package and cgroups before and after those syscalls. Resolver,
+network and false-identity operations are left to their own groups. The
+host validates only the group's five exclusive IDs and exact stop receipts;
+it does not claim a CHK/Mail positive result. No v16 TCG result exists.
 In a network-disabled, read-only Debian Docker test container, the latest
-focused source passed 154 PR-315, 45 PR-314 workload-driver, 23 PR-312
+focused source passed 156 PR-315, 45 PR-314 workload-driver, 23 PR-312
 reference-VM, 11 interop snapshot and 53 interop workload tests (eight
 interop workload skips). The
 selected protected-workload file passed 69 tests with one skip after the
@@ -2824,7 +2833,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver and all five output emitters, including the v15 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters and the five-case role-boundary group, including the v16 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

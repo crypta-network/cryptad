@@ -456,13 +456,14 @@ def _validate_false_role_claims(result, before, after, actor, uid):
     return identity, counters
 
 
-def _validate_fixed_role_accesses(result, after):
+def _validate_fixed_role_accesses(result, after, *, role_boundary=False):
     selected = (
         ('siblingRead', 'sibling-data', SIBLING_PROBE_PATH, ('ENOENT',)),
         ('packageWrite', 'package-expectation', PACKAGE_PROBE_PATH,
          ('EACCES', 'EPERM', 'EROFS')),
         ('cgroupMigration', 'cgroup-migration', CGROUP_PROBE_PATH, ('ENOENT',)))
-    previous = result['counterClaim']['finishedMonotonicNs']
+    previous = (result['writeAttempt']['finishedMonotonicNs'] if role_boundary
+                else result['counterClaim']['finishedMonotonicNs'])
     found = {}
     for name, case_id, target, allowed in selected:
         row = result.get(name)
@@ -1036,8 +1037,12 @@ def probe_output_replacement(workload, handoff, source_digest, campaign_deadline
 
 def probe_observer_private_read(workload, handoff, observer, source_digest,
                                 sibling_digest, resolver_digest,
-                                campaign_deadline_ns):
+                                campaign_deadline_ns, case_group=None):
     """Measure a real role child opening an active observer-owned canary."""
+    if case_group not in (None, 'role-boundary'):
+        raise ValueError('workload-role-probe-group-invalid')
+    role_boundary = case_group == 'role-boundary'
+    actor_case = 'role-boundary' if role_boundary else 'observer-private-read'
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-role-probe-campaign-expired')
     canary = Path('/var/lib/cryptad-cross-version/experiments/pr315-installed-workload/observer-private-canary')
@@ -1054,7 +1059,7 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
         raise ValueError('workload-observer-private-control-mismatch')
     nonce = secrets.token_hex(32)
     launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
-    request = {'schemaVersion': 1, 'caseId': 'observer-private-read', 'nonce': nonce,
+    request = {'schemaVersion': 1, 'caseId': actor_case, 'nonce': nonce,
                'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
                'sourceDigest': source_digest}
     workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
@@ -1062,21 +1067,20 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     role = 'candidate-sender'
     uid = workload.account(role).pw_uid
     probe_root = workload.ROOT / 'state/candidate-sender/tmp'
-    ready_path = probe_root / 'pr315-observer-private-read-ready.json'
-    result_path = probe_root / 'pr315-observer-private-read.json'
+    ready_path = probe_root / ('pr315-role-boundary-ready.json' if role_boundary
+                               else 'pr315-observer-private-read-ready.json')
+    result_path = probe_root / ('pr315-role-boundary.json' if role_boundary
+                                else 'pr315-observer-private-read.json')
     until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
-    while time.monotonic() < until and not ready_path.exists():
-        time.sleep(.05)
-    if not ready_path.exists():
-        raise ValueError('workload-role-probe-ready-timeout')
-    ready = _candidate_probe_file(ready_path, uid)
+    ready = _wait_output_record(ready_path, uid, until,
+                                'workload-role-probe-ready-timeout')
     if (not isinstance(ready, dict) or set(ready) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
             or ready['schemaVersion'] != 1 or ready['kind'] != 'pr315-candidate-role-probe-ready'
-            or ready['caseId'] != 'observer-private-read' or ready['nonce'] != nonce):
+            or ready['caseId'] != actor_case or ready['nonce'] != nonce):
         raise ValueError('workload-role-probe-ready-invalid')
     before = workload.observe(handoff['handles'][role])
-    actor_before = _role_probe_actor(before, nonce)
+    actor_before = _role_probe_actor(before, nonce, actor_case)
     if ready['pid'] != actor_before['namespacePids'][-1]:
         raise ValueError('workload-role-probe-pid-unbound')
     target_before = _observer_canary_control(canary, observer)
@@ -1088,28 +1092,18 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     sibling_before = _observer_canary_control(
         sibling_path, recipient_user, 'workload-sibling-data-control-failed')
     package_before = _staged_package_digest(workload)
-    resolver_before = _resolver_target_control(resolver_digest)
+    resolver_before = None if role_boundary else _resolver_target_control(resolver_digest)
     if sibling_before != sibling_digest:
         raise ValueError('workload-sibling-data-target-changed')
     trigger_ns = time.monotonic_ns()
-    trigger = probe_root / 'pr315-observer-private-read-trigger.json'
-    descriptor = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
-    try:
-        with os.fdopen(descriptor, 'w', closefd=False) as stream:
-            json.dump({'caseId': 'observer-private-read', 'nonce': nonce}, stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.fchmod(descriptor, 0o444)
-    finally:
-        os.close(descriptor)
-    while time.monotonic() < until and not result_path.exists():
-        time.sleep(.05)
-    if not result_path.exists():
-        raise ValueError('workload-role-probe-result-timeout')
-    result = _candidate_probe_file(result_path, uid)
-    resolver_after = _resolver_target_control(resolver_digest)
+    trigger_name = ('pr315-role-boundary-trigger.json' if role_boundary
+                    else 'pr315-observer-private-read-trigger.json')
+    _publish_output_trigger(probe_root, trigger_name, actor_case, nonce)
+    result = _wait_output_record(result_path, uid, until,
+                                 'workload-role-probe-result-timeout')
+    resolver_after = None if role_boundary else _resolver_target_control(resolver_digest)
     after = workload.observe(handoff['handles'][role])
-    actor_after = _role_probe_actor(after, nonce)
+    actor_after = _role_probe_actor(after, nonce, actor_case)
     target_after = _observer_canary_control(canary, observer)
     recipient_after = workload.observe(handoff['handles']['candidate-recipient'])
     sibling_after = _observer_canary_control(
@@ -1140,6 +1134,55 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
                    'kernelOpenResult': write['outcome']}
     workload.write(workload.ROOT / 'authority/observer-private-write-denial.json',
                    write_audit, create=True)
+    if role_boundary:
+        if (recipient_before['managerInvocation'] != recipient_after['managerInvocation']
+                or recipient_before['cgroupIdentity'] != recipient_after['cgroupIdentity']
+                or sibling_before != sibling_digest or sibling_after != sibling_digest):
+            raise ValueError('workload-sibling-data-target-changed')
+        if package_before != package_after:
+            raise ValueError('workload-package-target-changed')
+        if before['cgroupIdentity'] != after['cgroupIdentity']:
+            raise ValueError('workload-cgroup-target-changed')
+        accesses = _validate_fixed_role_accesses(result, after, role_boundary=True)
+        target_map = {
+            'sibling-data': ('candidate-recipient', recipient_before, recipient_after,
+                             sibling_before, sibling_after),
+            'package-expectation': ('candidate-sender', before, after,
+                                    package_before, package_after),
+            'cgroup-migration': ('candidate-recipient', recipient_before, recipient_after,
+                                 _cgroup_control_digest(recipient_before),
+                                 _cgroup_control_digest(recipient_after))}
+        fixed_audits = {}
+        for selected_case, row in accesses.items():
+            target_role, first, last, control_before, control_after = target_map[selected_case]
+            target_first = _fixed_role_target(target_role, first, control_before)
+            target_last = _fixed_role_target(target_role, last, control_after)
+            if target_first['controlDigest'] != target_last['controlDigest']:
+                raise ValueError('workload-' + selected_case + '-target-changed')
+            fixed_audit = {'schemaVersion': 1,
+                'kind': 'pr315-administrator-fixed-role-access-denial',
+                'caseId': selected_case, 'sourceDigest': source_digest,
+                'nonceDigest': audit['nonceDigest'], 'actorUid': uid,
+                'actorBefore': actor_before, 'actorAfter': actor_after,
+                'actorInvocationBefore': before['managerInvocation'],
+                'actorInvocationAfter': after['managerInvocation'],
+                'actorCgroupBefore': before['cgroupIdentity'],
+                'actorCgroupAfter': after['cgroupIdentity'],
+                'targetBefore': target_first, 'targetAfter': target_last,
+                'attackStartedNs': row['startedMonotonicNs'],
+                'attackFinishedNs': row['finishedMonotonicNs'],
+                'kernelOpenResult': row['outcome'], 'writtenBytes': row['writtenBytes']}
+            workload.write(workload.ROOT / 'authority' /
+                           (selected_case + '-denial.json'), fixed_audit, create=True)
+            fixed_audits[selected_case] = hashlib.sha256(json.dumps(fixed_audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return {'status': 'captured', 'caseId': 'role-boundary',
+                'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest(),
+                'writeStatus': 'captured',
+                'writeAuditDigest': hashlib.sha256(json.dumps(write_audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                'fixedAccessAudits': fixed_audits}
     identity, counters = _validate_false_role_claims(result, before, after,
                                                      actor_before, uid)
     claim_base = {'schemaVersion': 1, 'sourceDigest': source_digest,
@@ -1944,7 +1987,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                       if admin_channel is not None else None)
         if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic'):
+                              'role-readiness-diagnostic', 'role-boundary'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2242,7 +2285,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
-                             'role-readiness-diagnostic') or (
+                             'role-readiness-diagnostic', 'role-boundary') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group is not None) != (lifecycle_scenario == 'none'):
@@ -2371,7 +2414,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic') and
+                              'role-readiness-diagnostic', 'role-boundary') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2437,6 +2480,35 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
                 diagnostics['resolverAuthority'] = diagnostic
+        if not startup_measurement and workload_group == 'role-boundary':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                private_probe = probe_observer_private_read(
+                    workload, handoff, observer, role_probe_digest, sibling_digest,
+                    None, campaign_deadline, case_group='role-boundary')
+                diagnostics['observerPrivateRead'] = {key: private_probe[key]
+                    for key in ('status', 'caseId', 'auditDigest')}
+                diagnostics['observerPrivateWrite'] = {'status': private_probe['writeStatus'],
+                    'caseId': 'observer-private-write',
+                    'auditDigest': private_probe['writeAuditDigest']}
+                for selected_case, field in (
+                        ('sibling-data', 'siblingData'),
+                        ('package-expectation', 'packageExpectation'),
+                        ('cgroup-migration', 'cgroupMigration')):
+                    diagnostics[field] = {'status': 'captured', 'caseId': selected_case,
+                        'auditDigest': private_probe['fixedAccessAudits'][selected_case]}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostic = {'status': 'unavailable-or-unsafe',
+                              'exceptionType': type(error).__name__[:128]}
+                code = _private_role_probe_code(error)
+                if code is not None:
+                    diagnostic['code'] = code
+                for field in ('observerPrivateRead', 'observerPrivateWrite',
+                              'siblingData', 'packageExpectation', 'cgroupMigration'):
+                    diagnostics[field] = diagnostic
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -2543,7 +2615,8 @@ def main():
     parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
-                                                    'role-readiness-diagnostic'))
+                                                    'role-readiness-diagnostic',
+                                                    'role-boundary'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

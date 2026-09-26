@@ -993,6 +993,16 @@ class RoleProbeFinalBindingTest(unittest.TestCase):
             cgroupMigration=access('cgroup-migration', driver.CGROUP_PROBE_PATH, 71, 80, 'ENOENT'))
         self.assertEqual({'sibling-data', 'package-expectation', 'cgroup-migration'},
                          set(driver._validate_fixed_role_accesses(fixed, after)))
+        role_only = {key: fixed[key] for key in ('writeAttempt', 'siblingRead',
+                                                  'packageWrite', 'cgroupMigration')}
+        self.assertEqual({'sibling-data', 'package-expectation', 'cgroup-migration'},
+                         set(driver._validate_fixed_role_accesses(
+                             role_only, after, role_boundary=True)))
+        early = dict(role_only, siblingRead=dict(role_only['siblingRead'],
+                                                 startedMonotonicNs=45))
+        with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,
+                                    'fixed-access-timeline-invalid'):
+            driver._validate_fixed_role_accesses(early, after, role_boundary=True)
         invalid = dict(fixed, packageWrite=dict(fixed['packageWrite'],
             outcome={'opened': False, 'errno': 'ENOENT'}))
         with self.assertRaisesRegex(driver.RoleProbeDiagnosticError,

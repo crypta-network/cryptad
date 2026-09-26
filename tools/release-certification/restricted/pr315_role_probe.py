@@ -21,6 +21,9 @@ RESOLVER_TARGET = Path('/var/lib/cryptad-restricted/resolver/pr315-workload-cana
 OUTPUT = Path('/node/tmp/pr315-observer-private-read.json')
 READY = Path('/node/tmp/pr315-observer-private-read-ready.json')
 TRIGGER = Path('/node/tmp/pr315-observer-private-read-trigger.json')
+ROLE_BOUNDARY_OUTPUT = Path('/node/tmp/pr315-role-boundary.json')
+ROLE_BOUNDARY_READY = Path('/node/tmp/pr315-role-boundary-ready.json')
+ROLE_BOUNDARY_TRIGGER = Path('/node/tmp/pr315-role-boundary-trigger.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
@@ -386,7 +389,8 @@ def publish_output_replacement(nonce: str) -> None:
 def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
-            or sys.argv[2] not in ('observer-private-read', 'output-symlink',
+            or sys.argv[2] not in ('observer-private-read', 'role-boundary',
+                                   'output-symlink',
                                    'output-fifo', 'output-hardlink', 'output-flood',
                                    'output-replacement')
             or not sys.flags.isolated or not sys.flags.no_site):
@@ -396,6 +400,7 @@ def main() -> None:
              'caseId': case_id, 'nonce': sys.argv[1],
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
     ready_path = (READY if case_id == 'observer-private-read' else
+                  ROLE_BOUNDARY_READY if case_id == 'role-boundary' else
                   OUTPUT_FIFO_READY if case_id == 'output-fifo' else
                   OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
                   OUTPUT_FLOOD_READY if case_id == 'output-flood' else
@@ -422,31 +427,32 @@ def main() -> None:
         publish_output_replacement(sys.argv[1])
         while True:
             time.sleep(1)
+    role_boundary = case_id == 'role-boundary'
+    trigger_path = ROLE_BOUNDARY_TRIGGER if role_boundary else TRIGGER
     deadline = time.monotonic() + 30
-    while not TRIGGER.exists():
+    while not trigger_path.exists():
         if time.monotonic() >= deadline:
             raise ValueError('pr315-role-probe-trigger-timeout')
         time.sleep(.05)
-    descriptor = os.open(TRIGGER, os.O_RDONLY | os.O_NOFOLLOW)
+    descriptor = os.open(trigger_path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor) as stream:
         trigger = json.load(stream)
-    if trigger != {'caseId': 'observer-private-read', 'nonce': sys.argv[1]}:
+    if trigger != {'caseId': case_id, 'nonce': sys.argv[1]}:
         raise ValueError('pr315-role-probe-trigger-invalid')
     record = attempt_read(sys.argv[1])
     record['writeAttempt'] = attempt_write()
-    record['identityClaim'], record['counterClaim'] = fixed_false_claims()
+    if not role_boundary:
+        record['identityClaim'], record['counterClaim'] = fixed_false_claims()
     record['siblingRead'] = attempt_fixed_access('sibling-data', SIBLING)
     record['packageWrite'] = attempt_fixed_access('package-expectation', PACKAGE, b'pr315!')
     record['cgroupMigration'] = attempt_fixed_access(
         'cgroup-migration', CGROUP_TARGET, str(os.getpid()).encode())
-    record['resolverRead'] = attempt_fixed_access('resolver-authority', RESOLVER_TARGET)
-    descriptor = os.open(OUTPUT, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, 'w') as stream:
-        json.dump(record, stream, sort_keys=True, separators=(',', ':'))
-        stream.flush()
-        os.fsync(stream.fileno())
-    for case_id in NETWORK_CASES:
-        publish_network_result(case_id, sys.argv[1])
+    if not role_boundary:
+        record['resolverRead'] = attempt_fixed_access('resolver-authority', RESOLVER_TARGET)
+    _publish_record(ROLE_BOUNDARY_OUTPUT if role_boundary else OUTPUT, record)
+    if not role_boundary:
+        for network_case in NETWORK_CASES:
+            publish_network_result(network_case, sys.argv[1])
     while True:
         time.sleep(1)
 

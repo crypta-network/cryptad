@@ -50,6 +50,9 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'output-replacement'
         self.assertIn('--lifecycle-scenario none --workload-group output-replacement',
                       driver.workload_guest_command(args))
+        args.workload_group = 'role-boundary'
+        self.assertIn('--lifecycle-scenario none --workload-group role-boundary',
+                      driver.workload_guest_command(args))
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):
