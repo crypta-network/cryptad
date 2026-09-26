@@ -2647,6 +2647,31 @@ timestamp and receipt tests passed offline. The Linux PR-31x set passed
 57 with nine root-only skips; the relevant root socket tests passed in a
 disposable container. No installed TCG `lost-start-response` result exists.
 
+The prospective v25 authority group normally installs and starts signed
+Mail and the signed probe AppHost child before the `hostile-app-origin`
+operation. The candidate-role test-kit child uses a valid Mail browser
+session to send a fixed `GET /api/v1/app-data/status` sequence with the
+expected Origin, a fixed hostile Origin, then the expected Origin again.
+The administrator independently checks live Mail AppHost child and Java
+descendant epochs and valid browser responses before and after the attempt;
+it requires the middle response to be `403 origin_mismatch`. The short-lived
+session credential travels only over the inherited observer/administrator
+packet socket, is written once into candidate role tmpfs for the fixed
+probe, and is removed before durable guest evidence is captured. Observer
+and root records retain digests and bounded response/status data, never the
+raw token. Host validation binds the candidate actor and signed app target
+to exact role invocation, root audit, unchanged sentinel and stop receipt.
+The production control socket still exposes only its fixed methods. A
+network-disabled Linux test exercised the actual good/bad/good HTTP packets
+against a disposable loopback server; separate root packet, safe reader,
+wrong actor/worker/response and secret-redaction checks passed offline.
+The current isolated Linux PR-31x set passed 404 tests with four environment
+skips; the owning interop workload file passed 57 with nine root-only skips,
+the protected workload file passed 69 with one skip, and the two relevant
+root packet tests passed in a disposable container.
+This is an implemented prospective emitter, **not** an installed TCG pass;
+authority's two stale-identity cases and the complete campaign remain open.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -2988,7 +3013,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and seven standalone lifecycle groups under v24 selected-group preparation. The remaining seven denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, three network/AppHost emitters, and seven standalone lifecycle groups under v25 selected-group preparation. The remaining six denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

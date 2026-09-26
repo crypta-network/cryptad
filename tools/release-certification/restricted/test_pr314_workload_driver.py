@@ -382,12 +382,51 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             self.assertTrue(sampler.serve(parent))
             self.assertEqual('lost-start-intent', json.loads(child.recv(8192))['phase'])
             sampler.lost_start_intent.assert_called_once_with()
+            sampler.hostile_origin_selected = True
+            token = 'private-browser-session'
+            child.sendall(b'H' + json.dumps({'session': token,
+                'expectedOrigin': 'http://127.0.0.1:12345'}).encode())
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual(hashlib.sha256(token.encode()).hexdigest(),
+                             json.loads(child.recv(8192))['sessionDigest'])
+            self.assertNotIn(token, json.dumps(sampler.diagnostics))
+            child.sendall(b'H' + json.dumps({'session': token,
+                'expectedOrigin': 'http://127.0.0.1:12345'}).encode())
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual({'error': 'pr315-admin-hostile-origin-handoff-failed'},
+                             json.loads(child.recv(8192)))
             child.sendall(b'J4F')
             self.assertTrue(sampler.serve(parent))
             self.assertEqual({'error': 'pr315-admin-fnp-sample-failed'},
                              json.loads(child.recv(8192)))
             sampler.readiness.assert_called_once()
         self.assertEqual('ValueError', sampler.diagnostics['fnpAdminFailure']['exceptionType'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_browser_credential_handoff_retains_only_root_memory_and_digest_ack(self):
+        diagnostics = {}
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed',
+            diagnostics, hostile_origin_selected=True)
+        token = 'private-browser-session'
+        with ExitStack() as stack:
+            parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            stack.enter_context(parent)
+            stack.enter_context(child)
+            worker = threading.Thread(target=sampler.serve, args=(parent,), daemon=True)
+            worker.start()
+            reply = driver.request_administrator_hostile_origin(
+                child, token, 'http://127.0.0.1:12345',
+                time.monotonic_ns() + 5_000_000_000)
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(hashlib.sha256(token.encode()).hexdigest(),
+                         reply['sessionDigest'])
+        self.assertEqual(token, sampler.hostile_origin_secret['session'])
+        self.assertNotIn(token, json.dumps(diagnostics))
+        with self.assertRaisesRegex(ValueError, 'hostile-origin-deadline'):
+            driver.request_administrator_hostile_origin(
+                Mock(), token, 'http://127.0.0.1:12345',
+                time.monotonic_ns() - 1)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
     def test_observer_receives_only_administrator_fixed_sample(self):
@@ -1090,6 +1129,7 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             self.assertEqual('private-diagnostic-not-acceptance', retained['classification'])
             self.assertEqual(0, (root / 'readiness.json').stat().st_mode & 0o077)
 
+
     def test_busy_authority_lease_is_retried_before_the_original_deadline(self):
         selected = ('previous', 'a' * 32,
                     {'hostPid': 79, 'startTicks': 42,
@@ -1107,6 +1147,107 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'deadline-unavailable'):
                 driver._readiness_java_process_retry(SimpleNamespace(), handoff, 'previous')
         observe.assert_not_called()
+
+
+class HostileOriginValidationTest(unittest.TestCase):
+    def test_root_control_binds_current_app_child_and_valid_browser_response(self):
+        worker = {'hostPid': 211, 'namespacePid': 3, 'startTicks': 42,
+                  'javaHostPid': 212, 'javaStartTicks': 43,
+                  'managerInvocation': 'a' * 32,
+                  'cgroupIdentity': [1, 99]}
+        observed = {'managerInvocation': 'a' * 32,
+                    'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
+                    'observedMonotonicNs': 10}
+        workload = SimpleNamespace(observe=Mock(side_effect=[observed,
+            dict(observed, observedMonotonicNs=20)]),
+            connect=Mock(return_value=nullcontext(SimpleNamespace())))
+        handoff = {'handles': {'candidate-sender': 'e' * 64},
+                   'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller._http', return_value=(
+                    200, {}, b'{"status":{"appId":"mail-prototype",'
+                              b'"storeAvailable":true}}')) as request:
+            control = driver._mail_browser_control(workload, handoff,
+                'private-session', 'http://127.0.0.1:12345', worker)
+        self.assertEqual(211, control['workerHostPid'])
+        self.assertEqual(20, control['observedMonotonicNs'])
+        self.assertEqual('private-session',
+                         request.call_args.args[2]['X-Crypta-App-Session'])
+        self.assertNotIn('private-session', json.dumps(control))
+        workload.observe = Mock(side_effect=[observed,
+            dict(observed, observedMonotonicNs=20)])
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller._http', return_value=(
+                    403, {}, b'{"error":"origin_mismatch"}')), \
+                self.assertRaisesRegex(ValueError, 'valid-target-unavailable'):
+            driver._mail_browser_control(workload, handoff,
+                'private-session', 'http://127.0.0.1:12345', worker)
+        workload.observe = Mock(side_effect=[observed,
+            dict(observed, observedMonotonicNs=20)])
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller._http', return_value=(
+                    200, {}, b'{"status":{"appId":"other",'
+                              b'"storeAvailable":true}}')), \
+                self.assertRaisesRegex(ValueError, 'valid-target-unavailable'):
+            driver._mail_browser_control(workload, handoff,
+                'private-session', 'http://127.0.0.1:12345', worker)
+
+    def test_browser_secret_is_removed_before_retention_and_exchange_is_bounded(self):
+        import pr315_role_probe as probe
+        secret = {'session': 'private-browser-session',
+                  'expectedOrigin': 'http://127.0.0.1:12345'}
+        diagnostics = {}
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'recipient',
+            diagnostics, hostile_origin_selected=True)
+        acknowledged = sampler.hostile_origin_handoff(json.dumps(secret).encode())
+        result = {'hostileOriginSessionDigest': acknowledged['sessionDigest'],
+                  'mailUiOriginDigest': acknowledged['originDigest'],
+                  'safe': 'retained'}
+        self.assertEqual(secret, driver._verify_hostile_origin_handoff(
+            result, 'authority', sampler, diagnostics))
+        self.assertNotIn(secret['session'], json.dumps(result))
+        self.assertNotIn(secret['session'], json.dumps(diagnostics))
+        self.assertEqual(hashlib.sha256(secret['session'].encode()).hexdigest(),
+                         diagnostics['hostileOriginSessionDigest'])
+        before = {'role': 'candidate-sender', 'managerInvocation': 'a' * 32,
+                  'bootId': 'boot', 'cgroupIdentity': [1, 99],
+                  'workerHostPid': 211, 'workerStartTicks': 42,
+                  'javaHostPid': 212, 'javaStartTicks': 43,
+                  'observedMonotonicNs': 10, 'controlResponseDigest': 'a' * 64}
+        after = dict(before, observedMonotonicNs=100,
+                     controlResponseDigest='b' * 64)
+        good = {'status': 200, 'errorCode': None,
+                'responseDigest': 'c' * 64,
+                'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}
+        attack = {'status': 403, 'errorCode': 'origin_mismatch',
+                  'responseDigest': 'd' * 64,
+                  'startedMonotonicNs': 50, 'finishedMonotonicNs': 60}
+        last = dict(good, startedMonotonicNs=70, finishedMonotonicNs=80)
+        witness = {'caseId': 'hostile-app-origin',
+            'endpointDigest': hashlib.sha256(
+                probe.HOSTILE_ORIGIN_ENDPOINT.encode()).hexdigest(),
+            'sessionDigest': diagnostics['hostileOriginSessionDigest'],
+            'expectedOriginDigest': hashlib.sha256(
+                secret['expectedOrigin'].encode()).hexdigest(),
+            'hostileOriginDigest': hashlib.sha256(
+                probe.HOSTILE_ORIGIN.encode()).hexdigest(),
+            'before': good, 'attack': attack, 'after': last}
+        self.assertEqual(witness, driver._validate_hostile_origin(
+            witness, secret, before, after, 20))
+        for altered in (dict(witness, attack=dict(attack, status=200)),
+                        dict(witness, after=dict(last, startedMonotonicNs=59)),
+                        dict(witness, sessionDigest='0' * 64)):
+            with self.assertRaisesRegex(ValueError, 'hostile-origin'):
+                driver._validate_hostile_origin(altered, secret, before, after, 20)
+        with self.assertRaisesRegex(ValueError, 'session-unselected'):
+            driver._verify_hostile_origin_handoff(
+                {}, 'positive', sampler, {})
+        injected = {'hostileOriginSecret': secret}
+        with self.assertRaisesRegex(ValueError, 'secret-in-result'):
+            driver._verify_hostile_origin_handoff(
+                injected, 'authority', sampler, {})
+        self.assertNotIn('hostileOriginSecret', injected)
 
 
 class OutputHardlinkControlTest(unittest.TestCase):

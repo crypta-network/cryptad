@@ -55,6 +55,7 @@ class AdmissionTests(unittest.TestCase):
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v20')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v21')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v23')},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v24')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v15')},
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'resolverAuthorityProbe'}},
@@ -62,6 +63,8 @@ class AdmissionTests(unittest.TestCase):
                                               if key != 'outputCollectorProbe'}},
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'groupPreparation'}},
+                           {'runtimePolicy': {key: item for key, item in policy.items()
+                                              if key != 'hostileOriginProbe'}},
                            {'runtimePolicy': dict(policy, command='/bin/sh')}):
                 with self.subTest(change=change):
                     manifest = root / fixtures.MANIFEST

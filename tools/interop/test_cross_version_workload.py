@@ -638,29 +638,54 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.run_group_preparation('lost-start-response')
         adapter.cleanup.assert_called_once()
 
-    def test_authority_preparation_runs_only_fixed_observer_denials(self):
+    def test_authority_preparation_binds_signed_app_session_for_role_origin_probe(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {}
+        adapter.apps = {}
         adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
         adapter.start = mock.Mock(side_effect=lambda role: adapter.nodes.update({role: {}}))
         adapter.observe = mock.Mock(return_value={'state': 'running'})
         adapter.capture_probe_target_roster = mock.Mock()
         adapter.probe_observer_control = mock.Mock()
         adapter.probe_arbitrary_endpoint = mock.Mock()
-        adapter.provision_apps = mock.Mock()
+        def provision():
+            adapter.apps = {('candidate-sender', 'mail-prototype'):
+                types.SimpleNamespace(session='private-session',
+                    origin='http://127.0.0.1:12345',
+                    observe_worker=lambda: {'hostPid': 101}),
+                ('candidate-recipient', 'mail-prototype'): object(),
+                ('candidate-sender', 'pr315-probe'):
+                    types.SimpleNamespace(observe_worker=lambda: {
+                        'provenance': 'controller-kernel-sample'})}
+        adapter.provision_apps = mock.Mock(side_effect=provision)
+        adapter.remaining = mock.Mock(return_value=180)
+        adapter.origin_handoff = mock.Mock(return_value={
+            'phase': 'hostile-origin-handoff',
+            'sessionDigest': hashlib.sha256(b'private-session').hexdigest(),
+            'originDigest': hashlib.sha256(b'http://127.0.0.1:12345').hexdigest()})
         adapter.content_chk = mock.Mock()
         adapter.cleanup = mock.Mock(return_value='complete')
         order = mock.Mock()
         order.attach_mock(adapter.capture_probe_target_roster, 'roster')
         order.attach_mock(adapter.probe_observer_control, 'observer')
         order.attach_mock(adapter.probe_arbitrary_endpoint, 'endpoint')
+        order.attach_mock(adapter.provision_apps, 'apps')
         with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
             result = adapter.run_group_preparation('authority',
                 leave_running_for_administrator=True)
         self.assertEqual('authority', result['groupPreparation'])
-        self.assertEqual([mock.call.roster(), mock.call.observer(), mock.call.endpoint()],
+        self.assertEqual([mock.call.roster(), mock.call.observer(),
+                          mock.call.endpoint(), mock.call.apps()],
                          order.mock_calls)
-        adapter.provision_apps.assert_not_called()
+        self.assertEqual(3, result['signedAppWorkers'])
+        self.assertEqual(hashlib.sha256(b'private-session').hexdigest(),
+                         result['hostileOriginSessionDigest'])
+        self.assertNotIn('private-session', json.dumps(result))
+        adapter.origin_handoff.assert_called_once_with(
+            'private-session', 'http://127.0.0.1:12345')
+        self.assertEqual('controller-kernel-sample',
+                         result['probeAppKernelProcess']['provenance'])
+        adapter.provision_apps.assert_called_once_with()
         adapter.content_chk.assert_not_called()
         adapter.cleanup.assert_not_called()
 

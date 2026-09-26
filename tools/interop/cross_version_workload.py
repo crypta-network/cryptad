@@ -525,7 +525,8 @@ class InstalledWorkloadAdapter:
     Optional ``control`` permits isolated unit tests without an installed socket.
     """
     def __init__(self, plan, private_config, authorization, journal, handoff, expected_jdk_digests=None,
-                 *, control=None, counter_sampler=None, lost_start_sampler=None):
+                 *, control=None, counter_sampler=None, lost_start_sampler=None,
+                 origin_handoff=None):
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
         if (handoff.get('profile') != PROFILE or set(handoff.get('handles', {})) != set(runtime.ROLES)
                 or plan.get('provenanceClass') != 'source-build-comparison'
@@ -575,6 +576,9 @@ class InstalledWorkloadAdapter:
         if lost_start_sampler is not None and not callable(lost_start_sampler):
             fail('lost-start-sampler-invalid')
         self.lost_start_sampler = lost_start_sampler
+        if origin_handoff is not None and not callable(origin_handoff):
+            fail('hostile-origin-handoff-invalid')
+        self.origin_handoff = origin_handoff
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
@@ -1095,6 +1099,26 @@ class InstalledWorkloadAdapter:
                 self.capture_probe_target_roster()
                 self.probe_observer_control()
                 self.probe_arbitrary_endpoint()
+                self.provision_apps()
+                mail = self.apps[('candidate-sender', 'mail-prototype')]
+                if (self.origin_handoff is None
+                        or not isinstance(mail.session, str) or not mail.session
+                        or not mail.origin):
+                    fail('hostile-origin-session-unavailable')
+                self.remaining()
+                acknowledged = self.origin_handoff(mail.session, mail.origin)
+                session_digest = hashlib.sha256(mail.session.encode()).hexdigest()
+                origin_digest = hashlib.sha256(mail.origin.encode()).hexdigest()
+                if acknowledged != {'phase': 'hostile-origin-handoff',
+                                    'sessionDigest': session_digest,
+                                    'originDigest': origin_digest}:
+                    fail('hostile-origin-handoff-unverified')
+                result['signedAppWorkers'] = len(self.apps)
+                result['mailAppKernelProcess'] = mail.observe_worker()
+                result['mailUiOriginDigest'] = origin_digest
+                result['hostileOriginSessionDigest'] = session_digest
+                result['probeAppKernelProcess'] = self.apps[
+                    ('candidate-sender', 'pr315-probe')].observe_worker()
             if group == 'network-app':
                 self.capture_probe_target_roster()
                 self.provision_apps()

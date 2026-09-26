@@ -901,6 +901,83 @@ def _resolver_authority_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _hostile_origin_audit(root, deadline):
+    """Retain the fixed browser-session origin denial without its raw credential."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'hostile-app-origin-denial.json', maximum=16384,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest',
+            'nonceDigest', 'actorUid', 'actorBefore', 'actorAfter',
+            'actorInvocationBefore', 'actorInvocationAfter',
+            'actorCgroupBefore', 'actorCgroupAfter',
+            'actorStateBefore', 'actorStateAfter', 'targetBefore',
+            'targetAfter', 'inputDigest', 'sessionDigest',
+            'expectedOriginDigest', 'hostileOriginDigest',
+            'targetEndpointDigest', 'controlBefore', 'controlAfter',
+            'attackStartedNs', 'attackFinishedNs',
+            'attackResponseDigest', 'denialStatus', 'denialCode'}
+        targets = {'role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+            'workerHostPid', 'workerStartTicks', 'javaHostPid',
+            'javaStartTicks', 'observedMonotonicNs',
+            'controlResponseDigest'}
+        controls = {'status', 'errorCode', 'responseDigest',
+            'startedMonotonicNs', 'finishedMonotonicNs'}
+        stable = targets - {'observedMonotonicNs', 'controlResponseDigest'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-hostile-app-origin-denial'
+                or value['caseId'] != 'hostile-app-origin'
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != ROLE_PROBE_ACTOR_FIELDS
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest',
+                           'actorStateBefore', 'actorStateAfter', 'inputDigest',
+                           'sessionDigest', 'expectedOriginDigest',
+                           'hostileOriginDigest', 'targetEndpointDigest',
+                           'attackResponseDigest'))
+                or value['actorStateBefore'] != value['actorStateAfter']
+                or value['actorInvocationBefore'] != value['actorInvocationAfter']
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != targets
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(value['targetBefore'][key] != value['targetAfter'][key]
+                       for key in stable)
+                or any(value[key]['role'] != 'candidate-sender'
+                       or any(type(value[key][field]) is not int
+                              or value[key][field] <= 0 for field in
+                              ('workerHostPid', 'workerStartTicks',
+                               'javaHostPid', 'javaStartTicks',
+                               'observedMonotonicNs'))
+                       or re.fullmatch('[0-9a-f]{64}',
+                           str(value[key]['controlResponseDigest'])) is None
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != controls
+                       or value[key]['status'] != 200
+                       or value[key]['errorCode'] is not None
+                       for key in ('controlBefore', 'controlAfter'))
+                or value['denialStatus'] != 403
+                or value['denialCode'] != 'origin_mismatch'
+                or not value['targetBefore']['observedMonotonicNs']
+                    < value['controlBefore']['startedMonotonicNs']
+                    < value['controlBefore']['finishedMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['controlAfter']['startedMonotonicNs']
+                    < value['controlAfter']['finishedMonotonicNs']
+                    < value['targetAfter']['observedMonotonicNs']):
+            raise ValueError('hostile-origin-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _output_artifact_audit(root, deadline, case_id):
     """Retain only one fixed role artifact and actual safe-reader rejection."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -1205,6 +1282,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
+            result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
         result['outputHardlinkAudit'] = _output_hardlink_audit(root, deadline)
@@ -1277,6 +1356,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
+            result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
         result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
         result['outputHardlinkAudit'] = _output_hardlink_audit(root, deadline)

@@ -1,4 +1,5 @@
 """Local fixed actor checks; no unit result grants installed workload acceptance."""
+import http.server
 import json
 import os
 import stat
@@ -55,7 +56,7 @@ class RoleProbeTest(unittest.TestCase):
             claims.assert_not_called()
             network.assert_not_called()
 
-    def test_authority_mode_emits_only_fixed_claims_and_resolver_read(self):
+    def test_authority_mode_emits_only_fixed_claims_resolver_and_origin_probe(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             ready = root / 'ready.json'
@@ -73,6 +74,8 @@ class RoleProbeTest(unittest.TestCase):
                     patch.object(probe, 'fixed_false_claims', return_value=claims), \
                     patch.object(probe, 'attempt_fixed_access', return_value={
                         'operation': 'resolver-authority'}) as access, \
+                    patch.object(probe, 'attempt_hostile_origin', return_value={
+                        'caseId': 'hostile-app-origin'}) as hostile, \
                     patch.object(probe, 'attempt_read') as read, \
                     patch.object(probe, 'publish_network_result') as network, \
                     patch.object(probe.time, 'sleep', side_effect=StopIteration):
@@ -82,10 +85,99 @@ class RoleProbeTest(unittest.TestCase):
             self.assertEqual({'schemaVersion', 'kind', 'caseId', 'nonce', 'pid',
                               'uid', 'gid', 'startedMonotonicNs',
                               'finishedMonotonicNs', 'identityClaim',
-                              'counterClaim', 'resolverRead'}, set(record))
+                              'counterClaim', 'resolverRead', 'hostileOrigin'}, set(record))
             access.assert_called_once_with('resolver-authority', probe.RESOLVER_TARGET)
+            hostile.assert_called_once_with('a' * 64)
             read.assert_not_called()
             network.assert_not_called()
+
+    def test_hostile_origin_uses_valid_session_without_emitting_secret(self):
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / 'hostile-input.json'
+            token = 'private-browser-session-token'
+            input_path.write_text(json.dumps({'caseId': 'hostile-app-origin',
+                'nonce': 'a' * 64, 'session': token,
+                'expectedOrigin': 'http://127.0.0.1:12345'}))
+            input_path.chmod(0o600)
+            origins = []
+
+            class Connection:
+                def request(self, method, path, headers):
+                    self.origin = headers['Origin']
+                    origins.append(self.origin)
+                    self_headers = headers
+                    if method != 'GET' or path != probe.HOSTILE_ORIGIN_ENDPOINT \
+                            or self_headers['X-Crypta-App-Session'] != token:
+                        raise AssertionError('unexpected fixed request')
+
+                def getresponse(self):
+                    hostile = self.origin == probe.HOSTILE_ORIGIN
+                    body = (b'{"error":{"code":"origin_mismatch"}}' if hostile
+                            else b'{"status":{"appId":"mail-prototype",'
+                                 b'"storeAvailable":true}}')
+                    return SimpleNamespace(status=403 if hostile else 200,
+                                           read=lambda limit: body)
+
+                def close(self):
+                    pass
+
+            with patch.object(probe, 'HOSTILE_ORIGIN_INPUT', input_path), \
+                    patch.object(probe.http.client, 'HTTPConnection', return_value=Connection()):
+                result = probe.attempt_hostile_origin('a' * 64)
+            self.assertEqual(['http://127.0.0.1:12345', probe.HOSTILE_ORIGIN,
+                              'http://127.0.0.1:12345'], origins)
+            self.assertEqual((200, 403, 200), tuple(result[key]['status'] for key in
+                ('before', 'attack', 'after')))
+            self.assertEqual('origin_mismatch', result['attack']['errorCode'])
+            self.assertNotIn(token, json.dumps(result))
+
+    def test_hostile_origin_emits_real_good_bad_good_http_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / 'hostile-input.json'
+            token = 'private-browser-session-token'
+            input_path.write_text(json.dumps({'caseId': 'hostile-app-origin',
+                'nonce': 'a' * 64, 'session': token,
+                'expectedOrigin': 'http://127.0.0.1:12345'}))
+            input_path.chmod(0o600)
+            requests = []
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    requests.append((self.path, self.headers.get('Origin'),
+                                     self.headers.get('X-Crypta-App-Session')))
+                    hostile = self.headers.get('Origin') == probe.HOSTILE_ORIGIN
+                    body = (b'{"error":{"code":"origin_mismatch"}}' if hostile
+                            else b'{"status":{"appId":"mail-prototype",'
+                                 b'"storeAvailable":true}}')
+                    self.send_response(403 if hostile else 200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, _format, *_args):
+                    pass
+
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                with patch.object(probe, 'HOSTILE_ORIGIN_INPUT', input_path), \
+                        patch.object(probe, 'HOSTILE_ORIGIN_PORT', server.server_address[1]):
+                    result = probe.attempt_hostile_origin('a' * 64)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(5)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([('http://127.0.0.1:12345', token),
+                              (probe.HOSTILE_ORIGIN, token),
+                              ('http://127.0.0.1:12345', token)],
+                             [(origin, session) for path, origin, session in requests
+                              if path == probe.HOSTILE_ORIGIN_ENDPOINT])
+            self.assertEqual(3, len(requests))
+            self.assertEqual('origin_mismatch', result['attack']['errorCode'])
+            self.assertNotIn(token, json.dumps(result))
 
     def test_network_app_mode_runs_only_fixed_sibling_connections(self):
         with tempfile.TemporaryDirectory() as directory:

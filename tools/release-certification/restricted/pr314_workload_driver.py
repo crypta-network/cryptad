@@ -1237,11 +1237,108 @@ def probe_output_replacement(workload, handoff, source_digest, campaign_deadline
                                   campaign_deadline_ns, 'output-replacement')
 
 
+def _mail_browser_control(workload, handoff, session, origin, expected_worker):
+    """Prove a valid Mail browser session and current AppHost child through fixed HTTP."""
+    from cross_version_workload import bind_worker
+    from restricted_workload_controller import _http
+    role = 'candidate-sender'
+    handle = handoff['handles'][role]
+    jdk = handoff['expectedJdkDigests'][role]
+    if (not isinstance(expected_worker, dict)
+            or type(expected_worker.get('namespacePid')) is not int
+            or expected_worker['namespacePid'] <= 1):
+        raise ValueError('workload-hostile-origin-app-worker-invalid')
+    before = workload.observe(handle)
+    worker_before = bind_worker(before, expected_worker['namespacePid'], jdk)
+    stable_worker = ('hostPid', 'namespacePid', 'startTicks', 'javaHostPid',
+                     'javaStartTicks', 'managerInvocation', 'cgroupIdentity')
+    if any(worker_before[key] != expected_worker[key] for key in stable_worker):
+        raise ValueError('workload-hostile-origin-app-worker-changed')
+    with workload.connect(handle, 'http') as channel:
+        status, _headers, body = _http(channel, '/api/v1/app-data/status', {
+            'Accept': 'application/json', 'Origin': origin,
+            'X-Crypta-App-Session': session})
+    response = json.loads(body)
+    app_status = response.get('status') if isinstance(response, dict) else None
+    if (status != 200 or not isinstance(app_status, dict)
+            or app_status.get('appId') != 'mail-prototype'
+            or app_status.get('storeAvailable') is not True):
+        raise ValueError('workload-hostile-origin-valid-target-unavailable')
+    after = workload.observe(handle)
+    worker_after = bind_worker(after, expected_worker['namespacePid'], jdk)
+    if (any(worker_before[key] != worker_after[key] for key in stable_worker)
+            or before['stateDigest'] != after['stateDigest']):
+        raise ValueError('workload-hostile-origin-app-worker-changed')
+    return {'role': role, 'managerInvocation': after['managerInvocation'],
+            'bootId': after['bootId'], 'cgroupIdentity': after['cgroupIdentity'],
+            'workerHostPid': worker_after['hostPid'],
+            'workerStartTicks': worker_after['startTicks'],
+            'javaHostPid': worker_after['javaHostPid'],
+            'javaStartTicks': worker_after['javaStartTicks'],
+            'observedMonotonicNs': after['observedMonotonicNs'],
+            'controlResponseDigest': hashlib.sha256(body).hexdigest()}
+
+
+def _validate_hostile_origin(value, secret, before, after, trigger_ns):
+    """Require the candidate's good/bad/good exchange against one active app."""
+    import pr315_role_probe as role_probe
+    if (not isinstance(value, dict) or set(value) != {
+            'caseId', 'endpointDigest', 'sessionDigest',
+            'expectedOriginDigest', 'hostileOriginDigest',
+            'before', 'attack', 'after'}
+            or value['caseId'] != 'hostile-app-origin'
+            or value['endpointDigest'] != hashlib.sha256(
+                role_probe.HOSTILE_ORIGIN_ENDPOINT.encode()).hexdigest()
+            or value['sessionDigest'] != hashlib.sha256(
+                secret['session'].encode()).hexdigest()
+            or value['expectedOriginDigest'] != hashlib.sha256(
+                secret['expectedOrigin'].encode()).hexdigest()
+            or value['hostileOriginDigest'] != hashlib.sha256(
+                role_probe.HOSTILE_ORIGIN.encode()).hexdigest()):
+        raise ValueError('workload-hostile-origin-probe-invalid')
+    fields = {'status', 'errorCode', 'responseDigest',
+              'startedMonotonicNs', 'finishedMonotonicNs'}
+    for name in ('before', 'attack', 'after'):
+        sample = value[name]
+        if (not isinstance(sample, dict) or set(sample) != fields
+                or type(sample['status']) is not int
+                or re.fullmatch('[0-9a-f]{64}', str(sample['responseDigest'])) is None
+                or type(sample['startedMonotonicNs']) is not int
+                or type(sample['finishedMonotonicNs']) is not int
+                or sample['startedMonotonicNs'] >= sample['finishedMonotonicNs']):
+            raise ValueError('workload-hostile-origin-exchange-invalid')
+    good_before, attack, good_after = (value[key]
+        for key in ('before', 'attack', 'after'))
+    stable = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+              'workerHostPid', 'workerStartTicks', 'javaHostPid',
+              'javaStartTicks')
+    if (good_before['status'] != 200 or good_before['errorCode'] is not None
+            or attack['status'] != 403 or attack['errorCode'] != 'origin_mismatch'
+            or good_after['status'] != 200 or good_after['errorCode'] is not None
+            or any(before[key] != after[key] for key in stable)
+            or not before['observedMonotonicNs'] < trigger_ns
+                < good_before['startedMonotonicNs'] < good_before['finishedMonotonicNs']
+                < attack['startedMonotonicNs'] < attack['finishedMonotonicNs']
+                < good_after['startedMonotonicNs'] < good_after['finishedMonotonicNs']
+                < after['observedMonotonicNs']):
+        raise ValueError('workload-hostile-origin-denial-or-target-invalid')
+    return value
+
+
 def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
-                           campaign_deadline_ns):
+                           campaign_deadline_ns, hostile_secret=None,
+                           expected_mail_worker=None):
     """Bind one fixed candidate authority probe to the live resolver and kernel."""
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-role-probe-campaign-expired')
+    if (not isinstance(hostile_secret, dict)
+            or set(hostile_secret) != {'session', 'expectedOrigin'}
+            or not isinstance(hostile_secret['session'], str)
+            or not 1 <= len(hostile_secret['session']) <= 4096
+            or not isinstance(hostile_secret['expectedOrigin'], str)
+            or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}',
+                            hostile_secret['expectedOrigin']) is None):
+        raise ValueError('workload-hostile-origin-session-unavailable')
     case_id = 'authority'
     nonce = secrets.token_hex(32)
     role = 'candidate-sender'
@@ -1252,7 +1349,7 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
          'sourceDigest': source_digest}, create=True, mode=0o444)
     account = workload.account(role)
     probe_root = workload.ROOT / 'state/candidate-sender/tmp'
-    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    until = min(time.monotonic() + 45, campaign_deadline_ns / 1e9)
     ready = _wait_output_record(probe_root / 'pr315-authority-ready.json',
         account.pw_uid, until, 'workload-role-probe-ready-timeout')
     if (not isinstance(ready, dict) or set(ready) != {
@@ -1266,12 +1363,38 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
     actor_before = _role_probe_actor(before, nonce, case_id)
     if ready['pid'] != actor_before['namespacePids'][-1]:
         raise ValueError('workload-role-probe-pid-unbound')
-    resolver_before = _resolver_target_control(resolver_digest)
-    trigger_ns = time.monotonic_ns()
-    _publish_output_trigger(probe_root, 'pr315-authority-trigger.json', case_id, nonce)
-    result = _wait_output_record(probe_root / 'pr315-authority.json',
-        account.pw_uid, until, 'workload-role-probe-result-timeout')
-    resolver_after = _resolver_target_control(resolver_digest)
+    input_path = probe_root / 'pr315-hostile-origin-input.json'
+    input_bytes = json.dumps({'caseId': 'hostile-app-origin', 'nonce': nonce,
+        'session': hostile_secret['session'],
+        'expectedOrigin': hostile_secret['expectedOrigin']},
+        sort_keys=True, separators=(',', ':')).encode()
+    if not 0 < len(input_bytes) <= 8192:
+        raise ValueError('workload-hostile-origin-input-limit')
+    descriptor = os.open(input_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchown(descriptor, account.pw_uid, account.pw_gid)
+        if os.write(descriptor, input_bytes) != len(input_bytes):
+            raise ValueError('workload-hostile-origin-input-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    input_digest = hashlib.sha256(input_bytes).hexdigest()
+    try:
+        resolver_before = _resolver_target_control(resolver_digest)
+        mail_before = _mail_browser_control(workload, handoff,
+            hostile_secret['session'], hostile_secret['expectedOrigin'],
+            expected_mail_worker)
+        trigger_ns = time.monotonic_ns()
+        _publish_output_trigger(probe_root, 'pr315-authority-trigger.json', case_id, nonce)
+        result = _wait_output_record(probe_root / 'pr315-authority.json',
+            account.pw_uid, until, 'workload-role-probe-result-timeout')
+        resolver_after = _resolver_target_control(resolver_digest)
+        mail_after = _mail_browser_control(workload, handoff,
+            hostile_secret['session'], hostile_secret['expectedOrigin'],
+            expected_mail_worker)
+    finally:
+        input_path.unlink(missing_ok=True)
     after = workload.observe(handle)
     actor_after = _role_probe_actor(after, nonce, case_id)
     stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
@@ -1281,7 +1404,7 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
     if (not isinstance(result, dict) or set(result) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
             'startedMonotonicNs', 'finishedMonotonicNs', 'identityClaim',
-            'counterClaim', 'resolverRead'}
+            'counterClaim', 'resolverRead', 'hostileOrigin'}
             or result['schemaVersion'] != 1
             or result['kind'] != 'pr315-candidate-authority-probe'
             or result['caseId'] != case_id or result['nonce'] != nonce
@@ -1296,14 +1419,20 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
             or not ready['startedMonotonicNs'] < before['observedMonotonicNs']
                 < resolver_before['observedMonotonicNs'] < trigger_ns
                 < result['startedMonotonicNs'] < result['finishedMonotonicNs']
-                < resolver_after['observedMonotonicNs'] < after['observedMonotonicNs']):
+                < resolver_after['observedMonotonicNs']
+                < mail_after['observedMonotonicNs'] < after['observedMonotonicNs']):
         raise ValueError('workload-authority-actor-or-window-invalid')
     identity, counters = _validate_false_role_claims(result, before, after,
         actor_before, account.pw_uid, authority_only=True)
     resolver_read = _validate_resolver_read(
         result, before, after, resolver_before, resolver_after)
+    hostile = _validate_hostile_origin(result['hostileOrigin'], hostile_secret,
+        mail_before, mail_after, trigger_ns)
     if not (counters['finishedMonotonicNs'] < resolver_read['startedMonotonicNs']
-            < resolver_read['finishedMonotonicNs'] < result['finishedMonotonicNs']):
+            < resolver_read['finishedMonotonicNs']
+            < hostile['before']['startedMonotonicNs']
+            < hostile['after']['finishedMonotonicNs']
+            < result['finishedMonotonicNs']):
         raise ValueError('workload-authority-operation-order-invalid')
     nonce_digest = hashlib.sha256(nonce.encode()).hexdigest()
     claim_base = {'schemaVersion': 1, 'sourceDigest': source_digest,
@@ -1352,7 +1481,30 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
         'attackStartedNs': resolver_read['startedMonotonicNs'],
         'attackFinishedNs': resolver_read['finishedMonotonicNs'],
         'kernelOpenResult': resolver_read['outcome']}
-    for audit in (identity_audit, counter_audit, resolver_audit):
+    hostile_audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-hostile-app-origin-denial',
+        'caseId': 'hostile-app-origin', 'sourceDigest': source_digest,
+        'nonceDigest': nonce_digest, 'actorUid': account.pw_uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'actorInvocationBefore': before['managerInvocation'],
+        'actorInvocationAfter': after['managerInvocation'],
+        'actorCgroupBefore': before['cgroupIdentity'],
+        'actorCgroupAfter': after['cgroupIdentity'],
+        'actorStateBefore': before['stateDigest'],
+        'actorStateAfter': after['stateDigest'],
+        'targetBefore': mail_before, 'targetAfter': mail_after,
+        'inputDigest': input_digest,
+        'sessionDigest': hostile['sessionDigest'],
+        'expectedOriginDigest': hostile['expectedOriginDigest'],
+        'hostileOriginDigest': hostile['hostileOriginDigest'],
+        'targetEndpointDigest': hostile['endpointDigest'],
+        'controlBefore': hostile['before'], 'controlAfter': hostile['after'],
+        'attackStartedNs': hostile['attack']['startedMonotonicNs'],
+        'attackFinishedNs': hostile['attack']['finishedMonotonicNs'],
+        'attackResponseDigest': hostile['attack']['responseDigest'],
+        'denialStatus': hostile['attack']['status'],
+        'denialCode': hostile['attack']['errorCode']}
+    for audit in (identity_audit, counter_audit, resolver_audit, hostile_audit):
         workload.write(workload.ROOT / 'authority' /
             (audit['caseId'] + '-denial.json'), audit, create=True)
     return {'identityAuditDigest': hashlib.sha256(json.dumps(identity_audit,
@@ -1360,6 +1512,8 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
             'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit,
                 sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
             'resolverAuditDigest': hashlib.sha256(json.dumps(resolver_audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'hostileOriginAuditDigest': hashlib.sha256(json.dumps(hostile_audit,
                 sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
 
@@ -1804,6 +1958,38 @@ def complete_lost_start_before_cleanup(workload, handoff, result, diagnostics):
                       'cgroupIdentity': record['cgroupIdentity'],
                       'mainPid': int(state['MainPID']),
                       'observedMonotonicNs': finished}}
+
+
+def _verify_hostile_origin_handoff(result, group, sampler, diagnostics):
+    """Bind a root-memory browser credential to digest-only observer output."""
+    if not isinstance(result, dict):
+        raise ValueError('workload-observer-result-invalid')
+    injected = result.pop('hostileOriginSecret', None)
+    secret = sampler.hostile_origin_secret
+    if injected is not None:
+        raise ValueError('workload-hostile-origin-secret-in-result')
+    if group != 'authority':
+        if secret is not None:
+            raise ValueError('workload-hostile-origin-session-unselected')
+        return None
+    if (not isinstance(secret, dict)
+            or set(secret) != {'session', 'expectedOrigin'}
+            or not isinstance(secret['session'], str)
+            or not 1 <= len(secret['session']) <= 4096
+            or not secret['session'].isascii()
+            or any(ord(character) < 33 or ord(character) > 126
+                   for character in secret['session'])
+            or not isinstance(secret['expectedOrigin'], str)
+            or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}',
+                            secret['expectedOrigin']) is None):
+        raise ValueError('workload-hostile-origin-session-invalid')
+    session_digest = hashlib.sha256(secret['session'].encode()).hexdigest()
+    origin_digest = hashlib.sha256(secret['expectedOrigin'].encode()).hexdigest()
+    if (result.get('hostileOriginSessionDigest') != session_digest
+            or result.get('mailUiOriginDigest') != origin_digest):
+        raise ValueError('workload-hostile-origin-handoff-mismatch')
+    diagnostics['hostileOriginSessionDigest'] = session_digest
+    return secret
 
 
 def begin_cancellation(workload, handoff, result):
@@ -2445,7 +2631,7 @@ class AdministratorFnpSampler:
 
     def __init__(self, workload, recipient_handle, diagnostics, sender_handle=None,
                  probe_digest=None, sender_jdk_digest=None, handoff=None, observer_root=None,
-                 lost_start_before=None):
+                 lost_start_before=None, hostile_origin_selected=False):
         self.workload = workload
         self.recipient_handle = recipient_handle
         self.diagnostics = diagnostics
@@ -2456,6 +2642,32 @@ class AdministratorFnpSampler:
         self.handoff = handoff
         self.observer_root = observer_root
         self.lost_start_before = lost_start_before
+        self.hostile_origin_selected = hostile_origin_selected
+        self.hostile_origin_secret = None
+
+    def hostile_origin_handoff(self, payload):
+        """Keep one selected browser credential in administrator memory only."""
+        if (self.hostile_origin_selected is not True
+                or self.hostile_origin_secret is not None
+                or not 0 < len(payload) <= 8192):
+            raise ValueError('workload-hostile-origin-handoff-unselected')
+        secret = json.loads(payload)
+        if (not isinstance(secret, dict)
+                or set(secret) != {'session', 'expectedOrigin'}
+                or not isinstance(secret['session'], str)
+                or not 1 <= len(secret['session']) <= 4096
+                or not secret['session'].isascii()
+                or any(ord(character) < 33 or ord(character) > 126
+                       for character in secret['session'])
+                or not isinstance(secret['expectedOrigin'], str)
+                or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}',
+                                secret['expectedOrigin']) is None):
+            raise ValueError('workload-hostile-origin-handoff-invalid')
+        self.hostile_origin_secret = secret
+        return {'phase': 'hostile-origin-handoff',
+                'sessionDigest': hashlib.sha256(secret['session'].encode()).hexdigest(),
+                'originDigest': hashlib.sha256(
+                    secret['expectedOrigin'].encode()).hexdigest()}
 
     def lost_start_prepare(self):
         """Mark the exact transition from four-role preparation to the fault probe."""
@@ -2734,7 +2946,7 @@ class AdministratorFnpSampler:
                 'snapshot': snapshot}
 
     def serve(self, channel):
-        message, _ancillary, flags, _address = channel.recvmsg(3)
+        message, _ancillary, flags, _address = channel.recvmsg(8193)
         if not message:
             return False
         try:
@@ -2745,10 +2957,13 @@ class AdministratorFnpSampler:
                                 b'E': 'daemon-epoch', b'J': 'journal-node-start'}.get(message[2:3])
                                if readiness_role is not None else None)
             if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or (
-                    message not in (b'B', b'A', b'P', b'Q', b'L') and readiness_stage is None):
+                    message not in (b'B', b'A', b'P', b'Q', b'L')
+                    and not message.startswith(b'H') and readiness_stage is None):
                 raise ValueError('workload-admin-fnp-request-invalid')
             result = (self.readiness(readiness_role, readiness_stage)
                       if readiness_stage is not None else
+                      self.hostile_origin_handoff(message[1:])
+                      if message.startswith(b'H') else
                       self.lost_start_prepare() if message == b'Q' else
                       self.lost_start_intent() if message == b'L' else
                       self.probe() if message == b'P' else
@@ -2763,6 +2978,11 @@ class AdministratorFnpSampler:
                 self.diagnostics['probeAdminFailure'] = {
                     'phase': 'probe', 'exceptionType': type(error).__name__[:128]}
                 result = {'error': 'pr315-admin-probe-sample-failed'}
+            elif message.startswith(b'H'):
+                self.diagnostics['hostileOriginAdminFailure'] = {
+                    'phase': 'hostile-origin-handoff',
+                    'exceptionType': type(error).__name__[:128]}
+                result = {'error': 'pr315-admin-hostile-origin-handoff-failed'}
             elif message in (b'Q', b'L'):
                 self.diagnostics['lostStartAdminFailure'] = {
                     'phase': 'lost-start-before' if message == b'Q' else 'lost-start-intent',
@@ -2850,6 +3070,34 @@ def request_administrator_lost_start(channel, phase, campaign_deadline):
                 re.fullmatch('[0-9a-f]{64}', str(value['generation'])) is None
                 or re.fullmatch('[0-9a-f]{32}', str(value['managerInvocation'])) is None)):
         raise ValueError('workload-admin-lost-start-sample-failed')
+    return value
+
+
+def request_administrator_hostile_origin(channel, session, origin,
+                                         campaign_deadline):
+    """Send one selected browser credential over the inherited private packet socket."""
+    if (not isinstance(session, str) or not 1 <= len(session) <= 4096
+            or not isinstance(origin, str)
+            or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}', origin) is None):
+        raise ValueError('workload-admin-hostile-origin-selection-invalid')
+    payload = json.dumps({'session': session, 'expectedOrigin': origin},
+                         sort_keys=True, separators=(',', ':')).encode()
+    if len(payload) > 8192:
+        raise ValueError('workload-admin-hostile-origin-packet-limit')
+    remaining = campaign_deadline / 1e9 - time.monotonic()
+    if remaining <= 0:
+        raise ValueError('workload-admin-hostile-origin-deadline')
+    channel.settimeout(min(8, remaining))
+    channel.sendall(b'H' + payload)
+    raw = channel.recv(513)
+    if not 1 <= len(raw) <= 512 or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
+        raise ValueError('workload-admin-hostile-origin-response-invalid')
+    value = json.loads(raw)
+    expected = {'phase': 'hostile-origin-handoff',
+                'sessionDigest': hashlib.sha256(session.encode()).hexdigest(),
+                'originDigest': hashlib.sha256(origin.encode()).hexdigest()}
+    if value != expected:
+        raise ValueError('workload-admin-hostile-origin-unverified')
     return value
 
 
@@ -2965,7 +3213,10 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                 admin_channel, phase, campaign_deadline)) if admin_channel is not None else None,
             lost_start_sampler=(lambda phase: request_administrator_lost_start(
                 admin_channel, phase, campaign_deadline))
-                if admin_channel is not None and workload_group == 'lost-start-response' else None)
+                if admin_channel is not None and workload_group == 'lost-start-response' else None,
+            origin_handoff=(lambda session, origin: request_administrator_hostile_origin(
+                admin_channel, session, origin, campaign_deadline))
+                if admin_channel is not None and workload_group == 'authority' else None)
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
@@ -3412,7 +3663,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             probe_digest=probe_digest,
             sender_jdk_digest=handoff.get('expectedJdkDigests', {}).get('candidate-sender'),
             handoff=handoff, observer_root=root,
-            lost_start_before=lost_start_before)
+            lost_start_before=lost_start_before,
+            hostile_origin_selected=workload_group == 'authority')
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
             admin_sampler=sampler)
@@ -3429,6 +3681,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['readinessJcmd'] = {'status': 'failure-transcript-invalid'}
             raise ValueError('workload-positive-sequence-failed')
         result = json.loads(raw)
+        hostile_secret = _verify_hostile_origin_handoff(
+            result, workload_group, sampler, diagnostics)
         if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
@@ -3557,13 +3811,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             try:
                 claims = probe_authority_claims(
                     workload, handoff, role_probe_digest, resolver_digest,
-                    campaign_deadline)
+                    campaign_deadline, hostile_secret,
+                    result['mailAppKernelProcess'])
                 for field, case_id, digest_key in (
                         ('forgedRuntimeIdentity', 'forged-runtime-identity',
                          'identityAuditDigest'),
                         ('forgedCounters', 'forged-counters', 'counterAuditDigest'),
                         ('resolverAuthority', 'resolver-authority',
-                         'resolverAuditDigest')):
+                         'resolverAuditDigest'),
+                        ('hostileAppOrigin', 'hostile-app-origin',
+                         'hostileOriginAuditDigest')):
                     diagnostics[field] = {'status': 'captured', 'caseId': case_id,
                                           'auditDigest': claims[digest_key]}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
@@ -3574,7 +3831,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 if code is not None:
                     diagnostic['code'] = code
                 for field in ('forgedRuntimeIdentity', 'forgedCounters',
-                              'resolverAuthority'):
+                              'resolverAuthority', 'hostileAppOrigin'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and workload_group == 'network-app':
             diagnostics['probeStart'] = {'schemaVersion': 1,

@@ -6,10 +6,13 @@ This child cannot authorize a case or supply its own trusted identity.
 """
 import errno
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
+import re
 import socket
+import stat
 import sys
 import time
 
@@ -27,6 +30,10 @@ ROLE_BOUNDARY_TRIGGER = Path('/node/tmp/pr315-role-boundary-trigger.json')
 AUTHORITY_OUTPUT = Path('/node/tmp/pr315-authority.json')
 AUTHORITY_READY = Path('/node/tmp/pr315-authority-ready.json')
 AUTHORITY_TRIGGER = Path('/node/tmp/pr315-authority-trigger.json')
+HOSTILE_ORIGIN_INPUT = Path('/node/tmp/pr315-hostile-origin-input.json')
+HOSTILE_ORIGIN = 'http://127.0.0.1:1'
+HOSTILE_ORIGIN_PORT = 19402
+HOSTILE_ORIGIN_ENDPOINT = '/api/v1/app-data/status'
 NETWORK_APP_READY = Path('/node/tmp/pr315-network-app-ready.json')
 SETSID_READY = Path('/node/tmp/pr315-setsid-double-fork-ready.json')
 SETSID_TRIGGER = Path('/node/tmp/pr315-setsid-double-fork-trigger.json')
@@ -180,6 +187,71 @@ def fixed_false_claims() -> tuple[dict, dict]:
     counters = {'claimedMemoryCurrentBytes': 0, 'claimedTasksCurrent': 0,
                 'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns()}
     return identity, counters
+
+
+def attempt_hostile_origin(nonce: str) -> dict:
+    """Use one valid browser session but a fixed wrong Origin from this role."""
+    descriptor = os.open(HOSTILE_ORIGIN_INPUT,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or info.st_nlink != 1 or info.st_mode & 0o077
+                or not 0 < info.st_size <= 8192):
+            raise ValueError('pr315-hostile-origin-input-unsafe')
+        raw = os.read(descriptor, 8193)
+        if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+            raise ValueError('pr315-hostile-origin-input-changed')
+    finally:
+        os.close(descriptor)
+    selected = json.loads(raw)
+    if (not isinstance(selected, dict) or set(selected) != {
+            'caseId', 'nonce', 'session', 'expectedOrigin'}
+            or selected['caseId'] != 'hostile-app-origin'
+            or selected['nonce'] != nonce
+            or not isinstance(selected['session'], str)
+            or not 1 <= len(selected['session']) <= 4096
+            or not selected['session'].isascii()
+            or any(ord(character) < 33 or ord(character) > 126
+                   for character in selected['session'])
+            or not isinstance(selected['expectedOrigin'], str)
+            or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}',
+                            selected['expectedOrigin']) is None
+            or selected['expectedOrigin'] == HOSTILE_ORIGIN):
+        raise ValueError('pr315-hostile-origin-input-invalid')
+
+    def request(origin: str) -> dict:
+        started = time.monotonic_ns()
+        connection = http.client.HTTPConnection('127.0.0.1', HOSTILE_ORIGIN_PORT,
+                                                timeout=5)
+        try:
+            connection.request('GET', HOSTILE_ORIGIN_ENDPOINT, headers={
+                'Accept': 'application/json', 'Origin': origin,
+                'X-Crypta-App-Session': selected['session']})
+            response = connection.getresponse()
+            body = response.read(65537)
+            if len(body) > 65536:
+                raise ValueError('pr315-hostile-origin-response-limit')
+            value = json.loads(body)
+            error = value.get('error') if isinstance(value, dict) else None
+            return {'status': response.status,
+                    'errorCode': error.get('code') if isinstance(error, dict) else None,
+                    'responseDigest': hashlib.sha256(body).hexdigest(),
+                    'startedMonotonicNs': started,
+                    'finishedMonotonicNs': time.monotonic_ns()}
+        finally:
+            connection.close()
+
+    before = request(selected['expectedOrigin'])
+    attack = request(HOSTILE_ORIGIN)
+    after = request(selected['expectedOrigin'])
+    return {'caseId': 'hostile-app-origin',
+            'endpointDigest': hashlib.sha256(HOSTILE_ORIGIN_ENDPOINT.encode()).hexdigest(),
+            'sessionDigest': hashlib.sha256(selected['session'].encode()).hexdigest(),
+            'expectedOriginDigest': hashlib.sha256(
+                selected['expectedOrigin'].encode()).hexdigest(),
+            'hostileOriginDigest': hashlib.sha256(HOSTILE_ORIGIN.encode()).hexdigest(),
+            'before': before, 'attack': attack, 'after': after}
 
 
 def attempt_fixed_access(operation: str, path: Path, payload: bytes | None = None) -> dict:
@@ -505,13 +577,14 @@ def main() -> None:
         started = time.monotonic_ns()
         identity, counters = fixed_false_claims()
         resolver = attempt_fixed_access('resolver-authority', RESOLVER_TARGET)
+        hostile_origin = attempt_hostile_origin(sys.argv[1])
         record = {'schemaVersion': 1, 'kind': 'pr315-candidate-authority-probe',
                   'caseId': 'authority', 'nonce': sys.argv[1],
                   'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
                   'startedMonotonicNs': started,
                   'finishedMonotonicNs': time.monotonic_ns(),
                   'identityClaim': identity, 'counterClaim': counters,
-                  'resolverRead': resolver}
+                  'resolverRead': resolver, 'hostileOrigin': hostile_origin}
         _publish_record(AUTHORITY_OUTPUT, record)
         while True:
             time.sleep(1)

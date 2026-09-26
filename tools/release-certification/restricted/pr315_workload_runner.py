@@ -240,8 +240,9 @@ def group_prepared(report, result, terminal, group):
             and result.get('contentRetrieval') == 'not-executed-group'
             and result.get('newEpoch') is False
             and result.get('topologyRoles') == 4
-            and result.get('signedAppWorkers') == (3 if group == 'network-app' else 0)
-            and (group != 'network-app' or
+            and result.get('signedAppWorkers') == (
+                3 if group in ('authority', 'network-app') else 0)
+            and (group not in ('authority', 'network-app') or
                  isinstance(result.get('probeAppKernelProcess'), dict)
                  and result['probeAppKernelProcess'].get('provenance') ==
                      'controller-kernel-sample')
@@ -2383,6 +2384,161 @@ def _resolver_authority_attempt(report, result, fixture, terminal, source):
         return None
 
 
+def _hostile_origin_attempt(report, result, fixture, terminal, source, diagnostics):
+    """Bind a candidate-role Origin refusal to the live signed Mail AppHost."""
+    case_id = 'hostile-app-origin'
+    try:
+        if (not group_prepared(report, result, terminal, 'authority')
+                or fixture.get('schemaVersion') != 4
+                or not isinstance(diagnostics, dict)
+                or terminal['hostileAppOriginAudit']['status'] != 'captured'):
+            return None
+        audit = terminal['hostileAppOriginAudit']['record']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        before, after = audit['actorBefore'], audit['actorAfter']
+        first, last = audit['targetBefore'], audit['targetAfter']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        worker = result['mailAppKernelProcess']
+        host = report['hostVerifiedIdentity']
+        stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                        'pidNamespace', 'networkNamespaceIdentity',
+                        'mountNamespaceIdentity', 'userNamespaceIdentity',
+                        'executableDigest', 'noNewPrivileges',
+                        'effectiveCapabilities')
+        stable_target = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                         'workerHostPid', 'workerStartTicks',
+                         'javaHostPid', 'javaStartTicks')
+        actor_group = fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-hostile-app-origin-denial'
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr315_role_probe.py')
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable_actor)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['actorInvocationBefore'] != sender['invocationId']
+                or audit['actorInvocationAfter'] != sender['invocationId']
+                or audit['actorCgroupBefore'] != audit['actorCgroupAfter']
+                or actor_group != sender['cgroupDigest']
+                or audit['actorStateBefore'] != audit['actorStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['actorStateBefore']
+                or any(first[key] != last[key] for key in stable_target)
+                or first['role'] != 'candidate-sender'
+                or first['managerInvocation'] != sender['invocationId']
+                or first['bootId'].replace('-', '').lower() != sender['bootId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': first['cgroupIdentity']})[7:] != sender['cgroupDigest']
+                or type(first['workerHostPid']) is not int
+                or type(first['workerStartTicks']) is not int
+                or first['workerHostPid'] <= 1 or first['workerStartTicks'] <= 0
+                or worker['provenance'] != 'controller-kernel-sample'
+                or worker['hostPid'] != first['workerHostPid']
+                or worker['startTicks'] != first['workerStartTicks']
+                or worker['javaHostPid'] != first['javaHostPid']
+                or worker['javaStartTicks'] != first['javaStartTicks']
+                or worker['managerInvocation'] != sender['invocationId']
+                or worker['cgroupIdentity'] != first['cgroupIdentity']
+                or type(worker['javaHostPid']) is not int
+                or worker['javaHostPid'] <= 1
+                or type(worker['javaStartTicks']) is not int
+                or worker['javaStartTicks'] < worker['startTicks']
+                or audit['sessionDigest'] != diagnostics['hostileOriginSessionDigest']
+                or audit['expectedOriginDigest'] != result['mailUiOriginDigest']
+                or audit['hostileOriginDigest'] != hashlib.sha256(
+                    b'http://127.0.0.1:1').hexdigest()
+                or audit['targetEndpointDigest'] != hashlib.sha256(
+                    b'/api/v1/app-data/status').hexdigest()
+                or audit['denialStatus'] != 403
+                or audit['denialCode'] != 'origin_mismatch'
+                or any(audit[key]['status'] != 200
+                       or audit[key]['errorCode'] is not None
+                       for key in ('controlBefore', 'controlAfter'))
+                or not first['observedMonotonicNs']
+                    < audit['controlBefore']['startedMonotonicNs']
+                    < audit['controlBefore']['finishedMonotonicNs']
+                    < audit['attackStartedNs'] < audit['attackFinishedNs']
+                    < audit['controlAfter']['startedMonotonicNs']
+                    < audit['controlAfter']['finishedMonotonicNs']
+                    < last['observedMonotonicNs'] < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit',
+            'helperSourceTree', 'bundleIdentity', 'testKitDigest',
+            'profileDigest', 'bootClosureDigest', 'preparedImageDigest',
+            'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        attack_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id, 'target': acceptance.CASES[case_id].target,
+                  'role': 'candidate-sender',
+                  'invocationId': sender['invocationId'],
+                  'cgroupDigest': sender['cgroupDigest'], 'bootId': sender['bootId'],
+                  'probeDigest': '',
+                  'controlResponseDigest': first['controlResponseDigest']}
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+                   'attackStartedNs': audit['attackStartedNs'],
+                   'targetActiveBeforeNs': first['observedMonotonicNs'],
+                   'targetActiveAfterNs': last['observedMonotonicNs'],
+                   'controlResponseDigest': first['controlResponseDigest'],
+                   'denialSource': 'server', 'denialCode': 'policy-rejected',
+                   'unrelatedStateBefore': audit['actorStateBefore'],
+                   'unrelatedStateAfter': audit['actorStateAfter'],
+                   'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed',
+            'actor': case.actor, 'target': case.target, 'outcome': case.outcome,
+            'startedMonotonicNs': first['observedMonotonicNs'],
+            'finishedMonotonicNs': last['observedMonotonicNs'],
+            'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True,
+            'principals': result['roleKernelRoster'],
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+            'status': 'passed', 'actorEpoch': _v9_actor_epoch(before, sender),
+            'targetEpoch': {'kind': 'normally-signed-mail-apphost',
+                'role': 'candidate-sender',
+                'bootId': sender['bootId'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest'],
+                'installedAppDigest': fixture['mailDigest'][7:],
+                'workerHostPid': first['workerHostPid'],
+                'workerStartTicks': first['workerStartTicks'],
+                'javaHostPid': first['javaHostPid'],
+                'javaStartTicks': first['javaStartTicks'],
+                'expectedOriginDigest': audit['expectedOriginDigest'],
+                'sessionDigest': audit['sessionDigest'],
+                'controlBeforeDigest': first['controlResponseDigest'],
+                'controlAfterDigest': last['controlResponseDigest']},
+            'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                'finishedMonotonicNs': audit['attackFinishedNs']},
+            'attackDigest': attack_digest,
+            'denialCode': 'origin_mismatch',
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -3167,6 +3323,23 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
                 statuses['resolver-authority'] = 'passed'
+            if (authority_ready and isinstance(terminal, dict)
+                    and terminal.get('hostileAppOriginAudit', {}).get('status') == 'captured'):
+                denial = _hostile_origin_attempt(
+                    report, value, fixture, terminal, args.source, resources)
+                if denial is None:
+                    raise ValueError('workload-hostile-origin-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'hostile-app-origin') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-hostile-origin-case-invalid')
+                native_runner._save(output / 'hostile-app-origin-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'hostile-app-origin-v9-evidence.private.json', sidecar)
+                statuses['hostile-app-origin'] = 'passed'
             if (output_group and group_ready and isinstance(terminal, dict)
                     and terminal.get({'output-symlink': 'outputSymlinkAudit',
                                       'output-fifo': 'outputFifoAudit',

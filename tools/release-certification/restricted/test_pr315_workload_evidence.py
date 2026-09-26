@@ -7,6 +7,7 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -1197,6 +1198,59 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.state.symlink_to(original, target_is_directory=True)
         result = evidence._capture(self.root, self.expected, True)
         self.assertEqual('unavailable-or-unsafe', result['sentinel']['status'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_hostile_origin_audit_retains_only_closed_digest_witness(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-sender', 'managerInvocation': 'c' * 32,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 22], 'workerHostPid': 211,
+                  'workerStartTicks': 30, 'javaHostPid': 212,
+                  'javaStartTicks': 31, 'observedMonotonicNs': 20,
+                  'controlResponseDigest': 'd' * 64}
+        control = {'status': 200, 'errorCode': None,
+                   'responseDigest': 'e' * 64,
+                   'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-hostile-app-origin-denial',
+            'caseId': 'hostile-app-origin', 'sourceDigest': 'a' * 64,
+            'nonceDigest': 'b' * 64, 'actorUid': 1001,
+            'actorBefore': actor, 'actorAfter': dict(actor),
+            'actorInvocationBefore': 'c' * 32,
+            'actorInvocationAfter': 'c' * 32,
+            'actorCgroupBefore': [1, 22], 'actorCgroupAfter': [1, 22],
+            'actorStateBefore': 'd' * 64, 'actorStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=100),
+            'inputDigest': 'a' * 64, 'sessionDigest': 'b' * 64,
+            'expectedOriginDigest': 'c' * 64,
+            'hostileOriginDigest': 'd' * 64,
+            'targetEndpointDigest': 'e' * 64,
+            'controlBefore': control,
+            'controlAfter': dict(control, startedMonotonicNs=75,
+                                 finishedMonotonicNs=80),
+            'attackStartedNs': 50, 'attackFinishedNs': 60,
+            'attackResponseDigest': 'f' * 64,
+            'denialStatus': 403, 'denialCode': 'origin_mismatch'}
+        path = self.root / 'authority/hostile-app-origin-denial.json'
+        path.write_text(json.dumps(audit))
+        path.chmod(0o600)
+        captured = evidence._hostile_origin_audit(self.root, time.monotonic() + 2)
+        self.assertEqual('captured', captured['status'])
+        self.assertEqual(audit, captured['record'])
+        whole = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('captured', whole['hostileAppOriginAudit']['status'])
+        audit['browserSessionToken'] = 'must-not-retain'
+        path.write_text(json.dumps(audit))
+        self.assertEqual('unavailable-or-unsafe', evidence._hostile_origin_audit(
+            self.root, time.monotonic() + 2)['status'])
+        self.assertNotIn('must-not-retain', json.dumps(evidence._capture(
+            self.root, self.expected, True)))
 
 
 if __name__ == '__main__':

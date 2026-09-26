@@ -284,9 +284,13 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report,
             {**result, 'groupPreparation': 'role-boundary'}, terminal,
             'role-boundary'))
-        self.assertTrue(runner.group_prepared(report,
-            {**result, 'groupPreparation': 'authority'}, terminal,
-            'authority'))
+        authority = {**result, 'groupPreparation': 'authority',
+                     'signedAppWorkers': 3,
+                     'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, authority, terminal,
+                                              'authority'))
+        self.assertFalse(runner.group_prepared(report,
+            {**authority, 'signedAppWorkers': 0}, terminal, 'authority'))
         network = {**result, 'groupPreparation': 'network-app',
                    'signedAppWorkers': 3,
                    'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'}}
@@ -613,6 +617,96 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual('passed', next(row['status'] for row in
                 runner.acceptance.verify_attempts(identity, [attempt])['cases']
                 if row['caseId'] == 'resolver-authority'))
+
+    def test_hostile_origin_needs_candidate_actor_live_signed_app_and_root_controls(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-sender',
+                  'managerInvocation': sender['invocationId'],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 99], 'workerHostPid': 211,
+                  'workerStartTicks': 42, 'javaHostPid': 212,
+                  'javaStartTicks': 43, 'observedMonotonicNs': 40,
+                  'controlResponseDigest': 'e' * 64}
+        control = {'status': 200, 'errorCode': None,
+                   'responseDigest': 'c' * 64,
+                   'startedMonotonicNs': 50, 'finishedMonotonicNs': 55}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-hostile-app-origin-denial',
+                 'caseId': 'hostile-app-origin',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'actorStateBefore': 'd' * 64, 'actorStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=100),
+                 'inputDigest': 'a' * 64, 'sessionDigest': 'f' * 64,
+                 'expectedOriginDigest': 'g' * 64,
+                 'hostileOriginDigest': hashlib.sha256(
+                     b'http://127.0.0.1:1').hexdigest(),
+                 'targetEndpointDigest': hashlib.sha256(
+                     b'/api/v1/app-data/status').hexdigest(),
+                 'controlBefore': control,
+                 'controlAfter': dict(control, startedMonotonicNs=75,
+                                      finishedMonotonicNs=80),
+                 'attackStartedNs': 60, 'attackFinishedNs': 70,
+                 'attackResponseDigest': '9' * 64,
+                 'denialStatus': 403, 'denialCode': 'origin_mismatch'}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['hostileAppOriginAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        worker = {'provenance': 'controller-kernel-sample',
+                  'hostPid': 211, 'startTicks': 42,
+                  'managerInvocation': sender['invocationId'],
+                  'cgroupIdentity': [1, 99],
+                  'javaHostPid': 212, 'javaStartTicks': 43}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster,
+                  'mailAppKernelProcess': worker,
+                  'mailUiOriginDigest': 'g' * 64}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        diagnostics = {'hostileOriginSessionDigest': 'f' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, sidecar = runner._hostile_origin_attempt(
+                report, result, fixture, terminal, source, diagnostics)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'hostile-app-origin'))
+            self.assertEqual('origin_mismatch', sidecar['denialCode'])
+            for mutate in (
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'actorAfter'].update(startTicks=46),
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'targetAfter'].update(workerStartTicks=43),
+                    lambda row: row['hostileAppOriginAudit']['record'].update(
+                        denialCode='invalid_app_browser_session'),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._hostile_origin_attempt(
+                    report, result, fixture, changed, source, diagnostics))
+            self.assertIsNone(runner._hostile_origin_attempt(
+                report, result, fixture, terminal, source,
+                {'hostileOriginSessionDigest': '0' * 64}))
 
     def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
         roster = synthetic_role_kernel_roster()
