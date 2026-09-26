@@ -18,7 +18,7 @@ KIND = 'pr315-installed-case-v10'
 _DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 _RAW_FIELDS = frozenset(('guestReport', 'volatile', 'hostMonitor'))
 POSITIVE = tuple(dict(historical.GROUPS)['positive'])
-SPECIAL_LIFECYCLE = frozenset(('partial-launch', 'stuck-output'))
+SPECIAL_LIFECYCLE = frozenset(('partial-launch', 'stuck-output', 'late-child'))
 GENERIC = frozenset((
     *dict(historical.GROUPS)['role-boundary'],
     'resolver-authority', 'hostile-app-origin',

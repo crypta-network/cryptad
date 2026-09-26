@@ -15,6 +15,7 @@ ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 PROBE_REQUEST = ROOT / 'probe-requests/candidate-sender.json'
 PROBE_SOURCE = ROOT / 'probe-source/pr315_role_probe.py'
+LIFECYCLE_PROBE_SOURCE = ROOT / 'probe-source/pr315_lifecycle_role_probe.py'
 PARTIAL_LAUNCH_REQUEST = ROOT / 'probe-requests/previous.json'
 PARTIAL_LAUNCH_RECORD = ROOT / 'state/previous/tmp/pr315-partial-launch-fault.json'
 PARTIAL_LAUNCH_RELEASE = ROOT / 'state/previous/tmp/pr315-partial-launch-release.json'
@@ -27,7 +28,7 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v31',
+    return {'revision': 'workload-launcher-policy-v32',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -39,6 +40,7 @@ def launcher_policy():
             'resourceExhaustionProbe': 'fixed-signed-apphost-pids-barrier-v1',
             'partialLaunchFault': 'fixed-previous-after-start-marker-before-daemon-v1',
             'stuckOutputProbe': 'fixed-role-fifo-held-writer-bounded-collector-v1',
+            'lateChildProbe': 'fixed-role-child-after-root-stop-intent-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
             'privateVolatileMaxBytes': 128 * 1024,
@@ -50,11 +52,6 @@ def _trusted_probe_request(spec):
     """Read one root-only fixed request; no client supplies a program or target."""
     if not PROBE_REQUEST.exists():
         return None
-    source = PROBE_SOURCE.lstat()
-    if (not stat.S_ISREG(source.st_mode) or source.st_uid != 0
-            or source.st_mode & 0o222 or source.st_nlink != 1
-            or not 0 < source.st_size <= 32768):
-        raise ValueError('workload-role-probe-source-invalid')
     info = PROBE_REQUEST.lstat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
             or info.st_mode & 0o222 or info.st_nlink != 1
@@ -75,11 +72,19 @@ def _trusted_probe_request(spec):
                                          'setsid-double-fork',
                                          'output-symlink',
                                          'output-fifo', 'output-hardlink', 'output-flood',
-                                         'output-replacement', 'stuck-output')
+                                         'output-replacement', 'stuck-output',
+                                         'late-child')
             or request['bootId'] != spec['bootId'] or request['javaDigest'] != spec['javaDigest']
-            or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None
-            or request['sourceDigest'] != hashlib.sha256(PROBE_SOURCE.read_bytes()).hexdigest()):
+            or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None):
         raise ValueError('workload-role-probe-request-mismatch')
+    selected = LIFECYCLE_PROBE_SOURCE if request['caseId'] == 'late-child' else PROBE_SOURCE
+    source = selected.lstat()
+    maximum = 8192 if request['caseId'] == 'late-child' else 32768
+    if (not stat.S_ISREG(source.st_mode) or source.st_uid != 0
+            or source.st_mode & 0o222 or source.st_nlink != 1
+            or not 0 < source.st_size <= maximum
+            or request['sourceDigest'] != hashlib.sha256(selected.read_bytes()).hexdigest()):
+        raise ValueError('workload-role-probe-source-invalid')
     return request
 
 
@@ -91,7 +96,8 @@ def _start_probe(role, spec):
     separator = arguments.index('--')
     if arguments[separator - 2:separator] != ['--remount-ro', '/']:
         raise ValueError('workload-role-probe-sandbox-changed')
-    probe = [*arguments[:separator - 2], '--ro-bind', str(PROBE_SOURCE), '/probe.py',
+    selected = LIFECYCLE_PROBE_SOURCE if request['caseId'] == 'late-child' else PROBE_SOURCE
+    probe = [*arguments[:separator - 2], '--ro-bind', str(selected), '/probe.py',
              *arguments[separator - 2:separator], '--', '/usr/bin/python3', '-I', '-S', '-B',
              '/probe.py', request['nonce'], request['caseId']]
     return subprocess.Popen(probe, env=environment, stdin=subprocess.DEVNULL,

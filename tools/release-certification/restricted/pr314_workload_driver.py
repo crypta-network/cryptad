@@ -202,6 +202,35 @@ def stage_role_probe(workload, kit):
     return hashlib.sha256(raw).hexdigest()
 
 
+def stage_lifecycle_probe(workload, kit):
+    """Stage only the second measured fixed role actor for lifecycle barriers."""
+    import installation
+    relative = 'tools/release-certification/restricted/pr315_lifecycle_role_probe.py'
+    source = TEST_KIT / relative
+    raw = installation.secured(source).read_bytes()
+    if (not 0 < len(raw) <= 8192
+            or kit['files'].get(relative) != hashlib.sha256(raw).hexdigest()):
+        raise ValueError('workload-lifecycle-probe-test-kit-mismatch')
+    directory = workload.ROOT / 'probe-source'
+    info = directory.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o022):
+        raise ValueError('workload-lifecycle-probe-root-invalid')
+    target = directory / 'pr315_lifecycle_role_probe.py'
+    descriptor = os.open(target,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
+    try:
+        os.fchmod(descriptor, 0o444)
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-lifecycle-probe-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    if target.read_bytes() != raw:
+        raise ValueError('workload-lifecycle-probe-changed')
+    return hashlib.sha256(raw).hexdigest()
+
+
 def prepare_sibling_canary(workload):
     """Place one recipient-owned 32-byte target in its real mounted role tmpfs."""
     user = workload.account('candidate-recipient')
@@ -1670,8 +1699,8 @@ def _stuck_collector_epoch(pid):
         'observedMonotonicNs': time.monotonic_ns()}
 
 
-def _installed_observer_stop(handle, expected_uid, deadline_ns):
-    """Ask the real controller socket to stop its exact selected role handle."""
+def _begin_installed_observer_stop(handle, expected_uid, deadline_ns):
+    """Start one exact observer stop while root prepares a fixed race witness."""
     from cross_version_workload import WorkloadClient
     observer = pwd.getpwnam('cryptad-soak')
     if observer.pw_uid != expected_uid or expected_uid <= 0:
@@ -1701,6 +1730,20 @@ def _installed_observer_stop(handle, expected_uid, deadline_ns):
     child.close()
     try:
         epoch = _positive_observer_epoch(pid, expected_uid, deadline_ns)
+    except BaseException:
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        parent.close()
+        raise
+    return parent, pid, epoch
+
+
+def _finish_installed_observer_stop(started, deadline_ns):
+    """Read the fixed controller response and reap the exact observer."""
+    parent, pid, epoch = started
+    try:
         raw, status = collect_child(parent, pid,
             min(time.monotonic() + 50, deadline_ns / 1e9 + 100))
     except BaseException:
@@ -1719,6 +1762,12 @@ def _installed_observer_stop(handle, expected_uid, deadline_ns):
             or selected['state'] != 'quiescent'):
         raise ValueError('workload-stuck-output-controller-stop-invalid')
     return selected, epoch
+
+
+def _installed_observer_stop(handle, expected_uid, deadline_ns):
+    return _finish_installed_observer_stop(
+        _begin_installed_observer_stop(handle, expected_uid, deadline_ns),
+        deadline_ns)
 
 
 def probe_stuck_output(workload, handoff, result, role_probe_digest,
@@ -1864,6 +1913,185 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
         os.close(writer_fd)
         if collector_fd is not None:
             os.close(collector_fd)
+
+
+def probe_late_child(workload, handoff, result, lifecycle_probe_digest,
+                     campaign_deadline_ns):
+    """Fork one owned child after real stop intent, then finish controller stop."""
+    import pr315_lifecycle_role_probe as role_probe
+    import restricted_workload_lifecycle_barrier as barrier
+
+    if (result.get('groupPreparation') != 'late-child'
+            or result.get('topologyRoles') != 4
+            or time.monotonic_ns() >= campaign_deadline_ns):
+        raise ValueError('workload-late-child-preparation-invalid')
+    administrator_before = _administrator_collector_epoch('late-child')
+    role = 'candidate-sender'
+    handle = handoff['handles'][role]
+    account = workload.account(role)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    nonce = secrets.token_hex(32)
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+        {'schemaVersion': 1, 'caseId': 'late-child', 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+         'sourceDigest': lifecycle_probe_digest}, create=True, mode=0o444)
+    state = workload.ROOT / 'state/candidate-sender/tmp'
+    ready = _wait_output_record(state / role_probe.READY.name,
+        account.pw_uid, min(time.monotonic() + 25, campaign_deadline_ns / 1e9),
+        'workload-late-child-role-ready-timeout')
+    before = workload.observe(handle)
+    actor = _role_probe_actor(before, nonce, 'late-child')
+    siblings_before = _resource_sibling_controls(workload, handoff)
+    record = workload.read(workload.ROOT / 'authority/candidate-sender.json')
+    if (ready['nonce'] != nonce
+            or ready['pid'] != actor['namespacePids'][-1]
+            or record['state'] != 'running'
+            or record['managerInvocation'] != before['managerInvocation']
+            or record['cgroupIdentity'] != before['cgroupIdentity']):
+        raise ValueError('workload-late-child-actor-unavailable')
+    source_digest = hashlib.sha256(Path(barrier.__file__).read_bytes()).hexdigest()
+    selected = {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-barrier',
+        'caseId': 'late-child', 'role': role,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'sourceDigest': source_digest,
+        **{key: record[key] for key in ('campaign', 'generation',
+            'managerInvocation', 'bootId', 'cgroupIdentity')}}
+    workload.write(barrier.REQUEST, selected, create=True)
+    started = _begin_installed_observer_stop(handle,
+        pwd.getpwnam('cryptad-soak').pw_uid, campaign_deadline_ns)
+    child_fd = None
+    child_actor = None
+    phase = None
+    trigger_ns = None
+    release_ns = None
+    child_record = None
+    sample_error = None
+    try:
+        phase = _wait_output_record(barrier.PHASE, 0,
+            min(time.monotonic() + 8, campaign_deadline_ns / 1e9),
+            'workload-late-child-stop-phase-timeout')
+        stopping = workload.read(workload.ROOT / 'authority/candidate-sender.json')
+        group = workload.group(role).stat()
+        if (phase['caseId'] != 'late-child'
+                or phase['nonceDigest'] != selected['nonceDigest']
+                or stopping['state'] != 'stopping'
+                or any(phase[key] != stopping[key] for key in
+                       ('campaign', 'generation', 'managerInvocation',
+                        'bootId', 'cgroupIdentity'))
+                or phase['cgroupIdentity'] != [group.st_dev, group.st_ino]):
+            raise ValueError('workload-late-child-stop-intent-invalid')
+        trigger = state / role_probe.TRIGGER.name
+        pending = trigger.with_name('.pr315-late-child-trigger.pending')
+        raw = json.dumps({'schemaVersion': 1,
+            'kind': 'pr315-late-child-trigger', 'nonce': nonce},
+            sort_keys=True, separators=(',', ':')).encode()
+        descriptor = os.open(pending,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW |
+            os.O_CLOEXEC, 0o600)
+        try:
+            os.fchown(descriptor, account.pw_uid, account.pw_gid)
+            if os.write(descriptor, raw) != len(raw):
+                raise ValueError('workload-late-child-trigger-short-write')
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        if os.path.lexists(trigger):
+            raise ValueError('workload-late-child-trigger-reused')
+        os.replace(pending, trigger)
+        trigger_ns = time.monotonic_ns()
+        child_record = _wait_output_record(state / role_probe.CHILD.name,
+            account.pw_uid, min(time.monotonic() + 7, campaign_deadline_ns / 1e9),
+            'workload-late-child-created-timeout')
+        if (child_record['nonce'] != nonce
+                or child_record['parentPid'] != actor['namespacePids'][-1]
+                or child_record['uid'] != account.pw_uid
+                or not phase['observedMonotonicNs'] < trigger_ns
+                    < child_record['startedMonotonicNs']
+                    < child_record['observedMonotonicNs']):
+            raise ValueError('workload-late-child-record-invalid')
+        pids = workload.group(role).joinpath('cgroup.procs').read_text().split()
+        if len(pids) > 512:
+            raise ValueError('workload-late-child-roster-limit')
+        matching = []
+        for raw_pid in pids:
+            pid = int(raw_pid)
+            path = Path('/proc') / raw_pid
+            try:
+                status = dict(line.split(':', 1) for line in
+                    (path / 'status').read_text().splitlines() if ':' in line)
+                if int(status['NSpid'].split()[-1]) == child_record['childPid']:
+                    matching.append(pid)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        if len(matching) != 1:
+            raise ValueError('workload-late-child-kernel-identity-unavailable')
+        child_fd = os.pidfd_open(matching[0])
+        child_actor = workload._process(matching[0], role, account.pw_uid)
+        child_actor['cgroupIdentity'] = [group.st_dev, group.st_ino]
+        child_actor['observedMonotonicNs'] = time.monotonic_ns()
+        if (child_actor['hostParentPid'] != actor['hostPid']
+                or child_actor['namespacePids'][-1] != child_record['childPid']
+                or child_actor['startTicks'] < actor['startTicks']
+                or child_actor['networkNamespaceIdentity'] != actor['networkNamespaceIdentity']
+                or child_actor['mountNamespaceIdentity'] != actor['mountNamespaceIdentity']
+                or child_actor['userNamespaceIdentity'] != actor['userNamespaceIdentity']
+                or child_actor['noNewPrivileges'] is not True
+                or child_actor['effectiveCapabilities'] != 0
+                or select.select([child_fd], [], [], 0)[0]):
+            raise ValueError('workload-late-child-kernel-ownership-invalid')
+    except BaseException as error:
+        sample_error = error
+    finally:
+        if not os.path.lexists(barrier.RELEASE):
+            workload.write(barrier.RELEASE,
+                {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-release',
+                 'caseId': 'late-child', 'nonce': nonce}, create=True)
+            release_ns = time.monotonic_ns()
+    try:
+        stopped, observer_actor = _finish_installed_observer_stop(
+            started, campaign_deadline_ns)
+        if sample_error is not None:
+            raise sample_error
+        current = workload.read(workload.ROOT / 'authority/candidate-sender.json')
+        receipt = workload.stop_receipt(role, current)
+        if (stopped['state'] != 'quiescent'
+                or stopped['managerInvocation'] != record['managerInvocation']
+                or receipt['managerInvocation'] != record['managerInvocation']
+                or receipt['cgroupIdentity'] != record['cgroupIdentity']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or child_fd is None or not select.select([child_fd], [], [], 0)[0]):
+            raise ValueError('workload-late-child-terminal-invalid')
+        child_exit_ns = time.monotonic_ns()
+        siblings_after = _resource_sibling_controls(workload, handoff)
+        if any(first['managerInvocation'] != last['managerInvocation']
+               or first['stateDigest'] != last['stateDigest']
+               for first, last in zip(siblings_before, siblings_after)):
+            raise ValueError('workload-late-child-sibling-changed')
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-late-child',
+            'caseId': 'late-child', 'sourceDigest': lifecycle_probe_digest,
+            'barrierSourceDigest': source_digest,
+            'nonceDigest': selected['nonceDigest'],
+            'administratorBefore': administrator_before,
+            'administratorAfter': _administrator_collector_epoch('late-child'),
+            'observerStopActor': observer_actor,
+            'roleBefore': {key: before[key] for key in
+                ('managerInvocation', 'bootId', 'cgroupIdentity', 'stateDigest')},
+            'actor': actor, 'phase': phase,
+            'childRecord': child_record, 'childActor': child_actor,
+            'childExitObservedNs': child_exit_ns,
+            'triggerPublishedNs': trigger_ns, 'releasePublishedNs': release_ns,
+            'stopReceipt': receipt,
+            'siblingsBefore': siblings_before,
+            'siblingsAfter': siblings_after,
+            'terminalObservedNs': time.monotonic_ns()}
+        workload.write(workload.ROOT / 'authority/late-child.json', audit, create=True)
+        return hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+    finally:
+        if child_fd is not None:
+            os.close(child_fd)
 
 
 def _setsid_process_epoch(pid):
@@ -2050,7 +2278,8 @@ def _administrator_collector_epoch(case_id):
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
                           'observer-death', 'lost-start-response',
-                          'partial-launch', 'stuck-output')
+                          'partial-launch', 'stuck-output',
+                          'late-child')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -4407,7 +4636,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
             admin_channel, role, stage))
                       if admin_channel is not None else None)
         if workload_group in ('lost-start-response', 'partial-launch',
-                              'stuck-output', 'resource-exhaustion',
+                              'stuck-output', 'late-child', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4714,7 +4943,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
-                             'partial-launch', 'stuck-output',
+                             'partial-launch', 'stuck-output', 'late-child',
                              'resource-exhaustion',
                              'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
@@ -4789,6 +5018,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         role_probe_digest = stage_role_probe(workload, kit)
+        lifecycle_probe_digest = stage_lifecycle_probe(workload, kit)
         sibling_digest = prepare_sibling_canary(workload)
         campaign_deadline = workload.read(workload.ROOT / 'campaign.json')['deadlineMonotonicNs']
         if type(campaign_deadline) is not int or campaign_deadline <= time.monotonic_ns():
@@ -4895,7 +5125,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('lost-start-response', 'partial-launch',
-                              'stuck-output', 'resource-exhaustion',
+                              'stuck-output', 'late-child', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -5128,6 +5358,19 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['stuckOutput'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'late-child':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_late_child(workload, handoff, result,
+                    lifecycle_probe_digest, campaign_deadline)
+                diagnostics['lateChild'] = {'status': 'captured',
+                    'caseId': 'late-child', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['lateChild'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -5297,7 +5540,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
-                                                    'partial-launch', 'stuck-output',
+                                                    'partial-launch', 'stuck-output', 'late-child',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

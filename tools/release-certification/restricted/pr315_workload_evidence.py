@@ -1406,6 +1406,65 @@ def _stuck_output_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _late_child_audit(root, deadline):
+    """Retain the root stop phase, live owned child and exact terminal receipt."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'late-child.json', maximum=32768, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest',
+            'barrierSourceDigest', 'nonceDigest', 'administratorBefore',
+            'administratorAfter', 'observerStopActor', 'roleBefore',
+            'actor', 'phase', 'childRecord', 'childActor',
+            'childExitObservedNs', 'triggerPublishedNs', 'releasePublishedNs',
+            'stopReceipt', 'siblingsBefore', 'siblingsAfter',
+            'terminalObservedNs'}
+        child = value['childRecord']
+        actor = value['childActor']
+        phase = value['phase']
+        receipt = value['stopReceipt']
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-late-child'
+                or value['caseId'] != 'late-child'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'barrierSourceDigest',
+                                   'nonceDigest'))
+                or not isinstance(child, dict) or not isinstance(actor, dict)
+                or not isinstance(phase, dict) or not isinstance(receipt, dict)
+                or child.get('kind') != 'pr315-candidate-late-child-created'
+                or child.get('caseId') != 'late-child'
+                or hashlib.sha256(str(child.get('nonce')).encode()).hexdigest()
+                    != value['nonceDigest']
+                or actor.get('hostParentPid') != value['actor'].get('hostPid')
+                or actor.get('namespacePids', [])[-1:] != [child.get('childPid')]
+                or phase.get('kind') != 'pr315-fixed-stop-phase'
+                or phase.get('caseId') != 'late-child'
+                or phase.get('nonceDigest') != value['nonceDigest']
+                or receipt.get('managerInvocation') != phase.get('managerInvocation')
+                or receipt.get('cgroupIdentity') != phase.get('cgroupIdentity')
+                or receipt.get('membership') != 'only-stop-helper'
+                or receipt.get('descendantCgroups') != 0
+                or any(not isinstance(value[key], list)
+                       or len(value[key]) != 3 for key in
+                       ('siblingsBefore', 'siblingsAfter'))
+                or not 0 < phase['observedMonotonicNs']
+                    < value['triggerPublishedNs']
+                    < child['startedMonotonicNs']
+                    < actor['observedMonotonicNs']
+                    < value['releasePublishedNs']
+                    < receipt['observedMonotonicNs']
+                    <= value['childExitObservedNs']
+                    < value['terminalObservedNs']):
+            raise ValueError('late-child-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1814,6 +1873,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
         if os.path.lexists(root / 'authority/stuck-output.json'):
             result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
+        if os.path.lexists(root / 'authority/late-child.json'):
+            result['lateChildAudit'] = _late_child_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1901,6 +1962,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
         if os.path.lexists(root / 'authority/stuck-output.json'):
             result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
+        if os.path.lexists(root / 'authority/late-child.json'):
+            result['lateChildAudit'] = _late_child_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

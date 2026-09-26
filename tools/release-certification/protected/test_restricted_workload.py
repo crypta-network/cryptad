@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, Mock, patch
 import restricted_workload as workload
 import restricted_workload_controller as controller
 import restricted_workload_launcher as launcher
+import restricted_workload_lifecycle_barrier as lifecycle_barrier
 import restricted_workload_network as network
 import restricted_workload_prepare as preparation
 
@@ -1075,6 +1076,52 @@ class ControllerRequestTest(unittest.TestCase):
                 start.assert_not_called()
 
 
+class LifecycleStopBarrierTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root authority directory')
+    def test_exact_stop_intent_waits_for_root_release_with_original_deadline(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-barrier-', dir='/var/lib') as directory:
+            authority = Path(directory) / 'authority'
+            authority.mkdir(mode=0o700)
+            request = authority / 'pr315-stop-barrier.json'
+            phase = authority / 'pr315-stop-phase.json'
+            release = authority / 'pr315-stop-release.json'
+            nonce = 'a' * 64
+            record = {'state': 'stopping', 'campaign': 'b' * 64,
+                'generation': 'c' * 64, 'managerInvocation': 'd' * 32,
+                'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'cgroupIdentity': [1, 99]}
+            selected = {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-barrier',
+                'caseId': 'late-child', 'role': 'candidate-sender',
+                'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+                'sourceDigest': hashlib.sha256(
+                    Path(lifecycle_barrier.__file__).read_bytes()).hexdigest(),
+                **{key: record[key] for key in ('campaign', 'generation',
+                    'managerInvocation', 'bootId', 'cgroupIdentity')}}
+            workload.write(request, selected, create=True)
+            def release_after_phase():
+                until = time.monotonic() + 3
+                while not phase.exists() and time.monotonic() < until:
+                    time.sleep(.01)
+                self.assertTrue(phase.exists())
+                workload.write(release, {'schemaVersion': 1,
+                    'kind': 'pr315-fixed-stop-release',
+                    'caseId': 'late-child', 'nonce': nonce}, create=True)
+            with patch.object(lifecycle_barrier, 'REQUEST', request), \
+                    patch.object(lifecycle_barrier, 'PHASE', phase), \
+                    patch.object(lifecycle_barrier, 'RELEASE', release):
+                worker = threading.Thread(target=release_after_phase)
+                worker.start()
+                try:
+                    result = lifecycle_barrier.await_release('candidate-sender',
+                        record, time.monotonic_ns() + 4 * 10**9)
+                finally:
+                    worker.join(timeout=4)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual('late-child', result['caseId'])
+            self.assertLess(result['stopIntentObservedNs'], result['releaseObservedNs'])
+
+
 class LauncherTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
                          'requires disposable Linux root for fixed launch request')
@@ -1132,6 +1179,42 @@ class LauncherTest(unittest.TestCase):
                       [command[index:index + 3] for index in range(len(command) - 2)])
         self.assertIn('--unshare-user', command)
         self.assertIn('--unshare-pid', command)
+
+    def test_late_child_uses_only_the_second_measured_role_source(self):
+        request = {'nonce': 'a' * 64, 'caseId': 'late-child'}
+        with patch.object(launcher, '_trusted_probe_request', return_value=request), \
+                patch.object(launcher.subprocess, 'Popen') as started:
+            launcher._start_probe('candidate-sender', {})
+        command = started.call_args.args[0]
+        self.assertIn(['--ro-bind', str(launcher.LIFECYCLE_PROBE_SOURCE), '/probe.py'],
+                      [command[index:index + 3] for index in range(len(command) - 2)])
+        self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B', '/probe.py',
+                          'a' * 64, 'late-child'], command[-7:])
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root source owner')
+    def test_late_child_request_binds_second_source_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / 'request.json'
+            source = root / 'lifecycle.py'
+            source.write_bytes(b'fixed-lifecycle-source')
+            source.chmod(0o444)
+            spec = {'bootId': 'a' * 36, 'javaDigest': 'sha256:' + 'b' * 64}
+            value = {'schemaVersion': 1, 'caseId': 'late-child',
+                'nonce': 'c' * 64, 'bootId': spec['bootId'],
+                'javaDigest': spec['javaDigest'],
+                'sourceDigest': hashlib.sha256(source.read_bytes()).hexdigest()}
+            request.write_text(json.dumps(value))
+            request.chmod(0o444)
+            with patch.object(launcher, 'PROBE_REQUEST', request), \
+                    patch.object(launcher, 'LIFECYCLE_PROBE_SOURCE', source):
+                self.assertEqual(value, launcher._trusted_probe_request(spec))
+                request.chmod(0o600)
+                request.write_text(json.dumps(dict(value, sourceDigest='0' * 64)))
+                request.chmod(0o444)
+                with self.assertRaisesRegex(ValueError, 'source-invalid'):
+                    launcher._trusted_probe_request(spec)
 
     def test_reserved_logging_option_never_overwrites_or_skips_product_options(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1080,6 +1080,8 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.dict('sys.modules', modules))
             stack.enter_context(patch.object(driver, 'TEST_KIT', repository))
             stack.enter_context(patch.object(driver, 'stage_role_probe', return_value='f' * 64))
+            stack.enter_context(patch.object(driver, 'stage_lifecycle_probe',
+                return_value='e' * 64))
             stack.enter_context(patch.object(driver, 'prepare_sibling_canary', return_value='d' * 64))
             stack.enter_context(patch.object(driver, 'prepare_resolver_canary', return_value='e' * 64))
             stack.enter_context(patch.object(driver, '_administrator_collector_epoch',
@@ -1152,6 +1154,26 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
             copied = workload.ROOT / 'probe-source/pr315_role_probe.py'
             self.assertEqual((source / relative).read_bytes(), copied.read_bytes())
             self.assertEqual(0, copied.stat().st_mode & 0o222)
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root test-kit staging')
+    def test_lifecycle_role_source_is_staged_separately_and_exactly(self):
+        source = Path(driver.__file__).resolve().parents[3]
+        regular = 'tools/release-certification/restricted/pr315_role_probe.py'
+        lifecycle = 'tools/release-certification/restricted/pr315_lifecycle_role_probe.py'
+        digests = {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+                   for name in (regular, lifecycle)}
+        fake_installation = SimpleNamespace(secured=lambda path: path)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict('sys.modules', {'installation': fake_installation}), \
+                patch.object(driver, 'TEST_KIT', source):
+            workload = SimpleNamespace(ROOT=Path(directory))
+            driver.stage_role_probe(workload, {'files': digests})
+            self.assertEqual(digests[lifecycle],
+                driver.stage_lifecycle_probe(workload, {'files': digests}))
+            selected = workload.ROOT / 'probe-source/pr315_lifecycle_role_probe.py'
+            self.assertEqual((source / lifecycle).read_bytes(), selected.read_bytes())
+            self.assertEqual(0, selected.stat().st_mode & 0o222)
 
 
 class ReadinessJcmdDiagnosticTest(unittest.TestCase):

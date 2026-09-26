@@ -2844,6 +2844,22 @@ collector passed 11, and the protected workload file passed 70 with two
 skips. The measured role probe remains within its fixed 32-KiB source
 limit. The installed TCG case has not executed.
 
+The prospective `late-child` group adds a root-owned fixed stop barrier to
+the installed controller. It activates only for the selected sender
+generation after the controller has durably written `stopping`, and releases
+within the original campaign deadline. A separate measured role probe
+creates the late child only after the root test kit observes that stop
+phase. Root then binds the child through its actual PID, parent, UID,
+namespaces, cgroup and pidfd, releases the controller, and checks its
+installed stop response, original role receipt, child exit and sibling FCP
+progress. The source is staged separately because the established role
+probe has a fixed 32-KiB size cap. The offline root barrier, exact source
+selection, actual triggered fork and v10 verifier paths have focused Linux
+checks. The complete PR-31x Linux suite passed 436 tests with eleven
+environment skips after correcting a synthetic parser fixture. Protected
+workload tests passed 73 with four skips, and the interop workload file
+passed 59 with nine skips. No installed TCG result exists.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3185,7 +3201,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and nine standalone lifecycle groups including `partial-launch` and `stuck-output`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), two lifecycle emitters (`late-child`, `cleanup-race`), semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and ten standalone lifecycle groups including `partial-launch`, `stuck-output` and `late-child`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), `cleanup-race`, semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

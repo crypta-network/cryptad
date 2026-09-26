@@ -53,7 +53,7 @@ SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'setsid-double-fork', 'observer-death',
                               'lost-start-response',
                               'resource-exhaustion', 'partial-launch',
-                              'stuck-output',
+                              'stuck-output', 'late-child',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -219,7 +219,7 @@ def group_prepared(report, result, terminal, group):
                       'controller-restart', 'deadline',
                       'revocation-running', 'setsid-double-fork',
                       'observer-death', 'lost-start-response',
-                      'resource-exhaustion', 'stuck-output',
+                      'resource-exhaustion', 'stuck-output', 'late-child',
                       'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
@@ -233,7 +233,7 @@ def group_prepared(report, result, terminal, group):
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
                              'observer-death', 'lost-start-response',
-                             'resource-exhaustion', 'stuck-output')
+                             'resource-exhaustion', 'stuck-output', 'late-child')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -273,7 +273,7 @@ def group_prepared(report, result, terminal, group):
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
                              'observer-death', 'lost-start-response',
-                             'resource-exhaustion', 'stuck-output')
+                             'resource-exhaustion', 'stuck-output', 'late-child')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -3639,6 +3639,143 @@ def _stuck_output_record(campaign_plan, attempt_id, report, result,
         return None
 
 
+def _late_child_record(campaign_plan, attempt_id, report, result,
+                       terminal, diagnostics, source, raw_digests):
+    """Bind one child created after real stop intent to its exact killed role."""
+    try:
+        if (not group_prepared(report, result, terminal, 'late-child')
+                or campaign_plan.get('kind') != campaign_seal.CAMPAIGN
+                or campaign_seal._ATTEMPT_ID.fullmatch(attempt_id) is None
+                or not selected_probe_started('late-child', diagnostics)
+                or diagnostics.get('lateChild', {}).get('status') != 'captured'
+                or terminal.get('lateChildAudit', {}).get('status') != 'captured'
+                or not isinstance(raw_digests, dict)
+                or set(raw_digests) != {'guestReport', 'volatile', 'hostMonitor'}
+                or any(re.fullmatch('[0-9a-f]{64}', str(digest)) is None
+                       for digest in raw_digests.values())):
+            return None
+        host = report['hostVerifiedIdentity']
+        identity = campaign_plan['identity']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        audit = terminal['lateChildAudit']['record']
+        digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        administrator = audit['administratorBefore']
+        administrator_after = audit['administratorAfter']
+        actor = audit['actor']
+        child = audit['childRecord']
+        child_actor = audit['childActor']
+        phase = audit['phase']
+        receipt = audit['stopReceipt']
+        final = terminal['stopReceipts']['candidate-sender']['current']
+        if (host['helperSourceCommit'] != identity['helperSourceCommit']
+                or host['testKitDigest'] != identity['testKitDigest']
+                or digest != diagnostics['lateChild']['auditDigest']
+                or audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-late-child'
+                or audit['caseId'] != 'late-child'
+                or audit['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr315_lifecycle_role_probe.py')
+                or audit['barrierSourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py')
+                or administrator['uid'] != 0 or administrator['pid'] <= 1
+                or administrator['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py')
+                or any(administrator[key] != administrator_after[key]
+                       for key in ('pid', 'uid', 'startTicks', 'bootId',
+                                   'cgroupIdentity', 'cgroupDigest',
+                                   'invocationId', 'sourceDigest'))
+                or administrator['bootId'].replace('-', '').lower() != sender['bootId']
+                or actor['hostPid'] <= 1 or actor['startTicks'] <= 0
+                or actor['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or audit['roleBefore']['managerInvocation'] != sender['invocationId']
+                or fixtures.runtime.canonical_digest({'role': 'candidate-sender',
+                    'identity': audit['roleBefore']['cgroupIdentity']})[7:]
+                    != sender['cgroupDigest']
+                or audit['roleBefore']['stateDigest'] !=
+                    terminal['sentinel']['observedDigest'].removeprefix('sha256:')
+                or phase['kind'] != 'pr315-fixed-stop-phase'
+                or phase['caseId'] != 'late-child'
+                or phase['managerInvocation'] != sender['invocationId']
+                or phase['cgroupIdentity'] != audit['roleBefore']['cgroupIdentity']
+                or phase['nonceDigest'] != audit['nonceDigest']
+                or child['kind'] != 'pr315-candidate-late-child-created'
+                or child['parentPid'] != actor['namespacePids'][-1]
+                or hashlib.sha256(child['nonce'].encode()).hexdigest() !=
+                    audit['nonceDigest']
+                or child_actor['hostParentPid'] != actor['hostPid']
+                or child_actor['namespacePids'][-1] != child['childPid']
+                or child_actor['cgroupIdentity'] != phase['cgroupIdentity']
+                or child_actor['startTicks'] < actor['startTicks']
+                or child_actor['networkNamespaceIdentity'] != actor['networkNamespaceIdentity']
+                or child_actor['mountNamespaceIdentity'] != actor['mountNamespaceIdentity']
+                or child_actor['userNamespaceIdentity'] != actor['userNamespaceIdentity']
+                or child_actor['noNewPrivileges'] is not True
+                or child_actor['effectiveCapabilities'] != 0
+                or audit['observerStopActor']['kind'] != 'installed-observer-process'
+                or audit['observerStopActor']['uid'] !=
+                    result['roleKernelRoster']['observerUid']
+                or audit['observerStopActor']['sourceDigest'] !=
+                    administrator['sourceDigest']
+                or final['status'] != 'captured' or final['record'] != receipt
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['cgroupIdentity'] != phase['cgroupIdentity']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0):
+            return None
+        if (len(audit['siblingsBefore']) != 3
+                or len(audit['siblingsAfter']) != 3
+                or [row['role'] for row in audit['siblingsBefore']] !=
+                    ['candidate-recipient', 'previous', 'relay-no-apps']):
+            return None
+        for first, last in zip(audit['siblingsBefore'], audit['siblingsAfter']):
+            principal = next(row for row in result['roleKernelRoster']['roles']
+                             if row['role'] == first['role'])
+            if (first['role'] != last['role']
+                    or first['managerInvocation'] != last['managerInvocation']
+                    or first['managerInvocation'] != principal['invocationId']
+                    or first['stateDigest'] != last['stateDigest']
+                    or re.fullmatch('[0-9a-f]{64}', first['controlDigest']) is None
+                    or re.fullmatch('[0-9a-f]{64}', last['controlDigest']) is None):
+                return None
+        if not (diagnostics['probeStart']['startedMonotonicNs']
+                <= administrator['observedMonotonicNs']
+                < phase['observedMonotonicNs']
+                < audit['triggerPublishedNs'] < child['startedMonotonicNs']
+                < child_actor['observedMonotonicNs']
+                < audit['releasePublishedNs']
+                < receipt['startedMonotonicNs']
+                < receipt['observedMonotonicNs']
+                <= audit['childExitObservedNs']
+                < administrator_after['observedMonotonicNs']
+                < audit['terminalObservedNs']):
+            return None
+        return {'schemaVersion': 10, 'kind': case_v10.KIND,
+            'contract': campaign_seal.CONTRACT,
+            'campaignPlanDigest': campaign_plan['planDigest'],
+            'campaignNonce': campaign_plan['campaignNonce'],
+            'attemptId': attempt_id, 'groupId': 'late-child',
+            'caseId': 'late-child', 'status': 'passed',
+            'sourceCommit': identity['helperSourceCommit'],
+            'actorEpoch': administrator,
+            'targetEpoch': {'role': sender, 'probeActor': actor,
+                'child': child_actor, 'stopPhase': phase,
+                'stopReceipt': receipt},
+            'operationWindow': {'startedMonotonicNs': phase['observedMonotonicNs'],
+                'finishedMonotonicNs': audit['terminalObservedNs']},
+            'operationTimeDomain': 'guest:' + sender['bootId'],
+            'v8AttemptDigest': None, 'v8ObservationDigest': None,
+            'v9SidecarDigest': digest,
+            'hostIdentityDigest': case_v10._digest(host),
+            'rawEvidenceDigests': raw_digests,
+            'stopReceiptObservedNs': receipt['observedMonotonicNs'],
+            'classification': 'private-host-verified-candidate-not-standalone-acceptance'}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -4218,7 +4355,8 @@ def run(args):
         'role-boundary', 'authority', 'network-app',
         'cancellation', 'controller-restart', 'deadline', 'revocation-running',
         'setsid-double-fork', 'observer-death', 'lost-start-response',
-        'resource-exhaustion', 'partial-launch', 'stuck-output')
+        'resource-exhaustion', 'partial-launch', 'stuck-output',
+        'late-child')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -4331,7 +4469,7 @@ def run(args):
             native_runner._save(output / 'assessment.json', result)
             print(json.dumps(result, sort_keys=True))
             return 78
-        if group in ('partial-launch', 'stuck-output') and campaign_plan_path is None and not getattr(args, 'probe', False):
+        if group in ('partial-launch', 'stuck-output', 'late-child') and campaign_plan_path is None and not getattr(args, 'probe', False):
             result = selected_public_result(group, 'group-v10-plan-required',
                 reasons=(group + '-v10-plan-required',))
             native_runner._save(output / 'assessment.json', result)
@@ -4503,6 +4641,19 @@ def run(args):
                     raise ValueError('workload-stuck-output-verification-failed')
                 native_runner._save(output / 'stuck-output-v10-evidence.private.json', record)
                 statuses['stuck-output'] = 'passed'
+            if group == 'late-child' and group_ready:
+                if host_policy != host_admission.POLICY:
+                    raise ValueError('workload-late-child-host-policy-required')
+                raw_digests = {
+                    'guestReport': reference.sha256(selected.attempt / 'attempt.private.json'),
+                    'volatile': reference.sha256(terminal_path),
+                    'hostMonitor': reference.sha256(output / 'host-monitor.private.json')}
+                record = _late_child_record(frozen_campaign, output.name,
+                    report, value, terminal, resources, args.source, raw_digests)
+                if record is None:
+                    raise ValueError('workload-late-child-verification-failed')
+                native_runner._save(output / 'late-child-v10-evidence.private.json', record)
+                statuses['late-child'] = 'passed'
             if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,

@@ -406,6 +406,13 @@ def _stop(role, record, reason):
     exact(role, record, state)
     record.update(state='stopping', stopReason=reason)
     write(ROOT / 'authority' / (role + '.json'), record)
+    if role == 'candidate-sender' and reason == 'requested':
+        from restricted_workload_lifecycle_barrier import REQUEST, await_release
+        if os.path.lexists(REQUEST):
+            campaign = read(ROOT / 'campaign.json')
+            if campaign['generation'] != record['campaign']:
+                reject('lifecycle-barrier-campaign-changed')
+            await_release(role, record, campaign['deadlineMonotonicNs'])
     manager(role, 'stop')
     after = manager(role, 'show')
     try:
