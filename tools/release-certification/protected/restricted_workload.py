@@ -413,6 +413,14 @@ def _stop(role, record, reason):
             if campaign['generation'] != record['campaign']:
                 reject('lifecycle-barrier-campaign-changed')
             await_release(role, record, campaign['deadlineMonotonicNs'])
+    try:
+        # The manager may replace a role after the first observation. Never
+        # issue a name-based stop against a newly observed invocation/cgroup.
+        exact(role, record, manager(role, 'show'))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        record['state'] = 'reconciliation-required'
+        write(ROOT / 'authority' / (role + '.json'), record)
+        raise
     manager(role, 'stop')
     after = manager(role, 'show')
     try:

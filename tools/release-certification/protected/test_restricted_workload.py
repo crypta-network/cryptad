@@ -531,6 +531,23 @@ class LifecycleTest(unittest.TestCase):
         self.assertNotIn('stop', self.calls)
         self.assertEqual('running', self.record['state'])
 
+    def test_changed_invocation_at_root_stop_barrier_never_stops_successor(self):
+        self.running()
+        def change_after_intent(_role, _record, _deadline):
+            self.state['InvocationID'] = 'c' * 32
+        def selected(path):
+            return ({**self.campaign, 'generation': self.record['campaign']}
+                    if path.name == 'campaign.json' else self.read(path))
+        with patch.object(workload.os.path, 'lexists', return_value=True), \
+                patch.object(workload, 'read', side_effect=selected), \
+                patch.object(lifecycle_barrier, 'await_release',
+                             side_effect=change_after_intent):
+            with self.assertRaisesRegex(workload.WorkloadError,
+                                        'invocation-changed'):
+                workload.stop(HANDLE)
+        self.assertNotIn('stop', self.calls)
+        self.assertEqual('reconciliation-required', self.record['state'])
+
     def test_replaced_cgroup_does_not_signal_new_occupant(self):
         self.running()
         self.group.stat.return_value = SimpleNamespace(st_dev=1, st_ino=100)

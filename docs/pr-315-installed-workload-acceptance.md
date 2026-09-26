@@ -2860,6 +2860,18 @@ environment skips after correcting a synthetic parser fixture. Protected
 workload tests passed 73 with four skips, and the interop workload file
 passed 59 with nine skips. No installed TCG result exists.
 
+The next cleanup-race regression reproduced a narrower controller defect
+offline. With a fixed root stop barrier between durable `stopping` intent
+and systemd stop, changing the manager invocation caused the old `_stop`
+implementation to stop the unit by name anyway. The controller now rechecks
+the exact original invocation and cgroup immediately before that manager
+operation. A changed epoch retains `reconciliation-required` and refuses to
+stop the replacement; the regression fails on the old code and passes after
+this source change. The protected workload Linux file passed 74 tests with
+four skips. The installed `cleanup-race` driver and proof of complete
+administrator reconciliation remain outstanding, so this source fix earns
+no lifecycle case credit.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
