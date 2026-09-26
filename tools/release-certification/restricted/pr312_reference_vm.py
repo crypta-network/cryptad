@@ -554,6 +554,7 @@ print(json.dumps(records))
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),
+                ('pr315-resource-children.private.json', '/root/pr315-resource-children.private.json', 131072),
                 ('pr315-workload-failure.private.json', '/root/pr315-workload-failure.private.json', 8192),
                 ('pr315-readiness-jcmd.private.json', '/root/pr315-readiness-jcmd.private.json', 262144),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),

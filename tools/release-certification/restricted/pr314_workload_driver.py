@@ -32,6 +32,7 @@ SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 RETIRED_AUTHORITY = Path('/root/pr315-retired-authority.private.json')
+RESOURCE_CHILDREN = Path('/root/pr315-resource-children.private.json')
 VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
@@ -1326,6 +1327,62 @@ def _resource_sibling_controls(workload, handoff):
     return rows
 
 
+def _resource_child_epochs(workload, actor, uid):
+    """Sample the held AppHost children from the owned role cgroup, not app JSON."""
+    root = workload.group('candidate-sender')
+    raw = (root / 'cgroup.procs').read_text()
+    if len(raw) > 4096 or any(not pid.isdecimal() for pid in raw.split()):
+        raise ValueError('workload-resource-child-cgroup-list-invalid')
+    rows = []
+    for pid in sorted(set(map(int, raw.split()))):
+        if pid <= 1:
+            raise ValueError('workload-resource-child-pid-invalid')
+        proc = Path('/proc') / str(pid)
+        try:
+            before = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        except FileNotFoundError:
+            continue  # Other role tasks may exit between cgroup and proc reads.
+        if len(before) <= 19 or not before[1].isdecimal():
+            raise ValueError('workload-resource-child-stat-invalid')
+        if int(before[1]) != actor['hostPid']:
+            continue
+        status = dict(line.split(':', 1) for line in
+            (proc / 'status').read_text().splitlines() if ':' in line)
+        namespace_pids = list(map(int, status['NSpid'].split()))
+        namespace = (proc / 'ns/pid').stat().st_ino
+        after = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        if (before[19] != after[19] or int(before[19]) <= 0
+                or set(map(int, status['Uid'].split())) != {uid}
+                or len(namespace_pids) != 3 or namespace_pids[0] != pid
+                or namespace_pids[-1] <= actor['namespacePids'][-1]
+                or namespace != actor['pidNamespaceIdentity']
+                or (proc / 'cgroup').read_text().strip() !=
+                    '0::' + str(root).removeprefix('/sys/fs/cgroup')):
+            raise ValueError('workload-resource-child-ownership-invalid')
+        rows.append({'pid': pid, 'parentPid': actor['hostPid'],
+            'startTicks': int(before[19]), 'uid': uid,
+            'namespacePid': namespace_pids[-1],
+            'pidNamespace': namespace})
+    if not 1 <= len(rows) <= 600:
+        raise ValueError('workload-resource-child-count-invalid')
+    return rows, time.monotonic_ns()
+
+
+def _resource_children_exited(children):
+    """Reject any retained child epoch after the app's reported reap."""
+    for row in children:
+        try:
+            current = (Path('/proc') / str(row['pid']) / 'stat').read_text()
+        except FileNotFoundError:
+            continue
+        fields = current.rsplit(')', 1)[1].split()
+        if len(fields) <= 19 or not fields[19].isdecimal():
+            raise ValueError('workload-resource-child-exit-unverifiable')
+        if int(fields[19]) == row['startTicks']:
+            raise ValueError('workload-resource-child-still-running')
+    return time.monotonic_ns()
+
+
 def probe_resource_exhaustion(workload, handoff, bundle_digest,
                               expected_worker, campaign_deadline_ns):
     """Drive finite signed-app pids pressure, then prove sibling progress."""
@@ -1363,6 +1420,8 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
             ready = _wait_output_record(root / 'pr315-resource-ready.json',
                 account.pw_uid, until, 'workload-resource-ready-timeout')
             role_during = _resource_cgroup_control(workload, handoff)
+            children, children_observed_ns = _resource_child_epochs(
+                workload, actor_before, account.pw_uid)
             siblings_during = _resource_sibling_controls(workload, handoff)
         finally:
             release_ns = time.monotonic_ns()
@@ -1391,6 +1450,7 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
     siblings_after = _resource_sibling_controls(workload, handoff)
     role_after = _resource_cgroup_control(workload, handoff)
     actor_after = _provider_app_actor(workload, handoff, expected_worker)
+    children_exited_ns = _resource_children_exited(children)
     stable_actor = ('hostPid', 'namespacePid', 'namespacePids', 'startTicks',
                     'managerInvocation', 'cgroupIdentity', 'sandboxLeader',
                     'networkNamespaceIdentity')
@@ -1421,6 +1481,7 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
             or result['forkLimit'] != 600
             or result['forkErrno'] != 'EAGAIN'
             or ready['spawnedCount'] != result['spawnedCount']
+            or len(children) != ready['spawnedCount']
             or ready['startedMonotonicNs'] != result['startedMonotonicNs']
             or ready['limitReachedNs'] != result['finishedMonotonicNs']
             or result['barrierReadyNs'] != ready['limitReachedNs']
@@ -1445,13 +1506,15 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
                 < trigger_ns < result['startedMonotonicNs']
                 < result['finishedMonotonicNs']
                 < role_during['observedMonotonicNs']
+                < children_observed_ns
                 < siblings_during[0]['observedMonotonicNs']
                 < siblings_during[-1]['controlObservedNs']
                 < release_ns < result['releaseObservedNs']
                 < result['cleanupFinishedNs']
                 < siblings_after[0]['observedMonotonicNs']
                 < role_after['observedMonotonicNs']
-                < actor_after['observedMonotonicNs']):
+                < actor_after['observedMonotonicNs']
+                < children_exited_ns):
         raise ValueError('workload-resource-actor-limit-or-window-invalid')
     for before, during, after in zip(siblings_before, siblings_during,
                                      siblings_after):
@@ -1465,6 +1528,18 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
                     < after['observedMonotonicNs']
                     < after['controlObservedNs']):
             raise ValueError('workload-resource-sibling-changed')
+    children_record = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-resource-child-epochs',
+        'caseId': 'resource-exhaustion',
+        'actorHostPid': actor_before['hostPid'],
+        'actorStartTicks': actor_before['startTicks'],
+        'roleCgroupIdentity': role_during['cgroupIdentity'],
+        'observedMonotonicNs': children_observed_ns,
+        'exitedMonotonicNs': children_exited_ns,
+        'children': children}
+    workload.write(RESOURCE_CHILDREN, children_record, create=True)
+    children_digest = hashlib.sha256(json.dumps(children_record,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     audit = {'schemaVersion': 1,
         'kind': 'pr315-administrator-resource-exhaustion-denial',
         'caseId': 'resource-exhaustion', 'bundleDigest': bundle_digest,
@@ -1483,6 +1558,10 @@ def probe_resource_exhaustion(workload, handoff, bundle_digest,
         'attackStartedNs': result['startedMonotonicNs'],
         'attackFinishedNs': result['finishedMonotonicNs'],
         'childCleanupFinishedNs': result['cleanupFinishedNs'],
+        'childEpochCount': len(children),
+        'childEpochDigest': children_digest,
+        'childEpochsObservedNs': children_observed_ns,
+        'childExitObservedNs': children_exited_ns,
         'kernelLimit': 'pids.max',
         'limitEventDelta': role_during['pidsMaxEvents'] - role_before['pidsMaxEvents'],
         'appResultDigest': hashlib.sha256(json.dumps(result,

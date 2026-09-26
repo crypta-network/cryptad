@@ -3136,7 +3136,49 @@ def _sibling_app_attempt(report, result, fixture, terminal):
         return None
 
 
-def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics):
+def _resource_child_provenance(record, audit, actor, uid):
+    """Cross-check root-owned child epochs and exit observation against the audit."""
+    if (not isinstance(record, dict) or set(record) != {
+            'schemaVersion', 'kind', 'caseId', 'actorHostPid',
+            'actorStartTicks', 'roleCgroupIdentity', 'observedMonotonicNs',
+            'exitedMonotonicNs', 'children'}
+            or record['schemaVersion'] != 1
+            or record['kind'] != 'pr315-administrator-resource-child-epochs'
+            or record['caseId'] != 'resource-exhaustion'
+            or record['actorHostPid'] != actor['hostPid']
+            or record['actorStartTicks'] != actor['startTicks']
+            or record['roleCgroupIdentity'] != audit['roleDuring']['cgroupIdentity']
+            or record['observedMonotonicNs'] != audit['childEpochsObservedNs']
+            or record['exitedMonotonicNs'] != audit['childExitObservedNs']
+            or not isinstance(record['children'], list)
+            or len(record['children']) != audit['childEpochCount']
+            or len(record['children']) != audit['ready']['spawnedCount']
+            or not 1 <= len(record['children']) <= 600
+            or hashlib.sha256(json.dumps(record, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest() !=
+                audit['childEpochDigest']):
+        return False
+    pids = set()
+    for child in record['children']:
+        if (not isinstance(child, dict) or set(child) != {
+                'pid', 'parentPid', 'startTicks', 'uid',
+                'namespacePid', 'pidNamespace'}
+                or type(child['pid']) is not int or child['pid'] <= 1
+                or child['pid'] in pids
+                or child['parentPid'] != actor['hostPid']
+                or type(child['startTicks']) is not int
+                or child['startTicks'] < actor['startTicks']
+                or child['uid'] != uid
+                or type(child['namespacePid']) is not int
+                or child['namespacePid'] <= actor['namespacePids'][-1]
+                or child['pidNamespace'] != actor['pidNamespaceIdentity']):
+            return False
+        pids.add(child['pid'])
+    return True
+
+
+def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics,
+                                 children):
     """Bind signed app pids.max pressure to live sibling FCP and exact cleanup."""
     case_id = 'resource-exhaustion'
     try:
@@ -3164,6 +3206,8 @@ def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics)
         principals = result['roleKernelRoster']['roles']
         sender = next(row for row in principals if row['role'] == 'candidate-sender')
         before, after = audit['actorBefore'], audit['actorAfter']
+        if not _resource_child_provenance(children, audit, before, sender['uid']):
+            return None
         role_before, role_during, role_after = (audit[key] for key in
             ('roleBefore', 'roleDuring', 'roleAfter'))
         siblings_before, siblings_during, siblings_after = (audit[key] for key in
@@ -3253,6 +3297,13 @@ def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics)
                 or audit['attackStartedNs'] != app_result['startedMonotonicNs']
                 or audit['attackFinishedNs'] != app_result['finishedMonotonicNs']
                 or audit['childCleanupFinishedNs'] != app_result['cleanupFinishedNs']
+                or not ready['limitReachedNs']
+                    < audit['roleDuring']['observedMonotonicNs']
+                    < audit['childEpochsObservedNs']
+                    < audit['siblingsDuring'][0]['observedMonotonicNs']
+                or not app_result['cleanupFinishedNs']
+                    < after['observedMonotonicNs']
+                    < audit['childExitObservedNs']
                 or not before['observedMonotonicNs']
                     < role_before['observedMonotonicNs']
                     < siblings_before[-1]['controlObservedNs']
@@ -3312,7 +3363,7 @@ def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics)
                or receipt['record']['membership'] != 'only-stop-helper'
                or receipt['record']['descendantCgroups'] != 0
                or receipt['record']['startedMonotonicNs'] <=
-                    after['observedMonotonicNs']
+                    audit['childExitObservedNs']
                for receipt, row in zip(receipts, principals)):
             return None
         identity = {key: host[key] for key in ('helperSourceCommit',
@@ -3371,6 +3422,9 @@ def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics)
                 'pidsMax': role_before['pidsMax'],
                 'pidsMaxEventsBefore': role_before['pidsMaxEvents'],
                 'pidsMaxEventsDuring': role_during['pidsMaxEvents'],
+                'childEpochCount': audit['childEpochCount'],
+                'childEpochDigest': audit['childEpochDigest'],
+                'childExitObservedNs': audit['childExitObservedNs'],
                 'siblingControlDigest': controls_digest},
             'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
                                 'finishedMonotonicNs': audit['childCleanupFinishedNs']},
@@ -4964,8 +5018,18 @@ def run(args):
                 statuses['sibling-app'] = 'passed'
             if (group == 'resource-exhaustion' and group_ready
                     and isinstance(terminal, dict)):
+                children_path = (selected.attempt /
+                    'pr315-resource-children.private.json')
+                child_file = children_path.lstat()
+                if (not stat.S_ISREG(child_file.st_mode)
+                        or child_file.st_uid != os.geteuid()
+                        or child_file.st_mode & 0o077
+                        or child_file.st_nlink != 1
+                        or not 0 < child_file.st_size <= 131072):
+                    raise ValueError('workload-resource-children-file-invalid')
+                children = native_runner.private_json(children_path)
                 denial = _resource_exhaustion_attempt(
-                    report, value, fixture, terminal, resources)
+                    report, value, fixture, terminal, resources, children)
                 if denial is None:
                     raise ValueError('workload-resource-exhaustion-verification-failed')
                 identity, case_attempt, sidecar = denial

@@ -1203,7 +1203,9 @@ def _resource_audit(root, deadline):
             'siblingsBefore', 'siblingsDuring', 'siblingsAfter',
             'ready', 'releasePublishedNs', 'triggerMonotonicNs',
             'attackStartedNs', 'attackFinishedNs',
-            'childCleanupFinishedNs', 'kernelLimit', 'limitEventDelta',
+            'childCleanupFinishedNs', 'childEpochCount',
+            'childEpochDigest', 'childEpochsObservedNs',
+            'childExitObservedNs', 'kernelLimit', 'limitEventDelta',
             'appResultDigest'}
         actor_fields = {'role', 'hostPid', 'namespacePid', 'namespacePids',
             'startTicks', 'executableDigest', 'mountNamespaceIdentity',
@@ -1230,6 +1232,14 @@ def _resource_audit(root, deadline):
                 or value['senderStateBefore'] != value['senderStateAfter']
                 or type(value['limitEventDelta']) is not int
                 or value['limitEventDelta'] < 1
+                or type(value['childEpochCount']) is not int
+                or not 1 <= value['childEpochCount'] <= 600
+                or re.fullmatch('[0-9a-f]{64}',
+                    str(value['childEpochDigest'])) is None
+                or not 0 < value['childEpochsObservedNs']
+                    < value['releasePublishedNs']
+                    < value['childCleanupFinishedNs']
+                    < value['childExitObservedNs']
                 or any(not isinstance(value[key], dict)
                        or set(value[key]) != actor_fields
                        or value[key].get('provenance') != 'controller-kernel-sample'

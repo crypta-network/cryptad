@@ -1772,6 +1772,18 @@ class RunnerTests(unittest.TestCase):
             'forcedKillCount': 0, 'abnormalExitCount': 0,
             'forkErrno': 'EAGAIN', 'barrierReadyNs': 50,
             'releaseObservedNs': 85}
+        children = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-resource-child-epochs',
+            'caseId': 'resource-exhaustion',
+            'actorHostPid': actor['hostPid'],
+            'actorStartTicks': actor['startTicks'],
+            'roleCgroupIdentity': cgroup,
+            'observedMonotonicNs': 62,
+            'exitedMonotonicNs': 140,
+            'children': [{'pid': 400 + index, 'parentPid': actor['hostPid'],
+                'startTicks': 51 + index, 'uid': sender['uid'],
+                'namespacePid': 3 + index, 'pidNamespace': 44}
+                for index in range(500)]}
         audit = {'schemaVersion': 1,
             'kind': 'pr315-administrator-resource-exhaustion-denial',
             'caseId': 'resource-exhaustion',
@@ -1793,6 +1805,10 @@ class RunnerTests(unittest.TestCase):
             'ready': ready, 'releasePublishedNs': 80,
             'triggerMonotonicNs': 30, 'attackStartedNs': 40,
             'attackFinishedNs': 50, 'childCleanupFinishedNs': 90,
+            'childEpochCount': 500,
+            'childEpochDigest': hashlib.sha256(json.dumps(children,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'childEpochsObservedNs': 62, 'childExitObservedNs': 140,
             'kernelLimit': 'pids.max', 'limitEventDelta': 1,
             'appResultDigest': hashlib.sha256(json.dumps(app, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest()}
@@ -1824,7 +1840,7 @@ class RunnerTests(unittest.TestCase):
                 patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
                 patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
             selected = runner._resource_exhaustion_attempt(
-                report, result, fixture, terminal, diagnostics)
+                report, result, fixture, terminal, diagnostics, children)
         self.assertIsNotNone(selected)
         identity, attempt, sidecar = selected
         checked = runner.acceptance.verify_attempts(identity, [attempt])
@@ -1832,6 +1848,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual('passed', next(row['status'] for row in checked['cases']
                          if row['caseId'] == 'resource-exhaustion'))
         self.assertEqual(1, sidecar['targetEpoch']['pidsMaxEventsDuring'])
+        self.assertEqual(500, sidecar['targetEpoch']['childEpochCount'])
         for change in (
                 lambda row: row['resourceAudit']['record']['roleDuring'].update(
                     pidsMaxEvents=0),
@@ -1847,7 +1864,15 @@ class RunnerTests(unittest.TestCase):
                     patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
                     patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
                 self.assertIsNone(runner._resource_exhaustion_attempt(
-                    report, result, fixture, changed, diagnostics))
+                    report, result, fixture, changed, diagnostics, children))
+        changed_children = copy.deepcopy(children)
+        changed_children['children'][0]['parentPid'] = 1
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+            self.assertIsNone(runner._resource_exhaustion_attempt(
+                report, result, fixture, terminal, diagnostics,
+                changed_children))
 
     def test_partial_launch_v10_requires_two_live_roles_failed_previous_and_absent_relay(self):
         import pr315_campaign_seal as seal
