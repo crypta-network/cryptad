@@ -9,7 +9,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
 import pr315_role_probe as probe
@@ -86,6 +86,26 @@ class RoleProbeTest(unittest.TestCase):
             access.assert_called_once_with('resolver-authority', probe.RESOLVER_TARGET)
             read.assert_not_called()
             network.assert_not_called()
+
+    def test_network_app_mode_runs_only_fixed_sibling_connections(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ready = Path(directory) / 'ready.json'
+            with patch.object(probe, 'NETWORK_APP_READY', ready), \
+                    patch.object(probe.sys, 'argv', ['probe.py', 'a' * 64,
+                                                      'network-app']), \
+                    patch.object(probe.sys, 'flags', SimpleNamespace(isolated=1,
+                                                                       no_site=1)), \
+                    patch.object(probe, 'publish_network_result') as network, \
+                    patch.object(probe, 'attempt_read') as read, \
+                    patch.object(probe, 'fixed_false_claims') as claims, \
+                    patch.object(probe.time, 'sleep', side_effect=StopIteration):
+                with self.assertRaises(StopIteration):
+                    probe.main()
+            self.assertTrue(ready.exists())
+            self.assertEqual([call('sibling-fcp', 'a' * 64),
+                              call('sibling-http', 'a' * 64)], network.call_args_list)
+            read.assert_not_called()
+            claims.assert_not_called()
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_fifo_is_real_and_collector_rejects_without_blocking(self):

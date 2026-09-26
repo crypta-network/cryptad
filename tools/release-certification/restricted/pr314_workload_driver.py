@@ -132,6 +132,7 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-sibling-network-counter-invalid',
     'workload-sibling-network-counter-epoch-invalid',
     'workload-sibling-network-drop-not-attributed',
+    'workload-sibling-network-actor-changed',
     'workload-sibling-network-other-case-changed'))
 
 
@@ -591,8 +592,11 @@ def _sibling_target_control(case_id, handle):
             'controlObservedNs': controlled_ns, 'controlDigest': digest}
 
 
-def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_deadline_ns):
+def probe_sibling_network(workload, handoff, nonce, source_digest,
+                          campaign_deadline_ns, actor_case='observer-private-read'):
     """Trigger two finite role-origin TCP attempts with separate root filter controls."""
+    if actor_case not in ('observer-private-read', 'network-app'):
+        raise ValueError('workload-sibling-network-actor-selection-invalid')
     import pr315_role_probe as role_probe
     from restricted_workload_network import read_sibling_drop_counters, SIBLING_DROP_COUNTERS
     sender_handle = handoff['handles']['candidate-sender']
@@ -604,7 +608,7 @@ def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_dead
         if time.monotonic_ns() >= campaign_deadline_ns:
             raise ValueError('workload-sibling-network-deadline')
         sender_before = workload.observe(sender_handle)
-        actor_before = _role_probe_actor(sender_before, nonce)
+        actor_before = _role_probe_actor(sender_before, nonce, actor_case)
         target_before = _sibling_target_control(case_id, recipient_handle)
         counters_before = read_sibling_drop_counters()
         if (target_before['observedMonotonicNs'] >= target_before['controlObservedNs']
@@ -613,28 +617,14 @@ def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_dead
                    sender_before['networkNamespaceIdentity']):
             raise ValueError('workload-sibling-network-before-window-invalid')
         trigger_ns = time.monotonic_ns()
-        trigger = root / (prefix + '-trigger.json')
-        descriptor = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o444)
-        try:
-            with os.fdopen(descriptor, 'w', closefd=False) as stream:
-                json.dump({'caseId': case_id, 'nonce': nonce}, stream,
-                          sort_keys=True, separators=(',', ':'))
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.fchmod(descriptor, 0o444)
-        finally:
-            os.close(descriptor)
+        _publish_output_trigger(root, prefix + '-trigger.json', case_id, nonce)
         result_path = root / (prefix + '-result.json')
         until = min(time.monotonic() + 10, campaign_deadline_ns / 1e9)
-        while time.monotonic() < until and not result_path.exists():
-            time.sleep(.05)
-        if not result_path.exists():
-            raise ValueError('workload-sibling-network-result-timeout')
-        result = _candidate_probe_file(result_path, sender_uid)
+        result = _wait_output_record(result_path, sender_uid, until,
+                                     'workload-sibling-network-result-timeout')
         counters_after = read_sibling_drop_counters()
         sender_after = workload.observe(sender_handle)
-        actor_after = _role_probe_actor(sender_after, nonce)
+        actor_after = _role_probe_actor(sender_after, nonce, actor_case)
         target_after = _sibling_target_control(case_id, recipient_handle)
         stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
                         'networkNamespaceIdentity', 'mountNamespaceIdentity',
@@ -694,6 +684,46 @@ def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_dead
                        audit, create=True)
         audits[case_id] = hashlib.sha256(json.dumps(audit,
             sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return audits
+
+
+def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_ns):
+    """Start one fixed candidate actor for the two real sibling network denials."""
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-sibling-network-deadline')
+    case_id = 'network-app'
+    nonce = secrets.token_hex(32)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+        {'schemaVersion': 1, 'caseId': case_id, 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+         'sourceDigest': source_digest}, create=True, mode=0o444)
+    uid = workload.account('candidate-sender').pw_uid
+    root = workload.ROOT / 'state/candidate-sender/tmp'
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    ready = _wait_output_record(root / 'pr315-network-app-ready.json', uid, until,
+                                'workload-role-probe-ready-timeout')
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
+            or ready['schemaVersion'] != 1
+            or ready['kind'] != 'pr315-candidate-role-probe-ready'
+            or ready['caseId'] != case_id or ready['nonce'] != nonce):
+        raise ValueError('workload-role-probe-ready-invalid')
+    handle = handoff['handles']['candidate-sender']
+    before = workload.observe(handle)
+    actor_before = _role_probe_actor(before, nonce, case_id)
+    if (ready['pid'] != actor_before['namespacePids'][-1]
+            or ready['startedMonotonicNs'] >= before['observedMonotonicNs']):
+        raise ValueError('workload-role-probe-pid-unbound')
+    audits = probe_sibling_network(workload, handoff, nonce, source_digest,
+                                   campaign_deadline_ns, actor_case=case_id)
+    after = workload.observe(handle)
+    actor_after = _role_probe_actor(after, nonce, case_id)
+    if (before['managerInvocation'] != after['managerInvocation']
+            or before['cgroupIdentity'] != after['cgroupIdentity']
+            or actor_before['hostPid'] != actor_after['hostPid']
+            or actor_before['startTicks'] != actor_after['startTicks']):
+        raise ValueError('workload-sibling-network-actor-changed')
     return audits
 
 
@@ -2118,7 +2148,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority'):
+                              'authority', 'network-app'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2417,7 +2447,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if workload_group not in (None, 'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
-                             'authority') or (
+                             'authority', 'network-app') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group is not None) != (lifecycle_scenario == 'none'):
@@ -2548,7 +2578,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
-                              'authority') and
+                              'authority', 'network-app') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2676,6 +2706,26 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('forgedRuntimeIdentity', 'forgedCounters',
                               'resolverAuthority'):
                     diagnostics[field] = diagnostic
+        if not startup_measurement and workload_group == 'network-app':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                audits = probe_network_app_roles(workload, handoff,
+                    role_probe_digest, campaign_deadline)
+                for selected_case, field in (('sibling-fcp', 'siblingFcp'),
+                                             ('sibling-http', 'siblingHttp')):
+                    diagnostics[field] = {'status': 'captured',
+                        'caseId': selected_case, 'auditDigest': audits[selected_case]}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostic = {'status': 'unavailable-or-unsafe',
+                              'exceptionType': type(error).__name__[:128]}
+                code = _private_role_probe_code(error)
+                if code is not None:
+                    diagnostic['code'] = code
+                for field in ('siblingFcp', 'siblingHttp'):
+                    diagnostics[field] = diagnostic
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -2783,7 +2833,8 @@ def main():
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',
-                                                    'role-boundary', 'authority'))
+                                                    'role-boundary', 'authority',
+                                                    'network-app'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

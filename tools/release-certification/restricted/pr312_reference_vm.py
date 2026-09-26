@@ -322,7 +322,7 @@ def workload_guest_command(args):
                                       'output-hardlink', 'output-flood',
                                       'output-replacement',
                                       'role-readiness-diagnostic', 'role-boundary',
-                                      'authority')
+                                      'authority', 'network-app')
             or (workload_group is not None) != (scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))):
         raise ValueError('workload-guest-command-identity-invalid')
@@ -361,7 +361,7 @@ def run(args):
                                      if getattr(args, 'workload_group', None) in
                                      ('output-symlink', 'output-fifo', 'output-hardlink',
                                       'output-flood', 'output-replacement',
-                                      'role-boundary', 'authority')
+                                      'role-boundary', 'authority', 'network-app')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

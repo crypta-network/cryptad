@@ -173,7 +173,7 @@ def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
     if (group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                       'output-flood', 'output-replacement', 'role-boundary',
-                      'authority', 'role-readiness-diagnostic')
+                      'authority', 'network-app', 'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
@@ -182,7 +182,7 @@ def group_prepared(report, result, terminal, group):
             and report.get('workloadPurpose') == ('selected-group'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
-                             'role-boundary', 'authority')
+                             'role-boundary', 'authority', 'network-app')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -195,7 +195,11 @@ def group_prepared(report, result, terminal, group):
             and result.get('contentRetrieval') == 'not-executed-group'
             and result.get('newEpoch') is False
             and result.get('topologyRoles') == 4
-            and result.get('signedAppWorkers') == 0
+            and result.get('signedAppWorkers') == (3 if group == 'network-app' else 0)
+            and (group != 'network-app' or
+                 isinstance(result.get('probeAppKernelProcess'), dict)
+                 and result['probeAppKernelProcess'].get('provenance') ==
+                     'controller-kernel-sample')
             and result.get('profile') == acceptance.PROFILE
             and _bounded_window(result.get('roleKernelRosterWindow'))
             and fixtures.runtime.canonical_digest(result.get('runtimePolicy'))
@@ -207,7 +211,7 @@ def group_prepared(report, result, terminal, group):
                 'incomplete-hostile-contract-not-executed'
                 if group in ('output-symlink', 'output-fifo', 'output-hardlink',
                              'output-flood', 'output-replacement',
-                             'role-boundary', 'authority')
+                             'role-boundary', 'authority', 'network-app')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -1919,7 +1923,8 @@ def _sibling_network_attempt(case_id, report, result, fixture, terminal, source)
              'sibling-http': ('siblingHttpAudit', workload_network.HTTP_PORT)}
     try:
         field, port = cases[case_id]
-        if (not positive_executed(report, result, terminal)
+        if (not (positive_executed(report, result, terminal)
+                 or group_prepared(report, result, terminal, 'network-app'))
                 or fixture.get('schemaVersion') != 4
                 or terminal[field]['status'] != 'captured'):
             return None
@@ -2081,7 +2086,8 @@ def run(args):
     selected_cases(group)
     output_group = group in ('output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement')
-    selected_preparation = output_group or group in ('role-boundary', 'authority')
+    selected_preparation = output_group or group in (
+        'role-boundary', 'authority', 'network-app')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -2230,6 +2236,7 @@ def run(args):
                            and group_prepared(report, value, terminal, group))
             role_boundary_ready = group == 'role-boundary' and group_ready
             authority_ready = group == 'authority' and group_ready
+            network_app_ready = group == 'network-app' and group_ready
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
@@ -2389,7 +2396,7 @@ def run(args):
                     statuses[case_id] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
-                if (not output_group and positive and isinstance(terminal, dict)
+                if ((positive or network_app_ready) and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     denial = _sibling_network_attempt(
                         case_id, report, value, fixture, terminal, args.source)

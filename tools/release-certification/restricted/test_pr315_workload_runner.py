@@ -164,6 +164,12 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report,
             {**result, 'groupPreparation': 'authority'}, terminal,
             'authority'))
+        network = {**result, 'groupPreparation': 'network-app',
+                   'signedAppWorkers': 3,
+                   'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
+        self.assertFalse(runner.group_prepared(report,
+            {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -738,6 +744,13 @@ class RunnerTests(unittest.TestCase):
                 mutate(changed)
                 self.assertIsNone(runner._sibling_network_attempt(
                     'sibling-fcp', report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner._sibling_network_attempt(
+                'sibling-fcp', report, result, fixture, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'sibling-fcp'))
 
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()

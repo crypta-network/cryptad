@@ -27,6 +27,7 @@ ROLE_BOUNDARY_TRIGGER = Path('/node/tmp/pr315-role-boundary-trigger.json')
 AUTHORITY_OUTPUT = Path('/node/tmp/pr315-authority.json')
 AUTHORITY_READY = Path('/node/tmp/pr315-authority-ready.json')
 AUTHORITY_TRIGGER = Path('/node/tmp/pr315-authority-trigger.json')
+NETWORK_APP_READY = Path('/node/tmp/pr315-network-app-ready.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
@@ -119,16 +120,7 @@ def wait_network_trigger(case_id: str, nonce: str) -> Path:
 
 def publish_network_result(case_id: str, nonce: str) -> None:
     result_path = wait_network_trigger(case_id, nonce)
-    raw = json.dumps(attempt_network(case_id, nonce), sort_keys=True,
-                     separators=(',', ':')).encode()
-    if len(raw) > 4096:
-        raise ValueError('pr315-network-result-limit')
-    descriptor = os.open(result_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                         | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
-    with os.fdopen(descriptor, 'wb') as stream:
-        stream.write(raw)
-        stream.flush()
-        os.fsync(stream.fileno())
+    _publish_record(result_path, attempt_network(case_id, nonce))
 
 
 def attempt_read(nonce: str) -> dict:
@@ -393,7 +385,7 @@ def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
             or sys.argv[2] not in ('observer-private-read', 'role-boundary',
-                                   'authority',
+                                   'authority', 'network-app',
                                    'output-symlink',
                                    'output-fifo', 'output-hardlink', 'output-flood',
                                    'output-replacement')
@@ -406,6 +398,7 @@ def main() -> None:
     ready_path = (READY if case_id == 'observer-private-read' else
                   ROLE_BOUNDARY_READY if case_id == 'role-boundary' else
                   AUTHORITY_READY if case_id == 'authority' else
+                  NETWORK_APP_READY if case_id == 'network-app' else
                   OUTPUT_FIFO_READY if case_id == 'output-fifo' else
                   OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
                   OUTPUT_FLOOD_READY if case_id == 'output-flood' else
@@ -430,6 +423,11 @@ def main() -> None:
             time.sleep(1)
     if case_id == 'output-replacement':
         publish_output_replacement(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'network-app':
+        for network_case in NETWORK_CASES:
+            publish_network_result(network_case, sys.argv[1])
         while True:
             time.sleep(1)
     if case_id == 'authority':

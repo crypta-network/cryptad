@@ -56,6 +56,9 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'authority'
         self.assertIn('--lifecycle-scenario none --workload-group authority',
                       driver.workload_guest_command(args))
+        args.workload_group = 'network-app'
+        self.assertIn('--lifecycle-scenario none --workload-group network-app',
+                      driver.workload_guest_command(args))
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):
