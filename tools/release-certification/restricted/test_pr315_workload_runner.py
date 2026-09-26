@@ -147,6 +147,8 @@ class RunnerTests(unittest.TestCase):
                   'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
                   'protectedExecutionEnabled': False}
         self.assertTrue(runner.group_prepared(report, result, terminal, 'output-symlink'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-fifo'}, terminal, 'output-fifo'))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
             workloadAcceptance='not-executed-role-readiness-measurement')
         self.assertTrue(runner.group_prepared({**report,
@@ -515,6 +517,23 @@ class RunnerTests(unittest.TestCase):
             late_roster['roleKernelRosterWindow']['finishedMonotonicNs'] = 10
             self.assertIsNone(runner._output_symlink_attempt(
                 report, late_roster, fixture, terminal, source))
+            fifo_terminal = copy.deepcopy(terminal)
+            fifo_audit = fifo_terminal.pop('outputSymlinkAudit')['record']
+            fifo_audit['kind'] = 'pr315-administrator-output-fifo-denial'
+            fifo_audit['caseId'] = 'output-fifo'
+            del fifo_audit['linkTargetDigest']
+            fifo_audit['artifactType'] = 'fifo'
+            fifo_audit['artifactMode'] = 0o600
+            fifo_terminal['outputFifoAudit'] = {'status': 'captured', 'record': fifo_audit}
+            fifo_identity, fifo_attempt, fifo_sidecar = runner._output_fifo_attempt(
+                report, result, fixture, fifo_terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(fifo_identity,
+                    [fifo_attempt])['cases'] if row['caseId'] == 'output-fifo'))
+            self.assertEqual('fifo', fifo_sidecar['targetEpoch']['artifactType'])
+            fifo_audit['artifactMode'] = 0o666
+            self.assertIsNone(runner._output_fifo_attempt(
+                report, result, fixture, fifo_terminal, source))
 
     def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
         roster = synthetic_role_kernel_roster()

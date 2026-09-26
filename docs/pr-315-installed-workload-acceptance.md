@@ -2426,9 +2426,21 @@ cannot reach the suite-111 failure point.
 These changes have passed offline checks only and have no TCG installed
 result. The default full-campaign entry now exits 78 before VM allocation
 while any declared group lacks an emitter; explicit supported development
-groups remain available. The suite-112 pause remains in effect.
+groups remain available. No suite after 111 had run when this v11 source was
+frozen; the later resume is recorded separately.
+
+The separately prepared prospective v12 output revision adds one isolated
+`output-fifo` group. A measured candidate child creates the FIFO inside its
+role sandbox after the administrator barrier. The root administrator observes
+the active role and unchanged 32-byte canary, invokes the actual bounded
+descriptor collector against the FIFO, verifies its immediate file-type
+rejection and retains the role/collector epochs before shutdown. The host
+checks this root audit, final stop receipts and guest stop before producing
+the case's v8 and v9 private records. The group cannot claim positive or any
+other denial case. Linux offline checks passed for the role, evidence and
+host verifier paths; no v12 TCG installed result exists.
 In a network-disabled, read-only Debian Docker test container, the latest
-focused source passed 150 PR-315, 44 PR-314 workload-driver, 23 PR-312
+focused source passed 151 PR-315, 44 PR-314 workload-driver, 23 PR-312
 reference-VM and 53 interop workload tests (eight interop skips). The
 selected protected-workload file passed 69 tests with one skip after the
 v11 policy change. These are offline checks, not installed results.
@@ -2783,7 +2795,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the current branch has prospective resolver and output-symlink emitters, including the v11 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver, output-symlink and output-fifo emitters, including the v12 selected-group preparation, while the other missing denial and lifecycle emitters and default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

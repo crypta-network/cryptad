@@ -901,13 +901,15 @@ def _resolver_authority_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
-def _output_symlink_audit(root, deadline):
+def _output_artifact_audit(root, deadline, case_id):
     """Retain only one fixed role artifact and actual safe-reader rejection."""
+    if case_id not in ('output-symlink', 'output-fifo'):
+        raise ValueError('output-artifact-case-invalid')
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return {'status': 'capture-deadline'}
     try:
-        raw = snapshot.read_file(root / 'authority', 'output-symlink-denial.json',
+        raw = snapshot.read_file(root / 'authority', case_id + '-denial.json',
                                  maximum=8192, timeout=min(2, remaining))
         value = json.loads(raw)
         fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
@@ -918,19 +920,25 @@ def _output_symlink_audit(root, deadline):
                   'collectorBefore', 'collectorAfter', 'collectorStartedNs',
                   'collectorFinishedNs', 'collectorDenial',
                   'targetBefore', 'targetAfter', 'artifactIdentity',
-                  'artifactOwnerUid', 'linkTargetDigest', 'triggerMonotonicNs',
+                  'artifactOwnerUid', 'triggerMonotonicNs',
                   'attackStartedNs', 'attackFinishedNs'}
+        fields |= ({'linkTargetDigest'} if case_id == 'output-symlink' else
+                   {'artifactType', 'artifactMode'})
         collector_fields = {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
                             'cgroupDigest', 'invocationId', 'sourceDigest',
                             'observedMonotonicNs'}
         target_fields = {'controlDigest', 'fileIdentity', 'observedMonotonicNs'}
         if (not isinstance(value, dict) or set(value) != fields
                 or value['schemaVersion'] != 1
-                or value['kind'] != 'pr315-administrator-output-symlink-denial'
-                or value['caseId'] != 'output-symlink'
+                or value['kind'] != 'pr315-administrator-' + case_id + '-denial'
+                or value['caseId'] != case_id
                 or value['collectorDenial'] != 'workload-snapshot-file-invalid'
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
-                       for key in ('sourceDigest', 'nonceDigest', 'linkTargetDigest'))
+                       for key in ('sourceDigest', 'nonceDigest'))
+                or (case_id == 'output-symlink' and
+                    re.fullmatch('[0-9a-f]{64}', str(value['linkTargetDigest'])) is None)
+                or (case_id == 'output-fifo' and
+                    (value['artifactType'] != 'fifo' or value['artifactMode'] != 0o600))
                 or type(value['actorUid']) is not int or value['actorUid'] <= 0
                 or value['artifactOwnerUid'] != value['actorUid']
                 or any(not isinstance(value[key], dict)
@@ -980,10 +988,18 @@ def _output_symlink_audit(root, deadline):
                     < value['collectorStartedNs'] < value['collectorFinishedNs']
                     < value['targetAfter']['observedMonotonicNs']
                     < value['collectorAfter']['observedMonotonicNs']):
-            raise ValueError('output-symlink-audit-invalid')
+            raise ValueError('output-artifact-audit-invalid')
         return {'status': 'captured', 'record': value}
     except (OSError, ValueError, TypeError, KeyError):
         return {'status': 'unavailable-or-unsafe'}
+
+
+def _output_symlink_audit(root, deadline):
+    return _output_artifact_audit(root, deadline, 'output-symlink')
+
+
+def _output_fifo_audit(root, deadline):
+    return _output_artifact_audit(root, deadline, 'output-fifo')
 
 
 def _sibling_network_audit(root, deadline, case_id):
@@ -1068,6 +1084,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
         'resolverAuthorityAudit': {'status': 'not-captured-cleanup-unverified'},
         'outputSymlinkAudit': {'status': 'not-captured-cleanup-unverified'},
+        'outputFifoAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingFcpAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingHttpAudit': {'status': 'not-captured-cleanup-unverified'},
@@ -1119,6 +1136,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
+        result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
@@ -1187,6 +1205,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
+        result['outputFifoAudit'] = _output_fifo_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):

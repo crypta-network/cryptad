@@ -136,6 +136,20 @@ class VolatileEvidenceTest(unittest.TestCase):
             self.assertEqual('unavailable-or-unsafe',
                              retained['outputSymlinkAudit']['status'])
             self.assertNotIn('must-not-copy', json.dumps(retained))
+        fifo = dict(audit, kind='pr315-administrator-output-fifo-denial',
+                    caseId='output-fifo', artifactType='fifo', artifactMode=0o600)
+        del fifo['linkTargetDigest']
+        fifo_path = self.root / 'authority/output-fifo-denial.json'
+        fifo_path.write_text(json.dumps(fifo))
+        self.assertEqual(fifo, evidence._capture(
+            self.root, self.expected, True)['outputFifoAudit']['record'])
+        for changed in (dict(fifo, artifactMode=0o666),
+                        dict(fifo, collectorDenial='timeout'),
+                        dict(fifo, privateToken='must-not-copy')):
+            fifo_path.write_text(json.dumps(changed))
+            retained = evidence._capture(self.root, self.expected, True)
+            self.assertEqual('unavailable-or-unsafe', retained['outputFifoAudit']['status'])
+            self.assertNotIn('must-not-copy', json.dumps(retained))
 
     def test_private_read_audit_keeps_only_fixed_root_process_evidence(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',

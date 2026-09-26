@@ -29,6 +29,10 @@ OUTPUT_SYMLINK = Path('/node/tmp/pr315-output-symlink-artifact')
 OUTPUT_SYMLINK_READY = Path('/node/tmp/pr315-output-symlink-ready.json')
 OUTPUT_SYMLINK_TRIGGER = Path('/node/tmp/pr315-output-symlink-trigger.json')
 OUTPUT_SYMLINK_RESULT = Path('/node/tmp/pr315-output-symlink-result.json')
+OUTPUT_FIFO = Path('/node/tmp/pr315-output-fifo-artifact')
+OUTPUT_FIFO_READY = Path('/node/tmp/pr315-output-fifo-ready.json')
+OUTPUT_FIFO_TRIGGER = Path('/node/tmp/pr315-output-fifo-trigger.json')
+OUTPUT_FIFO_RESULT = Path('/node/tmp/pr315-output-fifo-result.json')
 
 
 def attempt_network(case_id: str, nonce: str) -> dict:
@@ -212,17 +216,50 @@ def publish_output_symlink(nonce: str) -> None:
         os.fsync(stream.fileno())
 
 
+def publish_output_fifo(nonce: str) -> None:
+    """Create one role-owned FIFO after the fixed administrator barrier."""
+    until = time.monotonic() + 60
+    while not OUTPUT_FIFO_TRIGGER.exists():
+        if time.monotonic() >= until:
+            raise ValueError('pr315-output-fifo-trigger-timeout')
+        time.sleep(.05)
+    descriptor = os.open(OUTPUT_FIFO_TRIGGER, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(descriptor) as stream:
+        selected = json.load(stream)
+    if selected != {'caseId': 'output-fifo', 'nonce': nonce}:
+        raise ValueError('pr315-output-fifo-trigger-invalid')
+    started = time.monotonic_ns()
+    os.mkfifo(OUTPUT_FIFO, 0o600)
+    finished = time.monotonic_ns()
+    record = {'schemaVersion': 1, 'kind': 'pr315-candidate-output-fifo',
+              'caseId': 'output-fifo', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              'startedMonotonicNs': started, 'finishedMonotonicNs': finished,
+              'artifactPathDigest': hashlib.sha256(os.fsencode(OUTPUT_FIFO)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(OUTPUT_CANARY)).hexdigest()}
+    raw = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+    if len(raw) > 4096:
+        raise ValueError('pr315-output-fifo-result-limit')
+    descriptor = os.open(OUTPUT_FIFO_RESULT,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
-            or sys.argv[2] not in ('observer-private-read', 'output-symlink')
+            or sys.argv[2] not in ('observer-private-read', 'output-symlink', 'output-fifo')
             or not sys.flags.isolated or not sys.flags.no_site):
         raise ValueError('pr315-role-probe-fixed-invocation-required')
     case_id = sys.argv[2]
     ready = {'schemaVersion': 1, 'kind': 'pr315-candidate-role-probe-ready',
              'caseId': case_id, 'nonce': sys.argv[1],
              'pid': os.getpid(), 'startedMonotonicNs': time.monotonic_ns()}
-    ready_path = READY if case_id == 'observer-private-read' else OUTPUT_SYMLINK_READY
+    ready_path = (READY if case_id == 'observer-private-read' else
+                  OUTPUT_FIFO_READY if case_id == 'output-fifo' else OUTPUT_SYMLINK_READY)
     descriptor = os.open(ready_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(ready, stream, sort_keys=True, separators=(',', ':'))
@@ -230,6 +267,10 @@ def main() -> None:
         os.fsync(stream.fileno())
     if case_id == 'output-symlink':
         publish_output_symlink(sys.argv[1])
+        while True:
+            time.sleep(1)
+    if case_id == 'output-fifo':
+        publish_output_fifo(sys.argv[1])
         while True:
             time.sleep(1)
     deadline = time.monotonic() + 30

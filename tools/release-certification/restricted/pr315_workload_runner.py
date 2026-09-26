@@ -47,7 +47,7 @@ def groups():
 
 SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'network-app', 'cancellation', 'controller-restart',
-                              'output-symlink'))
+                              'output-symlink', 'output-fifo'))
 
 
 def selected_cases(group):
@@ -170,14 +170,15 @@ def terminal_roster_matches(roster, terminal, *, require_sender_restart=True):
 
 def group_prepared(report, result, terminal, group):
     """Bind selected role preparation to this host transport and final cleanup."""
-    if (group not in ('output-symlink', 'role-readiness-diagnostic')
+    if (group not in ('output-symlink', 'output-fifo', 'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
     host = report.get('hostVerifiedIdentity')
     identity = result.get('identity')
     return (report.get('mode') == 'workload-positive'
             and report.get('workloadPurpose') == ('selected-group'
-                if group == 'output-symlink' else 'role-readiness-measurement')
+                if group in ('output-symlink', 'output-fifo')
+                else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
             and isinstance(host, dict) and isinstance(identity, dict)
@@ -198,7 +199,8 @@ def group_prepared(report, result, terminal, group):
             and terminal_roster_matches(result['roleKernelRoster'], terminal,
                                         require_sender_restart=False)
             and result.get('workloadAcceptance') == (
-                'incomplete-hostile-contract-not-executed' if group == 'output-symlink'
+                'incomplete-hostile-contract-not-executed'
+                if group in ('output-symlink', 'output-fifo')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -1653,15 +1655,17 @@ def _resolver_authority_attempt(report, result, fixture, terminal, source):
         return None
 
 
-def _output_symlink_attempt(report, result, fixture, terminal, source):
-    """Bind candidate symlink creation to the real bounded descriptor reader."""
-    case_id = 'output-symlink'
+def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
+    """Bind one role-created artifact to the real bounded descriptor reader."""
+    if case_id not in ('output-symlink', 'output-fifo'):
+        return None
     try:
+        field = 'outputSymlinkAudit' if case_id == 'output-symlink' else 'outputFifoAudit'
         if (not group_prepared(report, result, terminal, case_id)
                 or fixture.get('schemaVersion') != 4
-                or terminal['outputSymlinkAudit']['status'] != 'captured'):
+                or terminal[field]['status'] != 'captured'):
             return None
-        audit = terminal['outputSymlinkAudit']['record']
+        audit = terminal[field]['record']
         sender = next(row for row in result['roleKernelRoster']['roles']
                       if row['role'] == 'candidate-sender')
         before, after = audit['actorBefore'], audit['actorAfter']
@@ -1687,7 +1691,7 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
             'sourceDigest': collector['sourceDigest']},
             sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
         if (audit['schemaVersion'] != 1
-                or audit['kind'] != 'pr315-administrator-output-symlink-denial'
+                or audit['kind'] != 'pr315-administrator-' + case_id + '-denial'
                 or audit['caseId'] != case_id
                 or audit['sourceDigest'] != reference.sha256(source /
                     'tools/release-certification/restricted/pr315_role_probe.py')
@@ -1733,8 +1737,10 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
                 or len(audit['artifactIdentity']) != 2
                 or any(type(part) is not int or part <= 0
                        for part in audit['artifactIdentity'])
-                or audit['linkTargetDigest'] != hashlib.sha256(
-                    b'/node/tmp/pr315-output-target-canary').hexdigest()
+                or (case_id == 'output-symlink' and audit['linkTargetDigest'] !=
+                    hashlib.sha256(b'/node/tmp/pr315-output-target-canary').hexdigest())
+                or (case_id == 'output-fifo' and
+                    (audit['artifactType'] != 'fifo' or audit['artifactMode'] != 0o600))
                 or audit['collectorDenial'] != 'workload-snapshot-file-invalid'
                 or not target_before['observedMonotonicNs']
                     < collector['observedMonotonicNs'] < audit['triggerMonotonicNs']
@@ -1798,10 +1804,23 @@ def _output_symlink_attempt(report, result, fixture, terminal, source):
                    'attackDigest': attack_digest, 'hostVerifiedIdentity': host,
                    'guestStopped': True,
                    'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+        if case_id == 'output-fifo':
+            sidecar['targetEpoch']['artifactType'] = 'fifo'
+            sidecar['targetEpoch']['artifactMode'] = audit['artifactMode']
         return identity, attempt, sidecar
     except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
             OSError):
         return None
+
+
+def _output_symlink_attempt(report, result, fixture, terminal, source):
+    return _output_artifact_attempt(report, result, fixture, terminal, source,
+                                    'output-symlink')
+
+
+def _output_fifo_attempt(report, result, fixture, terminal, source):
+    return _output_artifact_attempt(report, result, fixture, terminal, source,
+                                    'output-fifo')
 
 
 def _sibling_network_attempt(case_id, report, result, fixture, terminal, source):
@@ -1970,15 +1989,16 @@ def run(args):
         raise ValueError('workload-accepted-tcg-profile-required')
     group = getattr(args, 'case_group', None)
     selected_cases(group)
+    output_group = group in ('output-symlink', 'output-fifo')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
             role_measurement and getattr(args, 'startup_measurement', False)):
         raise ValueError('workload-measurement-group-incompatible')
-    scenario = ('none' if group == 'output-symlink' or role_measurement else
+    scenario = ('none' if output_group or role_measurement else
                 group if group in ('cancellation', 'controller-restart') else
                 getattr(args, 'lifecycle_scenario', 'cancellation'))
-    if (group == 'output-symlink' or role_measurement) != (scenario == 'none'):
+    if (output_group or role_measurement) != (scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
     for module in (reference, native_runner, acceptance, fixtures):
         expected = args.source / 'tools/release-certification/restricted' / Path(module.__file__).name
@@ -2085,7 +2105,7 @@ def run(args):
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
                                  case_group=None, fault_case=None, lifecycle_scenario=scenario,
                                  workload_group=('role-readiness-diagnostic' if role_measurement
-                                                 else 'output-symlink' if group == 'output-symlink'
+                                                 else group if output_group
                                                  else None))
             selected = SimpleNamespace(**selected_args)
             with (output / 'transport.private.log').open('x') as log, redirect_stdout(log):
@@ -2114,17 +2134,17 @@ def run(args):
             startup_measurement = getattr(args, 'startup_measurement', False)
             diagnostic_mode = startup_measurement or role_measurement
             positive = not diagnostic_mode and positive_executed(report, value, terminal)
-            group_ready = (not diagnostic_mode and group == 'output-symlink'
+            group_ready = (not diagnostic_mode and output_group
                            and group_prepared(report, value, terminal, group))
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
-            reached = (selected_probe_started(group, resources) if group == 'output-symlink'
+            reached = (selected_probe_started(group, resources) if output_group
                        else resources is not None)
             # A reached aggregate without per-case witnesses is inconclusive. An
             # installation failure is setup-failed; neither is an observed denial.
-            statuses = ({'output-symlink': 'inconclusive' if reached else 'setup-failed'}
-                        if group == 'output-symlink' else
+            statuses = ({group: 'inconclusive' if reached else 'setup-failed'}
+                        if output_group else
                         {case: 'inconclusive' if reached else 'setup-failed'
                          for case in groups()[0][1]})
             if group_ready:
@@ -2135,7 +2155,7 @@ def run(args):
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
                     raise ValueError('workload-output-host-identity-changed')
-            if positive and group != 'output-symlink':
+            if positive and not output_group:
                 host_started = time.monotonic_ns()
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2161,7 +2181,7 @@ def run(args):
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 statuses.update({case: 'passed' for case in expected})
-            if (group != 'output-symlink' and not diagnostic_mode and isinstance(terminal, dict)
+            if (not output_group and not diagnostic_mode and isinstance(terminal, dict)
                     and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2184,7 +2204,7 @@ def run(args):
                     native_runner._save(output / 'denial-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['namespace-mount-escape'] = 'passed'
-            if (group != 'output-symlink' and not diagnostic_mode and isinstance(terminal, dict)
+            if (not output_group and not diagnostic_mode and isinstance(terminal, dict)
                     and terminal.get('observerControlCheckpoint', {}).get('status') == 'captured'):
                 fixture = fixtures.verify(args.prepared_fixtures, args.fixture_manifest_digest,
                     args.source, args.product_source_commit)
@@ -2207,7 +2227,7 @@ def run(args):
                     native_runner._save(output / 'observer-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['observer-control'] = 'passed'
-            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+            if (not output_group and positive and isinstance(terminal, dict)
                     and terminal.get('arbitraryEndpointCheckpoint', {}).get('status') == 'captured'
                     and terminal.get('arbitraryEndpointAudit', {}).get('status') == 'captured'):
                 denial = arbitrary_endpoint_denial_attempt(report, value, fixture, terminal)
@@ -2224,7 +2244,7 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'arbitrary-endpoint-v9-evidence.private.json', sidecar)
                 statuses['arbitrary-endpoint'] = 'passed'
-            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+            if (not output_group and positive and isinstance(terminal, dict)
                     and terminal.get('runnerControlAudit', {}).get('status') == 'captured'):
                 denial = runner_control_denial_attempt(report, value, fixture, terminal)
                 if denial is not None:
@@ -2238,14 +2258,14 @@ def run(args):
                     native_runner._save(output / 'runner-control-v8-evidence.private.json',
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     statuses['runner-control'] = 'passed'
-            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+            if (not output_group and positive and isinstance(terminal, dict)
                     and terminal.get('observerPrivateReadAudit', {}).get('status') == 'captured'):
                 case = observer_private_read_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
                     raise ValueError('workload-observer-private-read-verification-failed')
                 native_runner._save(output / 'observer-private-read-v9-evidence.private.json', case)
                 statuses['observer-private-read'] = 'passed'
-            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+            if (not output_group and positive and isinstance(terminal, dict)
                     and terminal.get('observerPrivateWriteAudit', {}).get('status') == 'captured'):
                 case = observer_private_write_attempt(report, value, fixture, terminal, args.source)
                 if case is None:
@@ -2254,7 +2274,7 @@ def run(args):
                 statuses['observer-private-write'] = 'passed'
             for case_id, field in (('forged-runtime-identity', 'forgedRuntimeIdentityAudit'),
                                    ('forged-counters', 'forgedCountersAudit')):
-                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+                if (not output_group and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_claim_attempt(case_id, report, value, fixture, terminal, args.source)
                     if case is None:
@@ -2264,7 +2284,7 @@ def run(args):
             for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                    ('package-expectation', 'packageExpectationAudit'),
                                    ('cgroup-migration', 'cgroupMigrationAudit')):
-                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+                if (not output_group and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     case = _fixed_role_access_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -2274,7 +2294,7 @@ def run(args):
                     statuses[case_id] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
-                if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+                if (not output_group and positive and isinstance(terminal, dict)
                         and terminal.get(field, {}).get('status') == 'captured'):
                     denial = _sibling_network_attempt(
                         case_id, report, value, fixture, terminal, args.source)
@@ -2291,7 +2311,7 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
-            if (group != 'output-symlink' and positive and isinstance(terminal, dict)
+            if (not output_group and positive and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(
                     report, value, fixture, terminal, args.source)
@@ -2308,29 +2328,31 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
                 statuses['resolver-authority'] = 'passed'
-            if (group == 'output-symlink' and group_ready and isinstance(terminal, dict)
-                    and terminal.get('outputSymlinkAudit', {}).get('status') == 'captured'):
-                denial = _output_symlink_attempt(report, value, fixture, terminal, args.source)
+            if (output_group and group_ready and isinstance(terminal, dict)
+                    and terminal.get('outputSymlinkAudit' if group == 'output-symlink'
+                                     else 'outputFifoAudit', {}).get('status') == 'captured'):
+                denial = _output_artifact_attempt(report, value, fixture, terminal,
+                                                  args.source, group)
                 if denial is None:
-                    raise ValueError('workload-output-symlink-verification-failed')
+                    raise ValueError('workload-output-artifact-verification-failed')
                 identity, case_attempt, sidecar = denial
                 checked_cases = acceptance.verify_attempts(identity, [case_attempt])
                 if (checked_cases['recordContractValid'] is not True
                         or next(row['status'] for row in checked_cases['cases']
-                                if row['caseId'] == 'output-symlink') != 'passed'
+                                if row['caseId'] == group) != 'passed'
                         or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
-                    raise ValueError('workload-output-symlink-case-invalid')
-                native_runner._save(output / 'output-symlink-v8-evidence.private.json',
+                    raise ValueError('workload-output-artifact-case-invalid')
+                native_runner._save(output / (group + '-v8-evidence.private.json'),
                     {'attempt': case_attempt, 'assessment': checked_cases})
-                native_runner._save(output / 'output-symlink-v9-evidence.private.json', sidecar)
-                statuses['output-symlink'] = 'passed'
+                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                statuses[group] = 'passed'
             if diagnostic_mode:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = selected_public_result(group,
                 ('role-readiness-measurement-executed' if role_measurement
                     and group_prepared(report, value, terminal, 'role-readiness-diagnostic') else
                     'implementation-incomplete' if group_ready and
-                    statuses.get('output-symlink') == 'passed' else
+                    statuses.get(group) == 'passed' else
                     selected_terminal_status(group, report, positive)), positive,
                 statuses=statuses,
                 reasons=(('startup-measurement-not-workload-execution',)

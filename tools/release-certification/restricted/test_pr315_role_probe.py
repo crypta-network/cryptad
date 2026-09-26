@@ -1,6 +1,7 @@
 """Local fixed actor checks; no unit result grants installed workload acceptance."""
 import json
 import os
+import stat
 from pathlib import Path
 import sys
 import tempfile
@@ -13,6 +14,28 @@ import runtime_snapshot as snapshot
 
 
 class RoleProbeTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_fixed_output_fifo_is_real_and_collector_rejects_without_blocking(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canary = root / 'canary'
+            artifact = root / 'artifact'
+            trigger = root / 'trigger.json'
+            result = root / 'result.json'
+            canary.write_bytes(b'x' * 32)
+            trigger.write_text(json.dumps({'caseId': 'output-fifo', 'nonce': 'a' * 64}))
+            with patch.object(probe, 'OUTPUT_CANARY', canary), \
+                    patch.object(probe, 'OUTPUT_FIFO', artifact), \
+                    patch.object(probe, 'OUTPUT_FIFO_TRIGGER', trigger), \
+                    patch.object(probe, 'OUTPUT_FIFO_RESULT', result):
+                probe.publish_output_fifo('a' * 64)
+            self.assertTrue(stat.S_ISFIFO(artifact.lstat().st_mode))
+            with self.assertRaisesRegex(snapshot.SnapshotError, 'file-invalid'):
+                snapshot.read_file(root, artifact.name, maximum=64, timeout=2)
+            self.assertEqual(b'x' * 32, snapshot.read_file(
+                root, canary.name, maximum=64, timeout=2))
+            self.assertEqual('output-fifo', json.loads(result.read_text())['caseId'])
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_fixed_output_symlink_is_real_and_descriptor_collector_rejects_it(self):
         with tempfile.TemporaryDirectory() as directory:

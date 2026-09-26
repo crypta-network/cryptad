@@ -53,6 +53,16 @@ OUTPUT_SYMLINK = 'pr315-output-symlink-artifact'
 OUTPUT_SYMLINK_READY = 'pr315-output-symlink-ready.json'
 OUTPUT_SYMLINK_TRIGGER = 'pr315-output-symlink-trigger.json'
 OUTPUT_SYMLINK_RESULT = 'pr315-output-symlink-result.json'
+OUTPUT_FIFO = 'pr315-output-fifo-artifact'
+OUTPUT_FIFO_READY = 'pr315-output-fifo-ready.json'
+OUTPUT_FIFO_TRIGGER = 'pr315-output-fifo-trigger.json'
+OUTPUT_FIFO_RESULT = 'pr315-output-fifo-result.json'
+OUTPUT_ARTIFACTS = {
+    'output-symlink': (OUTPUT_SYMLINK, OUTPUT_SYMLINK_READY,
+                       OUTPUT_SYMLINK_TRIGGER, OUTPUT_SYMLINK_RESULT),
+    'output-fifo': (OUTPUT_FIFO, OUTPUT_FIFO_READY,
+                    OUTPUT_FIFO_TRIGGER, OUTPUT_FIFO_RESULT),
+}
 ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-observer-private-control-failed', 'workload-observer-private-control-mismatch',
     'workload-role-probe-ready-timeout', 'workload-role-probe-ready-invalid',
@@ -76,6 +86,9 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-output-symlink-ready-timeout', 'workload-output-symlink-result-timeout',
     'workload-output-symlink-actor-invalid', 'workload-output-symlink-target-invalid',
     'workload-output-symlink-collector-invalid',
+    'workload-output-fifo-ready-timeout', 'workload-output-fifo-result-timeout',
+    'workload-output-fifo-actor-invalid', 'workload-output-fifo-target-invalid',
+    'workload-output-fifo-collector-invalid',
     'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
     'workload-sibling-network-before-window-invalid',
     'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
@@ -633,7 +646,7 @@ def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_dead
     return audits
 
 
-def _administrator_collector_epoch():
+def _administrator_collector_epoch(case_id):
     """Measure the real test-kit descriptor reader process, not an asserted PID."""
     import cross_version_runtime as runtime
     pid = os.getpid()
@@ -642,7 +655,7 @@ def _administrator_collector_epoch():
     cgroup = (proc / 'cgroup').read_text().strip()
     if (os.geteuid() != 0 or len(fields) <= 19 or not fields[19].isdecimal()
             or not cgroup.startswith('0::/') or '..' in cgroup.split('/')):
-        raise ValueError('workload-output-symlink-collector-invalid')
+        raise ValueError('workload-' + case_id + '-collector-invalid')
     group = (Path('/sys/fs/cgroup') / cgroup[4:].lstrip('/')).stat()
     identity = [group.st_dev, group.st_ino]
     boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -659,25 +672,28 @@ def _administrator_collector_epoch():
             'observedMonotonicNs': time.monotonic_ns()}
 
 
-def _output_canary_control(root, uid, expected):
+def _output_canary_control(root, uid, expected, case_id):
     import runtime_snapshot as snapshot
     path = root / OUTPUT_CANARY
     info = path.lstat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid
             or info.st_nlink != 1 or info.st_size != 32 or info.st_mode & 0o077):
-        raise ValueError('workload-output-symlink-target-invalid')
+        raise ValueError('workload-' + case_id + '-target-invalid')
     raw = snapshot.read_file(root, OUTPUT_CANARY, maximum=32, timeout=2)
     digest = hashlib.sha256(raw).hexdigest()
     if len(raw) != 32 or digest != expected:
-        raise ValueError('workload-output-symlink-target-invalid')
+        raise ValueError('workload-' + case_id + '-target-invalid')
     return {'controlDigest': digest, 'fileIdentity': [info.st_dev, info.st_ino,
         info.st_size, info.st_mtime_ns, info.st_ctime_ns],
             'observedMonotonicNs': time.monotonic_ns()}
 
 
-def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns):
-    """Trigger one real role symlink and the installed safe descriptor reader."""
+def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_ns, case_id):
+    """Trigger one fixed role-created object and the installed descriptor reader."""
     import runtime_snapshot as snapshot
+    if case_id not in OUTPUT_ARTIFACTS:
+        raise ValueError('workload-output-case-invalid')
+    artifact_name, ready_name, trigger_name, result_name = OUTPUT_ARTIFACTS[case_id]
     role = 'candidate-sender'
     uid = workload.account(role).pw_uid
     gid = workload.account(role).pw_gid
@@ -688,7 +704,7 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
     try:
         os.fchown(fd, uid, gid)
         if os.write(fd, raw) != len(raw):
-            raise ValueError('workload-output-symlink-target-invalid')
+            raise ValueError('workload-' + case_id + '-target-invalid')
         os.fsync(fd)
     finally:
         os.close(fd)
@@ -696,65 +712,68 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
     nonce = secrets.token_hex(32)
     launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
     workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
-        {'schemaVersion': 1, 'caseId': 'output-symlink', 'nonce': nonce,
+        {'schemaVersion': 1, 'caseId': case_id, 'nonce': nonce,
          'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
          'sourceDigest': source_digest}, create=True, mode=0o444)
-    ready_path = root / OUTPUT_SYMLINK_READY
+    ready_path = root / ready_name
     until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
     while time.monotonic() < until and not ready_path.exists():
         time.sleep(.05)
     if not ready_path.exists():
-        raise ValueError('workload-output-symlink-ready-timeout')
+        raise ValueError('workload-' + case_id + '-ready-timeout')
     ready = _candidate_probe_file(ready_path, uid)
     if (not isinstance(ready, dict) or set(ready) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'startedMonotonicNs'}
             or ready['schemaVersion'] != 1
             or ready['kind'] != 'pr315-candidate-role-probe-ready'
-            or ready['caseId'] != 'output-symlink' or ready['nonce'] != nonce):
-        raise ValueError('workload-output-symlink-actor-invalid')
+            or ready['caseId'] != case_id or ready['nonce'] != nonce):
+        raise ValueError('workload-' + case_id + '-actor-invalid')
     handle = handoff['handles'][role]
     before = workload.observe(handle)
-    actor_before = _role_probe_actor(before, nonce, 'output-symlink')
+    actor_before = _role_probe_actor(before, nonce, case_id)
     if ready['pid'] != actor_before['namespacePids'][-1]:
-        raise ValueError('workload-output-symlink-actor-invalid')
-    target_before = _output_canary_control(root, uid, digest)
-    collector_before = _administrator_collector_epoch()
+        raise ValueError('workload-' + case_id + '-actor-invalid')
+    target_before = _output_canary_control(root, uid, digest, case_id)
+    collector_before = _administrator_collector_epoch(case_id)
     trigger_ns = time.monotonic_ns()
-    trigger = root / OUTPUT_SYMLINK_TRIGGER
+    trigger = root / trigger_name
     fd = os.open(trigger, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
     try:
         with os.fdopen(fd, 'w', closefd=False) as stream:
-            json.dump({'caseId': 'output-symlink', 'nonce': nonce}, stream,
+            json.dump({'caseId': case_id, 'nonce': nonce}, stream,
                       sort_keys=True, separators=(',', ':'))
             stream.flush()
             os.fsync(stream.fileno())
         os.fchmod(fd, 0o444)
     finally:
         os.close(fd)
-    result_path = root / OUTPUT_SYMLINK_RESULT
+    result_path = root / result_name
     while time.monotonic() < until and not result_path.exists():
         time.sleep(.05)
     if not result_path.exists():
-        raise ValueError('workload-output-symlink-result-timeout')
+        raise ValueError('workload-' + case_id + '-result-timeout')
     result = _candidate_probe_file(result_path, uid)
-    artifact = root / OUTPUT_SYMLINK
+    artifact = root / artifact_name
     info = artifact.lstat()
-    if (not stat.S_ISLNK(info.st_mode) or info.st_uid != uid
-            or info.st_nlink != 1
-            or os.readlink(artifact) != '/node/tmp/' + OUTPUT_CANARY):
-        raise ValueError('workload-output-symlink-target-invalid')
+    if (info.st_uid != uid or info.st_nlink != 1
+            or (case_id == 'output-symlink' and
+                (not stat.S_ISLNK(info.st_mode)
+                 or os.readlink(artifact) != '/node/tmp/' + OUTPUT_CANARY))
+            or (case_id == 'output-fifo' and
+                (not stat.S_ISFIFO(info.st_mode) or info.st_mode & 0o777 != 0o600))):
+        raise ValueError('workload-' + case_id + '-target-invalid')
     started = time.monotonic_ns()
     try:
-        snapshot.read_file(root, OUTPUT_SYMLINK, maximum=64, timeout=2)
+        snapshot.read_file(root, artifact_name, maximum=64, timeout=2)
     except snapshot.SnapshotError as error:
         denial = str(error)
     else:
-        raise ValueError('workload-output-symlink-collector-invalid')
+        raise ValueError('workload-' + case_id + '-collector-invalid')
     finished = time.monotonic_ns()
-    target_after = _output_canary_control(root, uid, digest)
-    collector_after = _administrator_collector_epoch()
+    target_after = _output_canary_control(root, uid, digest, case_id)
+    collector_after = _administrator_collector_epoch(case_id)
     after = workload.observe(handle)
-    actor_after = _role_probe_actor(after, nonce, 'output-symlink')
+    actor_after = _role_probe_actor(after, nonce, case_id)
     stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
                     'pidNamespace', 'networkNamespaceIdentity',
                     'mountNamespaceIdentity', 'userNamespaceIdentity',
@@ -766,12 +785,12 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
             'startedMonotonicNs', 'finishedMonotonicNs',
             'artifactPathDigest', 'targetPathDigest'}
             or result['schemaVersion'] != 1
-            or result['kind'] != 'pr315-candidate-output-symlink'
-            or result['caseId'] != 'output-symlink' or result['nonce'] != nonce
+            or result['kind'] != 'pr315-candidate-' + case_id
+            or result['caseId'] != case_id or result['nonce'] != nonce
             or result['pid'] != actor_before['namespacePids'][-1]
             or result['uid'] != uid or result['gid'] != gid
             or result['artifactPathDigest'] != hashlib.sha256(
-                b'/node/tmp/pr315-output-symlink-artifact').hexdigest()
+                os.fsencode(Path('/node/tmp') / artifact_name)).hexdigest()
             or result['targetPathDigest'] != hashlib.sha256(
                 b'/node/tmp/pr315-output-target-canary').hexdigest()
             or denial != 'workload-snapshot-file-invalid'
@@ -789,10 +808,10 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
                 < result['startedMonotonicNs'] < result['finishedMonotonicNs']
                 < started < finished < target_after['observedMonotonicNs']
                 < collector_after['observedMonotonicNs'] < after['observedMonotonicNs']):
-        raise ValueError('workload-output-symlink-collector-invalid')
+        raise ValueError('workload-' + case_id + '-collector-invalid')
     audit = {'schemaVersion': 1,
-        'kind': 'pr315-administrator-output-symlink-denial',
-        'caseId': 'output-symlink', 'sourceDigest': source_digest,
+        'kind': 'pr315-administrator-' + case_id + '-denial',
+        'caseId': case_id, 'sourceDigest': source_digest,
         'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
         'actorUid': uid, 'actorBefore': actor_before, 'actorAfter': actor_after,
         'actorInvocationBefore': before['managerInvocation'],
@@ -807,15 +826,29 @@ def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns)
         'targetAfter': target_after,
         'artifactIdentity': [info.st_dev, info.st_ino],
         'artifactOwnerUid': uid,
-        'linkTargetDigest': hashlib.sha256(
-            b'/node/tmp/pr315-output-target-canary').hexdigest(),
         'triggerMonotonicNs': trigger_ns,
         'attackStartedNs': result['startedMonotonicNs'],
         'attackFinishedNs': result['finishedMonotonicNs']}
-    workload.write(workload.ROOT / 'authority/output-symlink-denial.json',
+    if case_id == 'output-symlink':
+        audit['linkTargetDigest'] = hashlib.sha256(
+            b'/node/tmp/pr315-output-target-canary').hexdigest()
+    else:
+        audit['artifactType'] = 'fifo'
+        audit['artifactMode'] = info.st_mode & 0o777
+    workload.write(workload.ROOT / 'authority' / (case_id + '-denial.json'),
                    audit, create=True)
     return hashlib.sha256(json.dumps(audit, sort_keys=True,
         separators=(',', ':')).encode()).hexdigest()
+
+
+def probe_output_symlink(workload, handoff, source_digest, campaign_deadline_ns):
+    return _probe_output_artifact(workload, handoff, source_digest,
+                                  campaign_deadline_ns, 'output-symlink')
+
+
+def probe_output_fifo(workload, handoff, source_digest, campaign_deadline_ns):
+    return _probe_output_artifact(workload, handoff, source_digest,
+                                  campaign_deadline_ns, 'output-fifo')
 
 
 def probe_observer_private_read(workload, handoff, observer, source_digest,
@@ -1726,7 +1759,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('output-symlink', 'role-readiness-diagnostic'):
+        if workload_group in ('output-symlink', 'output-fifo', 'role-readiness-diagnostic'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2022,7 +2055,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             workload_group=None):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
-    if workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic') or (
+    if workload_group not in (None, 'output-symlink', 'output-fifo',
+                             'role-readiness-diagnostic') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
     if (workload_group is not None) != (lifecycle_scenario == 'none'):
@@ -2149,7 +2183,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group is None
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('output-symlink', 'role-readiness-diagnostic') and
+        if (workload_group in ('output-symlink', 'output-fifo',
+                              'role-readiness-diagnostic') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2215,18 +2250,21 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
                 diagnostics['resolverAuthority'] = diagnostic
-        if not startup_measurement and workload_group == 'output-symlink':
+        if not startup_measurement and workload_group in ('output-symlink', 'output-fifo'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
-                'kind': 'pr315-workload-probe-start', 'caseId': 'output-symlink',
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
             try:
-                digest = probe_output_symlink(
-                    workload, handoff, role_probe_digest, campaign_deadline)
-                diagnostics['outputSymlink'] = {'status': 'captured',
-                    'caseId': 'output-symlink', 'auditDigest': digest}
+                probe = (probe_output_fifo if workload_group == 'output-fifo'
+                         else probe_output_symlink)
+                digest = probe(workload, handoff, role_probe_digest, campaign_deadline)
+                field = 'outputFifo' if workload_group == 'output-fifo' else 'outputSymlink'
+                diagnostics[field] = {'status': 'captured',
+                    'caseId': workload_group, 'auditDigest': digest}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
-                diagnostics['outputSymlink'] = {'status': 'unavailable-or-unsafe',
+                field = 'outputFifo' if workload_group == 'output-fifo' else 'outputSymlink'
+                diagnostics[field] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
         if not startup_measurement and workload_group is None and lifecycle_scenario == 'cancellation':
@@ -2304,7 +2342,8 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink', 'role-readiness-diagnostic'))
+    parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
+                                                    'role-readiness-diagnostic'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

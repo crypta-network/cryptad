@@ -38,6 +38,9 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'role-readiness-diagnostic'
         self.assertIn('--lifecycle-scenario none --workload-group role-readiness-diagnostic',
                       driver.workload_guest_command(args))
+        args.workload_group = 'output-fifo'
+        self.assertIn('--lifecycle-scenario none --workload-group output-fifo',
+                      driver.workload_guest_command(args))
 
     def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
         for field in ('fixture_manifest_digest', 'product_source_commit'):
@@ -51,7 +54,7 @@ class ReferenceDriverTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)
         args = SimpleNamespace(fixture_manifest_digest='a' * 64,
-            product_source_commit='b' * 40, workload_group='output-fifo')
+            product_source_commit='b' * 40, workload_group='output-hardlink')
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)
 

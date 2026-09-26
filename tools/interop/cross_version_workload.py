@@ -996,7 +996,7 @@ class InstalledWorkloadAdapter:
     def run_group_preparation(self, group, *, leave_running_for_administrator=False,
                               on_start_failure=None):
         """Prove the four installed role epochs without claiming positive content work."""
-        if group not in ('output-symlink', 'role-readiness-diagnostic') or (
+        if group not in ('output-symlink', 'output-fifo', 'role-readiness-diagnostic') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
         completed = False

@@ -27,7 +27,8 @@ LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'none')
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
             lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic')
+    if (workload_group not in (None, 'output-symlink', 'output-fifo',
+                              'role-readiness-diagnostic')
             or (startup_measurement and workload_group)
             or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -62,7 +63,8 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
               lifecycle_scenario='cancellation', workload_group=None):
     global STAGE
-    if (workload_group not in (None, 'output-symlink', 'role-readiness-diagnostic')
+    if (workload_group not in (None, 'output-symlink', 'output-fifo',
+                              'role-readiness-diagnostic')
             or (startup_measurement and workload_group)
             or (workload_group is not None) != (lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
@@ -224,7 +226,8 @@ def main():
     parser.add_argument('--startup-measurement', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('output-symlink', 'role-readiness-diagnostic'))
+    parser.add_argument('--workload-group', choices=('output-symlink', 'output-fifo',
+                                                    'role-readiness-diagnostic'))
     args = parser.parse_args()
     if (re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None
             or re.fullmatch('[0-9a-f]{40}', args.product_source_commit) is None):
