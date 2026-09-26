@@ -328,6 +328,71 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(runner._fixed_role_access_attempt(
                 'package-expectation', report, result, fixture, changed, source))
 
+    def test_resolver_denial_needs_real_role_epoch_active_service_and_stable_canary(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': None, 'managerInvocation': '9' * 32,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [3, 5], 'mainPid': 211,
+                  'mainStartTicks': 42, 'canaryIdentity': [3, 6],
+                  'observedMonotonicNs': 40, 'controlDigest': 'e' * 64}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-resolver-authority-denial',
+                 'caseId': 'resolver-authority',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'actorStateBefore': 'd' * 64, 'actorStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=100),
+                 'targetPathDigest': hashlib.sha256(
+                     b'/var/lib/cryptad-restricted/resolver/pr315-workload-canary').hexdigest(),
+                 'attackStartedNs': 60, 'attackFinishedNs': 70,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['resolverAuthorityAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner._resolver_authority_attempt(
+                report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'resolver-authority'))
+            self.assertEqual('9' * 32, sidecar['targetEpoch']['systemdInvocation'])
+            for mutate in (
+                    lambda row: row['resolverAuthorityAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['resolverAuthorityAudit']['record']['targetAfter'].update(
+                        managerInvocation='8' * 32),
+                    lambda row: row['resolverAuthorityAudit']['record']['targetAfter'].update(
+                        controlDigest='f' * 64),
+                    lambda row: row['resolverAuthorityAudit']['record'].update(
+                        kernelOpenResult={'opened': True, 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._resolver_authority_attempt(
+                    report, result, fixture, changed, source))
+
     def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender, recipient = roster['roles'][:2]

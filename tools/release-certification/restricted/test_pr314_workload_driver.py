@@ -714,6 +714,7 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.object(driver, 'TEST_KIT', repository))
             stack.enter_context(patch.object(driver, 'stage_role_probe', return_value='f' * 64))
             stack.enter_context(patch.object(driver, 'prepare_sibling_canary', return_value='d' * 64))
+            stack.enter_context(patch.object(driver, 'prepare_resolver_canary', return_value='e' * 64))
             stack.enter_context(patch.object(driver, 'prerequisites', return_value=[]))
             stack.enter_context(patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)))
             stack.enter_context(patch.object(Path, 'mkdir'))

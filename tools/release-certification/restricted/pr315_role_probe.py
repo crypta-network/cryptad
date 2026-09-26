@@ -17,6 +17,7 @@ TARGET = Path('/var/lib/cryptad-cross-version/experiments/pr315-installed-worklo
 SIBLING = Path('/var/lib/cryptad-restricted-workload/state/candidate-recipient/pr315-sibling-data-canary')
 PACKAGE = Path('/package/lib/cryptad.jar')
 CGROUP_TARGET = Path('/sys/fs/cgroup/system.slice/cryptad-workload@candidate-recipient.service/cgroup.procs')
+RESOLVER_TARGET = Path('/var/lib/cryptad-restricted/resolver/pr315-workload-canary')
 OUTPUT = Path('/node/tmp/pr315-observer-private-read.json')
 READY = Path('/node/tmp/pr315-observer-private-read-ready.json')
 TRIGGER = Path('/node/tmp/pr315-observer-private-read-trigger.json')
@@ -143,7 +144,8 @@ def attempt_fixed_access(operation: str, path: Path, payload: bytes | None = Non
     if (operation, path, payload is None) not in (
             ('sibling-data', SIBLING, True),
             ('package-expectation', PACKAGE, False),
-            ('cgroup-migration', CGROUP_TARGET, False)):
+            ('cgroup-migration', CGROUP_TARGET, False),
+            ('resolver-authority', RESOLVER_TARGET, True)):
         raise ValueError('pr315-role-probe-operation-invalid')
     started = time.monotonic_ns()
     written = 0
@@ -203,6 +205,7 @@ def main() -> None:
     record['packageWrite'] = attempt_fixed_access('package-expectation', PACKAGE, b'pr315!')
     record['cgroupMigration'] = attempt_fixed_access(
         'cgroup-migration', CGROUP_TARGET, str(os.getpid()).encode())
+    record['resolverRead'] = attempt_fixed_access('resolver-authority', RESOLVER_TARGET)
     descriptor = os.open(OUTPUT, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, 'w') as stream:
         json.dump(record, stream, sort_keys=True, separators=(',', ':'))

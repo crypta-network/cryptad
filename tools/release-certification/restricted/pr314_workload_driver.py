@@ -46,6 +46,7 @@ SIBLING_CANARY = 'pr315-sibling-data-canary'
 SIBLING_PROBE_PATH = '/var/lib/cryptad-restricted-workload/state/candidate-recipient/pr315-sibling-data-canary'
 PACKAGE_PROBE_PATH = '/package/lib/cryptad.jar'
 CGROUP_PROBE_PATH = '/sys/fs/cgroup/system.slice/cryptad-workload@candidate-recipient.service/cgroup.procs'
+RESOLVER_PROBE_PATH = '/var/lib/cryptad-restricted/resolver/pr315-workload-canary'
 ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-observer-private-control-failed', 'workload-observer-private-control-mismatch',
     'workload-role-probe-ready-timeout', 'workload-role-probe-ready-invalid',
@@ -65,6 +66,7 @@ ROLE_PROBE_CODES = frozenset(('workload-role-probe-campaign-expired',
     'workload-role-probe-package-expectation-invalid',
     'workload-role-probe-cgroup-migration-invalid',
     'workload-role-probe-fixed-access-timeline-invalid',
+    'workload-resolver-target-invalid', 'workload-resolver-probe-invalid',
     'workload-sibling-network-deadline', 'workload-sibling-network-target-inactive',
     'workload-sibling-network-before-window-invalid',
     'workload-sibling-network-result-timeout', 'workload-sibling-network-probe-invalid',
@@ -149,6 +151,81 @@ def prepare_sibling_canary(workload):
     finally:
         os.close(descriptor)
     return hashlib.sha256(raw).hexdigest()
+
+
+def _resolver_target_control(expected_digest):
+    """Bind the fixed private canary to one active installed resolver instance."""
+    unit = 'cryptad-restricted.service'
+    selected = subprocess.run(['/usr/bin/systemctl', 'show', unit,
+        '--property=ActiveState,SubState,Result,MainPID,InvocationID,ControlGroup',
+        '--no-pager'], stdin=subprocess.DEVNULL, capture_output=True,
+        env=ENV, timeout=15, check=True)
+    values = dict(line.split('=', 1) for line in selected.stdout.decode('ascii').splitlines()
+                  if '=' in line)
+    if (set(values) != {'ActiveState', 'SubState', 'Result', 'MainPID',
+                        'InvocationID', 'ControlGroup'}
+            or values['ActiveState'] != 'active' or values['SubState'] != 'running'
+            or values['Result'] != 'success'
+            or not values['MainPID'].isdecimal() or int(values['MainPID']) <= 1
+            or re.fullmatch('[0-9a-f]{32}', values['InvocationID']) is None
+            or values['ControlGroup'] != '/system.slice/' + unit):
+        raise ValueError('workload-resolver-target-invalid')
+    pid = int(values['MainPID'])
+    process = Path('/proc') / str(pid)
+    status = (process / 'status').read_text()
+    uid = next((line.split()[1] for line in status.splitlines()
+                if line.startswith('Uid:')), None)
+    raw_stat = (process / 'stat').read_text().rsplit(')', 1)[1].split()
+    cgroup = (process / 'cgroup').read_text().strip()
+    group = CGROUP_ROOT / unit
+    identity = group.stat()
+    path = Path(RESOLVER_PROBE_PATH)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        before = os.fstat(descriptor)
+        raw = os.read(descriptor, 33)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (uid != '0' or len(raw_stat) <= 19 or not raw_stat[19].isdecimal()
+            or cgroup != '0::/system.slice/' + unit
+            or not stat.S_ISREG(before.st_mode) or before.st_uid != 0
+            or before.st_nlink != 1 or before.st_mode & 0o077
+            or before.st_size != 32 or len(raw) != 32
+            or any(getattr(before, key) != getattr(after, key)
+                   for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+            or hashlib.sha256(raw).hexdigest() != expected_digest):
+        raise ValueError('workload-resolver-target-invalid')
+    return {'role': None, 'managerInvocation': values['InvocationID'],
+            'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+            'cgroupIdentity': [identity.st_dev, identity.st_ino],
+            'mainPid': pid, 'mainStartTicks': int(raw_stat[19]),
+            'canaryIdentity': [before.st_dev, before.st_ino],
+            'observedMonotonicNs': time.monotonic_ns(),
+            'controlDigest': expected_digest}
+
+
+def prepare_resolver_canary():
+    """Start the installed resolver and create one root-only synthetic subject."""
+    subprocess.run(['/usr/bin/systemctl', 'start', 'cryptad-restricted.service'],
+                   check=True, stdin=subprocess.DEVNULL, timeout=190, env=ENV)
+    parent = Path(RESOLVER_PROBE_PATH).parent
+    info = parent.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o077):
+        raise ValueError('workload-resolver-target-invalid')
+    raw = secrets.token_bytes(32)
+    descriptor = os.open(RESOLVER_PROBE_PATH,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-resolver-target-invalid')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    digest = hashlib.sha256(raw).hexdigest()
+    _resolver_target_control(digest)
+    return digest
 
 
 def _candidate_probe_file(path, uid):
@@ -362,6 +439,31 @@ def _fixed_role_target(role, observation, digest):
             'controlDigest': digest}
 
 
+def _validate_resolver_read(result, before, after, target_before, target_after):
+    """Require a bounded denied syscall while the same root resolver serves."""
+    row = result.get('resolverRead')
+    stable = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid',
+              'mainStartTicks', 'canaryIdentity', 'controlDigest')
+    if (not isinstance(row, dict) or set(row) != {
+            'operation', 'startedMonotonicNs', 'finishedMonotonicNs',
+            'writtenBytes', 'outcome', 'targetPathDigest'}
+            or row['operation'] != 'resolver-authority'
+            or row['targetPathDigest'] != hashlib.sha256(
+                RESOLVER_PROBE_PATH.encode()).hexdigest()
+            or row['writtenBytes'] != 0
+            or row['outcome'] not in ({'opened': False, 'errno': 'ENOENT'},
+                                     {'opened': False, 'errno': 'EACCES'},
+                                     {'opened': False, 'errno': 'EPERM'})
+            or any(target_before[key] != target_after[key] for key in stable)
+            or not before['observedMonotonicNs'] < target_before['observedMonotonicNs']
+                < row['startedMonotonicNs'] < row['finishedMonotonicNs']
+                < target_after['observedMonotonicNs'] < after['observedMonotonicNs']):
+        raise RoleProbeDiagnosticError('workload-resolver-probe-invalid',
+                                       _safe_role_probe_outcome(row.get('outcome')
+                                           if isinstance(row, dict) else None))
+    return row
+
+
 def _sibling_counter_pair(case_id, before, after, sender_namespace):
     """Bind one denied sender SYN to its own named nft DROP counter."""
     from restricted_workload_network import SIBLING_DROP_COUNTERS, role_rules
@@ -523,7 +625,8 @@ def probe_sibling_network(workload, handoff, nonce, source_digest, campaign_dead
 
 
 def probe_observer_private_read(workload, handoff, observer, source_digest,
-                                sibling_digest, campaign_deadline_ns):
+                                sibling_digest, resolver_digest,
+                                campaign_deadline_ns):
     """Measure a real role child opening an active observer-owned canary."""
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-role-probe-campaign-expired')
@@ -575,6 +678,7 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     sibling_before = _observer_canary_control(
         sibling_path, recipient_user, 'workload-sibling-data-control-failed')
     package_before = _staged_package_digest(workload)
+    resolver_before = _resolver_target_control(resolver_digest)
     if sibling_before != sibling_digest:
         raise ValueError('workload-sibling-data-target-changed')
     trigger_ns = time.monotonic_ns()
@@ -593,6 +697,7 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     if not result_path.exists():
         raise ValueError('workload-role-probe-result-timeout')
     result = _candidate_probe_file(result_path, uid)
+    resolver_after = _resolver_target_control(resolver_digest)
     after = workload.observe(handoff['handles'][role])
     actor_after = _role_probe_actor(after, nonce)
     target_after = _observer_canary_control(canary, observer)
@@ -668,6 +773,8 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
     if before['cgroupIdentity'] != after['cgroupIdentity']:
         raise ValueError('workload-cgroup-target-changed')
     accesses = _validate_fixed_role_accesses(result, after)
+    resolver_read = _validate_resolver_read(
+        result, before, after, resolver_before, resolver_after)
     fixed_audits = {}
     target_map = {
         'sibling-data': ('candidate-recipient', recipient_before, recipient_after,
@@ -699,6 +806,26 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
                        fixed_audit, create=True)
         fixed_audits[case_id] = hashlib.sha256(json.dumps(fixed_audit,
             sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    resolver_audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-resolver-authority-denial',
+        'caseId': 'resolver-authority', 'sourceDigest': source_digest,
+        'nonceDigest': audit['nonceDigest'], 'actorUid': uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'actorInvocationBefore': before['managerInvocation'],
+        'actorInvocationAfter': after['managerInvocation'],
+        'actorCgroupBefore': before['cgroupIdentity'],
+        'actorCgroupAfter': after['cgroupIdentity'],
+        'actorStateBefore': before['stateDigest'],
+        'actorStateAfter': after['stateDigest'],
+        'targetBefore': resolver_before, 'targetAfter': resolver_after,
+        'targetPathDigest': resolver_read['targetPathDigest'],
+        'attackStartedNs': resolver_read['startedMonotonicNs'],
+        'attackFinishedNs': resolver_read['finishedMonotonicNs'],
+        'kernelOpenResult': resolver_read['outcome']}
+    workload.write(workload.ROOT / 'authority/resolver-authority-denial.json',
+                   resolver_audit, create=True)
+    resolver_audit_digest = hashlib.sha256(json.dumps(resolver_audit,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     network_audits = probe_sibling_network(
         workload, handoff, nonce, source_digest, campaign_deadline_ns)
     return {'status': 'captured', 'caseId': 'observer-private-read',
@@ -714,6 +841,7 @@ def probe_observer_private_read(workload, handoff, observer, source_digest,
             'counterAuditDigest': hashlib.sha256(json.dumps(counter_audit, sort_keys=True,
                 separators=(',', ':')).encode()).hexdigest(),
             'fixedAccessAudits': fixed_audits,
+            'resolverAuditDigest': resolver_audit_digest,
             'networkAudits': network_audits}
 
 
@@ -1651,6 +1779,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
             or root.is_symlink()):
         raise ValueError('workload-observer-root-not-new')
     workload_installation.install()
+    resolver_digest = prepare_resolver_canary() if not startup_measurement else None
     parent = child = admin_parent = admin_child = None
     pid = None
     status = None
@@ -1749,6 +1878,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
             try:
                 private_probe = probe_observer_private_read(
                     workload, handoff, observer, role_probe_digest, sibling_digest,
+                    resolver_digest,
                     campaign_deadline)
                 diagnostics['observerPrivateRead'] = {key: private_probe[key]
                     for key in ('status', 'caseId', 'auditDigest')}
@@ -1771,6 +1901,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                                        ('sibling-http', 'siblingHttp')):
                     diagnostics[field] = {'status': 'captured', 'caseId': case_id,
                                           'auditDigest': private_probe['networkAudits'][case_id]}
+                diagnostics['resolverAuthority'] = {'status': 'captured',
+                    'caseId': 'resolver-authority',
+                    'auditDigest': private_probe['resolverAuditDigest']}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
                 diagnostic = {'status': 'unavailable-or-unsafe',
@@ -1788,6 +1921,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation'):
                     diagnostics[field] = diagnostic
                 for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
+                diagnostics['resolverAuthority'] = diagnostic
         if not startup_measurement and lifecycle_scenario == 'cancellation':
             try:
                 cancellation = begin_cancellation(workload, handoff, result)

@@ -45,6 +45,49 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertLess(len(json.dumps(result)), evidence.MAX_OUTPUT)
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_resolver_audit_preserves_only_active_root_target_and_denied_syscall(self):
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
+                 'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
+                 'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
+                 'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+                 'rssBytes': 1024, 'processThreads': 1,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': None, 'managerInvocation': 'c' * 32,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 22], 'mainPid': 211,
+                  'mainStartTicks': 30, 'canaryIdentity': [1, 23],
+                  'observedMonotonicNs': 20, 'controlDigest': 'd' * 64}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-resolver-authority-denial',
+                 'caseId': 'resolver-authority', 'sourceDigest': 'a' * 64,
+                 'nonceDigest': 'b' * 64, 'actorUid': 1001,
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': 'e' * 32,
+                 'actorInvocationAfter': 'e' * 32,
+                 'actorCgroupBefore': [1, 10], 'actorCgroupAfter': [1, 10],
+                 'actorStateBefore': 'f' * 64, 'actorStateAfter': 'f' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=50),
+                 'targetPathDigest': '1' * 64,
+                 'attackStartedNs': 30, 'attackFinishedNs': 40,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        path = self.root / 'authority/resolver-authority-denial.json'
+        path.write_text(json.dumps(audit))
+        self.assertEqual('captured', evidence._capture(
+            self.root, self.expected, False)['resolverAuthorityAudit']['status'])
+        self.assertEqual(audit, evidence._capture(
+            self.root, self.expected, True)['resolverAuthorityAudit']['record'])
+        for changed in (
+                dict(audit, targetAfter=dict(audit['targetAfter'], mainStartTicks=31)),
+                dict(audit, kernelOpenResult={'opened': True, 'errno': None}),
+                dict(audit, privateToken='must-not-copy')):
+            path.write_text(json.dumps(changed))
+            retained = evidence._capture(self.root, self.expected, True)
+            self.assertEqual('unavailable-or-unsafe',
+                             retained['resolverAuthorityAudit']['status'])
+            self.assertNotIn('must-not-copy', json.dumps(retained))
+
     def test_private_read_audit_keeps_only_fixed_root_process_evidence(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
                  'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],

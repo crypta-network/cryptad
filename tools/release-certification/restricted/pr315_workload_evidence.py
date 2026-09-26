@@ -831,6 +831,76 @@ def _fixed_role_access_audit(root, deadline, case_id):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _resolver_authority_audit(root, deadline):
+    """Capture only the fixed root audit of a live resolver canary denial."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority', 'resolver-authority-denial.json',
+                                 maximum=8192, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest', 'nonceDigest',
+                  'actorUid', 'actorBefore', 'actorAfter',
+                  'actorInvocationBefore', 'actorInvocationAfter',
+                  'actorCgroupBefore', 'actorCgroupAfter',
+                  'actorStateBefore', 'actorStateAfter',
+                  'targetBefore', 'targetAfter', 'targetPathDigest',
+                  'attackStartedNs', 'attackFinishedNs', 'kernelOpenResult'}
+        target_fields = {'role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                         'mainPid', 'mainStartTicks', 'canaryIdentity',
+                         'observedMonotonicNs', 'controlDigest'}
+        stable = target_fields - {'observedMonotonicNs'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-resolver-authority-denial'
+                or value['caseId'] != 'resolver-authority'
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != ROLE_PROBE_ACTOR_FIELDS
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest', 'actorStateBefore',
+                                   'actorStateAfter', 'targetPathDigest'))
+                or value['actorStateBefore'] != value['actorStateAfter']
+                or value['actorInvocationBefore'] != value['actorInvocationAfter']
+                or any(re.fullmatch('[0-9a-f]{32}', str(value[key])) is None
+                       for key in ('actorInvocationBefore', 'actorInvocationAfter'))
+                or value['actorCgroupBefore'] != value['actorCgroupAfter']
+                or any(not isinstance(value[key], list) or len(value[key]) != 2
+                       or any(type(part) is not int or part <= 0 for part in value[key])
+                       for key in ('actorCgroupBefore', 'actorCgroupAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(value['targetBefore'][key] != value['targetAfter'][key]
+                       for key in stable)
+                or any(value[key]['role'] is not None
+                       or re.fullmatch('[0-9a-f]{32}', str(value[key]['managerInvocation'])) is None
+                       or re.fullmatch('[0-9a-f]{64}', str(value[key]['controlDigest'])) is None
+                       or any(type(value[key][name]) is not int or value[key][name] <= 0
+                              for name in ('mainPid', 'mainStartTicks', 'observedMonotonicNs'))
+                       or any(not isinstance(value[key][name], list)
+                              or len(value[key][name]) != 2
+                              or any(type(part) is not int or part <= 0
+                                     for part in value[key][name])
+                              for name in ('cgroupIdentity', 'canaryIdentity'))
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('attackStartedNs', 'attackFinishedNs'))
+                or not value['targetBefore']['observedMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['targetAfter']['observedMonotonicNs']
+                or value['kernelOpenResult'] not in (
+                    {'opened': False, 'errno': 'ENOENT'},
+                    {'opened': False, 'errno': 'EACCES'},
+                    {'opened': False, 'errno': 'EPERM'})):
+            raise ValueError('resolver-authority-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _sibling_network_audit(root, deadline, case_id):
     """Retain one fixed root audit of role SYN and named kernel DROP counters."""
     if case_id not in ('sibling-fcp', 'sibling-http'):
@@ -911,6 +981,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         'observerPrivateWriteAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedRuntimeIdentityAudit': {'status': 'not-captured-cleanup-unverified'},
         'forgedCountersAudit': {'status': 'not-captured-cleanup-unverified'},
+        'resolverAuthorityAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingDataAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingFcpAudit': {'status': 'not-captured-cleanup-unverified'},
         'siblingHttpAudit': {'status': 'not-captured-cleanup-unverified'},
@@ -960,6 +1031,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
+        result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):
@@ -1026,6 +1098,7 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['forgedRuntimeIdentityAudit'] = _fixed_claim_audit(
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
+        result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         for case_id, field in (('sibling-data', 'siblingDataAudit'),
                                ('package-expectation', 'packageExpectationAudit'),
                                ('cgroup-migration', 'cgroupMigrationAudit')):

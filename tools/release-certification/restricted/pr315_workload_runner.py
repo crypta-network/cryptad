@@ -1445,6 +1445,132 @@ def _fixed_role_access_attempt(case_id, report, result, fixture, terminal, sourc
         return None
 
 
+def _resolver_authority_attempt(report, result, fixture, terminal, source):
+    """Bind a real role syscall to the active installed resolver's root canary."""
+    case_id = 'resolver-authority'
+    try:
+        if (not positive_executed(report, result, terminal)
+                or fixture.get('schemaVersion') != 4
+                or terminal['resolverAuthorityAudit']['status'] != 'captured'):
+            return None
+        audit = terminal['resolverAuthorityAudit']['record']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        first, last = audit['targetBefore'], audit['targetAfter']
+        before, after = audit['actorBefore'], audit['actorAfter']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        host = report['hostVerifiedIdentity']
+        stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+                        'pidNamespace', 'networkNamespaceIdentity',
+                        'mountNamespaceIdentity', 'userNamespaceIdentity',
+                        'executableDigest', 'noNewPrivileges',
+                        'effectiveCapabilities')
+        target_stable = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                         'mainPid', 'mainStartTicks', 'canaryIdentity',
+                         'controlDigest')
+        actor_group = fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
+        target_group = fixtures.runtime.canonical_digest({
+            'role': 'resolver', 'identity': first['cgroupIdentity']})[7:]
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-resolver-authority-denial'
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != reference.sha256(source /
+                    'tools/release-certification/restricted/pr315_role_probe.py')
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable_actor)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['actorInvocationBefore'] != sender['invocationId']
+                or audit['actorInvocationAfter'] != sender['invocationId']
+                or audit['actorCgroupBefore'] != audit['actorCgroupAfter']
+                or actor_group != sender['cgroupDigest']
+                or audit['actorStateBefore'] != audit['actorStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['actorStateBefore']
+                or any(first[key] != last[key] for key in target_stable)
+                or first['role'] is not None
+                or first['bootId'].replace('-', '').lower() != sender['bootId']
+                or first['managerInvocation'] in {row['invocationId']
+                    for row in result['roleKernelRoster']['roles']}
+                or target_group in {row['cgroupDigest']
+                    for row in result['roleKernelRoster']['roles']}
+                or first['mainPid'] <= 1 or first['mainStartTicks'] <= 0
+                or re.fullmatch('[0-9a-f]{64}', first['controlDigest']) is None
+                or audit['targetPathDigest'] != hashlib.sha256(
+                    b'/var/lib/cryptad-restricted/resolver/pr315-workload-canary').hexdigest()
+                or audit['kernelOpenResult'] not in (
+                    {'opened': False, 'errno': 'ENOENT'},
+                    {'opened': False, 'errno': 'EACCES'},
+                    {'opened': False, 'errno': 'EPERM'})
+                or not first['observedMonotonicNs'] < audit['attackStartedNs']
+                    < audit['attackFinishedNs'] < last['observedMonotonicNs']
+                    < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit', 'helperSourceTree',
+            'bundleIdentity', 'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        attack_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id, 'target': acceptance.CASES[case_id].target,
+                  'role': None, 'invocationId': first['managerInvocation'],
+                  'cgroupDigest': target_group, 'bootId': sender['bootId'],
+                  'probeDigest': '', 'controlResponseDigest': first['controlDigest']}
+        code = audit['kernelOpenResult']['errno']
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+                   'attackStartedNs': audit['attackStartedNs'],
+                   'targetActiveBeforeNs': first['observedMonotonicNs'],
+                   'targetActiveAfterNs': last['observedMonotonicNs'],
+                   'controlResponseDigest': first['controlDigest'],
+                   'denialSource': 'kernel',
+                   'denialCode': 'policy-rejected' if code == 'ENOENT' else code,
+                   'unrelatedStateBefore': audit['actorStateBefore'],
+                   'unrelatedStateAfter': audit['actorStateAfter'],
+                   'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        case = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed', 'actor': case.actor,
+                       'target': case.target, 'outcome': case.outcome,
+                       'startedMonotonicNs': first['observedMonotonicNs'],
+                       'finishedMonotonicNs': last['observedMonotonicNs'],
+                       'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+                   'declaredCases': [case_id], 'observations': [observation],
+                   'guestStopped': True, 'attemptCompleted': True,
+                   'principals': result['roleKernelRoster'], 'targets': {case_id: target},
+                   'caseCommitments': {}, 'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+                   'status': 'passed', 'actorEpoch': _v9_actor_epoch(before, sender),
+                   'targetEpoch': {'kind': 'installed-resolver-service',
+                                   'bootId': sender['bootId'],
+                                   'systemdInvocation': first['managerInvocation'],
+                                   'cgroupDigest': target_group,
+                                   'mainPid': first['mainPid'],
+                                   'mainStartTicks': first['mainStartTicks'],
+                                   'canaryIdentity': first['canaryIdentity'],
+                                   'controlDigestBefore': first['controlDigest'],
+                                   'controlDigestAfter': last['controlDigest']},
+                   'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                       'finishedMonotonicNs': audit['attackFinishedNs']},
+                   'attackDigest': attack_digest, 'hostVerifiedIdentity': host,
+                   'guestStopped': True,
+                   'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError, StopIteration,
+            OSError):
+        return None
+
+
 def _sibling_network_attempt(case_id, report, result, fixture, terminal, source):
     """Bind one role TCP denial to active recipient controls and exact nft DROP."""
     cases = {'sibling-fcp': ('siblingFcpAudit', workload_network.FCP_PORT),
@@ -1884,6 +2010,23 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
+            if (positive and isinstance(terminal, dict)
+                    and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
+                denial = _resolver_authority_attempt(
+                    report, value, fixture, terminal, args.source)
+                if denial is None:
+                    raise ValueError('workload-resolver-authority-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'resolver-authority') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-resolver-authority-case-invalid')
+                native_runner._save(output / 'resolver-authority-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'resolver-authority-v9-evidence.private.json', sidecar)
+                statuses['resolver-authority'] = 'passed'
             if startup_measurement:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = public_result('implementation-incomplete', positive, statuses=statuses,
