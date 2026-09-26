@@ -928,6 +928,27 @@ class ObserverPolicyTests(unittest.TestCase):
                 workload.WorkloadClient().drop_start_response('/proc/1')
             factory.assert_not_called()
 
+    def test_denied_observe_retains_exact_controller_exchange_digest(self):
+        denied = b'{"error":"restricted-workload-request-failed"}\n'
+        sent = []
+        channel = mock.Mock()
+        channel.getsockopt.return_value = struct.pack('3i', 123, 0, 0)
+        channel.recvmsg.return_value = (denied, [], 0, None)
+        channel.sendall.side_effect = sent.append
+        client = workload.WorkloadClient()
+        with mock.patch.object(workload.socket, 'SO_PEERCRED', 17, create=True), \
+                mock.patch.object(workload.socket, 'MSG_CMSG_CLOEXEC', 0,
+                                  create=True), \
+                mock.patch.object(workload.socket, 'socket', return_value=channel):
+            with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                        'controller-request-rejected'):
+                client.request('observe', HANDLE)
+        self.assertEqual(1, len(sent))
+        self.assertEqual({'method': 'observe',
+            'requestDigest': hashlib.sha256(sent[0]).hexdigest(),
+            'responseDigest': hashlib.sha256(denied).hexdigest()},
+            client.last_exchange)
+
 
 class ReadinessDeadlineTests(unittest.TestCase):
     def test_late_observer_uses_original_deadline_not_a_fresh_budget(self):

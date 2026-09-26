@@ -360,6 +360,176 @@ def retired_authority_provenance(report, result, terminal, retained):
         return None
 
 
+def verified_retired_authority_input(campaign_plan, envelope, public_key,
+                                     retained):
+    """Require a Mac-sealed stopped predecessor before copying its raw handle."""
+    handoff = campaign_seal.verify_authority_handoff(
+        campaign_plan, envelope, public_key)
+    if (not isinstance(retained, dict)
+            or set(retained) != {'schemaVersion', 'kind', 'sourceCommit',
+                'campaignGeneration', 'bootId', 'senderHandle', 'senderUid',
+                'senderInvocation', 'senderProcessEpoch',
+                'stopReceiptDigests'}
+            or retained['schemaVersion'] != 1
+            or retained['kind'] != 'pr315-retired-authority-input'
+            or retained['sourceCommit'] != handoff['sourceCommit']
+            or retained['bootId'] != handoff['retiredBootId']
+            or retained['campaignGeneration'] != handoff['retiredGeneration']
+            or re.fullmatch('[0-9a-f]{64}',
+                str(retained['senderHandle'])) is None
+            or hashlib.sha256(retained['senderHandle'].encode()).hexdigest()
+                != handoff['senderHandleDigest']
+            or hashlib.sha256(json.dumps(retained, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest() !=
+                handoff['privateInputDigest']):
+        raise ValueError('workload-retired-authority-input-untrusted')
+    return handoff
+
+
+def stale_handle_attempt(report, result, terminal, diagnostics, handoff,
+                         retired_input, source):
+    """Verify the signed old handle against three real observer socket calls."""
+    try:
+        if (not group_prepared(report, result, terminal, 'authority')
+                or not isinstance(handoff, dict)
+                or not isinstance(retired_input, dict)
+                or not isinstance(diagnostics, dict)
+                or diagnostics.get('staleHandle', {}).get('status') != 'captured'
+                or terminal.get('staleHandleAudit', {}).get('status') != 'captured'):
+            return None
+        audit = terminal['staleHandleAudit']['record']
+        actor = audit['observerActor']
+        controller_before = audit['controllerBefore']
+        controller_after = audit['controllerAfter']
+        target_before = audit['targetBefore']
+        target_after = audit['targetAfter']
+        replies = audit['replies']
+        host = report['hostVerifiedIdentity']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        audit_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        old_request = json.dumps({'method': 'observe',
+            'handle': retired_input['senderHandle']},
+            separators=(',', ':')).encode() + b'\n'
+        denied = b'{"error":"restricted-workload-request-failed"}\n'
+        stable_controller = ('pid', 'uid', 'startTicks', 'bootId',
+                             'invocationId', 'cgroupIdentity')
+        stable_target = ('state', 'generation', 'managerInvocation',
+                         'bootId', 'cgroupIdentity', 'stateDigest')
+        expected_target = {key: target_before[key] for key in stable_target}
+        source_digest = reference.sha256(Path(source) /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-stale-handle-denial'
+                or audit['caseId'] != 'stale-handle'
+                or audit_digest != diagnostics['staleHandle']['auditDigest']
+                or audit['sourceCommit'] != host['helperSourceCommit']
+                or audit['sourceCommit'] != handoff['sourceCommit']
+                or result['identity']['sourceCommit'] != handoff['sourceCommit']
+                or report.get('retiredAuthorityInputDigest') !=
+                    handoff['privateInputDigest']
+                or audit['retiredInputDigest'] != handoff['privateInputDigest']
+                or audit['retiredHandleDigest'] != handoff['senderHandleDigest']
+                or audit['retiredBootId'] != handoff['retiredBootId']
+                or audit['successorBootId'].replace('-', '').lower() !=
+                    sender['bootId']
+                or audit['retiredBootId'] == audit['successorBootId']
+                or actor.get('kind') != 'installed-observer-process'
+                or actor.get('uid') != result['roleKernelRoster']['observerUid']
+                or actor.get('sourceDigest') != source_digest
+                or actor.get('bootId', '').replace('-', '').lower() !=
+                    sender['bootId']
+                or type(actor.get('pid')) is not int or actor['pid'] <= 1
+                or type(actor.get('startTicks')) is not int
+                or actor['startTicks'] <= 0
+                or not isinstance(actor.get('namespaces'), dict)
+                or set(actor['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                or any(type(value) is not int or value <= 0
+                       for value in actor['namespaces'].values())
+                or any(controller_before[key] != controller_after[key]
+                       for key in stable_controller)
+                or controller_before['uid'] != 0
+                or controller_before['pid'] <= 1
+                or controller_before['startTicks'] <= 0
+                or re.fullmatch('[0-9a-f]{32}',
+                    str(controller_before['invocationId'])) is None
+                or controller_before['bootId'].replace('-', '').lower() !=
+                    sender['bootId']
+                or any(target_before[key] != target_after[key]
+                       for key in stable_target)
+                or target_before['state'] != 'running'
+                or target_before['managerInvocation'] != sender['invocationId']
+                or target_before['bootId'].replace('-', '').lower() !=
+                    sender['bootId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': target_before['cgroupIdentity']})[7:] !=
+                    sender['cgroupDigest']
+                or not isinstance(replies, list) or len(replies) != 3
+                or [row['label'] for row in replies] != [
+                    'current-before', 'retired-denied', 'current-after']
+                or replies[0]['target'] != expected_target
+                or replies[1]['target'] is not None
+                or replies[2]['target'] != expected_target
+                or any(row['exchange']['method'] != 'observe'
+                       or re.fullmatch('[0-9a-f]{64}',
+                           str(row['exchange']['requestDigest'])) is None
+                       or re.fullmatch('[0-9a-f]{64}',
+                           str(row['exchange']['responseDigest'])) is None
+                       for row in replies)
+                or replies[0]['exchange']['requestDigest'] !=
+                    replies[2]['exchange']['requestDigest']
+                or replies[1]['exchange']['requestDigest'] !=
+                    hashlib.sha256(old_request).hexdigest()
+                or replies[1]['exchange']['requestDigest'] ==
+                    replies[0]['exchange']['requestDigest']
+                or replies[1]['exchange']['responseDigest'] !=
+                    hashlib.sha256(denied).hexdigest()
+                or not controller_before['observedMonotonicNs']
+                    < target_before['observedMonotonicNs']
+                    < actor['observedMonotonicNs']
+                    < replies[0]['startedMonotonicNs']
+                    < replies[0]['finishedMonotonicNs']
+                    < replies[1]['startedMonotonicNs']
+                    < replies[1]['finishedMonotonicNs']
+                    < replies[2]['startedMonotonicNs']
+                    < replies[2]['finishedMonotonicNs']
+                    < target_after['observedMonotonicNs']
+                    < controller_after['observedMonotonicNs']
+                    < audit['finishedMonotonicNs']
+                    < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0):
+            return None
+        controller_digest = fixtures.runtime.canonical_digest({
+            'role': 'workload-controller',
+            'identity': controller_before['cgroupIdentity']})[7:]
+        return {'contract': campaign.CONTRACT, 'caseId': 'stale-handle',
+            'status': 'passed', 'actorEpoch': actor,
+            'targetEpoch': {'kind': 'installed-controller-instance',
+                'pid': controller_before['pid'], 'uid': 0,
+                'startTicks': controller_before['startTicks'],
+                'bootId': sender['bootId'],
+                'systemdInvocation': controller_before['invocationId'],
+                'cgroupDigest': controller_digest,
+                'currentRoleInvocation': sender['invocationId'],
+                'retiredBootId': audit['retiredBootId'],
+                'retiredHandleDigest': audit['retiredHandleDigest'],
+                'handoffDigest': campaign_seal._digest(handoff)},
+            'operationWindow': {
+                'startedMonotonicNs': replies[0]['startedMonotonicNs'],
+                'finishedMonotonicNs': replies[2]['finishedMonotonicNs']},
+            'attackDigest': replies[1]['exchange']['requestDigest'],
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def _bounded_window(value):
     return (isinstance(value, dict) and set(value) == {'startedMonotonicNs', 'finishedMonotonicNs'}
             and type(value['startedMonotonicNs']) is int
@@ -4475,6 +4645,14 @@ def run(args):
         'late-child')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     retired_preparation = getattr(args, 'retired_authority_preparation', False)
+    retired_input_paths = tuple(getattr(args, name, None) for name in (
+        'retired_authority_input', 'retired_authority_handoff',
+        'campaign_public_key'))
+    if any(path is not None for path in retired_input_paths) and (
+            group != 'authority' or not all(
+                path is not None for path in retired_input_paths)
+            or getattr(args, 'campaign_plan', None) is None):
+        raise ValueError('workload-retired-authority-input-selection-invalid')
     if (retired_preparation and
             (not role_measurement or group is not None
              or getattr(args, 'campaign_plan', None) is None)):
@@ -4548,6 +4726,28 @@ def run(args):
             subprocess.run(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
                 check=True, capture_output=True, text=True,
                 timeout=10).stdout.strip(), fingerprint)
+    if all(path is not None for path in retired_input_paths):
+        for index, (path, limit) in enumerate(zip(retired_input_paths,
+                                                   (8192, 8192, 512))):
+            path = path.absolute()
+            if (not path.is_relative_to(root)
+                    or not path.resolve(strict=True).is_relative_to(
+                        root.resolve(strict=True))):
+                raise ValueError('workload-retired-authority-input-outside-task-root')
+            info = path.lstat()
+            if (not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1
+                    or not 0 < info.st_size <= limit
+                    or (index != 2
+                        and info.st_mode & 0o077)):
+                raise ValueError('workload-retired-authority-input-file-invalid')
+        envelope = native_runner.private_json(retired_input_paths[1])
+        raw_input = native_runner.private_json(retired_input_paths[0])
+        retired_handoff = verified_retired_authority_input(frozen_campaign,
+            envelope, retired_input_paths[2].read_bytes(), raw_input)
+    else:
+        retired_handoff = None
     info = root.stat()
     if info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise ValueError('workload-private-storage-root-required')
@@ -4559,6 +4759,16 @@ def run(args):
             raise ValueError('workload-suite-lock-invalid')
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         output.mkdir(mode=0o700, exist_ok=False)
+        retired_input_snapshot = None
+        if retired_handoff is not None:
+            retired_input_snapshot = output / 'retired-authority-input.private.json'
+            descriptor = os.open(retired_input_snapshot,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(campaign_seal._canonical(raw_input))
+            if (reference.sha256(retired_input_snapshot) !=
+                    retired_handoff['privateInputDigest']):
+                raise ValueError('workload-retired-authority-snapshot-changed')
         native_runner._save(output / 'plan.private.json', {
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
             'runtimePolicy': fixtures.preparation.launcher_policy(),
@@ -4568,6 +4778,9 @@ def run(args):
                                  else 'role-readiness-measurement' if role_measurement
                                  else 'group-development' if group is not None else 'positive'),
             'selectedGroup': group, 'lifecycleScenario': scenario,
+            'retiredAuthorityHandoffDigest': (
+                campaign_seal._digest(retired_handoff)
+                if retired_handoff is not None else None),
             'startupMeasurementCeilingSeconds': STARTUP_MEASUREMENT_SECONDS if getattr(args, 'startup_measurement', False) else None,
             'groups': [{'group': name, 'declaredCases': cases} for name, cases in groups()],
             'storageBudgetBytes': args.storage_budget_bytes, 'minimumFreeBytes': args.min_free_bytes,
@@ -4639,6 +4852,10 @@ def run(args):
             selected_args = dict(vars(args))
             selected_args.update(attempt=output / 'attempt-01', mode='workload-positive',
                                  case_group=None, fault_case=None, lifecycle_scenario=scenario,
+                                 retired_authority_input=retired_input_snapshot,
+                                 retired_authority_input_digest=(
+                                     retired_handoff['privateInputDigest']
+                                     if retired_handoff is not None else None),
                                  workload_group=('role-readiness-diagnostic' if role_measurement
                                                  else group if selected_preparation or group == 'positive'
                                                  else None))
@@ -5103,6 +5320,18 @@ def run(args):
                     sidecar, 'resolver-authority', identity=identity,
                     case_attempt=case_attempt)
                 statuses['resolver-authority'] = 'passed'
+            if authority_ready and retired_handoff is not None:
+                if (not isinstance(terminal, dict)
+                        or terminal.get('staleHandleAudit', {}).get('status') !=
+                            'captured'):
+                    raise ValueError('workload-stale-handle-audit-unavailable')
+                case = stale_handle_attempt(report, value, terminal,
+                    resources, retired_handoff, raw_input, args.source)
+                if case is None:
+                    raise ValueError('workload-stale-handle-verification-failed')
+                save_v9_case(output / 'stale-handle-v9-evidence.private.json',
+                    case, 'stale-handle', roster=value['roleKernelRoster'])
+                statuses['stale-handle'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('hostileAppOriginAudit', {}).get('status') == 'captured'):
                 denial = _hostile_origin_attempt(
@@ -5211,6 +5440,12 @@ def main():
         help='Pinned private v2 campaign plan for prospective installed case records.')
     parser.add_argument('--campaign-key-fingerprint',
         help='Host-pinned Ed25519 public key fingerprint for the campaign plan.')
+    parser.add_argument('--retired-authority-input', type=Path,
+        help='Private old authority input from the stopped preparation guest.')
+    parser.add_argument('--retired-authority-handoff', type=Path,
+        help='Mac-sealed proof binding the old authority input and stop/archive receipts.')
+    parser.add_argument('--campaign-public-key', type=Path,
+        help='Frozen Mac campaign public key, used only to authenticate the handoff.')
     args = parser.parse_args()
     if ((not args.probe and (re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or any(re.fullmatch('[0-9a-f]{64}', str(value)) is None for value in

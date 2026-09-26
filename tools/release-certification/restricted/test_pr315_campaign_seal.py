@@ -1,5 +1,6 @@
 """Offline host receipt authentication tests; no installed acceptance credit."""
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -52,6 +53,35 @@ class CampaignSealTest(unittest.TestCase):
             seal.verify(self.root, self.plan, envelope,
                 pinned_source_commit='e' * 40,
                 pinned_fingerprint=self.fingerprint)
+
+    def test_retired_authority_handoff_is_signed_without_raw_handle(self):
+        provenance = {'schemaVersion': 1,
+            'kind': 'pr315-retired-authority-host-provenance',
+            'sourceCommit': SOURCE,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'campaignGeneration': '1' * 64,
+            'senderHandleDigest': hashlib.sha256(
+                ('e' * 64).encode()).hexdigest(),
+            'inputDigest': '3' * 64,
+            'guestStopped': True}
+        handoff = seal.authority_handoff(self.plan, 'suite-201-preparation',
+            provenance, '4' * 64, '5' * 64)
+        signed = seal.sign_authority_handoff(self.root, self.plan, handoff)
+        public = (self.root / (seal.KEY_NAME + '.pub')).read_bytes()
+        self.assertEqual(handoff, seal.verify_authority_handoff(
+            self.plan, signed, public))
+        self.assertNotIn('e' * 64, json.dumps(signed))
+        for field in ('privateInputDigest', 'retiredBootId',
+                      'stopDigest', 'archiveDigest', 'planDigest'):
+            changed = copy.deepcopy(signed)
+            changed['handoff'][field] = 'f' * 64
+            with self.assertRaises(ValueError):
+                seal.verify_authority_handoff(self.plan, changed, public)
+        changed = copy.deepcopy(signed)
+        changed['signature'] = changed['signature'].replace(
+            'SSH SIGNATURE', 'SSH SIGNAFURE')
+        with self.assertRaises(ValueError):
+            seal.verify_authority_handoff(self.plan, changed, public)
 
     def test_changed_case_stop_monitor_or_campaign_is_rejected(self):
         envelope = self.sign(self.receipt())

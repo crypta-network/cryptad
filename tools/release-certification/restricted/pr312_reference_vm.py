@@ -492,6 +492,22 @@ def run(args):
         with archive.open('rb') as stream:
             subprocess.run([*ssh, 'cat > /home/vmadmin/source.tar.gz'], stdin=stream,
                            stdout=log, stderr=log, check=True, timeout=180, env=boot.ENVIRONMENT)
+        retired_input = getattr(args, 'retired_authority_input', None)
+        if retired_input is not None:
+            if (args.mode != 'workload-positive'
+                    or getattr(args, 'workload_group', None) != 'authority'):
+                raise ValueError('retired-authority-guest-selection-invalid')
+            raw_retired = retired_input.read_bytes()
+            digest = hashlib.sha256(raw_retired).hexdigest()
+            if (not 0 < len(raw_retired) <= 8192
+                    or digest != getattr(args,
+                        'retired_authority_input_digest', None)):
+                raise ValueError('retired-authority-transfer-input-changed')
+            report['retiredAuthorityInputDigest'] = digest
+            subprocess.run([*ssh, 'sudo /usr/bin/install -m 0600 /dev/stdin '
+                '/root/pr315-retired-authority-source.private.json'],
+                input=raw_retired, stdout=log, stderr=log, check=True,
+                timeout=20, env=boot.ENVIRONMENT)
         script = 'set -eu\numask 022\nsudo systemctl start dbus.service polkit.service\n'
         script += 'test "$(sha256sum /home/vmadmin/source.tar.gz | cut -d " " -f 1)" = ' + report['sourceArchiveDigest'] + '\n'
         script += 'sudo test ! -e /root/cryptad\nsudo tar --no-same-owner -xzf /home/vmadmin/source.tar.gz -C /root\n'

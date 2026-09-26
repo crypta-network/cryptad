@@ -90,6 +90,9 @@ class WorkloadClient:
                     fail('controller-response-budget')
             if payload.count(b'\n') != 1 or not payload.endswith(b'\n'):
                 fail('controller-response-framing')
+            self.last_exchange = {'method': method,
+                'requestDigest': hashlib.sha256(request_raw).hexdigest(),
+                'responseDigest': hashlib.sha256(payload).hexdigest()}
             value = json.loads(payload, object_pairs_hook=_object)
             if not isinstance(value, dict) or 'error' in value:
                 fail('controller-request-rejected')
@@ -107,18 +110,12 @@ class WorkloadClient:
                         fail('controller-connection-invalid')
                     connected.getpeername()
                     connected.settimeout(25)
-                    self.last_exchange = {'method': method,
-                        'requestDigest': hashlib.sha256(request_raw).hexdigest(),
-                        'responseDigest': hashlib.sha256(payload).hexdigest()}
                     return value, connected
                 except BaseException:
                     connected.close()
                     raise
             if descriptors:
                 fail('controller-unexpected-connection')
-            self.last_exchange = {'method': method,
-                'requestDigest': hashlib.sha256(request_raw).hexdigest(),
-                'responseDigest': hashlib.sha256(payload).hexdigest()}
             return value
         except (OSError, ValueError, UnicodeError):
             fail('controller-transport-failed')

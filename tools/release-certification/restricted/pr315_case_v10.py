@@ -30,11 +30,11 @@ GENERIC = frozenset((
     'output-replacement', 'resource-exhaustion',
     'lost-start-response', 'observer-death', 'controller-restart',
     'setsid-double-fork', 'deadline', 'revocation-running',
-    'cancellation'))
+    'cancellation', 'stale-handle'))
 SIDECAR_ONLY = frozenset((
     'observer-private-read', 'observer-private-write',
     'sibling-data', 'package-expectation', 'cgroup-migration',
-    'forged-runtime-identity', 'forged-counters'))
+    'forged-runtime-identity', 'forged-counters', 'stale-handle'))
 
 
 def _digest(value):

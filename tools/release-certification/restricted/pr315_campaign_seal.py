@@ -26,6 +26,8 @@ CAMPAIGN = 'pr315-workload-campaign-v2'
 CONTRACT = 'pr314-workload-roles-v10'
 RECEIPT = 'pr315-host-attempt-receipt-v2'
 SIGNATURE_DOMAIN = 'pr315-campaign-v2'
+AUTHORITY_HANDOFF = 'pr315-retired-authority-handoff-v1'
+AUTHORITY_DOMAIN = 'pr315-retired-authority-v1'
 KEY_NAME = 'campaign-ed25519'
 LEDGER_NAME = 'sealed-attempt-ledger.json'
 _HEX64 = re.compile(r'[0-9a-f]{64}\Z')
@@ -245,6 +247,121 @@ def verify(root, campaign, envelope, *, pinned_source_commit, pinned_fingerprint
     if checked.returncode != 0:
         raise ValueError('pr315-campaign-signature-mismatch')
     return receipt
+
+
+def authority_handoff(campaign, preparation_id, provenance,
+                      stop_digest, archive_digest):
+    """Commit a retired guest's private input without exporting its raw handle."""
+    if (not isinstance(campaign, dict) or campaign.get('kind') != CAMPAIGN
+            or not isinstance(preparation_id, str)
+            or _ATTEMPT_ID.fullmatch(preparation_id) is None
+            or not isinstance(provenance, dict)
+            or set(provenance) != {'schemaVersion', 'kind', 'sourceCommit',
+                'bootId', 'campaignGeneration', 'senderHandleDigest',
+                'inputDigest', 'guestStopped'}
+            or provenance['schemaVersion'] != 1
+            or provenance['kind'] != 'pr315-retired-authority-host-provenance'
+            or provenance['sourceCommit'] !=
+                campaign['identity']['helperSourceCommit']
+            or provenance['guestStopped'] is not True
+            or not isinstance(provenance['bootId'], str)
+            or re.fullmatch('[0-9a-f-]{36}', provenance['bootId']) is None
+            or any(_HEX64.fullmatch(str(provenance[key])) is None for key in
+                ('campaignGeneration', 'senderHandleDigest', 'inputDigest'))
+            or any(_HEX64.fullmatch(str(value)) is None
+                   for value in (stop_digest, archive_digest))):
+        raise ValueError('pr315-retired-authority-handoff-invalid')
+    return {'schemaVersion': 1, 'kind': AUTHORITY_HANDOFF,
+        'planDigest': campaign['planDigest'],
+        'campaignNonce': campaign['campaignNonce'],
+        'sourceCommit': provenance['sourceCommit'],
+        'preparationAttemptId': preparation_id,
+        'retiredBootId': provenance['bootId'],
+        'retiredGeneration': provenance['campaignGeneration'],
+        'senderHandleDigest': provenance['senderHandleDigest'],
+        'privateInputDigest': provenance['inputDigest'],
+        'stopDigest': stop_digest,
+        'archiveDigest': archive_digest, 'guestStopped': True}
+
+
+def sign_authority_handoff(root, campaign, handoff):
+    """Seal the host-verified old authority after its guest is stopped."""
+    root = _private_directory(root)
+    _check_plan(campaign, campaign['identity']['helperSourceCommit'],
+                campaign['hostKeyFingerprint'])
+    if not isinstance(handoff, dict):
+        raise ValueError('pr315-retired-authority-handoff-invalid')
+    provenance = {'schemaVersion': 1,
+        'kind': 'pr315-retired-authority-host-provenance',
+        'sourceCommit': handoff.get('sourceCommit'),
+        'bootId': handoff.get('retiredBootId'),
+        'campaignGeneration': handoff.get('retiredGeneration'),
+        'senderHandleDigest': handoff.get('senderHandleDigest'),
+        'inputDigest': handoff.get('privateInputDigest'),
+        'guestStopped': handoff.get('guestStopped')}
+    expected = authority_handoff(campaign, handoff.get('preparationAttemptId'),
+        provenance, handoff.get('stopDigest'), handoff.get('archiveDigest'))
+    if handoff != expected:
+        raise ValueError('pr315-retired-authority-handoff-changed')
+    key = root / KEY_NAME
+    info = key.lstat()
+    public = _public_key((root / (KEY_NAME + '.pub')).read_bytes())
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+            or info.st_mode & 0o077
+            or hashlib.sha256(public).hexdigest() !=
+                campaign['hostKeyFingerprint']):
+        raise ValueError('pr315-retired-authority-key-invalid')
+    signed = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign', '-f',
+        str(key), '-n', AUTHORITY_DOMAIN], input=_canonical(handoff),
+        capture_output=True, timeout=15, check=True)
+    signature = signed.stdout.decode('ascii')
+    if (not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')
+            or not signature.endswith('-----END SSH SIGNATURE-----\n')
+            or len(signature) > 4096):
+        raise ValueError('pr315-retired-authority-signature-invalid')
+    envelope = {'handoff': handoff, 'signature': signature}
+    verify_authority_handoff(campaign, envelope, public)
+    return envelope
+
+
+def verify_authority_handoff(campaign, envelope, public_key):
+    """Authenticate a handoff with only the frozen public key, including on CT102."""
+    public = _public_key(public_key)
+    fingerprint = hashlib.sha256(public).hexdigest()
+    _check_plan(campaign, campaign['identity']['helperSourceCommit'], fingerprint)
+    if (not isinstance(envelope, dict)
+            or set(envelope) != {'handoff', 'signature'}
+            or not isinstance(envelope['handoff'], dict)):
+        raise ValueError('pr315-retired-authority-envelope-invalid')
+    handoff = envelope['handoff']
+    provenance = {'schemaVersion': 1,
+        'kind': 'pr315-retired-authority-host-provenance',
+        'sourceCommit': handoff.get('sourceCommit'),
+        'bootId': handoff.get('retiredBootId'),
+        'campaignGeneration': handoff.get('retiredGeneration'),
+        'senderHandleDigest': handoff.get('senderHandleDigest'),
+        'inputDigest': handoff.get('privateInputDigest'),
+        'guestStopped': handoff.get('guestStopped')}
+    expected = authority_handoff(campaign, handoff.get('preparationAttemptId'),
+        provenance, handoff.get('stopDigest'), handoff.get('archiveDigest'))
+    signature = envelope['signature']
+    if (handoff != expected or not isinstance(signature, str)
+            or len(signature) > 4096
+            or not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')):
+        raise ValueError('pr315-retired-authority-envelope-invalid')
+    with tempfile.TemporaryDirectory(prefix='pr315-authority-verify-') as temporary:
+        directory = Path(temporary)
+        allowed = directory / 'allowed'
+        sig = directory / 'signature'
+        allowed.write_bytes(b'pr315-authority ' + public + b'\n')
+        sig.write_text(signature, encoding='ascii')
+        checked = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'verify',
+            '-f', str(allowed), '-I', 'pr315-authority',
+            '-n', AUTHORITY_DOMAIN, '-s', str(sig)],
+            input=_canonical(handoff), capture_output=True, timeout=15)
+    if checked.returncode != 0:
+        raise ValueError('pr315-retired-authority-signature-mismatch')
+    return handoff
 
 
 def verify_history(root, campaign, ledger, *, pinned_source_commit,

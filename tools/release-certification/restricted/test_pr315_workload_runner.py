@@ -2676,8 +2676,8 @@ class RunnerTests(unittest.TestCase):
         import pr315_case_v10 as case_v10
         supported = (set(case_v10.POSITIVE) | {'output-symlink'}
                      | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
-        self.assertEqual(42, len(supported))
-        self.assertEqual({'stale-handle', 'stale-pid-uid', 'cleanup-race'},
+        self.assertEqual(43, len(supported))
+        self.assertEqual({'stale-pid-uid', 'cleanup-race'},
                          set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
@@ -2762,6 +2762,135 @@ class RunnerTests(unittest.TestCase):
         self.assertIsNone(runner.retired_authority_provenance(
             report, result, terminal, changed))
 
+    def test_retired_authority_input_requires_mac_signature_and_exact_raw_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            fingerprint = runner.campaign_seal.prepare_key(root)
+            host = synthetic_host_identity()
+            identity = {key: host[key] for key in (
+                'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+                'testKitDigest', 'profileDigest', 'bootClosureDigest',
+                'preparedImageDigest', 'fixtureManifestDigest')}
+            identity['productSelectionDigest'] = host['productDigest']
+            identity['admittedAppDigest'] = 'a' * 64
+            plan = runner.campaign_seal.plan(identity, '1' * 64,
+                runner.host_admission.POLICY, '2' * 64,
+                '3' * 64, fingerprint)
+            retained = {'schemaVersion': 1,
+                'kind': 'pr315-retired-authority-input',
+                'sourceCommit': host['helperSourceCommit'],
+                'campaignGeneration': '4' * 64,
+                'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'senderHandle': '5' * 64,
+                'senderUid': 983, 'senderInvocation': '6' * 32,
+                'senderProcessEpoch': 100,
+                'stopReceiptDigests': {role: '7' * 64
+                    for role in runner.acceptance.ROLES}}
+            provenance = {'schemaVersion': 1,
+                'kind': 'pr315-retired-authority-host-provenance',
+                'sourceCommit': retained['sourceCommit'],
+                'bootId': retained['bootId'],
+                'campaignGeneration': retained['campaignGeneration'],
+                'senderHandleDigest': hashlib.sha256(
+                    retained['senderHandle'].encode()).hexdigest(),
+                'inputDigest': hashlib.sha256(json.dumps(retained,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                'guestStopped': True}
+            handoff = runner.campaign_seal.authority_handoff(plan,
+                'suite-201-preparation', provenance, '8' * 64, '9' * 64)
+            envelope = runner.campaign_seal.sign_authority_handoff(
+                root, plan, handoff)
+            public = (root / (runner.campaign_seal.KEY_NAME + '.pub')).read_bytes()
+            self.assertEqual(handoff, runner.verified_retired_authority_input(
+                plan, envelope, public, retained))
+            changed = {**retained, 'senderHandle': 'a' * 64}
+            with self.assertRaisesRegex(ValueError, 'input-untrusted'):
+                runner.verified_retired_authority_input(
+                    plan, envelope, public, changed)
+
+    def test_stale_handle_requires_retired_signed_input_and_three_real_epochs(self):
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        old_boot = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+        current_target = {'state': 'running', 'generation': 'c' * 64,
+            'managerInvocation': sender['invocationId'], 'bootId': boot,
+            'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64}
+        old_input = {'senderHandle': 'e' * 64}
+        old_digest = hashlib.sha256(json.dumps(old_input, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        handoff = {'sourceCommit': host['helperSourceCommit'],
+            'retiredBootId': old_boot,
+            'senderHandleDigest': hashlib.sha256(
+                old_input['senderHandle'].encode()).hexdigest(),
+            'privateInputDigest': old_digest}
+        controller = {'pid': 500, 'uid': 0, 'startTicks': 45,
+            'bootId': boot, 'invocationId': 'f' * 32,
+            'cgroupIdentity': [1, 50], 'observedMonotonicNs': 10}
+        actor = {'kind': 'installed-observer-process', 'pid': 600,
+            'uid': roster['observerUid'], 'startTicks': 55,
+            'bootId': boot,
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr314_workload_driver.py'),
+            'namespaces': {name: index + 1 for index, name in
+                enumerate(('pid', 'net', 'mnt', 'user'))},
+            'observedMonotonicNs': 30}
+        request = hashlib.sha256(json.dumps({'method': 'observe',
+            'handle': old_input['senderHandle']},
+            separators=(',', ':')).encode() + b'\n').hexdigest()
+        denied = hashlib.sha256(
+            b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        replies = [{'label': label,
+            'target': None if index == 1 else current_target,
+            'exchange': {'method': 'observe',
+                'requestDigest': request if index == 1 else '1' * 64,
+                'responseDigest': denied if index == 1 else '2' * 64},
+            'startedMonotonicNs': 40 + index * 20,
+            'finishedMonotonicNs': 50 + index * 20}
+            for index, label in enumerate((
+                'current-before', 'retired-denied', 'current-after'))]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stale-handle-denial',
+            'caseId': 'stale-handle',
+            'sourceCommit': host['helperSourceCommit'],
+            'retiredInputDigest': old_digest,
+            'retiredBootId': old_boot,
+            'retiredHandleDigest': handoff['senderHandleDigest'],
+            'successorBootId': boot,
+            'observerActor': actor,
+            'controllerBefore': controller,
+            'controllerAfter': dict(controller, observedMonotonicNs=110),
+            'targetBefore': dict(current_target, observedMonotonicNs=20),
+            'targetAfter': dict(current_target, observedMonotonicNs=100),
+            'replies': replies, 'finishedMonotonicNs': 120}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['staleHandleAudit'] = {'status': 'captured',
+            'record': audit}
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=130, observedMonotonicNs=140)
+        diagnostics = {'staleHandle': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        report = {'hostVerifiedIdentity': host,
+            'retiredAuthorityInputDigest': old_digest}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit']},
+            'roleKernelRoster': roster}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            selected = runner.stale_handle_attempt(report, result, terminal,
+                diagnostics, handoff, old_input, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('stale-handle', selected['caseId'])
+        self.assertEqual('installed-observer-process',
+            selected['actorEpoch']['kind'])
+        changed = copy.deepcopy(terminal)
+        changed['staleHandleAudit']['record']['replies'][1]['exchange'][
+            'responseDigest'] = '0' * 64
+        with patch.object(runner, 'group_prepared', return_value=True):
+            self.assertIsNone(runner.stale_handle_attempt(report, result,
+                changed, diagnostics, handoff, old_input, source))
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
             self.assertFalse(installation.production_member(Path(

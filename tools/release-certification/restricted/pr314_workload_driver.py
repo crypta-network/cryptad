@@ -32,6 +32,7 @@ SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
 RETIRED_AUTHORITY = Path('/root/pr315-retired-authority.private.json')
+RETIRED_AUTHORITY_SOURCE = Path('/root/pr315-retired-authority-source.private.json')
 RESOURCE_CHILDREN = Path('/root/pr315-resource-children.private.json')
 VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
@@ -1873,6 +1874,205 @@ def _installed_observer_stop(handle, expected_uid, deadline_ns):
     return _finish_installed_observer_stop(
         _begin_installed_observer_stop(handle, expected_uid, deadline_ns),
         deadline_ns)
+
+
+def _stale_handle_controller_epoch(workload):
+    """Bind the installed root socket owner to its active systemd invocation."""
+    unit = 'cryptad-workload-controller.service'
+    selected = subprocess.run(['/usr/bin/systemctl', 'show', unit,
+        '--property=InvocationID,ActiveState,SubState,MainPID,ControlGroup',
+        '--no-pager'], stdin=subprocess.DEVNULL, capture_output=True,
+        env=ENV, timeout=5, check=True)
+    if len(selected.stdout) > 8192 or selected.stderr:
+        raise ValueError('workload-stale-handle-controller-unavailable')
+    state = dict(line.split('=', 1) for line in
+                 selected.stdout.decode().splitlines() if '=' in line)
+    path = '/system.slice/' + unit
+    if (set(state) != {'InvocationID', 'ActiveState', 'SubState',
+                      'MainPID', 'ControlGroup'}
+            or re.fullmatch('[0-9a-f]{32}', state['InvocationID']) is None
+            or state['ActiveState'] != 'active'
+            or state['SubState'] != 'running'
+            or not state['MainPID'].isdecimal()
+            or int(state['MainPID']) <= 1
+            or state['ControlGroup'] != path):
+        raise ValueError('workload-stale-handle-controller-state-invalid')
+    pid = int(state['MainPID'])
+    proc = Path('/proc') / str(pid)
+    first = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+    status = dict(line.split(':', 1) for line in
+        (proc / 'status').read_text().splitlines() if ':' in line)
+    second = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+    group = (Path('/sys/fs/cgroup') / path.lstrip('/')).stat()
+    if (len(first) <= 19 or first[19] != second[19]
+            or not first[19].isdecimal() or int(first[19]) <= 0
+            or set(map(int, status['Uid'].split())) != {0}
+            or (proc / 'cgroup').read_text().strip() != '0::' + path):
+        raise ValueError('workload-stale-handle-controller-epoch-invalid')
+    return {'pid': pid, 'uid': 0, 'startTicks': int(first[19]),
+        'bootId': workload.boot(),
+        'invocationId': state['InvocationID'],
+        'cgroupIdentity': [group.st_dev, group.st_ino],
+        'observedMonotonicNs': time.monotonic_ns()}
+
+
+def probe_stale_handle(workload, handoff, retired, result,
+                       campaign_deadline_ns):
+    """Use one real observer to prove current, retired, current authority."""
+    from cross_version_workload import WorkloadClient
+    from cross_version_runtime import RuntimeFailure
+    current = handoff['handles']['candidate-sender']
+    campaign = workload.read(workload.ROOT / 'campaign.json')
+    observer = pwd.getpwnam('cryptad-soak')
+    if (not isinstance(retired, dict)
+            or retired.get('sourceCommit') != result['identity']['sourceCommit']
+            or retired.get('bootId') == campaign['bootId']
+            or retired.get('senderHandle') == current
+            or retired.get('senderUid') !=
+                workload.account('candidate-sender').pw_uid
+            or not isinstance(retired.get('senderHandle'), str)
+            or re.fullmatch('[0-9a-f]{64}',
+                retired['senderHandle']) is None
+            or time.monotonic_ns() >= campaign_deadline_ns):
+        raise ValueError('workload-stale-handle-preparation-invalid')
+    controller_before = _stale_handle_controller_epoch(workload)
+    target_before = workload.observe(current)
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        pid = os.fork()
+    except BaseException:
+        parent.close()
+        child.close()
+        raise
+    if pid == 0:
+        parent.close()
+        try:
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            child.sendall(b'R')
+            if child.recv(1) != b'G':
+                raise ValueError('workload-stale-handle-start-invalid')
+            replies = []
+            for label, handle in (('current-before', current),
+                                  ('retired-denied', retired['senderHandle']),
+                                  ('current-after', current)):
+                client = WorkloadClient()
+                started = time.monotonic_ns()
+                if label == 'retired-denied':
+                    try:
+                        client.request('observe', handle)
+                    except RuntimeFailure as error:
+                        if str(error) != 'workload-controller-request-rejected':
+                            raise
+                    else:
+                        raise ValueError('workload-stale-handle-accepted')
+                    projection = None
+                else:
+                    observed = client.request('observe', handle)
+                    projection = {key: observed[key] for key in
+                        ('state', 'generation', 'managerInvocation',
+                         'bootId', 'cgroupIdentity', 'stateDigest')}
+                    if projection['state'] != 'running':
+                        raise ValueError('workload-stale-handle-current-inactive')
+                finished = time.monotonic_ns()
+                replies.append({'label': label, 'target': projection,
+                    'exchange': client.last_exchange,
+                    'startedMonotonicNs': started,
+                    'finishedMonotonicNs': finished})
+            child.sendall(json.dumps(replies, sort_keys=True,
+                separators=(',', ':')).encode())
+            child.close()
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    child.close()
+    try:
+        parent.settimeout(min(5, max(.001,
+            campaign_deadline_ns / 1e9 - time.monotonic())))
+        if parent.recv(1) != b'R':
+            raise ValueError('workload-stale-handle-observer-not-ready')
+        actor = _positive_observer_epoch(pid, observer.pw_uid,
+                                        campaign_deadline_ns)
+        parent.sendall(b'G')
+        raw, status = collect_child(parent, pid,
+            min(time.monotonic() + 100, campaign_deadline_ns / 1e9))
+    except BaseException:
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        raise
+    finally:
+        parent.close()
+    if status != 0 or not 0 < len(raw) <= 4096:
+        raise ValueError('workload-stale-handle-observer-failed')
+    replies = json.loads(raw)
+    target_after = workload.observe(current)
+    controller_after = _stale_handle_controller_epoch(workload)
+    stable = ('generation', 'managerInvocation', 'bootId',
+              'cgroupIdentity', 'stateDigest')
+    expected = {key: target_before[key] for key in
+                ('state', *stable)}
+    denied = b'{"error":"restricted-workload-request-failed"}\n'
+    if (not isinstance(replies, list) or len(replies) != 3
+            or [row.get('label') for row in replies] != [
+                'current-before', 'retired-denied', 'current-after']
+            or target_before['state'] != 'running'
+            or target_after['state'] != 'running'
+            or any(controller_before[key] != controller_after[key]
+                   for key in ('pid', 'uid', 'startTicks', 'bootId',
+                               'invocationId', 'cgroupIdentity'))
+            or any(target_before[key] != target_after[key]
+                   for key in stable)
+            or replies[0]['target'] != expected
+            or replies[1]['target'] is not None
+            or replies[2]['target'] != expected
+            or replies[1]['exchange']['responseDigest'] !=
+                hashlib.sha256(denied).hexdigest()
+            or not controller_before['observedMonotonicNs']
+                < target_before['observedMonotonicNs']
+                < replies[0]['startedMonotonicNs']
+                < replies[0]['finishedMonotonicNs']
+                < replies[1]['startedMonotonicNs']
+                < replies[1]['finishedMonotonicNs']
+                < replies[2]['startedMonotonicNs']
+                < replies[2]['finishedMonotonicNs']
+                < target_after['observedMonotonicNs']
+                < controller_after['observedMonotonicNs']):
+        raise ValueError('workload-stale-handle-sequence-invalid')
+    for row, handle in zip(replies, (current, retired['senderHandle'], current)):
+        request = json.dumps({'method': 'observe', 'handle': handle},
+            separators=(',', ':')).encode() + b'\n'
+        if (row['exchange']['method'] != 'observe'
+                or row['exchange']['requestDigest'] !=
+                    hashlib.sha256(request).hexdigest()):
+            raise ValueError('workload-stale-handle-request-changed')
+    audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-stale-handle-denial',
+        'caseId': 'stale-handle',
+        'sourceCommit': result['identity']['sourceCommit'],
+        'retiredInputDigest': hashlib.sha256(json.dumps(retired,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+        'retiredBootId': retired['bootId'],
+        'retiredHandleDigest': hashlib.sha256(
+            retired['senderHandle'].encode()).hexdigest(),
+        'successorBootId': campaign['bootId'],
+        'observerActor': actor,
+        'controllerBefore': controller_before,
+        'controllerAfter': controller_after,
+        'targetBefore': {key: target_before[key] for key in
+            ('state', *stable, 'observedMonotonicNs')},
+        'targetAfter': {key: target_after[key] for key in
+            ('state', *stable, 'observedMonotonicNs')},
+        'replies': replies,
+        'finishedMonotonicNs': time.monotonic_ns()}
+    workload.write(workload.ROOT / 'authority/stale-handle-denial.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()
 
 
 def probe_stuck_output(workload, handoff, result, role_probe_digest,
@@ -5380,6 +5580,17 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('forgedRuntimeIdentity', 'forgedCounters',
                               'resolverAuthority', 'hostileAppOrigin'):
                     diagnostics[field] = diagnostic
+            if RETIRED_AUTHORITY_SOURCE.exists():
+                try:
+                    retired = workload.read(RETIRED_AUTHORITY_SOURCE)
+                    digest = probe_stale_handle(workload, handoff,
+                        retired, result, campaign_deadline)
+                    diagnostics['staleHandle'] = {'status': 'captured',
+                        'caseId': 'stale-handle', 'auditDigest': digest}
+                except Exception as error:
+                    diagnostics['staleHandle'] = {
+                        'status': 'unavailable-or-unsafe',
+                        'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group == 'network-app':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

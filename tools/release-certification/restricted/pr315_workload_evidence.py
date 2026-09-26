@@ -1347,6 +1347,44 @@ def _partial_launch_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _stale_handle_audit(root, deadline):
+    """Retain the root-checked three-request observer sequence without raw handles."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'stale-handle-denial.json', maximum=8192,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or set(value) != {
+                'schemaVersion', 'kind', 'caseId', 'sourceCommit',
+                'retiredInputDigest', 'retiredBootId',
+                'retiredHandleDigest', 'successorBootId',
+                'observerActor', 'controllerBefore', 'controllerAfter',
+                'targetBefore', 'targetAfter',
+                'replies', 'finishedMonotonicNs'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-stale-handle-denial'
+                or value['caseId'] != 'stale-handle'
+                or any(re.fullmatch('[0-9a-f]{64}',
+                    str(value[key])) is None for key in (
+                        'retiredInputDigest', 'retiredHandleDigest'))
+                or not isinstance(value['observerActor'], dict)
+                or not isinstance(value['controllerBefore'], dict)
+                or not isinstance(value['controllerAfter'], dict)
+                or not isinstance(value['targetBefore'], dict)
+                or not isinstance(value['targetAfter'], dict)
+                or not isinstance(value['replies'], list)
+                or len(value['replies']) != 3
+                or [row.get('label') for row in value['replies']] != [
+                    'current-before', 'retired-denied', 'current-after']):
+            raise ValueError('stale-handle-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _stuck_output_audit(root, deadline):
     """Retain the real role writer, bounded collector timeout and stop receipt."""
     remaining = deadline - time.monotonic()
@@ -1874,6 +1912,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stale-handle-denial.json'):
+            result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
@@ -1963,6 +2003,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stale-handle-denial.json'):
+            result['staleHandleAudit'] = _stale_handle_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
