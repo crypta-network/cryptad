@@ -340,7 +340,9 @@ def workload_guest_command(args):
                                       'setsid-double-fork', 'observer-death')
                 and scenario != 'none')
             or (workload_group is None and scenario == 'none')
-            or (workload_group is not None and getattr(args, 'startup_measurement', False))):
+            or (workload_group is not None and getattr(args, 'startup_measurement', False))
+            or (getattr(args, 'retired_authority_preparation', False)
+                and workload_group != 'role-readiness-diagnostic')):
         raise ValueError('workload-guest-command-identity-invalid')
     return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
             'pr315_workload_guest.py --fixture-manifest-digest '
@@ -348,6 +350,8 @@ def workload_guest_command(args):
             + args.product_source_commit
             + ' --lifecycle-scenario ' + scenario
             + (' --workload-group ' + workload_group if workload_group is not None else '')
+            + (' --retired-authority-preparation'
+               if getattr(args, 'retired_authority_preparation', False) else '')
             + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
             + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 
@@ -549,6 +553,7 @@ print(json.dumps(records))
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
+                ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),
                 ('pr315-workload-failure.private.json', '/root/pr315-workload-failure.private.json', 8192),
                 ('pr315-readiness-jcmd.private.json', '/root/pr315-readiness-jcmd.private.json', 262144),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),

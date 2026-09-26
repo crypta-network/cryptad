@@ -2679,6 +2679,57 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(runner.selected_probe_started('output-symlink',
             {'probeStart': {**marker, 'startedMonotonicNs': True}}))
 
+    def test_retired_authority_handoff_requires_four_real_stops_and_hides_handle(self):
+        roster = synthetic_role_kernel_roster()
+        host = synthetic_host_identity()
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'role-readiness-measurement',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'role-readiness-diagnostic',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 0,
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                       'finishedMonotonicNs': 20},
+            'workloadAcceptance': 'not-executed-role-readiness-measurement',
+            'protectedExecutionEnabled': False}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'generation': 'c' * 64, 'bootId': boot}}
+        raw = {'schemaVersion': 1, 'kind': 'pr315-retired-authority-input',
+            'sourceCommit': host['helperSourceCommit'],
+            'campaignGeneration': 'c' * 64, 'bootId': boot,
+            'senderHandle': 'e' * 64,
+            'senderUid': roster['roles'][0]['uid'],
+            'senderInvocation': roster['roles'][0]['invocationId'],
+            'senderProcessEpoch': roster['roles'][0]['processEpoch'],
+            'stopReceiptDigests': {row['role']: hashlib.sha256(json.dumps(
+                terminal['stopReceipts'][row['role']]['current']['record'],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                for row in roster['roles']}}
+        selected = runner.retired_authority_provenance(
+            report, result, terminal, raw)
+        self.assertIsNotNone(selected)
+        self.assertTrue(selected['guestStopped'])
+        self.assertNotIn(raw['senderHandle'], json.dumps(selected))
+        changed = copy.deepcopy(raw)
+        changed['stopReceiptDigests']['previous'] = '0' * 64
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+        changed = {**raw, 'senderInvocation': 'f' * 32}
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+        changed = {**raw, 'senderHandle': 'not-a-handle'}
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+
     def test_test_kit_entries_cannot_export_to_production(self):
         for name in ('fixtures', 'guest', 'runner', 'evidence'):
             self.assertFalse(installation.production_member(Path(

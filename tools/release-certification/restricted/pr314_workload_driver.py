@@ -31,6 +31,7 @@ TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
 REPORT = Path('/root/pr314-workload-observation.private.json')
 VOLATILE = Path('/root/pr315-workload-volatile.private.json')
+RETIRED_AUTHORITY = Path('/root/pr315-retired-authority.private.json')
 VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
@@ -4939,7 +4940,7 @@ def retain_volatile(workload, value):
 
 
 def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
-            workload_group=None):
+            workload_group=None, retired_authority_preparation=False):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
@@ -4951,7 +4952,10 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                              'authority', 'network-app', 'cancellation',
                              'controller-restart', 'deadline', 'revocation-running',
                              'setsid-double-fork', 'observer-death') or (
-            startup_measurement and workload_group):
+            startup_measurement and workload_group or
+            retired_authority_preparation and
+            (workload_group != 'role-readiness-diagnostic'
+             or lifecycle_scenario != 'none')):
         raise ValueError('workload-group-invalid')
     if (workload_group in ('cancellation', 'controller-restart', 'deadline',
                            'revocation-running', 'setsid-double-fork',
@@ -5523,6 +5527,39 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
+    if retired_authority_preparation:
+        if (diagnostics['cleanup'] != 'completed'
+                or result.get('groupPreparation') != 'role-readiness-diagnostic'
+                or not isinstance(result.get('roleKernelRoster'), dict)):
+            raise ValueError('workload-retired-authority-preparation-incomplete')
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        campaign, actual_role, authority = workload.retained(
+            handoff['handles']['candidate-sender'])
+        if (actual_role != 'candidate-sender'
+                or authority['managerInvocation'] != sender['invocationId']
+                or authority['bootId'] != campaign['bootId']):
+            raise ValueError('workload-retired-authority-record-changed')
+        receipts = {}
+        for row in result['roleKernelRoster']['roles']:
+            entry = volatile['stopReceipts'][row['role']]['current']
+            if (entry['status'] != 'captured'
+                    or entry['record']['managerInvocation'] != row['invocationId']
+                    or entry['record']['membership'] != 'only-stop-helper'
+                    or entry['record']['descendantCgroups'] != 0):
+                raise ValueError('workload-retired-authority-stop-incomplete')
+            receipts[row['role']] = hashlib.sha256(json.dumps(entry['record'],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        workload.write(RETIRED_AUTHORITY, {'schemaVersion': 1,
+            'kind': 'pr315-retired-authority-input',
+            'sourceCommit': identity['sourceCommit'],
+            'campaignGeneration': campaign['generation'],
+            'bootId': campaign['bootId'],
+            'senderHandle': handoff['handles']['candidate-sender'],
+            'senderUid': sender['uid'],
+            'senderInvocation': sender['invocationId'],
+            'senderProcessEpoch': sender['processEpoch'],
+            'stopReceiptDigests': receipts}, create=True)
     workload.write(REPORT, result, create=True)
     return {'status': ('startup-measurement-executed' if startup_measurement else
                        'role-readiness-measurement-executed'
@@ -5552,6 +5589,7 @@ def main():
                                                     'revocation-running',
                                                     'setsid-double-fork',
                                                     'observer-death'))
+    parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:
@@ -5561,7 +5599,9 @@ def main():
         print(json.dumps({'status': 'prerequisites-present-not-executed', 'protectedExecutionEnabled': False}))
         return 0
     print(json.dumps(execute(lifecycle_scenario=args.lifecycle_scenario,
-                             workload_group=args.workload_group), sort_keys=True))
+                             workload_group=args.workload_group,
+                             retired_authority_preparation=
+                                 args.retired_authority_preparation), sort_keys=True))
     return 0
 
 

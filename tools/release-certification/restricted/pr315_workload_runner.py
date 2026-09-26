@@ -308,6 +308,58 @@ def partial_launch_prepared(report, result, terminal):
         and result.get('protectedExecutionEnabled') is False)
 
 
+def retired_authority_provenance(report, result, terminal, retained):
+    """Verify a real stopped predecessor handle without exporting its bytes."""
+    try:
+        if (not group_prepared(report, result, terminal,
+                               'role-readiness-diagnostic')
+                or not isinstance(retained, dict)
+                or set(retained) != {'schemaVersion', 'kind', 'sourceCommit',
+                    'campaignGeneration', 'bootId', 'senderHandle', 'senderUid',
+                    'senderInvocation', 'senderProcessEpoch',
+                    'stopReceiptDigests'}
+                or retained['schemaVersion'] != 1
+                or retained['kind'] != 'pr315-retired-authority-input'
+                or retained['sourceCommit'] !=
+                    report['hostVerifiedIdentity']['helperSourceCommit']
+                or re.fullmatch('[0-9a-f]{64}', retained['senderHandle']) is None
+                or retained['campaignGeneration'] != terminal['controllerRecords']
+                    ['campaign']['record']['generation']
+                or retained['bootId'] != terminal['controllerRecords']
+                    ['campaign']['record']['bootId']
+                or set(retained['stopReceiptDigests']) != set(acceptance.ROLES)):
+            return None
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        if (retained['senderUid'] != sender['uid']
+                or retained['senderInvocation'] != sender['invocationId']
+                or retained['senderProcessEpoch'] != sender['processEpoch']
+                or retained['bootId'].replace('-', '').lower() != sender['bootId']):
+            return None
+        for role in acceptance.ROLES:
+            receipt = terminal['stopReceipts'][role]['current']
+            digest = hashlib.sha256(json.dumps(receipt['record'],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            if (receipt['status'] != 'captured'
+                    or receipt['record']['membership'] != 'only-stop-helper'
+                    or receipt['record']['descendantCgroups'] != 0
+                    or digest != retained['stopReceiptDigests'][role]):
+                return None
+        return {'schemaVersion': 1,
+            'kind': 'pr315-retired-authority-host-provenance',
+            'sourceCommit': retained['sourceCommit'],
+            'bootId': retained['bootId'],
+            'campaignGeneration': retained['campaignGeneration'],
+            'senderHandleDigest': hashlib.sha256(
+                retained['senderHandle'].encode()).hexdigest(),
+            'inputDigest': hashlib.sha256(json.dumps(retained,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'guestStopped': True}
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration):
+        return None
+
+
 def _bounded_window(value):
     return (isinstance(value, dict) and set(value) == {'startedMonotonicNs', 'finishedMonotonicNs'}
             and type(value['startedMonotonicNs']) is int
@@ -4358,6 +4410,11 @@ def run(args):
         'resource-exhaustion', 'partial-launch', 'stuck-output',
         'late-child')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
+    retired_preparation = getattr(args, 'retired_authority_preparation', False)
+    if (retired_preparation and
+            (not role_measurement or group is not None
+             or getattr(args, 'campaign_plan', None) is None)):
+        raise ValueError('workload-retired-authority-selection-invalid')
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
             role_measurement and getattr(args, 'startup_measurement', False)):
@@ -4397,6 +4454,8 @@ def run(args):
                 or re.fullmatch('[0-9a-f]{64}', fingerprint) is None):
             raise ValueError('campaign-key-fingerprint-required')
     host_policy = getattr(args, 'host_memory_policy', 'legacy-physical-admission')
+    if retired_preparation and host_policy != host_admission.POLICY:
+        raise ValueError('workload-retired-authority-host-policy-required')
     if host_policy == host_admission.POLICY:
         relative = 'tools/release-certification/restricted'
         if (args.profile != 'tcg-multi'
@@ -4440,7 +4499,8 @@ def run(args):
             'contract': acceptance.CONTRACT, 'profile': acceptance.PROFILE,
             'runtimePolicy': fixtures.preparation.launcher_policy(),
             'hostAdmissionPolicy': host_policy,
-            'executionPurpose': ('startup-measurement' if getattr(args, 'startup_measurement', False)
+            'executionPurpose': ('retired-authority-preparation' if retired_preparation
+                                 else 'startup-measurement' if getattr(args, 'startup_measurement', False)
                                  else 'role-readiness-measurement' if role_measurement
                                  else 'group-development' if group is not None else 'positive'),
             'selectedGroup': group, 'lifecycleScenario': scenario,
@@ -4556,6 +4616,20 @@ def run(args):
             diagnostic = selected.attempt / 'pr315-workload-memory.private.json'
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
+            retired_proof = None
+            if retired_preparation:
+                retained_path = selected.attempt / 'pr315-retired-authority.private.json'
+                info = retained_path.lstat()
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                        or info.st_mode & 0o077 or info.st_nlink != 1
+                        or not 0 < info.st_size <= 8192):
+                    raise ValueError('workload-retired-authority-file-invalid')
+                retired_proof = retired_authority_provenance(report, value,
+                    terminal, native_runner.private_json(retained_path))
+                if retired_proof is None:
+                    raise ValueError('workload-retired-authority-proof-invalid')
+                native_runner._save(output /
+                    'retired-authority-v2-provenance.private.json', retired_proof)
             v10_raw_digests = None
             def save_v9_case(path, sidecar, case_id, *, identity=None,
                              case_attempt=None, roster=None):
@@ -5010,7 +5084,9 @@ def run(args):
             if diagnostic_mode:
                 statuses = None  # No workload case was invoked by this diagnostic.
             result, code = selected_public_result(group,
-                ('role-readiness-measurement-executed' if role_measurement
+                ('retired-authority-preparation-executed' if retired_preparation
+                    and retired_proof is not None else
+                 'role-readiness-measurement-executed' if role_measurement
                     and group_prepared(report, value, terminal, 'role-readiness-diagnostic') else
                     'implementation-incomplete' if group_ready and
                     all(statuses.get(case) == 'passed' for case in selected_cases(group)) else
@@ -5035,6 +5111,8 @@ def main():
         help='Measure only installed controller startup under a fixed diagnostic ceiling; no role launch or acceptance.')
     parser.add_argument('--role-readiness-measurement', action='store_true',
         help='Observe four real role FCP readiness operations without workload case credit.')
+    parser.add_argument('--retired-authority-preparation', action='store_true',
+        help='Retain a private stopped prior handle for a separately sealed successor guest.')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--case-group', choices=tuple(name for name, _ in campaign.GROUPS),

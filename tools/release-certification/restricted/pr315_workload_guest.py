@@ -27,7 +27,8 @@ LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
 
 
 def execute(manifest_digest, product_commit, *, startup_measurement=False,
-            lifecycle_scenario='cancellation', workload_group=None):
+            lifecycle_scenario='cancellation', workload_group=None,
+            retired_authority_preparation=False):
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
                               'partial-launch', 'stuck-output', 'late-child',
@@ -39,6 +40,8 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
                               'controller-restart', 'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death')
             or (startup_measurement and workload_group)
+            or retired_authority_preparation and
+               workload_group != 'role-readiness-diagnostic'
             or (workload_group in ('cancellation', 'controller-restart', 'deadline',
                                    'revocation-running', 'setsid-double-fork',
                                    'observer-death') and
@@ -72,13 +75,15 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
         '--product-source-commit', product_commit,
         '--lifecycle-scenario', lifecycle_scenario,
         *(['--workload-group', workload_group] if workload_group else []),
+        *(['--retired-authority-preparation'] if retired_authority_preparation else []),
         *(['--startup-measurement'] if startup_measurement else [])], stdin=subprocess.DEVNULL,
         timeout=3900, env=integration.ENV, check=False)
     return None, result.returncode
 
 
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
-              lifecycle_scenario='cancellation', workload_group=None):
+              lifecycle_scenario='cancellation', workload_group=None,
+              retired_authority_preparation=False):
     global STAGE
     if (workload_group not in (None, 'positive', 'lost-start-response',
                               'partial-launch', 'stuck-output', 'late-child',
@@ -90,6 +95,8 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
                               'controller-restart', 'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death')
             or (startup_measurement and workload_group)
+            or retired_authority_preparation and
+               workload_group != 'role-readiness-diagnostic'
             or (workload_group in ('cancellation', 'controller-restart', 'deadline',
                                    'revocation-running', 'setsid-double-fork',
                                    'observer-death') and
@@ -119,7 +126,9 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
              else 'positive-driver')
     return driver.execute(startup_measurement=startup_measurement,
                           lifecycle_scenario=lifecycle_scenario,
-                          workload_group=workload_group), 0
+                          workload_group=workload_group,
+                          retired_authority_preparation=
+                              retired_authority_preparation), 0
 
 
 def _bounded_text(value, maximum):
@@ -257,6 +266,7 @@ def main():
     parser.add_argument('--product-source-commit', required=True)
     parser.add_argument('--installed', action='store_true')
     parser.add_argument('--startup-measurement', action='store_true')
+    parser.add_argument('--retired-authority-preparation', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
@@ -280,7 +290,9 @@ def main():
     result, code = operation(args.fixture_manifest_digest, args.product_source_commit,
                              startup_measurement=args.startup_measurement,
                              lifecycle_scenario=args.lifecycle_scenario,
-                             workload_group=args.workload_group)
+                             workload_group=args.workload_group,
+                             retired_authority_preparation=
+                                 args.retired_authority_preparation)
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return code

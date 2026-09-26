@@ -44,6 +44,13 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'role-readiness-diagnostic'
         self.assertIn('--lifecycle-scenario none --workload-group role-readiness-diagnostic',
                       driver.workload_guest_command(args))
+        args.retired_authority_preparation = True
+        self.assertIn('--retired-authority-preparation',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-fifo'
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+        args.retired_authority_preparation = False
         args.workload_group = 'output-fifo'
         self.assertIn('--lifecycle-scenario none --workload-group output-fifo',
                       driver.workload_guest_command(args))
@@ -291,7 +298,7 @@ class ReferenceDriverTest(unittest.TestCase):
             fixture = SimpleNamespace(ROOT=root / 'test-kit', __file__=str(root / 'test-kit/test.py'))
             with patch.object(integration, 'INSTALLED', current):
                 integration.installed_fixture_resources(fixture)
-            self.assertEqual(bundle, fixture.ROOT)
+            self.assertEqual(bundle.resolve(), fixture.ROOT)
             self.assertFalse(any(path.is_symlink() for path in (fixture.ROOT, *fixture.ROOT.parents)))
             self.assertEqual(str(root / 'test-kit/test.py'), fixture.__file__)
 

@@ -264,8 +264,13 @@ class StartupTransportTests(unittest.TestCase):
                              return_value=SimpleNamespace(returncode=0)) as run:
             self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
                 lifecycle_scenario='none', workload_group='role-readiness-diagnostic'))
+            self.assertNotIn('--retired-authority-preparation', run.call_args.args[0])
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='role-readiness-diagnostic',
+                retired_authority_preparation=True))
         self.assertIn('--workload-group', run.call_args.args[0])
         self.assertIn('role-readiness-diagnostic', run.call_args.args[0])
+        self.assertIn('--retired-authority-preparation', run.call_args.args[0])
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.dict(sys.modules, {'disposable_integration': integration,
                     'pr315_workload_fixtures': fixtures,
@@ -420,7 +425,8 @@ class StartupTransportTests(unittest.TestCase):
             result, code = guest.installed('a' * 64, 'b' * 40, startup_measurement=True)
         driver.execute.assert_called_once_with(startup_measurement=True,
                                                lifecycle_scenario='cancellation',
-                                               workload_group=None)
+                                               workload_group=None,
+                                               retired_authority_preparation=False)
         fixtures.materialize_selection.assert_called_once_with(guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
         workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
         self.assertFalse(result['installedPositiveExecuted'])
