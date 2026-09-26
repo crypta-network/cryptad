@@ -105,7 +105,42 @@ def prerequisites(args):
     for attribute in ('prepared_image', 'seed', 'ssh_key', 'known_hosts'):
         if not getattr(args, attribute).is_file():
             reasons.append(attribute.replace('_', '-') + '-unavailable')
+    if args.known_hosts.is_file() and not known_hosts_matches_port(args.known_hosts, args.port):
+        reasons.append('known-hosts-port-pin-invalid')
     return reasons
+
+
+def known_hosts_matches_port(path, port):
+    """Require the one pinned ED25519 key for the selected local QEMU SSH port."""
+    if type(port) is not int or not 1 <= port <= 65535:
+        return False
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1 or info.st_mode & 0o022
+                    or not 0 < info.st_size <= 4096):
+                return False
+            raw = os.read(descriptor, 4097)
+            if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+                return False
+        finally:
+            os.close(descriptor)
+        lines = raw.splitlines()
+        if len(lines) != 1:
+            return False
+        fields = lines[0].split()
+        if (len(fields) not in (3, 4)
+                or fields[0] != f'[127.0.0.1]:{port}'.encode()
+                or fields[1] != b'ssh-ed25519'):
+            return False
+        key = base64.b64decode(fields[2], validate=True)
+        return (len(key) == 51 and int.from_bytes(key[:4], 'big') == 11
+                and key[4:15] == b'ssh-ed25519'
+                and int.from_bytes(key[15:19], 'big') == 32)
+    except (OSError, ValueError, TypeError, binascii.Error):
+        return False
 
 
 def positive_executed(report, result, terminal):

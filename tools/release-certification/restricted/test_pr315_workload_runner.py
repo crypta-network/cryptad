@@ -145,6 +145,44 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_wrong_port_for_pinned_host_key_stops_before_guest_allocation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            for name in ('fixtures', 'qemu'):
+                (root / name).mkdir()
+            for name in ('image', 'seed', 'key'):
+                (root / name).write_bytes(b'fixed-input')
+            wire = (len(b'ssh-ed25519').to_bytes(4, 'big') + b'ssh-ed25519'
+                    + (32).to_bytes(4, 'big') + b'K' * 32)
+            pin = root / 'pin'
+            pin.write_bytes(b'[127.0.0.1]:23112 ssh-ed25519 '
+                            + base64.b64encode(wire) + b' pr312-reference\n')
+            pin.chmod(0o600)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, case_group='positive',
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=pin, port=23112, storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            self.assertEqual([], runner.prerequisites(args))
+            args.port = 23113
+            self.assertEqual(['known-hosts-port-pin-invalid'], runner.prerequisites(args))
+            with patch.object(runner, 'memory_snapshot', return_value={
+                    'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.reference, 'run') as launch, \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            self.assertFalse((args.output / 'attempt-01').exists())
+            self.assertEqual(['known-hosts-port-pin-invalid'], json.loads(
+                (args.output / 'assessment.json').read_text())['reasons'])
+            args.port = 23112
+            self.assertTrue(runner.known_hosts_matches_port(pin, args.port))
+            pin.write_bytes(pin.read_bytes() + pin.read_bytes())
+            self.assertFalse(runner.known_hosts_matches_port(pin, args.port))
+
     def test_output_group_preparation_requires_four_bound_roles_without_restarting_sender(self):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)
