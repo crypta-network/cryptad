@@ -50,6 +50,7 @@ SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death',
                               'lost-start-response',
+                              'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -215,6 +216,7 @@ def group_prepared(report, result, terminal, group):
                       'controller-restart', 'deadline',
                       'revocation-running', 'setsid-double-fork',
                       'observer-death', 'lost-start-response',
+                      'resource-exhaustion',
                       'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
@@ -227,7 +229,8 @@ def group_prepared(report, result, terminal, group):
                              'role-boundary', 'authority', 'network-app',
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
-                             'observer-death', 'lost-start-response')
+                             'observer-death', 'lost-start-response',
+                             'resource-exhaustion')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -241,8 +244,10 @@ def group_prepared(report, result, terminal, group):
             and result.get('newEpoch') is False
             and result.get('topologyRoles') == 4
             and result.get('signedAppWorkers') == (
-                3 if group in ('authority', 'network-app') else 0)
-            and (group not in ('authority', 'network-app') or
+                3 if group in ('authority', 'network-app',
+                               'resource-exhaustion') else 0)
+            and (group not in ('authority', 'network-app',
+                               'resource-exhaustion') or
                  isinstance(result.get('probeAppKernelProcess'), dict)
                  and result['probeAppKernelProcess'].get('provenance') ==
                      'controller-kernel-sample')
@@ -264,7 +269,8 @@ def group_prepared(report, result, terminal, group):
                              'role-boundary', 'authority', 'network-app',
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
-                             'observer-death', 'lost-start-response')
+                             'observer-death', 'lost-start-response',
+                             'resource-exhaustion')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -2933,6 +2939,254 @@ def _sibling_app_attempt(report, result, fixture, terminal):
         return None
 
 
+def _resource_exhaustion_attempt(report, result, fixture, terminal, diagnostics):
+    """Bind signed app pids.max pressure to live sibling FCP and exact cleanup."""
+    case_id = 'resource-exhaustion'
+    try:
+        if (not group_prepared(report, result, terminal, case_id)
+                or fixture.get('schemaVersion') != 4
+                or not isinstance(diagnostics, dict)
+                or diagnostics.get('resourceExhaustion', {}).get('status') != 'captured'
+                or terminal['resourceAudit']['status'] != 'captured'
+                or terminal['resourceAppReady']['status'] != 'captured'
+                or terminal['resourceAppResult']['status'] != 'captured'):
+            return None
+        normal = probe_denial_attempt(report, fixture, terminal)
+        if normal is None:
+            return None
+        checked = acceptance.verify_attempts(normal[0], [normal[1]])
+        if (checked['recordContractValid'] is not True
+                or next(row['status'] for row in checked['cases']
+                        if row['caseId'] == 'namespace-mount-escape') != 'passed'):
+            return None
+        audit = terminal['resourceAudit']['record']
+        ready = terminal['resourceAppReady']['record']
+        app_result = terminal['resourceAppResult']['record']
+        admin = terminal['probeAdministratorRecord']['record']
+        checkpoint = terminal['probeKernelCheckpoint']['record']
+        principals = result['roleKernelRoster']['roles']
+        sender = next(row for row in principals if row['role'] == 'candidate-sender')
+        before, after = audit['actorBefore'], audit['actorAfter']
+        role_before, role_during, role_after = (audit[key] for key in
+            ('roleBefore', 'roleDuring', 'roleAfter'))
+        siblings_before, siblings_during, siblings_after = (audit[key] for key in
+            ('siblingsBefore', 'siblingsDuring', 'siblingsAfter'))
+        host = report['hostVerifiedIdentity']
+        worker = result['probeAppKernelProcess']
+        stable_actor = ('role', 'hostPid', 'namespacePid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'outerMountNamespaceIdentity', 'userNamespaceIdentity',
+            'pidNamespaceIdentity', 'managerInvocation', 'cgroupIdentity',
+            'networkNamespaceIdentity', 'stateDigest', 'sandboxLeader',
+            'provenance')
+        stable_role = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                       'pidsMax', 'memoryMaxBytes')
+        audit_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-resource-exhaustion-denial'
+                or audit['caseId'] != case_id
+                or audit_digest != diagnostics['resourceExhaustion']['auditDigest']
+                or audit['bundleDigest'] != fixture['probeDigest']
+                or admin['bundleDigest'] != fixture['probeDigest']
+                or audit['actorUid'] != sender['uid']
+                or app_result['uid'] != sender['uid']
+                or app_result['gid'] != sender['gid']
+                or app_result['pid'] != before['namespacePids'][-1]
+                or ready['pid'] != app_result['pid']
+                or ready['uid'] != app_result['uid']
+                or ready['nonce'] != app_result['nonce']
+                or audit['nonceDigest'] != hashlib.sha256(
+                    app_result['nonce'].encode()).hexdigest()
+                or audit['ready'] != ready
+                or audit['appResultDigest'] != hashlib.sha256(json.dumps(
+                    app_result, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest()
+                or app_result['forkErrno'] != 'EAGAIN'
+                or ready['forkErrno'] != 'EAGAIN'
+                or app_result['forkLimit'] != 600
+                or not 1 <= app_result['spawnedCount'] <= 600
+                or app_result['reapedCount'] != app_result['spawnedCount']
+                or ready['spawnedCount'] != app_result['spawnedCount']
+                or app_result['forcedKillCount'] != 0
+                or app_result['abnormalExitCount'] != 0
+                or app_result['startedMonotonicNs'] != ready['startedMonotonicNs']
+                or app_result['finishedMonotonicNs'] != ready['limitReachedNs']
+                or app_result['barrierReadyNs'] != ready['limitReachedNs']
+                or audit['kernelLimit'] != 'pids.max'
+                or audit['limitEventDelta'] !=
+                    role_during['pidsMaxEvents'] - role_before['pidsMaxEvents']
+                or audit['limitEventDelta'] < 1
+                or any(before[key] != after[key] for key in stable_actor)
+                or before['role'] != 'candidate-sender'
+                or before['hostPid'] != worker['hostPid']
+                or before['startTicks'] != worker['startTicks']
+                or before['hostPid'] != admin['worker']['hostPid']
+                or before['startTicks'] != admin['worker']['startTicks']
+                or before['hostPid'] != checkpoint['probeWorker']['hostPid']
+                or before['sandboxLeader'] != worker['sandboxLeader']
+                or before['managerInvocation'] != sender['invocationId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': before['cgroupIdentity']})[7:] != sender['cgroupDigest']
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or audit['senderStateBefore'] != audit['senderStateAfter']
+                or audit['senderStateBefore'] != before['stateDigest']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['senderStateAfter']
+                or any(role_before[key] != role_during[key]
+                       or role_before[key] != role_after[key]
+                       for key in stable_role)
+                or role_before['role'] != 'candidate-sender'
+                or role_before['managerInvocation'] != sender['invocationId']
+                or role_before['bootId'].replace('-', '').lower() != sender['bootId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': role_before['cgroupIdentity']})[7:] != sender['cgroupDigest']
+                or any(row['pidsMax'] != 512
+                       or row['memoryMaxBytes'] != 1024**3
+                       for row in (role_before, role_during, role_after))
+                or role_during['pidsCurrent'] < 504
+                or role_after['pidsCurrent'] > role_before['pidsCurrent'] + 64
+                or not role_before['memoryOomKills'] ==
+                    role_during['memoryOomKills'] == role_after['memoryOomKills']
+                or role_after['pidsMaxEvents'] < role_during['pidsMaxEvents']
+                or audit['ready'] != ready
+                or audit['attackStartedNs'] != app_result['startedMonotonicNs']
+                or audit['attackFinishedNs'] != app_result['finishedMonotonicNs']
+                or audit['childCleanupFinishedNs'] != app_result['cleanupFinishedNs']
+                or not before['observedMonotonicNs']
+                    < role_before['observedMonotonicNs']
+                    < siblings_before[-1]['controlObservedNs']
+                    < audit['triggerMonotonicNs']
+                    < ready['startedMonotonicNs']
+                    < ready['limitReachedNs']
+                    < role_during['observedMonotonicNs']
+                    < siblings_during[0]['observedMonotonicNs']
+                    < siblings_during[-1]['controlObservedNs']
+                    < audit['releasePublishedNs']
+                    < app_result['releaseObservedNs']
+                    < app_result['cleanupFinishedNs']
+                    < siblings_after[0]['observedMonotonicNs']
+                    < role_after['observedMonotonicNs']
+                    < after['observedMonotonicNs']
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        if (not isinstance(siblings_before, list)
+                or not isinstance(siblings_during, list)
+                or not isinstance(siblings_after, list)
+                or any(len(rows) != 3 for rows in
+                       (siblings_before, siblings_during, siblings_after))):
+            return None
+        for previous, during, current in zip(
+                siblings_before, siblings_during, siblings_after):
+            role = previous['role']
+            principal = next(row for row in principals if row['role'] == role)
+            stable = ('role', 'managerInvocation', 'bootId',
+                      'cgroupIdentity', 'stateDigest')
+            if (role not in ('candidate-recipient', 'previous', 'relay-no-apps')
+                    or any(previous[key] != during[key]
+                           or previous[key] != current[key] for key in stable)
+                    or previous['managerInvocation'] != principal['invocationId']
+                    or previous['bootId'].replace('-', '').lower() != principal['bootId']
+                    or fixtures.runtime.canonical_digest({
+                        'role': role,
+                        'identity': previous['cgroupIdentity']})[7:] !=
+                        principal['cgroupDigest']
+                    or any(re.fullmatch('[0-9a-f]{64}',
+                       str(row['controlDigest'])) is None
+                       for row in (previous, during, current))
+                    or not previous['controlObservedNs']
+                        < audit['triggerMonotonicNs']
+                        < during['observedMonotonicNs']
+                        < during['controlObservedNs']
+                        < audit['releasePublishedNs']
+                        < current['observedMonotonicNs']
+                        < current['controlObservedNs']):
+                return None
+        if {row['role'] for row in siblings_before} != {
+                'candidate-recipient', 'previous', 'relay-no-apps'}:
+            return None
+        receipts = [terminal['stopReceipts'][row['role']]['current']
+                    for row in principals]
+        if any(receipt['status'] != 'captured'
+               or receipt['record']['managerInvocation'] != row['invocationId']
+               or receipt['record']['membership'] != 'only-stop-helper'
+               or receipt['record']['descendantCgroups'] != 0
+               or receipt['record']['startedMonotonicNs'] <=
+                    after['observedMonotonicNs']
+               for receipt, row in zip(receipts, principals)):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit',
+            'helperSourceTree', 'bundleIdentity', 'testKitDigest',
+            'profileDigest', 'bootClosureDigest', 'preparedImageDigest',
+            'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['probeDigest'][7:]
+        attack_digest = audit['appResultDigest']
+        controls_digest = hashlib.sha256(json.dumps(
+            [row['controlDigest'] for row in siblings_during],
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id,
+                  'target': acceptance.CASES[case_id].target,
+                  'role': 'candidate-sender',
+                  'invocationId': sender['invocationId'],
+                  'cgroupDigest': sender['cgroupDigest'],
+                  'bootId': sender['bootId'], 'probeDigest': '',
+                  'controlResponseDigest': controls_digest}
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+                   'attackStartedNs': audit['attackStartedNs'],
+                   'targetActiveBeforeNs': role_before['observedMonotonicNs'],
+                   'targetActiveAfterNs': role_after['observedMonotonicNs'],
+                   'controlResponseDigest': controls_digest,
+                   'denialSource': 'kernel', 'denialCode': 'resource-limit',
+                   'unrelatedStateBefore': audit['senderStateBefore'],
+                   'unrelatedStateAfter': audit['senderStateAfter'],
+                   'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        spec = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed',
+            'actor': spec.actor, 'target': spec.target, 'outcome': spec.outcome,
+            'startedMonotonicNs': role_before['observedMonotonicNs'],
+            'finishedMonotonicNs': role_after['observedMonotonicNs'],
+            'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True,
+            'principals': result['roleKernelRoster'],
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+            'status': 'passed',
+            'actorEpoch': {'kind': 'normally-signed-apphost-child',
+                'uid': sender['uid'], 'hostPid': before['hostPid'],
+                'startTicks': before['startTicks'],
+                'namespacePids': before['namespacePids'],
+                'sandboxLeader': before['sandboxLeader'],
+                'bundleDigest': fixture['probeDigest'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest']},
+            'targetEpoch': {'kind': 'bounded-role-cgroup-pids-limit',
+                'bootId': sender['bootId'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest'],
+                'pidsMax': role_before['pidsMax'],
+                'pidsMaxEventsBefore': role_before['pidsMaxEvents'],
+                'pidsMaxEventsDuring': role_during['pidsMaxEvents'],
+                'siblingControlDigest': controls_digest},
+            'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                'finishedMonotonicNs': audit['childCleanupFinishedNs']},
+            'attackDigest': attack_digest, 'hostVerifiedIdentity': host,
+            'guestStopped': True,
+            'stopReceiptObservedNs': max(row['record']['observedMonotonicNs']
+                                          for row in receipts)}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -3342,7 +3596,8 @@ def run(args):
     selected_preparation = output_group or group in (
         'role-boundary', 'authority', 'network-app',
         'cancellation', 'controller-restart', 'deadline', 'revocation-running',
-        'setsid-double-fork', 'observer-death', 'lost-start-response')
+        'setsid-double-fork', 'observer-death', 'lost-start-response',
+        'resource-exhaustion')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -3712,6 +3967,23 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'sibling-app-v9-evidence.private.json', sidecar)
                 statuses['sibling-app'] = 'passed'
+            if (group == 'resource-exhaustion' and group_ready
+                    and isinstance(terminal, dict)):
+                denial = _resource_exhaustion_attempt(
+                    report, value, fixture, terminal, resources)
+                if denial is None:
+                    raise ValueError('workload-resource-exhaustion-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == group) != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-resource-exhaustion-case-invalid')
+                native_runner._save(output / (group + '-v8-evidence.private.json'),
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                statuses[group] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
                 if ((positive or network_app_ready) and isinstance(terminal, dict)

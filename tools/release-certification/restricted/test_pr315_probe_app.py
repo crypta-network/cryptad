@@ -15,6 +15,64 @@ from importlib.util import module_from_spec, spec_from_file_location
 
 
 class ProbeWorkerTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux pipe2 required')
+    def test_resource_pressure_stops_at_fixed_fork_error_and_reaps_owned_children(self):
+        script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
+        spec = spec_from_file_location('pr315_resource_probe_test', script)
+        probe = module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        with patch.object(probe.os, 'fork', side_effect=[101, 102,
+                    OSError(errno.EAGAIN, 'fixed-test-cap')]) as fork, \
+                patch.object(probe.os, 'waitpid', side_effect=lambda pid, mode: (pid, 0)):
+            result = probe._bounded_pid_pressure()
+        self.assertEqual(3, fork.call_count)
+        self.assertEqual(2, result['spawnedCount'])
+        self.assertEqual(2, result['reapedCount'])
+        self.assertEqual(0, result['forcedKillCount'])
+        self.assertEqual(0, result['abnormalExitCount'])
+        self.assertEqual('EAGAIN', result['forkErrno'])
+        self.assertEqual(600, result['forkLimit'])
+        self.assertLess(result['startedMonotonicNs'],
+                        result['finishedMonotonicNs'])
+
+    def test_resource_trigger_publishes_bounded_result_once(self):
+        script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
+        spec = spec_from_file_location('pr315_resource_trigger_test', script)
+        probe = module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            trigger = data / probe.RESOURCE_TRIGGER
+            trigger.write_text(json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-resource-trigger', 'nonce': 'a' * 64}))
+            trigger.chmod(0o600)
+            release = data / probe.RESOURCE_RELEASE
+            release.write_text(json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-resource-release', 'nonce': 'a' * 64}))
+            release.chmod(0o600)
+
+            def pressure(on_limit):
+                started = time.monotonic_ns()
+                reached = started + 1
+                on_limit('EAGAIN', 450, started, reached, time.monotonic() + 5)
+                return {'startedMonotonicNs': started,
+                    'finishedMonotonicNs': reached,
+                    'cleanupFinishedNs': time.monotonic_ns() + 1,
+                    'forkLimit': 600, 'spawnedCount': 450,
+                    'reapedCount': 450, 'forcedKillCount': 0,
+                    'abnormalExitCount': 0, 'forkErrno': 'EAGAIN'}
+
+            with patch.object(probe, '_bounded_pid_pressure', side_effect=pressure):
+                result = probe.resource_exhaustion(data)
+            self.assertEqual(450, result['spawnedCount'])
+            self.assertEqual('pr315-signed-resource-ready',
+                json.loads((data / probe.RESOURCE_READY).read_text())['kind'])
+            self.assertLess(result['barrierReadyNs'], result['releaseObservedNs'])
+            self.assertEqual(result, json.loads((data / probe.RESOURCE_RESULT).read_text()))
+            self.assertFalse((data / ('.' + probe.RESOURCE_RESULT + '.pending')).exists())
+            with self.assertRaisesRegex(ValueError, 'already-published'):
+                probe.resource_exhaustion(data)
+
     def test_signed_app_binds_fixed_source_port_and_emits_one_sibling_syn(self):
         script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
         spec = spec_from_file_location('pr315_signed_sibling_probe_test', script)

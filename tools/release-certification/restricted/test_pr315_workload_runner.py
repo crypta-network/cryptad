@@ -299,6 +299,15 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
+        resource = {**result, 'groupPreparation': 'resource-exhaustion',
+                    'signedAppWorkers': 3,
+                    'probeAppKernelProcess': {
+                        'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, resource, terminal,
+                                              'resource-exhaustion'))
+        self.assertFalse(runner.group_prepared(report,
+            {**resource, 'signedAppWorkers': 0}, terminal,
+            'resource-exhaustion'))
         for lifecycle in ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
                           'observer-death'):
@@ -1445,6 +1454,135 @@ class RunnerTests(unittest.TestCase):
             changed = copy.deepcopy(terminal)
             mutate(changed)
             self.assertIsNone(runner.probe_denial_attempt(report, fixture, changed))
+
+    def test_resource_exhaustion_binds_signed_actor_limit_and_live_siblings(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + '6' * 64}
+        cgroup = [1, 99]
+        actor = {'role': 'candidate-sender', 'hostPid': 300,
+            'namespacePid': 19, 'namespacePids': [300, 19, 2],
+            'startTicks': 50, 'executableDigest': 'sha256:' + '7' * 64,
+            'mountNamespaceIdentity': [1, 5],
+            'outerMountNamespaceIdentity': [1, 6],
+            'userNamespaceIdentity': [1, 8],
+            'pidNamespaceIdentity': 44,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': cgroup,
+            'networkNamespaceIdentity': [1, sender['networkNamespace']],
+            'stateDigest': '8' * 64,
+            'sandboxLeader': {'hostPid': 299},
+            'provenance': 'controller-kernel-sample',
+            'observedMonotonicNs': 10}
+        role = {'role': 'candidate-sender',
+            'managerInvocation': sender['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': cgroup, 'pidsMax': 512,
+            'pidsCurrent': 10, 'pidsMaxEvents': 0,
+            'memoryMaxBytes': 1024**3, 'memoryOomKills': 0,
+            'observedMonotonicNs': 20}
+        siblings = []
+        for index, principal in enumerate(roster['roles'][1:]):
+            siblings.append({'role': principal['role'],
+                'managerInvocation': principal['invocationId'],
+                'bootId': role['bootId'],
+                'cgroupIdentity': [1, 100 + index],
+                'stateDigest': '9' * 64,
+                'observedMonotonicNs': 21 + index * 2,
+                'controlObservedNs': 22 + index * 2,
+                'controlDigest': format(index + 1, '064x')})
+        ready = {'schemaVersion': 1, 'kind': 'pr315-signed-resource-ready',
+            'caseId': 'resource-exhaustion', 'nonce': 'a' * 64,
+            'pid': 2, 'uid': sender['uid'],
+            'startedMonotonicNs': 40, 'limitReachedNs': 50,
+            'spawnedCount': 500, 'forkErrno': 'EAGAIN'}
+        app = {'schemaVersion': 1,
+            'kind': 'pr315-signed-resource-exhaustion-probe',
+            'caseId': 'resource-exhaustion', 'nonce': ready['nonce'],
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 40, 'finishedMonotonicNs': 50,
+            'cleanupFinishedNs': 90, 'forkLimit': 600,
+            'spawnedCount': 500, 'reapedCount': 500,
+            'forcedKillCount': 0, 'abnormalExitCount': 0,
+            'forkErrno': 'EAGAIN', 'barrierReadyNs': 50,
+            'releaseObservedNs': 85}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-resource-exhaustion-denial',
+            'caseId': 'resource-exhaustion',
+            'bundleDigest': fixture['probeDigest'],
+            'nonceDigest': hashlib.sha256(ready['nonce'].encode()).hexdigest(),
+            'actorUid': sender['uid'], 'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=130),
+            'senderStateBefore': actor['stateDigest'],
+            'senderStateAfter': actor['stateDigest'],
+            'roleBefore': role,
+            'roleDuring': dict(role, pidsCurrent=510, pidsMaxEvents=1,
+                               observedMonotonicNs=60),
+            'roleAfter': dict(role, pidsMaxEvents=1, observedMonotonicNs=120),
+            'siblingsBefore': siblings,
+            'siblingsDuring': [dict(row, observedMonotonicNs=64 + index * 4,
+                controlObservedNs=65 + index * 4) for index, row in enumerate(siblings)],
+            'siblingsAfter': [dict(row, observedMonotonicNs=100 + index * 4,
+                controlObservedNs=101 + index * 4) for index, row in enumerate(siblings)],
+            'ready': ready, 'releasePublishedNs': 80,
+            'triggerMonotonicNs': 30, 'attackStartedNs': 40,
+            'attackFinishedNs': 50, 'childCleanupFinishedNs': 90,
+            'kernelLimit': 'pids.max', 'limitEventDelta': 1,
+            'appResultDigest': hashlib.sha256(json.dumps(app, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + actor['stateDigest']
+        for principal in roster['roles']:
+            terminal['stopReceipts'][principal['role']]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        for name, record in (('resourceAudit', audit),
+                             ('resourceAppReady', ready),
+                             ('resourceAppResult', app)):
+            terminal[name] = {'status': 'captured', 'record': record}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': fixture['probeDigest'], 'cgroupIdentity': cgroup,
+            'worker': {'hostPid': 300, 'startTicks': 50}}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 300, 'startTicks': 50}}}
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'identity': {'sourceCommit': host['helperSourceCommit']},
+            'probeAppKernelProcess': {'hostPid': 300, 'startTicks': 50,
+                'sandboxLeader': actor['sandboxLeader']}}
+        diagnostics = {'resourceExhaustion': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}}
+        verified = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+            selected = runner._resource_exhaustion_attempt(
+                report, result, fixture, terminal, diagnostics)
+        self.assertIsNotNone(selected)
+        identity, attempt, sidecar = selected
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'resource-exhaustion'))
+        self.assertEqual(1, sidecar['targetEpoch']['pidsMaxEventsDuring'])
+        for change in (
+                lambda row: row['resourceAudit']['record']['roleDuring'].update(
+                    pidsMaxEvents=0),
+                lambda row: row['resourceAudit']['record']['siblingsDuring'][1].update(
+                    controlObservedNs=81),
+                lambda row: row['resourceAppResult']['record'].update(
+                    reapedCount=499),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            change(changed)
+            with patch.object(runner, 'group_prepared', return_value=True), \
+                    patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                    patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+                self.assertIsNone(runner._resource_exhaustion_attempt(
+                    report, result, fixture, changed, diagnostics))
 
     def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
         roster = synthetic_role_kernel_roster()

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import stat
 import time
@@ -22,6 +23,12 @@ SIBLING_APP_TRIGGER = 'pr315-sibling-app-trigger.json'
 SIBLING_APP_RESULT = 'pr315-sibling-app-result.json'
 SIBLING_APP_SOURCE = ('10.231.0.1', 19404)
 SIBLING_APP_TARGET = ('10.231.0.2', 19402)
+RESOURCE_TRIGGER = 'pr315-resource-trigger.json'
+RESOURCE_READY = 'pr315-resource-ready.json'
+RESOURCE_RELEASE = 'pr315-resource-release.json'
+RESOURCE_RESULT = 'pr315-resource-result.json'
+RESOURCE_FORK_LIMIT = 600
+RESOURCE_SECONDS = 240
 
 
 def mount_escape():
@@ -166,6 +173,176 @@ def sibling_app(data: Path) -> dict:
     return result
 
 
+def _bounded_pid_pressure(on_limit=None) -> dict:
+    """Hold at most 600 owned children until the role cgroup refuses a fork."""
+    reader, writer = os.pipe2(os.O_CLOEXEC)
+    children = []
+    fork_error = 'NONE'
+    spawn_error = None
+    started = time.monotonic_ns()
+    finished = None
+    deadline = time.monotonic() + RESOURCE_SECONDS
+    try:
+        for _ in range(RESOURCE_FORK_LIMIT):
+            if time.monotonic() >= deadline:
+                fork_error = 'DEADLINE'
+                break
+            try:
+                pid = os.fork()
+            except OSError as error:
+                fork_error = errno.errorcode.get(error.errno, 'UNKNOWN')
+                break
+            if pid == 0:
+                try:
+                    os.close(writer)
+                    while os.read(reader, 1):
+                        pass
+                    os._exit(0)
+                except BaseException:
+                    os._exit(1)
+            children.append(pid)
+        finished = time.monotonic_ns()
+        if on_limit is not None:
+            on_limit(fork_error, len(children), started, finished, deadline)
+    except BaseException as error:
+        spawn_error = error
+    finally:
+        if finished is None:
+            finished = time.monotonic_ns()
+        os.close(writer)
+        pending = set(children)
+        reaped = forced = abnormal = 0
+        cleanup_deadline = time.monotonic() + 30
+        try:
+            while pending and time.monotonic() < cleanup_deadline:
+                for pid in tuple(pending):
+                    try:
+                        observed, status = os.waitpid(pid, os.WNOHANG)
+                    except ChildProcessError:
+                        pending.remove(pid)
+                        abnormal += 1
+                        continue
+                    if observed == pid:
+                        pending.remove(pid)
+                        reaped += 1
+                        abnormal += status != 0
+                if pending:
+                    time.sleep(.02)
+            for pid in tuple(pending):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                try:
+                    os.waitpid(pid, 0)
+                    reaped += 1
+                except ChildProcessError:
+                    abnormal += 1
+                pending.remove(pid)
+                forced += 1
+        finally:
+            os.close(reader)
+    if spawn_error is not None:
+        raise spawn_error
+    return {'startedMonotonicNs': started,
+            'finishedMonotonicNs': finished,
+            'cleanupFinishedNs': time.monotonic_ns(),
+            'forkLimit': RESOURCE_FORK_LIMIT,
+            'spawnedCount': len(children), 'reapedCount': reaped,
+            'forcedKillCount': forced, 'abnormalExitCount': abnormal,
+            'forkErrno': fork_error}
+
+
+def resource_exhaustion(data: Path) -> dict:
+    """Execute only the fixed AppHost-owned pids.max pressure trigger."""
+    trigger = data / RESOURCE_TRIGGER
+    descriptor = os.open(trigger, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or info.st_nlink != 1 or info.st_mode & 0o077
+                or not 0 < info.st_size <= 512):
+            raise ValueError('resource-trigger-unsafe')
+        raw = os.read(descriptor, 513)
+        if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+            raise ValueError('resource-trigger-changed')
+    finally:
+        os.close(descriptor)
+    selected = json.loads(raw)
+    nonce = selected.get('nonce') if isinstance(selected, dict) else None
+    if (not isinstance(selected, dict) or set(selected) != {
+            'schemaVersion', 'kind', 'nonce'}
+            or selected['schemaVersion'] != 1
+            or selected['kind'] != 'pr315-resource-trigger'
+            or not isinstance(nonce, str) or len(nonce) != 64
+            or any(part not in '0123456789abcdef' for part in nonce)):
+        raise ValueError('resource-trigger-invalid')
+    if os.path.lexists(data / RESOURCE_RESULT):
+        raise ValueError('resource-result-already-published')
+    barrier = {}
+
+    def at_limit(error, count, started, reached, deadline):
+        ready = {'schemaVersion': 1, 'kind': 'pr315-signed-resource-ready',
+            'caseId': 'resource-exhaustion', 'nonce': nonce,
+            'pid': os.getpid(), 'uid': os.getuid(),
+            'startedMonotonicNs': started, 'limitReachedNs': reached,
+            'spawnedCount': count, 'forkErrno': error}
+        pending = data / ('.' + RESOURCE_READY + '.pending')
+        descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                             os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(ready, stream, sort_keys=True, separators=(',', ':'))
+            stream.flush()
+            os.fsync(stream.fileno())
+        if os.path.lexists(data / RESOURCE_READY):
+            raise ValueError('resource-ready-already-published')
+        os.replace(pending, data / RESOURCE_READY)
+        release = data / RESOURCE_RELEASE
+        until = min(deadline, time.monotonic() + 90)
+        while not os.path.lexists(release):
+            if time.monotonic() >= until:
+                raise ValueError('resource-release-timeout')
+            time.sleep(.05)
+        descriptor = os.open(release, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or info.st_nlink != 1 or info.st_mode & 0o077
+                    or not 0 < info.st_size <= 512):
+                raise ValueError('resource-release-unsafe')
+            raw = os.read(descriptor, 513)
+            if len(raw) != info.st_size or os.fstat(descriptor).st_size != info.st_size:
+                raise ValueError('resource-release-changed')
+        finally:
+            os.close(descriptor)
+        selected_release = json.loads(raw)
+        if selected_release != {'schemaVersion': 1,
+                'kind': 'pr315-resource-release', 'nonce': nonce}:
+            raise ValueError('resource-release-invalid')
+        barrier['barrierReadyNs'] = reached
+        barrier['releaseObservedNs'] = time.monotonic_ns()
+
+    pressure = _bounded_pid_pressure(on_limit=at_limit)
+    result = {'schemaVersion': 1,
+              'kind': 'pr315-signed-resource-exhaustion-probe',
+              'caseId': 'resource-exhaustion', 'nonce': nonce,
+              'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
+              **pressure, **barrier}
+    encoded = json.dumps(result, sort_keys=True, separators=(',', ':')).encode()
+    if not 0 < len(encoded) <= 2048:
+        raise ValueError('resource-result-budget')
+    pending = data / ('.' + RESOURCE_RESULT + '.pending')
+    descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(encoded)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.link(pending, data / RESOURCE_RESULT, follow_symlinks=False)
+    pending.unlink()
+    return result
+
+
 def main():
     if not os.environ.get('CRYPTAD_APP_TOKEN'):
         raise ValueError('apphost-token-required')
@@ -199,7 +376,7 @@ def main():
         stream.flush()
         os.fsync(stream.fileno())
     os.replace(temporary, target)
-    provider_done = sibling_done = False
+    provider_done = sibling_done = resource_done = False
     while True:
         if not provider_done and os.path.lexists(data / PROVIDER_TRIGGER):
             provider_authority(data)
@@ -207,6 +384,9 @@ def main():
         if not sibling_done and os.path.lexists(data / SIBLING_APP_TRIGGER):
             sibling_app(data)
             sibling_done = True
+        if not resource_done and os.path.lexists(data / RESOURCE_TRIGGER):
+            resource_exhaustion(data)
+            resource_done = True
         time.sleep(1)
 
 

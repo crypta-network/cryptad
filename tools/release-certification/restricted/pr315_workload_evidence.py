@@ -461,6 +461,65 @@ def _sibling_app_result(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _resource_app_record(root, deadline, kind):
+    """Read only one fixed signed-app pressure barrier or terminal receipt."""
+    names = {'ready': 'pr315-resource-ready.json',
+             'result': 'pr315-resource-result.json'}
+    if kind not in names:
+        raise ValueError('resource-app-record-selection-invalid')
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(
+            root / 'state/candidate-sender/data/node/apps/data/pr315-probe',
+            names[kind], maximum=2048, timeout=min(2, remaining))
+        value = json.loads(raw)
+        common = {'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid',
+                  'startedMonotonicNs', 'spawnedCount', 'forkErrno'}
+        fields = (common | {'limitReachedNs'} if kind == 'ready' else
+                  common | {'gid', 'finishedMonotonicNs', 'cleanupFinishedNs',
+                            'forkLimit', 'reapedCount', 'forcedKillCount',
+                            'abnormalExitCount', 'barrierReadyNs',
+                            'releaseObservedNs'})
+        expected_kind = ('pr315-signed-resource-ready' if kind == 'ready'
+                         else 'pr315-signed-resource-exhaustion-probe')
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != expected_kind):
+            raise ValueError('resource-app-record-invalid')
+        if (value['caseId'] != 'resource-exhaustion'
+                or re.fullmatch('[0-9a-f]{64}', str(value['nonce'])) is None
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('pid', 'uid', 'startedMonotonicNs',
+                                   'spawnedCount'))
+                or value['forkErrno'] != 'EAGAIN'):
+            raise ValueError('resource-app-record-invalid')
+        if kind == 'ready':
+            if (type(value['limitReachedNs']) is not int
+                    or value['limitReachedNs'] <= value['startedMonotonicNs']):
+                raise ValueError('resource-app-ready-invalid')
+        elif (value['kind'] != 'pr315-signed-resource-exhaustion-probe'
+              or value['forkLimit'] != 600
+              or any(type(value[key]) is not int or value[key] < 0
+                     for key in ('gid', 'reapedCount', 'forcedKillCount',
+                                 'abnormalExitCount'))
+              or value['reapedCount'] != value['spawnedCount']
+              or value['forcedKillCount'] != 0
+              or value['abnormalExitCount'] != 0
+              or not value['startedMonotonicNs']
+                  < value['finishedMonotonicNs']
+                  == value['barrierReadyNs']
+                  < value['releaseObservedNs']
+                  < value['cleanupFinishedNs']):
+            raise ValueError('resource-app-result-invalid')
+        return {'status': 'captured',
+                'classification': 'signed-app-candidate-origin-not-acceptance',
+                'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _probe_app_log(root, deadline):
     """Keep only a bounded private AppHost log tail after owned cleanup."""
     remaining = deadline - time.monotonic()
@@ -1127,6 +1186,88 @@ def _sibling_app_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _resource_audit(root, deadline):
+    """Retain bounded root cgroup-limit and live sibling FCP controls."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'resource-exhaustion-denial.json', maximum=32768,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'bundleDigest',
+            'nonceDigest', 'actorUid', 'actorBefore', 'actorAfter',
+            'senderStateBefore', 'senderStateAfter',
+            'roleBefore', 'roleDuring', 'roleAfter',
+            'siblingsBefore', 'siblingsDuring', 'siblingsAfter',
+            'ready', 'releasePublishedNs', 'triggerMonotonicNs',
+            'attackStartedNs', 'attackFinishedNs',
+            'childCleanupFinishedNs', 'kernelLimit', 'limitEventDelta',
+            'appResultDigest'}
+        actor_fields = {'role', 'hostPid', 'namespacePid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'outerMountNamespaceIdentity', 'userNamespaceIdentity',
+            'pidNamespaceIdentity', 'managerInvocation', 'cgroupIdentity',
+            'networkNamespaceIdentity', 'stateDigest', 'observedMonotonicNs',
+            'sandboxLeader', 'provenance'}
+        role_fields = {'role', 'managerInvocation', 'bootId',
+            'cgroupIdentity', 'pidsMax', 'pidsCurrent', 'pidsMaxEvents',
+            'memoryMaxBytes', 'memoryOomKills', 'observedMonotonicNs'}
+        sibling_fields = {'role', 'managerInvocation', 'bootId',
+            'cgroupIdentity', 'stateDigest', 'observedMonotonicNs',
+            'controlObservedNs', 'controlDigest'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-resource-exhaustion-denial'
+                or value['caseId'] != 'resource-exhaustion'
+                or value['kernelLimit'] != 'pids.max'
+                or re.fullmatch('sha256:[0-9a-f]{64}',
+                                str(value['bundleDigest'])) is None
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('nonceDigest', 'senderStateBefore',
+                                   'senderStateAfter', 'appResultDigest'))
+                or value['senderStateBefore'] != value['senderStateAfter']
+                or type(value['limitEventDelta']) is not int
+                or value['limitEventDelta'] < 1
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != actor_fields
+                       or value[key].get('provenance') != 'controller-kernel-sample'
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != role_fields
+                       or value[key]['role'] != 'candidate-sender'
+                       or value[key]['pidsMax'] != 512
+                       or value[key]['memoryMaxBytes'] != 1024**3
+                       for key in ('roleBefore', 'roleDuring', 'roleAfter'))
+                or value['roleDuring']['pidsMaxEvents'] -
+                    value['roleBefore']['pidsMaxEvents'] != value['limitEventDelta']
+                or not isinstance(value['ready'], dict)
+                or value['ready'].get('kind') != 'pr315-signed-resource-ready'
+                or any(not isinstance(value[key], list)
+                       or len(value[key]) != 3
+                       or any(not isinstance(row, dict)
+                              or set(row) != sibling_fields for row in value[key])
+                       or {row['role'] for row in value[key]} != {
+                            'candidate-recipient', 'previous', 'relay-no-apps'}
+                       for key in ('siblingsBefore', 'siblingsDuring', 'siblingsAfter'))
+                or not value['actorBefore']['observedMonotonicNs']
+                    < value['roleBefore']['observedMonotonicNs']
+                    < value['triggerMonotonicNs']
+                    < value['attackStartedNs']
+                    < value['attackFinishedNs']
+                    < value['roleDuring']['observedMonotonicNs']
+                    < value['siblingsDuring'][-1]['controlObservedNs']
+                    < value['releasePublishedNs']
+                    < value['childCleanupFinishedNs']
+                    < value['roleAfter']['observedMonotonicNs']
+                    < value['actorAfter']['observedMonotonicNs']):
+            raise ValueError('resource-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1497,6 +1638,11 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         if os.path.lexists(root /
                 'state/candidate-sender/data/node/apps/data/pr315-probe/pr315-sibling-app-result.json'):
             result['siblingAppResult'] = _sibling_app_result(root, deadline)
+        app_data = root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+        if os.path.lexists(app_data / 'pr315-resource-ready.json'):
+            result['resourceAppReady'] = _resource_app_record(root, deadline, 'ready')
+        if os.path.lexists(app_data / 'pr315-resource-result.json'):
+            result['resourceAppResult'] = _resource_app_record(root, deadline, 'result')
         if observer_root is not None:
             result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
             result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
@@ -1518,6 +1664,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
             result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
+        if os.path.lexists(root / 'authority/resource-exhaustion-denial.json'):
+            result['resourceAudit'] = _resource_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1596,6 +1744,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/sibling-app-denial.json'):
             result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
+        if os.path.lexists(root / 'authority/resource-exhaustion-denial.json'):
+            result['resourceAudit'] = _resource_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

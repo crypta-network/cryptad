@@ -344,6 +344,16 @@ class StartupTransportTests(unittest.TestCase):
                 patch.object(guest.subprocess, 'run',
                              return_value=SimpleNamespace(returncode=0)) as run:
             self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', workload_group='resource-exhaustion'))
+        self.assertIn('resource-exhaustion', run.call_args.args[0])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
                 lifecycle_scenario='cancellation', workload_group='cancellation'))
         self.assertIn('cancellation', run.call_args.args[0])
         with tempfile.TemporaryDirectory() as temporary, \

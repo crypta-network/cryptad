@@ -1034,7 +1034,8 @@ class InstalledWorkloadAdapter:
                          'authority', 'network-app', 'cancellation',
                          'controller-restart', 'deadline', 'revocation-running',
                          'setsid-double-fork', 'observer-death',
-                         'role-readiness-diagnostic', 'lost-start-response') or (
+                         'role-readiness-diagnostic', 'lost-start-response',
+                         'resource-exhaustion') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
         completed = False
@@ -1129,6 +1130,12 @@ class InstalledWorkloadAdapter:
                     ('candidate-recipient', 'mail-prototype')].observe_worker()
                 result['recipientMailUiOriginDigest'] = hashlib.sha256(
                     self.apps[('candidate-recipient', 'mail-prototype')].origin.encode()).hexdigest()
+            if group == 'resource-exhaustion':
+                self.capture_probe_target_roster()
+                self.provision_apps()
+                result['signedAppWorkers'] = len(self.apps)
+                result['probeAppKernelProcess'] = self.apps[
+                    ('candidate-sender', 'pr315-probe')].observe_worker()
             completed = True
             return result
         except Exception:

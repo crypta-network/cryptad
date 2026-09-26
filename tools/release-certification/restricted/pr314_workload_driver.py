@@ -1046,6 +1046,240 @@ def probe_sibling_app(workload, handoff, bundle_digest,
         sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def _resource_cgroup_control(workload, handoff):
+    """Read the current owned sender cgroup and its real pids.max event count."""
+    role = 'candidate-sender'
+    with workload.locked():
+        campaign, actual_role, record = workload.retained(handoff['handles'][role])
+        state = workload.manager(role, 'show')
+        if (actual_role != role or state['ActiveState'] != 'active'
+                or state['SubState'] != 'running'):
+            raise ValueError('workload-resource-role-inactive')
+        workload.exact(role, record, state)
+        workload.current(campaign)
+        root = workload.group(role)
+        info = root.stat()
+        if [info.st_dev, info.st_ino] != record['cgroupIdentity']:
+            raise ValueError('workload-resource-cgroup-replaced')
+        lines = [line.split() for line in (root / 'pids.events').read_text().splitlines()]
+        if (not 1 <= len(lines) <= 4
+                or any(len(line) != 2 or not line[1].isdecimal() for line in lines)
+                or len({line[0] for line in lines}) != len(lines)):
+            raise ValueError('workload-resource-pids-events-invalid')
+        events = {key: int(value) for key, value in lines}
+        pids_max = (root / 'pids.max').read_text().strip()
+        pids_current = (root / 'pids.current').read_text().strip()
+        memory_max = (root / 'memory.max').read_text().strip()
+        swap_max = (root / 'memory.swap.max').read_text().strip()
+        memory_events = dict(line.split() for line in
+            (root / 'memory.events').read_text().splitlines())
+        if (pids_max != '512' or not pids_current.isdecimal()
+                or not 0 < int(pids_current) <= 512
+                or memory_max != str(1024**3) or swap_max != '0'
+                or 'max' not in events
+                or 'oom_kill' not in memory_events
+                or not memory_events['oom_kill'].isdecimal()):
+            raise ValueError('workload-resource-limits-unavailable')
+        return {'role': role, 'managerInvocation': record['managerInvocation'],
+            'bootId': record['bootId'],
+            'cgroupIdentity': record['cgroupIdentity'],
+            'pidsMax': 512, 'pidsCurrent': int(pids_current),
+            'pidsMaxEvents': events['max'],
+            'memoryMaxBytes': 1024**3,
+            'memoryOomKills': int(memory_events['oom_kill']),
+            'observedMonotonicNs': time.monotonic_ns()}
+
+
+def _resource_sibling_controls(workload, handoff):
+    """Require a real FCP response from every separate sibling role."""
+    from restricted_workload_controller import _recipient_fcp_control
+    rows = []
+    for role in ('candidate-recipient', 'previous', 'relay-no-apps'):
+        observed, controlled_ns, digest = _recipient_fcp_control(
+            handoff['handles'][role])
+        if (observed.get('state') != 'running'
+                or observed.get('provenance') != 'controller-kernel-sample'
+                or re.fullmatch('[0-9a-f]{64}', digest) is None
+                or not observed['observedMonotonicNs'] < controlled_ns):
+            raise ValueError('workload-resource-sibling-inactive')
+        rows.append({'role': role,
+            'managerInvocation': observed['managerInvocation'],
+            'bootId': observed['bootId'],
+            'cgroupIdentity': observed['cgroupIdentity'],
+            'stateDigest': observed['stateDigest'],
+            'observedMonotonicNs': observed['observedMonotonicNs'],
+            'controlObservedNs': controlled_ns,
+            'controlDigest': digest})
+    return rows
+
+
+def probe_resource_exhaustion(workload, handoff, bundle_digest,
+                              expected_worker, campaign_deadline_ns):
+    """Drive finite signed-app pids pressure, then prove sibling progress."""
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-resource-campaign-expired')
+    account = workload.account('candidate-sender')
+    root = workload.ROOT / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+    actor_before = _provider_app_actor(workload, handoff, expected_worker)
+    role_before = _resource_cgroup_control(workload, handoff)
+    siblings_before = _resource_sibling_controls(workload, handoff)
+    nonce = secrets.token_hex(32)
+    trigger = root / 'pr315-resource-trigger.json'
+    encoded = json.dumps({'schemaVersion': 1,
+        'kind': 'pr315-resource-trigger', 'nonce': nonce},
+        sort_keys=True, separators=(',', ':')).encode()
+    trigger_pending = root / '.pr315-resource-trigger.pending'
+    descriptor = os.open(trigger_pending,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        os.fchown(descriptor, account.pw_uid, account.pw_gid)
+        if os.write(descriptor, encoded) != len(encoded):
+            raise ValueError('workload-resource-trigger-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    if trigger.exists():
+        raise ValueError('workload-resource-trigger-already-published')
+    os.replace(trigger_pending, trigger)
+    trigger_ns = time.monotonic_ns()
+    until = min(time.monotonic() + 300, campaign_deadline_ns / 1e9)
+    release = root / 'pr315-resource-release.json'
+    try:
+        try:
+            ready = _wait_output_record(root / 'pr315-resource-ready.json',
+                account.pw_uid, until, 'workload-resource-ready-timeout')
+            role_during = _resource_cgroup_control(workload, handoff)
+            siblings_during = _resource_sibling_controls(workload, handoff)
+        finally:
+            release_ns = time.monotonic_ns()
+            release_bytes = json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-resource-release', 'nonce': nonce},
+                sort_keys=True, separators=(',', ':')).encode()
+            release_pending = root / '.pr315-resource-release.pending'
+            descriptor = os.open(release_pending,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600)
+            try:
+                os.fchown(descriptor, account.pw_uid, account.pw_gid)
+                if os.write(descriptor, release_bytes) != len(release_bytes):
+                    raise ValueError('workload-resource-release-short-write')
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            if release.exists():
+                raise ValueError('workload-resource-release-already-published')
+            os.replace(release_pending, release)
+        result = _wait_output_record(root / 'pr315-resource-result.json',
+            account.pw_uid, until, 'workload-resource-result-timeout')
+    finally:
+        trigger.unlink(missing_ok=True)
+        release.unlink(missing_ok=True)
+    siblings_after = _resource_sibling_controls(workload, handoff)
+    role_after = _resource_cgroup_control(workload, handoff)
+    actor_after = _provider_app_actor(workload, handoff, expected_worker)
+    stable_actor = ('hostPid', 'namespacePid', 'namespacePids', 'startTicks',
+                    'managerInvocation', 'cgroupIdentity', 'sandboxLeader',
+                    'networkNamespaceIdentity')
+    stable_role = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                   'pidsMax', 'memoryMaxBytes')
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid',
+            'startedMonotonicNs', 'limitReachedNs', 'spawnedCount', 'forkErrno'}
+            or ready['schemaVersion'] != 1
+            or ready['kind'] != 'pr315-signed-resource-ready'
+            or ready['caseId'] != 'resource-exhaustion'
+            or ready['nonce'] != nonce
+            or ready['pid'] != actor_before['namespacePids'][-1]
+            or ready['uid'] != account.pw_uid
+            or ready['forkErrno'] != 'EAGAIN'
+            or not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'startedMonotonicNs', 'finishedMonotonicNs', 'cleanupFinishedNs',
+            'forkLimit', 'spawnedCount', 'reapedCount', 'forcedKillCount',
+            'abnormalExitCount', 'forkErrno', 'barrierReadyNs',
+            'releaseObservedNs'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-signed-resource-exhaustion-probe'
+            or result['caseId'] != 'resource-exhaustion'
+            or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
+            or result['forkLimit'] != 600
+            or result['forkErrno'] != 'EAGAIN'
+            or ready['spawnedCount'] != result['spawnedCount']
+            or ready['startedMonotonicNs'] != result['startedMonotonicNs']
+            or ready['limitReachedNs'] != result['finishedMonotonicNs']
+            or result['barrierReadyNs'] != ready['limitReachedNs']
+            or type(result['spawnedCount']) is not int
+            or not 1 <= result['spawnedCount'] <= 600
+            or result['reapedCount'] != result['spawnedCount']
+            or result['forcedKillCount'] != 0
+            or result['abnormalExitCount'] != 0
+            or any(actor_before[key] != actor_after[key] for key in stable_actor)
+            or actor_before['stateDigest'] != actor_after['stateDigest']
+            or any(role_before[key] != role_after[key] for key in stable_role)
+            or any(role_before[key] != role_during[key] for key in stable_role)
+            or role_during['pidsMaxEvents'] <= role_before['pidsMaxEvents']
+            or role_during['pidsCurrent'] < role_during['pidsMax'] - 8
+            or role_after['pidsMaxEvents'] < role_during['pidsMaxEvents']
+            or role_after['pidsCurrent'] > role_before['pidsCurrent'] + 64
+            or not role_before['memoryOomKills'] == role_during['memoryOomKills']
+                == role_after['memoryOomKills']
+            or not actor_before['observedMonotonicNs']
+                < role_before['observedMonotonicNs']
+                < siblings_before[-1]['controlObservedNs']
+                < trigger_ns < result['startedMonotonicNs']
+                < result['finishedMonotonicNs']
+                < role_during['observedMonotonicNs']
+                < siblings_during[0]['observedMonotonicNs']
+                < siblings_during[-1]['controlObservedNs']
+                < release_ns < result['releaseObservedNs']
+                < result['cleanupFinishedNs']
+                < siblings_after[0]['observedMonotonicNs']
+                < role_after['observedMonotonicNs']
+                < actor_after['observedMonotonicNs']):
+        raise ValueError('workload-resource-actor-limit-or-window-invalid')
+    for before, during, after in zip(siblings_before, siblings_during,
+                                     siblings_after):
+        stable = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                  'stateDigest')
+        if (any(before[key] != during[key] or before[key] != after[key]
+                for key in stable)
+                or not before['controlObservedNs']
+                    < trigger_ns < during['observedMonotonicNs']
+                    < during['controlObservedNs'] < release_ns
+                    < after['observedMonotonicNs']
+                    < after['controlObservedNs']):
+            raise ValueError('workload-resource-sibling-changed')
+    audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-resource-exhaustion-denial',
+        'caseId': 'resource-exhaustion', 'bundleDigest': bundle_digest,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'actorUid': account.pw_uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'senderStateBefore': actor_before['stateDigest'],
+        'senderStateAfter': actor_after['stateDigest'],
+        'roleBefore': role_before, 'roleDuring': role_during,
+        'roleAfter': role_after,
+        'siblingsBefore': siblings_before,
+        'siblingsDuring': siblings_during,
+        'siblingsAfter': siblings_after,
+        'ready': ready, 'releasePublishedNs': release_ns,
+        'triggerMonotonicNs': trigger_ns,
+        'attackStartedNs': result['startedMonotonicNs'],
+        'attackFinishedNs': result['finishedMonotonicNs'],
+        'childCleanupFinishedNs': result['cleanupFinishedNs'],
+        'kernelLimit': 'pids.max',
+        'limitEventDelta': role_during['pidsMaxEvents'] - role_before['pidsMaxEvents'],
+        'appResultDigest': hashlib.sha256(json.dumps(result,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+    workload.write(workload.ROOT / 'authority/resource-exhaustion-denial.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def _setsid_process_epoch(pid):
     fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
     if (len(fields) <= 19 or not fields[3].isdecimal()
@@ -3533,7 +3767,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('lost-start-response', 'output-symlink', 'output-fifo', 'output-hardlink',
+        if workload_group in ('lost-start-response', 'resource-exhaustion',
+                              'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
@@ -3835,6 +4070,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
+                             'resource-exhaustion',
                              'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
@@ -4004,7 +4240,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('lost-start-response',
+        if (workload_group in ('lost-start-response', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4194,6 +4430,21 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostic['code'] = code
                 for field in ('siblingFcp', 'siblingHttp'):
                     diagnostics[field] = diagnostic
+        if not startup_measurement and workload_group == 'resource-exhaustion':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_resource_exhaustion(workload, handoff,
+                    probe_digest, result['probeAppKernelProcess'],
+                    campaign_deadline)
+                diagnostics['resourceExhaustion'] = {'status': 'captured',
+                    'caseId': 'resource-exhaustion', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['resourceExhaustion'] = {
+                    'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -4360,6 +4611,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
+                                                    'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',

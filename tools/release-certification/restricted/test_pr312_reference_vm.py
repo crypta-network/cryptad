@@ -65,6 +65,9 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'network-app'
         self.assertIn('--lifecycle-scenario none --workload-group network-app',
                       driver.workload_guest_command(args))
+        args.workload_group = 'resource-exhaustion'
+        self.assertIn('--lifecycle-scenario none --workload-group resource-exhaustion',
+                      driver.workload_guest_command(args))
         args.lifecycle_scenario = 'cancellation'
         args.workload_group = 'cancellation'
         self.assertIn('--lifecycle-scenario cancellation --workload-group cancellation',

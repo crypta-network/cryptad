@@ -2710,6 +2710,26 @@ passed 28, protected workload passed 69 with one skip, and both sibling-app
 root-only checks passed in a disposable container. Those results establish
 the source path and refusal checks, not an installed kernel DROP witness.
 
+The prospective v28 `resource-exhaustion` group runs only after four real
+roles and the normally signed sender Mail and probe AppHost workers start.
+The fixed probe child holds at most 600 direct children until its sender
+cgroup refuses a fork. A root-owned test kit samples the sender's actual
+`pids.max`, `pids.current`, `pids.events` and memory OOM count before and
+during pressure. While the children remain held, it obtains separate FCP
+responses from the recipient, previous and relay roles; it then releases
+the children and checks all three roles again. The host verifier requires
+the signed child epoch, a real `pids.events max` increment, a near-limit
+`pids.current` sample, unchanged sibling epochs, zero abnormal or forced
+child exits, exact reaping, final role state and all four stop receipts.
+The trigger, ready and release files are published after complete writes.
+The policy is identified as `workload-launcher-policy-v28`. The offline
+Linux PR-31x set passed 418 tests with seven environment skips. A separate
+amd64 Docker diagnostic with a 48-process cgroup limit observed `EAGAIN`,
+two `pids.events max` events and reaped all 23 spawned children, but QEMU
+reported one abnormal child exit under that artificial low limit. This
+diagnostic does not satisfy the installed case, which requires zero abnormal
+exits. No v28 TCG installed result exists.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3051,7 +3071,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, five network/AppHost emitters including synthetic provider and sibling AppHost, and seven standalone lifecycle groups under v27 selected-group preparation. The remaining four denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, five network/AppHost emitters including synthetic provider and sibling AppHost, the bounded `resource-exhaustion` emitter, and seven standalone lifecycle groups under v28 selected-group preparation. The remaining three denial emitters (`host-network`, `stale-handle`, `stale-pid-uid`), four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

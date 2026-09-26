@@ -726,6 +726,36 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.content_chk.assert_not_called()
         adapter.cleanup.assert_not_called()
 
+    def test_resource_group_prepares_signed_app_without_running_positive_chk(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.nodes = {}
+        adapter.apps = {}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+        adapter.start = mock.Mock(side_effect=lambda role: adapter.nodes.update({role: {}}))
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.capture_probe_target_roster = mock.Mock()
+
+        def provision():
+            adapter.apps = {('candidate-sender', 'mail-prototype'): object(),
+                ('candidate-recipient', 'mail-prototype'): object(),
+                ('candidate-sender', 'pr315-probe'): types.SimpleNamespace(
+                    observe_worker=lambda: {'provenance': 'controller-kernel-sample'})}
+
+        adapter.provision_apps = mock.Mock(side_effect=provision)
+        adapter.content_chk = mock.Mock()
+        adapter.cleanup = mock.Mock(return_value='complete')
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
+            result = adapter.run_group_preparation('resource-exhaustion',
+                leave_running_for_administrator=True)
+        self.assertEqual('resource-exhaustion', result['groupPreparation'])
+        self.assertEqual(3, result['signedAppWorkers'])
+        self.assertEqual('controller-kernel-sample',
+                         result['probeAppKernelProcess']['provenance'])
+        adapter.capture_probe_target_roster.assert_called_once_with()
+        adapter.provision_apps.assert_called_once_with()
+        adapter.content_chk.assert_not_called()
+        adapter.cleanup.assert_not_called()
+
     def test_disallowed_routes_never_open_connection(self):
         supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
         app = workload.InstalledAppHandle(supervisor, 'candidate-sender')
