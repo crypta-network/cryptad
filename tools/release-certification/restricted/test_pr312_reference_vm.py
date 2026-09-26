@@ -67,6 +67,10 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'controller-restart'
         self.assertIn('--lifecycle-scenario controller-restart --workload-group controller-restart',
                       driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'deadline'
+        args.workload_group = 'deadline'
+        self.assertIn('--lifecycle-scenario deadline --workload-group deadline',
+                      driver.workload_guest_command(args))
         args.lifecycle_scenario = 'cancellation'
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)

@@ -37,7 +37,7 @@ READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
-LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'none')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline', 'none')
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -749,7 +749,7 @@ def _administrator_collector_epoch(case_id):
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
                 'role': ('lifecycle-administrator' if case_id in
-                         ('cancellation', 'controller-restart')
+                         ('cancellation', 'controller-restart', 'deadline')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -1617,6 +1617,63 @@ def complete_cancellation(workload, context):
             'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
 
 
+def begin_deadline(workload, handoff, result):
+    """Arm the original campaign expiry only after all four roles are active."""
+    from cross_version_runtime import canonical_digest
+    active = begin_cancellation(workload, handoff, result)
+    event = {'kind': 'deadline', 'roles': active['preRoles'],
+             'campaignDeadlineNs': active['campaignDeadlineNs']}
+    return {'schemaVersion': 1, 'kind': 'pr315-administrator-deadline',
+            'armedMonotonicNs': active['triggerStartedNs'],
+            'triggerEventDigest': canonical_digest(event)[7:],
+            'campaignDeadlineNs': active['campaignDeadlineNs'],
+            'preRoles': active['preRoles']}
+
+
+def complete_deadline(workload, context):
+    """Wait the retained deadline and observe each service stop before root cleanup."""
+    deadline_ns = context['campaignDeadlineNs']
+    if type(deadline_ns) is not int or context['armedMonotonicNs'] >= deadline_ns:
+        raise ValueError('workload-deadline-selection-invalid')
+    while time.monotonic_ns() < deadline_ns:
+        time.sleep(min(.2, max(0, (deadline_ns - time.monotonic_ns()) / 1e9)))
+    until = time.monotonic() + 40
+    while time.monotonic() < until:
+        observed = []
+        for row in context['preRoles']:
+            role = row['role']
+            state = workload.manager(role, 'show')
+            if (state['ActiveState'] not in {'inactive', 'failed'}
+                    or state['SubState'] not in {'dead', 'failed'}
+                    or state['MainPID'] != '0' or not workload.quiescent(role)):
+                break
+            try:
+                receipt = workload.read(workload.ROOT / 'authority' /
+                                        (role + '-stop.json'))
+            except FileNotFoundError:
+                break
+            if (any(receipt[key] != row[key] for key in
+                    ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                    or receipt['membership'] != 'only-stop-helper'
+                    or receipt['descendantCgroups'] != 0
+                    or receipt['startedMonotonicNs'] < deadline_ns
+                    or receipt['observedMonotonicNs'] < receipt['startedMonotonicNs']):
+                raise ValueError('workload-deadline-receipt-invalid')
+            observed.append({'role': role,
+                'managerInvocation': row['managerInvocation'],
+                'receiptStartedNs': receipt['startedMonotonicNs'],
+                'receiptObservedNs': receipt['observedMonotonicNs']})
+        if len(observed) == len(ROLE_NAMES):
+            finished = time.monotonic_ns()
+            if finished <= deadline_ns:
+                raise ValueError('workload-deadline-clock-invalid')
+            return {**context, 'terminalObservedNs': finished,
+                    'roleStops': observed, 'populatedCgroups': [],
+                    'remainingDescendants': 0, 'retention': 'retained'}
+        time.sleep(.05)
+    raise ValueError('workload-deadline-service-stop-unobserved')
+
+
 def controller_unit_state():
     """Project the fixed installed controller's actual systemd invocation."""
     command = ['/usr/bin/systemctl', 'show', 'cryptad-workload-controller.service',
@@ -2151,7 +2208,7 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart'):
+                              'controller-restart', 'deadline'):
             result = adapter.run_group_preparation(workload_group,
                 leave_running_for_administrator=True, on_start_failure=diagnostic)
         else:
@@ -2451,12 +2508,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
-                             'controller-restart') or (
+                             'controller-restart', 'deadline') or (
             startup_measurement and workload_group):
         raise ValueError('workload-group-invalid')
-    if (workload_group in ('cancellation', 'controller-restart') and
+    if (workload_group in ('cancellation', 'controller-restart', 'deadline') and
             lifecycle_scenario != workload_group or
-            workload_group not in (None, 'cancellation', 'controller-restart')
+            workload_group not in (None, 'cancellation', 'controller-restart',
+                                   'deadline')
             and lifecycle_scenario != 'none' or
             workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
@@ -2587,7 +2645,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
-                              'controller-restart') and
+                              'controller-restart', 'deadline') and
                 (result.get('groupPreparation') != workload_group
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
@@ -2764,7 +2822,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     'exceptionType': type(error).__name__[:128],
                     'code': _private_role_probe_code(error)}
         if not startup_measurement and workload_group in ('cancellation',
-                                                           'controller-restart'):
+                                                           'controller-restart', 'deadline'):
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
@@ -2789,6 +2847,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
                                                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'deadline':
+            try:
+                diagnostics['deadline'] = complete_deadline(
+                    workload, begin_deadline(workload, handoff, result))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['deadline'] = {'status': 'unavailable-or-unsafe',
+                                           'exceptionType': type(error).__name__[:128]}
     finally:
         try:
             if parent is not None:
@@ -2821,7 +2887,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             subprocess.SubprocessError) as error:
                         diagnostics['controllerRestart'] = {'status': 'unavailable-or-unsafe',
                                                             'exceptionType': type(error).__name__[:128]}
-                if workload_group in ('cancellation', 'controller-restart'):
+                if workload_group in ('cancellation', 'controller-restart', 'deadline'):
                     try:
                         diagnostics['lifecycleActorAfter'] = _administrator_collector_epoch(
                             workload_group)
@@ -2859,7 +2925,7 @@ def main():
                                                     'role-readiness-diagnostic',
                                                     'role-boundary', 'authority',
                                                     'network-app', 'cancellation',
-                                                    'controller-restart'))
+                                                    'controller-restart', 'deadline'))
     args = parser.parse_args()
     reasons = prerequisites()
     if reasons:

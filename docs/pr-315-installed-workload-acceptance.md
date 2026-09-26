@@ -2504,8 +2504,16 @@ PID/start/cgroup epoch before and after the transition. The host checks
 that epoch, the real controller/service change and all exact stop receipts
 before emitting only that group's v8 and v9 case. Historical suite 106/108
 observations remain bound to their earlier sources; v19 has no TCG result.
+
+The prospective v20 `deadline` group arms only the original prepared
+campaign deadline after four active role controls. The administrator waits
+until that deadline, requires each installed role service to stop and
+produce its exact ExecStopPost receipt before administrator cleanup, and
+retains the fixed root actor epoch and original deadline in v8/v9 evidence.
+The bounded wait does not rewrite or extend the campaign clock. No v20 TCG
+result exists; the full duration must be observed in an installed guest.
 In a network-disabled, read-only Debian Docker test container, the latest
-focused source passed 158 PR-315, 45 PR-314 workload-driver, 23 PR-312
+focused source passed 159 PR-315, 46 PR-314 workload-driver, 23 PR-312
 reference-VM, 11 interop snapshot and 55 interop workload tests (eight
 interop workload skips). The
 selected protected-workload file passed 69 tests with one skip after the
@@ -2861,7 +2869,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and two standalone lifecycle groups under v19 selected-group preparation. Three authority, three network/AppHost, other denial and nine lifecycle emitters and the default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and three standalone lifecycle groups under v20 selected-group preparation. Three authority, three network/AppHost, other denial and eight lifecycle emitters and the default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

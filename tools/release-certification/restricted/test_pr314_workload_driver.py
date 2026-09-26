@@ -437,6 +437,38 @@ class CancellationObservationTest(unittest.TestCase):
                 driver.complete_cancellation(workload, before)
 
 
+class DeadlineObservationTest(unittest.TestCase):
+    def test_waits_original_deadline_and_observes_service_receipts_before_cleanup(self):
+        rows = [{'role': role, 'managerInvocation': format(index + 1, '032x'),
+                 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                 'cgroupIdentity': [1, 10 + index], 'mainPid': 1000 + index}
+                for index, role in enumerate(driver.ROLE_NAMES)]
+        receipts = {row['role']: {**row,
+            'startedMonotonicNs': 1010 + index,
+            'observedMonotonicNs': 1020 + index,
+            'membership': 'only-stop-helper', 'descendantCgroups': 0}
+            for index, row in enumerate(rows)}
+        with patch.object(driver, 'begin_cancellation', return_value={
+                'triggerStartedNs': 900, 'campaignDeadlineNs': 1000,
+                'preRoles': rows}):
+            armed = driver.begin_deadline(None, None, None)
+        workload = SimpleNamespace(ROOT=Path('/fixed-private-root'),
+            manager=lambda role, operation: {'ActiveState': 'inactive',
+                                              'SubState': 'dead', 'MainPID': '0'},
+            quiescent=lambda role: True,
+            read=lambda path: receipts[path.name.removesuffix('-stop.json')])
+        with patch.object(driver.time, 'monotonic_ns', side_effect=[900, 900, 1000, 1100]), \
+                patch.object(driver.time, 'sleep') as slept:
+            completed = driver.complete_deadline(workload, armed)
+        slept.assert_called_once()
+        self.assertEqual(1000, completed['campaignDeadlineNs'])
+        self.assertEqual(1100, completed['terminalObservedNs'])
+        self.assertEqual(4, len(completed['roleStops']))
+        receipts['candidate-sender']['startedMonotonicNs'] = 999
+        with self.assertRaisesRegex(ValueError, 'receipt-invalid'):
+            driver.complete_deadline(workload, armed)
+
+
 class ControllerRestartObservationTest(unittest.TestCase):
     def test_waits_for_all_bound_roles_and_exact_stop_receipts_before_new_start(self):
         rows = [{'role': role, 'managerInvocation': format(index + 1, '032x'),

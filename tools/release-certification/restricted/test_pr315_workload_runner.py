@@ -188,7 +188,7 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
-        for lifecycle in ('cancellation', 'controller-restart'):
+        for lifecycle in ('cancellation', 'controller-restart', 'deadline'):
             self.assertTrue(runner.group_prepared(report,
                 {**result, 'groupPreparation': lifecycle}, terminal, lifecycle))
         diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
@@ -1153,6 +1153,58 @@ class RunnerTests(unittest.TestCase):
         _, rejected = runner.positive_case_attempt(
             report, result, fixture, 10, 20, {'controllerRestart': context}, invalid_terminal)
         self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+    def test_deadline_group_requires_original_expiry_and_each_prior_stop_receipt(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows, stops = [], []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 1010 + index
+            receipt['observedMonotonicNs'] = 1020 + index
+            stops.append({'role': role,
+                          'managerInvocation': principal['invocationId'],
+                          'receiptStartedNs': receipt['startedMonotonicNs'],
+                          'receiptObservedNs': receipt['observedMonotonicNs']})
+        event = {'kind': 'deadline', 'roles': rows, 'campaignDeadlineNs': 1000}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-deadline',
+                   'armedMonotonicNs': 900,
+                   'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'terminalObservedNs': 1100, 'roleStops': stops,
+                   'populatedCgroups': [], 'remainingDescendants': 0,
+                   'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 100}}
+        source = Path(__file__).resolve().parents[3]
+        private = {'deadline': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 850),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 1150)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'deadline'))
+            self.assertEqual(stops, sidecar['targetEpoch']['roleStops'])
+            early = copy.deepcopy(terminal)
+            early['stopReceipts']['candidate-sender']['current']['record'][
+                'startedMonotonicNs'] = 999
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, private, early, source))
+            stale = copy.deepcopy(private)
+            stale['lifecycleActorAfter']['startTicks'] = 34
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, stale, terminal, source))
 
     def test_predeclared_groups_partition_exact_historical_inventory(self):
         groups = runner.groups()

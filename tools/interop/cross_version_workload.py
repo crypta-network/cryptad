@@ -999,7 +999,7 @@ class InstalledWorkloadAdapter:
         if group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                          'output-flood', 'output-replacement', 'role-boundary',
                          'authority', 'network-app', 'cancellation',
-                         'controller-restart',
+                         'controller-restart', 'deadline',
                          'role-readiness-diagnostic') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
