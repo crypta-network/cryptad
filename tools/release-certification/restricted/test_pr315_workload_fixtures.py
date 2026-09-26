@@ -40,6 +40,9 @@ class AdmissionTests(unittest.TestCase):
                 policy['wrapperStartupTimeoutSeconds'], previous=60.0))
             for change in ({'schemaVersion': 2}, {'schemaVersion': 3.0}, {'runtimePolicy': None},
                            {'runtimePolicy': altered}, {'runtimePolicy': noninteger},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v8')},
+                           {'runtimePolicy': {key: item for key, item in policy.items()
+                                              if key != 'resolverAuthorityProbe'}},
                            {'runtimePolicy': dict(policy, command='/bin/sh')}):
                 with self.subTest(change=change):
                     manifest = root / fixtures.MANIFEST

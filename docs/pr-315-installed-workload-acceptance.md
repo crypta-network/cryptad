@@ -2242,7 +2242,7 @@ Subsequent source review found that the `04a09267` PVE preflight counted all
 and covers the remaining shortfall with swap above the 2-GiB swap reserve;
 boundary tests now reject the old result. The task watcher also checks the
 kernel executable inode against the copied loader and the exact fixed QEMU
-drive argument, in addition to its PIDFD and start-epoch binding. These
+drive argument, in addition to its PIDFD and start-epoch binding. Therefore
 suite 106 remains a historical `04a09267` result and cannot be attributed to
 the revised source. Suite 108 below exercises the correction on TCG.
 Before another VM allocation, the mounted CT102 task dataset reported
@@ -2290,6 +2290,32 @@ cannot pass the offline checks. Native Linux PR-315 discovery passed 138
 tests and PR-314 workload-driver discovery passed 42 after this change.
 No installed `resolver-authority` result exists for this prospective source;
 the source-bound suite 108 result remains historical.
+
+The first resolver-source TCG attempt, `3d4fc2ef` suite 109, passed PVE
+admission and the exact PIDFD watcher but failed the existing positive
+sequence while restarting the sender. The observer's original operation
+deadline expired; two retained sender HotSpot reports show SIGSEGV and
+SIGILL in different C1-compiled Java methods. The resolver role syscall was
+not reached, so no denial or `cancellation` case was credited. The guest
+exited 1 and stopped; role cleanup completed, the sentinel matched and the
+host watcher completed. The complete failed attempt and four PVE host records
+passed Mac byte comparison, and both stopped disks matched independent
+SHA-256 checks. After zero task QEMU/open descriptors and an 81-QCOW
+zero-dependency scan, only the remote disk duplicates were released. The
+complete failed Mac original, HotSpot records and offload receipts remain
+private. The retained task dataset then used 211,372,053,984 bytes; another
+unchanged 29,125,270,538-byte reservation would project 240,497,324,522
+bytes, only 20,844,054 bytes below the 224-GiB cap. Another allocation must
+re-inventory and may require further verified duplicate cleanup. A later
+source revision adds the resolver probe to
+the measured `workload-launcher-policy-v9` identity; suite 109's v8-policy
+attempt remains historical and cannot be pooled with that revision.
+Before the next VM, the already stopped successful suite 30 was checked
+against its complete Mac original by recursive checksum and independent disk
+SHA-256. A one-use 79-QCOW scan found zero task QEMU processes, open file
+descriptors or external backing dependents. Only its two remote duplicate
+disks were released; Mac originals and private plan/completion receipts
+remain. PVE task dataset allocation fell to 208,413,494,016 bytes.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
