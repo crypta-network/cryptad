@@ -27,9 +27,11 @@ NFT = '/usr/sbin/nft'
 SWITCH = 'cryptad-role-switch'
 SWITCH_TABLE = 'cryptad_switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
+SIBLING_APP_SOURCE_PORT = 19404
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
 SIBLING_DROP_COUNTERS = {'sibling-fcp': 'pr315_sibling_fcp_drop',
-                         'sibling-http': 'pr315_sibling_http_drop'}
+                         'sibling-http': 'pr315_sibling_http_drop',
+                         'sibling-app': 'pr315_sibling_app_drop'}
 MAX_STATE_BYTES = 8192
 FNP_COUNTERS = {
     **{(role, ROLES[-1]): 'fnp_role' + str(index) + '_to_relay'
@@ -168,7 +170,11 @@ def role_rules(role):
     sibling = ''
     if role == 'candidate-sender':
         target = address('candidate-recipient')
-        sibling = ''.join(
+        # The AppHost child binds one fixed source port. This narrower rule
+        # precedes the generic sibling HTTP refusal and owns its witness.
+        sibling = (f'  oifname "data0" ip saddr {own} ip daddr {target} '
+                   f'tcp sport {SIBLING_APP_SOURCE_PORT} tcp dport {HTTP_PORT} '
+                   f'counter name {SIBLING_DROP_COUNTERS["sibling-app"]} drop\n') + ''.join(
             f'  oifname "data0" ip saddr {own} ip daddr {target} '
             f'tcp dport {port} counter name {SIBLING_DROP_COUNTERS[case]} drop\n'
             for case, port in (('sibling-fcp', FCP_PORT), ('sibling-http', HTTP_PORT)))

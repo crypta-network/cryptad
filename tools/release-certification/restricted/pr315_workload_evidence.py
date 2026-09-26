@@ -422,6 +422,45 @@ def _provider_app_result(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _sibling_app_result(root, deadline):
+    """Read only one fixed signed-AppHost network probe from managed app data."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(
+            root / 'state/candidate-sender/data/node/apps/data/pr315-probe',
+            'pr315-sibling-app-result.json', maximum=2048,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or set(value) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+                'startedMonotonicNs', 'finishedMonotonicNs', 'sourcePort',
+                'targetEndpointDigest', 'outcome'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-signed-sibling-app-probe'
+                or value['caseId'] != 'sibling-app'
+                or re.fullmatch('[0-9a-f]{64}', str(value['nonce'])) is None
+                or value['sourcePort'] != 19404
+                or value['targetEndpointDigest'] != hashlib.sha256(
+                    b'10.231.0.2:19402').hexdigest()
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('pid', 'uid', 'gid', 'startedMonotonicNs',
+                                   'finishedMonotonicNs'))
+                or value['startedMonotonicNs'] >= value['finishedMonotonicNs']
+                or value['outcome'] not in (
+                    {'connected': False, 'phase': 'connect', 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EACCES'})):
+            raise ValueError('sibling-app-result-invalid')
+        return {'status': 'captured',
+                'classification': 'signed-app-candidate-origin-not-acceptance',
+                'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _probe_app_log(root, deadline):
     """Keep only a bounded private AppHost log tail after owned cleanup."""
     remaining = deadline - time.monotonic()
@@ -1007,6 +1046,87 @@ def _provider_authority_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _sibling_app_audit(root, deadline):
+    """Retain one signed-AppHost SYN with its own kernel DROP counter."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'sibling-app-denial.json', maximum=16384,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'bundleDigest',
+            'nonceDigest', 'actorUid', 'actorBefore', 'actorAfter',
+            'senderStateBefore', 'senderStateAfter', 'targetBefore',
+            'targetAfter', 'counterBefore', 'counterAfter', 'counterName',
+            'sourcePort', 'targetEndpointDigest', 'triggerMonotonicNs',
+            'attackStartedNs', 'attackFinishedNs', 'kernelConnectResult',
+            'appResultDigest'}
+        actor_fields = {'role', 'hostPid', 'namespacePid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'outerMountNamespaceIdentity', 'userNamespaceIdentity',
+            'pidNamespaceIdentity', 'managerInvocation', 'cgroupIdentity',
+            'networkNamespaceIdentity', 'stateDigest', 'observedMonotonicNs',
+            'sandboxLeader', 'provenance'}
+        leader_fields = {'hostPid', 'namespacePids', 'startTicks',
+            'executableDigest', 'mountNamespaceIdentity',
+            'userNamespaceIdentity', 'networkNamespaceIdentity',
+            'pidNamespaceIdentity'}
+        target_fields = {'role', 'managerInvocation', 'bootId',
+            'cgroupIdentity', 'workerHostPid', 'workerStartTicks',
+            'javaHostPid', 'javaStartTicks', 'observedMonotonicNs',
+            'controlObservedNs', 'controlDigest', 'appUiOriginDigest'}
+        counter_fields = {'schemaVersion', 'kind', 'policyDigest', 'bootId',
+            'roleNamespaceIdentity', 'observedMonotonicNs', 'counters'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-sibling-app-denial'
+                or value['caseId'] != 'sibling-app'
+                or value['bundleDigest'] is None
+                or re.fullmatch('sha256:[0-9a-f]{64}', str(value['bundleDigest'])) is None
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('nonceDigest', 'senderStateBefore',
+                                   'senderStateAfter', 'targetEndpointDigest',
+                                   'appResultDigest'))
+                or value['senderStateBefore'] != value['senderStateAfter']
+                or value['counterName'] != 'pr315_sibling_app_drop'
+                or value['sourcePort'] != 19404
+                or value['targetEndpointDigest'] != hashlib.sha256(
+                    b'10.231.0.2:19402').hexdigest()
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != actor_fields
+                       or not isinstance(value[key]['sandboxLeader'], dict)
+                       or set(value[key]['sandboxLeader']) != leader_fields
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != counter_fields
+                       for key in ('counterBefore', 'counterAfter'))
+                or value['targetBefore']['role'] != 'candidate-recipient'
+                or re.fullmatch('[0-9a-f]{64}', str(
+                    value['targetBefore']['appUiOriginDigest'])) is None
+                or value['kernelConnectResult'] not in (
+                    {'connected': False, 'phase': 'connect', 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EACCES'})
+                or not value['actorBefore']['observedMonotonicNs']
+                    < value['targetBefore']['observedMonotonicNs']
+                    < value['counterBefore']['observedMonotonicNs']
+                    < value['triggerMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['counterAfter']['observedMonotonicNs']
+                    < value['actorAfter']['observedMonotonicNs']
+                    < value['targetAfter']['observedMonotonicNs']):
+            raise ValueError('sibling-app-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1374,6 +1494,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         if os.path.lexists(root /
                 'state/candidate-sender/data/node/apps/data/pr315-probe/pr315-provider-result.json'):
             result['providerAppResult'] = _provider_app_result(root, deadline)
+        if os.path.lexists(root /
+                'state/candidate-sender/data/node/apps/data/pr315-probe/pr315-sibling-app-result.json'):
+            result['siblingAppResult'] = _sibling_app_result(root, deadline)
         if observer_root is not None:
             result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
             result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
@@ -1393,6 +1516,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/sibling-app-denial.json'):
+            result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1469,6 +1594,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/provider-authority-denial.json'):
             result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/sibling-app-denial.json'):
+            result['siblingAppAudit'] = _sibling_app_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

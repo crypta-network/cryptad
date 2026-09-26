@@ -892,6 +892,160 @@ def probe_provider_authority(workload, handoff, provider_digest,
         sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def _sibling_app_target_control(workload, handoff, expected_worker):
+    """Bind the active recipient Mail child to its real role HTTP control."""
+    from cross_version_workload import bind_worker
+    from restricted_workload_controller import bootstrap
+    role = 'candidate-recipient'
+    handle = handoff['handles'][role]
+    if (not isinstance(expected_worker, dict)
+            or type(expected_worker.get('namespacePid')) is not int
+            or expected_worker['namespacePid'] <= 1):
+        raise ValueError('workload-sibling-app-worker-invalid')
+    before = workload.observe(handle)
+    worker_before = bind_worker(before, expected_worker['namespacePid'],
+                                handoff['expectedJdkDigests'][role])
+    stable = ('hostPid', 'namespacePid', 'startTicks', 'javaHostPid',
+              'javaStartTicks', 'managerInvocation', 'cgroupIdentity')
+    if any(worker_before[key] != expected_worker[key] for key in stable):
+        raise ValueError('workload-sibling-app-worker-changed')
+    selected = bootstrap(handle)
+    origin = selected.get('uiOrigin') if isinstance(selected, dict) else None
+    if (not isinstance(origin, str)
+            or re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{3,4}', origin) is None):
+        raise ValueError('workload-sibling-app-origin-unavailable')
+    http = _sibling_target_control('sibling-http', handle)
+    after = workload.observe(handle)
+    worker_after = bind_worker(after, expected_worker['namespacePid'],
+                               handoff['expectedJdkDigests'][role])
+    if (any(worker_before[key] != worker_after[key] for key in stable)
+            or before['managerInvocation'] != http['managerInvocation']
+            or after['managerInvocation'] != http['managerInvocation']
+            or before['cgroupIdentity'] != http['cgroupIdentity']
+            or after['cgroupIdentity'] != http['cgroupIdentity']
+            or before['stateDigest'] != after['stateDigest']
+            or not before['observedMonotonicNs'] < http['controlObservedNs']
+                < after['observedMonotonicNs']):
+        raise ValueError('workload-sibling-app-target-changed')
+    return {'role': role, 'managerInvocation': after['managerInvocation'],
+            'bootId': after['bootId'],
+            'cgroupIdentity': after['cgroupIdentity'],
+            'workerHostPid': worker_after['hostPid'],
+            'workerStartTicks': worker_after['startTicks'],
+            'javaHostPid': worker_after['javaHostPid'],
+            'javaStartTicks': worker_after['javaStartTicks'],
+            'observedMonotonicNs': after['observedMonotonicNs'],
+            'controlObservedNs': http['controlObservedNs'],
+            'controlDigest': http['controlDigest'],
+            'appUiOriginDigest': hashlib.sha256(origin.encode()).hexdigest()}
+
+
+def probe_sibling_app(workload, handoff, bundle_digest,
+                      expected_sender_worker, expected_recipient_worker,
+                      campaign_deadline_ns):
+    """Require the signed sender AppHost SYN and its own named DROP witness."""
+    from restricted_workload_network import (SIBLING_APP_SOURCE_PORT,
+        SIBLING_DROP_COUNTERS, read_sibling_drop_counters)
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-sibling-app-campaign-expired')
+    account = workload.account('candidate-sender')
+    root = workload.ROOT / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+    actor_before = _provider_app_actor(workload, handoff, expected_sender_worker)
+    target_before = _sibling_app_target_control(workload, handoff,
+                                                 expected_recipient_worker)
+    counters_before = read_sibling_drop_counters()
+    if counters_before['roleNamespaceIdentity'] != actor_before['networkNamespaceIdentity']:
+        raise ValueError('workload-sibling-app-filter-owner-invalid')
+    nonce = secrets.token_hex(32)
+    trigger = root / 'pr315-sibling-app-trigger.json'
+    encoded = json.dumps({'schemaVersion': 1,
+        'kind': 'pr315-sibling-app-trigger', 'nonce': nonce},
+        sort_keys=True, separators=(',', ':')).encode()
+    descriptor = os.open(trigger,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        os.fchown(descriptor, account.pw_uid, account.pw_gid)
+        if os.write(descriptor, encoded) != len(encoded):
+            raise ValueError('workload-sibling-app-trigger-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    trigger_ns = time.monotonic_ns()
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    try:
+        result = _wait_output_record(root / 'pr315-sibling-app-result.json',
+            account.pw_uid, until, 'workload-sibling-app-result-timeout')
+    finally:
+        trigger.unlink(missing_ok=True)
+    counters_after = read_sibling_drop_counters()
+    actor_after = _provider_app_actor(workload, handoff, expected_sender_worker)
+    target_after = _sibling_app_target_control(workload, handoff,
+                                                expected_recipient_worker)
+    stable_actor = ('hostPid', 'namespacePid', 'namespacePids', 'startTicks',
+                    'managerInvocation', 'cgroupIdentity', 'sandboxLeader',
+                    'networkNamespaceIdentity')
+    stable_target = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                     'workerHostPid', 'workerStartTicks', 'javaHostPid',
+                     'javaStartTicks', 'appUiOriginDigest')
+    endpoint_digest = hashlib.sha256(b'10.231.0.2:19402').hexdigest()
+    if (not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'startedMonotonicNs', 'finishedMonotonicNs', 'sourcePort',
+            'targetEndpointDigest', 'outcome'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-signed-sibling-app-probe'
+            or result['caseId'] != 'sibling-app' or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
+            or result['sourcePort'] != SIBLING_APP_SOURCE_PORT
+            or result['targetEndpointDigest'] != endpoint_digest
+            or result['outcome'] not in (
+                {'connected': False, 'phase': 'connect', 'errno': 'ETIMEDOUT'},
+                {'connected': False, 'phase': 'connect', 'errno': 'EHOSTUNREACH'},
+                {'connected': False, 'phase': 'connect', 'errno': 'ENETUNREACH'},
+                {'connected': False, 'phase': 'connect', 'errno': 'EACCES'})
+            or any(actor_before[key] != actor_after[key] for key in stable_actor)
+            or any(target_before[key] != target_after[key] for key in stable_target)
+            or actor_before['stateDigest'] != actor_after['stateDigest']
+            or counters_before['policyDigest'] != counters_after['policyDigest']
+            or counters_before['roleNamespaceIdentity'] !=
+                counters_after['roleNamespaceIdentity']
+            or not actor_before['observedMonotonicNs']
+                < target_before['observedMonotonicNs']
+                < counters_before['observedMonotonicNs'] < trigger_ns
+                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                < counters_after['observedMonotonicNs']
+                < actor_after['observedMonotonicNs']
+                < target_after['observedMonotonicNs']):
+        raise ValueError('workload-sibling-app-actor-target-or-window-invalid')
+    _sibling_counter_pair('sibling-app', counters_before, counters_after,
+                          actor_before['networkNamespaceIdentity'])
+    audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-sibling-app-denial',
+        'caseId': 'sibling-app', 'bundleDigest': bundle_digest,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'actorUid': account.pw_uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'senderStateBefore': actor_before['stateDigest'],
+        'senderStateAfter': actor_after['stateDigest'],
+        'targetBefore': target_before, 'targetAfter': target_after,
+        'counterBefore': counters_before, 'counterAfter': counters_after,
+        'counterName': SIBLING_DROP_COUNTERS['sibling-app'],
+        'sourcePort': result['sourcePort'],
+        'targetEndpointDigest': endpoint_digest,
+        'triggerMonotonicNs': trigger_ns,
+        'attackStartedNs': result['startedMonotonicNs'],
+        'attackFinishedNs': result['finishedMonotonicNs'],
+        'kernelConnectResult': result['outcome'],
+        'appResultDigest': hashlib.sha256(json.dumps(result,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+    workload.write(workload.ROOT / 'authority/sibling-app-denial.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def _setsid_process_epoch(pid):
     fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
     if (len(fields) <= 19 or not fields[3].isdecimal()
@@ -4012,6 +4166,17 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['providerAuthority'] = {
                     'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
+            try:
+                digest = probe_sibling_app(workload, handoff,
+                    probe_digest, result['probeAppKernelProcess'],
+                    result['recipientMailAppKernelProcess'],
+                    campaign_deadline)
+                diagnostics['siblingApp'] = {'status': 'captured',
+                    'caseId': 'sibling-app', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['siblingApp'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
             try:
                 audits = probe_network_app_roles(workload, handoff,

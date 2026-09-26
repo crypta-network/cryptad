@@ -293,7 +293,9 @@ class RunnerTests(unittest.TestCase):
             {**authority, 'signedAppWorkers': 0}, terminal, 'authority'))
         network = {**result, 'groupPreparation': 'network-app',
                    'signedAppWorkers': 3,
-                   'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'}}
+                   'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'},
+                   'recipientMailAppKernelProcess': {
+                       'provenance': 'controller-kernel-sample'}}
         self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
         self.assertFalse(runner.group_prepared(report,
             {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
@@ -807,6 +809,129 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual('passed', next(row['status'] for row in checked['cases']
                          if row['caseId'] == 'provider-authority'))
 
+    def test_sibling_app_requires_signed_actor_active_mail_and_own_drop_counter(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 200], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 200], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 10, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': 'candidate-recipient',
+            'managerInvocation': recipient['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 100], 'workerHostPid': 311,
+            'workerStartTicks': 52, 'javaHostPid': 312,
+            'javaStartTicks': 53, 'observedMonotonicNs': 20,
+            'controlObservedNs': 19, 'controlDigest': 'f' * 64,
+            'appUiOriginDigest': hashlib.sha256(
+                b'http://127.0.0.1:12345').hexdigest()}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counts = {name: {'packets': 0, 'bytes': 0} for name in names.values()}
+        counter = {'schemaVersion': 1,
+            'kind': 'pr315-fixed-sibling-drop-counters',
+            'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                'candidate-sender').encode()).hexdigest(),
+            'bootId': target['bootId'], 'roleNamespaceIdentity': [1, 200],
+            'observedMonotonicNs': 30, 'counters': counts}
+        later_counts = copy.deepcopy(counts)
+        later_counts[names['sibling-app']] = {'packets': 1, 'bytes': 60}
+        counter_after = dict(counter, observedMonotonicNs=70,
+                             counters=later_counts)
+        nonce = 'c' * 64
+        app_result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-sibling-app-probe',
+            'caseId': 'sibling-app', 'nonce': nonce,
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 50, 'finishedMonotonicNs': 60,
+            'sourcePort': 19404,
+            'targetEndpointDigest': hashlib.sha256(
+                b'10.231.0.2:19402').hexdigest(),
+            'outcome': {'connected': False, 'phase': 'connect',
+                        'errno': 'ETIMEDOUT'}}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-sibling-app-denial',
+            'caseId': 'sibling-app', 'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': sender['uid'],
+            'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=80),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=90,
+                                controlObservedNs=89),
+            'counterBefore': counter, 'counterAfter': counter_after,
+            'counterName': names['sibling-app'], 'sourcePort': 19404,
+            'targetEndpointDigest': app_result['targetEndpointDigest'],
+            'triggerMonotonicNs': 40,
+            'attackStartedNs': 50, 'attackFinishedNs': 60,
+            'kernelConnectResult': app_result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(app_result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['siblingAppAudit'] = {'status': 'captured', 'record': audit}
+        terminal['siblingAppResult'] = {'status': 'captured', 'record': app_result}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'worker': {'hostPid': 301, 'startTicks': 45}}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 301}}}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+            'roleKernelRoster': roster,
+            'probeAppKernelProcess': dict(actor),
+            'recipientMailAppKernelProcess': {'hostPid': 311,
+                'startTicks': 52, 'javaHostPid': 312,
+                'javaStartTicks': 53,
+                'provenance': 'controller-kernel-sample'},
+            'recipientMailUiOriginDigest': target['appUiOriginDigest']}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '8' * 64}
+        normal_checked = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=({}, {})), \
+                patch.object(runner.acceptance, 'verify_attempts',
+                             return_value=normal_checked):
+            identity, attempt, sidecar = runner._sibling_app_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual(names['sibling-app'], sidecar['counterName'])
+            for mutate in (
+                    lambda row: row['siblingAppAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-app']].update(packets=0),
+                    lambda row: row['siblingAppAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-http']].update(packets=1, bytes=60),
+                    lambda row: row['siblingAppAudit']['record'][
+                        'targetAfter'].update(workerHostPid=999),
+                    lambda row: row['siblingAppResult']['record'].update(
+                        outcome={'connected': True, 'phase': 'connect', 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._sibling_app_attempt(
+                    report, result, fixture, changed))
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'sibling-app'))
+
     def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]
@@ -1057,6 +1182,8 @@ class RunnerTests(unittest.TestCase):
                         'counters'][names['sibling-fcp']].update(packets=0),
                     lambda row: row['siblingFcpAudit']['record']['counterAfter'][
                         'counters'][names['sibling-http']].update(packets=1, bytes=60),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-app']].update(packets=1, bytes=60),
                     lambda row: row['siblingFcpAudit']['record']['targetAfter'].update(
                         managerInvocation='0' * 32),
                     lambda row: row['stopReceipts']['candidate-recipient']['current'][

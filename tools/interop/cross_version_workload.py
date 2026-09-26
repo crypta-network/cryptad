@@ -1125,6 +1125,10 @@ class InstalledWorkloadAdapter:
                 result['signedAppWorkers'] = len(self.apps)
                 result['probeAppKernelProcess'] = self.apps[
                     ('candidate-sender', 'pr315-probe')].observe_worker()
+                result['recipientMailAppKernelProcess'] = self.apps[
+                    ('candidate-recipient', 'mail-prototype')].observe_worker()
+                result['recipientMailUiOriginDigest'] = hashlib.sha256(
+                    self.apps[('candidate-recipient', 'mail-prototype')].origin.encode()).hexdigest()
             completed = True
             return result
         except Exception:

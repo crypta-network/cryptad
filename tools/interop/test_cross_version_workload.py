@@ -700,7 +700,10 @@ class ObserverPolicyTests(unittest.TestCase):
 
         def provision():
             adapter.apps = {('candidate-sender', 'mail-prototype'): object(),
-                ('candidate-recipient', 'mail-prototype'): object(),
+                ('candidate-recipient', 'mail-prototype'):
+                    types.SimpleNamespace(origin='http://127.0.0.1:12345',
+                        observe_worker=lambda: {
+                        'provenance': 'controller-kernel-sample'}),
                 ('candidate-sender', 'pr315-probe'): types.SimpleNamespace(
                     observe_worker=lambda: {'provenance': 'controller-kernel-sample'})}
 
@@ -714,6 +717,10 @@ class ObserverPolicyTests(unittest.TestCase):
         self.assertEqual(3, result['signedAppWorkers'])
         self.assertEqual('controller-kernel-sample',
                          result['probeAppKernelProcess']['provenance'])
+        self.assertEqual('controller-kernel-sample',
+                         result['recipientMailAppKernelProcess']['provenance'])
+        self.assertEqual(hashlib.sha256(b'http://127.0.0.1:12345').hexdigest(),
+                         result['recipientMailUiOriginDigest'])
         adapter.capture_probe_target_roster.assert_called_once_with()
         adapter.provision_apps.assert_called_once_with()
         adapter.content_chk.assert_not_called()

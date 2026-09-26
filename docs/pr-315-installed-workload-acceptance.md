@@ -2689,6 +2689,27 @@ all three provider-specific checks passed in a disposable root container,
 the signed probe app's two worker checks passed, and the protected workload
 file passed 69 tests with one skip. No v26 TCG installed result exists.
 
+The prospective v27 `sibling-app` path extends that normally signed probe
+AppHost child with one fixed sender source port. It emits a TCP SYN toward
+the recipient role's real HTTP listener for its installed Mail runtime API.
+The sender namespace has a narrower, scenario-owned nft DROP counter for
+this exact source/destination-port pair, ordered before the existing generic
+sibling-HTTP DROP. Root checks the counter delta and proves that both the
+recipient Mail AppHost child and its separately isolated UI origin remain
+active before and after the SYN; a changed recipient invocation, missing
+Mail worker, inactive HTTP control, bind failure or an unrelated case's
+counter cannot pass. The host binds the signed sender AppHost Python child,
+recipient Mail Java child, exact role epochs, packet result, root controls,
+named filter witness and stop receipts. The AppHost UI itself stays
+loopback-only; the denied packet targets the recipient's Mail runtime API
+on the role listener, with UI-origin activity proved separately. This is a
+prospective emitter, with no v27 installed TCG result. The Linux PR-31x
+focused set passed 415 tests with seven environment skips; the interop
+workload file passed 57 with nine root-only skips, protected network rules
+passed 28, protected workload passed 69 with one skip, and both sibling-app
+root-only checks passed in a disposable container. Those results establish
+the source path and refusal checks, not an installed kernel DROP witness.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3030,7 +3051,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, four network/AppHost emitters including the synthetic provider, and seven standalone lifecycle groups under v26 selected-group preparation. The remaining five denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, five network/AppHost emitters including synthetic provider and sibling AppHost, and seven standalone lifecycle groups under v27 selected-group preparation. The remaining four denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

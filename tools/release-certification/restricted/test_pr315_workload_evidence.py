@@ -1318,6 +1318,88 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual('unavailable-or-unsafe', evidence._provider_app_result(
             self.root, time.monotonic() + 2)['status'])
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_sibling_app_audit_keeps_only_exact_signed_syn_and_drop(self):
+        app_data = self.root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+        app_data.mkdir(parents=True)
+        nonce = 'a' * 64
+        endpoint = hashlib.sha256(b'10.231.0.2:19402').hexdigest()
+        app_result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-sibling-app-probe',
+            'caseId': 'sibling-app', 'nonce': nonce,
+            'pid': 2, 'uid': os.geteuid(), 'gid': os.getegid(),
+            'startedMonotonicNs': 50, 'finishedMonotonicNs': 60,
+            'sourcePort': 19404, 'targetEndpointDigest': endpoint,
+            'outcome': {'connected': False, 'phase': 'connect',
+                        'errno': 'ETIMEDOUT'}}
+        app_path = app_data / 'pr315-sibling-app-result.json'
+        app_path.write_text(json.dumps(app_result))
+        app_path.chmod(0o600)
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 2], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': 'c' * 32, 'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 2], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 10, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': 'candidate-recipient',
+            'managerInvocation': 'e' * 32,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 100], 'workerHostPid': 311,
+            'workerStartTicks': 52, 'javaHostPid': 312,
+            'javaStartTicks': 53, 'observedMonotonicNs': 20,
+            'controlObservedNs': 19, 'controlDigest': 'f' * 64,
+            'appUiOriginDigest': hashlib.sha256(
+                b'http://127.0.0.1:12345').hexdigest()}
+        names = network.SIBLING_DROP_COUNTERS
+        counters = {name: {'packets': 0, 'bytes': 0} for name in names.values()}
+        before = {'schemaVersion': 1,
+            'kind': 'pr315-fixed-sibling-drop-counters',
+            'policyDigest': hashlib.sha256(network.role_rules(
+                'candidate-sender').encode()).hexdigest(),
+            'bootId': target['bootId'],
+            'roleNamespaceIdentity': [1, 2],
+            'observedMonotonicNs': 30, 'counters': counters}
+        after_counts = json.loads(json.dumps(counters))
+        after_counts[names['sibling-app']] = {'packets': 1, 'bytes': 60}
+        after = dict(before, observedMonotonicNs=70, counters=after_counts)
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-sibling-app-denial',
+            'caseId': 'sibling-app', 'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': os.geteuid(), 'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=80),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=90,
+                                controlObservedNs=89),
+            'counterBefore': before, 'counterAfter': after,
+            'counterName': names['sibling-app'], 'sourcePort': 19404,
+            'targetEndpointDigest': endpoint,
+            'triggerMonotonicNs': 40, 'attackStartedNs': 50,
+            'attackFinishedNs': 60,
+            'kernelConnectResult': app_result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(app_result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        root_path = self.root / 'authority/sibling-app-denial.json'
+        root_path.write_text(json.dumps(audit))
+        root_path.chmod(0o600)
+        captured = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('captured', captured['siblingAppResult']['status'])
+        self.assertEqual('captured', captured['siblingAppAudit']['status'])
+        root_path.write_text(json.dumps(dict(audit, token='must-not-retain')))
+        self.assertEqual('unavailable-or-unsafe', evidence._sibling_app_audit(
+            self.root, time.monotonic() + 2)['status'])
+        self.assertNotIn('must-not-retain', json.dumps(evidence._capture(
+            self.root, self.expected, True)))
+
 
 if __name__ == '__main__':
     unittest.main()

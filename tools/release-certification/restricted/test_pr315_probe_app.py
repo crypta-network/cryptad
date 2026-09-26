@@ -15,6 +15,49 @@ from importlib.util import module_from_spec, spec_from_file_location
 
 
 class ProbeWorkerTest(unittest.TestCase):
+    def test_signed_app_binds_fixed_source_port_and_emits_one_sibling_syn(self):
+        script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
+        spec = spec_from_file_location('pr315_signed_sibling_probe_test', script)
+        probe = module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            nonce = 'b' * 64
+            trigger = data / probe.SIBLING_APP_TRIGGER
+            trigger.write_text(json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-sibling-app-trigger', 'nonce': nonce}))
+            trigger.chmod(0o600)
+            calls = []
+
+            class Channel:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *_args):
+                    return False
+
+                def settimeout(self, value):
+                    calls.append(('timeout', value))
+
+                def bind(self, value):
+                    calls.append(('bind', value))
+
+                def connect(self, value):
+                    calls.append(('connect', value))
+                    raise TimeoutError()
+
+            with patch.object(probe.socket, 'socket', return_value=Channel()):
+                result = probe.sibling_app(data)
+            self.assertEqual([('timeout', 3),
+                ('bind', ('10.231.0.1', 19404)),
+                ('connect', ('10.231.0.2', 19402))], calls)
+            self.assertEqual({'connected': False, 'phase': 'connect',
+                              'errno': 'ETIMEDOUT'}, result['outcome'])
+            self.assertEqual(result, json.loads((data / probe.SIBLING_APP_RESULT).read_text()))
+            self.assertFalse((data / ('.' + probe.SIBLING_APP_RESULT + '.pending')).exists())
+            with self.assertRaisesRegex(ValueError, 'already-published'):
+                probe.sibling_app(data)
+
     def test_fixed_provider_trigger_records_denial_without_reading_canary_bytes(self):
         script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
         spec = spec_from_file_location('pr315_signed_probe_test', script)

@@ -246,6 +246,10 @@ def group_prepared(report, result, terminal, group):
                  isinstance(result.get('probeAppKernelProcess'), dict)
                  and result['probeAppKernelProcess'].get('provenance') ==
                      'controller-kernel-sample')
+            and (group != 'network-app' or
+                 isinstance(result.get('recipientMailAppKernelProcess'), dict)
+                 and result['recipientMailAppKernelProcess'].get('provenance') ==
+                     'controller-kernel-sample')
             and result.get('profile') == acceptance.PROFILE
             and _bounded_window(result.get('roleKernelRosterWindow'))
             and fixtures.runtime.canonical_digest(result.get('runtimePolicy'))
@@ -2709,6 +2713,226 @@ def _provider_authority_attempt(report, result, fixture, terminal):
         return None
 
 
+def _sibling_app_attempt(report, result, fixture, terminal):
+    """Bind a real signed AppHost SYN to active Mail and its own DROP counter."""
+    case_id = 'sibling-app'
+    try:
+        if (not group_prepared(report, result, terminal, 'network-app')
+                or fixture.get('schemaVersion') != 4
+                or terminal['siblingAppAudit']['status'] != 'captured'
+                or terminal['siblingAppResult']['status'] != 'captured'):
+            return None
+        normal = probe_denial_attempt(report, fixture, terminal)
+        if normal is None:
+            return None
+        checked = acceptance.verify_attempts(normal[0], [normal[1]])
+        if (checked['recordContractValid'] is not True
+                or next(row['status'] for row in checked['cases']
+                        if row['caseId'] == 'namespace-mount-escape') != 'passed'):
+            return None
+        audit = terminal['siblingAppAudit']['record']
+        app_result = terminal['siblingAppResult']['record']
+        admin = terminal['probeAdministratorRecord']['record']
+        checkpoint = terminal['probeKernelCheckpoint']['record']
+        sender, recipient = (next(row for row in result['roleKernelRoster']['roles']
+                                  if row['role'] == role)
+                             for role in ('candidate-sender', 'candidate-recipient'))
+        before, after = audit['actorBefore'], audit['actorAfter']
+        first, last = audit['targetBefore'], audit['targetAfter']
+        counter_before, counter_after = audit['counterBefore'], audit['counterAfter']
+        sender_receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        recipient_receipt = terminal['stopReceipts']['candidate-recipient']['current']['record']
+        probe_worker = result['probeAppKernelProcess']
+        mail_worker = result['recipientMailAppKernelProcess']
+        host = report['hostVerifiedIdentity']
+        stable_actor = ('role', 'hostPid', 'namespacePid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'outerMountNamespaceIdentity', 'userNamespaceIdentity',
+            'pidNamespaceIdentity', 'managerInvocation', 'cgroupIdentity',
+            'networkNamespaceIdentity', 'stateDigest', 'sandboxLeader',
+            'provenance')
+        stable_target = ('role', 'managerInvocation', 'bootId',
+            'cgroupIdentity', 'workerHostPid', 'workerStartTicks',
+            'javaHostPid', 'javaStartTicks', 'appUiOriginDigest')
+        policy = hashlib.sha256(workload_network.role_rules(
+            'candidate-sender').encode()).hexdigest()
+        names = set(workload_network.SIBLING_DROP_COUNTERS.values())
+        selected = workload_network.SIBLING_DROP_COUNTERS['sibling-app']
+        target_digest = hashlib.sha256(b'10.231.0.2:19402').hexdigest()
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-sibling-app-denial'
+                or audit['caseId'] != case_id
+                or audit['bundleDigest'] != fixture['probeDigest']
+                or admin['bundleDigest'] != fixture['probeDigest']
+                or audit['actorUid'] != sender['uid']
+                or app_result['uid'] != sender['uid']
+                or app_result['gid'] != sender['gid']
+                or app_result['pid'] != before['namespacePids'][-1]
+                or audit['nonceDigest'] != hashlib.sha256(
+                    app_result['nonce'].encode()).hexdigest()
+                or audit['appResultDigest'] != hashlib.sha256(json.dumps(
+                    app_result, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest()
+                or audit['sourcePort'] != workload_network.SIBLING_APP_SOURCE_PORT
+                or app_result['sourcePort'] != audit['sourcePort']
+                or audit['targetEndpointDigest'] != target_digest
+                or app_result['targetEndpointDigest'] != target_digest
+                or app_result['outcome'] != audit['kernelConnectResult']
+                or app_result['startedMonotonicNs'] != audit['attackStartedNs']
+                or app_result['finishedMonotonicNs'] != audit['attackFinishedNs']
+                or any(before[key] != after[key] for key in stable_actor)
+                or before['role'] != 'candidate-sender'
+                or before['hostPid'] != probe_worker['hostPid']
+                or before['startTicks'] != probe_worker['startTicks']
+                or before['hostPid'] != admin['worker']['hostPid']
+                or before['startTicks'] != admin['worker']['startTicks']
+                or before['hostPid'] != checkpoint['probeWorker']['hostPid']
+                or before['sandboxLeader'] != probe_worker['sandboxLeader']
+                or before['managerInvocation'] != sender['invocationId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': before['cgroupIdentity']})[7:] != sender['cgroupDigest']
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or audit['senderStateBefore'] != audit['senderStateAfter']
+                or audit['senderStateBefore'] != before['stateDigest']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['senderStateAfter']
+                or any(first[key] != last[key] for key in stable_target)
+                or first['role'] != 'candidate-recipient'
+                or first['managerInvocation'] != recipient['invocationId']
+                or first['bootId'].replace('-', '').lower() != recipient['bootId']
+                or fixtures.runtime.canonical_digest({
+                    'role': 'candidate-recipient',
+                    'identity': first['cgroupIdentity']})[7:] != recipient['cgroupDigest']
+                or first['workerHostPid'] != mail_worker['hostPid']
+                or first['workerStartTicks'] != mail_worker['startTicks']
+                or first['javaHostPid'] != mail_worker['javaHostPid']
+                or first['javaStartTicks'] != mail_worker['javaStartTicks']
+                or first['appUiOriginDigest'] != result['recipientMailUiOriginDigest']
+                or mail_worker['provenance'] != 'controller-kernel-sample'
+                or first['workerHostPid'] <= 1 or first['workerStartTicks'] <= 0
+                or first['controlDigest'] != last['controlDigest']
+                or audit['counterName'] != selected
+                or audit['kernelConnectResult'] not in (
+                    {'connected': False, 'phase': 'connect', 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'phase': 'connect', 'errno': 'EACCES'})
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        for row in (counter_before, counter_after):
+            if (row['schemaVersion'] != 1
+                    or row['kind'] != 'pr315-fixed-sibling-drop-counters'
+                    or row['policyDigest'] != policy
+                    or row['roleNamespaceIdentity'] !=
+                        before['networkNamespaceIdentity']
+                    or row['bootId'].replace('-', '').lower() != sender['bootId']
+                    or set(row['counters']) != names
+                    or any(set(value) != {'packets', 'bytes'}
+                           or any(type(value[key]) is not int or value[key] < 0
+                                  for key in ('packets', 'bytes'))
+                           for value in row['counters'].values())):
+                return None
+        old = counter_before['counters'][selected]
+        new = counter_after['counters'][selected]
+        if (not 1 <= new['packets'] - old['packets'] <= 8
+                or not 1 <= new['bytes'] - old['bytes'] <= 8192
+                or any(counter_before['counters'][name] != counter_after['counters'][name]
+                       for name in names if name != selected)
+                or not before['observedMonotonicNs']
+                    < first['controlObservedNs']
+                    < first['observedMonotonicNs']
+                    < counter_before['observedMonotonicNs']
+                    < audit['triggerMonotonicNs']
+                    < audit['attackStartedNs'] < audit['attackFinishedNs']
+                    < counter_after['observedMonotonicNs']
+                    < after['observedMonotonicNs']
+                    < last['controlObservedNs']
+                    < last['observedMonotonicNs']
+                    < recipient_receipt['startedMonotonicNs']
+                or sender_receipt['managerInvocation'] != sender['invocationId']
+                or recipient_receipt['managerInvocation'] != recipient['invocationId']
+                or any(row['membership'] != 'only-stop-helper'
+                       or row['descendantCgroups'] != 0
+                       for row in (sender_receipt, recipient_receipt))):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit',
+            'helperSourceTree', 'bundleIdentity', 'testKitDigest',
+            'profileDigest', 'bootClosureDigest', 'preparedImageDigest',
+            'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        attack_digest = audit['appResultDigest']
+        target = {'caseId': case_id,
+            'target': acceptance.CASES[case_id].target,
+            'role': 'candidate-recipient',
+            'invocationId': recipient['invocationId'],
+            'cgroupDigest': recipient['cgroupDigest'],
+            'bootId': recipient['bootId'], 'probeDigest': '',
+            'controlResponseDigest': first['controlDigest']}
+        code = audit['kernelConnectResult']['errno']
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+            'attackStartedNs': audit['attackStartedNs'],
+            'targetActiveBeforeNs': first['observedMonotonicNs'],
+            'targetActiveAfterNs': last['observedMonotonicNs'],
+            'controlResponseDigest': first['controlDigest'],
+            'denialSource': 'kernel',
+            'denialCode': 'policy-rejected' if code in
+                ('ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH') else code,
+            'unrelatedStateBefore': audit['senderStateBefore'],
+            'unrelatedStateAfter': audit['senderStateAfter'],
+            'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        spec = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed',
+            'actor': spec.actor, 'target': spec.target, 'outcome': spec.outcome,
+            'startedMonotonicNs': first['observedMonotonicNs'],
+            'finishedMonotonicNs': last['observedMonotonicNs'],
+            'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True,
+            'principals': result['roleKernelRoster'],
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+            'status': 'passed',
+            'actorEpoch': {'kind': 'normally-signed-apphost-child',
+                'uid': sender['uid'], 'hostPid': before['hostPid'],
+                'startTicks': before['startTicks'],
+                'namespacePids': before['namespacePids'],
+                'sandboxLeader': before['sandboxLeader'],
+                'bundleDigest': fixture['probeDigest'],
+                'systemdInvocation': sender['invocationId'],
+                'cgroupDigest': sender['cgroupDigest']},
+            'targetEpoch': {'kind': 'active-recipient-mail-runtime-api',
+                'role': 'candidate-recipient',
+                'bootId': recipient['bootId'],
+                'systemdInvocation': recipient['invocationId'],
+                'cgroupDigest': recipient['cgroupDigest'],
+                'installedAppDigest': fixture['mailDigest'][7:],
+                'workerHostPid': first['workerHostPid'],
+                'workerStartTicks': first['workerStartTicks'],
+                'javaHostPid': first['javaHostPid'],
+                'javaStartTicks': first['javaStartTicks'],
+                'appUiOriginDigest': first['appUiOriginDigest'],
+                'controlDigestBefore': first['controlDigest'],
+                'controlDigestAfter': last['controlDigest']},
+            'counterName': selected,
+            'counterBefore': old, 'counterAfter': new,
+            'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                'finishedMonotonicNs': audit['attackFinishedNs']},
+            'attackDigest': attack_digest,
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': max(sender_receipt['observedMonotonicNs'],
+                                        recipient_receipt['observedMonotonicNs'])}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def _output_artifact_attempt(report, result, fixture, terminal, source, case_id):
     """Bind one role-created artifact to the real bounded descriptor reader."""
     if case_id not in ('output-symlink', 'output-fifo',
@@ -2972,8 +3196,6 @@ def _sibling_network_attempt(case_id, report, result, fixture, terminal, source)
                   'userNamespaceIdentity', 'executableDigest', 'noNewPrivileges',
                   'effectiveCapabilities')
         counter_name = workload_network.SIBLING_DROP_COUNTERS[case_id]
-        other_name = workload_network.SIBLING_DROP_COUNTERS[
-            'sibling-http' if case_id == 'sibling-fcp' else 'sibling-fcp']
         policy = hashlib.sha256(workload_network.role_rules('candidate-sender').encode()).hexdigest()
         target_digest = hashlib.sha256(
             f'{workload_network.address("candidate-recipient")}:{port}'.encode()).hexdigest()
@@ -3037,11 +3259,10 @@ def _sibling_network_attempt(case_id, report, result, fixture, terminal, source)
                            for value in row['counters'].values())):
                 return None
         old, new = counter_before['counters'][counter_name], counter_after['counters'][counter_name]
-        other_old = counter_before['counters'][other_name]
-        other_new = counter_after['counters'][other_name]
         if (not 1 <= new['packets'] - old['packets'] <= 8
                 or not 1 <= new['bytes'] - old['bytes'] <= 8192
-                or other_old != other_new
+                or any(counter_before['counters'][name] != counter_after['counters'][name]
+                       for name in names if name != counter_name)
                 or not first['observedMonotonicNs'] < first['controlObservedNs']
                     < counter_before['observedMonotonicNs']
                     < audit['triggerMonotonicNs'] < audit['attackStartedNs']
@@ -3474,6 +3695,23 @@ def run(args):
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / 'provider-authority-v9-evidence.private.json', sidecar)
                 statuses['provider-authority'] = 'passed'
+            if (network_app_ready and isinstance(terminal, dict)
+                    and terminal.get('siblingAppAudit', {}).get('status') == 'captured'
+                    and terminal.get('siblingAppResult', {}).get('status') == 'captured'):
+                denial = _sibling_app_attempt(report, value, fixture, terminal)
+                if denial is None:
+                    raise ValueError('workload-sibling-app-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'sibling-app') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-sibling-app-case-invalid')
+                native_runner._save(output / 'sibling-app-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'sibling-app-v9-evidence.private.json', sidecar)
+                statuses['sibling-app'] = 'passed'
             for case_id, field in (('sibling-fcp', 'siblingFcpAudit'),
                                    ('sibling-http', 'siblingHttpAudit')):
                 if ((positive or network_app_ready) and isinstance(terminal, dict)

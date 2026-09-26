@@ -1362,6 +1362,133 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
             self.assertEqual('c' * 32, observed['managerInvocation'])
 
 
+class SiblingAppProbeTest(unittest.TestCase):
+    def test_recipient_mail_worker_is_bound_to_live_http_control(self):
+        worker = {'hostPid': 311, 'namespacePid': 21,
+                  'startTicks': 52, 'javaHostPid': 312,
+                  'javaStartTicks': 53, 'managerInvocation': 'a' * 32,
+                  'cgroupIdentity': [1, 100]}
+        observed = {'managerInvocation': 'a' * 32,
+                    'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    'cgroupIdentity': [1, 100], 'stateDigest': 'd' * 64,
+                    'observedMonotonicNs': 10}
+        workload = SimpleNamespace(observe=Mock(side_effect=[observed,
+            dict(observed, observedMonotonicNs=30)]))
+        handoff = {'handles': {'candidate-recipient': 'e' * 64},
+                   'expectedJdkDigests': {'candidate-recipient': 'sha256:' + 'b' * 64}}
+        http = {'role': 'candidate-recipient', 'managerInvocation': 'a' * 32,
+                'bootId': observed['bootId'], 'cgroupIdentity': [1, 100],
+                'controlObservedNs': 20, 'controlDigest': 'f' * 64}
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller.bootstrap', return_value={
+                    'uiOrigin': 'http://127.0.0.1:12345'}), \
+                patch.object(driver, '_sibling_target_control', return_value=http):
+            controlled = driver._sibling_app_target_control(
+                workload, handoff, worker)
+        self.assertEqual(311, controlled['workerHostPid'])
+        self.assertEqual(20, controlled['controlObservedNs'])
+        self.assertEqual(30, controlled['observedMonotonicNs'])
+        self.assertEqual(hashlib.sha256(b'http://127.0.0.1:12345').hexdigest(),
+                         controlled['appUiOriginDigest'])
+        workload.observe = Mock(side_effect=[observed,
+            dict(observed, observedMonotonicNs=30)])
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller.bootstrap', return_value={
+                    'uiOrigin': 'http://remote.invalid:12345'}), \
+                self.assertRaisesRegex(ValueError, 'origin-unavailable'):
+            driver._sibling_app_target_control(workload, handoff, worker)
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for AppHost trigger ownership')
+    def test_signed_app_syn_requires_own_named_drop_and_active_recipient(self):
+        import restricted_workload_network as network
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app_data = root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+            app_data.mkdir(parents=True)
+            actor = {'hostPid': 301, 'namespacePid': 20,
+                     'namespacePids': [301, 20, 2], 'startTicks': 50,
+                     'managerInvocation': 'c' * 32,
+                     'cgroupIdentity': [1, 99],
+                     'sandboxLeader': {'hostPid': 300},
+                     'stateDigest': 'd' * 64,
+                     'networkNamespaceIdentity': [1, 200]}
+            target = {'role': 'candidate-recipient',
+                      'managerInvocation': 'e' * 32,
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'cgroupIdentity': [1, 100],
+                      'workerHostPid': 311, 'workerStartTicks': 52,
+                      'javaHostPid': 312, 'javaStartTicks': 53,
+                      'controlDigest': 'f' * 64,
+                      'appUiOriginDigest': hashlib.sha256(
+                          b'http://127.0.0.1:12345').hexdigest()}
+            names = network.SIBLING_DROP_COUNTERS
+            policy = hashlib.sha256(network.role_rules(
+                'candidate-sender').encode()).hexdigest()
+            calls = [0]
+
+            def counter():
+                selected = calls[0]
+                calls[0] += 1
+                counters = {name: {'packets': 0, 'bytes': 0}
+                            for name in names.values()}
+                if selected:
+                    counters[names['sibling-app']] = {'packets': 1, 'bytes': 60}
+                return {'schemaVersion': 1,
+                    'kind': 'pr315-fixed-sibling-drop-counters',
+                    'policyDigest': policy,
+                    'bootId': target['bootId'],
+                    'roleNamespaceIdentity': [1, 200],
+                    'observedMonotonicNs': time.monotonic_ns(),
+                    'counters': counters}
+
+            def app_control(*_args):
+                return dict(actor, observedMonotonicNs=time.monotonic_ns())
+
+            def target_control(*_args):
+                observed_ns = time.monotonic_ns()
+                return dict(target, controlObservedNs=observed_ns - 1,
+                            observedMonotonicNs=observed_ns)
+
+            def read_result(*_args):
+                trigger = json.loads((app_data / 'pr315-sibling-app-trigger.json').read_text())
+                started = time.monotonic_ns()
+                return {'schemaVersion': 1,
+                    'kind': 'pr315-signed-sibling-app-probe',
+                    'caseId': 'sibling-app', 'nonce': trigger['nonce'],
+                    'pid': 2, 'uid': 0, 'gid': 0,
+                    'startedMonotonicNs': started,
+                    'finishedMonotonicNs': time.monotonic_ns() + 1,
+                    'sourcePort': 19404,
+                    'targetEndpointDigest': hashlib.sha256(
+                        b'10.231.0.2:19402').hexdigest(),
+                    'outcome': {'connected': False, 'phase': 'connect',
+                                'errno': 'ETIMEDOUT'}}
+
+            audits = []
+            workload = SimpleNamespace(ROOT=root,
+                account=lambda role: SimpleNamespace(pw_uid=0, pw_gid=0),
+                write=lambda path, value, **_options: audits.append(value))
+            handoff = {'handles': {'candidate-sender': 'a' * 64,
+                                   'candidate-recipient': 'b' * 64}}
+            with patch.object(driver, '_provider_app_actor', side_effect=app_control), \
+                    patch.object(driver, '_sibling_app_target_control',
+                                 side_effect=target_control), \
+                    patch.object(driver, '_wait_output_record', side_effect=read_result), \
+                    patch.object(network, 'read_sibling_drop_counters',
+                                 side_effect=counter):
+                digest = driver.probe_sibling_app(workload, handoff,
+                    'sha256:' + '8' * 64, actor, target,
+                    time.monotonic_ns() + 30_000_000_000)
+            self.assertEqual(1, len(audits))
+            self.assertEqual(names['sibling-app'], audits[0]['counterName'])
+            self.assertEqual({'connected': False, 'phase': 'connect',
+                              'errno': 'ETIMEDOUT'}, audits[0]['kernelConnectResult'])
+            self.assertEqual(hashlib.sha256(json.dumps(audits[0],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(), digest)
+            self.assertFalse((app_data / 'pr315-sibling-app-trigger.json').exists())
+
+
 class OutputHardlinkControlTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux descriptor pinning required')
     def test_canary_remains_byte_checked_after_actor_creates_second_link(self):
