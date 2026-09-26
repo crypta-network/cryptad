@@ -167,6 +167,67 @@ class RunnerControlProbeTest(unittest.TestCase):
 
 
 class AdministratorFnpSamplerTest(unittest.TestCase):
+    def test_lost_start_barrier_observes_original_invocation_before_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'authority').mkdir()
+            boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+            before = {'role': 'candidate-sender', 'state': 'prepared',
+                'generation': None, 'managerInvocation': None,
+                'cgroupIdentity': None, 'bootId': boot, 'mainPid': 0,
+                'observedMonotonicNs': time.monotonic_ns() - 1_000_000_000}
+            record = {'state': 'prepared', 'generation': None,
+                'managerInvocation': None, 'cgroupIdentity': None,
+                'bootId': boot, 'previousStopGeneration': None}
+            state = {'ActiveState': 'inactive', 'MainPID': '0'}
+            marker = {'generation': 'b' * 64, 'managerInvocation': 'c' * 32,
+                      'bootId': boot, 'cgroupIdentity': [1, 99]}
+            diagnostics = {'lostStartBefore': before}
+            workload = SimpleNamespace(ROOT=root, locked=nullcontext,
+                retained=lambda handle: ({'deadlineMonotonicNs':
+                    time.monotonic_ns() + 60_000_000_000}, 'candidate-sender', record),
+                manager=lambda role, operation: state,
+                read=lambda path: marker, admit=Mock(), exact=Mock(), current=Mock())
+            handoff = {'handles': {'candidate-sender': 'd' * 64},
+                       'deadlineMonotonicNs': time.monotonic_ns() + 60_000_000_000}
+            sampler = driver.AdministratorFnpSampler(workload, 'recipient', diagnostics,
+                sender_handle='d' * 64, handoff=handoff, lost_start_before=before)
+            with patch.object(driver, '_administrator_collector_epoch', return_value={
+                    'observedMonotonicNs': time.monotonic_ns()}):
+                ready = sampler.lost_start_prepare()
+            self.assertEqual('lost-start-before', ready['phase'])
+            self.assertEqual(ready['observedMonotonicNs'],
+                             diagnostics['probeStart']['startedMonotonicNs'])
+            record.update(state='running', generation='b' * 64,
+                          managerInvocation='c' * 32, cgroupIdentity=[1, 99])
+            state.update(ActiveState='active', MainPID='123')
+            first = sampler.lost_start_intent()
+            self.assertEqual('c' * 32, first['managerInvocation'])
+            self.assertEqual(first['observedMonotonicNs'],
+                             diagnostics['lostStartIntent']['first']['observedMonotonicNs'])
+            from cross_version_runtime import canonical_digest
+            marker_ns = diagnostics['probeStart']['startedMonotonicNs']
+            dropped = {'requestDigest': diagnostics['lostStartIntent']['requestDigest'],
+                       'sendStartedNs': marker_ns + 1, 'sendFinishedNs': marker_ns + 2}
+            result = {'lostStartResponse': {'administratorBefore': ready,
+                'droppedRequest': dropped, 'administratorBarrier': first},
+                'roleKernelRosterWindow': {
+                    'startedMonotonicNs': first['observedMonotonicNs'] + 1,
+                    'finishedMonotonicNs': first['observedMonotonicNs'] + 2},
+                'roleKernelRoster': {'roles': [{'role': 'candidate-sender',
+                    'invocationId': 'c' * 32, 'bootId': 'a' * 32,
+                    'cgroupDigest': canonical_digest({
+                        'role': 'candidate-sender', 'identity': [1, 99]})[7:]}]}}
+            context = driver.complete_lost_start_before_cleanup(
+                workload, handoff, result, diagnostics)
+            self.assertEqual(first['managerInvocation'], context['retry']['managerInvocation'])
+            workload.read = lambda path: dict(marker, generation='f' * 64)
+            with self.assertRaisesRegex(ValueError, 'first-invocation-invalid'):
+                sampler.lost_start_intent()
+            with self.assertRaisesRegex(ValueError, 'duplicate-invocation'):
+                driver.complete_lost_start_before_cleanup(
+                    workload, handoff, result, diagnostics)
+
     def test_probe_root_record_requires_current_kernel_child_and_verified_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -306,6 +367,21 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             self.assertTrue(sampler.serve(parent))
             self.assertEqual('candidate-recipient', json.loads(child.recv(8192))['role'])
             sampler.readiness.assert_called_once_with('candidate-recipient', 'fcp-get-node')
+            sampler.lost_start_prepare = Mock(return_value={
+                'phase': 'lost-start-before', 'role': 'candidate-sender',
+                'observedMonotonicNs': 10})
+            child.sendall(b'Q')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual('lost-start-before', json.loads(child.recv(8192))['phase'])
+            sampler.lost_start_prepare.assert_called_once_with()
+            sampler.lost_start_intent = Mock(return_value={
+                'phase': 'lost-start-intent', 'role': 'candidate-sender',
+                'generation': 'b' * 64, 'managerInvocation': 'c' * 32,
+                'observedMonotonicNs': 20})
+            child.sendall(b'L')
+            self.assertTrue(sampler.serve(parent))
+            self.assertEqual('lost-start-intent', json.loads(child.recv(8192))['phase'])
+            sampler.lost_start_intent.assert_called_once_with()
             child.sendall(b'J4F')
             self.assertTrue(sampler.serve(parent))
             self.assertEqual({'error': 'pr315-admin-fnp-sample-failed'},

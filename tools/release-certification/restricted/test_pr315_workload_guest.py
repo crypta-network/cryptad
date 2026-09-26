@@ -211,7 +211,7 @@ class StartupTransportTests(unittest.TestCase):
             '--startup-measurement'], run.call_args.args[0])
         fixtures.verify.assert_called_once_with(guest.FIXTURES, 'a' * 64, guest.SOURCE, 'b' * 40)
 
-    def test_positive_group_reexec_omits_lifecycle_trigger(self):
+    def test_positive_and_lost_start_groups_reexec_without_other_lifecycle_trigger(self):
         from contextlib import nullcontext
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -226,11 +226,14 @@ class StartupTransportTests(unittest.TestCase):
                 patch.object(guest.tempfile, 'TemporaryDirectory', return_value=nullcontext(temporary)), \
                 patch.object(guest.subprocess, 'run',
                              return_value=SimpleNamespace(returncode=0)) as run:
-            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
-                lifecycle_scenario='none', workload_group='positive'))
-        arguments = run.call_args.args[0]
-        self.assertIn(['--lifecycle-scenario', 'none', '--workload-group', 'positive'],
-                      [arguments[index:index + 4] for index in range(len(arguments) - 3)])
+            for group in ('positive', 'lost-start-response'):
+                self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                    lifecycle_scenario='none', workload_group=group))
+        for group, call in zip(('positive', 'lost-start-response'), run.call_args_list):
+            arguments = call.args[0]
+            self.assertIn(['--lifecycle-scenario', 'none', '--workload-group', group],
+                          [arguments[index:index + 4]
+                           for index in range(len(arguments) - 3)])
 
     def test_output_group_reexec_requires_closed_mode_without_lifecycle_trigger(self):
         from contextlib import nullcontext

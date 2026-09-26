@@ -915,7 +915,7 @@ def _administrator_collector_epoch(case_id):
                 'role': ('lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
-                          'observer-death')
+                          'observer-death', 'lost-start-response')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -1736,6 +1736,76 @@ def cleanup(workload):
     # Role tmpfs state and records remain explicitly retained for private diagnostics.
 
 
+def complete_lost_start_before_cleanup(workload, handoff, result, diagnostics):
+    """Bind the observer retry to the launch independently seen before its reply."""
+    from cross_version_runtime import canonical_digest
+    context = diagnostics.get('lostStartIntent')
+    first = context.get('first') if isinstance(context, dict) else None
+    observed = result.get('lostStartResponse') if isinstance(result, dict) else None
+    if (not isinstance(context, dict) or not isinstance(first, dict)
+            or not isinstance(observed, dict) or set(observed) != {
+                'administratorBefore', 'droppedRequest', 'administratorBarrier'}
+            or context.get('kind') != 'pr315-administrator-lost-start-intent'
+            or context.get('schemaVersion') != 1
+            or context.get('before') != diagnostics.get('lostStartBefore')
+            or context['before'].get('role') != 'candidate-sender'
+            or context['requestDigest'] != observed['droppedRequest'].get('requestDigest')
+            or diagnostics.get('probeStart', {}).get('caseId') != 'lost-start-response'):
+        raise ValueError('workload-lost-start-observer-binding-invalid')
+    before, dropped, barrier = (observed[key] for key in
+        ('administratorBefore', 'droppedRequest', 'administratorBarrier'))
+    marker_ns = diagnostics['probeStart']['startedMonotonicNs']
+    window = result.get('roleKernelRosterWindow')
+    if (before != {'phase': 'lost-start-before', 'role': 'candidate-sender',
+                   'observedMonotonicNs': marker_ns}
+            or barrier != {'phase': 'lost-start-intent', 'role': 'candidate-sender',
+                           'generation': first['generation'],
+                           'managerInvocation': first['managerInvocation'],
+                           'observedMonotonicNs': first['observedMonotonicNs']}
+            or type(window) is not dict
+            or not context['before']['observedMonotonicNs'] < marker_ns
+                < dropped['sendStartedNs'] < dropped['sendFinishedNs']
+                < first['observedMonotonicNs'] < window['startedMonotonicNs']
+                < window['finishedMonotonicNs']):
+        raise ValueError('workload-lost-start-window-invalid')
+    role = 'candidate-sender'
+    with workload.locked():
+        campaign, selected, record = workload.retained(handoff['handles'][role])
+        state = workload.manager(role, 'show')
+        if (selected != role or record.get('state') != 'running'
+                or state['ActiveState'] != 'active'):
+            raise ValueError('workload-lost-start-retry-target-inactive')
+        workload.exact(role, record, state)
+        workload.current(campaign)
+        marker = workload.read(workload.ROOT / 'authority' / (role + '-start.json'))
+        if (any(record.get(key) != first[key] for key in
+                ('generation', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                or any(marker.get(key) != first[key] for key in
+                       ('generation', 'managerInvocation', 'bootId', 'cgroupIdentity'))
+                or state['MainPID'] != str(first['mainPid'])):
+            raise ValueError('workload-lost-start-duplicate-invocation')
+        roster = result.get('roleKernelRoster', {}).get('roles')
+        if not isinstance(roster, list):
+            raise ValueError('workload-lost-start-roster-unavailable')
+        sender = next((row for row in roster if row.get('role') == role), None)
+        if (not isinstance(sender, dict)
+                or sender.get('invocationId') != first['managerInvocation']
+                or sender.get('bootId') != first['bootId'].replace('-', '').lower()
+                or sender.get('cgroupDigest') != canonical_digest({
+                    'role': role, 'identity': first['cgroupIdentity']})[7:]):
+            raise ValueError('workload-lost-start-roster-mismatch')
+        finished = time.monotonic_ns()
+    if finished <= window['finishedMonotonicNs']:
+        raise ValueError('workload-lost-start-final-clock-invalid')
+    return {**context, 'droppedRequest': dropped,
+            'retry': {'role': role, 'generation': record['generation'],
+                      'managerInvocation': record['managerInvocation'],
+                      'bootId': record['bootId'],
+                      'cgroupIdentity': record['cgroupIdentity'],
+                      'mainPid': int(state['MainPID']),
+                      'observedMonotonicNs': finished}}
+
+
 def begin_cancellation(workload, handoff, result):
     """Observe four current, populated role cgroups before administrator-owned stop."""
     from cross_version_runtime import canonical_digest
@@ -2374,7 +2444,8 @@ class AdministratorFnpSampler:
     """Fixed administrator observations over this attempt's inherited private socket."""
 
     def __init__(self, workload, recipient_handle, diagnostics, sender_handle=None,
-                 probe_digest=None, sender_jdk_digest=None, handoff=None, observer_root=None):
+                 probe_digest=None, sender_jdk_digest=None, handoff=None, observer_root=None,
+                 lost_start_before=None):
         self.workload = workload
         self.recipient_handle = recipient_handle
         self.diagnostics = diagnostics
@@ -2384,6 +2455,95 @@ class AdministratorFnpSampler:
         self.sender_jdk_digest = sender_jdk_digest
         self.handoff = handoff
         self.observer_root = observer_root
+        self.lost_start_before = lost_start_before
+
+    def lost_start_prepare(self):
+        """Mark the exact transition from four-role preparation to the fault probe."""
+        before = self.lost_start_before
+        workload = self.workload
+        if (not isinstance(before, dict) or self.handoff is None
+                or 'probeStart' in self.diagnostics):
+            raise ValueError('workload-lost-start-probe-already-started')
+        with workload.locked():
+            campaign, role, record = workload.retained(self.sender_handle)
+            state = workload.manager(role, 'show')
+            if (role != 'candidate-sender' or record.get('state') != 'prepared'
+                    or any(record.get(key) != before.get(key) for key in
+                           ('generation', 'managerInvocation', 'cgroupIdentity', 'bootId'))
+                    or state['ActiveState'] != 'inactive' or state['MainPID'] != '0'
+                    or os.path.lexists(workload.ROOT / 'authority' /
+                                      (role + '-start.json'))):
+                raise ValueError('workload-lost-start-prepared-epoch-changed')
+            workload.admit(campaign)
+            self.diagnostics['lifecycleActorBefore'] = _administrator_collector_epoch(
+                'lost-start-response')
+            observed = time.monotonic_ns()
+            if observed <= before['observedMonotonicNs']:
+                raise ValueError('workload-lost-start-before-clock-invalid')
+            self.diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start',
+                'caseId': 'lost-start-response', 'startedMonotonicNs': observed}
+        return {'phase': 'lost-start-before', 'role': 'candidate-sender',
+                'observedMonotonicNs': observed}
+
+    def lost_start_intent(self):
+        """Observe the first fixed sender launch before allowing an observer retry."""
+        workload = self.workload
+        before = self.lost_start_before
+        if (not isinstance(before, dict) or self.handoff is None
+                or self.sender_handle != self.handoff.get('handles', {}).get('candidate-sender')
+                or before.get('state') != 'prepared'
+                or before.get('managerInvocation') is not None
+                or type(before.get('observedMonotonicNs')) is not int
+                or self.diagnostics.get('probeStart', {}).get('caseId') !=
+                    'lost-start-response'):
+            raise ValueError('workload-lost-start-before-unavailable')
+        deadline_ns = self.handoff.get('deadlineMonotonicNs')
+        if type(deadline_ns) is not int or deadline_ns <= time.monotonic_ns():
+            raise ValueError('workload-lost-start-deadline-unavailable')
+        until = min(time.monotonic() + 45, deadline_ns / 1e9)
+        while time.monotonic() < until:
+            try:
+                with workload.locked():
+                    campaign, role, record = workload.retained(self.sender_handle)
+                    state = workload.manager(role, 'show')
+                    if (role == 'candidate-sender' and record.get('state') == 'running'
+                            and state.get('ActiveState') == 'active'):
+                        workload.exact(role, record, state)
+                        workload.current(campaign)
+                        marker = workload.read(workload.ROOT / 'authority' /
+                                               (role + '-start.json'))
+                        if (record.get('generation') == before.get('generation')
+                                or record.get('bootId') != before.get('bootId')
+                                or record.get('previousStopGeneration') is not None
+                                or any(marker.get(key) != record.get(key) for key in
+                                       ('generation', 'bootId', 'managerInvocation',
+                                        'cgroupIdentity'))):
+                            raise ValueError('workload-lost-start-first-invocation-invalid')
+                        observed = time.monotonic_ns()
+                        if observed <= before['observedMonotonicNs']:
+                            raise ValueError('workload-lost-start-clock-invalid')
+                        request = (b'{"method":"start","handle":"'
+                                   + self.sender_handle.encode('ascii') + b'"}\n')
+                        reply = {'phase': 'lost-start-intent', 'role': role,
+                                 'generation': record['generation'],
+                                 'managerInvocation': record['managerInvocation'],
+                                 'observedMonotonicNs': observed}
+                        self.diagnostics['lostStartIntent'] = {
+                            'schemaVersion': 1,
+                            'kind': 'pr315-administrator-lost-start-intent',
+                            'before': before, 'requestDigest': hashlib.sha256(request).hexdigest(),
+                            'first': {'role': role, 'generation': record['generation'],
+                                      'managerInvocation': record['managerInvocation'],
+                                      'bootId': record['bootId'],
+                                      'cgroupIdentity': record['cgroupIdentity'],
+                                      'mainPid': int(state['MainPID']),
+                                      'observedMonotonicNs': observed}}
+                        return reply
+            except (BlockingIOError, FileNotFoundError):
+                pass
+            time.sleep(.05)
+        raise ValueError('workload-lost-start-first-invocation-unobserved')
 
     def readiness(self, role, stage):
         """Capture one fixed failed role while the observer still owns its cleanup."""
@@ -2585,10 +2745,12 @@ class AdministratorFnpSampler:
                                 b'E': 'daemon-epoch', b'J': 'journal-node-start'}.get(message[2:3])
                                if readiness_role is not None else None)
             if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or (
-                    message not in (b'B', b'A', b'P') and readiness_stage is None):
+                    message not in (b'B', b'A', b'P', b'Q', b'L') and readiness_stage is None):
                 raise ValueError('workload-admin-fnp-request-invalid')
             result = (self.readiness(readiness_role, readiness_stage)
                       if readiness_stage is not None else
+                      self.lost_start_prepare() if message == b'Q' else
+                      self.lost_start_intent() if message == b'L' else
                       self.probe() if message == b'P' else
                       self.sample('before' if message == b'B' else 'after'))
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -2601,6 +2763,11 @@ class AdministratorFnpSampler:
                 self.diagnostics['probeAdminFailure'] = {
                     'phase': 'probe', 'exceptionType': type(error).__name__[:128]}
                 result = {'error': 'pr315-admin-probe-sample-failed'}
+            elif message in (b'Q', b'L'):
+                self.diagnostics['lostStartAdminFailure'] = {
+                    'phase': 'lost-start-before' if message == b'Q' else 'lost-start-intent',
+                    'exceptionType': type(error).__name__[:128]}
+                result = {'error': 'pr315-admin-lost-start-sample-failed'}
             else:
                 self.diagnostics['fnpAdminFailure'] = {
                     'phase': self.phase, 'exceptionType': type(error).__name__[:128],
@@ -2655,6 +2822,34 @@ def request_administrator_readiness(channel, role, stage):
     if value != {'phase': 'readiness', 'role': role, 'stage': stage,
                  'status': 'captured'}:
         raise ValueError('workload-admin-readiness-capture-failed')
+    return value
+
+
+def request_administrator_lost_start(channel, phase, campaign_deadline):
+    """Use only fixed pre-send and first-invocation administrator barriers."""
+    if phase not in ('before', 'intent'):
+        raise ValueError('workload-admin-lost-start-phase-invalid')
+    remaining = campaign_deadline / 1e9 - time.monotonic()
+    if remaining <= 0:
+        raise ValueError('workload-admin-lost-start-deadline')
+    channel.settimeout(min(50, remaining))
+    channel.sendall(b'Q' if phase == 'before' else b'L')
+    raw = channel.recv(8193)
+    if not 1 <= len(raw) <= 8192 or not raw.endswith(b'\n') or raw.count(b'\n') != 1:
+        raise ValueError('workload-admin-lost-start-response-invalid')
+    value = json.loads(raw)
+    expected = {'phase', 'role', 'observedMonotonicNs'}
+    if phase == 'intent':
+        expected.update(('generation', 'managerInvocation'))
+    if (not isinstance(value, dict) or set(value) != expected
+            or value['phase'] != 'lost-start-' + phase
+            or value['role'] != 'candidate-sender'
+            or type(value['observedMonotonicNs']) is not int
+            or value['observedMonotonicNs'] <= 0
+            or phase == 'intent' and (
+                re.fullmatch('[0-9a-f]{64}', str(value['generation'])) is None
+                or re.fullmatch('[0-9a-f]{32}', str(value['managerInvocation'])) is None)):
+        raise ValueError('workload-admin-lost-start-sample-failed')
     return value
 
 
@@ -2767,11 +2962,14 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         adapter = InstalledWorkloadAdapter(selected['plan'], selected['private'],
             selected['authorization'], journal, handoff,
             counter_sampler=(lambda phase: request_administrator_fnp(
-                admin_channel, phase, campaign_deadline)) if admin_channel is not None else None)
+                admin_channel, phase, campaign_deadline)) if admin_channel is not None else None,
+            lost_start_sampler=(lambda phase: request_administrator_lost_start(
+                admin_channel, phase, campaign_deadline))
+                if admin_channel is not None and workload_group == 'lost-start-response' else None)
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
+        if workload_group in ('lost-start-response', 'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
@@ -3072,7 +3270,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             workload_group=None):
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
-    if workload_group not in (None, 'positive', 'output-symlink', 'output-fifo',
+    if workload_group not in (None, 'positive', 'lost-start-response',
+                             'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
                              'role-readiness-diagnostic', 'role-boundary',
                              'authority', 'network-app', 'cancellation',
@@ -3133,6 +3332,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     diagnostics = {'classification': 'private-kernel-diagnostics-not-acceptance',
                    'before': memory_snapshot(), 'cleanup': 'not-completed'}
     sentinel = None
+    lost_start_before = None
     cancellation = None
     controller_restart = None
     revocation = None
@@ -3147,6 +3347,23 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 or handoff['deadlineMonotonicNs'] != campaign_deadline):
             raise ValueError('workload-handoff-deadline-mismatch')
         sentinel = evidence.prepare_sentinel(workload)
+        if workload_group == 'lost-start-response':
+            role = 'candidate-sender'
+            prepared = workload.read(workload.ROOT / 'authority' / (role + '.json'))
+            state = workload.manager(role, 'show')
+            if (prepared.get('handle') != handoff['handles'][role]
+                    or prepared.get('state') != 'prepared'
+                    or any(prepared.get(key) is not None for key in
+                           ('generation', 'managerInvocation', 'cgroupIdentity'))
+                    or state['ActiveState'] != 'inactive' or state['MainPID'] != '0'
+                    or os.path.lexists(workload.ROOT / 'authority' /
+                                      (role + '-start.json'))):
+                raise ValueError('workload-lost-start-role-not-prepared')
+            lost_start_before = {'role': role, 'state': 'prepared',
+                'generation': None, 'managerInvocation': None,
+                'cgroupIdentity': None, 'bootId': prepared['bootId'],
+                'mainPid': 0, 'observedMonotonicNs': time.monotonic_ns()}
+            diagnostics['lostStartBefore'] = lost_start_before
         root.mkdir(mode=0o700)
         os.chown(root, observer.pw_uid, observer.pw_gid)
         startup_begin = time.monotonic()
@@ -3194,7 +3411,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             sender_handle=handoff['handles'].get('candidate-sender') if probe_digest else None,
             probe_digest=probe_digest,
             sender_jdk_digest=handoff.get('expectedJdkDigests', {}).get('candidate-sender'),
-            handoff=handoff, observer_root=root)
+            handoff=handoff, observer_root=root,
+            lost_start_before=lost_start_before)
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
             admin_sampler=sampler)
@@ -3214,7 +3432,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('output-symlink', 'output-fifo', 'output-hardlink',
+        if (workload_group in ('lost-start-response',
+                              'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
                               'authority', 'network-app', 'cancellation',
@@ -3232,6 +3451,15 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                           else 'not-executed-role-readiness-measurement'
                           if workload_group == 'role-readiness-diagnostic'
                           else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
+        if not startup_measurement and workload_group == 'lost-start-response':
+            try:
+                diagnostics['lostStartResponse'] = complete_lost_start_before_cleanup(
+                    workload, handoff, result, diagnostics)
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    StopIteration) as error:
+                diagnostics['lostStartResponse'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
+                raise ValueError('workload-lost-start-verification-failed') from None
         if not startup_measurement and workload_group is None:
             try:
                 diagnostics['runnerControl'] = probe_runner_control(workload, handoff, result)
@@ -3498,7 +3726,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                         diagnostics['revocationRunning'] = {
                             'status': 'unavailable-or-unsafe',
                             'exceptionType': type(error).__name__[:128]}
-                if workload_group in ('cancellation', 'controller-restart', 'deadline',
+                if workload_group in ('lost-start-response', 'cancellation',
+                                      'controller-restart', 'deadline',
                                       'revocation-running', 'setsid-double-fork',
                                       'observer-death'):
                     try:
@@ -3532,7 +3761,8 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('positive', 'output-symlink', 'output-fifo',
+    parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
+                                                    'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',
                                                     'output-replacement',
                                                     'role-readiness-diagnostic',

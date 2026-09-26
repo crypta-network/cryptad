@@ -127,6 +127,32 @@ class WorkloadClient:
             for descriptor in descriptors:
                 os.close(descriptor)
 
+    def drop_start_response(self, handle):
+        """Send one fixed start request, then close without reading its response."""
+        if not isinstance(handle, str) or re.fullmatch('[a-f0-9]{64}', handle) is None:
+            fail('lost-start-handle-invalid')
+        self.last_exchange = None
+        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            channel.settimeout(5)
+            channel.connect(SOCKET)
+            _, uid, _ = struct.unpack('3i', channel.getsockopt(
+                socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            if uid != 0:
+                fail('controller-peer-not-root')
+            request = b'{"method":"start","handle":"' + handle.encode('ascii') + b'"}\n'
+            started = time.monotonic_ns()
+            channel.sendall(request)
+            finished = time.monotonic_ns()
+            if finished <= started:
+                fail('lost-start-send-clock-invalid')
+            return {'requestDigest': hashlib.sha256(request).hexdigest(),
+                    'sendStartedNs': started, 'sendFinishedNs': finished}
+        except (OSError, ValueError):
+            fail('lost-start-transport-failed')
+        finally:
+            channel.close()
+
 
 class ConnectedFcpClient(runtime.BoundedFcpClient):
     """Reuse bounded FCP parsing and handshake over one constrained controller connection."""
@@ -499,7 +525,7 @@ class InstalledWorkloadAdapter:
     Optional ``control`` permits isolated unit tests without an installed socket.
     """
     def __init__(self, plan, private_config, authorization, journal, handoff, expected_jdk_digests=None,
-                 *, control=None, counter_sampler=None):
+                 *, control=None, counter_sampler=None, lost_start_sampler=None):
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
         if (handoff.get('profile') != PROFILE or set(handoff.get('handles', {})) != set(runtime.ROLES)
                 or plan.get('provenanceClass') != 'source-build-comparison'
@@ -546,6 +572,9 @@ class InstalledWorkloadAdapter:
         if counter_sampler is not None and not callable(counter_sampler):
             fail('counter-sampler-invalid')
         self.counter_sampler = counter_sampler
+        if lost_start_sampler is not None and not callable(lost_start_sampler):
+            fail('lost-start-sampler-invalid')
+        self.lost_start_sampler = lost_start_sampler
         self.root, self.deadline, self.operations = root, retained_deadline(handoff, maximum), 0
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
@@ -1001,13 +1030,54 @@ class InstalledWorkloadAdapter:
                          'authority', 'network-app', 'cancellation',
                          'controller-restart', 'deadline', 'revocation-running',
                          'setsid-double-fork', 'observer-death',
-                         'role-readiness-diagnostic') or (
+                         'role-readiness-diagnostic', 'lost-start-response') or (
                 on_start_failure is not None and not callable(on_start_failure)):
             fail('workload-group-preparation-invalid')
         completed = False
         try:
-            for role in runtime.ROLES:
-                self.start(role)
+            lost_start = None
+            if group == 'lost-start-response':
+                if (self.lost_start_sampler is None
+                        or not callable(getattr(self.control, 'drop_start_response', None))):
+                    fail('lost-start-observer-boundary-unavailable')
+                self.remaining()
+                prepared = self.lost_start_sampler('before')
+                dropped = self.control.drop_start_response(self.handles['candidate-sender'])
+                barrier = self.lost_start_sampler('intent')
+                if (not isinstance(prepared, dict) or set(prepared) != {
+                        'phase', 'role', 'observedMonotonicNs'}
+                        or prepared['phase'] != 'lost-start-before'
+                        or prepared['role'] != 'candidate-sender'
+                        or type(prepared['observedMonotonicNs']) is not int
+                        or not isinstance(dropped, dict) or set(dropped) != {
+                        'requestDigest', 'sendStartedNs', 'sendFinishedNs'}
+                        or not isinstance(barrier, dict) or set(barrier) != {
+                        'phase', 'role', 'generation', 'managerInvocation',
+                        'observedMonotonicNs'}
+                        or barrier['phase'] != 'lost-start-intent'
+                        or barrier['role'] != 'candidate-sender'
+                        or not re.fullmatch('[0-9a-f]{64}', str(dropped['requestDigest']))
+                        or not re.fullmatch('[0-9a-f]{64}', str(barrier['generation']))
+                        or not re.fullmatch('[0-9a-f]{32}', str(barrier['managerInvocation']))
+                        or type(dropped['sendStartedNs']) is not int
+                        or type(dropped['sendFinishedNs']) is not int
+                        or type(barrier['observedMonotonicNs']) is not int
+                        or not 0 < prepared['observedMonotonicNs']
+                            < dropped['sendStartedNs'] < dropped['sendFinishedNs']
+                            < barrier['observedMonotonicNs']):
+                    fail('lost-start-barrier-invalid')
+                self.start('candidate-sender')
+                if any(self.nodes['candidate-sender'][key] != barrier[key]
+                       for key in ('generation', 'managerInvocation')):
+                    fail('lost-start-duplicate-invocation')
+                for role in runtime.ROLES[1:]:
+                    self.start(role)
+                lost_start = {'administratorBefore': prepared,
+                              'droppedRequest': dropped,
+                              'administratorBarrier': barrier}
+            else:
+                for role in runtime.ROLES:
+                    self.start(role)
             started = time.monotonic_ns()
             samples = {role: self.observe(role) for role in runtime.ROLES}
             finished = time.monotonic_ns()
@@ -1019,6 +1089,8 @@ class InstalledWorkloadAdapter:
                       'roleKernelRoster': kernel_roster(samples, self.expected_jdk_digests),
                       'roleKernelRosterWindow': {'startedMonotonicNs': started,
                                                  'finishedMonotonicNs': finished}}
+            if lost_start is not None:
+                result['lostStartResponse'] = lost_start
             if group == 'authority':
                 self.capture_probe_target_roster()
                 self.probe_observer_control()

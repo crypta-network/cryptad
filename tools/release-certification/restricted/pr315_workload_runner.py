@@ -49,6 +49,7 @@ SUPPORTED_GROUPS = frozenset(('positive', 'role-boundary', 'authority',
                               'network-app', 'cancellation', 'controller-restart',
                               'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death',
+                              'lost-start-response',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement'))
 
@@ -213,7 +214,7 @@ def group_prepared(report, result, terminal, group):
                       'authority', 'network-app', 'cancellation',
                       'controller-restart', 'deadline',
                       'revocation-running', 'setsid-double-fork',
-                      'observer-death',
+                      'observer-death', 'lost-start-response',
                       'role-readiness-diagnostic')
             or not isinstance(report, dict) or not isinstance(result, dict)):
         return False
@@ -226,7 +227,7 @@ def group_prepared(report, result, terminal, group):
                              'role-boundary', 'authority', 'network-app',
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
-                             'observer-death')
+                             'observer-death', 'lost-start-response')
                 else 'role-readiness-measurement')
             and report.get('status') == 'guest-report-retained'
             and report.get('guestStopped') is True and report.get('guestExitCode') == 0
@@ -258,7 +259,7 @@ def group_prepared(report, result, terminal, group):
                              'role-boundary', 'authority', 'network-app',
                              'cancellation', 'controller-restart', 'deadline',
                              'revocation-running', 'setsid-double-fork',
-                             'observer-death')
+                             'observer-death', 'lost-start-response')
                 else 'not-executed-role-readiness-measurement')
             and result.get('protectedExecutionEnabled') is False)
 
@@ -540,6 +541,116 @@ def _fnp_case(result, terminal, identity, principals):
     if acceptance.payload_commitment('fnp-content-retrieval', witness) != commitment:
         return None
     return witness, window, commitment
+
+
+def _lost_start_case(report, result, diagnostics, terminal, principals):
+    """Bind a dropped response to the original live invocation before retry."""
+    if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
+            or report.get('guestStopped') is not True
+            or terminal.get('cleanupReportedByCaller') is not True
+            or diagnostics.get('cleanup') != 'completed'):
+        return None
+    context = diagnostics.get('lostStartResponse')
+    marker = diagnostics.get('probeStart')
+    try:
+        if (not isinstance(context, dict) or set(context) != {
+                'schemaVersion', 'kind', 'before', 'requestDigest', 'first',
+                'droppedRequest', 'retry'}
+                or context['schemaVersion'] != 1
+                or context['kind'] != 'pr315-administrator-lost-start-intent'
+                or not isinstance(marker, dict) or set(marker) != {
+                'schemaVersion', 'kind', 'caseId', 'startedMonotonicNs'}
+                or marker['schemaVersion'] != 1
+                or marker['kind'] != 'pr315-workload-probe-start'
+                or marker['caseId'] != 'lost-start-response'
+                or not _bounded_window({'startedMonotonicNs': marker['startedMonotonicNs'],
+                                        'finishedMonotonicNs': diagnostics['cleanupFinishedNs']})
+                or not isinstance(context['before'], dict)
+                or not isinstance(context['first'], dict)
+                or not isinstance(context['retry'], dict)
+                or not isinstance(context['droppedRequest'], dict)
+                or context['before'] != diagnostics['lostStartBefore']
+                or context['requestDigest'] != context['droppedRequest']['requestDigest']
+                or re.fullmatch('[0-9a-f]{64}', context['requestDigest']) is None):
+            return None
+        before, first, retry, dropped = (context[key] for key in
+            ('before', 'first', 'retry', 'droppedRequest'))
+        stable = ('role', 'generation', 'managerInvocation', 'bootId',
+                  'cgroupIdentity', 'mainPid')
+        if (set(before) != {'role', 'state', 'generation', 'managerInvocation',
+                            'cgroupIdentity', 'bootId', 'mainPid', 'observedMonotonicNs'}
+                or set(first) != set(stable) | {'observedMonotonicNs'}
+                or set(retry) != set(first)
+                or set(dropped) != {'requestDigest', 'sendStartedNs', 'sendFinishedNs'}
+                or before['role'] != 'candidate-sender' or before['state'] != 'prepared'
+                or any(before[key] is not None for key in
+                       ('generation', 'managerInvocation', 'cgroupIdentity'))
+                or before['mainPid'] != 0
+                or first['role'] != 'candidate-sender'
+                or any(first[key] != retry[key] for key in stable)
+                or before['bootId'] != first['bootId']
+                or re.fullmatch('[0-9a-f]{64}', first['generation']) is None
+                or re.fullmatch('[0-9a-f]{32}', first['managerInvocation']) is None
+                or type(first['mainPid']) is not int or first['mainPid'] <= 1
+                or not isinstance(first['cgroupIdentity'], list)
+                or len(first['cgroupIdentity']) != 2
+                or any(type(part) is not int or part < 1
+                       for part in first['cgroupIdentity'])):
+            return None
+        roster_window = result['roleKernelRosterWindow']
+        if (not _bounded_window(roster_window)
+                or not 0 < before['observedMonotonicNs']
+                    < marker['startedMonotonicNs']
+                    < dropped['sendStartedNs'] < dropped['sendFinishedNs']
+                    < first['observedMonotonicNs'] < roster_window['startedMonotonicNs']
+                    < roster_window['finishedMonotonicNs'] < retry['observedMonotonicNs']
+                    < diagnostics['cleanupFinishedNs']):
+            return None
+        sender = next(row for row in principals['roles']
+                      if row['role'] == 'candidate-sender')
+        if (sender['invocationId'] != first['managerInvocation']
+                or sender['bootId'] != first['bootId'].replace('-', '').lower()
+                or sender['cgroupDigest'] != fixtures.runtime.canonical_digest({
+                    'role': 'candidate-sender',
+                    'identity': first['cgroupIdentity']})[7:]):
+            return None
+        campaign_record = terminal['controllerRecords']['campaign']
+        if (campaign_record['status'] != 'captured'
+                or campaign_record['record']['state'] != 'terminalizing'
+                or campaign_record['record']['deadlineMonotonicNs'] !=
+                    result['campaignDeadlineMonotonicNs']
+                or first['observedMonotonicNs'] >= result['campaignDeadlineMonotonicNs']):
+            return None
+        for row in principals['roles']:
+            receipt = terminal['stopReceipts'][row['role']]['current']
+            if (receipt['status'] != 'captured'
+                    or receipt['record']['managerInvocation'] != row['invocationId']
+                    or receipt['record']['membership'] != 'only-stop-helper'
+                    or receipt['record']['descendantCgroups'] != 0
+                    or not retry['observedMonotonicNs'] <
+                        receipt['record']['startedMonotonicNs']
+                        <= receipt['record']['observedMonotonicNs']
+                        < diagnostics['cleanupFinishedNs']):
+                return None
+    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+    event = {'kind': 'lost-start-response',
+             'requestDigest': context['requestDigest'],
+             'firstInvocation': first['managerInvocation'],
+             'firstGeneration': first['generation'],
+             'firstCgroupIdentity': first['cgroupIdentity'],
+             'retryObservedNs': retry['observedMonotonicNs']}
+    witness = {'caseId': 'lost-start-response', 'triggerDigest': '',
+        'trigger': {'kind': 'lost-start-response',
+                    'eventDigest': fixtures.runtime.canonical_digest(event)[7:]},
+        'triggerStartedNs': marker['startedMonotonicNs'],
+        'terminalObservedNs': diagnostics['cleanupFinishedNs'],
+        'roles': principals['roles'], 'populatedCgroups': [],
+        'remainingDescendants': 0, 'retention': 'retained'}
+    commitment = acceptance.payload_commitment('lost-start-response', witness)
+    witness['triggerDigest'] = commitment
+    return witness, {'startedMonotonicNs': marker['startedMonotonicNs'],
+                     'finishedMonotonicNs': diagnostics['cleanupFinishedNs']}, commitment
 
 
 def _cancellation_case(report, result, diagnostics, terminal, principals):
@@ -1237,7 +1348,7 @@ def positive_case_attempt(report, result, fixture, host_started_ns, host_finishe
 def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                              terminal, source):
     """Bind one real controller transition to its root test-kit process epoch."""
-    if group not in ('cancellation', 'controller-restart', 'deadline',
+    if group not in ('lost-start-response', 'cancellation', 'controller-restart', 'deadline',
                      'revocation-running', 'setsid-double-fork',
                      'observer-death'):
         return None
@@ -1248,7 +1359,8 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
             return None
         host = report['hostVerifiedIdentity']
         principals = result['roleKernelRoster']
-        context = diagnostics[{'cancellation': 'cancellation',
+        context = diagnostics[{'lost-start-response': 'lostStartResponse',
+                               'cancellation': 'cancellation',
                                'controller-restart': 'controllerRestart',
                                'deadline': 'deadline',
                                'revocation-running': 'revocationRunning',
@@ -1258,7 +1370,9 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
             if context.get('status') != 'captured':
                 return None
             context = context['record']
-        case = (_cancellation_case(report, result, diagnostics, terminal, principals)
+        case = (_lost_start_case(report, result, diagnostics, terminal, principals)
+                if group == 'lost-start-response' else
+                _cancellation_case(report, result, diagnostics, terminal, principals)
                 if group == 'cancellation' else
                 _controller_restart_case(report, diagnostics, terminal, principals)
                 if group == 'controller-restart' else
@@ -1343,7 +1457,11 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                                    'observerEpoch': context.get('actor')
                                        if group == 'observer-death' else None,
                                    'observerPolicyThresholdNs': context.get(
-                                       'policyThresholdNs')},
+                                       'policyThresholdNs'),
+                                   'lostStartBefore': context.get('before'),
+                                   'lostStartFirst': context.get('first'),
+                                   'lostStartRetry': context.get('retry'),
+                                   'lostStartDroppedRequest': context.get('droppedRequest')},
                    'operationWindow': window,
                    'triggerDigest': commitment,
                    'stopReceiptObservedNs': max(row['observedMonotonicNs']
@@ -2677,7 +2795,7 @@ def run(args):
     selected_preparation = output_group or group in (
         'role-boundary', 'authority', 'network-app',
         'cancellation', 'controller-restart', 'deadline', 'revocation-running',
-        'setsid-double-fork', 'observer-death')
+        'setsid-double-fork', 'observer-death', 'lost-start-response')
     role_measurement = getattr(args, 'role_readiness_measurement', False)
     if (group is not None and (getattr(args, 'startup_measurement', False)
                                or role_measurement)) or (
@@ -2857,7 +2975,7 @@ def run(args):
                     host['bundleIdentity'], host['testKitDigest'])
                 if checked != host:
                     raise ValueError('workload-group-host-identity-changed')
-            if (group in ('cancellation', 'controller-restart', 'deadline',
+            if (group in ('lost-start-response', 'cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
                           'observer-death') and group_ready
                     and isinstance(terminal, dict)):

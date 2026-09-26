@@ -2429,6 +2429,79 @@ while any declared group lacks an emitter; explicit supported development
 groups remain available. No suite after 111 had run when this v11 source was
 frozen; the later resume is recorded separately.
 
+The `0fa798d7` suite 112 resumed the pinned v11 TCG profile as a
+role-readiness diagnostic, with **zero** case credit. It passed task-wide
+storage, PVE swap/PSI admission and the exact-process watcher handshake.
+The guest reached the fixed test kit, started sender, recipient and previous,
+then timed out at previous `fcp-get-node` before relay launch. The pre-cleanup
+record bound that role and stage; its FCP transcript was unavailable and its
+`jcmd` sample returned `BlockingIOError`. A retained previous-role HotSpot
+fatal instead records `SIGILL` in C1-compiled
+`ReentrantLock$Sync.tryRelease` under the pinned Temurin 25.0.4.1. There
+were no observed role cgroup OOM events. Cleanup reported complete, the
+sentinel matched, QEMU stopped and the PVE watcher finished. The complete
+private attempt, four host records and both QCOW2 files passed Mac byte or
+independent SHA-256 checks. Only the remote duplicate disks were released
+after the dependency scan. CT102 lacked `fuser`, so that release's attempted
+open-file check did not actually run; guest-stop/no-QEMU and the complete Mac
+original were independently verified. The private archive records this
+limitation explicitly. The recurring unrelated C1 crash frames in suites
+106, 108–110 and 112 are evidence for investigation, not a demonstrated
+QEMU, JDK or product root cause.
+
+The second diagnostic, suite 113 on the same source, failed during guest
+boot. Its selected forwarded SSH port was 23113 while the unchanged strict
+known-hosts pin was for `[127.0.0.1]:23112`; the workload driver never
+started. The guest and watcher stopped, all 45 cases remained unexecuted,
+and the complete private guest and host evidence passed Mac byte checks.
+After root `lsof` found no open file users and a 75-image QCOW2 header scan
+found no external dependent, only the two stopped remote disk duplicates
+were released. The prospective runner now validates the exact host-key port
+before VM allocation; a mismatched pin exits 78. Separately, its readiness
+`jcmd` sampler retries only a busy authority lease for at most two seconds
+within the original campaign deadline. Both narrow changes passed their
+focused Linux checks. Neither changes the historical suite 112/113 result.
+
+The third and final predeclared TCG role-readiness diagnostic, suite 114,
+reused the original 23112 pin and the same `0fa798d7` source, product,
+fixture, QEMU/JDK and role limits. All four real roles reached FCP readiness.
+The guest exited zero, all four current stop receipts were captured, the
+sentinel matched, no HotSpot fatal was found and the exact-process PVE
+watcher completed after QEMU stopped. It still claimed **zero of 45** cases.
+The complete private guest and four host records passed Mac byte checks;
+both disks matched independent SHA-256 values. A 75-image dependency scan
+and root `lsof`/no-QEMU checks preceded release of only the stopped remote
+disk copies. This single successful readiness run does not explain the
+intermittent C1 crashes.
+
+The separately selected `0fa798d7` TCG positive suite 115 then reached
+sender and recipient startup but timed out at previous `fcp-get-node`,
+before relay startup, CHK transfer or signed AppHost work. Two retained
+previous-role HotSpot reports show SIGSEGV in distinct C1-compiled Java
+base methods. The pre-cleanup root diagnostic bound the role and stage;
+its FCP transcript was unavailable and jcmd hit a busy authority lease.
+No role cgroup OOM was observed. Cleanup completed, the sentinel matched,
+QEMU stopped and the PVE watcher completed. All eight selected positive
+cases were `inconclusive`, the other 37 were unexecuted and installed
+acceptance stayed false. Complete guest/host private evidence and both
+QCOW2 files passed Mac byte or independent SHA-256 checks. A 73-image
+dependency scan plus root `lsof` and no-QEMU checks preceded release of
+only the stopped remote disk copies. The private original remains intact.
+The recurring fatal code fragments across different C1 methods support
+further TCG/JVM investigation; a single suite 114 success is not a root
+cause or an acceptance pass. The three predeclared same-profile role
+diagnostics are exhausted, so another identical installation attempt
+requires new evidence or a justified narrow fix.
+
+The prospective source now routes `--case-group positive` through the
+complete positive workload with lifecycle scenario `none`. It no longer
+executes an undeclared cancellation or the other groups' denial probes as
+part of the positive group. The closed guest command, administrator driver
+and host selection agree on this route. The preallocation host-key pin
+guard and bounded busy-lease jcmd retry above are also prospective source
+changes. A Linux isolated PR-31x offline run passed 395 tests with four
+environment skips; no installed result is attributed to these changes.
+
 The separately prepared prospective v12 output revision adds one isolated
 `output-fifo` group. A measured candidate child creates the FIFO inside its
 role sandbox after the administrator barrier. The root administrator observes
@@ -2556,6 +2629,23 @@ rerun with executable tmpfs. The protected failures include unavailable
 container tooling, read-only `build/`, and container `/proc`/cgroup
 assumptions. This broad discovery is not a green gate and requires a
 suitable disposable Linux environment before final-source acceptance.
+
+The prospective v24 `lost-start-response` group adds one fixed observer
+transport operation: it sends the prepared sender's `start` request and
+closes without reading a response. A root administrator barrier is reached
+after controller readiness and before that send, then independently binds
+the original start marker, generation, systemd invocation, cgroup and main
+PID **before** allowing the observer retry. The retry must return the same
+generation and invocation; root rechecks the marker and role roster while
+the service is still running. The host verifier binds that order to the
+administrator process epoch, original campaign deadline, all four terminal
+stop receipts and guest stop. The production controller socket retains its
+fixed method set. A real root UNIX-socket test checked the send-and-close
+transport; fixed administrator Q/L packet tests and tampered-invocation,
+timestamp and receipt tests passed offline. The Linux PR-31x set passed
+397 tests with four environment skips, and the interop workload file passed
+57 with nine root-only skips; the relevant root socket tests passed in a
+disposable container. No installed TCG `lost-start-response` result exists.
 
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
@@ -2898,8 +2988,8 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and six standalone lifecycle groups under v23 selected-group preparation. Three authority, three network/AppHost, other denial and five lifecycle emitters and the default full scheduler remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
-| `installedPositiveExecuted` | False on the latest formal TCG suite 111; the prospective post-111 source has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
+| `implementationCoverage` | Incomplete: the prospective branch has resolver, all five output emitters, the five-case role-boundary group, six existing authority emitters, three existing network/AppHost emitters and seven standalone lifecycle groups under v24 selected-group preparation. The remaining seven denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |

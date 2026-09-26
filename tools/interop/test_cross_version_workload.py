@@ -595,6 +595,49 @@ class ObserverPolicyTests(unittest.TestCase):
         adapter.content_chk.assert_not_called()
         adapter.cleanup.assert_not_called()
 
+    def test_lost_start_barrier_binds_first_invocation_before_retry(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.handles = {'candidate-sender': HANDLE}
+        adapter.nodes = {}
+        adapter.expected_jdk_digests = {role: JDK for role in workload.runtime.ROLES}
+        generation, invocation = 'c' * 64, 'd' * 32
+        before = {'phase': 'lost-start-before', 'role': 'candidate-sender',
+                  'observedMonotonicNs': 10}
+        intent = {'phase': 'lost-start-intent', 'role': 'candidate-sender',
+                  'generation': generation, 'managerInvocation': invocation,
+                  'observedMonotonicNs': 40}
+        dropped = {'requestDigest': 'e' * 64, 'sendStartedNs': 20,
+                   'sendFinishedNs': 30}
+        adapter.lost_start_sampler = mock.Mock(side_effect=[before, intent])
+        adapter.control = types.SimpleNamespace(drop_start_response=mock.Mock(
+            return_value=dropped))
+        adapter.remaining = mock.Mock(return_value=180)
+        adapter.start = mock.Mock(side_effect=lambda role: adapter.nodes.update({
+            role: {'generation': generation, 'managerInvocation': invocation}}))
+        adapter.observe = mock.Mock(return_value={'state': 'running'})
+        adapter.cleanup = mock.Mock(return_value='complete')
+        order = mock.Mock()
+        order.attach_mock(adapter.lost_start_sampler, 'barrier')
+        order.attach_mock(adapter.control.drop_start_response, 'drop')
+        order.attach_mock(adapter.start, 'start')
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
+            result = adapter.run_group_preparation('lost-start-response',
+                leave_running_for_administrator=True)
+        self.assertEqual([mock.call.barrier('before'), mock.call.drop(HANDLE),
+                          mock.call.barrier('intent'),
+                          *(mock.call.start(role) for role in workload.runtime.ROLES)],
+                         order.mock_calls)
+        self.assertEqual({'administratorBefore': before, 'droppedRequest': dropped,
+                          'administratorBarrier': intent}, result['lostStartResponse'])
+        adapter.cleanup.assert_not_called()
+        intent['managerInvocation'] = 'f' * 32
+        adapter.lost_start_sampler = mock.Mock(side_effect=[before, intent])
+        with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}), \
+                self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                            'lost-start-duplicate-invocation'):
+            adapter.run_group_preparation('lost-start-response')
+        adapter.cleanup.assert_called_once()
+
     def test_authority_preparation_runs_only_fixed_observer_denials(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {}
@@ -793,6 +836,8 @@ class ObserverPolicyTests(unittest.TestCase):
             for method, handle in (('exec', HANDLE), ('observe', '/proc/1'), ('connect-19403', HANDLE)):
                 with self.assertRaises(workload.runtime.RuntimeFailure):
                     workload.WorkloadClient().request(method, handle)
+            with self.assertRaises(workload.runtime.RuntimeFailure):
+                workload.WorkloadClient().drop_start_response('/proc/1')
             factory.assert_not_called()
 
 
@@ -996,6 +1041,39 @@ class TransportTests(unittest.TestCase):
 
     def test_actual_root_peer_and_bounded_json_roundtrip(self):
         self.assertEqual(EPOCH, self.exchange(json.dumps(EPOCH).encode() + b'\n'))
+
+    def test_lost_start_sends_only_fixed_request_and_closes_before_response(self):
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(self.path)
+        listener.listen(1)
+        listener.settimeout(5)
+        received, failures = [], []
+
+        def serve():
+            try:
+                with listener.accept()[0] as channel:
+                    channel.settimeout(5)
+                    raw = bytearray()
+                    while not raw.endswith(b'\n'):
+                        raw.extend(channel.recv(4096))
+                    received.append(bytes(raw))
+                    received.append(channel.recv(1))
+            except BaseException as error:
+                failures.append(error)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        try:
+            result = workload.WorkloadClient().drop_start_response(HANDLE)
+        finally:
+            thread.join(5)
+            listener.close()
+        self.assertFalse(thread.is_alive())
+        self.assertEqual([], failures)
+        request = b'{"method":"start","handle":"' + HANDLE.encode() + b'"}\n'
+        self.assertEqual([request, b''], received)
+        self.assertEqual(hashlib.sha256(request).hexdigest(), result['requestDigest'])
+        self.assertLess(result['sendStartedNs'], result['sendFinishedNs'])
 
     def test_duplicate_fields_rejected(self):
         with self.assertRaises(workload.runtime.RuntimeFailure):

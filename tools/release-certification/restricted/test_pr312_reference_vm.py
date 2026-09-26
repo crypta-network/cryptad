@@ -31,6 +31,9 @@ class ReferenceDriverTest(unittest.TestCase):
         args.workload_group = 'positive'
         self.assertIn('--lifecycle-scenario none --workload-group positive',
                       driver.workload_guest_command(args))
+        args.workload_group = 'lost-start-response'
+        self.assertIn('--lifecycle-scenario none --workload-group lost-start-response',
+                      driver.workload_guest_command(args))
         args.workload_group = 'output-symlink'
         selected = driver.workload_guest_command(args)
         self.assertIn('--lifecycle-scenario none --workload-group output-symlink', selected)

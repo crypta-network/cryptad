@@ -145,6 +145,73 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_lost_start_requires_first_invocation_before_retry_and_exact_stop(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        for index, row in enumerate(roster['roles']):
+            receipt = terminal['stopReceipts'][row['role']]['current']['record']
+            receipt['startedMonotonicNs'] = 800 + index
+            receipt['observedMonotonicNs'] = 820 + index
+        sender = roster['roles'][0]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        before = {'role': 'candidate-sender', 'state': 'prepared',
+            'generation': None, 'managerInvocation': None,
+            'cgroupIdentity': None, 'bootId': boot, 'mainPid': 0,
+            'observedMonotonicNs': 5}
+        first = {'role': 'candidate-sender', 'generation': 'b' * 64,
+            'managerInvocation': sender['invocationId'], 'bootId': boot,
+            'cgroupIdentity': [1, 99], 'mainPid': 123,
+            'observedMonotonicNs': 50}
+        retry = dict(first, observedMonotonicNs=700)
+        dropped = {'requestDigest': 'd' * 64, 'sendStartedNs': 30,
+                   'sendFinishedNs': 40}
+        context = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-lost-start-intent',
+            'before': before, 'requestDigest': dropped['requestDigest'],
+            'first': first, 'droppedRequest': dropped, 'retry': retry}
+        source = Path(__file__).resolve().parents[3]
+        private = {'cleanup': 'completed', 'cleanupFinishedNs': 900,
+            'probeStart': {'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                'caseId': 'lost-start-response', 'startedMonotonicNs': 20},
+            'lostStartBefore': before, 'lostStartResponse': context,
+            'lifecycleActorBefore': synthetic_lifecycle_actor(source, 10),
+            'lifecycleActorAfter': synthetic_lifecycle_actor(source, 950)}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 100,
+                                       'finishedMonotonicNs': 600},
+            'campaignDeadlineMonotonicNs': 1000}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'lost-start-response'))
+            self.assertEqual(first, sidecar['targetEpoch']['lostStartFirst'])
+            changed = copy.deepcopy(private)
+            changed['lostStartResponse']['retry']['managerInvocation'] = 'f' * 32
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed = copy.deepcopy(private)
+            changed['lostStartResponse']['droppedRequest']['sendFinishedNs'] = 55
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed = copy.deepcopy(private)
+            changed['lifecycleActorBefore']['uid'] = roster['observerUid']
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed_terminal = copy.deepcopy(terminal)
+            changed_terminal['stopReceipts']['candidate-sender']['current'][
+                'record']['startedMonotonicNs'] = 650
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, private,
+                changed_terminal, source))
+
     def test_wrong_port_for_pinned_host_key_stops_before_guest_allocation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
