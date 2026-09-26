@@ -708,6 +708,105 @@ class RunnerTests(unittest.TestCase):
                 report, result, fixture, terminal, source,
                 {'hostileOriginSessionDigest': '0' * 64}))
 
+    def test_provider_authority_requires_signed_app_child_live_root_canary_and_stop(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 200], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 200], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 60, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': None, 'managerInvocation': '9' * 32,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [3, 5], 'mainPid': 211,
+            'mainStartTicks': 42, 'resolverCanaryIdentity': [3, 6],
+            'resolverControlDigest': 'a' * 64,
+            'providerCanaryIdentity': [3, 7],
+            'observedMonotonicNs': 40, 'controlDigest': 'b' * 64}
+        nonce = 'c' * 64
+        app_result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-provider-authority-probe',
+            'caseId': 'provider-authority', 'nonce': nonce,
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 70, 'finishedMonotonicNs': 80,
+            'targetPathDigest': hashlib.sha256(
+                b'/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary').hexdigest(),
+            'outcome': {'opened': False, 'errno': 'ENOENT'}}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-provider-authority-denial',
+            'caseId': 'provider-authority',
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': sender['uid'],
+            'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=100),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=120),
+            'targetPathDigest': app_result['targetPathDigest'],
+            'attackStartedNs': 70, 'attackFinishedNs': 80,
+            'kernelOpenResult': app_result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(app_result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['providerAuthorityAudit'] = {'status': 'captured', 'record': audit}
+        terminal['providerAppResult'] = {'status': 'captured', 'record': app_result}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'worker': {'hostPid': 301, 'startTicks': 45},
+            'cgroupIdentity': [1, 99]}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 301, 'startTicks': 45}}}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster,
+                  'probeAppKernelProcess': dict(actor)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '8' * 64}
+        normal_checked = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=({}, {})), \
+                patch.object(runner.acceptance, 'verify_attempts',
+                             return_value=normal_checked):
+            identity, attempt, sidecar = runner._provider_authority_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual('normally-signed-apphost-child', sidecar['actorEpoch']['kind'])
+            for mutate in (
+                    lambda row: row['providerAuthorityAudit']['record'].update(
+                        bundleDigest='sha256:' + '0' * 64),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'actorAfter'].update(startTicks=46),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'targetAfter'].update(managerInvocation='8' * 32),
+                    lambda row: row['providerAppResult']['record'].update(
+                        outcome={'opened': True, 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._provider_authority_attempt(
+                    report, result, fixture, changed))
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'provider-authority'))
+
     def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

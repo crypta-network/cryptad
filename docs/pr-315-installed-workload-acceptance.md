@@ -2672,6 +2672,23 @@ root packet tests passed in a disposable container.
 This is an implemented prospective emitter, **not** an installed TCG pass;
 authority's two stale-identity cases and the complete campaign remain open.
 
+The prospective v26 `provider-authority` path adds one root-owned 32-byte
+synthetic canary beside the active installed private resolver service. Its
+contents never represent an original provider credential. Only the normally
+signed `pr315-probe` AppHost child, after its existing mount-boundary
+checkpoint, receives a fixed one-use trigger in AppHost-managed data and
+attempts to open that private path. The candidate result contains the
+bounded syscall outcome and path digest, never canary bytes. Root independently
+checks the service invocation, canary inode and bytes, the AppHost Python
+child and sandbox leader, role ownership, operation timing and unchanged
+target before and after; the host then binds the signed bundle, original
+AppHost checkpoint, result, root audit, sentinel and exact stop receipt.
+The actual original-provider network/credential authority remains separate.
+Linux PR-31x offline checks passed 410 tests with six environment skips;
+all three provider-specific checks passed in a disposable root container,
+the signed probe app's two worker checks passed, and the protected workload
+file passed 69 tests with one skip. No v26 TCG installed result exists.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3013,7 +3030,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, three network/AppHost emitters, and seven standalone lifecycle groups under v25 selected-group preparation. The remaining six denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, four network/AppHost emitters including the synthetic provider, and seven standalone lifecycle groups under v26 selected-group preparation. The remaining five denial emitters, four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

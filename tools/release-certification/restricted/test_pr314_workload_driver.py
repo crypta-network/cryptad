@@ -1250,6 +1250,118 @@ class HostileOriginValidationTest(unittest.TestCase):
         self.assertNotIn('hostileOriginSecret', injected)
 
 
+class ProviderAuthorityProbeTest(unittest.TestCase):
+    def test_signed_python_child_is_bound_without_a_fictitious_java_descendant(self):
+        worker = {'hostPid': 301, 'namespacePid': 20, 'startTicks': 50,
+                  'managerInvocation': 'a' * 32,
+                  'cgroupIdentity': [1, 99],
+                  'sandboxLeader': {'hostPid': 300}}
+        workload = SimpleNamespace(observe=Mock(return_value={'state': 'running'}))
+        handoff = {'handles': {'candidate-sender': 'd' * 64},
+                   'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
+        with patch('cross_version_workload.bind_probe_worker', return_value=worker):
+            self.assertEqual(worker, driver._provider_app_actor(
+                workload, handoff, worker))
+            with self.assertRaisesRegex(ValueError, 'worker-changed'):
+                driver._provider_app_actor(workload, handoff,
+                    dict(worker, startTicks=51))
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for AppHost trigger ownership')
+    def test_root_triggers_signed_app_child_and_retains_only_denial_audit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app_data = root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+            app_data.mkdir(parents=True)
+            target = {'role': None, 'managerInvocation': 'e' * 32,
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'cgroupIdentity': [3, 5], 'mainPid': 211,
+                      'mainStartTicks': 42,
+                      'resolverCanaryIdentity': [3, 6],
+                      'resolverControlDigest': 'a' * 64,
+                      'providerCanaryIdentity': [3, 7],
+                      'controlDigest': 'b' * 64}
+            actor = {'hostPid': 301, 'namespacePid': 20,
+                     'namespacePids': [301, 20, 2], 'startTicks': 50,
+                     'managerInvocation': 'c' * 32,
+                     'cgroupIdentity': [1, 99],
+                     'sandboxLeader': {'hostPid': 300},
+                     'stateDigest': 'd' * 64}
+            audits = []
+            workload = SimpleNamespace(ROOT=root,
+                account=lambda role: SimpleNamespace(pw_uid=0, pw_gid=0),
+                write=lambda path, value, **_options: audits.append(value))
+            handoff = {'handles': {'candidate-sender': 'f' * 64}}
+
+            def provider_control(*_args):
+                return dict(target, observedMonotonicNs=time.monotonic_ns())
+
+            def app_control(*_args):
+                return dict(actor, observedMonotonicNs=time.monotonic_ns())
+
+            def read_result(path, uid, until, error):
+                self.assertEqual(0, uid)
+                self.assertEqual('workload-provider-result-timeout', error)
+                trigger = json.loads((app_data / 'pr315-provider-trigger.json').read_text())
+                started = time.monotonic_ns()
+                return {'schemaVersion': 1,
+                    'kind': 'pr315-signed-provider-authority-probe',
+                    'caseId': 'provider-authority', 'nonce': trigger['nonce'],
+                    'pid': 2, 'uid': 0, 'gid': 0,
+                    'startedMonotonicNs': started,
+                    'finishedMonotonicNs': time.monotonic_ns() + 1,
+                    'targetPathDigest': hashlib.sha256(
+                        driver.PROVIDER_PROBE_PATH.encode()).hexdigest(),
+                    'outcome': {'opened': False, 'errno': 'ENOENT'}}
+
+            with patch.object(driver, '_provider_target_control',
+                              side_effect=provider_control), \
+                    patch.object(driver, '_provider_app_actor',
+                                 side_effect=app_control), \
+                    patch.object(driver, '_wait_output_record',
+                                 side_effect=read_result):
+                digest = driver.probe_provider_authority(workload, handoff,
+                    'b' * 64, 'a' * 64, 'sha256:' + '8' * 64, actor,
+                    time.monotonic_ns() + 30_000_000_000)
+            self.assertEqual(1, len(audits))
+            self.assertEqual('provider-authority', audits[0]['caseId'])
+            self.assertEqual({'opened': False, 'errno': 'ENOENT'},
+                             audits[0]['kernelOpenResult'])
+            self.assertEqual(hashlib.sha256(json.dumps(audits[0],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(), digest)
+            self.assertFalse((app_data / 'pr315-provider-trigger.json').exists())
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for provider canary')
+    def test_synthetic_provider_canary_is_root_owned_and_bound_to_active_service(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pr315-provider/pr315-provider-canary'
+            resolver = {'role': None, 'managerInvocation': 'c' * 32,
+                        'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                        'cgroupIdentity': [1, 22], 'mainPid': 211,
+                        'mainStartTicks': 42, 'canaryIdentity': [1, 23],
+                        'observedMonotonicNs': 10, 'controlDigest': 'a' * 64}
+            with patch.object(driver, 'PROVIDER_PROBE_PATH', str(path)), \
+                    patch.object(driver, 'prepare_resolver_canary', return_value='a' * 64), \
+                    patch.object(driver, '_provider_target_control', return_value={}) as control:
+                selected = driver.prepare_provider_canary()
+                with self.assertRaises(FileExistsError):
+                    driver.prepare_provider_canary()
+            self.assertEqual(32, path.stat().st_size)
+            self.assertEqual(0, path.stat().st_uid)
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                             selected['providerDigest'])
+            control.assert_called_with(selected['providerDigest'], 'a' * 64)
+            with patch.object(driver, 'PROVIDER_PROBE_PATH', str(path)), \
+                    patch.object(driver, '_resolver_target_control', return_value=resolver):
+                observed = driver._provider_target_control(
+                    selected['providerDigest'], selected['resolverDigest'])
+            self.assertEqual([path.stat().st_dev, path.stat().st_ino],
+                             observed['providerCanaryIdentity'])
+            self.assertEqual('c' * 32, observed['managerInvocation'])
+
+
 class OutputHardlinkControlTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux descriptor pinning required')
     def test_canary_remains_byte_checked_after_actor_creates_second_link(self):

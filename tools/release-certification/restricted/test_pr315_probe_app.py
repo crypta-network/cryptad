@@ -1,4 +1,6 @@
 """Real local worker restart test; this is not installed AppHost acceptance."""
+import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,9 +9,45 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
+from importlib.util import module_from_spec, spec_from_file_location
 
 
 class ProbeWorkerTest(unittest.TestCase):
+    def test_fixed_provider_trigger_records_denial_without_reading_canary_bytes(self):
+        script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'
+        spec = spec_from_file_location('pr315_signed_probe_test', script)
+        probe = module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            nonce = 'a' * 64
+            trigger = data / probe.PROVIDER_TRIGGER
+            trigger.write_text(json.dumps({'schemaVersion': 1,
+                'kind': 'pr315-provider-trigger', 'nonce': nonce}))
+            trigger.chmod(0o600)
+            canary = data / 'root-provider-canary'
+            canary.write_bytes(b'private-provider-bytes')
+            real_open = probe.os.open
+
+            def denied(path, flags, *args, **kwargs):
+                if path == canary:
+                    raise PermissionError(errno.EACCES, 'fixed-provider-denial')
+                return real_open(path, flags, *args, **kwargs)
+
+            with patch.object(probe, 'PROVIDER_CANARY', canary), \
+                    patch.object(probe.os, 'open', side_effect=denied):
+                result = probe.provider_authority(data)
+            self.assertEqual({'opened': False, 'errno': 'EACCES'}, result['outcome'])
+            self.assertEqual(hashlib.sha256(os.fsencode(canary)).hexdigest(),
+                             result['targetPathDigest'])
+            self.assertEqual(result, json.loads((data / probe.PROVIDER_RESULT).read_text()))
+            self.assertFalse((data / ('.' + probe.PROVIDER_RESULT + '.pending')).exists())
+            self.assertNotIn('private-provider-bytes', json.dumps(result))
+            with self.assertRaisesRegex(ValueError, 'already-published'):
+                probe.provider_authority(data)
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux mount namespace syscall required')
     def test_second_launch_replaces_only_fixed_result_without_token_output(self):
         script = Path(__file__).with_name('pr315-probe-app') / 'bin/probe.py'

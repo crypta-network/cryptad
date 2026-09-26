@@ -1252,6 +1252,72 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn('must-not-retain', json.dumps(evidence._capture(
             self.root, self.expected, True)))
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_provider_audit_binds_signed_child_and_redacts_candidate_output(self):
+        app_data = self.root / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+        app_data.mkdir(parents=True)
+        nonce = 'a' * 64
+        result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-provider-authority-probe',
+            'caseId': 'provider-authority', 'nonce': nonce,
+            'pid': 2, 'uid': os.geteuid(), 'gid': os.getegid(),
+            'startedMonotonicNs': 50, 'finishedMonotonicNs': 60,
+            'targetPathDigest': hashlib.sha256(
+                b'/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary').hexdigest(),
+            'outcome': {'opened': False, 'errno': 'ENOENT'}}
+        app_result = app_data / 'pr315-provider-result.json'
+        app_result.write_text(json.dumps(result))
+        app_result.chmod(0o600)
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 2], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': 'c' * 32, 'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 2], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 20, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': None, 'managerInvocation': 'e' * 32,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [3, 5], 'mainPid': 211,
+            'mainStartTicks': 42, 'resolverCanaryIdentity': [3, 6],
+            'resolverControlDigest': 'a' * 64,
+            'providerCanaryIdentity': [3, 7],
+            'observedMonotonicNs': 10, 'controlDigest': 'b' * 64}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-provider-authority-denial',
+            'caseId': 'provider-authority', 'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': os.geteuid(), 'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=80),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=100),
+            'targetPathDigest': result['targetPathDigest'],
+            'attackStartedNs': 50, 'attackFinishedNs': 60,
+            'kernelOpenResult': result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        root_audit = self.root / 'authority/provider-authority-denial.json'
+        root_audit.write_text(json.dumps(audit))
+        root_audit.chmod(0o600)
+        captured = evidence._capture(self.root, self.expected, True)
+        self.assertEqual('captured', captured['providerAppResult']['status'])
+        self.assertEqual('captured', captured['providerAuthorityAudit']['status'])
+        self.assertNotIn('provider-token', json.dumps(captured))
+        root_audit.write_text(json.dumps(dict(audit, token='provider-token')))
+        self.assertEqual('unavailable-or-unsafe', evidence._provider_authority_audit(
+            self.root, time.monotonic() + 2)['status'])
+        app_result.write_text(json.dumps(dict(result,
+            outcome={'opened': True, 'errno': None})))
+        self.assertEqual('unavailable-or-unsafe', evidence._provider_app_result(
+            self.root, time.monotonic() + 2)['status'])
+
 
 if __name__ == '__main__':
     unittest.main()

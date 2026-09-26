@@ -386,6 +386,42 @@ def _probe_app_result(root, deadline, name='pr315-probe-result.json'):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _provider_app_result(root, deadline):
+    """Read only the signed child candidate-origin provider syscall result."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(
+            root / 'state/candidate-sender/data/node/apps/data/pr315-probe',
+            'pr315-provider-result.json', maximum=2048,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or set(value) != {
+                'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+                'startedMonotonicNs', 'finishedMonotonicNs',
+                'targetPathDigest', 'outcome'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-signed-provider-authority-probe'
+                or value['caseId'] != 'provider-authority'
+                or re.fullmatch('[0-9a-f]{64}', str(value['nonce'])) is None
+                or re.fullmatch('[0-9a-f]{64}', str(value['targetPathDigest'])) is None
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('pid', 'uid', 'gid', 'startedMonotonicNs',
+                                   'finishedMonotonicNs'))
+                or value['startedMonotonicNs'] >= value['finishedMonotonicNs']
+                or value['outcome'] not in (
+                    {'opened': False, 'errno': 'ENOENT'},
+                    {'opened': False, 'errno': 'EACCES'},
+                    {'opened': False, 'errno': 'EPERM'})):
+            raise ValueError('provider-app-result-invalid')
+        return {'status': 'captured',
+                'classification': 'signed-app-candidate-origin-not-acceptance',
+                'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _probe_app_log(root, deadline):
     """Keep only a bounded private AppHost log tail after owned cleanup."""
     remaining = deadline - time.monotonic()
@@ -901,6 +937,76 @@ def _resolver_authority_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _provider_authority_audit(root, deadline):
+    """Retain only the fixed AppHost actor and live synthetic provider audit."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'provider-authority-denial.json', maximum=16384,
+            timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'bundleDigest',
+            'nonceDigest', 'actorUid', 'actorBefore', 'actorAfter',
+            'senderStateBefore', 'senderStateAfter', 'targetBefore',
+            'targetAfter', 'targetPathDigest', 'attackStartedNs',
+            'attackFinishedNs', 'kernelOpenResult', 'appResultDigest'}
+        actor_fields = {'role', 'hostPid', 'namespacePid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'outerMountNamespaceIdentity', 'userNamespaceIdentity',
+            'pidNamespaceIdentity', 'managerInvocation', 'cgroupIdentity',
+            'networkNamespaceIdentity', 'stateDigest', 'observedMonotonicNs',
+            'sandboxLeader', 'provenance'}
+        leader_fields = {'hostPid', 'namespacePids', 'startTicks',
+            'executableDigest', 'mountNamespaceIdentity',
+            'userNamespaceIdentity', 'networkNamespaceIdentity',
+            'pidNamespaceIdentity'}
+        target_fields = {'role', 'managerInvocation', 'bootId',
+            'cgroupIdentity', 'mainPid', 'mainStartTicks',
+            'resolverCanaryIdentity', 'resolverControlDigest',
+            'providerCanaryIdentity', 'observedMonotonicNs', 'controlDigest'}
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-provider-authority-denial'
+                or value['caseId'] != 'provider-authority'
+                or not isinstance(value['bundleDigest'], str)
+                or re.fullmatch('sha256:[0-9a-f]{64}', value['bundleDigest']) is None
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('nonceDigest', 'senderStateBefore',
+                                   'senderStateAfter', 'targetPathDigest',
+                                   'appResultDigest'))
+                or value['senderStateBefore'] != value['senderStateAfter']
+                or type(value['actorUid']) is not int or value['actorUid'] <= 0
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != actor_fields
+                       or not isinstance(value[key].get('sandboxLeader'), dict)
+                       or set(value[key]['sandboxLeader']) != leader_fields
+                       or value[key].get('provenance') != 'controller-kernel-sample'
+                       for key in ('actorBefore', 'actorAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != target_fields
+                       for key in ('targetBefore', 'targetAfter'))
+                or any(value['targetBefore'][key] != value['targetAfter'][key]
+                       for key in target_fields - {'observedMonotonicNs'})
+                or value['targetBefore']['role'] is not None
+                or value['targetBefore']['mainPid'] <= 1
+                or value['targetBefore']['mainStartTicks'] <= 0
+                or value['kernelOpenResult'] not in (
+                    {'opened': False, 'errno': 'ENOENT'},
+                    {'opened': False, 'errno': 'EACCES'},
+                    {'opened': False, 'errno': 'EPERM'})
+                or not value['targetBefore']['observedMonotonicNs']
+                    < value['actorBefore']['observedMonotonicNs']
+                    < value['attackStartedNs'] < value['attackFinishedNs']
+                    < value['actorAfter']['observedMonotonicNs']
+                    < value['targetAfter']['observedMonotonicNs']):
+            raise ValueError('provider-authority-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1265,6 +1371,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
                                                         'pr315-probe-result-first.json')
         result['probeAppSecondResult'] = _probe_app_result(root, deadline,
                                                          'pr315-probe-result-second.json')
+        if os.path.lexists(root /
+                'state/candidate-sender/data/node/apps/data/pr315-probe/pr315-provider-result.json'):
+            result['providerAppResult'] = _provider_app_result(root, deadline)
         if observer_root is not None:
             result['probeKernelCheckpoint'] = _probe_kernel_checkpoint(observer_root, deadline)
             result['observerControlCheckpoint'] = _observer_control_checkpoint(observer_root, deadline)
@@ -1282,6 +1391,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/provider-authority-denial.json'):
+            result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1356,6 +1467,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             root, deadline, 'forged-runtime-identity')
         result['forgedCountersAudit'] = _fixed_claim_audit(root, deadline, 'forged-counters')
         result['resolverAuthorityAudit'] = _resolver_authority_audit(root, deadline)
+        if os.path.lexists(root / 'authority/provider-authority-denial.json'):
+            result['providerAuthorityAudit'] = _provider_authority_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

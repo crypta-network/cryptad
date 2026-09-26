@@ -52,6 +52,7 @@ SIBLING_PROBE_PATH = '/var/lib/cryptad-restricted-workload/state/candidate-recip
 PACKAGE_PROBE_PATH = '/package/lib/cryptad.jar'
 CGROUP_PROBE_PATH = '/sys/fs/cgroup/system.slice/cryptad-workload@candidate-recipient.service/cgroup.procs'
 RESOLVER_PROBE_PATH = '/var/lib/cryptad-restricted/resolver/pr315-workload-canary'
+PROVIDER_PROBE_PATH = '/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary'
 OUTPUT_CANARY = 'pr315-output-target-canary'
 OUTPUT_SYMLINK = 'pr315-output-symlink-artifact'
 OUTPUT_SYMLINK_READY = 'pr315-output-symlink-ready.json'
@@ -290,6 +291,60 @@ def prepare_resolver_canary():
     digest = hashlib.sha256(raw).hexdigest()
     _resolver_target_control(digest)
     return digest
+
+
+def _provider_target_control(provider_digest, resolver_digest):
+    """Bind one private synthetic provider subject to the live root service."""
+    service = _resolver_target_control(resolver_digest)
+    descriptor = os.open(PROVIDER_PROBE_PATH,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        before = os.fstat(descriptor)
+        raw = os.read(descriptor, 33)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0
+            or before.st_nlink != 1 or before.st_mode & 0o077
+            or before.st_size != 32 or len(raw) != 32
+            or any(getattr(before, key) != getattr(after, key)
+                   for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+            or hashlib.sha256(raw).hexdigest() != provider_digest):
+        raise ValueError('workload-provider-target-invalid')
+    return {key: service[key] for key in ('role', 'managerInvocation',
+            'bootId', 'cgroupIdentity', 'mainPid', 'mainStartTicks') } | {
+        'resolverCanaryIdentity': service['canaryIdentity'],
+        'resolverControlDigest': resolver_digest,
+        'providerCanaryIdentity': [before.st_dev, before.st_ino],
+        'observedMonotonicNs': time.monotonic_ns(),
+        'controlDigest': provider_digest}
+
+
+def prepare_provider_canary():
+    """Add a root-only provider canary beside the active installed resolver."""
+    resolver_digest = prepare_resolver_canary()
+    parent = Path(PROVIDER_PROBE_PATH).parent
+    outer = parent.parent.lstat()
+    if (not stat.S_ISDIR(outer.st_mode) or outer.st_uid != 0
+            or outer.st_mode & 0o022):
+        raise ValueError('workload-provider-root-invalid')
+    parent.mkdir(mode=0o700, exist_ok=False)
+    info = parent.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+        raise ValueError('workload-provider-target-invalid')
+    raw = secrets.token_bytes(32)
+    descriptor = os.open(PROVIDER_PROBE_PATH,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        if os.write(descriptor, raw) != len(raw):
+            raise ValueError('workload-provider-target-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    provider_digest = hashlib.sha256(raw).hexdigest()
+    _provider_target_control(provider_digest, resolver_digest)
+    return {'providerDigest': provider_digest,
+            'resolverDigest': resolver_digest}
 
 
 def _candidate_probe_file(path, uid):
@@ -731,6 +786,110 @@ def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_
             or actor_before['startTicks'] != actor_after['startTicks']):
         raise ValueError('workload-sibling-network-actor-changed')
     return audits
+
+
+def _provider_app_actor(workload, handoff, expected_worker):
+    """Resolve the actual signed probe AppHost child in the current role cgroup."""
+    from cross_version_workload import bind_probe_worker
+    role = 'candidate-sender'
+    if (not isinstance(expected_worker, dict)
+            or type(expected_worker.get('namespacePid')) is not int
+            or expected_worker['namespacePid'] <= 1):
+        raise ValueError('workload-provider-app-worker-invalid')
+    observed = workload.observe(handoff['handles'][role])
+    bound = bind_probe_worker(observed, expected_worker['namespacePid'],
+                              handoff['expectedJdkDigests'][role])
+    stable = ('hostPid', 'namespacePid', 'startTicks',
+              'managerInvocation', 'cgroupIdentity', 'sandboxLeader')
+    if any(bound[key] != expected_worker[key] for key in stable):
+        raise ValueError('workload-provider-app-worker-changed')
+    return bound
+
+
+def probe_provider_authority(workload, handoff, provider_digest,
+                             resolver_digest, bundle_digest, expected_worker,
+                             campaign_deadline_ns):
+    """Trigger only the signed AppHost child against the active private provider."""
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-provider-campaign-expired')
+    role = 'candidate-sender'
+    account = workload.account(role)
+    root = workload.ROOT / 'state/candidate-sender/data/node/apps/data/pr315-probe'
+    target_before = _provider_target_control(provider_digest, resolver_digest)
+    actor_before = _provider_app_actor(workload, handoff, expected_worker)
+    nonce = secrets.token_hex(32)
+    trigger = root / 'pr315-provider-trigger.json'
+    request = {'schemaVersion': 1, 'kind': 'pr315-provider-trigger', 'nonce': nonce}
+    encoded = json.dumps(request, sort_keys=True, separators=(',', ':')).encode()
+    descriptor = os.open(trigger,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        os.fchown(descriptor, account.pw_uid, account.pw_gid)
+        if os.write(descriptor, encoded) != len(encoded):
+            raise ValueError('workload-provider-trigger-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    trigger_ns = time.monotonic_ns()
+    until = min(time.monotonic() + 25, campaign_deadline_ns / 1e9)
+    try:
+        result = _wait_output_record(root / 'pr315-provider-result.json',
+            account.pw_uid, until, 'workload-provider-result-timeout')
+    finally:
+        trigger.unlink(missing_ok=True)
+    actor_after = _provider_app_actor(workload, handoff, expected_worker)
+    target_after = _provider_target_control(provider_digest, resolver_digest)
+    stable_actor = ('hostPid', 'namespacePid', 'startTicks',
+                    'managerInvocation', 'cgroupIdentity',
+                    'sandboxLeader')
+    stable_target = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                     'mainPid', 'mainStartTicks', 'resolverCanaryIdentity',
+                     'resolverControlDigest', 'providerCanaryIdentity',
+                     'controlDigest')
+    if (not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'startedMonotonicNs', 'finishedMonotonicNs',
+            'targetPathDigest', 'outcome'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-signed-provider-authority-probe'
+            or result['caseId'] != 'provider-authority' or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
+            or result['targetPathDigest'] != hashlib.sha256(
+                PROVIDER_PROBE_PATH.encode()).hexdigest()
+            or result['outcome'] not in (
+                {'opened': False, 'errno': 'ENOENT'},
+                {'opened': False, 'errno': 'EACCES'},
+                {'opened': False, 'errno': 'EPERM'})
+            or any(actor_before[key] != actor_after[key] for key in stable_actor)
+            or any(target_before[key] != target_after[key] for key in stable_target)
+            or actor_before['stateDigest'] != actor_after['stateDigest']
+            or not target_before['observedMonotonicNs']
+                < actor_before['observedMonotonicNs'] < trigger_ns
+                < result['startedMonotonicNs'] < result['finishedMonotonicNs']
+                < actor_after['observedMonotonicNs']
+                < target_after['observedMonotonicNs']):
+        raise ValueError('workload-provider-actor-target-or-denial-invalid')
+    audit = {'schemaVersion': 1,
+        'kind': 'pr315-administrator-provider-authority-denial',
+        'caseId': 'provider-authority', 'bundleDigest': bundle_digest,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'actorUid': account.pw_uid,
+        'actorBefore': actor_before, 'actorAfter': actor_after,
+        'senderStateBefore': actor_before['stateDigest'],
+        'senderStateAfter': actor_after['stateDigest'],
+        'targetBefore': target_before, 'targetAfter': target_after,
+        'targetPathDigest': result['targetPathDigest'],
+        'attackStartedNs': result['startedMonotonicNs'],
+        'attackFinishedNs': result['finishedMonotonicNs'],
+        'kernelOpenResult': result['outcome'],
+        'appResultDigest': hashlib.sha256(json.dumps(result,
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+    workload.write(workload.ROOT / 'authority/provider-authority-denial.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
 def _setsid_process_epoch(pid):
@@ -3576,6 +3735,11 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     resolver_digest = (prepare_resolver_canary()
                        if not startup_measurement and workload_group in (None, 'authority')
                        else None)
+    provider_setup = (prepare_provider_canary()
+                      if not startup_measurement and workload_group == 'network-app'
+                      else None)
+    if provider_setup is not None:
+        resolver_digest = provider_setup['resolverDigest']
     parent = child = admin_parent = admin_child = None
     pid = None
     status = None
@@ -3837,6 +4001,18 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
                 'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_provider_authority(workload, handoff,
+                    provider_setup['providerDigest'], resolver_digest,
+                    probe_digest, result['probeAppKernelProcess'],
+                    campaign_deadline)
+                diagnostics['providerAuthority'] = {'status': 'captured',
+                    'caseId': 'provider-authority', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['providerAuthority'] = {
+                    'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
             try:
                 audits = probe_network_app_roles(workload, handoff,
                     role_probe_digest, campaign_deadline)
