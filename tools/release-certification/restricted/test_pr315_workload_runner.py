@@ -2240,6 +2240,134 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'case-window-invalid'):
             runner.positive_case_attempt(report, invalid, {'mailDigest': 'sha256:' + '5' * 64}, 30, 40)
 
+    def test_v10_positive_cases_bind_actual_separate_role_epochs(self):
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + '5' * 64
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'deadlineMonotonicNs': 1000}}
+        for row in roster['roles']:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=800, observedMonotonicNs=810)
+        old = dict(sender, invocationId='f' * 32, processEpoch=50,
+            cgroupDigest=runner.fixtures.runtime.canonical_digest({
+                'role': 'candidate-sender', 'identity': [1, 98]})[7:])
+        context = {'before': {'roleIdentity': old, 'stateDigest': '5' * 64,
+                             'deadlineNs': 1000, 'observedMonotonicNs': 70},
+                   'after': {'roleIdentity': sender, 'stateDigest': '5' * 64,
+                            'deadlineNs': 1000, 'observedMonotonicNs': 80}}
+        terminal['stopReceipts']['candidate-sender']['previous']['record'] = {
+            'managerInvocation': old['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 98], 'observedMonotonicNs': 150}
+        exchange, observed_exchange = synthetic_exchange_audits(roster)
+        terminal['exchangeAudits'] = exchange
+        fnp_root, fnp_observed, content, transcript = synthetic_fnp_observation(
+            roster, host['helperSourceCommit'])
+        fnp_root['before']['observedMonotonicNs'] = 210
+        fnp_root['after']['observedMonotonicNs'] = 300
+        content['startedMonotonicNs'] = 220
+        content['finishedMonotonicNs'] = 280
+        terminal['fnpCounterPair'] = {'status': 'captured', 'record': fnp_root}
+        terminal['observerFcpLogs'] = {'candidate-recipient': {
+            'status': 'captured',
+            'tailBase64': base64.b64encode(transcript.encode()).decode(),
+            'tailBytes': len(transcript.encode())}}
+        epochs = {}
+        for index, row in enumerate(roster['roles']):
+            epochs[row['role']] = {
+                'managerInvocation': row['invocationId'],
+                'hostPid': 1000 + index, 'startTicks': row['processEpoch'],
+                'namespacePids': [1000 + index, 2],
+                'networkNamespaceIdentity': [1, row['networkNamespace']],
+                'cgroupIdentity': [1, 99 + index],
+                'executableDigest': 'sha256:' + 'e' * 64}
+        before_daemon = dict(epochs['candidate-sender'],
+            managerInvocation=old['invocationId'], hostPid=900,
+            startTicks=old['processEpoch'], cgroupIdentity=[1, 98])
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                       'finishedMonotonicNs': 20},
+            'roleDaemonEpochs': epochs,
+            'restartDaemonEpochs': {
+                'before': before_daemon,
+                'after': epochs['candidate-sender']},
+            'appKernelProcess': {'role': 'candidate-sender',
+                'provider': 'bubblewrap', 'hostPid': 101, 'namespacePid': 3,
+                'processEpoch': 201, 'invocationId': sender['invocationId'],
+                'javaHostPid': 102, 'javaStartTicks': 202,
+                'provenance': 'controller-kernel-sample'},
+            'appKernelWindow': {'startedMonotonicNs': 30,
+                                'finishedMonotonicNs': 40},
+            'controlExchanges': observed_exchange,
+            'contentEvidence': content, 'fnpCounterPair': fnp_observed,
+            'restartContext': context,
+            'restartWindow': {'startedMonotonicNs': 60,
+                              'finishedMonotonicNs': 90}}
+        diagnostics = synthetic_resource_diagnostics(roster)
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        admin = {'pid': 500, 'uid': 0, 'startTicks': 44,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 50], 'cgroupDigest': 'a' * 64,
+            'invocationId': 'c' * 32, 'sourceDigest': driver_digest,
+            'observedMonotonicNs': 1}
+        diagnostics['positiveAdministratorBefore'] = admin
+        diagnostics['positiveAdministratorAfter'] = dict(
+            admin, observedMonotonicNs=820)
+        diagnostics['positiveObserverEpoch'] = {
+            'kind': 'installed-observer-process', 'pid': 600,
+            'uid': roster['observerUid'], 'startTicks': 45,
+            'bootId': admin['bootId'], 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'b' * 64,
+            'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+            'sourceDigest': driver_digest, 'observedMonotonicNs': 5}
+        terminal['observerControlCheckpoint'] = {'status': 'captured',
+            'record': {'actorPid': 600, 'actorStartTicks': 45}}
+        identity, attempt = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 900, 910,
+            diagnostics, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual(8, len(attempt['declaredCases']))
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        host_epoch = {'kind': 'host-runner-process', 'pid': 700,
+            'uid': 1000, 'startTicks': 55,
+            'bootId': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_workload_runner.py'),
+            'observedMonotonicNs': 920}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        records = case_v10.positive_records(frozen, 'suite-202', identity,
+            attempt, report, result, terminal, diagnostics, host_epoch,
+            source, raw)
+        self.assertEqual(set(dict(runner.campaign.GROUPS)['positive']), set(records))
+        self.assertNotEqual(records['installed-ready']['operationTimeDomain'],
+                            records['four-role-start']['operationTimeDomain'])
+        self.assertEqual(900,
+            records['restart-durable-state']['targetEpoch']['beforeDaemon']['hostPid'])
+        changed = copy.deepcopy(diagnostics)
+        changed['positiveObserverEpoch']['startTicks'] = 46
+        with self.assertRaisesRegex(ValueError, 'actor-epoch-invalid'):
+            case_v10.positive_records(frozen, 'suite-202', identity,
+                attempt, report, result, terminal, changed, host_epoch,
+                source, raw)
+        changed_result = copy.deepcopy(result)
+        changed_result['roleDaemonEpochs']['candidate-sender']['hostPid'] = 0
+        with self.assertRaisesRegex(ValueError, 'role-epoch-invalid'):
+            case_v10.positive_records(frozen, 'suite-202', identity,
+                attempt, report, changed_result, terminal, diagnostics,
+                host_epoch, source, raw)
+
     def test_app_and_resource_cases_require_actual_scoped_samples(self):
         roster = synthetic_role_kernel_roster()
         sender = roster['roles'][0]

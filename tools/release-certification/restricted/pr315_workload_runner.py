@@ -1978,6 +1978,20 @@ def prospective_campaign_result(result, frozen_campaign):
             'hostKeyFingerprint': frozen_campaign['hostKeyFingerprint']}
 
 
+def _host_runner_epoch():
+    """Sample this still-running CT102 verifier, including its own boot domain."""
+    pid = os.getpid()
+    fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+    if (pid <= 1 or len(fields) <= 19 or not fields[19].isdecimal()
+            or os.geteuid() <= 0):
+        raise ValueError('workload-host-runner-epoch-invalid')
+    return {'kind': 'host-runner-process', 'pid': pid, 'uid': os.geteuid(),
+        'startTicks': int(fields[19]),
+        'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+        'sourceDigest': reference.sha256(__file__),
+        'observedMonotonicNs': time.monotonic_ns()}
+
+
 def selected_terminal_status(group, report, positive):
     """Keep a failed guest operation distinct from partial case execution."""
     if group is None or positive:
@@ -4036,6 +4050,20 @@ def run(args):
                     raise ValueError('workload-positive-case-verification-failed')
                 native_runner._save(output / 'positive-v8-evidence.private.json',
                     {'attempt': case_attempt, 'assessment': checked_cases})
+                if group == 'positive' and campaign_plan_path is not None:
+                    if host_policy != host_admission.POLICY:
+                        raise ValueError('workload-v10-host-policy-required')
+                    raw_digests = {
+                        'guestReport': reference.sha256(selected.attempt / 'attempt.private.json'),
+                        'volatile': reference.sha256(terminal_path),
+                        'hostMonitor': reference.sha256(output / 'host-monitor.private.json')}
+                    records = case_v10.positive_records(frozen_campaign,
+                        output.name, identity, case_attempt, report, value,
+                        terminal, resources, _host_runner_epoch(),
+                        args.source, raw_digests)
+                    for case_id, record in records.items():
+                        native_runner._save(output /
+                            (case_id + '-v10-evidence.private.json'), record)
                 statuses.update({case: 'passed' for case in expected})
             if (network_app_ready and isinstance(terminal, dict)
                     and terminal.get('probeKernelCheckpoint', {}).get('status') == 'captured'):

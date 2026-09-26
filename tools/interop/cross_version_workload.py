@@ -583,7 +583,7 @@ class InstalledWorkloadAdapter:
         self.nodes, self.apps, self.outcomes, self.daemon_epochs = {}, {}, {}, {}
         self.control_exchanges = {}
         self.fnp_sample_failure = None
-        self.restart_context = self.restart_window = None
+        self.restart_context = self.restart_window = self.restart_daemon_epochs = None
         self.initial_role_roster = self.initial_role_window = self.initial_sender_state = None
         self._journal_started_roles = set()
         self.catalog_prepared = None
@@ -999,10 +999,12 @@ class InstalledWorkloadAdapter:
         before = self.observe(role)
         before_identity = principal_row(role, before, self.expected_jdk_digests[role],
                                         self.daemon_epochs[role])
+        before_daemon = dict(self.daemon_epochs[role])
         result = self.restart(role)
         after = self.observe(role)
         after_identity = principal_row(role, after, self.expected_jdk_digests[role],
                                        self.daemon_epochs[role])
+        after_daemon = dict(self.daemon_epochs[role])
         finished = time.monotonic_ns()
         if finished <= started:
             fail('restart-window-clock-invalid')
@@ -1014,6 +1016,7 @@ class InstalledWorkloadAdapter:
                       'deadlineNs': after.get('deadlineMonotonicNs'),
                       'observedMonotonicNs': after.get('observedMonotonicNs')}}
         self.restart_window = {'startedMonotonicNs': started, 'finishedMonotonicNs': finished}
+        self.restart_daemon_epochs = {'before': before_daemon, 'after': after_daemon}
         return result
 
     def cleanup(self):
@@ -1185,6 +1188,7 @@ class InstalledWorkloadAdapter:
             roster_finished = time.monotonic_ns()
             if roster_finished <= roster_started:
                 fail('kernel-roster-clock-invalid')
+            daemon_epochs = getattr(self, 'daemon_epochs', {})
             result = {'profile': PROFILE, 'classification': 'synthetic-source-build-not-original-authority',
                     'topologyRoles': len(self.nodes), 'signedAppWorkers': len(self.apps),
                     'newEpoch': new_epoch,
@@ -1205,8 +1209,11 @@ class InstalledWorkloadAdapter:
                                        if before_fnp is not None and after_fnp is not None else None),
                     'fnpSampleFailure': getattr(self, 'fnp_sample_failure', None),
                     'restartContext': self.restart_context,
+                    'restartDaemonEpochs': getattr(self, 'restart_daemon_epochs', None),
                     'restartWindow': self.restart_window,
                     'roleKernelRoster': kernel_roster(final_samples, self.expected_jdk_digests),
+                    'roleDaemonEpochs': {role: dict(daemon_epochs[role])
+                                         for role in runtime.ROLES if role in daemon_epochs},
                     'roleKernelRosterWindow': {'startedMonotonicNs': roster_started,
                                                'finishedMonotonicNs': roster_finished},
                     'contentRetrieval': self.outcomes.get('network-chk')}

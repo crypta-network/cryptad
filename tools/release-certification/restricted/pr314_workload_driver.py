@@ -1617,13 +1617,62 @@ def _administrator_collector_epoch(case_id):
     return {'pid': pid, 'uid': 0, 'startTicks': start, 'bootId': boot,
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
-                'role': ('lifecycle-administrator' if case_id in
+                'role': ('positive-administrator' if case_id == 'positive'
+                         else 'lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
                           'observer-death', 'lost-start-response')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
+
+
+def _positive_observer_epoch(pid, expected_uid, deadline_ns):
+    """Bind the actual forked observer through a pidfd before workload work."""
+    import cross_version_runtime as runtime
+    if (type(pid) is not int or pid <= 1 or type(expected_uid) is not int
+            or expected_uid <= 0 or type(deadline_ns) is not int):
+        raise ValueError('workload-positive-observer-selection-invalid')
+    descriptor = os.pidfd_open(pid)
+    try:
+        until = min(time.monotonic_ns() + 2 * 10**9, deadline_ns)
+        proc = Path('/proc') / str(pid)
+        while time.monotonic_ns() < until:
+            if select.select([descriptor], [], [], 0)[0]:
+                raise ValueError('workload-positive-observer-exited')
+            status = dict(line.split(':', 1) for line in
+                          (proc / 'status').read_text().splitlines() if ':' in line)
+            if set(map(int, status['Uid'].split())) == {expected_uid}:
+                break
+            time.sleep(.01)
+        else:
+            raise ValueError('workload-positive-observer-uid-unavailable')
+        first = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        cgroup = (proc / 'cgroup').read_text().strip()
+        if (len(first) <= 19 or not first[19].isdecimal()
+                or not cgroup.startswith('0::/')
+                or '..' in cgroup.split('/') or status['NoNewPrivs'].strip() not in ('0', '1')):
+            raise ValueError('workload-positive-observer-epoch-invalid')
+        group = (Path('/sys/fs/cgroup') / cgroup[4:].lstrip('/')).stat()
+        cgroup_identity = [group.st_dev, group.st_ino]
+        namespaces = {name: os.stat(proc / 'ns' / name).st_ino
+                      for name in ('pid', 'net', 'mnt', 'user')}
+        second = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        if (first[19] != second[19]
+                or select.select([descriptor], [], [], 0)[0]):
+            raise ValueError('workload-positive-observer-epoch-changed')
+        boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        source = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        return {'kind': 'installed-observer-process', 'pid': pid,
+            'uid': expected_uid, 'startTicks': int(first[19]), 'bootId': boot,
+            'cgroupIdentity': cgroup_identity,
+            'cgroupDigest': runtime.canonical_digest({
+                'role': 'positive-observer',
+                'identity': cgroup_identity})[7:],
+            'namespaces': namespaces, 'sourceDigest': source,
+            'observedMonotonicNs': time.monotonic_ns()}
+    finally:
+        os.close(descriptor)
 
 
 def _output_canary_control(root, uid, expected, case_id, expected_links=1):
@@ -4310,6 +4359,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 or handoff['deadlineMonotonicNs'] != campaign_deadline):
             raise ValueError('workload-handoff-deadline-mismatch')
         sentinel = evidence.prepare_sentinel(workload)
+        if not startup_measurement and workload_group in (None, 'positive'):
+            diagnostics['positiveAdministratorBefore'] = (
+                _administrator_collector_epoch('positive'))
         if workload_group == 'lost-start-response':
             role = 'candidate-sender'
             prepared = workload.read(workload.ROOT / 'authority' / (role + '.json'))
@@ -4363,6 +4415,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 os._exit(1)
         child.close()
         admin_child.close()
+        if not startup_measurement and workload_group in (None, 'positive'):
+            diagnostics['positiveObserverEpoch'] = _positive_observer_epoch(
+                pid, observer.pw_uid, campaign_deadline)
         # Preparation already started the campaign clock. Observation gets only the
         # original deadline plus bounded teardown grace, never a new execution budget.
         deadline = campaign_deadline / 10**9 + 100
@@ -4710,6 +4765,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
                 diagnostics['cleanupFinishedNs'] = time.monotonic_ns()
+                if not startup_measurement and workload_group in (None, 'positive'):
+                    diagnostics['positiveAdministratorAfter'] = (
+                        _administrator_collector_epoch('positive'))
                 if cancellation is not None:
                     try:
                         diagnostics['cancellation'] = complete_cancellation(workload, cancellation)

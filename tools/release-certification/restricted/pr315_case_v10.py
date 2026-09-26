@@ -12,10 +12,12 @@ import re
 import pr314_acceptance as acceptance
 import pr315_campaign_seal as seal
 import pr315_workload_campaign as historical
+import pr315_workload_fixtures as fixtures
 
 KIND = 'pr315-installed-case-v10'
 _DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 _RAW_FIELDS = frozenset(('guestReport', 'volatile', 'hostMonitor'))
+POSITIVE = tuple(dict(historical.GROUPS)['positive'])
 
 
 def _digest(value):
@@ -99,6 +101,7 @@ def output_symlink_record(campaign, attempt_id, identity, attempt, sidecar,
         'attemptId': attempt_id, 'groupId': group_id, 'caseId': case_id,
         'status': 'passed', 'sourceCommit': expected_identity['helperSourceCommit'],
         'actorEpoch': actor, 'targetEpoch': target, 'operationWindow': window,
+        'operationTimeDomain': 'guest:' + sender['bootId'],
         'v8AttemptDigest': _digest(attempt), 'v9SidecarDigest': _digest(sidecar),
         'hostIdentityDigest': _digest(sidecar['hostVerifiedIdentity']),
         'rawEvidenceDigests': raw_evidence_digests,
@@ -117,3 +120,196 @@ def verify_output_symlink_record(campaign, attempt_id, identity, attempt,
     if record != expected:
         raise ValueError('pr315-v10-case-record-changed')
     return _digest(expected)
+
+
+def _positive_roles(attempt, result):
+    principals = attempt['principals']['roles']
+    epochs = result['roleDaemonEpochs']
+    if (set(epochs) != set(acceptance.ROLES)
+            or {row['role'] for row in principals} != set(acceptance.ROLES)):
+        raise ValueError('pr315-v10-positive-roster-invalid')
+    roles = {row['role']: row for row in principals}
+    for role, principal in roles.items():
+        epoch = epochs[role]
+        if (epoch['managerInvocation'] != principal['invocationId']
+                or epoch['startTicks'] != principal['processEpoch']
+                or epoch['hostPid'] <= 1
+                or epoch['executableDigest'].startswith('sha256:') is not True
+                or epoch['networkNamespaceIdentity'][1] != principal['networkNamespace']
+                or fixtures.runtime.canonical_digest({
+                    'role': role, 'identity': epoch['cgroupIdentity']})[7:]
+                    != principal['cgroupDigest']):
+            raise ValueError('pr315-v10-positive-role-epoch-invalid')
+    return roles, epochs
+
+
+def _positive_target(case_id, observation, identity, roles, epochs, attempt, result):
+    witness = observation['witness']
+    if case_id == 'installed-ready':
+        return {'kind': 'installed-source-and-test-kit',
+            'sourceCommit': identity['helperSourceCommit'],
+            'bundleIdentity': identity['bundleIdentity'],
+            'testKitDigest': identity['testKitDigest'],
+            'preparedImageDigest': identity['preparedImageDigest']}
+    if case_id == 'four-role-start':
+        return {'kind': 'installed-four-role-roster',
+            'roles': roles, 'daemonEpochs': epochs}
+    if case_id == 'signed-apphost-child':
+        if (witness != attempt['appProcess']
+                or witness['hostPid'] != result['appKernelProcess']['hostPid']
+                or witness['processEpoch'] != result['appKernelProcess']['processEpoch']):
+            raise ValueError('pr315-v10-positive-app-epoch-invalid')
+        return {'kind': 'normally-signed-mail-apphost',
+            'bundleDigest': identity['admittedAppDigest'],
+            'worker': result['appKernelProcess'],
+            'senderDaemon': epochs['candidate-sender']}
+    if case_id in ('own-management', 'dynamic-app-bootstrap',
+                   'fnp-content-retrieval'):
+        role = acceptance.CASES[case_id].server_role
+        if witness['serverInvocationId'] != roles[role]['invocationId']:
+            raise ValueError('pr315-v10-positive-server-epoch-invalid')
+        value = {'kind': 'current-installed-role-server', 'role': role,
+                 'principal': roles[role], 'daemonEpoch': epochs[role]}
+        if case_id == 'dynamic-app-bootstrap':
+            value['mailWorker'] = result['appKernelProcess']
+        if case_id == 'fnp-content-retrieval':
+            value['fnpCounterPairDigest'] = _digest(result['fnpCounterPair'])
+        return value
+    if case_id == 'kernel-resource-scope':
+        if witness['source'] != 'cgroup-v2':
+            raise ValueError('pr315-v10-positive-resource-source-invalid')
+        return {'kind': 'four-owned-role-cgroups',
+                'measurements': witness['measurements'], 'daemonEpochs': epochs}
+    if case_id == 'restart-durable-state':
+        context = attempt['restartContext']
+        old, new = result['restartDaemonEpochs']['before'], result['restartDaemonEpochs']['after']
+        if (old['managerInvocation'] != context['before']['roleIdentity']['invocationId']
+                or new['managerInvocation'] != context['after']['roleIdentity']['invocationId']
+                or old['startTicks'] != context['before']['roleIdentity']['processEpoch']
+                or new['startTicks'] != context['after']['roleIdentity']['processEpoch']
+                or old['hostPid'] <= 1 or new['hostPid'] <= 1
+                or old['managerInvocation'] == new['managerInvocation']):
+            raise ValueError('pr315-v10-positive-restart-epoch-invalid')
+        return {'kind': 'restarted-installed-sender',
+                'beforeDaemon': old, 'afterDaemon': new,
+                'beforeRole': context['before']['roleIdentity'],
+                'afterRole': context['after']['roleIdentity']}
+    raise ValueError('pr315-v10-positive-case-unsupported')
+
+
+def positive_records(campaign, attempt_id, identity, attempt, report,
+                     result, terminal, diagnostics, host_runner_epoch,
+                     source_root, raw_evidence_digests):
+    """Produce eight separate candidate records after the complete installed verifier."""
+    from pathlib import Path
+    from pr312_reference_vm import sha256
+
+    if (not isinstance(campaign, dict) or campaign.get('kind') != seal.CAMPAIGN
+            or campaign.get('contract') != seal.CONTRACT
+            or not isinstance(attempt_id, str)
+            or seal._ATTEMPT_ID.fullmatch(attempt_id) is None
+            or identity != campaign.get('identity')
+            or attempt.get('identity') != identity
+            or attempt.get('guestStopped') is not True
+            or report.get('guestStopped') is not True
+            or not isinstance(attempt.get('declaredCases'), list)
+            or len(attempt['declaredCases']) != len(POSITIVE)
+            or set(attempt['declaredCases']) != set(POSITIVE)
+            or not isinstance(raw_evidence_digests, dict)
+            or set(raw_evidence_digests) != _RAW_FIELDS
+            or any(_DIGEST.fullmatch(str(value)) is None
+                   for value in raw_evidence_digests.values())):
+        raise ValueError('pr315-v10-positive-input-invalid')
+    checked = acceptance.verify_attempts(identity, [attempt])
+    if (checked['recordContractValid'] is not True
+            or {row['caseId'] for row in checked['cases'] if row['status'] == 'passed'}
+                != set(POSITIVE)
+            or checked['installedWorkloadAcceptanceSatisfied'] is not False):
+        raise ValueError('pr315-v10-positive-v8-verification-failed')
+    roles, epochs = _positive_roles(attempt, result)
+    source_digest = sha256(Path(source_root) /
+        'tools/release-certification/restricted/pr314_workload_driver.py')
+    runner_digest = sha256(Path(source_root) /
+        'tools/release-certification/restricted/pr315_workload_runner.py')
+    before = diagnostics['positiveAdministratorBefore']
+    after = diagnostics['positiveAdministratorAfter']
+    observer = diagnostics['positiveObserverEpoch']
+    checkpoint = terminal['observerControlCheckpoint']
+    if (checkpoint['status'] != 'captured'
+            or observer['kind'] != 'installed-observer-process'
+            or observer['uid'] != attempt['principals']['observerUid']
+            or observer['pid'] != checkpoint['record']['actorPid']
+            or observer['startTicks'] != checkpoint['record']['actorStartTicks']
+            or observer['bootId'].replace('-', '').lower() != roles['candidate-sender']['bootId']
+            or observer['sourceDigest'] != source_digest
+            or not isinstance(observer.get('namespaces'), dict)
+            or set(observer['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+            or any(type(value) is not int or value <= 0
+                   for value in observer['namespaces'].values())
+            or before['uid'] != after['uid'] or before['uid'] != 0
+            or any(before[key] != after[key] for key in
+                   ('pid', 'startTicks', 'bootId', 'cgroupIdentity',
+                    'cgroupDigest', 'invocationId', 'sourceDigest'))
+            or before['bootId'].replace('-', '').lower() != roles['candidate-sender']['bootId']
+            or before['sourceDigest'] != source_digest
+            or type(before['observedMonotonicNs']) is not int
+            or type(after['observedMonotonicNs']) is not int
+            or before['observedMonotonicNs'] >= after['observedMonotonicNs']
+            or host_runner_epoch['kind'] != 'host-runner-process'
+            or host_runner_epoch['sourceDigest'] != runner_digest
+            or host_runner_epoch['uid'] <= 0
+            or host_runner_epoch['pid'] <= 1
+            or host_runner_epoch['startTicks'] <= 0):
+        raise ValueError('pr315-v10-positive-actor-epoch-invalid')
+    receipts = terminal['stopReceipts']
+    stopped = []
+    for role, principal in roles.items():
+        row = receipts[role]['current']
+        if (row['status'] != 'captured'
+                or row['record']['managerInvocation'] != principal['invocationId']
+                or row['record']['membership'] != 'only-stop-helper'
+                or row['record']['descendantCgroups'] != 0):
+            raise ValueError('pr315-v10-positive-stop-invalid')
+        stopped.append(row['record']['observedMonotonicNs'])
+    stop_ns = max(stopped)
+    observations = {row['caseId']: row for row in attempt['observations']}
+    if set(observations) != set(POSITIVE):
+        raise ValueError('pr315-v10-positive-observations-invalid')
+    records = {}
+    for case_id in POSITIVE:
+        row = observations[case_id]
+        started, finished = row['startedMonotonicNs'], row['finishedMonotonicNs']
+        if (row['status'] != 'passed' or type(started) is not int
+                or type(finished) is not int or not 0 < started < finished):
+            raise ValueError('pr315-v10-positive-window-invalid')
+        actor = (host_runner_epoch if case_id == 'installed-ready' else
+                 before if case_id == 'kernel-resource-scope' else observer)
+        time_domain = ('host:' + host_runner_epoch['bootId']
+                       if case_id == 'installed-ready' else
+                       'guest:' + roles['candidate-sender']['bootId'])
+        if (case_id == 'installed-ready' and
+                host_runner_epoch['observedMonotonicNs'] <= finished):
+            raise ValueError('pr315-v10-positive-host-window-invalid')
+        if case_id != 'installed-ready' and (
+                actor['observedMonotonicNs'] >= started or finished >= stop_ns):
+            raise ValueError('pr315-v10-positive-guest-window-invalid')
+        target = _positive_target(case_id, row, identity, roles, epochs, attempt, result)
+        records[case_id] = {'schemaVersion': 10, 'kind': KIND,
+            'contract': seal.CONTRACT, 'campaignPlanDigest': campaign['planDigest'],
+            'campaignNonce': campaign['campaignNonce'], 'attemptId': attempt_id,
+            'groupId': 'positive', 'caseId': case_id, 'status': 'passed',
+            'sourceCommit': identity['helperSourceCommit'],
+            'actorEpoch': actor, 'targetEpoch': target,
+            'operationWindow': {'startedMonotonicNs': started,
+                                'finishedMonotonicNs': finished},
+            'operationTimeDomain': time_domain,
+            'v8AttemptDigest': _digest(attempt),
+            'v8ObservationDigest': _digest(row), 'v9SidecarDigest': None,
+            'hostIdentityDigest': _digest(report['hostVerifiedIdentity']),
+            'rawEvidenceDigests': raw_evidence_digests,
+            'stopReceiptObservedNs': stop_ns,
+            'classification': 'private-host-verified-candidate-not-standalone-acceptance'}
+        if len(json.dumps(records[case_id], sort_keys=True,
+                          separators=(',', ':'))) > 32768:
+            raise ValueError('pr315-v10-positive-record-limit')
+    return records

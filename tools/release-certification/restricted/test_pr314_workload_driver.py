@@ -40,6 +40,42 @@ class VolatilePublicationTest(unittest.TestCase):
             self.assertEqual([target], list(Path(directory).iterdir()))
 
 
+class PositiveObserverEpochTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root and pidfd')
+    def test_forked_observer_is_bound_after_actual_uid_drop(self):
+        reader, writer = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(reader)
+            try:
+                os.setgroups([])
+                os.setgid(65534)
+                os.setuid(65534)
+                os.write(writer, b'1')
+                time.sleep(10)
+            finally:
+                os._exit(0)
+        os.close(writer)
+        try:
+            self.assertEqual(b'1', os.read(reader, 1))
+            observed = driver._positive_observer_epoch(
+                pid, 65534, time.monotonic_ns() + 3 * 10**9)
+            self.assertEqual(pid, observed['pid'])
+            self.assertEqual(65534, observed['uid'])
+            self.assertGreater(observed['startTicks'], 0)
+            self.assertEqual({'pid', 'net', 'mnt', 'user'},
+                             set(observed['namespaces']))
+            self.assertEqual('installed-observer-process', observed['kind'])
+            with self.assertRaisesRegex(ValueError, 'uid-unavailable'):
+                driver._positive_observer_epoch(
+                    pid, 65533, time.monotonic_ns() + 200 * 10**6)
+        finally:
+            os.close(reader)
+            os.kill(pid, signal.SIGTERM)
+            os.waitpid(pid, 0)
+
+
 class SiblingNetworkCounterTest(unittest.TestCase):
     @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
                          'requires disposable Linux root host namespace')
@@ -999,6 +1035,10 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.object(driver, 'stage_role_probe', return_value='f' * 64))
             stack.enter_context(patch.object(driver, 'prepare_sibling_canary', return_value='d' * 64))
             stack.enter_context(patch.object(driver, 'prepare_resolver_canary', return_value='e' * 64))
+            stack.enter_context(patch.object(driver, '_administrator_collector_epoch',
+                return_value={'kind': 'offline-administrator-epoch'}))
+            stack.enter_context(patch.object(driver, '_positive_observer_epoch',
+                return_value={'kind': 'offline-observer-epoch'}))
             stack.enter_context(patch.object(driver, 'prerequisites', return_value=[]))
             stack.enter_context(patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=123, pw_gid=123)))
             stack.enter_context(patch.object(Path, 'mkdir'))

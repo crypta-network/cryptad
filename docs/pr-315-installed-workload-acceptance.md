@@ -2787,6 +2787,21 @@ digest; its acceptance field remains false. The Linux PR-31x offline set
 passed 427 tests with eight environment skips. No default campaign execution
 or v2 installed result exists yet.
 
+The prospective positive-group v10 path now retains the four current daemon
+kernel instances and both sender daemon instances across its real restart.
+The root test kit records its own before/after process epoch and uses a
+pidfd to sample the forked observer after the actual UID drop, before the
+workload operations. The host can therefore derive eight separate private
+v10 records from a fully verified positive v8 attempt, including distinct
+time domains for the post-guest host installation check and guest actions.
+Missing actor epochs, changed daemon instances, incomplete receipts or
+fewer than eight cases reject that v10 conversion. A disposable Linux root
+check passed the observer sample with `SYS_PTRACE`; the same container
+without that capability could not inspect the observer's namespace links.
+The Linux PR-31x focused set passed 429 tests with nine environment skips;
+the interop workload file passed 58 tests with nine skips, and the test-kit
+driver file passed 61 with seven skips. This code has no installed TCG result.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
