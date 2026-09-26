@@ -28,10 +28,14 @@ SWITCH = 'cryptad-role-switch'
 SWITCH_TABLE = 'cryptad_switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
 SIBLING_APP_SOURCE_PORT = 19404
+# The copied QEMU user-network guest owns this host-namespace address.  The
+# canary listener is started only by the root test kit for the selected group.
+HOST_CANARY_ADDRESS, HOST_CANARY_PORT = '10.0.2.15', 19405
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
 SIBLING_DROP_COUNTERS = {'sibling-fcp': 'pr315_sibling_fcp_drop',
                          'sibling-http': 'pr315_sibling_http_drop',
-                         'sibling-app': 'pr315_sibling_app_drop'}
+                         'sibling-app': 'pr315_sibling_app_drop',
+                         'host-network': 'pr315_host_network_drop'}
 MAX_STATE_BYTES = 8192
 FNP_COUNTERS = {
     **{(role, ROLES[-1]): 'fnp_role' + str(index) + '_to_relay'
@@ -178,6 +182,9 @@ def role_rules(role):
             f'  oifname "data0" ip saddr {own} ip daddr {target} '
             f'tcp dport {port} counter name {SIBLING_DROP_COUNTERS[case]} drop\n'
             for case, port in (('sibling-fcp', FCP_PORT), ('sibling-http', HTTP_PORT)))
+        sibling += (f'  oifname "data0" ip saddr {own} '
+                    f'ip daddr {HOST_CANARY_ADDRESS} tcp dport {HOST_CANARY_PORT} '
+                    f'counter name {SIBLING_DROP_COUNTERS["host-network"]} drop\n')
     definitions = (''.join(f' counter {name} {{ }}\n'
                            for name in SIBLING_DROP_COUNTERS.values())
                    if role == 'candidate-sender' else '')
@@ -249,7 +256,7 @@ def read_fnp_counters():
 
 
 def read_sibling_drop_counters():
-    """Read only fixed sender-to-recipient TCP DROP witnesses in its retained netns."""
+    """Read the fixed sender TCP DROP witnesses in its retained netns."""
     state = _load()
     if state['phase'] != 'ready' or state['pending'] is not None:
         _reject()
@@ -330,6 +337,10 @@ def setup():
             # Neither the role filter nor switch bridge accepts sibling IP traffic.
             _run([IP, '-n', name, 'route', 'add',
                   address('candidate-recipient') + '/32', 'dev', 'data0'])
+            # An exact test-only host route lets the role's named DROP rule
+            # receive the SYN; it creates no accepted host-network path.
+            _run([IP, '-n', name, 'route', 'add',
+                  HOST_CANARY_ADDRESS + '/32', 'dev', 'data0'])
     _run([IP, '-n', SWITCH, 'link', 'set', 'br0', 'up'])
     state['phase'] = 'ready'
     _save(state)

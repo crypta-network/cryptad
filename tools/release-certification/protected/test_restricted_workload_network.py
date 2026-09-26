@@ -40,6 +40,9 @@ class NetworkPolicyTests(unittest.TestCase):
         self.assertLess(rules.index(app_rule),
                         rules.index('tcp dport 19402 counter name '
                                     + network.SIBLING_DROP_COUNTERS['sibling-http']))
+        self.assertIn('ip daddr 10.0.2.15 tcp dport 19405 counter name '
+                      + network.SIBLING_DROP_COUNTERS['host-network'] + ' drop', rules)
+        self.assertNotIn('ip daddr 10.0.2.15 tcp dport 19405 accept', rules)
         self.assertNotIn('10.231.0.3', rules)
         self.assertEqual(rules.count('policy drop'), 3)
         self.assertEqual(rules.count('udp sport 19400 udp dport 19400'), 2)

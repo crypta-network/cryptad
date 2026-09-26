@@ -1515,7 +1515,7 @@ def _output_replacement_audit(root, deadline):
 
 def _sibling_network_audit(root, deadline, case_id):
     """Retain one fixed root audit of role SYN and named kernel DROP counters."""
-    if case_id not in ('sibling-fcp', 'sibling-http'):
+    if case_id not in ('sibling-fcp', 'sibling-http', 'host-network'):
         raise ValueError('sibling-network-audit-case-invalid')
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -1532,13 +1532,19 @@ def _sibling_network_audit(root, deadline, case_id):
                     'targetBefore', 'targetAfter', 'counterBefore', 'counterAfter',
                     'triggerMonotonicNs', 'attackStartedNs', 'attackFinishedNs',
                     'targetEndpointDigest', 'kernelConnectResult', 'counterName'}
-        target_fields = {'role', 'managerInvocation', 'bootId', 'cgroupIdentity',
-                         'observedMonotonicNs', 'controlObservedNs', 'controlDigest'}
+        target_fields = ({'role', 'managerInvocation', 'bootId', 'cgroupIdentity',
+                          'observedMonotonicNs', 'controlObservedNs', 'controlDigest'}
+                         if case_id != 'host-network' else
+                         {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+                          'networkNamespace', 'sourceDigest', 'invocationId',
+                          'controlDigest', 'observedMonotonicNs'})
         counter_fields = {'schemaVersion', 'kind', 'policyDigest', 'bootId',
                           'roleNamespaceIdentity', 'observedMonotonicNs', 'counters'}
         if (not isinstance(value, dict) or set(value) != expected
                 or value['schemaVersion'] != 1
-                or value['kind'] != 'pr315-administrator-sibling-network-denial'
+                or value['kind'] != ('pr315-administrator-host-network-denial'
+                    if case_id == 'host-network' else
+                    'pr315-administrator-sibling-network-denial')
                 or value['caseId'] != case_id
                 or value['counterName'] != 'pr315_' + case_id.replace('-', '_') + '_drop'
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
@@ -1679,6 +1685,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result[field] = _fixed_role_access_audit(root, deadline, case_id)
         result['siblingFcpAudit'] = _sibling_network_audit(root, deadline, 'sibling-fcp')
         result['siblingHttpAudit'] = _sibling_network_audit(root, deadline, 'sibling-http')
+        if os.path.lexists(root / 'authority/host-network-denial.json'):
+            result['hostNetworkAudit'] = _sibling_network_audit(
+                root, deadline, 'host-network')
         if expected is None:
             result['sentinel'] = {'status': 'not-prepared'}
         else:
@@ -1759,6 +1768,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result[field] = _fixed_role_access_audit(root, deadline, case_id)
         result['siblingFcpAudit'] = _sibling_network_audit(root, deadline, 'sibling-fcp')
         result['siblingHttpAudit'] = _sibling_network_audit(root, deadline, 'sibling-http')
+        if os.path.lexists(root / 'authority/host-network-denial.json'):
+            result['hostNetworkAudit'] = _sibling_network_audit(
+                root, deadline, 'host-network')
     result['finishedMonotonicNs'] = time.monotonic_ns()
     if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT:
         raise ValueError('workload-evidence-output-limit')

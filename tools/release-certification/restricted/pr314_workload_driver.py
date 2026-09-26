@@ -748,6 +748,153 @@ def probe_sibling_network(workload, handoff, nonce, source_digest,
     return audits
 
 
+def _host_canary_epoch(workload):
+    """Bind the guest host-namespace canary to this root test-kit process."""
+    pid = os.getpid()
+    stat_fields = (Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split())
+    start = int(stat_fields[19])
+    group = Path('/proc/self/cgroup').read_text().strip()
+    if not group.startswith('0::/') or start <= 0 or os.geteuid() != 0:
+        raise ValueError('workload-host-canary-owner-invalid')
+    cgroup = Path('/sys/fs/cgroup') / group[4:]
+    info = cgroup.stat()
+    source = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    boot = workload.boot()
+    network = os.stat('/proc/self/ns/net').st_ino
+    identity = [info.st_dev, info.st_ino]
+    invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': pid,
+        'startTicks': start, 'cgroupIdentity': identity,
+        'sourceDigest': source}, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()[:32]
+    return {'pid': pid, 'uid': 0, 'startTicks': start, 'bootId': boot,
+        'cgroupIdentity': identity, 'networkNamespace': network,
+        'sourceDigest': source, 'invocationId': invocation}
+
+
+def _host_canary_control(listener, workload):
+    """Connect to the live guest host socket and retain only its fixed echo digest."""
+    from restricted_workload_network import HOST_CANARY_ADDRESS, HOST_CANARY_PORT
+    before = _host_canary_epoch(workload)
+    with socket.create_connection((HOST_CANARY_ADDRESS, HOST_CANARY_PORT),
+                                  timeout=2) as client:
+        listener.settimeout(2)
+        accepted, address = listener.accept()
+        with accepted:
+            if address[0] != HOST_CANARY_ADDRESS:
+                raise ValueError('workload-host-canary-peer-invalid')
+            client.sendall(b'pr315-host-probe')
+            if accepted.recv(17) != b'pr315-host-probe':
+                raise ValueError('workload-host-canary-request-invalid')
+            accepted.sendall(b'pr315-host-ready')
+            if client.recv(16) != b'pr315-host-ready':
+                raise ValueError('workload-host-canary-response-invalid')
+    after = _host_canary_epoch(workload)
+    if before != after:
+        raise ValueError('workload-host-canary-owner-changed')
+    return {**before, 'controlDigest': hashlib.sha256(
+        b'pr315-host-probe\0pr315-host-ready').hexdigest(),
+        'observedMonotonicNs': time.monotonic_ns()}
+
+
+def probe_host_network(workload, handoff, nonce, source_digest,
+                       campaign_deadline_ns):
+    """Prove a role SYN hit its own DROP rule while host canary stayed live."""
+    import pr315_role_probe as role_probe
+    from restricted_workload_network import (HOST_CANARY_ADDRESS,
+        HOST_CANARY_PORT, SIBLING_DROP_COUNTERS, read_sibling_drop_counters)
+    if time.monotonic_ns() >= campaign_deadline_ns:
+        raise ValueError('workload-host-network-deadline')
+    case_id, address, port, prefix = role_probe.HOST_CASE
+    if (case_id != 'host-network' or address != HOST_CANARY_ADDRESS
+            or port != HOST_CANARY_PORT):
+        raise ValueError('workload-host-network-policy-changed')
+    handle = handoff['handles']['candidate-sender']
+    uid = workload.account('candidate-sender').pw_uid
+    root = workload.ROOT / 'state/candidate-sender/tmp'
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        listener.bind((address, port))
+        listener.listen(2)
+        target_before = _host_canary_control(listener, workload)
+        sender_before = workload.observe(handle)
+        actor_before = _role_probe_actor(sender_before, nonce, 'network-app')
+        counters_before = read_sibling_drop_counters()
+        if (not target_before['observedMonotonicNs']
+                < sender_before['observedMonotonicNs']
+                < counters_before['observedMonotonicNs']
+                or counters_before['roleNamespaceIdentity'] !=
+                   sender_before['networkNamespaceIdentity']):
+            raise ValueError('workload-host-network-before-invalid')
+        trigger_ns = time.monotonic_ns()
+        _publish_output_trigger(root, prefix + '-trigger.json', case_id, nonce)
+        result = _wait_output_record(root / (prefix + '-result.json'), uid,
+            min(time.monotonic() + 10, campaign_deadline_ns / 1e9),
+            'workload-host-network-result-timeout')
+        counters_after = read_sibling_drop_counters()
+        sender_after = workload.observe(handle)
+        actor_after = _role_probe_actor(sender_after, nonce, 'network-app')
+        target_after = _host_canary_control(listener, workload)
+    stable_actor = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePids',
+        'networkNamespaceIdentity', 'mountNamespaceIdentity',
+        'userNamespaceIdentity', 'executableDigest',
+        'noNewPrivileges', 'effectiveCapabilities')
+    stable_target = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+        'networkNamespace', 'sourceDigest', 'invocationId', 'controlDigest')
+    if (not isinstance(result, dict) or set(result) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
+            'startedMonotonicNs', 'finishedMonotonicNs',
+            'targetEndpointDigest', 'outcome'}
+            or result['schemaVersion'] != 1
+            or result['kind'] != 'pr315-candidate-network-probe'
+            or result['caseId'] != case_id or result['nonce'] != nonce
+            or result['pid'] != actor_before['namespacePids'][-1]
+            or result['uid'] != uid
+            or result['targetEndpointDigest'] != hashlib.sha256(
+                f'{address}:{port}'.encode()).hexdigest()
+            or result['outcome'] not in (
+                {'connected': False, 'errno': 'ETIMEDOUT'},
+                {'connected': False, 'errno': 'EHOSTUNREACH'},
+                {'connected': False, 'errno': 'ENETUNREACH'},
+                {'connected': False, 'errno': 'EACCES'})
+            or any(actor_before[key] != actor_after[key] for key in stable_actor)
+            or any(target_before[key] != target_after[key] for key in stable_target)
+            or sender_before['managerInvocation'] != sender_after['managerInvocation']
+            or sender_before['cgroupIdentity'] != sender_after['cgroupIdentity']
+            or sender_before['stateDigest'] != sender_after['stateDigest']
+            or not counters_before['observedMonotonicNs']
+                < trigger_ns < result['startedMonotonicNs']
+                < result['finishedMonotonicNs']
+                < counters_after['observedMonotonicNs']
+                < sender_after['observedMonotonicNs']
+                < target_after['observedMonotonicNs']):
+        raise ValueError('workload-host-network-observation-invalid')
+    _sibling_counter_pair(case_id, counters_before, counters_after,
+                          sender_before['networkNamespaceIdentity'])
+    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-host-network-denial',
+        'caseId': case_id, 'sourceDigest': source_digest,
+        'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+        'actorUid': uid, 'actorBefore': actor_before,
+        'actorAfter': actor_after,
+        'senderInvocationBefore': sender_before['managerInvocation'],
+        'senderInvocationAfter': sender_after['managerInvocation'],
+        'senderCgroupBefore': sender_before['cgroupIdentity'],
+        'senderCgroupAfter': sender_after['cgroupIdentity'],
+        'senderStateBefore': sender_before['stateDigest'],
+        'senderStateAfter': sender_after['stateDigest'],
+        'targetBefore': target_before, 'targetAfter': target_after,
+        'counterBefore': counters_before, 'counterAfter': counters_after,
+        'triggerMonotonicNs': trigger_ns,
+        'attackStartedNs': result['startedMonotonicNs'],
+        'attackFinishedNs': result['finishedMonotonicNs'],
+        'targetEndpointDigest': result['targetEndpointDigest'],
+        'kernelConnectResult': result['outcome'],
+        'counterName': SIBLING_DROP_COUNTERS[case_id]}
+    workload.write(workload.ROOT / 'authority/host-network-denial.json',
+                   audit, create=True)
+    return hashlib.sha256(json.dumps(audit, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()
+
+
 def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_ns):
     """Start one fixed candidate actor for the two real sibling network denials."""
     if time.monotonic_ns() >= campaign_deadline_ns:
@@ -778,6 +925,8 @@ def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_
         raise ValueError('workload-role-probe-pid-unbound')
     audits = probe_sibling_network(workload, handoff, nonce, source_digest,
                                    campaign_deadline_ns, actor_case=case_id)
+    audits['host-network'] = probe_host_network(
+        workload, handoff, nonce, source_digest, campaign_deadline_ns)
     after = workload.observe(handle)
     actor_after = _role_probe_actor(after, nonce, case_id)
     if (before['managerInvocation'] != after['managerInvocation']
@@ -4418,7 +4567,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 audits = probe_network_app_roles(workload, handoff,
                     role_probe_digest, campaign_deadline)
                 for selected_case, field in (('sibling-fcp', 'siblingFcp'),
-                                             ('sibling-http', 'siblingHttp')):
+                                             ('sibling-http', 'siblingHttp'),
+                                             ('host-network', 'hostNetwork')):
                     diagnostics[field] = {'status': 'captured',
                         'caseId': selected_case, 'auditDigest': audits[selected_case]}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
@@ -4428,7 +4578,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 code = _private_role_probe_code(error)
                 if code is not None:
                     diagnostic['code'] = code
-                for field in ('siblingFcp', 'siblingHttp'):
+                for field in ('siblingFcp', 'siblingHttp', 'hostNetwork'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and workload_group == 'resource-exhaustion':
             diagnostics['probeStart'] = {'schemaVersion': 1,

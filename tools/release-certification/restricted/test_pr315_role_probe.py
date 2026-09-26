@@ -179,7 +179,7 @@ class RoleProbeTest(unittest.TestCase):
             self.assertEqual('origin_mismatch', result['attack']['errorCode'])
             self.assertNotIn(token, json.dumps(result))
 
-    def test_network_app_mode_runs_only_fixed_sibling_connections(self):
+    def test_network_app_mode_runs_only_fixed_sibling_and_host_connections(self):
         with tempfile.TemporaryDirectory() as directory:
             ready = Path(directory) / 'ready.json'
             with patch.object(probe, 'NETWORK_APP_READY', ready), \
@@ -195,7 +195,8 @@ class RoleProbeTest(unittest.TestCase):
                     probe.main()
             self.assertTrue(ready.exists())
             self.assertEqual([call('sibling-fcp', 'a' * 64),
-                              call('sibling-http', 'a' * 64)], network.call_args_list)
+                              call('sibling-http', 'a' * 64),
+                              call('host-network', 'a' * 64)], network.call_args_list)
             read.assert_not_called()
             claims.assert_not_called()
 
@@ -394,6 +395,11 @@ class RoleProbeTest(unittest.TestCase):
         self.assertEqual({'connected': False, 'errno': 'ETIMEDOUT'}, result['outcome'])
         self.assertLess(result['startedMonotonicNs'], result['finishedMonotonicNs'])
         self.assertEqual('sibling-fcp', result['caseId'])
+        channel.connect.reset_mock()
+        with patch.object(probe.socket, 'socket', return_value=channel):
+            host = probe.attempt_network('host-network', 'a' * 64)
+        channel.connect.assert_called_once_with(('10.0.2.15', 19405))
+        self.assertEqual('host-network', host['caseId'])
         with self.assertRaisesRegex(ValueError, 'network-case-invalid'):
             probe.attempt_network('sibling-app', 'a' * 64)
 

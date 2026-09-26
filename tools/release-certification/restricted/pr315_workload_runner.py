@@ -3584,6 +3584,175 @@ def _sibling_network_attempt(case_id, report, result, fixture, terminal, source)
         return None
 
 
+def _host_network_attempt(report, result, fixture, terminal, source):
+    """Bind an actual role SYN and DROP to a live guest host-namespace canary."""
+    case_id = 'host-network'
+    try:
+        if (not group_prepared(report, result, terminal, 'network-app')
+                or fixture.get('schemaVersion') != 4
+                or terminal['hostNetworkAudit']['status'] != 'captured'):
+            return None
+        audit = terminal['hostNetworkAudit']['record']
+        sender = next(row for row in result['roleKernelRoster']['roles']
+                      if row['role'] == 'candidate-sender')
+        before, after = audit['actorBefore'], audit['actorAfter']
+        first, last = audit['targetBefore'], audit['targetAfter']
+        counter_before, counter_after = audit['counterBefore'], audit['counterAfter']
+        host = report['hostVerifiedIdentity']
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        counter_name = workload_network.SIBLING_DROP_COUNTERS[case_id]
+        policy = hashlib.sha256(workload_network.role_rules(
+            'candidate-sender').encode()).hexdigest()
+        endpoint = hashlib.sha256((workload_network.HOST_CANARY_ADDRESS + ':' +
+            str(workload_network.HOST_CANARY_PORT)).encode()).hexdigest()
+        source_digest = reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        source_probe = reference.sha256(source /
+            'tools/release-certification/restricted/pr315_role_probe.py')
+        target_group = fixtures.runtime.canonical_digest({
+            'role': 'guest-host-canary',
+            'identity': first['cgroupIdentity']})[7:]
+        target_invocation = hashlib.sha256(json.dumps({
+            'bootId': first['bootId'], 'pid': first['pid'],
+            'startTicks': first['startTicks'],
+            'cgroupIdentity': first['cgroupIdentity'],
+            'sourceDigest': source_digest},
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
+        stable_actor = ('hostPid', 'hostParentPid', 'startTicks',
+            'namespacePids', 'pidNamespace', 'networkNamespaceIdentity',
+            'mountNamespaceIdentity', 'userNamespaceIdentity',
+            'executableDigest', 'noNewPrivileges', 'effectiveCapabilities')
+        stable_target = ('pid', 'uid', 'startTicks', 'bootId',
+            'cgroupIdentity', 'networkNamespace', 'sourceDigest',
+            'invocationId', 'controlDigest')
+        expected_control = hashlib.sha256(
+            b'pr315-host-probe\0pr315-host-ready').hexdigest()
+        if (audit['schemaVersion'] != 1
+                or audit['kind'] != 'pr315-administrator-host-network-denial'
+                or audit['caseId'] != case_id
+                or audit['sourceDigest'] != source_probe
+                or audit['actorUid'] != sender['uid']
+                or any(before[key] != after[key] for key in stable_actor)
+                or before['hostPid'] <= 1 or before['startTicks'] <= 0
+                or len(before['namespacePids']) < 2
+                or before['networkNamespaceIdentity'][1] != sender['networkNamespace']
+                or before['noNewPrivileges'] is not True
+                or before['effectiveCapabilities'] != 0
+                or audit['senderInvocationBefore'] != sender['invocationId']
+                or audit['senderInvocationAfter'] != sender['invocationId']
+                or audit['senderCgroupBefore'] != audit['senderCgroupAfter']
+                or fixtures.runtime.canonical_digest({'role': 'candidate-sender',
+                    'identity': audit['senderCgroupBefore']})[7:] != sender['cgroupDigest']
+                or audit['senderStateBefore'] != audit['senderStateAfter']
+                or terminal['sentinel']['status'] != 'matched'
+                or terminal['sentinel']['observedDigest'] !=
+                    'sha256:' + audit['senderStateBefore']
+                or any(first[key] != last[key] for key in stable_target)
+                or first['pid'] <= 1 or first['uid'] != 0
+                or first['startTicks'] <= 0
+                or first['sourceDigest'] != source_digest
+                or first['invocationId'] != target_invocation
+                or first['bootId'].replace('-', '').lower() != sender['bootId']
+                or first['networkNamespace'] == sender['networkNamespace']
+                or first['controlDigest'] != expected_control
+                or target_group in {row['cgroupDigest']
+                                    for row in result['roleKernelRoster']['roles']}
+                or audit['targetEndpointDigest'] != endpoint
+                or audit['counterName'] != counter_name
+                or audit['kernelConnectResult'] not in (
+                    {'connected': False, 'errno': 'ETIMEDOUT'},
+                    {'connected': False, 'errno': 'EHOSTUNREACH'},
+                    {'connected': False, 'errno': 'ENETUNREACH'},
+                    {'connected': False, 'errno': 'EACCES'})
+                or host['helperSourceCommit'] != result['identity']['sourceCommit']):
+            return None
+        names = set(workload_network.SIBLING_DROP_COUNTERS.values())
+        for row in (counter_before, counter_after):
+            if (row['schemaVersion'] != 1
+                    or row['kind'] != 'pr315-fixed-sibling-drop-counters'
+                    or row['policyDigest'] != policy
+                    or row['roleNamespaceIdentity'] != before['networkNamespaceIdentity']
+                    or row['bootId'].replace('-', '').lower() != sender['bootId']
+                    or set(row['counters']) != names):
+                return None
+        old = counter_before['counters'][counter_name]
+        new = counter_after['counters'][counter_name]
+        if (not 1 <= new['packets'] - old['packets'] <= 8
+                or not 1 <= new['bytes'] - old['bytes'] <= 8192
+                or any(counter_before['counters'][name] !=
+                       counter_after['counters'][name]
+                       for name in names if name != counter_name)
+                or not first['observedMonotonicNs']
+                    < counter_before['observedMonotonicNs']
+                    < audit['triggerMonotonicNs']
+                    < audit['attackStartedNs'] < audit['attackFinishedNs']
+                    < counter_after['observedMonotonicNs']
+                    < last['observedMonotonicNs']
+                    < receipt['startedMonotonicNs']
+                or receipt['managerInvocation'] != sender['invocationId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0):
+            return None
+        identity = {key: host[key] for key in ('helperSourceCommit',
+            'helperSourceTree', 'bundleIdentity', 'testKitDigest',
+            'profileDigest', 'bootClosureDigest', 'preparedImageDigest',
+            'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = fixture['mailDigest'][7:]
+        attack_digest = hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        target = {'caseId': case_id,
+            'target': acceptance.CASES[case_id].target,
+            'role': None, 'invocationId': target_invocation,
+            'cgroupDigest': target_group, 'bootId': sender['bootId'],
+            'probeDigest': '', 'controlResponseDigest': expected_control}
+        witness = {'actorUid': sender['uid'], 'attackDigest': attack_digest,
+            'attackStartedNs': audit['attackStartedNs'],
+            'targetActiveBeforeNs': first['observedMonotonicNs'],
+            'targetActiveAfterNs': last['observedMonotonicNs'],
+            'controlResponseDigest': expected_control,
+            'denialSource': 'kernel', 'denialCode': 'policy-rejected',
+            'unrelatedStateBefore': audit['senderStateBefore'],
+            'unrelatedStateAfter': audit['senderStateAfter'],
+            'targetIdentity': target}
+        target['probeDigest'] = acceptance.payload_commitment(case_id, witness)
+        spec = acceptance.CASES[case_id]
+        observation = {'caseId': case_id, 'status': 'passed',
+            'actor': spec.actor, 'target': spec.target, 'outcome': spec.outcome,
+            'startedMonotonicNs': first['observedMonotonicNs'],
+            'finishedMonotonicNs': last['observedMonotonicNs'],
+            'witness': witness}
+        attempt = {'contract': acceptance.CONTRACT, 'identity': identity,
+            'declaredCases': [case_id], 'observations': [observation],
+            'guestStopped': True, 'attemptCompleted': True,
+            'principals': result['roleKernelRoster'],
+            'targets': {case_id: target}, 'caseCommitments': {},
+            'appProcess': None, 'restartContext': None}
+        sidecar = {'contract': campaign.CONTRACT, 'caseId': case_id,
+            'status': 'passed', 'actorEpoch': _v9_actor_epoch(before, sender),
+            'targetEpoch': {'kind': 'active-guest-host-namespace-canary',
+                'pid': first['pid'], 'uid': first['uid'],
+                'startTicks': first['startTicks'],
+                'bootId': sender['bootId'],
+                'testKitInvocation': target_invocation,
+                'cgroupDigest': target_group,
+                'networkNamespace': first['networkNamespace'],
+                'controlDigestBefore': first['controlDigest'],
+                'controlDigestAfter': last['controlDigest']},
+            'counterName': counter_name,
+            'counterBefore': counter_before,
+            'counterAfter': counter_after,
+            'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
+                                'finishedMonotonicNs': audit['attackFinishedNs']},
+            'attackDigest': attack_digest,
+            'hostVerifiedIdentity': host, 'guestStopped': True,
+            'stopReceiptObservedNs': receipt['observedMonotonicNs']}
+        return identity, attempt, sidecar
+    except (AttributeError, KeyError, TypeError, ValueError, IndexError,
+            StopIteration, OSError):
+        return None
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
@@ -4003,6 +4172,23 @@ def run(args):
                         {'attempt': case_attempt, 'assessment': checked_cases})
                     native_runner._save(output / (case_id + '-v9-evidence.private.json'), sidecar)
                     statuses[case_id] = 'passed'
+            if (network_app_ready and isinstance(terminal, dict)
+                    and terminal.get('hostNetworkAudit', {}).get('status') == 'captured'):
+                denial = _host_network_attempt(
+                    report, value, fixture, terminal, args.source)
+                if denial is None:
+                    raise ValueError('workload-host-network-verification-failed')
+                identity, case_attempt, sidecar = denial
+                checked_cases = acceptance.verify_attempts(identity, [case_attempt])
+                if (checked_cases['recordContractValid'] is not True
+                        or next(row['status'] for row in checked_cases['cases']
+                                if row['caseId'] == 'host-network') != 'passed'
+                        or checked_cases['installedWorkloadAcceptanceSatisfied'] is not False):
+                    raise ValueError('workload-host-network-case-invalid')
+                native_runner._save(output / 'host-network-v8-evidence.private.json',
+                    {'attempt': case_attempt, 'assessment': checked_cases})
+                native_runner._save(output / 'host-network-v9-evidence.private.json', sidecar)
+                statuses['host-network'] = 'passed'
             if (authority_ready and isinstance(terminal, dict)
                     and terminal.get('resolverAuthorityAudit', {}).get('status') == 'captured'):
                 denial = _resolver_authority_attempt(

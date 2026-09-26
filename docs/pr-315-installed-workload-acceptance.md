@@ -2739,6 +2739,28 @@ a preparation premise. The selected public inventory already filtered
 other groups' statuses. The Linux PR-31x suite still passed 418 tests with
 seven environment skips after this correction. No new installed run followed.
 
+The prospective v29 `host-network` path adds an exact route and named DROP
+counter for a candidate-role SYN to `10.0.2.15:19405`, the copied QEMU
+user-network guest's default host-namespace address under the
+[QEMU user-network defaults](https://www.qemu.org/docs/master/system/devices/net.html).
+The root test kit
+briefly binds that port in the guest's host network namespace and proves
+the listener with fixed request/response controls before and after the role
+operation. The host verifier binds the candidate role's process epoch, the
+root canary's PID/start time, boot and network namespace, its independent
+cgroup, the named filter delta, unchanged other network counters and final
+stop receipt. The canary is guest-local; it does not claim access to CT102
+or the PVE host network. The route does not add an accept rule. The Linux
+PR-31x focused set passed 420 tests with eight environment skips, the
+protected network rules passed 28, the installed test-kit driver passed
+60 with six environment skips, and a separate disposable root container
+passed the real canary socket control. No v29 TCG installed result exists.
+The broader protected discovery ran 171 tests with 21 skips and five
+`restricted_workload_mark._self_epoch` errors in this Docker profile's
+`/proc` emulation; the owning protected workload file passed 69 tests with
+one skip and the AppHost file passed 27 tests. The broader result is not a
+green gate.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3080,7 +3102,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, five network/AppHost emitters including synthetic provider and sibling AppHost, the bounded `resource-exhaustion` emitter, and seven standalone lifecycle groups under v28 selected-group preparation. The remaining three denial emitters (`host-network`, `stale-handle`, `stale-pid-uid`), four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: the prospective branch has all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and seven standalone lifecycle groups under v29 selected-group preparation. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), four lifecycle emitters and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

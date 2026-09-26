@@ -24,10 +24,11 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v28',
+    return {'revision': 'workload-launcher-policy-v29',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
-            'networkDenialCounters': 'fixed-sibling-fcp-http-app-drop-v2',
+            'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
+            'hostNetworkCanary': 'fixed-guest-host-namespace-listener-v1',
             'resolverAuthorityProbe': 'fixed-installed-resolver-canary-v1',
             'hostileOriginProbe': 'fixed-candidate-browser-session-origin-denial-v1',
             'providerAuthorityProbe': 'fixed-signed-apphost-private-provider-canary-v1',

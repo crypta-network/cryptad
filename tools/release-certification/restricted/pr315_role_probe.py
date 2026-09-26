@@ -42,6 +42,7 @@ SETSID_CHILD_READY = Path('/node/tmp/pr315-setsid-double-fork-child.json')
 SIBLING_ADDRESS = '10.231.0.2'
 NETWORK_CASES = {'sibling-fcp': (19401, 'pr315-sibling-fcp'),
                  'sibling-http': (19402, 'pr315-sibling-http')}
+HOST_CASE = ('host-network', '10.0.2.15', 19405, 'pr315-host-network')
 OUTPUT_CANARY = Path('/node/tmp/pr315-output-target-canary')
 OUTPUT_SYMLINK = Path('/node/tmp/pr315-output-symlink-artifact')
 OUTPUT_SYMLINK_READY = Path('/node/tmp/pr315-output-symlink-ready.json')
@@ -87,14 +88,15 @@ def _publish_record(path: Path, value: dict) -> None:
 
 def attempt_network(case_id: str, nonce: str) -> dict:
     """Emit one finite TCP SYN from the actual candidate role network namespace."""
-    if case_id not in NETWORK_CASES:
+    if case_id not in NETWORK_CASES and case_id != HOST_CASE[0]:
         raise ValueError('pr315-network-case-invalid')
-    port, _prefix = NETWORK_CASES[case_id]
+    address, port = ((SIBLING_ADDRESS, NETWORK_CASES[case_id][0])
+                     if case_id in NETWORK_CASES else (HOST_CASE[1], HOST_CASE[2]))
     started = time.monotonic_ns()
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as channel:
             channel.settimeout(2)
-            channel.connect((SIBLING_ADDRESS, port))
+            channel.connect((address, port))
     except TimeoutError:
         outcome = {'connected': False, 'errno': 'ETIMEDOUT'}
     except OSError as error:
@@ -107,14 +109,15 @@ def attempt_network(case_id: str, nonce: str) -> dict:
             'uid': os.getuid(), 'gid': os.getgid(),
             'startedMonotonicNs': started, 'finishedMonotonicNs': time.monotonic_ns(),
             'targetEndpointDigest': hashlib.sha256(
-                f'{SIBLING_ADDRESS}:{port}'.encode()).hexdigest(),
+                f'{address}:{port}'.encode()).hexdigest(),
             'outcome': outcome}
 
 
 def wait_network_trigger(case_id: str, nonce: str) -> Path:
-    if case_id not in NETWORK_CASES:
+    if case_id not in NETWORK_CASES and case_id != HOST_CASE[0]:
         raise ValueError('pr315-network-case-invalid')
-    _port, prefix = NETWORK_CASES[case_id]
+    prefix = (NETWORK_CASES[case_id][1] if case_id in NETWORK_CASES
+              else HOST_CASE[3])
     trigger = Path('/node/tmp') / (prefix + '-trigger.json')
     until = time.monotonic() + 60
     while not trigger.exists():
@@ -557,6 +560,7 @@ def main() -> None:
     if case_id == 'network-app':
         for network_case in NETWORK_CASES:
             publish_network_result(network_case, sys.argv[1])
+        publish_network_result(HOST_CASE[0], sys.argv[1])
         while True:
             time.sleep(1)
     if case_id == 'setsid-double-fork':

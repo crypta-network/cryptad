@@ -41,6 +41,26 @@ class VolatilePublicationTest(unittest.TestCase):
 
 
 class SiblingNetworkCounterTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root host namespace')
+    def test_host_canary_control_proves_active_listener_and_root_epoch(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(2)
+            port = listener.getsockname()[1]
+            with patch.object(network, 'HOST_CANARY_ADDRESS', '127.0.0.1'), \
+                    patch.object(network, 'HOST_CANARY_PORT', port):
+                selected = SimpleNamespace(boot=lambda: 'a' * 32)
+                first = driver._host_canary_control(listener, selected)
+                second = driver._host_canary_control(listener, selected)
+        self.assertEqual(0, first['uid'])
+        self.assertEqual(os.getpid(), first['pid'])
+        self.assertEqual(first['invocationId'], second['invocationId'])
+        self.assertLess(first['observedMonotonicNs'], second['observedMonotonicNs'])
+        self.assertEqual(hashlib.sha256(
+            b'pr315-host-probe\0pr315-host-ready').hexdigest(),
+            first['controlDigest'])
+
     def test_one_sibling_drop_cannot_be_supplied_by_other_case_or_changed_namespace(self):
         before = {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
                   'policyDigest': hashlib.sha256(

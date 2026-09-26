@@ -7,7 +7,9 @@ import io
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -1208,6 +1210,110 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual('passed', next(row['status'] for row in
                 runner.acceptance.verify_attempts(identity, [attempt])['cases']
                 if row['caseId'] == 'sibling-fcp'))
+
+    def test_host_network_requires_live_host_listener_and_its_own_drop_counter(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        identity = {'bootId': boot, 'pid': 500, 'startTicks': 33,
+            'cgroupIdentity': [1, 50], 'sourceDigest': driver_digest}
+        invocation = hashlib.sha256(json.dumps(identity, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()[:32]
+        control = hashlib.sha256(b'pr315-host-probe\0pr315-host-ready').hexdigest()
+        target = {'pid': 500, 'uid': 0, 'startTicks': 33,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'networkNamespace': 3000, 'sourceDigest': driver_digest,
+            'invocationId': invocation, 'controlDigest': control,
+            'observedMonotonicNs': 40}
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+            'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+            'networkNamespaceIdentity': [1, 200],
+            'mountNamespaceIdentity': [1, 300],
+            'userNamespaceIdentity': [1, 400],
+            'executableDigest': 'sha256:' + 'a' * 64,
+            'rssBytes': 1024, 'processThreads': 1,
+            'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counter = {'schemaVersion': 1,
+            'kind': 'pr315-fixed-sibling-drop-counters',
+            'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                'candidate-sender').encode()).hexdigest(),
+            'bootId': boot, 'roleNamespaceIdentity': [1, 200],
+            'observedMonotonicNs': 60,
+            'counters': {name: {'packets': 0, 'bytes': 0}
+                         for name in names.values()}}
+        after_counter = copy.deepcopy(counter)
+        after_counter['observedMonotonicNs'] = 170
+        after_counter['counters'][names['host-network']] = {
+            'packets': 1, 'bytes': 60}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-host-network-denial',
+            'caseId': 'host-network',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+            'actorBefore': actor, 'actorAfter': dict(actor),
+            'senderInvocationBefore': sender['invocationId'],
+            'senderInvocationAfter': sender['invocationId'],
+            'senderCgroupBefore': [1, 99], 'senderCgroupAfter': [1, 99],
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=180),
+            'counterBefore': counter, 'counterAfter': after_counter,
+            'triggerMonotonicNs': 70, 'attackStartedNs': 80,
+            'attackFinishedNs': 90,
+            'targetEndpointDigest': hashlib.sha256(b'10.0.2.15:19405').hexdigest(),
+            'kernelConnectResult': {'connected': False, 'errno': 'ETIMEDOUT'},
+            'counterName': names['host-network']}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=300, observedMonotonicNs=310)
+        terminal['hostNetworkAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            selected = runner._host_network_attempt(
+                report, result, fixture, terminal, source)
+        self.assertIsNotNone(selected)
+        identity_record, attempt, sidecar = selected
+        checked = runner.acceptance.verify_attempts(identity_record, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'host-network'))
+        self.assertEqual(names['host-network'], sidecar['counterName'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'authority').mkdir()
+                (root / 'authority/host-network-denial.json').write_text(
+                    json.dumps(audit))
+                retained = evidence._sibling_network_audit(
+                    root, time.monotonic() + 3, 'host-network')
+                self.assertEqual('captured', retained['status'])
+        for mutate in (
+                lambda row: row['hostNetworkAudit']['record']['targetAfter'].update(
+                    networkNamespace=200),
+                lambda row: row['hostNetworkAudit']['record']['counterAfter']
+                    ['counters'][names['host-network']].update(packets=0),
+                lambda row: row['hostNetworkAudit']['record']['counterAfter']
+                    ['counters'][names['sibling-fcp']].update(packets=1, bytes=60),
+                lambda row: row['hostNetworkAudit']['record']['targetAfter'].update(
+                    invocationId='0' * 32),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            with patch.object(runner, 'group_prepared', return_value=True):
+                self.assertIsNone(runner._host_network_attempt(
+                    report, result, fixture, changed, source))
 
     def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
         roster = synthetic_role_kernel_roster()
