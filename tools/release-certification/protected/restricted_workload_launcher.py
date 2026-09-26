@@ -27,7 +27,7 @@ def launcher_policy():
     Its initial handshake needs a separate fixed allowance on the selected TCG guest;
     candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v30',
+    return {'revision': 'workload-launcher-policy-v31',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -38,6 +38,7 @@ def launcher_policy():
             'siblingAppProbe': 'fixed-signed-apphost-source-port-drop-v1',
             'resourceExhaustionProbe': 'fixed-signed-apphost-pids-barrier-v1',
             'partialLaunchFault': 'fixed-previous-after-start-marker-before-daemon-v1',
+            'stuckOutputProbe': 'fixed-role-fifo-held-writer-bounded-collector-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
             'privateVolatileMaxBytes': 128 * 1024,
@@ -74,7 +75,7 @@ def _trusted_probe_request(spec):
                                          'setsid-double-fork',
                                          'output-symlink',
                                          'output-fifo', 'output-hardlink', 'output-flood',
-                                         'output-replacement')
+                                         'output-replacement', 'stuck-output')
             or request['bootId'] != spec['bootId'] or request['javaDigest'] != spec['javaDigest']
             or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None
             or request['sourceDigest'] != hashlib.sha256(PROBE_SOURCE.read_bytes()).hexdigest()):

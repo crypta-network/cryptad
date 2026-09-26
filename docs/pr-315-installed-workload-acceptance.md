@@ -2828,6 +2828,22 @@ and the interop workload file passed 59 with nine skips. A disposable root
 check passed the launch request and release marker. This is a source-built
 candidate path; it has no installed TCG result yet.
 
+The prospective `stuck-output` group uses a fixed sender role probe to
+fork an owned FIFO writer and keep its write descriptor open. The root test
+kit invokes the installed bounded subprocess collector on that exact FIFO,
+records its real child PID/start epoch, requires the original five-second
+output deadline, and proves that the role writer remains alive after the
+collector exits. A second observer process then requests sender stop through
+the installed controller socket; the root test kit verifies the matching
+role receipt and continued FCP responses from the other three roles. The
+host emits a v10 record only after all four role stops and the guest stop
+are independently observed. A disposable Linux check exercised the held
+FIFO, real collector timeout and pidfd completion. The PR-31x Linux offline
+set passed 433 tests with ten environment skips; the protected bounded
+collector passed 11, and the protected workload file passed 70 with two
+skips. The measured role probe remains within its fixed 32-KiB source
+limit. The installed TCG case has not executed.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests
@@ -3169,7 +3185,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and eight standalone lifecycle groups including `partial-launch`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), three lifecycle emitters (`late-child`, `stuck-output`, `cleanup-race`), semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
+| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and nine standalone lifecycle groups including `partial-launch` and `stuck-output`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), two lifecycle emitters (`late-child`, `cleanup-race`), semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
 | `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
 | `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |

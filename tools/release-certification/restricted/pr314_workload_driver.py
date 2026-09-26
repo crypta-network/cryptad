@@ -1638,6 +1638,234 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
         separators=(',', ':')).encode()).hexdigest()
 
 
+def _stuck_collector_epoch(pid):
+    """Bind only the child just started by the installed bounded collector."""
+    proc = Path('/proc') / str(pid)
+    status = dict(line.split(':', 1) for line in
+                  (proc / 'status').read_text().splitlines() if ':' in line)
+    first = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+    executable = (proc / 'exe').open('rb')
+    try:
+        digest = hashlib.sha256()
+        count = 0
+        for block in iter(lambda: executable.read(1024 * 1024), b''):
+            count += len(block)
+            if count > 64 * 1024 * 1024:
+                raise ValueError('workload-stuck-collector-executable-limit')
+            digest.update(block)
+    finally:
+        executable.close()
+    after = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+    if (set(map(int, status['Uid'].split())) != {0}
+            or first[19] != after[19] or int(first[19]) <= 0
+            or os.getsid(pid) != pid):
+        raise ValueError('workload-stuck-collector-epoch-invalid')
+    group = (proc / 'cgroup').read_text().strip()
+    if not group.startswith('0::/') or '..' in group.split('/'):
+        raise ValueError('workload-stuck-collector-cgroup-invalid')
+    info = (Path('/sys/fs/cgroup') / group[4:].lstrip('/')).stat()
+    return {'pid': pid, 'uid': 0, 'startTicks': int(first[19]),
+        'session': pid, 'cgroupIdentity': [info.st_dev, info.st_ino],
+        'executableDigest': digest.hexdigest(),
+        'observedMonotonicNs': time.monotonic_ns()}
+
+
+def _installed_observer_stop(handle, expected_uid, deadline_ns):
+    """Ask the real controller socket to stop its exact selected role handle."""
+    from cross_version_workload import WorkloadClient
+    observer = pwd.getpwnam('cryptad-soak')
+    if observer.pw_uid != expected_uid or expected_uid <= 0:
+        raise ValueError('workload-stuck-output-observer-invalid')
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        pid = os.fork()
+    except BaseException:
+        parent.close()
+        child.close()
+        raise
+    if pid == 0:
+        parent.close()
+        try:
+            os.setgroups([])
+            os.setgid(observer.pw_gid)
+            os.setuid(observer.pw_uid)
+            os.environ.clear()
+            os.environ.update(ENV)
+            result = WorkloadClient().request('stop', handle)
+            child.sendall(json.dumps({key: result[key] for key in
+                ('state', 'generation', 'managerInvocation', 'bootId')},
+                sort_keys=True, separators=(',', ':')).encode())
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    child.close()
+    try:
+        epoch = _positive_observer_epoch(pid, expected_uid, deadline_ns)
+        raw, status = collect_child(parent, pid,
+            min(time.monotonic() + 50, deadline_ns / 1e9 + 100))
+    except BaseException:
+        try:
+            stop_child(pid)
+        except ChildProcessError:
+            pass
+        raise
+    finally:
+        parent.close()
+    if status != 0 or not 0 < len(raw) <= 512:
+        raise ValueError('workload-stuck-output-controller-stop-invalid')
+    selected = json.loads(raw)
+    if (not isinstance(selected, dict) or set(selected) != {
+            'state', 'generation', 'managerInvocation', 'bootId'}
+            or selected['state'] != 'quiescent'):
+        raise ValueError('workload-stuck-output-controller-stop-invalid')
+    return selected, epoch
+
+
+def probe_stuck_output(workload, handoff, result, role_probe_digest,
+                       campaign_deadline_ns):
+    """Time out the installed pipe collector while an owned role writer lives."""
+    import pr315_role_probe as role_probe
+    from bounded_process import run as bounded_run
+
+    if (result.get('groupPreparation') != 'stuck-output'
+            or result.get('topologyRoles') != 4
+            or time.monotonic_ns() >= campaign_deadline_ns):
+        raise ValueError('workload-stuck-output-preparation-invalid')
+    administrator_before = _administrator_collector_epoch('stuck-output')
+    role = 'candidate-sender'
+    handle = handoff['handles'][role]
+    account = workload.account(role)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    nonce = secrets.token_hex(32)
+    workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
+        {'schemaVersion': 1, 'caseId': 'stuck-output', 'nonce': nonce,
+         'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
+         'sourceDigest': role_probe_digest}, create=True, mode=0o444)
+    state = workload.ROOT / 'state/candidate-sender/tmp'
+    ready = _wait_output_record(state / role_probe.STUCK_OUTPUT_READY.name,
+        account.pw_uid, min(time.monotonic() + 25, campaign_deadline_ns / 1e9),
+        'workload-stuck-output-role-ready-timeout')
+    child = _wait_output_record(state / role_probe.STUCK_OUTPUT_CHILD.name,
+        account.pw_uid, min(time.monotonic() + 25, campaign_deadline_ns / 1e9),
+        'workload-stuck-output-child-ready-timeout')
+    before = workload.observe(handle)
+    actor = _role_probe_actor(before, nonce, 'stuck-output')
+    writer = next((row for row in before['processes']
+                   if row['namespacePids'][-1] == child['writerPid']), None)
+    fifo = state / role_probe.STUCK_OUTPUT_FIFO.name
+    info = fifo.lstat()
+    if (not isinstance(ready, dict) or ready.get('nonce') != nonce
+            or ready.get('pid') != actor['namespacePids'][-1]
+            or not isinstance(child, dict)
+            or child.get('kind') != 'pr315-candidate-stuck-output-child'
+            or child.get('caseId') != 'stuck-output'
+            or child.get('nonce') != nonce
+            or child.get('parentPid') != ready['pid']
+            or child.get('uid') != account.pw_uid
+            or writer is None or writer['hostParentPid'] != actor['hostPid']
+            or writer['startTicks'] < actor['startTicks']
+            or not stat.S_ISFIFO(info.st_mode) or info.st_uid != account.pw_uid
+            or info.st_mode & 0o777 != 0o600 or info.st_nlink != 1
+            or child.get('fifoIdentity') != [info.st_dev, info.st_ino]):
+        raise ValueError('workload-stuck-output-writer-invalid')
+    siblings_before = _resource_sibling_controls(workload, handoff)
+    writer_fd = os.pidfd_open(writer['hostPid'])
+    collector_fd = None
+    collector = None
+    output = []
+    started_ns = time.monotonic_ns()
+    def on_start(pid):
+        nonlocal collector_fd, collector
+        collector_fd = os.pidfd_open(pid)
+        collector = _stuck_collector_epoch(pid)
+
+    def retain(stdout, stderr):
+        output.append((stdout, stderr))
+
+    try:
+        if select.select([writer_fd], [], [], 0)[0]:
+            raise ValueError('workload-stuck-output-writer-exited')
+        try:
+            bounded_run(['/usr/bin/cat', str(fifo)], environment=ENV,
+                timeout=5, output_limit=4096, diagnostic_sink=retain,
+                start_observer=on_start)
+        except ValueError as error:
+            if str(error) != 'bounded_process_deadline_exceeded':
+                raise
+        else:
+            raise ValueError('workload-stuck-output-collector-finished')
+        finished_ns = time.monotonic_ns()
+        if (collector is None or collector_fd is None
+                or not select.select([collector_fd], [], [], 0)[0]
+                or select.select([writer_fd], [], [], 0)[0]
+                or output != [(b'pr315-stuck-output\n', b'')]
+                or not started_ns < collector['observedMonotonicNs']
+                    < started_ns + 5 * 10**9 < finished_ns
+                or finished_ns - started_ns > 16 * 10**9):
+            raise ValueError('workload-stuck-output-collector-proof-invalid')
+        after = workload.observe(handle)
+        writer_after = next((row for row in after['processes']
+            if row['hostPid'] == writer['hostPid']), None)
+        if (writer_after is None
+                or writer_after['startTicks'] != writer['startTicks']
+                or before['managerInvocation'] != after['managerInvocation']
+                or before['cgroupIdentity'] != after['cgroupIdentity']
+                or before['stateDigest'] != after['stateDigest']):
+            raise ValueError('workload-stuck-output-role-changed')
+        stopped, stop_actor = _installed_observer_stop(handle,
+            pwd.getpwnam('cryptad-soak').pw_uid, campaign_deadline_ns)
+        current = workload.read(workload.ROOT / 'authority/candidate-sender.json')
+        receipt = workload.stop_receipt(role, current)
+        if (stopped['state'] != 'quiescent'
+                or stopped['managerInvocation'] != receipt['managerInvocation']
+                or stopped['bootId'] != receipt['bootId']
+                or receipt['membership'] != 'only-stop-helper'
+                or receipt['descendantCgroups'] != 0
+                or not select.select([writer_fd], [], [], 0)[0]):
+            raise ValueError('workload-stuck-output-writer-not-stopped')
+        siblings_after = _resource_sibling_controls(workload, handoff)
+        if any(first['managerInvocation'] != last['managerInvocation']
+               or first['stateDigest'] != last['stateDigest']
+               for first, last in zip(siblings_before, siblings_after)):
+            raise ValueError('workload-stuck-output-sibling-changed')
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stuck-output',
+            'caseId': 'stuck-output',
+            'administratorBefore': administrator_before,
+            'administratorAfter': _administrator_collector_epoch('stuck-output'),
+            'sourceDigest': role_probe_digest,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'roleBefore': {'managerInvocation': before['managerInvocation'],
+                'bootId': before['bootId'],
+                'cgroupIdentity': before['cgroupIdentity'],
+                'stateDigest': before['stateDigest']},
+            'actor': actor,
+            'writer': {'hostPid': writer['hostPid'],
+                'startTicks': writer['startTicks'],
+                'hostParentPid': writer['hostParentPid'],
+                'namespacePids': writer['namespacePids'],
+                'executableDigest': writer['executableDigest']},
+            'fifoIdentity': [info.st_dev, info.st_ino],
+            'collector': collector,
+            'collectorOutputDigest': hashlib.sha256(output[0][0]).hexdigest(),
+            'collectorStartedNs': started_ns,
+            'collectorFinishedNs': finished_ns,
+            'collectorDenial': 'bounded_process_deadline_exceeded',
+            'observerStopActor': stop_actor,
+            'observerStopResponse': stopped,
+            'senderStopReceipt': receipt,
+            'siblingsBefore': siblings_before,
+            'siblingsAfter': siblings_after,
+            'terminalObservedNs': time.monotonic_ns()}
+        workload.write(workload.ROOT / 'authority/stuck-output.json', audit, create=True)
+        return hashlib.sha256(json.dumps(audit, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+    finally:
+        os.close(writer_fd)
+        if collector_fd is not None:
+            os.close(collector_fd)
+
+
 def _setsid_process_epoch(pid):
     fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
     if (len(fields) <= 19 or not fields[3].isdecimal()
@@ -1822,7 +2050,7 @@ def _administrator_collector_epoch(case_id):
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
                           'observer-death', 'lost-start-response',
-                          'partial-launch')
+                          'partial-launch', 'stuck-output')
                          else 'output-collector'), 'identity': identity})[7:],
             'invocationId': invocation, 'sourceDigest': source,
             'observedMonotonicNs': time.monotonic_ns()}
@@ -4178,7 +4406,8 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('lost-start-response', 'partial-launch', 'resource-exhaustion',
+        if workload_group in ('lost-start-response', 'partial-launch',
+                              'stuck-output', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4485,7 +4714,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
         raise ValueError('workload-lifecycle-scenario-invalid')
     if workload_group not in (None, 'positive', 'lost-start-response',
-                             'partial-launch',
+                             'partial-launch', 'stuck-output',
                              'resource-exhaustion',
                              'output-symlink', 'output-fifo',
                              'output-hardlink', 'output-flood', 'output-replacement',
@@ -4665,7 +4894,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if (not startup_measurement and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
-        if (workload_group in ('lost-start-response', 'partial-launch', 'resource-exhaustion',
+        if (workload_group in ('lost-start-response', 'partial-launch',
+                              'stuck-output', 'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
                               'output-flood', 'output-replacement',
                               'role-readiness-diagnostic', 'role-boundary',
@@ -4885,6 +5115,19 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['partialLaunch'] = {
                     'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+        if not startup_measurement and workload_group == 'stuck-output':
+            diagnostics['probeStart'] = {'schemaVersion': 1,
+                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
+                'startedMonotonicNs': time.monotonic_ns()}
+            try:
+                digest = probe_stuck_output(workload, handoff, result,
+                    role_probe_digest, campaign_deadline)
+                diagnostics['stuckOutput'] = {'status': 'captured',
+                    'caseId': 'stuck-output', 'auditDigest': digest}
+            except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                    subprocess.SubprocessError) as error:
+                diagnostics['stuckOutput'] = {'status': 'unavailable-or-unsafe',
+                    'exceptionType': type(error).__name__[:128]}
         if not startup_measurement and workload_group in (
                 'output-symlink', 'output-fifo', 'output-hardlink',
                 'output-flood', 'output-replacement'):
@@ -5054,7 +5297,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
-                                                    'partial-launch',
+                                                    'partial-launch', 'stuck-output',
                                                     'resource-exhaustion',
                                                     'output-symlink', 'output-fifo',
                                                     'output-hardlink', 'output-flood',

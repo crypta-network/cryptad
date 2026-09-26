@@ -2,6 +2,7 @@
 import http.server
 import json
 import os
+import signal
 import stat
 from pathlib import Path
 import sys
@@ -402,6 +403,34 @@ class RoleProbeTest(unittest.TestCase):
         self.assertEqual('host-network', host['caseId'])
         with self.assertRaisesRegex(ValueError, 'network-case-invalid'):
             probe.attempt_network('sibling-app', 'a' * 64)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux FIFO/fork required')
+    def test_stuck_output_writer_holds_actual_fifo_open_until_owned_stop(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fifo = Path(directory) / 'held.fifo'
+            child_record = Path(directory) / 'child.json'
+            pid = None
+            with patch.object(probe, 'STUCK_OUTPUT_FIFO', fifo), \
+                    patch.object(probe, 'STUCK_OUTPUT_CHILD', child_record):
+                probe.publish_stuck_output('a' * 64)
+                pid = json.loads(child_record.read_text())['writerPid']
+                descriptor = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+                try:
+                    until = time.monotonic() + 3
+                    body = b''
+                    while time.monotonic() < until and not body:
+                        try:
+                            body = os.read(descriptor, 64)
+                        except BlockingIOError:
+                            time.sleep(.01)
+                    self.assertEqual(b'pr315-stuck-output\n', body)
+                    os.kill(pid, 0)
+                    with self.assertRaises(BlockingIOError):
+                        os.read(descriptor, 1)
+                finally:
+                    os.close(descriptor)
+                    os.kill(pid, signal.SIGKILL)
+                    os.waitpid(pid, 0)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux proc namespaces required')
     def test_composed_role_record_fits_fixed_guest_capture_limit(self):

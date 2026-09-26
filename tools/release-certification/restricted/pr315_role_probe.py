@@ -1,9 +1,5 @@
 #!/usr/bin/python3
-"""Fixed candidate-role process used by the measured PR-315 test kit.
-
-The administrator independently observes this process and its active target.
-This child cannot authorize a case or supply its own trusted identity.
-"""
+"""Measured candidate-role probe; only root observations can authorize a case."""
 import errno
 import hashlib
 import http.client
@@ -68,6 +64,10 @@ OUTPUT_REPLACEMENT_RESULT = Path('/node/tmp/pr315-output-replacement-result.json
 OUTPUT_REPLACEMENT_SWAP_TRIGGER = Path('/node/tmp/pr315-output-replacement-swap-trigger.json')
 OUTPUT_REPLACEMENT_SWAP_RESULT = Path('/node/tmp/pr315-output-replacement-swap-result.json')
 OUTPUT_REPLACEMENT_NEXT = Path('/node/tmp/pr315-output-replacement-next')
+STUCK_OUTPUT_FIFO = Path('/node/tmp/pr315-stuck-output-fifo')
+STUCK_OUTPUT_READY = Path('/node/tmp/pr315-stuck-output-ready.json')
+STUCK_OUTPUT_CHILD = Path('/node/tmp/pr315-stuck-output-child.json')
+STUCK_OUTPUT_HOLD_SECONDS = 180
 
 
 def _publish_record(path: Path, value: dict) -> None:
@@ -503,6 +503,41 @@ def publish_setsid_double_fork(nonce: str) -> None:
          'finishedMonotonicNs': time.monotonic_ns()})
 
 
+def publish_stuck_output(nonce: str) -> None:
+    """Keep one role-owned FIFO writer alive across the bounded collector deadline."""
+    if os.path.lexists(STUCK_OUTPUT_FIFO):
+        raise ValueError('pr315-stuck-output-artifact-reused')
+    os.mkfifo(STUCK_OUTPUT_FIFO, 0o600)
+    info = STUCK_OUTPUT_FIFO.lstat()
+    if (not stat.S_ISFIFO(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_mode & 0o777 != 0o600 or info.st_nlink != 1):
+        raise ValueError('pr315-stuck-output-fifo-invalid')
+    child = os.fork()
+    if child == 0:
+        try:
+            descriptor = os.open(STUCK_OUTPUT_FIFO,
+                os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                payload = b'pr315-stuck-output\n'
+                if os.write(descriptor, payload) != len(payload):
+                    raise ValueError('pr315-stuck-output-write-failed')
+                until = time.monotonic() + STUCK_OUTPUT_HOLD_SECONDS
+                while time.monotonic() < until:
+                    time.sleep(.1)
+            finally:
+                os.close(descriptor)
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    _publish_record(STUCK_OUTPUT_CHILD,
+        {'schemaVersion': 1, 'kind': 'pr315-candidate-stuck-output-child',
+         'caseId': 'stuck-output', 'nonce': nonce,
+         'parentPid': os.getpid(), 'writerPid': child,
+         'uid': os.getuid(), 'gid': os.getgid(),
+         'fifoIdentity': [info.st_dev, info.st_ino],
+         'observedMonotonicNs': time.monotonic_ns()})
+
+
 def main() -> None:
     if (len(sys.argv) != 3 or len(sys.argv[1]) != 64
             or any(value not in '0123456789abcdef' for value in sys.argv[1])
@@ -511,7 +546,7 @@ def main() -> None:
                                    'setsid-double-fork', 'setsid-child',
                                    'output-symlink',
                                    'output-fifo', 'output-hardlink', 'output-flood',
-                                   'output-replacement')
+                                   'output-replacement', 'stuck-output')
             or not sys.flags.isolated or not sys.flags.no_site):
         raise ValueError('pr315-role-probe-fixed-invocation-required')
     case_id = sys.argv[2]
@@ -535,8 +570,13 @@ def main() -> None:
                   OUTPUT_HARDLINK_READY if case_id == 'output-hardlink' else
                   OUTPUT_FLOOD_READY if case_id == 'output-flood' else
                   OUTPUT_REPLACEMENT_READY if case_id == 'output-replacement' else
+                  STUCK_OUTPUT_READY if case_id == 'stuck-output' else
                   OUTPUT_SYMLINK_READY)
     _publish_record(ready_path, ready)
+    if case_id == 'stuck-output':
+        publish_stuck_output(sys.argv[1])
+        while True:
+            time.sleep(1)
     if case_id == 'output-symlink':
         publish_output_symlink(sys.argv[1])
         while True:

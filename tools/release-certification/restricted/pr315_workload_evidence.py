@@ -1337,6 +1337,75 @@ def _partial_launch_audit(root, deadline):
         return {'status': 'unavailable-or-unsafe'}
 
 
+def _stuck_output_audit(root, deadline):
+    """Retain the real role writer, bounded collector timeout and stop receipt."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {'status': 'capture-deadline'}
+    try:
+        raw = snapshot.read_file(root / 'authority',
+            'stuck-output.json', maximum=32768, timeout=min(2, remaining))
+        value = json.loads(raw)
+        fields = {'schemaVersion', 'kind', 'caseId', 'sourceDigest',
+            'administratorBefore', 'administratorAfter',
+            'nonceDigest', 'roleBefore', 'actor', 'writer', 'fifoIdentity',
+            'collector', 'collectorOutputDigest', 'collectorStartedNs',
+            'collectorFinishedNs', 'collectorDenial', 'observerStopActor',
+            'observerStopResponse', 'senderStopReceipt',
+            'siblingsBefore', 'siblingsAfter', 'terminalObservedNs'}
+        actor = value['actor']
+        writer = value['writer']
+        collector = value['collector']
+        receipt = value['senderStopReceipt']
+        administrator = value['administratorBefore']
+        administrator_after = value['administratorAfter']
+        stop_actor = value['observerStopActor']
+        stop_response = value['observerStopResponse']
+        if (not isinstance(value, dict) or set(value) != fields
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-administrator-stuck-output'
+                or value['caseId'] != 'stuck-output'
+                or value['collectorDenial'] != 'bounded_process_deadline_exceeded'
+                or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
+                       for key in ('sourceDigest', 'nonceDigest',
+                                   'collectorOutputDigest'))
+                or value['collectorOutputDigest'] != hashlib.sha256(
+                    b'pr315-stuck-output\n').hexdigest()
+                or not isinstance(actor, dict) or not isinstance(writer, dict)
+                or not isinstance(collector, dict) or not isinstance(receipt, dict)
+                or not isinstance(administrator, dict)
+                or not isinstance(administrator_after, dict)
+                or not isinstance(stop_actor, dict)
+                or stop_actor.get('kind') != 'installed-observer-process'
+                or not isinstance(stop_response, dict)
+                or stop_response.get('state') != 'quiescent'
+                or stop_response.get('managerInvocation') !=
+                    receipt.get('managerInvocation')
+                or any(administrator.get(key) != administrator_after.get(key)
+                       for key in ('pid', 'uid', 'startTicks', 'bootId',
+                                   'cgroupIdentity', 'cgroupDigest',
+                                   'invocationId', 'sourceDigest'))
+                or writer.get('hostParentPid') != actor.get('hostPid')
+                or collector.get('uid') != 0
+                or collector.get('pid') != collector.get('session')
+                or not isinstance(value['fifoIdentity'], list)
+                or len(value['fifoIdentity']) != 2
+                or receipt.get('membership') != 'only-stop-helper'
+                or receipt.get('descendantCgroups') != 0
+                or any(not isinstance(value[key], list)
+                       or len(value[key]) != 3 for key in
+                       ('siblingsBefore', 'siblingsAfter'))
+                or not 0 < value['collectorStartedNs']
+                    < collector['observedMonotonicNs']
+                    < value['collectorFinishedNs']
+                    < receipt['startedMonotonicNs']
+                    < value['terminalObservedNs']):
+            raise ValueError('stuck-output-audit-invalid')
+        return {'status': 'captured', 'record': value}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def _hostile_origin_audit(root, deadline):
     """Retain the fixed browser-session origin denial without its raw credential."""
     remaining = deadline - time.monotonic()
@@ -1743,6 +1812,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['resourceAudit'] = _resource_audit(root, deadline)
         if os.path.lexists(root / 'authority/partial-launch.json'):
             result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stuck-output.json'):
+            result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)
@@ -1828,6 +1899,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['resourceAudit'] = _resource_audit(root, deadline)
         if os.path.lexists(root / 'authority/partial-launch.json'):
             result['partialLaunchAudit'] = _partial_launch_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stuck-output.json'):
+            result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
             result['hostileAppOriginAudit'] = _hostile_origin_audit(root, deadline)
         result['outputSymlinkAudit'] = _output_symlink_audit(root, deadline)

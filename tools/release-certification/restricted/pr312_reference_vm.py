@@ -321,7 +321,7 @@ def workload_guest_command(args):
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
             or workload_group not in (None, 'positive', 'lost-start-response',
-                                      'partial-launch',
+                                      'partial-launch', 'stuck-output',
                                       'resource-exhaustion',
                                       'output-symlink', 'output-fifo',
                                       'output-hardlink', 'output-flood',
@@ -381,7 +381,8 @@ def run(args):
                                       'cancellation', 'controller-restart', 'deadline',
                                       'revocation-running', 'setsid-double-fork',
                                       'observer-death', 'lost-start-response',
-                                      'resource-exhaustion', 'partial-launch')
+                                      'resource-exhaustion', 'partial-launch',
+                                      'stuck-output')
                                      else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')

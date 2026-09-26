@@ -1973,6 +1973,129 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(runner._partial_launch_record(frozen,
                 'suite-210', report, result, changed, diagnostics, source, raw))
 
+    def test_stuck_output_v10_requires_live_role_writer_bounded_collector_and_stop(self):
+        import pr315_campaign_seal as seal
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        source = Path(__file__).resolve().parents[3]
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = '5' * 64
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        base = 10**12
+        done = base + 50 + 5 * 10**9
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        root_actor = {'uid': 0, 'pid': 500, 'startTicks': 42,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 50], 'cgroupDigest': 'a' * 64,
+            'invocationId': 'f' * 32, 'sourceDigest': source_digest,
+            'observedMonotonicNs': base + 10}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for row in roster['roles']:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=done + 200, observedMonotonicNs=done + 300)
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        siblings = [{'role': row['role'],
+            'managerInvocation': row['invocationId'],
+            'stateDigest': 'd' * 64,
+            'controlDigest': format(index + 1, '064x')}
+            for index, row in enumerate(roster['roles'][1:])]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stuck-output',
+            'caseId': 'stuck-output',
+            'administratorBefore': root_actor,
+            'administratorAfter': dict(root_actor,
+                observedMonotonicNs=done + 400),
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'nonceDigest': 'e' * 64,
+            'roleBefore': {'managerInvocation': sender['invocationId'],
+                'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64},
+            'actor': {'hostPid': 123, 'startTicks': 50,
+                'namespacePids': [123, 2],
+                'networkNamespaceIdentity': [1, sender['networkNamespace']]},
+            'writer': {'hostPid': 124, 'hostParentPid': 123,
+                'startTicks': 51, 'namespacePids': [124, 3]},
+            'fifoIdentity': [3, 7],
+            'collector': {'pid': 211, 'uid': 0,
+                'startTicks': 44, 'session': 211,
+                'cgroupIdentity': [3, 5],
+                'executableDigest': 'e' * 64,
+                'observedMonotonicNs': base + 60},
+            'collectorOutputDigest': hashlib.sha256(
+                b'pr315-stuck-output\n').hexdigest(),
+            'collectorStartedNs': base + 50,
+            'collectorFinishedNs': done + 100,
+            'collectorDenial': 'bounded_process_deadline_exceeded',
+            'observerStopActor': {'kind': 'installed-observer-process',
+                'uid': roster['observerUid'], 'pid': 300,
+                'sourceDigest': source_digest},
+            'observerStopResponse': {'state': 'quiescent',
+                'managerInvocation': sender['invocationId']},
+            'senderStopReceipt': receipt,
+            'siblingsBefore': siblings,
+            'siblingsAfter': copy.deepcopy(siblings),
+            'terminalObservedNs': done + 500}
+        terminal['stuckOutputAudit'] = {'status': 'captured', 'record': audit}
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestStopped': True,
+            'guestExitCode': 0, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'stuck-output', 'topologyRoles': 4,
+            'signedAppWorkers': 0, 'contentRetrieval': 'not-executed-group',
+            'newEpoch': False, 'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': base + 1,
+                                       'finishedMonotonicNs': base + 2},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'profile': runner.acceptance.PROFILE,
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start', 'caseId': 'stuck-output',
+            'startedMonotonicNs': base + 9},
+            'stuckOutput': {'status': 'captured',
+                'auditDigest': hashlib.sha256(json.dumps(audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertTrue(runner.group_prepared(report, result, terminal,
+                                              'stuck-output'))
+        record = runner._stuck_output_record(frozen, 'suite-211',
+            report, result, terminal, diagnostics, source, raw)
+        self.assertIsNotNone(record)
+        self.assertEqual('stuck-output', record['caseId'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                private_root = Path(directory)
+                (private_root / 'authority').mkdir()
+                (private_root / 'authority/stuck-output.json').write_text(
+                    json.dumps(audit))
+                self.assertEqual('captured', evidence._stuck_output_audit(
+                    private_root, time.monotonic() + 3)['status'])
+        for mutate in (
+                lambda row: row['stuckOutputAudit']['record']['writer'].update(
+                    hostParentPid=999),
+                lambda row: row['stuckOutputAudit']['record']['collector'].update(
+                    uid=1000),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner._stuck_output_record(frozen,
+                'suite-211', report, result, changed, diagnostics, source, raw))
+
     def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)
@@ -2391,9 +2514,9 @@ class RunnerTests(unittest.TestCase):
         import pr315_case_v10 as case_v10
         supported = (set(case_v10.POSITIVE) | {'output-symlink'}
                      | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
-        self.assertEqual(40, len(supported))
+        self.assertEqual(41, len(supported))
         self.assertEqual({'stale-handle', 'stale-pid-uid', 'late-child',
-                          'stuck-output', 'cleanup-race'},
+                          'cleanup-race'},
                          set(names) - supported)
 
     def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):

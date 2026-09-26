@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pwd
+import select
 import signal
 import socket
 import sys
@@ -74,6 +75,49 @@ class PositiveObserverEpochTest(unittest.TestCase):
             os.close(reader)
             os.kill(pid, signal.SIGTERM)
             os.waitpid(pid, 0)
+
+
+class StuckOutputCollectorTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root and pidfd')
+    def test_actual_collector_times_out_while_fifo_writer_remains_live(self):
+        import bounded_process
+        with tempfile.TemporaryDirectory() as directory:
+            fifo = Path(directory) / 'held.fifo'
+            os.mkfifo(fifo, 0o600)
+            pid = os.fork()
+            if pid == 0:
+                try:
+                    descriptor = os.open(fifo, os.O_WRONLY)
+                    os.write(descriptor, b'pr315-stuck-output\n')
+                    time.sleep(10)
+                finally:
+                    os._exit(0)
+            retained = []
+            witness = []
+            descriptor = None
+            def started(child):
+                nonlocal descriptor
+                descriptor = os.pidfd_open(child)
+                witness.append(driver._stuck_collector_epoch(child))
+            try:
+                with self.assertRaisesRegex(ValueError, 'deadline_exceeded'):
+                    bounded_process.run(['/usr/bin/cat', str(fifo)],
+                        environment={'PATH': '/usr/bin:/bin'}, timeout=.3,
+                        output_limit=4096,
+                        start_observer=started,
+                        diagnostic_sink=lambda stdout, stderr:
+                            retained.append((stdout, stderr)))
+                self.assertEqual([(b'pr315-stuck-output\n', b'')], retained)
+                self.assertEqual(0, witness[0]['uid'])
+                self.assertEqual(witness[0]['pid'], witness[0]['session'])
+                self.assertTrue(select.select([descriptor], [], [], 0)[0])
+                os.kill(pid, 0)
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
 
 
 class SiblingNetworkCounterTest(unittest.TestCase):
