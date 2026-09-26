@@ -1011,6 +1011,30 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual('passed', next(row['status'] for row in checked['cases']
                              if row['caseId'] == 'output-symlink'))
             self.assertEqual(invocation, sidecar['targetEpoch']['testKitInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {name: str(index) * 64 for index, name in enumerate(
+                ('guestReport', 'volatile', 'hostMonitor'), 1)}
+            case_record = case_v10.output_symlink_record(frozen,
+                'suite-201', identity, attempt, sidecar, raw)
+            self.assertEqual('pr315-installed-case-v10', case_record['kind'])
+            self.assertEqual('output-symlink', case_record['caseId'])
+            self.assertRegex(case_v10.verify_output_symlink_record(frozen,
+                'suite-201', identity, attempt, sidecar, raw, case_record),
+                '^[0-9a-f]{64}$')
+            changed_record = copy.deepcopy(case_record)
+            changed_record['actorEpoch']['startTicks'] += 1
+            with self.assertRaisesRegex(ValueError, 'record-changed'):
+                case_v10.verify_output_symlink_record(frozen,
+                    'suite-201', identity, attempt, sidecar, raw, changed_record)
+            changed_sidecar = copy.deepcopy(sidecar)
+            changed_sidecar['actorEpoch']['systemdInvocation'] = 'f' * 32
+            with self.assertRaisesRegex(ValueError, 'epoch-invalid'):
+                case_v10.output_symlink_record(frozen,
+                    'suite-201', identity, attempt, changed_sidecar, raw)
             for mutate in (
                     lambda row: row['outputSymlinkAudit']['record']['actorAfter'].update(
                         startTicks=46),

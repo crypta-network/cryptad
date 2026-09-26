@@ -2761,6 +2761,20 @@ The broader protected discovery ran 171 tests with 21 skips and five
 one skip and the AppHost file passed 27 tests. The broader result is not a
 green gate.
 
+The next prospective evidence revision begins the campaign v2/v10 migration.
+It leaves the historical v8/v9 and campaign v1 readers intact. A Mac-only
+Ed25519 helper creates a campaign-specific key and seals closed attempt
+receipts; verification pins the source commit and public-key fingerprint
+outside the signed receipt and rejects modified case, stop, monitor or
+campaign fields. A selected `output-symlink` run can now produce the first
+v10 private case record after its real v8 verifier passes, provided a
+preselected v2 plan and completed PVE monitor are present. The record binds
+the candidate child, actual root collector epoch, operation window and
+raw guest/volatile/monitor digests. This is one longitudinal prospective
+path, not the default 21-group dispatcher or a complete verdict. The Linux
+PR-31x offline set passed 425 tests with eight environment skips; no new
+installed run has used this revision.
+
 For the `ae80895` source, native Linux protected discovery passed 527 tests with
 74 skips, restricted discovery passed 435 with one skip, and the owning interop
 workload tests passed 47 with eight skips. Full interop discovery ran 257 tests

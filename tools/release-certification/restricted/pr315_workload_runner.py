@@ -28,6 +28,8 @@ import pr315_workload_fixtures as fixtures
 import pr315_pve_host_admission as host_admission
 import pr315_pve_pressure_watch as pressure_watch
 import pr315_workload_campaign as campaign
+import pr315_campaign_seal as campaign_seal
+import pr315_case_v10 as case_v10
 import restricted_workload_network as workload_network
 from pr314_workload_driver import STARTUP_MEASUREMENT_SECONDS, LIFECYCLE_SCENARIOS
 
@@ -3794,6 +3796,17 @@ def run(args):
     if reference.sha256(__file__) != reference.sha256(
             args.source / 'tools/release-certification/restricted' / Path(__file__).name):
         raise ValueError('executing-workload-source-mismatch')
+    campaign_plan_path = getattr(args, 'campaign_plan', None)
+    if campaign_plan_path is not None:
+        for module in (campaign_seal, case_v10):
+            expected = (args.source / 'tools/release-certification/restricted' /
+                        Path(module.__file__).name)
+            if reference.sha256(module.__file__) != reference.sha256(expected):
+                raise ValueError('executing-campaign-source-mismatch')
+        fingerprint = getattr(args, 'campaign_key_fingerprint', None)
+        if (not isinstance(fingerprint, str)
+                or re.fullmatch('[0-9a-f]{64}', fingerprint) is None):
+            raise ValueError('campaign-key-fingerprint-required')
     host_policy = getattr(args, 'host_memory_policy', 'legacy-physical-admission')
     if host_policy == host_admission.POLICY:
         relative = 'tools/release-certification/restricted'
@@ -3809,6 +3822,20 @@ def run(args):
     for name in ('prepared_image', 'prepared_fixtures', 'qemu_root', 'seed', 'ssh_key', 'known_hosts'):
         if not getattr(args, name).resolve(strict=False).is_relative_to(root):
             raise ValueError('workload-input-outside-task-storage-budget')
+    if campaign_plan_path is not None:
+        campaign_plan_path = campaign_plan_path.absolute()
+        if not campaign_plan_path.is_relative_to(root):
+            raise ValueError('workload-campaign-plan-outside-task-root')
+        info = campaign_plan_path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or info.st_nlink != 1
+                or not 0 < info.st_size <= 16384):
+            raise ValueError('workload-campaign-plan-file-invalid')
+        frozen_campaign = native_runner.private_json(campaign_plan_path)
+        campaign_seal._check_plan(frozen_campaign,
+            subprocess.run(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
+                check=True, capture_output=True, text=True,
+                timeout=10).stdout.strip(), fingerprint)
     info = root.stat()
     if info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise ValueError('workload-private-storage-root-required')
@@ -4244,6 +4271,16 @@ def run(args):
                 native_runner._save(output / (group + '-v8-evidence.private.json'),
                     {'attempt': case_attempt, 'assessment': checked_cases})
                 native_runner._save(output / (group + '-v9-evidence.private.json'), sidecar)
+                if group == 'output-symlink' and campaign_plan_path is not None:
+                    if host_policy != host_admission.POLICY:
+                        raise ValueError('workload-v10-host-policy-required')
+                    raw_digests = {
+                        'guestReport': reference.sha256(selected.attempt / 'attempt.private.json'),
+                        'volatile': reference.sha256(terminal_path),
+                        'hostMonitor': reference.sha256(output / 'host-monitor.private.json')}
+                    v10 = case_v10.output_symlink_record(frozen_campaign,
+                        output.name, identity, case_attempt, sidecar, raw_digests)
+                    native_runner._save(output / 'output-symlink-v10-evidence.private.json', v10)
                 statuses[group] = 'passed'
             if diagnostic_mode:
                 statuses = None  # No workload case was invoked by this diagnostic.
@@ -4292,6 +4329,10 @@ def main():
     parser.add_argument('--development-snapshot', action='store_true')
     parser.add_argument('--host-key-pin-origin', required=True,
         choices=('preselected-host-key', 'administrator-preparation-tofu'))
+    parser.add_argument('--campaign-plan', type=Path,
+        help='Pinned private v2 campaign plan for prospective installed case records.')
+    parser.add_argument('--campaign-key-fingerprint',
+        help='Host-pinned Ed25519 public key fingerprint for the campaign plan.')
     args = parser.parse_args()
     if ((not args.probe and (re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or any(re.fullmatch('[0-9a-f]{64}', str(value)) is None for value in
