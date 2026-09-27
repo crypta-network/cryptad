@@ -317,6 +317,33 @@ def verify_finished(suite: str, source_commit: str, ready: dict) -> dict:
     return record
 
 
+def verify_stopped_before_launch(suite: str, source_commit: str,
+                                 ready: dict) -> dict:
+    """Authenticate a watcher closed before any task QEMU was observed."""
+    observed_ready = _ct_record(Path('/work/pr315-task/host-monitor') /
+        (suite + '.ready.json'), suite, 'pr315-pve-watch-ready')
+    if (observed_ready != ready
+            or set(observed_ready) != {'schemaVersion', 'kind', 'suite',
+                                      'sourceCommit', 'moduleDigest',
+                                      'observedMonotonicNs'}
+            or observed_ready['sourceCommit'] != source_commit
+            or type(observed_ready['observedMonotonicNs']) is not int):
+        raise ValueError('pr315-pressure-watch-ready-changed')
+    record = _ct_record(Path('/work/pr315-task/host-monitor') /
+                        (suite + '.finished.json'), suite, 'pr315-pve-watch-finished')
+    if (set(record) != {'schemaVersion', 'kind', 'suite', 'sourceCommit',
+                        'moduleDigest', 'action', 'seenTaskQemu', 'finishedMonotonicNs'}
+            or record['sourceCommit'] != source_commit
+            or record['action'] != 'stopped-before-launch'
+            or record['seenTaskQemu'] is not False
+            or type(record['finishedMonotonicNs']) is not int
+            or not ready['observedMonotonicNs'] <
+                record['finishedMonotonicNs'] <=
+                ready['observedMonotonicNs'] + MAX_SECONDS * 1_000_000_000):
+        raise ValueError('pr315-pressure-watch-prelaunch-stop-invalid')
+    return record
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', required=True)

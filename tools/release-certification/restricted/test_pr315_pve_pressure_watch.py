@@ -67,6 +67,36 @@ class PressureWatchTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ready-unavailable'):
                 watch.wait_ready('suite-111', 'a' * 40)
 
+    def test_prelaunch_stop_requires_matching_ready_and_no_qemu(self):
+        source = 'a' * 40
+        ready = {'schemaVersion': 1, 'kind': 'pr315-pve-watch-ready',
+                 'suite': 'suite-111', 'sourceCommit': source,
+                 'moduleDigest': 'b' * 64, 'observedMonotonicNs': 100}
+        finished = {'schemaVersion': 1, 'kind': 'pr315-pve-watch-finished',
+                    'suite': 'suite-111', 'sourceCommit': source,
+                    'moduleDigest': 'b' * 64,
+                    'action': 'stopped-before-launch',
+                    'seenTaskQemu': False, 'finishedMonotonicNs': 101}
+        def record(_path, _suite, kind):
+            return ready if kind == 'pr315-pve-watch-ready' else finished
+
+        with patch.object(watch, '_ct_record', side_effect=record):
+            self.assertEqual(finished, watch.verify_stopped_before_launch(
+                'suite-111', source, ready))
+            with self.assertRaisesRegex(ValueError, 'ready-changed'):
+                watch.verify_stopped_before_launch('suite-111', source,
+                    {'observedMonotonicNs': 99})
+            for changed in ({'seenTaskQemu': True},
+                            {'action': 'completed'},
+                            {'finishedMonotonicNs': 100}):
+                with patch.object(watch, '_ct_record',
+                    side_effect=lambda _path, _suite, kind: ready if kind ==
+                    'pr315-pve-watch-ready' else {**finished, **changed}), \
+                        self.assertRaisesRegex(ValueError,
+                                               'prelaunch-stop-invalid'):
+                    watch.verify_stopped_before_launch(
+                        'suite-111', source, ready)
+
     def test_sustained_physical_and_swap_thresholds(self):
         counters = dict.fromkeys(watch.LIMITS, 0)
         observed = {'memAvailableBytes': watch.GIB - 1,

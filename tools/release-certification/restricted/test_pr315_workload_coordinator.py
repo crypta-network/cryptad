@@ -136,6 +136,82 @@ class CoordinatorSelectionTest(unittest.TestCase):
                          remote.call.call_args_list[0].args[1])
         self.assertEqual(2, remote.call.call_count)
 
+    def test_wrong_frozen_guest_port_pin_fails_before_watcher(self):
+        task = coordinator.CT_TASK
+        config = {'sourceSnapshot': task + '/campaign-frozen/source-test',
+                  'fixturePath': task + '/fixture',
+                  'qemuRoot': task + '/qemu',
+                  'preparedImage': task + '/prepared',
+                  'seed': task + '/seed', 'sshKey': task + '/key',
+                  'knownHosts': task + '/wrong-port-pin', 'port': 23113}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(stdout=json.dumps(
+                ['known-hosts-port-pin-invalid']).encode())))
+        with self.assertRaisesRegex(ValueError,
+                                    'runner-prerequisites-invalid'):
+            coordinator.remote_runner_prerequisites(remote, config)
+        arguments = remote.call.call_args.args[1]
+        self.assertEqual('python3', arguments[0])
+        self.assertEqual(config['knownHosts'], arguments[-2])
+        remote.call.return_value = SimpleNamespace(stdout=b'[]')
+        self.assertEqual([], coordinator.remote_runner_prerequisites(
+            remote, config))
+
+    def test_unlaunched_watcher_refuses_any_allocated_attempt(self):
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=1)))
+        with self.assertRaisesRegex(ValueError,
+                                    'unlaunched-attempt-present'):
+            coordinator.stop_unlaunched_watcher(remote,
+                {'sourceCommit': 'a' * 40}, 'suite-201', {})
+        self.assertEqual(1, remote.call.call_count)
+        self.assertEqual(coordinator.CT, remote.call.call_args.args[0])
+
+    def test_no_vm_setup_archive_rejects_tampering_before_retry(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-no-vm-archive-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            archive = root / 'attempts/suite-201'
+            receipts = archive / 'host-receipts'
+            receipts.mkdir(parents=True, mode=0o700)
+            archive.chmod(0o700)
+            receipts.chmod(0o700)
+            names = ('assessment.json', 'capacity.private.json',
+                'plan.private.json',
+                'host-receipts/host-admission.private.json',
+                'host-receipts/host-monitor-ready.private.json',
+                'host-receipts/host-monitor-finished.private.json',
+                'host-receipts/host-monitor-samples.private.jsonl',
+                'host-receipts/host-monitor-stop.private')
+            files = {}
+            for name in names:
+                path = archive / name
+                path.write_bytes(name.encode())
+                path.chmod(0o600)
+                files[name] = {'sha256': hashlib.sha256(
+                    name.encode()).hexdigest(), 'sizeBytes': len(name)}
+            plan = {'planDigest': 'a' * 64}
+            manifest = {'schemaVersion': 1,
+                'kind': 'pr315-no-vm-preparation-archive-v1',
+                'attemptId': 'suite-201', 'sourceCommit': 'b' * 40,
+                'planDigest': plan['planDigest'], 'groupId': 'positive',
+                'guestAllocated': False, 'files': files}
+            selected = archive / 'preparation-archive.private.json'
+            selected.write_text(json.dumps(manifest))
+            selected.chmod(0o600)
+            receipt = {'status': 'setup-failed', 'attemptId': 'suite-201',
+                'sourceCommit': 'b' * 40, 'groupId': 'positive',
+                'archiveDigest': coordinator.seal._digest(manifest),
+                'evidenceDigest': files['assessment.json']['sha256'],
+                'monitorDigest': files[
+                    'host-receipts/host-monitor-finished.private.json']['sha256'],
+                'stopDigest': None}
+            self.assertEqual(manifest,
+                coordinator.verify_preparation_archive(root, plan, receipt))
+            (archive / 'assessment.json').write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'byte-changed'):
+                coordinator.verify_preparation_archive(root, plan, receipt)
+
     def test_full_staging_rehash_rejects_changed_or_extra_guest_bytes(self):
         with tempfile.TemporaryDirectory(prefix='pr315-full-stage-test-') as temp:
             root = Path(temp)

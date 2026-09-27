@@ -145,7 +145,34 @@ def source_preflight(remote, config):
     if (len(product) != 2 or product[0] !=
             config['productSelectionDigest']):
         raise ValueError('pr315-ct-product-byte-identity-changed')
+    remote_runner_prerequisites(remote, config)
     return head, tree, raw
+
+
+_RUNNER_PREREQUISITES_CODE = (
+    'import json,sys;from pathlib import Path;from types import SimpleNamespace;'
+    'source=Path(sys.argv[1]);'
+    'sys.path.insert(0,str(source/"tools/release-certification/restricted"));'
+    'import pr315_workload_runner as runner;'
+    'names=("source","prepared_fixtures","qemu_root","prepared_image",'
+    '"seed","ssh_key","known_hosts");'
+    'args=SimpleNamespace(**{name:Path(value) for name,value in '
+    'zip(names,sys.argv[1:8])},port=int(sys.argv[8]));'
+    'print(json.dumps(runner.prerequisites(args)))')
+
+
+def remote_runner_prerequisites(remote, config):
+    """Check the actual frozen runner inputs before starting a PVE watcher."""
+    reasons = _json_command(remote, CT, ['python3', '-c',
+        _RUNNER_PREREQUISITES_CODE, config['sourceSnapshot'],
+        config['fixturePath'], config['qemuRoot'], config['preparedImage'],
+        config['seed'], config['sshKey'], config['knownHosts'],
+        str(config['port'])], timeout=20)
+    if (not isinstance(reasons, list)
+            or any(not isinstance(reason, str) for reason in reasons)
+            or reasons):
+        raise ValueError('pr315-ct-runner-prerequisites-invalid')
+    return reasons
 
 
 def prepare_source_snapshot(remote, config, *, capacity_checked=False):
@@ -421,6 +448,57 @@ def finished_watcher(remote, config, suite, ready):
                 return record
         if time.monotonic() >= until:
             raise ValueError('pr315-pve-watcher-incomplete')
+        time.sleep(.25)
+
+
+_STOP_UNLAUNCHED_CODE = '''import os,re,sys
+from pathlib import Path
+suite=sys.argv[1]
+if re.fullmatch(r'suite-[1-9][0-9]*',suite) is None:raise RuntimeError('suite-invalid')
+task=Path('/mnt/tank1/files/pr315-workload-acceptance')
+if (task/suite/'attempt-01').exists():raise RuntimeError('attempt-already-allocated')
+sys.path.insert(0,'/root/pr315-workload/source-0fa')
+import pr315_pve_pressure_watch as watch
+if watch._processes(suite):raise RuntimeError('task-qemu-active')
+path=task/'host-monitor'/(suite+'.stop')
+fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+os.close(fd)'''
+
+_STOPPED_BEFORE_LAUNCH_CODE = (
+    'import sys,json;sys.path.insert(0,sys.argv[4]+'
+    '"/tools/release-certification/restricted");'
+    'import pr315_pve_pressure_watch as w;'
+    'ready=json.loads(sys.argv[3]);'
+    'print(json.dumps(w.verify_stopped_before_launch('
+    'sys.argv[1],sys.argv[2],ready)))')
+
+
+def stop_unlaunched_watcher(remote, config, suite, ready):
+    """Close only a watcher whose runner never allocated an attempt."""
+    if _SUITE.fullmatch(suite) is None:
+        raise ValueError('pr315-unlaunched-suite-invalid')
+    absent = remote.call(CT, ['test', '!', '-e',
+        CT_TASK + '/' + suite + '/attempt-01'], check=False)
+    if absent.returncode != 0:
+        raise ValueError('pr315-unlaunched-attempt-present')
+    task_qemu_inventory(remote)
+    remote.call(PVE, ['python3', '-c', _STOP_UNLAUNCHED_CODE, suite])
+    until = time.monotonic() + 15
+    while True:
+        result = remote.call(CT, ['python3', '-c',
+            _STOPPED_BEFORE_LAUNCH_CODE, suite, config['sourceCommit'],
+            json.dumps(ready, sort_keys=True, separators=(',', ':')),
+            config['sourceSnapshot']], timeout=10, check=False)
+        if result.returncode == 0:
+            record = json.loads(result.stdout)
+            if (record.get('suite') == suite
+                    and record.get('sourceCommit') == config['sourceCommit']
+                    and record.get('action') == 'stopped-before-launch'
+                    and record.get('seenTaskQemu') is False):
+                task_qemu_inventory(remote)
+                return record
+        if time.monotonic() >= until:
+            raise ValueError('pr315-unlaunched-watcher-incomplete')
         time.sleep(.25)
 
 
@@ -1301,6 +1379,153 @@ def _seal_failed_attempt(root, config, plan, suite, group_id,
         archive_digest=stage_digest)
 
 
+def verify_preparation_archive(root, plan, receipt):
+    """Rehash a sealed no-VM failure before permitting another attempt."""
+    if receipt.get('status') != 'setup-failed':
+        raise ValueError('pr315-preparation-receipt-status-invalid')
+    archive = seal._private_directory(Path(root) / 'attempts' /
+                                      receipt['attemptId'])
+    manifest = owner._json(archive, 'preparation-archive.private.json', 65536)
+    files = manifest.get('files')
+    if (manifest.get('schemaVersion') != 1
+            or manifest.get('kind') != 'pr315-no-vm-preparation-archive-v1'
+            or manifest.get('attemptId') != receipt['attemptId']
+            or manifest.get('sourceCommit') != receipt['sourceCommit']
+            or manifest.get('planDigest') != plan['planDigest']
+            or manifest.get('groupId') != receipt['groupId']
+            or manifest.get('guestAllocated') is not False
+            or not isinstance(files, dict)
+            or not {'assessment.json', 'capacity.private.json',
+                    'plan.private.json',
+                    'host-receipts/host-admission.private.json',
+                    'host-receipts/host-monitor-ready.private.json',
+                    'host-receipts/host-monitor-finished.private.json',
+                    'host-receipts/host-monitor-samples.private.jsonl',
+                    'host-receipts/host-monitor-stop.private'} <= set(files)
+            or len(files) > 32
+            or seal._digest(manifest) != receipt['archiveDigest']):
+        raise ValueError('pr315-preparation-archive-manifest-invalid')
+    paths = list(archive.rglob('*'))
+    if any(path.is_symlink() for path in paths):
+        raise ValueError('pr315-preparation-archive-link-invalid')
+    actual = {path.relative_to(archive).as_posix()
+              for path in paths if path.is_file()}
+    if actual - {'preparation-archive.private.json'} != set(files):
+        raise ValueError('pr315-preparation-archive-file-set-changed')
+    for name, expected in files.items():
+        if (not isinstance(expected, dict)
+                or set(expected) != {'sha256', 'sizeBytes'}
+                or type(expected['sizeBytes']) is not int
+                or not 0 <= expected['sizeBytes'] <= 1024 * 1024
+                or re.fullmatch('[0-9a-f]{64}', str(expected['sha256'])) is None):
+            raise ValueError('pr315-preparation-archive-entry-invalid')
+        path = archive / name
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or info.st_size != expected['sizeBytes']
+                or hashlib.sha256(path.read_bytes()).hexdigest() !=
+                    expected['sha256']):
+            raise ValueError('pr315-preparation-archive-byte-changed')
+    if (files['assessment.json']['sha256'] != receipt['evidenceDigest']
+            or files['host-receipts/host-monitor-finished.private.json'][
+                'sha256'] != receipt['monitorDigest']
+            or receipt['stopDigest'] is not None):
+        raise ValueError('pr315-preparation-archive-receipt-changed')
+    return manifest
+
+
+def archive_unlaunched_setup_failure(remote, root, config, plan,
+                                     suite, group_id, execution):
+    """Archive and seal an explicit setup rejection with no guest instance."""
+    assessment = execution.get('assessment')
+    rows = assessment.get('cases') if isinstance(assessment, dict) else None
+    if (execution.get('runnerExitCode') != 78
+            or not isinstance(assessment, dict)
+            or assessment.get('status') != 'setup-blocked'
+            or not isinstance(assessment.get('reasons'), list)
+            or not assessment['reasons']
+            or not isinstance(rows, list) or len(rows) != 45
+            or len({row.get('caseId') for row in rows
+                    if isinstance(row, dict)}) != 45
+            or any(row.get('status') != 'not-executed' for row in rows
+                   if isinstance(row, dict))):
+        raise ValueError('pr315-unlaunched-setup-phase-invalid')
+    archive = Path(root) / 'attempts' / suite
+    archive.mkdir(mode=0o700, exist_ok=False)
+    command = ['rsync', '-a', '--checksum',
+        '-e', shlex.join(remote.ssh),
+        CT + ':' + CT_TASK + '/' + suite + '/', str(archive) + '/']
+    copied = subprocess.run(command, stdin=subprocess.DEVNULL,
+                            capture_output=True, timeout=120)
+    checked = subprocess.run([*command[:3], '--dry-run', '--delete',
+        '--itemize-changes', *command[3:]], stdin=subprocess.DEVNULL,
+        capture_output=True, timeout=120)
+    if (copied.returncode or copied.stdout or copied.stderr
+            or checked.returncode or checked.stdout or checked.stderr
+            or (archive / 'attempt-01').exists()):
+        raise ValueError('pr315-unlaunched-archive-copy-invalid')
+    receipts = archive / 'host-receipts'
+    receipts.mkdir(mode=0o700)
+    for host, source, name in (
+            (CT, CT_TASK + '/host-admission/' + suite + '.json',
+             'host-admission.private.json'),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.ready.json',
+             'host-monitor-ready.private.json'),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.finished.json',
+             'host-monitor-finished.private.json'),
+            (PVE, PVE_TASK + '/host-monitor/' + suite + '.private.jsonl',
+             'host-monitor-samples.private.jsonl'),
+            (PVE, PVE_TASK + '/host-monitor/' + suite + '.stop',
+             'host-monitor-stop.private')):
+        _scp(remote, host, source, receipts / name)
+    if owner._json(archive, 'assessment.json') != assessment:
+        raise ValueError('pr315-unlaunched-assessment-changed')
+    finished = owner._json(archive,
+        'host-receipts/host-monitor-finished.private.json')
+    if (finished.get('action') != 'stopped-before-launch'
+            or finished.get('seenTaskQemu') is not False
+            or finished.get('suite') != suite
+            or finished.get('sourceCommit') != config['sourceCommit']):
+        raise ValueError('pr315-unlaunched-monitor-changed')
+    files = {}
+    for path in archive.rglob('*'):
+        if path.is_symlink():
+            raise ValueError('pr315-unlaunched-archive-link-invalid')
+        if path.is_file():
+            name = path.relative_to(archive).as_posix()
+            info = path.lstat()
+            if info.st_size > 1024 * 1024 or len(files) >= 32:
+                raise ValueError('pr315-unlaunched-archive-size-invalid')
+            files[name] = {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                           'sizeBytes': info.st_size}
+    if not {'assessment.json', 'capacity.private.json',
+            'plan.private.json',
+            'host-receipts/host-admission.private.json',
+            'host-receipts/host-monitor-ready.private.json',
+            'host-receipts/host-monitor-finished.private.json',
+            'host-receipts/host-monitor-samples.private.jsonl',
+            'host-receipts/host-monitor-stop.private'} <= set(files):
+        raise ValueError('pr315-unlaunched-archive-evidence-incomplete')
+    manifest = {'schemaVersion': 1,
+        'kind': 'pr315-no-vm-preparation-archive-v1',
+        'attemptId': suite, 'sourceCommit': config['sourceCommit'],
+        'planDigest': plan['planDigest'], 'groupId': group_id,
+        'guestAllocated': False, 'files': files}
+    _exclusive_json(archive / 'preparation-archive.private.json', manifest)
+    receipt = seal.append_verified_attempt(root, plan,
+        pinned_source_commit=config['sourceCommit'],
+        pinned_fingerprint=config['hostKeyFingerprint'],
+        group_id=group_id, attempt_id=suite, status='setup-failed',
+        probe_started=False, case_digests={},
+        evidence_digest=files['assessment.json']['sha256'],
+        stop_digest=None,
+        monitor_digest=files[
+            'host-receipts/host-monitor-finished.private.json']['sha256'],
+        archive_digest=seal._digest(manifest))
+    verify_preparation_archive(root, plan, receipt)
+    return receipt
+
+
 def verify_retired_preparation_for_resume(root, plan, history):
     """Rebuild the old stopped authority before sending its handle to CT102."""
     import pr315_workload_runner as runner
@@ -1362,6 +1587,8 @@ def run_campaign(root, source, *, case_group=None):
             pinned_source_commit=config['sourceCommit'],
             pinned_fingerprint=config['hostKeyFingerprint'])
         for prior in history:
+            if prior['status'] == 'setup-failed':
+                verify_preparation_archive(root, plan, prior)
             if (prior['status'] in ('completed', 'preparation-completed')
                     and not owner.verify_completed_cleanup_receipts(
                         root, source, plan, prior)):
@@ -1408,6 +1635,11 @@ def run_campaign(root, source, *, case_group=None):
             retired_prep=(selected['action'] ==
                           'retired-authority-preparation'),
             retired_files=retired_files)
+        if execution['assessment'].get('status') == 'setup-blocked':
+            stop_unlaunched_watcher(remote, config, suite, ready)
+            archive_unlaunched_setup_failure(remote, root, config, plan,
+                                             suite, group_id, execution)
+            continue
         finished_watcher(remote, config, suite, ready)
         staging, stage_digest = stage_full_attempt(remote, config, suite,
                                                      root)

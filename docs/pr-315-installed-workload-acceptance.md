@@ -7,6 +7,8 @@ but no complete installed 45-case campaign.** The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Later development suite 120
 passed eight positive v10 cases on `a06d14dc21`; suite 121 on `ca15f28261`
 failed during Mail preparation before its selected network/AppHost probes.
+The frozen `d94b3bc9cc` campaign prepared its inputs, but suite 122 rejected
+the wrong local SSH host-key port before allocating a guest. It passed no case.
 Neither result can be pooled with another commit or counted as final-source
 acceptance. The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
@@ -2938,7 +2940,7 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
-## Current cutoff after suite 121
+## Current cutoff after suite 122
 
 Source `a06d14dc21` suite 118 failed before role launch because its measured
 test kit omitted the lifecycle role probe. That packaging defect was corrected
@@ -3004,13 +3006,39 @@ bytes before the subsequent fixture copy. The next measured VM reservation
 was 29,167,850,750 bytes against the 240,518,168,576-byte task cap, already
 over by 3,674,659,614 bytes at that cutoff. Every future allocation requires
 a new actual-block, filesystem, thin-pool, memory/swap and PSI inventory.
-The full suite121 failed disk and source archive are retained on the Mac. A
-pure read-only PVE scan matched their SHA-256 values and found no running QEMU,
-open users or external backing dependents. Automatic approval review rejected
-the proposed PVE deletion of their remote duplicates pending explicit scope
-authorization; no such deletion has occurred. It separately rejected removal
-of KVM18's generated source and runtime directories, which also remain. This
-capacity/retention decision currently blocks another guest under the fixed cap.
+The full suite121 failed disk and source archive remain on the Mac. After
+explicit approval, a fresh PVE scan matched the archived file bytes and found
+the guest stopped, no running task QEMU, no open users and no external QCOW
+backing dependents. The three failed disk/source duplicates and its generated
+source clone were released only from PVE. The separately approved five KVM18
+generated copies were released after the Mac's complete 12,704-file copy
+passed a fresh checksum comparison. Suite 120's successful source archive and
+four generated directories were also released from PVE after a separate
+approval, exact archive/monitor checks and stopped-instance verification.
+The Mac retains its source archive, original observations and sealed receipt.
+
+The resulting PVE task allocation was 209,869,191,168 bytes. An isolated
+`d94b3bc9cc` source snapshot raised actual allocation to 210,121,617,888
+bytes; the v38 fixture's next guest reservation was 29,139,232,067 bytes.
+Both the 224-GiB task cap and the separate filesystem/thin-pool reserves
+passed at the pre-suite-122 inventory. Mac campaign initialization sealed a
+21-group start and remote inputs; `--prepare-remote` and `--probe` both
+returned their required unexecuted status 78. These preparations passed no
+installed case.
+
+Suite 122 selected the positive group but returned `setup-blocked` before
+creating `attempt-01`: its configured reference `known_hosts` pinned local
+port 23112, while the formal runner selected port 23113. No QEMU or guest disk
+was allocated. The PVE watcher was closed with its fixed stop sentinel and
+reported `stopped-before-launch` with `seenTaskQemu=false`; the assessment,
+capacity record, admission receipt and watcher records were preserved in a
+private eight-file Mac archive. The then-current coordinator expected a
+watcher that had seen QEMU, returned `pr315-pve-watcher-incomplete`, and left
+this preparation attempt unsealed. No case from that campaign is accepted.
+The next source revision checks the actual frozen runner inputs before starting
+the watcher and adds a signed, reverified no-VM preparation failure path with
+the same three-attempt group limit. Its focused Linux checks passed; a new
+source-bound fixture and campaign are required before another installed run.
 
 CT102 native Linux passed 338 focused PR-314/315/installation tests with 11
 skips, 178 protected-workload tests with 24 skips, 60 interop tests with nine
@@ -3376,7 +3404,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its selected network/AppHost probes on `ca15f28261`. Neither belongs to a later source identity |
+| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its selected network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`. None belongs to a later source identity |
 | `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
