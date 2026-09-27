@@ -445,6 +445,14 @@ def run_selected_attempt(remote, config, suite, group_id, *,
             'assessment': assessment}
 
 
+def retired_preparation_complete(execution):
+    """Accept the runner's partial-result exit only with its preparation receipt."""
+    return (execution.get('runnerExitCode') == 2
+            and isinstance(execution.get('assessment'), dict)
+            and execution['assessment'].get('status') ==
+                'retired-authority-preparation-executed')
+
+
 _FINISHED_CODE = (
     'import sys,json;sys.path.insert(0,sys.argv[4]+"/tools/release-certification/restricted");'
     'import pr315_pve_pressure_watch as w;'
@@ -1833,9 +1841,7 @@ def run_campaign(root, source, *, case_group=None):
         staging, stage_digest = stage_full_attempt(remote, config, suite,
                                                      root)
         if selected['action'] == 'retired-authority-preparation':
-            if (execution['runnerExitCode'] != 0
-                    or execution['assessment'].get('status') !=
-                        'retired-authority-preparation-executed'):
+            if not retired_preparation_complete(execution):
                 _seal_failed_attempt(root, config, plan, suite,
                     group_id, staging, stage_digest)
                 return owner.recovered_campaign_verdict(root, source, **pin)

@@ -49,6 +49,18 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertEqual('failed',
             coordinator.next_campaign_selection(history)['status'])
 
+    def test_retired_preparation_requires_partial_exit_and_exact_status(self):
+        observed = {'runnerExitCode': 2, 'assessment': {
+            'status': 'retired-authority-preparation-executed'}}
+        self.assertTrue(coordinator.retired_preparation_complete(observed))
+        for exit_code in (0, 78):
+            self.assertFalse(coordinator.retired_preparation_complete(
+                {**observed, 'runnerExitCode': exit_code}))
+        self.assertFalse(coordinator.retired_preparation_complete({
+            **observed, 'assessment': {'status': 'setup-blocked'}}))
+        self.assertFalse(coordinator.retired_preparation_complete({
+            **observed, 'assessment': None}))
+
     def test_unknown_or_post_probe_failure_cannot_be_retried(self):
         history = [{'groupId': 'positive', 'status': 'failed'}]
         self.assertEqual('failed',

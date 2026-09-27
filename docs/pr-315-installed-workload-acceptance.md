@@ -3653,11 +3653,27 @@ not substituted for the successful Linux run. The subsequent peer-selector corre
 the full Linux Java suite and a complete installed positive aggregate as described above.
 No 45-case installed workload campaign or hosted CI has run against the latest source.
 
+At frozen helper `69db1fe0df54bd1c5f339ddd37b8a4322033e76d`, the v46
+campaign sealed suite 133 as a pre-VM PSI admission refusal. Suite 134 passed
+all eight positive cases and suite 135 passed all five role/file-boundary cases;
+both have signed completed host cleanup. Suite 136 completed the retired
+authority preparation in its guest and retained the provenance and stop
+observations, but its host coordinator sealed the attempt as failed. The
+runner returned its documented partial-result code 2, while the coordinator
+incorrectly required code 0 for this preparation. The failed receipt remains
+immutable, so v46 is terminal at 13/45. The corrected coordinator requires
+code 2 together with the exact preparation status; the corrected source needs
+a new campaign and a fresh 45-case run. The native CT102 isolated root checks
+passed the PR-315 double-fork case, ten selected PR-314 root cases and nine
+interop root transport cases. An attempted whole-file root run also showed two
+role-probe tests that require a non-root actor; their root-only selection was
+run separately from the non-root suite.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the prospective helper source. Development suite 120 passed eight v10 positives on `a06d14dc21`; v36 suite 129 failed before any positive case record. V37 suite 130 on `917121c6ed` sealed eight positive passes but lacked a completed cleanup receipt. Suite 131 on `52579d51dd` completed eight positives with cleanup, then suite 132 was denied before VM allocation. These historical source-bound results cannot be inherited by the prospective helper source |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
+| `installedPositiveExecuted` | False for the corrected prospective helper source. The terminal `69db1fe0df` campaign has eight sealed positive passes and 13/45 total, but its evidence cannot transfer to the corrected source |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `69db1fe0df` campaign stopped at 13/45 after suite 136. KVM diagnostics and results from other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
