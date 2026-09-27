@@ -28,6 +28,30 @@ import restricted_workload_prepare as preparation
 
 
 class ControllerStartupDiagnosticsTest(unittest.TestCase):
+    def test_bootstrap_failure_phase_is_private_closed_and_keeps_original_error(self):
+        boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        with patch.object(workload, 'write') as written, \
+                patch.object(workload, 'boot', return_value=boot_id):
+            with self.assertRaisesRegex(ValueError, 'app-runtime-unavailable'):
+                with controller.bootstrap_phase('app-runtime', 'candidate-recipient'):
+                    raise ValueError('app-runtime-unavailable')
+        destination, record = written.call_args.args
+        self.assertEqual(controller.BOOTSTRAP_FAILURE, destination)
+        self.assertTrue(written.call_args.kwargs['create'])
+        self.assertEqual('candidate-recipient', record['role'])
+        self.assertEqual('app-runtime', record['stage'])
+        self.assertEqual('app-runtime-unavailable', record['errorCode'])
+        self.assertEqual(boot_id, record['bootId'])
+        self.assertNotIn('browserSessionToken', json.dumps(record))
+
+    def test_bootstrap_failure_never_copies_arbitrary_exception_text(self):
+        with patch.object(workload, 'write') as written, \
+                patch.object(workload, 'boot', return_value='a' * 36):
+            with self.assertRaises(ValueError):
+                with controller.bootstrap_phase('launch-redirect', 'candidate-sender'):
+                    raise ValueError('private URL and credential must stay private')
+        self.assertEqual('unclassified', written.call_args.args[1]['errorCode'])
+
     def test_fixed_runtime_record_is_private_and_excludes_exception_message(self):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(controller, 'STARTUP', Path(directory) / 'startup.json'), \
@@ -777,6 +801,8 @@ class ControllerRequestTest(unittest.TestCase):
             for final in (False, True):
                 with self.subTest(body=body, final=final), ExitStack() as stack:
                     stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+                    stack.enter_context(patch.object(workload, 'boot',
+                        return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'))
                     stack.enter_context(patch.object(workload, 'retained', return_value=(
                         {'deadlineMonotonicNs': 10**20}, ROLE, {})))
                     for name in ('admit', 'exact', 'manager', 'current'):
@@ -793,8 +819,13 @@ class ControllerRequestTest(unittest.TestCase):
                     responses.append((200, {}, json.dumps(body).encode()))
                     stack.enter_context(patch.object(controller, '_http', side_effect=responses))
                     reconcile = stack.enter_context(patch.object(workload, 'reconcile'))
+                    written = stack.enter_context(patch.object(workload, 'write'))
                     failed = FakeConnection(json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE}).encode() + b'\n')
                     self.assertFalse(controller.handle_request(failed, 1000))
+                    self.assertTrue(any(call.args[0] == controller.BOOTSTRAP_FAILURE
+                        and call.args[1]['stage'] ==
+                            ('recheck' if final else 'app-runtime')
+                        for call in written.call_args_list))
                     healthy = FakeConnection(self.raw() + b'\n')
                     with patch.object(workload, 'start', return_value={'state': 'running'}):
                         self.assertTrue(controller.handle_request(healthy, 1000))

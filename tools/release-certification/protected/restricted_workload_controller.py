@@ -28,6 +28,10 @@ import restricted_workload as workload
 
 SOCKET = Path('/run/cryptad-workload/control.sock')
 STARTUP = Path('/run/cryptad-workload/startup.json')
+BOOTSTRAP_FAILURE = Path('/run/cryptad-workload/bootstrap-failure.private.json')
+BOOTSTRAP_STAGES = frozenset({'authority', 'installed-app',
+    'launch-redirect', 'origin-parse', 'app-runtime',
+    'session-bootstrap', 'recheck'})
 STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp',
                      'connect-http', 'bootstrap-mail'})
@@ -364,55 +368,94 @@ def runtime_object(body):
     return runtime
 
 
+@contextmanager
+def bootstrap_phase(stage, role):
+    """Retain one root-private fixed failure phase without changing the socket reply."""
+    if stage not in BOOTSTRAP_STAGES:
+        workload.reject('bootstrap-diagnostic-stage-invalid')
+    started = time.monotonic_ns()
+    try:
+        yield
+    except (OSError, ValueError, KeyError, TypeError,
+            http.client.HTTPException) as error:
+        detail = str(error)
+        code = (detail if re.fullmatch(r'[a-z][a-z0-9-]{1,100}', detail)
+                and detail.startswith(('app-', 'restricted-', 'workload-',
+                                       'request-', 'authority-'))
+                else 'unclassified')
+        try:
+            workload.write(BOOTSTRAP_FAILURE, {
+                'schemaVersion': 1,
+                'kind': 'pr315-controller-bootstrap-failure-phase',
+                'stage': stage,
+                'role': role if role in workload.ROLES else 'unknown',
+                'exceptionType': type(error).__name__[:128],
+                'errorCode': code,
+                'controllerPid': os.getpid(),
+                'bootId': workload.boot(),
+                'startedMonotonicNs': started,
+                'observedMonotonicNs': time.monotonic_ns()}, create=True)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # The original request failure remains authoritative.
+        raise
+
+
 def bootstrap(handle):
     """Resolve dynamic app origin only from this role's current daemon launch proof."""
     with workload.locked(), deadline():
-        campaign, role, record = workload.retained(handle)
-        workload.admit(campaign)
-        workload.exact(role, record, workload.manager(role, 'show'))
-        from restricted_workload_storage import verify_installed_app
-        launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
-        verify_installed_app(workload.ROOT / 'state' / role / 'data/node/apps/installed/mail-prototype',
-            launch['mailIdentity'], workload.ROOT / 'authority' / (role + '-app-snapshot'),
-            min(time.monotonic() + 5, campaign['deadlineMonotonicNs'] / 1e9))
-        from restricted_workload_network import connect, _connect_port, HTTP_PORT
-        status, headers, _body = _http(connect(role, 'http'),
-            '/apps/mail-prototype/?cryptadIsolatedLaunch', {'Accept': 'text/html'})
-        if status not in (301, 302, 303, 307, 308):
-            workload.reject('app-launch-unavailable')
-        location = next((value for key, value in headers.items() if key.lower() == 'location'), '')
-        selected = urllib.parse.urlsplit(location)
-        if (selected.scheme != 'http' or selected.hostname != '127.0.0.1'
-                or selected.username is not None or selected.password is not None
-                or selected.port is None or not 1024 <= selected.port <= 65535
-                or selected.port == HTTP_PORT or selected.path not in ('/', '/static/') or selected.query):
-            workload.reject('app-origin-invalid')
-        fragment = urllib.parse.parse_qs(selected.fragment, strict_parsing=True)
-        if (set(fragment) != {'cryptadBootstrapNonce'} or len(fragment['cryptadBootstrapNonce']) != 1
-                or re.fullmatch('[A-Za-z0-9_-]{16,512}', fragment['cryptadBootstrapNonce'][0]) is None):
-            workload.reject('app-nonce-invalid')
-        from restricted_workload_app import require_app_listener
-        runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
-            '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
-        if runtime_status != 200:
-            workload.reject('app-runtime-unavailable')
-        binding = require_app_listener(role, runtime_object(runtime_body), selected.port)
-        origin = 'http://127.0.0.1:' + str(selected.port)
-        status, _headers, body = _http(_connect_port(role, selected.port),
-            '/.well-known/cryptad-bootstrap.json', {'Accept': 'application/json', 'Origin': origin,
-                'X-Crypta-App-Bootstrap-Nonce': fragment['cryptadBootstrapNonce'][0]})
-        value = json.loads(body)
-        if (status != 200 or not isinstance(value, dict) or value.get('uiOrigin') != origin
-                or not isinstance(value.get('browserSessionToken'), str)
-                or not 1 <= len(value['browserSessionToken']) <= 4096):
-            workload.reject('app-bootstrap-invalid')
-        workload.current(campaign)
-        workload.exact(role, record, workload.manager(role, 'show'))
-        runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
-            '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
-        if (runtime_status != 200 or require_app_listener(role, runtime_object(runtime_body),
-                                                        selected.port) != binding):
-            workload.reject('app-worker-changed')
+        with bootstrap_phase('authority', 'unknown'):
+            campaign, role, record = workload.retained(handle)
+            workload.admit(campaign)
+            workload.exact(role, record, workload.manager(role, 'show'))
+        with bootstrap_phase('installed-app', role):
+            from restricted_workload_storage import verify_installed_app
+            launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
+            verify_installed_app(workload.ROOT / 'state' / role / 'data/node/apps/installed/mail-prototype',
+                launch['mailIdentity'], workload.ROOT / 'authority' / (role + '-app-snapshot'),
+                min(time.monotonic() + 5, campaign['deadlineMonotonicNs'] / 1e9))
+        with bootstrap_phase('launch-redirect', role):
+            from restricted_workload_network import connect, _connect_port, HTTP_PORT
+            status, headers, _body = _http(connect(role, 'http'),
+                '/apps/mail-prototype/?cryptadIsolatedLaunch', {'Accept': 'text/html'})
+            if status not in (301, 302, 303, 307, 308):
+                workload.reject('app-launch-unavailable')
+        with bootstrap_phase('origin-parse', role):
+            location = next((value for key, value in headers.items() if key.lower() == 'location'), '')
+            selected = urllib.parse.urlsplit(location)
+            if (selected.scheme != 'http' or selected.hostname != '127.0.0.1'
+                    or selected.username is not None or selected.password is not None
+                    or selected.port is None or not 1024 <= selected.port <= 65535
+                    or selected.port == HTTP_PORT or selected.path not in ('/', '/static/') or selected.query):
+                workload.reject('app-origin-invalid')
+            fragment = urllib.parse.parse_qs(selected.fragment, strict_parsing=True)
+            if (set(fragment) != {'cryptadBootstrapNonce'} or len(fragment['cryptadBootstrapNonce']) != 1
+                    or re.fullmatch('[A-Za-z0-9_-]{16,512}', fragment['cryptadBootstrapNonce'][0]) is None):
+                workload.reject('app-nonce-invalid')
+        with bootstrap_phase('app-runtime', role):
+            from restricted_workload_app import require_app_listener
+            runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
+                '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
+            if runtime_status != 200:
+                workload.reject('app-runtime-unavailable')
+            binding = require_app_listener(role, runtime_object(runtime_body), selected.port)
+        with bootstrap_phase('session-bootstrap', role):
+            origin = 'http://127.0.0.1:' + str(selected.port)
+            status, _headers, body = _http(_connect_port(role, selected.port),
+                '/.well-known/cryptad-bootstrap.json', {'Accept': 'application/json', 'Origin': origin,
+                    'X-Crypta-App-Bootstrap-Nonce': fragment['cryptadBootstrapNonce'][0]})
+            value = json.loads(body)
+            if (status != 200 or not isinstance(value, dict) or value.get('uiOrigin') != origin
+                    or not isinstance(value.get('browserSessionToken'), str)
+                    or not 1 <= len(value['browserSessionToken']) <= 4096):
+                workload.reject('app-bootstrap-invalid')
+        with bootstrap_phase('recheck', role):
+            workload.current(campaign)
+            workload.exact(role, record, workload.manager(role, 'show'))
+            runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
+                '/api/v1/apps/mail-prototype/runtime', {'Accept': 'application/json'})
+            if (runtime_status != 200 or require_app_listener(role, runtime_object(runtime_body),
+                                                            selected.port) != binding):
+                workload.reject('app-worker-changed')
         # A private response; never inserted into an acceptance/public result.
         return {key: value.get(key) for key in ('uiOrigin', 'browserSessionToken', 'browserSessionExpiresAt')}
 

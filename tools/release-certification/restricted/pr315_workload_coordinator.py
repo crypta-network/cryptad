@@ -7,16 +7,21 @@ checks the pinned source and capacity, then verifies and seals the archive.
 """
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 from decimal import Decimal, InvalidOperation
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import subprocess
 import time
 
 import pr315_campaign_seal as seal
+import pr315_campaign_owner as owner
+import pr315_workload_fixtures as fixtures
 import pr315_workload_campaign as campaign
 
 CT = 'codex@192.168.1.180'
@@ -66,13 +71,15 @@ def fixed_config(value):
         'productSelectionDigest', 'sourceSnapshot', 'campaignPlanPath',
         'fixtureManifestDigest', 'preparedImageDigest',
         'productSourceCommit', 'campaignPlanDigest', 'hostKeyFingerprint',
+        'localFixtureManifest', 'probeDigest',
         'fixturePath', 'qemuRoot', 'preparedImage', 'seed', 'sshKey',
         'knownHosts', 'port'}
     if (not isinstance(value, dict) or set(value) != fields
             or any(re.fullmatch('[0-9a-f]{64}',
                 str(value[name])) is None for name in (
                     'fixtureManifestDigest', 'preparedImageDigest',
-                    'campaignPlanDigest', 'hostKeyFingerprint'))
+                    'campaignPlanDigest', 'hostKeyFingerprint',
+                    'probeDigest'))
             or re.fullmatch('[0-9a-f]{40}',
                 str(value['sourceCommit'])) is None
             or re.fullmatch('[0-9a-f]{40}',
@@ -83,6 +90,7 @@ def fixed_config(value):
             or re.fullmatch('[0-9a-f]{40}',
                 str(value['productSourceCommit'])) is None
             or value['port'] != 23113
+            or not Path(value['localFixtureManifest']).is_absolute()
             or not value['sourceSnapshot'].startswith(
                 CT_TASK + '/campaign-frozen/source-')
             or not value['campaignPlanPath'].startswith(
@@ -442,6 +450,78 @@ def archive_selected_attempt(remote, config, suite, group_id, mac_root,
     return destination, manifest_digest
 
 
+def stage_full_attempt(remote, config, suite, campaign_root):
+    """Keep a complete failed disk pair until the smaller case archive is verified.
+
+    A public `passed` field does not authorize omitting failure disks. This
+    staging copy remains immutable if any later case, seal, stop or cleanup
+    check fails; only a fully completed host receipt can retire it.
+    """
+    if _SUITE.fullmatch(suite) is None:
+        raise ValueError('pr315-full-stage-suite-invalid')
+    root = seal._private_directory(Path(campaign_root).resolve(strict=True))
+    stage_root = root / 'full-attempt-staging'
+    stage_root.mkdir(mode=0o700, exist_ok=True)
+    destination = stage_root / suite
+    destination.mkdir(mode=0o700, exist_ok=False)
+    excluded = ('attempt-01/cryptad/***',
+        'attempt-01/expected-bundle/***',
+        'attempt-01/boot-runtime/***',
+        'attempt-01/tools/***')
+    command = ['rsync', '-a', '--checksum',
+        *('--exclude=' + item for item in excluded),
+        '-e', shlex.join(remote.ssh),
+        CT + ':' + CT_TASK + '/' + suite + '/', str(destination) + '/']
+    copied = subprocess.run(command, stdin=subprocess.DEVNULL,
+        capture_output=True, timeout=1800)
+    if copied.returncode or copied.stdout or copied.stderr:
+        raise ValueError('pr315-full-stage-copy-failed')
+    verified = subprocess.run([*command[:3], '--dry-run', '--delete',
+        '--itemize-changes', *command[3:]], stdin=subprocess.DEVNULL,
+        capture_output=True, timeout=1800)
+    if verified.returncode or verified.stdout or verified.stderr:
+        raise ValueError('pr315-full-stage-copy-changed')
+    receipts = destination / 'host-receipts'
+    receipts.mkdir(mode=0o700)
+    for host, source, name in (
+            (CT, CT_TASK + '/host-admission/' + suite + '.json',
+             'host-admission.private.json'),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.ready.json',
+             'host-monitor-ready.private.json'),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.finished.json',
+             'host-monitor-finished.private.json'),
+            (PVE, PVE_TASK + '/host-monitor/' + suite + '.private.jsonl',
+             'host-monitor-samples.private.jsonl')):
+        _scp(remote, host, source, receipts / name)
+    _exclusive_json(destination / 'host-stop.private.json',
+        stopped_observation(remote, suite, config['sourceCommit']))
+    rows = {}
+    for path in destination.rglob('*'):
+        if path.is_symlink():
+            raise ValueError('pr315-full-stage-link-invalid')
+        if not path.is_file():
+            continue
+        relative = path.relative_to(destination).as_posix()
+        checksum = hashlib.sha256()
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(4 * 1024 * 1024), b''):
+                checksum.update(block)
+        rows[relative] = {'sha256': checksum.hexdigest(),
+                          'sizeBytes': path.stat().st_size}
+        if len(rows) > 256:
+            raise ValueError('pr315-full-stage-file-limit')
+    if not {'attempt-01/guest.qcow2', 'attempt-01/prepared.qcow2',
+            'host-stop.private.json'} <= set(rows):
+        raise ValueError('pr315-full-stage-disk-or-stop-unavailable')
+    manifest = {'schemaVersion': 1,
+        'kind': 'pr315-mac-full-failed-preservation-v1',
+        'attemptId': suite, 'sourceCommit': config['sourceCommit'],
+        'files': rows, 'copyVerified': True,
+        'excludedReconstructible': list(excluded)}
+    _exclusive_json(destination / 'full-stage-manifest.private.json', manifest)
+    return destination, seal._digest(manifest)
+
+
 def next_campaign_selection(verified_history):
     """Consume one of at most three preparation slots, with no post-probe retry."""
     if not isinstance(verified_history, list):
@@ -475,3 +555,127 @@ def next_campaign_selection(verified_history):
                 'attemptOrdinal': len(rows) + 1, 'action': action}
     return {'status': 'complete', 'groupId': None,
             'attemptOrdinal': None, 'action': None}
+
+
+def selected_group_complete(campaign_plan, group_id, assessment):
+    """Use public case statuses only to decide which private archive to verify."""
+    owned = set(dict(campaign.GROUPS)[group_id])
+    if (not isinstance(assessment, dict)
+            or assessment.get('schemaVersion') != 2
+            or assessment.get('contract') != seal.CONTRACT
+            or assessment.get('campaignPlanDigest') !=
+                campaign_plan['planDigest']
+            or assessment.get('campaignNonce') !=
+                campaign_plan['campaignNonce']
+            or assessment.get('hostKeyFingerprint') !=
+                campaign_plan['hostKeyFingerprint']
+            or assessment.get('status') != 'partial-execution'
+            or assessment.get('reasons') != []
+            or assessment.get('installedPositiveExecuted') is not
+                (group_id == 'positive')
+            or assessment.get('installedWorkloadAcceptanceSatisfied') is not False):
+        return False
+    cases = assessment.get('cases')
+    if (not isinstance(cases, list) or len(cases) != 45
+            or any(not isinstance(row, dict) or 'caseId' not in row
+                   or 'status' not in row for row in cases)):
+        return False
+    statuses = {row['caseId']: row['status'] for row in cases}
+    if len(statuses) != 45 or not owned <= set(statuses):
+        return False
+    return (all(statuses[case] == 'passed' for case in owned)
+            and all(status != 'passed' for case, status in statuses.items()
+                    if case not in owned))
+
+
+def explicit_probe_phase(group_id, diagnostic):
+    """A missing or malformed start record is unknown, never setup-failed."""
+    if not isinstance(diagnostic, dict):
+        return None
+    marker = diagnostic.get('probeStart')
+    if marker is None:
+        return None
+    if (not isinstance(marker, dict)
+            or set(marker) != {'schemaVersion', 'kind', 'caseId',
+                               'startedMonotonicNs'}
+            or marker['schemaVersion'] != 1
+            or marker['kind'] != 'pr315-workload-probe-start'
+            or marker['caseId'] != group_id
+            or type(marker['startedMonotonicNs']) is not int
+            or marker['startedMonotonicNs'] <= 0):
+        return None
+    return True
+
+
+def initialize_campaign(root, source, config, identity, remote_known_hosts,
+                        first_suite_number):
+    """Freeze the Mac key, measured source and fixed 21-group plan before VM use."""
+    root, source = Path(root), Path(source)
+    if not isinstance(config, dict):
+        raise ValueError('pr315-campaign-config-invalid')
+    fixed_config({**config, 'campaignPlanDigest': '0' * 64,
+                  'hostKeyFingerprint': '0' * 64})
+    if root.exists() or root.is_symlink():
+        raise ValueError('pr315-campaign-root-already-exists')
+    remote_pin = Path(remote_known_hosts)
+    raw_pin = remote_pin.read_bytes()
+    if not 0 < len(raw_pin) <= 16384 or b'ssh-ed25519 ' not in raw_pin:
+        raise ValueError('pr315-campaign-remote-host-pin-invalid')
+    head = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'],
+        capture_output=True, check=True, text=True, timeout=10).stdout.strip()
+    tree = subprocess.run(['git', '-C', str(source), 'rev-parse',
+        'HEAD^{tree}'], capture_output=True, check=True,
+        text=True, timeout=10).stdout.strip()
+    dirty = subprocess.run(['git', '-C', str(source), 'status',
+        '--porcelain', '--untracked-files=normal'],
+        capture_output=True, check=True, timeout=10).stdout
+    if (dirty or head != config['sourceCommit']
+            or tree != config['sourceTree']
+            or identity.get('helperSourceCommit') != head
+            or identity.get('helperSourceTree') != tree
+            or identity.get('fixtureManifestDigest') !=
+                config['fixtureManifestDigest']
+            or identity.get('preparedImageDigest') !=
+                config['preparedImageDigest']
+            or identity.get('productSelectionDigest') !=
+                config['productSelectionDigest']
+            or owner.tracked_byte_digest(source) !=
+                config['trackedByteDigest']):
+        raise ValueError('pr315-campaign-local-frozen-identity-invalid')
+    fixture_manifest = json.loads((Path(config['localFixtureManifest'])).read_bytes())
+    if (fixture_manifest.get('sourceCommit') != head
+            or fixture_manifest.get('probeDigest') !=
+                'sha256:' + config['probeDigest']
+            or hashlib.sha256(Path(config['localFixtureManifest']).read_bytes()
+                ).hexdigest() != config['fixtureManifestDigest']):
+        raise ValueError('pr315-campaign-fixture-input-invalid')
+    volume = os.statvfs(root.parent)
+    mac_available = volume.f_bavail * volume.f_frsize
+    if mac_available < MAC_RESERVE + MAC_ADDITIONAL_BUDGET:
+        raise ValueError('pr315-campaign-mac-baseline-capacity-unavailable')
+    root.mkdir(mode=0o700)
+    fingerprint = seal.prepare_key(root)
+    policy_digest = seal._digest(fixtures.preparation.launcher_policy())
+    planned = seal.plan(identity, policy_digest,
+        'pve-tcg-swap-admission-v1', config['probeDigest'],
+        secrets.token_hex(32), fingerprint)
+    frozen_config = {**config,
+        'campaignPlanDigest': planned['planDigest'],
+        'hostKeyFingerprint': fingerprint}
+    fixed_config(frozen_config)
+    _exclusive_json(root / 'campaign-plan.private.json', planned)
+    pin = root / 'remote-known-hosts.private'
+    descriptor = os.open(pin, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                         os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw_pin)
+        stream.flush()
+        os.fsync(stream.fileno())
+    start = seal.frozen_start(planned, tree, config['trackedByteDigest'],
+        hashlib.sha256(raw_pin).hexdigest(), first_suite_number,
+        mac_available)
+    _exclusive_json(root / 'start.private.json', start)
+    _exclusive_json(root / 'start-seal.private.json',
+        seal.sign_start(root, planned, start))
+    _exclusive_json(root / 'coordinator-config.private.json', frozen_config)
+    return planned

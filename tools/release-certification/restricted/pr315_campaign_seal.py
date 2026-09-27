@@ -26,6 +26,8 @@ CAMPAIGN = 'pr315-workload-campaign-v2'
 CONTRACT = 'pr314-workload-roles-v10'
 RECEIPT = 'pr315-host-attempt-receipt-v2'
 SIGNATURE_DOMAIN = 'pr315-campaign-v2'
+START_DOMAIN = 'pr315-campaign-start-v1'
+START_KIND = 'pr315-frozen-campaign-start-v1'
 AUTHORITY_HANDOFF = 'pr315-retired-authority-handoff-v1'
 AUTHORITY_DOMAIN = 'pr315-retired-authority-v1'
 KEY_NAME = 'campaign-ed25519'
@@ -256,6 +258,107 @@ def verify(root, campaign, envelope, *, pinned_source_commit, pinned_fingerprint
     if checked.returncode != 0:
         raise ValueError('pr315-campaign-signature-mismatch')
     return receipt
+
+
+def frozen_start(campaign, source_tree, tracked_byte_digest,
+                 remote_known_hosts_digest, first_suite_number,
+                 mac_available_at_start_bytes):
+    """Pin the host-owned campaign launch before allocating any guest."""
+    if (not isinstance(campaign, dict) or campaign.get('kind') != CAMPAIGN
+            or _HEX40.fullmatch(str(source_tree)) is None
+            or source_tree != campaign['identity']['helperSourceTree']
+            or any(_HEX64.fullmatch(str(value)) is None for value in
+                   (tracked_byte_digest, remote_known_hosts_digest))
+            or type(first_suite_number) is not int
+            or not 1 <= first_suite_number <= 999999
+            or type(mac_available_at_start_bytes) is not int
+            or mac_available_at_start_bytes < 224 * 1024**3):
+        raise ValueError('pr315-campaign-start-input-invalid')
+    return {'schemaVersion': 1, 'kind': START_KIND,
+        'planDigest': campaign['planDigest'],
+        'sourceCommit': campaign['identity']['helperSourceCommit'],
+        'sourceTree': source_tree,
+        'trackedByteDigest': tracked_byte_digest,
+        'hostKeyFingerprint': campaign['hostKeyFingerprint'],
+        'fixtureManifestDigest': campaign['identity']['fixtureManifestDigest'],
+        'productSelectionDigest': campaign['identity']['productSelectionDigest'],
+        'hostAdmissionPolicy': campaign['hostAdmissionPolicy'],
+        'remoteKnownHostsDigest': remote_known_hosts_digest,
+        'groupCount': len(historical.GROUPS),
+        'firstSuiteNumber': first_suite_number,
+        'macAvailableAtStartBytes': mac_available_at_start_bytes}
+
+
+def _verified_start_shape(campaign, value):
+    if not isinstance(value, dict):
+        raise ValueError('pr315-campaign-start-invalid')
+    try:
+        expected = frozen_start(campaign, value['sourceTree'],
+            value['trackedByteDigest'], value['remoteKnownHostsDigest'],
+            value['firstSuiteNumber'], value['macAvailableAtStartBytes'])
+    except KeyError as error:
+        raise ValueError('pr315-campaign-start-invalid') from error
+    if value != expected:
+        raise ValueError('pr315-campaign-start-changed')
+    return value
+
+
+def sign_start(root, campaign, start):
+    """Seal the frozen launch identity using the Mac-only campaign key."""
+    root = _private_directory(root)
+    _check_plan(campaign, campaign['identity']['helperSourceCommit'],
+                campaign['hostKeyFingerprint'])
+    _verified_start_shape(campaign, start)
+    key = root / KEY_NAME
+    info = key.lstat()
+    public = _public_key((root / (KEY_NAME + '.pub')).read_bytes())
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+            or info.st_mode & 0o077
+            or hashlib.sha256(public).hexdigest() !=
+                campaign['hostKeyFingerprint']):
+        raise ValueError('pr315-campaign-start-key-invalid')
+    signed = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign',
+        '-f', str(key), '-n', START_DOMAIN], input=_canonical(start),
+        capture_output=True, timeout=15, check=True)
+    signature = signed.stdout.decode('ascii')
+    if (not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')
+            or not signature.endswith('-----END SSH SIGNATURE-----\n')
+            or len(signature) > 4096):
+        raise ValueError('pr315-campaign-start-signature-invalid')
+    envelope = {'start': start, 'signature': signature}
+    verify_start(root, campaign, envelope)
+    return envelope
+
+
+def verify_start(root, campaign, envelope):
+    """Authenticate frozen start bytes before resume or resource allocation."""
+    root = _private_directory(root)
+    _check_plan(campaign, campaign['identity']['helperSourceCommit'],
+                campaign['hostKeyFingerprint'])
+    if (not isinstance(envelope, dict)
+            or set(envelope) != {'start', 'signature'}):
+        raise ValueError('pr315-campaign-start-envelope-invalid')
+    start = _verified_start_shape(campaign, envelope['start'])
+    signature = envelope['signature']
+    public = _public_key((root / (KEY_NAME + '.pub')).read_bytes())
+    if (not isinstance(signature, str) or len(signature) > 4096
+            or not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')
+            or hashlib.sha256(public).hexdigest() !=
+                campaign['hostKeyFingerprint']):
+        raise ValueError('pr315-campaign-start-signature-invalid')
+    with tempfile.TemporaryDirectory(prefix='pr315-start-verify-') as temporary:
+        directory = Path(temporary)
+        allowed = directory / 'allowed'
+        sig = directory / 'signature'
+        allowed.write_bytes(b'pr315-campaign ' + public + b'\n')
+        sig.write_text(signature, encoding='ascii')
+        checked = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'verify',
+            '-f', str(allowed), '-I', 'pr315-campaign', '-n', START_DOMAIN,
+            '-s', str(sig)], input=_canonical(start), capture_output=True,
+            timeout=15)
+    if checked.returncode:
+        raise ValueError('pr315-campaign-start-signature-mismatch')
+    return start
 
 
 def authority_handoff(campaign, preparation_id, provenance,

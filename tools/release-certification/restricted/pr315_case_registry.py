@@ -102,7 +102,10 @@ CASE_PATHS = {
 
 
 def _functions(path):
-    tree = ast.parse(path.read_bytes(), filename=str(path))
+    try:
+        tree = ast.parse(path.read_bytes(), filename=str(path))
+    except (OSError, SyntaxError):
+        return set()
     found = {node.name for node in tree.body
              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
     for node in tree.body:

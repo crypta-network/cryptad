@@ -76,9 +76,12 @@ class PrivateArchiveTest(unittest.TestCase):
                            check=True, capture_output=True)
         commit = subprocess.check_output(['git', '-C', str(source),
             'rev-parse', 'HEAD'], text=True).strip()
+        tree = subprocess.check_output(['git', '-C', str(source),
+            'rev-parse', 'HEAD^{tree}'], text=True).strip()
         identity = {key: (commit if key.endswith(('Commit', 'Tree'))
                           else 'a' * 64)
                     for key in seal.acceptance.IDENTITY_FIELDS}
+        identity['helperSourceTree'] = tree
         fingerprint = seal.prepare_key(self.root)
         campaign = seal.plan(identity, 'b' * 64,
             'pve-tcg-swap-admission-v1', 'c' * 64,
@@ -89,7 +92,7 @@ class PrivateArchiveTest(unittest.TestCase):
             'schemaVersion': 1, 'kind': 'pr315-development-campaign-start',
             'planDigest': campaign['planDigest'],
             'sourceCommit': commit,
-            'sourceTree': commit,
+            'sourceTree': tree,
             'trackedByteDigest': owner.tracked_byte_digest(source),
             'hostKeyFingerprint': fingerprint,
             'fixtureManifestDigest': identity['fixtureManifestDigest'],
@@ -100,6 +103,29 @@ class PrivateArchiveTest(unittest.TestCase):
             'groupCount': 21}))
         with self.assertRaisesRegex(ValueError,
                                     'frozen-source-or-startup-pin-changed'):
+            owner.recovered_campaign_verdict(self.root, source,
+                expected_plan_digest=campaign['planDigest'],
+                expected_key_fingerprint=fingerprint)
+        start = seal.frozen_start(campaign, tree,
+            owner.tracked_byte_digest(source),
+            hashlib.sha256(b'pinned-fixture-host\n').hexdigest(),
+            201, 225 * 1024**3)
+        (self.root / 'start.private.json').write_bytes(seal._canonical(start))
+        with self.assertRaises(FileNotFoundError):
+            owner.recovered_campaign_verdict(self.root, source,
+                expected_plan_digest=campaign['planDigest'],
+                expected_key_fingerprint=fingerprint)
+        signed = seal.sign_start(self.root, campaign, start)
+        self.write('start-seal.private.json', seal._canonical(signed))
+        result = owner.recovered_campaign_verdict(self.root, source,
+            expected_plan_digest=campaign['planDigest'],
+            expected_key_fingerprint=fingerprint)
+        self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+        signed['signature'] = signed['signature'].replace(
+            'SSH SIGNATURE', 'SSH SIGNAFURE')
+        (self.root / 'start-seal.private.json').write_bytes(
+            seal._canonical(signed))
+        with self.assertRaises(ValueError):
             owner.recovered_campaign_verdict(self.root, source,
                 expected_plan_digest=campaign['planDigest'],
                 expected_key_fingerprint=fingerprint)

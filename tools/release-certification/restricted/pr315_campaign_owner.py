@@ -530,6 +530,9 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
             or campaign.get('identity', {}).get('helperSourceCommit') != commit):
         raise ValueError('pr315-owner-frozen-source-or-startup-pin-changed')
     seal._check_plan(campaign, commit, expected_key_fingerprint)
+    envelope = _json(root, 'start-seal.private.json', 8192)
+    if seal.verify_start(root, campaign, envelope) != startup:
+        raise ValueError('pr315-owner-frozen-start-signature-changed')
     history = seal.load_verified_history(root, campaign,
         pinned_source_commit=commit,
         pinned_fingerprint=expected_key_fingerprint)

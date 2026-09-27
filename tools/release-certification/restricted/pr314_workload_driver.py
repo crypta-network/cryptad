@@ -5549,6 +5549,44 @@ def controller_startup_snapshot(workload):
         return {'status': 'unavailable-not-quiescence-proof'}
 
 
+def controller_bootstrap_failure_snapshot(workload):
+    """Copy only a closed root-private bootstrap phase before service teardown."""
+    path = Path('/run/cryptad-workload/bootstrap-failure.private.json')
+    try:
+        value = workload.read(path)
+    except FileNotFoundError:
+        return {'status': 'not-observed'}
+    except (OSError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+    stages = {'authority', 'installed-app', 'launch-redirect',
+              'origin-parse', 'app-runtime', 'session-bootstrap', 'recheck'}
+    try:
+        if (not isinstance(value, dict) or set(value) != {
+                'schemaVersion', 'kind', 'stage', 'role', 'exceptionType',
+                'errorCode', 'controllerPid', 'bootId',
+                'startedMonotonicNs', 'observedMonotonicNs'}
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-controller-bootstrap-failure-phase'
+                or value['stage'] not in stages
+                or value['role'] not in (*ROLE_NAMES, 'unknown')
+                or re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,127}',
+                    value['exceptionType']) is None
+                or re.fullmatch(r'[a-z][a-z0-9-]{1,100}',
+                    value['errorCode']) is None
+                or value['bootId'] != workload.boot()
+                or type(value['controllerPid']) is not int
+                or value['controllerPid'] <= 1
+                or type(value['startedMonotonicNs']) is not int
+                or type(value['observedMonotonicNs']) is not int
+                or not 0 < value['startedMonotonicNs'] <
+                    value['observedMonotonicNs'] <= time.monotonic_ns()):
+            raise ValueError('workload-bootstrap-diagnostic-invalid')
+        return {'status': 'captured', 'record': value,
+                'classification': 'private-bootstrap-diagnostic-not-acceptance'}
+    except (KeyError, TypeError, ValueError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False):
     """Prospective diagnostic observation never extends the retained execution deadline."""
     seconds = STARTUP_MEASUREMENT_SECONDS if startup_measurement else READINESS_SECONDS
@@ -6459,6 +6497,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         finally:
             try:
                 diagnostics['controllerStartup'] = controller_startup_snapshot(workload)
+                diagnostics['controllerBootstrapFailure'] = (
+                    controller_bootstrap_failure_snapshot(workload))
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
                 diagnostics['cleanupFinishedNs'] = time.monotonic_ns()

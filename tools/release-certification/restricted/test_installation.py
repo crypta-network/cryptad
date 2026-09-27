@@ -855,6 +855,9 @@ class ExecutionPublicationTests(unittest.TestCase):
         self.root.chmod(0o755)
         self.public = self.root / 'installation'
         self.public.mkdir(mode=0o755)
+        # Prior CLI tests may have left a restrictive process umask in this
+        # shared test process; the publication premise is an actually traversable path.
+        self.public.chmod(0o755)
         self.private = self.root / 'private-config'
         self.private.mkdir(mode=0o700)
         self.execution = self.public / 'restricted-execution.json'

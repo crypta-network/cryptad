@@ -884,6 +884,32 @@ class CleanupTest(unittest.TestCase):
                 self.assertEqual({'status': 'unavailable-not-quiescence-proof'},
                                  driver.controller_startup_snapshot(workload))
 
+    def test_bootstrap_failure_snapshot_accepts_only_closed_root_record(self):
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        record = {'schemaVersion': 1,
+            'kind': 'pr315-controller-bootstrap-failure-phase',
+            'stage': 'app-runtime', 'role': 'candidate-recipient',
+            'exceptionType': 'ValueError',
+            'errorCode': 'app-runtime-unavailable',
+            'controllerPid': 44, 'bootId': boot,
+            'startedMonotonicNs': 1, 'observedMonotonicNs': 2}
+        workload = SimpleNamespace(read=Mock(return_value=record),
+                                   boot=lambda: boot)
+        observed = driver.controller_bootstrap_failure_snapshot(workload)
+        self.assertEqual('captured', observed['status'])
+        self.assertEqual(record, observed['record'])
+        for change in ({'role': 'attacker'},
+                       {'bootId': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'},
+                       {'errorCode': 'private-token=value'}):
+            workload.read.return_value = {**record, **change}
+            self.assertEqual('unavailable-or-unsafe',
+                driver.controller_bootstrap_failure_snapshot(workload)['status'])
+
+    def test_absent_bootstrap_failure_receipt_is_not_a_pass(self):
+        workload = SimpleNamespace(read=Mock(side_effect=FileNotFoundError()))
+        self.assertEqual({'status': 'not-observed'},
+                         driver.controller_bootstrap_failure_snapshot(workload))
+
     def test_terminal_fence_waits_for_owner_transaction_before_controller_stop(self):
         events = []
         with tempfile.TemporaryDirectory() as directory:

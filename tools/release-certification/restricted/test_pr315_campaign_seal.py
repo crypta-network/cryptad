@@ -54,6 +54,23 @@ class CampaignSealTest(unittest.TestCase):
                 pinned_source_commit='e' * 40,
                 pinned_fingerprint=self.fingerprint)
 
+    def test_frozen_start_is_signed_and_pins_suite_and_mac_capacity(self):
+        start = seal.frozen_start(self.plan, SOURCE, 'e' * 64,
+            'f' * 64, 201, 225 * 1024**3)
+        signed = seal.sign_start(self.root, self.plan, start)
+        self.assertEqual(start, seal.verify_start(self.root, self.plan, signed))
+        for field, changed in (('firstSuiteNumber', 202),
+                               ('macAvailableAtStartBytes', 0),
+                               ('trackedByteDigest', '0' * 64),
+                               ('remoteKnownHostsDigest', '1' * 64)):
+            mutated = copy.deepcopy(signed)
+            mutated['start'][field] = changed
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                seal.verify_start(self.root, self.plan, mutated)
+        with self.assertRaisesRegex(ValueError, 'start-input-invalid'):
+            seal.frozen_start(self.plan, SOURCE, 'e' * 64,
+                'f' * 64, 201, 223 * 1024**3)
+
     def test_retired_authority_handoff_is_signed_without_raw_handle(self):
         provenance = {'schemaVersion': 1,
             'kind': 'pr315-retired-authority-host-provenance',
