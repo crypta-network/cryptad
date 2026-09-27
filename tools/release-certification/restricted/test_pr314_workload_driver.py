@@ -182,6 +182,40 @@ class ObserverFailureTest(unittest.TestCase):
         self.assertEqual('controller-request-rejected', result['immediateCause']['privateDetail'])
         self.assertEqual('workload-daemon-readiness-timeout', result['privateDetail'])
 
+    def test_transport_diagnostic_has_closed_private_fields(self):
+        error = ValueError('workload-controller-transport-failed')
+        error.__cause__ = TimeoutError('timed out')
+        error.transport_diagnostic = {'method': 'start',
+            'phase': 'response-read', 'elapsedNs': 30_000_000_000,
+            'causeType': 'TimeoutError', 'errno': None}
+        result = driver.observer_failure(error)
+        self.assertEqual(error.transport_diagnostic,
+                         result['transportDiagnostic'])
+        self.assertEqual('TimeoutError', result['immediateCause']['exceptionType'])
+        self.assertLess(len(json.dumps(result).encode()), 4096)
+        error.transport_diagnostic['privateHandle'] = 'a' * 64
+        self.assertNotIn('transportDiagnostic', driver.observer_failure(error))
+
+    def test_controller_journal_diagnostic_is_fixed_bounded_and_private(self):
+        commands = []
+
+        def run(arguments, *, environment, timeout, output_limit, diagnostic_sink):
+            commands.append((arguments, environment, timeout, output_limit))
+            diagnostic_sink(b'controller-event', b'')
+            return b'controller-event'
+
+        with patch.dict('sys.modules', {'bounded_process': SimpleNamespace(run=run)}):
+            result = driver.capture_controller_journal_at_failure()
+        self.assertEqual('captured', result['status'])
+        self.assertEqual(b'controller-event',
+                         base64.b64decode(result['stdoutBase64']))
+        self.assertEqual('private-diagnostic-not-acceptance',
+                         result['classification'])
+        self.assertEqual(5, commands[0][2])
+        self.assertEqual(8192, commands[0][3])
+        self.assertEqual('cryptad-workload-controller.service',
+                         commands[0][0][-2].split('=', 1)[1])
+
     def test_unicode_and_cycles_cannot_overrun_retained_child_transcript(self):
         error = ValueError('😀' * 10000)
         error.__cause__ = RuntimeError('😀' * 10000)

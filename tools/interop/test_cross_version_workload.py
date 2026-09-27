@@ -928,6 +928,32 @@ class ObserverPolicyTests(unittest.TestCase):
                 workload.WorkloadClient().drop_start_response('/proc/1')
             factory.assert_not_called()
 
+    def test_controller_transport_failure_retains_bounded_stage_and_direct_cause(self):
+        for stage, cause in (('connect', ConnectionRefusedError(111, 'refused')),
+                             ('response-read', TimeoutError('timed out'))):
+            with self.subTest(stage=stage):
+                channel = mock.Mock()
+                channel.getsockopt.return_value = struct.pack('3i', 123, 0, 0)
+                if stage == 'connect':
+                    channel.connect.side_effect = cause
+                else:
+                    channel.recvmsg.side_effect = cause
+                with mock.patch.object(workload.socket, 'SO_PEERCRED', 17, create=True), \
+                        mock.patch.object(workload.socket, 'MSG_CMSG_CLOEXEC', 0,
+                                          create=True), \
+                        mock.patch.object(workload.socket, 'socket', return_value=channel):
+                    with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                                'controller-transport-failed') as raised:
+                        workload.WorkloadClient().request('start', HANDLE)
+                error = raised.exception
+                self.assertIs(error.__cause__, cause)
+                self.assertEqual(stage, error.transport_diagnostic['phase'])
+                self.assertEqual('start', error.transport_diagnostic['method'])
+                self.assertEqual(type(cause).__name__,
+                                 error.transport_diagnostic['causeType'])
+                self.assertGreaterEqual(error.transport_diagnostic['elapsedNs'], 0)
+                self.assertNotIn(HANDLE, json.dumps(error.transport_diagnostic))
+
     def test_denied_observe_retains_exact_controller_exchange_digest(self):
         denied = b'{"error":"restricted-workload-request-failed"}\n'
         sent = []

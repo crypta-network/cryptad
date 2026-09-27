@@ -3780,6 +3780,23 @@ def observer_failure(error):
         result['immediateCause'] = {'exceptionType': _bounded_text(type(cause).__name__, 128),
             'privateDetail': _bounded_text(str(cause), 512),
             'meaning': 'python-explicit-cause-not-acceptance'}
+    transport = getattr(error, 'transport_diagnostic', None)
+    if (isinstance(transport, dict)
+            and set(transport) == {'method', 'phase', 'elapsedNs',
+                                   'causeType', 'errno'}
+            and transport['method'] in ('start', 'observe', 'stop',
+                'connect-fcp', 'connect-http', 'bootstrap-mail')
+            and transport['phase'] in ('connect', 'peer-check', 'request-send',
+                'response-read', 'response-parse', 'descriptor-validation')
+            and type(transport['elapsedNs']) is int
+            and 0 <= transport['elapsedNs'] <= 3600 * 10**9
+            and isinstance(transport['causeType'], str)
+            and re.fullmatch('[A-Za-z][A-Za-z0-9_]{0,63}',
+                             transport['causeType']) is not None
+            and (transport['errno'] is None or
+                 type(transport['errno']) is int and
+                 0 <= transport['errno'] <= 4096)):
+        result['transportDiagnostic'] = dict(transport)
     # A shared deadline exception alone cannot locate the expired operation. Retain
     # bounded code locations, never frame locals, source lines or absolute paths.
     components = {'cross_version_workload.py', 'cross_version_runtime.py',
@@ -3798,6 +3815,30 @@ def observer_failure(error):
     if frames:
         result['privateCodeLocations'] = frames[-8:]
     return result
+
+
+def capture_controller_journal_at_failure():
+    """Retain a fixed bounded controller journal before role cleanup."""
+    from bounded_process import run
+    captured = {'stdout': b'', 'stderr': b''}
+
+    def retain(stdout, stderr):
+        captured.update(stdout=stdout, stderr=stderr)
+
+    try:
+        run(['/usr/bin/journalctl', '--boot', '--no-pager',
+             '--output=short-monotonic', '--unit=cryptad-workload-controller.service',
+             '--lines=40'], environment=ENV, timeout=5,
+            output_limit=8192, diagnostic_sink=retain)
+        status = 'captured'
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        status = (str(error) if str(error) in {
+            'bounded_process_failed', 'bounded_process_deadline_exceeded',
+            'bounded_process_output_exceeded'} else type(error).__name__)
+    return {'classification': 'private-diagnostic-not-acceptance',
+            'status': status,
+            'stdoutBase64': base64.b64encode(captured['stdout']).decode(),
+            'stderrBase64': base64.b64encode(captured['stderr']).decode()}
 
 
 def controller_unit_identity(workload):
@@ -4155,6 +4196,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if status != 0:
             diagnostics['observerFailure'] = {'exitStatus': status,
                 'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
+            diagnostics['controllerJournalAtFailure'] = capture_controller_journal_at_failure()
             try:
                 failure = json.loads(raw)
                 if (failure.get('observerFailure') == 'RuntimeFailure'

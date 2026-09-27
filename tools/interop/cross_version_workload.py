@@ -63,15 +63,20 @@ class WorkloadClient:
         self.last_exchange = None
         descriptors = []
         channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        started = time.monotonic_ns()
+        phase = 'connect'
         try:
             channel.settimeout(30)
             channel.connect(SOCKET)
+            phase = 'peer-check'
             _, uid, _ = struct.unpack('3i', channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
             if uid != 0:
                 fail('controller-peer-not-root')
             request_raw = json.dumps({'method': method, 'handle': handle}, separators=(',', ':')).encode() + b'\n'
+            phase = 'request-send'
             channel.sendall(request_raw)
             payload = bytearray()
+            phase = 'response-read'
             while b'\n' not in payload:
                 data, ancillary, flags, _ = channel.recvmsg(min(65536, MAX_RESPONSE + 1 - len(payload)),
                     socket.CMSG_SPACE(16 * array.array('i').itemsize), socket.MSG_CMSG_CLOEXEC)
@@ -93,9 +98,11 @@ class WorkloadClient:
             self.last_exchange = {'method': method,
                 'requestDigest': hashlib.sha256(request_raw).hexdigest(),
                 'responseDigest': hashlib.sha256(payload).hexdigest()}
+            phase = 'response-parse'
             value = json.loads(payload, object_pairs_hook=_object)
             if not isinstance(value, dict) or 'error' in value:
                 fail('controller-request-rejected')
+            phase = 'descriptor-validation'
             if method.startswith('connect-'):
                 if len(descriptors) != 1:
                     fail('controller-connection-missing')
@@ -117,8 +124,15 @@ class WorkloadClient:
             if descriptors:
                 fail('controller-unexpected-connection')
             return value
-        except (OSError, ValueError, UnicodeError):
-            fail('controller-transport-failed')
+        except (OSError, ValueError, UnicodeError) as error:
+            failure = runtime.RuntimeFailure('workload-controller-transport-failed')
+            failure.transport_diagnostic = {
+                'method': method, 'phase': phase,
+                'elapsedNs': max(0, time.monotonic_ns() - started),
+                'causeType': type(error).__name__,
+                'errno': error.errno if isinstance(error, OSError)
+                    and type(error.errno) is int else None}
+            raise failure from error
         finally:
             channel.close()
             for descriptor in descriptors:

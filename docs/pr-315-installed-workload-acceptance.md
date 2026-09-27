@@ -3669,11 +3669,30 @@ interop root transport cases. An attempted whole-file root run also showed two
 role-probe tests that require a non-root actor; their root-only selection was
 run separately from the non-root suite.
 
+The corrected `a1132835fb4e650925422159a6efdff63af04382` source passed
+PR-315, PR-314, protected-workload and interop Linux checks with 238/2,
+105/10, 179/24 and 60/9 tests/skips. Its full Java XML contains 17,411 tests,
+ten skips and zero failures or errors; the Gradle problems report contains
+50 warnings and zero errors. Four certification self-test groups passed 152,
+247, 88 and 185 tests. The v47 fixture's 406 members and the fresh source
+export/test-kit identities were independently checked. A new signed campaign
+passed its no-VM probe and started suite 137 after three low-pressure PVE PSI
+samples. Suite 137 stopped with guest exit one during the positive sequence's
+`candidate-recipient` controller start request. Its watcher completed and its
+12,678-file Mac failure staging rehashed; the campaign sealed an unknown-phase
+failure with zero passed cases. There was no observed role OOM or HotSpot fatal.
+The observer's generic `controller-transport-failed` result did not retain
+whether the fixed socket failed while connecting, sending, receiving or parsing.
+The next prospective test-kit revision retains a bounded, private direct cause,
+request phase and controller journal before cleanup without changing the
+socket timeout, workload deadline, role limits or acceptance decision. Its
+diagnostic result still requires a new frozen campaign and fresh execution.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the corrected prospective helper source. The terminal `69db1fe0df` campaign has eight sealed positive passes and 13/45 total, but its evidence cannot transfer to the corrected source |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `69db1fe0df` campaign stopped at 13/45 after suite 136. KVM diagnostics and results from other source commits do not increase its credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. The terminal `69db1fe0df` campaign has eight sealed positive passes and 13/45 total; the separate terminal `a1132835fb` campaign has zero passed cases after suite 137. Neither result transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `69db1fe0df` campaign stopped at 13/45 after suite 136, and `a1132835fb` stopped at 0/45 after suite 137. KVM diagnostics and results from other source commits do not increase either campaign's credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
