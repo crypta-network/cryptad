@@ -3040,6 +3040,27 @@ the watcher and adds a signed, reverified no-VM preparation failure path with
 the same three-attempt group limit. Its focused Linux checks passed; a new
 source-bound fixture and campaign are required before another installed run.
 
+That revision was committed as `6897b15e25`. CT102 passed the 231-test PR-315
+discovery with two skips, PR-314's 105 tests with ten skips, 178 protected
+workload tests with 24 skips, and 60 cross-version workload tests with nine
+skips. The changed watcher/coordinator checks passed 25 tests in root CT102.
+The complete certification self-test passed 2,395 tests. `./gradlew test`
+passed 17,411 JUnit tests with zero failures/errors and ten skips; its Gradle
+problems report contained 50 WARNING rows and no ERROR rows. The v39 private
+fixture passed strict verification with the pinned product, JDK and signed
+Mail/probe bytes unchanged.
+
+The `6897b15e25` campaign sealed its Mac start and created an isolated CT102
+source snapshot, but remote preparation stopped before a guest because the
+public Ed25519 key's then-fixed CT102 filename already held the older d94b
+campaign key. Exact-byte publication rejected the collision; no key was
+replaced and no watcher or VM started. The next source revision gives the
+public key and retired-authority handoff files a name derived from the complete
+campaign plan digest. The old snapshot and suite121's three remaining
+generated directories were copied to the Mac, checksum-verified and released
+from PVE only after separate explicit approval and stopped-instance checks.
+Neither preparation attempt grants a passed case.
+
 CT102 native Linux passed 338 focused PR-314/315/installation tests with 11
 skips, 178 protected-workload tests with 24 skips, 60 interop tests with nine
 skips, and the separate PR-314 and PR-315 discoveries with 105/10 and 223/2

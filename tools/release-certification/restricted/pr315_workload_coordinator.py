@@ -639,8 +639,20 @@ def publish_frozen_campaign(remote, root, config):
     plan = _put_frozen_input(remote, root / 'campaign-plan.private.json',
                              config['campaignPlanPath'])
     public = _put_frozen_input(remote, root / (seal.KEY_NAME + '.pub'),
-                               parent + '/campaign-ed25519.pub', private=False)
+                               remote_campaign_input_paths(config)[2],
+                               private=False)
     return {'planFileDigest': plan, 'publicKeyFileDigest': public}
+
+
+def remote_campaign_input_paths(config):
+    """Keep every sealed campaign's handoff and public key immutable."""
+    digest = config['campaignPlanDigest']
+    if re.fullmatch('[0-9a-f]{64}', str(digest)) is None:
+        raise ValueError('pr315-campaign-input-plan-invalid')
+    parent = CT_TASK + '/campaign-frozen/campaign-' + digest + '-'
+    return (parent + 'retired-authority-input.private.json',
+            parent + 'retired-authority-handoff.private.json',
+            parent + 'ed25519.pub')
 
 
 def archive_selected_attempt(remote, config, suite, group_id, mac_root,
@@ -1620,11 +1632,7 @@ def run_campaign(root, source, *, case_group=None):
         retired_files = None
         if group_id == 'authority' and selected['action'] == 'selected-group':
             verify_retired_preparation_for_resume(root, plan, history)
-            parent = CT_TASK + '/campaign-frozen/'
-            retired_files = tuple(parent + name for name in (
-                'retired-authority-input.private.json',
-                'retired-authority-handoff.private.json',
-                'campaign-ed25519.pub'))
+            retired_files = remote_campaign_input_paths(config)
             for local, target, private in zip((
                     root / 'retired-authority-input.private.json',
                     root / 'retired-authority-handoff.private.json',

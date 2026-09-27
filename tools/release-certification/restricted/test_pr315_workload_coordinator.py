@@ -157,6 +157,30 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertEqual([], coordinator.remote_runner_prerequisites(
             remote, config))
 
+    def test_separate_campaigns_publish_distinct_immutable_public_keys(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-key-path-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            remote = SimpleNamespace(call=unittest.mock.Mock())
+            base = {'campaignPlanPath': coordinator.CT_TASK +
+                    '/campaign-frozen/plan.private.json'}
+            with patch.object(coordinator, 'fixed_config'), \
+                    patch.object(coordinator, 'source_preflight'), \
+                    patch.object(coordinator, '_put_frozen_input',
+                                 return_value='d' * 64) as publish:
+                for digest in ('a' * 64, 'b' * 64):
+                    coordinator.publish_frozen_campaign(remote, root,
+                        {**base, 'campaignPlanDigest': digest})
+            public_targets = [call.args[2] for call in
+                              publish.call_args_list[1::2]]
+            self.assertEqual(2, len(set(public_targets)))
+            self.assertTrue(all(target.startswith(coordinator.CT_TASK +
+                '/campaign-frozen/campaign-') for target in public_targets))
+            for digest, target in zip(('a' * 64, 'b' * 64), public_targets):
+                self.assertEqual(target,
+                    coordinator.remote_campaign_input_paths(
+                        {'campaignPlanDigest': digest})[2])
+
     def test_unlaunched_watcher_refuses_any_allocated_attempt(self):
         remote = SimpleNamespace(call=unittest.mock.Mock(
             return_value=SimpleNamespace(returncode=1)))
