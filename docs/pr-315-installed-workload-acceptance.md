@@ -19,6 +19,9 @@ positive suite 129 later failed before any case record. These results
 cannot be pooled with another commit or counted as final-source
 acceptance. The v37 suite 130 sealed eight positive case results, but its
 post-run PVE copy-release receipt did not finish within the old host wait.
+Suite 131 on the next helper source passed all eight positives with a signed
+cleanup receipt; suite 132 then stopped before a VM on a measured PVE PSI
+admission denial. Neither source has a complete 45-case result.
 The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
 historical checkpoint. The current cutoff and remaining gates are recorded
@@ -82,7 +85,9 @@ profile remains `debian13-systemd257-workload-v1`. Consult the
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
 The launcher policy is v37. Its suite 130 produced eight sealed positive
 case results on an earlier helper source, but its host cleanup receipt remains
-incomplete; the prospective helper source has no installed result. V36 had
+incomplete. Suite 131 on the next helper source completed eight positives
+with cleanup, then suite 132 was denied before a VM. The prospective helper
+source has no installed result. V36 had
 two startup-only TCG diagnostics and one failed formal positive attempt.
 Suite 124 remains bound to v34, and suites 125–126 and KVM19 remain bound to v35.
 Earlier policy revisions, including suite
@@ -2954,7 +2959,7 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
-## Current cutoff after suite 130 and the host-release wait correction
+## Current cutoff after suite 132 and the no-VM admission correction
 
 Source `a06d14dc21` suite 118 failed before role launch because its measured
 test kit omitted the lifecycle role probe. That packaging defect was corrected
@@ -3227,6 +3232,53 @@ QCOW dependency checks. A focused Linux coordinator regression passed 19
 tests. Since the helper source changes, a new fixture and campaign must
 rerun the eight positives as well as the other 37 cases; suite 130 cannot
 be imported into that campaign.
+
+After independent full-file Mac reverification, suite 130's seven PVE success
+duplicates were released with a separate exact source/receipt/stop and
+71-QCOW dependency check. This capacity action did not create the missing
+cleanup signature for its old campaign. Two local reconstructible success
+disks were released after another full rehash and a 116-QCOW dependency scan;
+12,823 source and raw-observation files remain under a private manifest.
+
+Source `52579d51dd` passed final-source PR-315, PR-314, protected-workload
+and interop Linux checks with 233/2, 105/10, 179/24 and 60/9 tests/skips.
+Root protected workload passed all 179 tests and the selected root cleanup
+checks passed. Four certification self-tests passed 152, 247, 88 and 185
+tests. The full Java run passed 17,411 tests with ten skips and no failure or
+error; its problems report had 50 warnings and zero errors. Strict v45
+fixture verification bound this helper, v37 launcher, pinned product/JDK and
+the same signed Mail/probe bytes; a new sealed campaign and no-VM probe passed.
+
+Formal TCG suite 131 on that campaign completed all eight v10 positive cases,
+guest exit zero, complete Mac archive, PVE watcher and QEMU stop. Its first
+PVE release inventory found no task QEMU, open users or external backing
+dependencies across 71 QCOW2 images. The second, digest-pinned cleanup
+rechecked the same conditions and completed under the 1,200-second host-only
+bound; a signed cleanup receipt was written. This establishes a current-source
+8/45 positive group at the `52579d51dd` cutoff, not the 45-case verdict.
+
+The next selected role-boundary group, suite 132, passed task-wide disk and
+thin-pool admission but allocated no guest. Its immutable PVE admission
+receipt recorded I/O full PSI `avg10=10.33%`, above the fixed 10% threshold,
+and returned `pve-admission-pressure-high`. There was no task suite directory,
+watcher or QEMU, and no selected case started. The coordinator had already
+written a Mac capacity file, then treated the PVE exit 78 as a generic remote
+failure. It did not seal a preparation receipt, so reusing suite 132 or
+silently removing its denial record would lose attempt history. The PVE
+original and a checksum-matched Mac copy remain private. No further guest
+was allocated from that campaign.
+
+The prospective source now archives a fixed PVE admission denial as a sealed
+no-VM `setup-failed` attempt with no fabricated actor, watcher or stop receipt.
+It rederives the admission reason from the root-produced observation, proves
+the suite and watcher paths absent through pinned hosts, checks for task QEMU,
+and binds the admission, capacity and host-state bytes into the signed ledger.
+An external resource denial returns partial without burning the remaining
+preparation slots in a tight loop. A resumed run uses the next unique suite
+number and remains capped at three preparation attempts per group. Focused
+native Linux coordinator checks passed 23 tests; the full PR-315 discovery
+passed 237 tests with two skips. This source change requires another frozen
+fixture and complete installed campaign.
 
 After explicit approval and a fresh 71-QCOW backing scan, the seven
 Mac-archived suite124 guest/source/generated duplicates were released only
@@ -3604,7 +3656,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the current helper source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45`. The v35 role-readiness diagnostics 125–126, KVM19, and v36 TCG diagnostics 127–128 declared no workload cases; v36 suite 129 failed before any positive case record. V37 suite 130 on `917121c6ed` sealed eight positive passes but lacked a completed post-run cleanup receipt and cannot be inherited by the new helper source |
+| `installedPositiveExecuted` | False for the prospective helper source. Development suite 120 passed eight v10 positives on `a06d14dc21`; v36 suite 129 failed before any positive case record. V37 suite 130 on `917121c6ed` sealed eight positive passes but lacked a completed cleanup receipt. Suite 131 on `52579d51dd` completed eight positives with cleanup, then suite 132 was denied before VM allocation. These historical source-bound results cannot be inherited by the prospective helper source |
 | `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |

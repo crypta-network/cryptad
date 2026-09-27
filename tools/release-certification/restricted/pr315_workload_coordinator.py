@@ -24,6 +24,7 @@ import pr315_campaign_seal as seal
 import pr315_campaign_owner as owner
 import pr315_workload_fixtures as fixtures
 import pr315_workload_campaign as campaign
+import pr315_pve_host_admission as host_admission
 
 CT = 'codex@192.168.1.180'
 PVE = 'root@192.168.1.200'
@@ -40,6 +41,13 @@ THIN_POOL_RESERVE = 2 * 1024**3
 # A stopped guest's task-wide byte and QCOW scan can wait on PVE storage.
 # This host-only bound never extends the guest or workload-operation deadline.
 PVE_RELEASE_AUDIT_TIMEOUT_SECONDS = 1200
+RETRYABLE_ADMISSION_REASONS = frozenset({
+    'pve-admission-pressure-high',
+    'pve-admission-physical-reserve-unavailable',
+    'pve-admission-host-swap-unavailable',
+    'pve-admission-ct-memory-unavailable',
+    'pve-admission-ct-swap-unavailable',
+})
 _SUITE = re.compile(r'suite-[1-9][0-9]*\Z')
 
 
@@ -257,9 +265,19 @@ def admit_and_watch(remote, suite, source_commit, source_snapshot):
         raise ValueError('pr315-suite-invalid')
     if not source_snapshot.startswith(CT_TASK + '/campaign-frozen/source-'):
         raise ValueError('pr315-source-snapshot-invalid')
-    published = _json_command(remote, PVE,
+    observed = remote.call(PVE,
         ['python3', PVE_SCRIPT + '/pr315_pve_host_admission.py',
-         '--suite', suite, '--source-commit', source_commit])
+         '--suite', suite, '--source-commit', source_commit], check=False)
+    if observed.returncode not in (0, 78):
+        raise ValueError('pr315-pve-admission-operation-failed')
+    published = json.loads(observed.stdout)
+    if observed.returncode == 78:
+        if (published.get('policy') != 'pve-tcg-swap-admission-v1'
+                or published.get('admitted') is not False
+                or published.get('reason') not in RETRYABLE_ADMISSION_REASONS
+                or set(published) != {'policy', 'admitted', 'reason'}):
+            raise ValueError('pr315-pve-admission-denial-invalid')
+        return published
     if published != {'policy': 'pve-tcg-swap-admission-v1',
                      'admitted': True, 'reason': None}:
         raise ValueError('pr315-pve-admission-rejected')
@@ -1410,6 +1428,9 @@ def verify_preparation_archive(root, plan, receipt):
     archive = seal._private_directory(Path(root) / 'attempts' /
                                       receipt['attemptId'])
     manifest = owner._json(archive, 'preparation-archive.private.json', 65536)
+    if manifest.get('kind') == 'pr315-pre-admission-rejection-archive-v1':
+        return verify_pre_admission_archive(root, archive, plan, receipt,
+                                            manifest)
     files = manifest.get('files')
     if (manifest.get('schemaVersion') != 1
             or manifest.get('kind') != 'pr315-no-vm-preparation-archive-v1'
@@ -1456,6 +1477,148 @@ def verify_preparation_archive(root, plan, receipt):
             or receipt['stopDigest'] is not None):
         raise ValueError('pr315-preparation-archive-receipt-changed')
     return manifest
+
+
+def verify_pre_admission_archive(root, archive, plan, receipt, manifest):
+    """A denied PVE admission has no guest, watcher or invented role epoch."""
+    suite = receipt['attemptId']
+    files = manifest.get('files')
+    if (set(manifest) != {'schemaVersion', 'kind', 'attemptId',
+                         'sourceCommit', 'planDigest', 'groupId',
+                         'guestAllocated', 'phase', 'reason', 'files'}
+            or manifest['schemaVersion'] != 1
+            or manifest['attemptId'] != suite
+            or manifest['sourceCommit'] != receipt['sourceCommit']
+            or manifest['planDigest'] != plan['planDigest']
+            or manifest['groupId'] != receipt['groupId']
+            or manifest['guestAllocated'] is not False
+            or manifest['phase'] != 'pre-admission'
+            or manifest['reason'] not in RETRYABLE_ADMISSION_REASONS
+            or not isinstance(files, dict)
+            or set(files) != {'capacity.private.json',
+                              'host-admission.private.json',
+                              'host-state.private.json'}
+            or any(not isinstance(row, dict) for row in files.values())
+            or seal._digest(manifest) != receipt['archiveDigest']
+            or receipt['probeStarted'] is not False
+            or receipt['caseDigests'] != {}
+            or receipt['stopDigest'] is not None
+            or receipt['monitorDigest'] is not None
+            or receipt['evidenceDigest'] !=
+                files['host-admission.private.json'].get('sha256')):
+        raise ValueError('pr315-pre-admission-archive-manifest-invalid')
+    paths = list(archive.rglob('*'))
+    if any(path.is_symlink() for path in paths):
+        raise ValueError('pr315-pre-admission-archive-link-invalid')
+    actual = {path.relative_to(archive).as_posix()
+              for path in paths if path.is_file()}
+    if actual != set(files) | {'preparation-archive.private.json'}:
+        raise ValueError('pr315-pre-admission-archive-file-set-changed')
+    for name, expected in files.items():
+        if (not isinstance(expected, dict)
+                or set(expected) != {'sha256', 'sizeBytes'}
+                or type(expected['sizeBytes']) is not int
+                or not 0 <= expected['sizeBytes'] <= 1024 * 1024
+                or re.fullmatch('[0-9a-f]{64}', str(expected['sha256'])) is None):
+            raise ValueError('pr315-pre-admission-archive-entry-invalid')
+        path = archive / name
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or info.st_size != expected['sizeBytes']
+                or hashlib.sha256(path.read_bytes()).hexdigest() !=
+                    expected['sha256']):
+            raise ValueError('pr315-pre-admission-archive-byte-changed')
+    admission = owner._json(archive, 'host-admission.private.json', 8192)
+    state = owner._json(archive, 'host-state.private.json', 8192)
+    capacity = owner._json(archive, 'capacity.private.json', 8192)
+    module_digest = hashlib.sha256(
+        Path(host_admission.__file__).read_bytes()).hexdigest()
+    if (set(admission) != {'schemaVersion', 'kind', 'policy', 'suite',
+                           'sourceCommit', 'moduleDigest', 'admitted',
+                           'reason', 'observation'}
+            or admission['schemaVersion'] != 1
+            or admission['kind'] != 'pr315-pve-host-admission'
+            or admission['policy'] != host_admission.POLICY
+            or admission['suite'] != suite
+            or admission['sourceCommit'] != receipt['sourceCommit']
+            or admission['moduleDigest'] != module_digest
+            or admission['admitted'] is not False
+            or admission['reason'] != manifest['reason']
+            or host_admission.admission_reason(
+                admission['observation']) != manifest['reason']
+            or state != {'schemaVersion': 1,
+                         'kind': 'pr315-pre-admission-no-vm-observation',
+                         'suite': suite,
+                         'sourceCommit': receipt['sourceCommit'],
+                         'taskQemuProcesses': [],
+                         'ctAttemptAbsent': True,
+                         'pveWatcherAbsent': True}
+            or capacity != owner._json(root,
+                'capacity-' + suite + '.private.json', 8192)):
+        raise ValueError('pr315-pre-admission-archive-evidence-invalid')
+    return manifest
+
+
+def archive_pre_admission_failure(remote, root, config, plan,
+                                  suite, group_id, capacity, denial):
+    """Seal a measured PVE rejection without claiming a guest or watcher."""
+    if (denial != {'policy': host_admission.POLICY,
+                   'admitted': False, 'reason': denial.get('reason')}
+            or denial['reason'] not in RETRYABLE_ADMISSION_REASONS):
+        raise ValueError('pr315-pre-admission-denial-invalid')
+    for host, path in (
+            (CT, CT_TASK + '/' + suite),
+            (PVE, PVE_TASK + '/' + suite),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.ready.json'),
+            (CT, CT_TASK + '/host-monitor/' + suite + '.finished.json'),
+            (PVE, PVE_TASK + '/host-monitor/' + suite + '.private.jsonl'),
+            (PVE, PVE_TASK + '/host-monitor/' + suite + '.stop')):
+        absent = remote.call(host, ['test', '!', '-e', path], check=False)
+        if absent.returncode != 0:
+            raise ValueError('pr315-pre-admission-guest-or-watcher-present')
+    task_qemu_inventory(remote)
+    archive = Path(root) / 'attempts' / suite
+    archive.mkdir(mode=0o700, exist_ok=False)
+    _scp(remote, CT, CT_TASK + '/host-admission/' + suite + '.json',
+         archive / 'host-admission.private.json')
+    _exclusive_json(archive / 'capacity.private.json', capacity)
+    _exclusive_json(archive / 'host-state.private.json',
+        {'schemaVersion': 1,
+         'kind': 'pr315-pre-admission-no-vm-observation',
+         'suite': suite, 'sourceCommit': config['sourceCommit'],
+         'taskQemuProcesses': [], 'ctAttemptAbsent': True,
+         'pveWatcherAbsent': True})
+    files = {}
+    for name in ('capacity.private.json', 'host-admission.private.json',
+                 'host-state.private.json'):
+        path = archive / name
+        raw = path.read_bytes()
+        files[name] = {'sha256': hashlib.sha256(raw).hexdigest(),
+                       'sizeBytes': len(raw)}
+    manifest = {'schemaVersion': 1,
+        'kind': 'pr315-pre-admission-rejection-archive-v1',
+        'attemptId': suite, 'sourceCommit': config['sourceCommit'],
+        'planDigest': plan['planDigest'], 'groupId': group_id,
+        'guestAllocated': False, 'phase': 'pre-admission',
+        'reason': denial['reason'], 'files': files}
+    _exclusive_json(archive / 'preparation-archive.private.json', manifest)
+    preview = {'status': 'setup-failed', 'attemptId': suite,
+        'sourceCommit': config['sourceCommit'], 'groupId': group_id,
+        'probeStarted': False, 'caseDigests': {},
+        'evidenceDigest': files['host-admission.private.json']['sha256'],
+        'stopDigest': None, 'monitorDigest': None,
+        'archiveDigest': seal._digest(manifest)}
+    verify_pre_admission_archive(root, archive, plan, preview, manifest)
+    receipt = seal.append_verified_attempt(root, plan,
+        pinned_source_commit=config['sourceCommit'],
+        pinned_fingerprint=config['hostKeyFingerprint'],
+        group_id=group_id, attempt_id=suite, status='setup-failed',
+        probe_started=False, case_digests={},
+        evidence_digest=preview['evidenceDigest'],
+        stop_digest=None, monitor_digest=None,
+        archive_digest=preview['archiveDigest'])
+    verify_preparation_archive(root, plan, receipt)
+    return receipt
 
 
 def archive_unlaunched_setup_failure(remote, root, config, plan,
@@ -1641,6 +1804,12 @@ def run_campaign(root, source, *, case_group=None):
                         capacity)
         ready = admit_and_watch(remote, suite, config['sourceCommit'],
                                 config['sourceSnapshot'])
+        if ready.get('admitted') is False:
+            archive_pre_admission_failure(remote, root, config,
+                                          plan, suite, group_id, capacity,
+                                          ready)
+            # Host PSI or memory must change before another unique suite ID.
+            return owner.recovered_campaign_verdict(root, source, **pin)
         retired_files = None
         if group_id == 'authority' and selected['action'] == 'selected-group':
             verify_retired_preparation_for_resume(root, plan, history)

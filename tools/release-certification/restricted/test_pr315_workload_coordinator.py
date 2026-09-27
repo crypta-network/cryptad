@@ -57,6 +57,13 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertEqual('failed',
             coordinator.next_campaign_selection(history)['status'])
 
+    def test_sealed_pre_admission_denial_uses_next_unique_suite_slot(self):
+        history = [{'groupId': 'positive', 'status': 'completed'},
+                   {'groupId': 'role-boundary', 'status': 'setup-failed'}]
+        self.assertEqual({'status': 'ready', 'groupId': 'role-boundary',
+                          'attemptOrdinal': 2, 'action': 'selected-group'},
+                         coordinator.next_campaign_selection(history))
+
     def test_no_vm_selected_after_all_groups_complete(self):
         history = [{'groupId': group, 'status': 'completed'}
                    for group, _ in coordinator.campaign.GROUPS]
@@ -190,6 +197,163 @@ class CoordinatorSelectionTest(unittest.TestCase):
                 {'sourceCommit': 'a' * 40}, 'suite-201', {})
         self.assertEqual(1, remote.call.call_count)
         self.assertEqual(coordinator.CT, remote.call.call_args.args[0])
+
+    def test_pve_pressure_denial_returns_before_watcher_launch(self):
+        denied = {'policy': coordinator.host_admission.POLICY,
+                  'admitted': False,
+                  'reason': 'pve-admission-pressure-high'}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=78,
+                stdout=json.dumps(denied).encode())))
+        source = coordinator.CT_TASK + '/campaign-frozen/source-test'
+        self.assertEqual(denied, coordinator.admit_and_watch(
+            remote, 'suite-201', 'a' * 40, source))
+        self.assertEqual(1, remote.call.call_count)
+        self.assertEqual(coordinator.PVE, remote.call.call_args.args[0])
+        self.assertFalse(remote.call.call_args.kwargs['check'])
+
+    def test_pre_admission_denial_archive_rejects_changed_host_evidence(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-pre-admission-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            archive = root / 'attempts/suite-201'
+            archive.mkdir(parents=True, mode=0o700)
+            archive.chmod(0o700)
+            capacity = {'pveUsedBytes': 1, 'requiredAttemptBytes': 2}
+            saved_capacity = root / 'capacity-suite-201.private.json'
+            saved_capacity.write_text(json.dumps(capacity))
+            saved_capacity.chmod(0o600)
+            observed = {'policy': coordinator.host_admission.POLICY,
+                'observedMonotonicNs': 123,
+                'hostAvailableBytes': 8 * 1024**3,
+                'hostSwapFreeBytes': 8 * 1024**3,
+                'memoryFullAvg10Pct': 0.0,
+                'ioFullAvg10Pct': 10.33,
+                'ctMemoryMaxBytes': 10 * 1024**3,
+                'ctMemoryCurrentBytes': 0,
+                'ctSwapMaxBytes': 12 * 1024**3,
+                'ctSwapCurrentBytes': 0}
+            admission = {'schemaVersion': 1,
+                'kind': 'pr315-pve-host-admission',
+                'policy': coordinator.host_admission.POLICY,
+                'suite': 'suite-201', 'sourceCommit': 'b' * 40,
+                'moduleDigest': hashlib.sha256(Path(
+                    coordinator.host_admission.__file__).read_bytes()).hexdigest(),
+                'admitted': False, 'reason': 'pve-admission-pressure-high',
+                'observation': observed}
+            state = {'schemaVersion': 1,
+                'kind': 'pr315-pre-admission-no-vm-observation',
+                'suite': 'suite-201', 'sourceCommit': 'b' * 40,
+                'taskQemuProcesses': [], 'ctAttemptAbsent': True,
+                'pveWatcherAbsent': True}
+            files = {}
+            for name, value in (
+                    ('capacity.private.json', capacity),
+                    ('host-admission.private.json', admission),
+                    ('host-state.private.json', state)):
+                raw = json.dumps(value).encode()
+                selected = archive / name
+                selected.write_bytes(raw)
+                selected.chmod(0o600)
+                files[name] = {'sha256': hashlib.sha256(raw).hexdigest(),
+                               'sizeBytes': len(raw)}
+            plan = {'planDigest': 'a' * 64}
+            manifest = {'schemaVersion': 1,
+                'kind': 'pr315-pre-admission-rejection-archive-v1',
+                'attemptId': 'suite-201', 'sourceCommit': 'b' * 40,
+                'planDigest': plan['planDigest'], 'groupId': 'role-boundary',
+                'guestAllocated': False, 'phase': 'pre-admission',
+                'reason': 'pve-admission-pressure-high', 'files': files}
+            selected = archive / 'preparation-archive.private.json'
+            selected.write_text(json.dumps(manifest))
+            selected.chmod(0o600)
+            receipt = {'status': 'setup-failed', 'attemptId': 'suite-201',
+                'sourceCommit': 'b' * 40, 'groupId': 'role-boundary',
+                'probeStarted': False, 'caseDigests': {},
+                'archiveDigest': coordinator.seal._digest(manifest),
+                'evidenceDigest': files['host-admission.private.json']['sha256'],
+                'monitorDigest': None, 'stopDigest': None}
+            self.assertEqual(manifest,
+                coordinator.verify_preparation_archive(root, plan, receipt))
+            (archive / 'host-admission.private.json').write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'byte-changed'):
+                coordinator.verify_preparation_archive(root, plan, receipt)
+
+    def test_pre_admission_denial_seals_only_real_no_vm_evidence(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-pre-admission-owner-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            (root / 'attempts').mkdir(mode=0o700)
+            suite, commit = 'suite-201', 'b' * 40
+            capacity = {'pveUsedBytes': 1, 'requiredAttemptBytes': 2}
+            coordinator._exclusive_json(
+                root / ('capacity-' + suite + '.private.json'), capacity)
+            observed = {'policy': coordinator.host_admission.POLICY,
+                'observedMonotonicNs': 123,
+                'hostAvailableBytes': 8 * 1024**3,
+                'hostSwapFreeBytes': 8 * 1024**3,
+                'memoryFullAvg10Pct': 0.0, 'ioFullAvg10Pct': 10.33,
+                'ctMemoryMaxBytes': 10 * 1024**3,
+                'ctMemoryCurrentBytes': 0,
+                'ctSwapMaxBytes': 12 * 1024**3,
+                'ctSwapCurrentBytes': 0}
+            admission = {'schemaVersion': 1,
+                'kind': 'pr315-pve-host-admission',
+                'policy': coordinator.host_admission.POLICY,
+                'suite': suite, 'sourceCommit': commit,
+                'moduleDigest': hashlib.sha256(Path(
+                    coordinator.host_admission.__file__).read_bytes()).hexdigest(),
+                'admitted': False, 'reason': 'pve-admission-pressure-high',
+                'observation': observed}
+            raw = json.dumps(admission).encode()
+            denial = {'policy': coordinator.host_admission.POLICY,
+                      'admitted': False,
+                      'reason': 'pve-admission-pressure-high'}
+            remote = SimpleNamespace(call=unittest.mock.Mock(
+                return_value=SimpleNamespace(returncode=0)))
+
+            def copy_admission(_remote, host, source, target):
+                self.assertEqual(coordinator.CT, host)
+                self.assertEqual(coordinator.CT_TASK +
+                    '/host-admission/' + suite + '.json', source)
+                target.write_bytes(raw)
+                target.chmod(0o600)
+
+            def seal_attempt(_root, _plan, **selected):
+                return {'status': selected['status'],
+                    'attemptId': selected['attempt_id'],
+                    'sourceCommit': selected['pinned_source_commit'],
+                    'groupId': selected['group_id'],
+                    'probeStarted': selected['probe_started'],
+                    'caseDigests': selected['case_digests'],
+                    'evidenceDigest': selected['evidence_digest'],
+                    'stopDigest': selected['stop_digest'],
+                    'monitorDigest': selected['monitor_digest'],
+                    'archiveDigest': selected['archive_digest']}
+
+            config = {'sourceCommit': commit,
+                      'hostKeyFingerprint': 'c' * 64}
+            plan = {'planDigest': 'a' * 64}
+            with patch.object(coordinator, '_scp', side_effect=copy_admission), \
+                    patch.object(coordinator, 'task_qemu_inventory',
+                                 return_value=[]), \
+                    patch.object(coordinator.seal, 'append_verified_attempt',
+                                 side_effect=seal_attempt):
+                receipt = coordinator.archive_pre_admission_failure(
+                    remote, root, config, plan, suite, 'role-boundary',
+                    capacity, denial)
+            self.assertEqual('setup-failed', receipt['status'])
+            self.assertIsNone(receipt['monitorDigest'])
+            self.assertIsNone(receipt['stopDigest'])
+            self.assertEqual({}, receipt['caseDigests'])
+            self.assertEqual(6, remote.call.call_count)
+            self.assertTrue(all(call.kwargs.get('check') is False
+                                for call in remote.call.call_args_list))
+            archive = root / 'attempts' / suite
+            self.assertFalse((archive / 'attempt-01').exists())
+            self.assertEqual('pr315-pre-admission-rejection-archive-v1',
+                coordinator.verify_preparation_archive(
+                    root, plan, receipt)['kind'])
 
     def test_no_vm_setup_archive_rejects_tampering_before_retry(self):
         with tempfile.TemporaryDirectory(prefix='pr315-no-vm-archive-test-') as temp:
