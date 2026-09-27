@@ -168,6 +168,49 @@ class CampaignSealTest(unittest.TestCase):
                 evidence_digest='2' * 64, stop_digest='3' * 64,
                 monitor_digest='4' * 64, archive_digest='5' * 64)
 
+    def test_retired_authority_preparation_consumes_one_attempt(self):
+        common = {'pinned_source_commit': SOURCE,
+                  'pinned_fingerprint': self.fingerprint,
+                  'group_id': 'authority', 'probe_started': False,
+                  'case_digests': {}, 'evidence_digest': '2' * 64,
+                  'stop_digest': '3' * 64, 'monitor_digest': '4' * 64,
+                  'archive_digest': '5' * 64}
+        first = seal.append_verified_attempt(self.root, self.plan,
+            **common, attempt_id='suite-201', status='preparation-completed')
+        self.assertEqual(1, first['sequence'])
+        self.assertEqual('preparation-completed',
+            seal.load_verified_history(self.root, self.plan,
+                pinned_source_commit=SOURCE,
+                pinned_fingerprint=self.fingerprint)[0]['status'])
+        with self.assertRaisesRegex(ValueError,
+                                     'retired-preparation-duplicate'):
+            seal.append_verified_attempt(self.root, self.plan,
+                **common, attempt_id='suite-202',
+                status='preparation-completed')
+
+    def test_unknown_probe_phase_cannot_be_retried_as_setup(self):
+        with self.assertRaisesRegex(ValueError, 'setup-phase-invalid'):
+            seal.attempt_receipt(self.plan, 'output-symlink',
+                'suite-201', SOURCE, 'setup-failed', None, {},
+                None, None, None, None)
+        receipt = seal.append_verified_attempt(self.root, self.plan,
+            pinned_source_commit=SOURCE,
+            pinned_fingerprint=self.fingerprint,
+            group_id='output-symlink', attempt_id='suite-201',
+            status='failed', probe_started=None, case_digests={},
+            evidence_digest='2' * 64, stop_digest='3' * 64,
+            monitor_digest='4' * 64, archive_digest='5' * 64)
+        self.assertIsNone(receipt['probeStarted'])
+        with self.assertRaisesRegex(ValueError, 'post-probe-retry'):
+            seal.append_verified_attempt(self.root, self.plan,
+                pinned_source_commit=SOURCE,
+                pinned_fingerprint=self.fingerprint,
+                group_id='output-symlink', attempt_id='suite-202',
+                status='completed', probe_started=True,
+                case_digests={'output-symlink': '1' * 64},
+                evidence_digest='2' * 64, stop_digest='3' * 64,
+                monitor_digest='4' * 64, archive_digest='5' * 64)
+
     def test_deleted_or_modified_ledger_history_is_rejected(self):
         common = {'pinned_source_commit': SOURCE,
                   'pinned_fingerprint': self.fingerprint,

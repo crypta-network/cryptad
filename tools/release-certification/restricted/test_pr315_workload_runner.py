@@ -764,6 +764,8 @@ class RunnerTests(unittest.TestCase):
             'mainStartTicks': 42, 'resolverCanaryIdentity': [3, 6],
             'resolverControlDigest': 'a' * 64,
             'providerCanaryIdentity': [3, 7],
+            'credentialIdentity': [3, 8],
+            'credentialDigest': 'f' * 64,
             'observedMonotonicNs': 40, 'controlDigest': 'b' * 64}
         nonce = 'c' * 64
         app_result = {'schemaVersion': 1,
@@ -772,9 +774,19 @@ class RunnerTests(unittest.TestCase):
             'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
             'startedMonotonicNs': 70, 'finishedMonotonicNs': 80,
             'targetPathDigest': hashlib.sha256(
-                b'/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary').hexdigest(),
+                b'/etc/cryptad-certification/restricted-provider.json').hexdigest(),
             'outcome': {'opened': False, 'errno': 'ENOENT'}}
-        audit = {'schemaVersion': 1,
+        installed_worker_digest = hashlib.sha256((Path(__file__).resolve().parents[3] /
+            'tools/release-certification/protected/restricted_worker.py').read_bytes()).hexdigest()
+        worker_control = {'kind': 'pr315-installed-worker-synthetic-provider-control-v2',
+            'jobAuthentication': 'installed-policy-fixed-no-network-provider-stub',
+            'workerSourceDigest': installed_worker_digest,
+            'credentialDigest': 'f' * 64,
+            'registrationDigest': '1' * 64,
+            'resultDigest': '2' * 64,
+            'bundleIdentity': synthetic_host_identity()['bundleIdentity'],
+            'callerUid': roster['runnerUid']}
+        audit = {'schemaVersion': 2,
             'kind': 'pr315-administrator-provider-authority-denial',
             'caseId': 'provider-authority',
             'bundleDigest': 'sha256:' + '8' * 64,
@@ -785,6 +797,12 @@ class RunnerTests(unittest.TestCase):
             'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
             'targetBefore': target,
             'targetAfter': dict(target, observedMonotonicNs=120),
+            'workerControlBefore': dict(worker_control, ordinal=1,
+                handleDigest='3' * 64,
+                startedMonotonicNs=10, finishedMonotonicNs=20),
+            'workerControlAfter': dict(worker_control, ordinal=2,
+                handleDigest='4' * 64,
+                startedMonotonicNs=130, finishedMonotonicNs=140),
             'targetPathDigest': app_result['targetPathDigest'],
             'attackStartedNs': 70, 'attackFinishedNs': 80,
             'kernelOpenResult': app_result['outcome'],
@@ -826,6 +844,10 @@ class RunnerTests(unittest.TestCase):
                         'actorAfter'].update(startTicks=46),
                     lambda row: row['providerAuthorityAudit']['record'][
                         'targetAfter'].update(managerInvocation='8' * 32),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlBefore'].update(credentialDigest='0' * 64),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlAfter'].update(handleDigest='3' * 64),
                     lambda row: row['providerAppResult']['record'].update(
                         outcome={'opened': True, 'errno': None}),
                     lambda row: row['stopReceipts']['candidate-sender']['current'][

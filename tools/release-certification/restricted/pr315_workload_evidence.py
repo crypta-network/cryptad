@@ -1048,7 +1048,8 @@ def _provider_authority_audit(root, deadline):
         fields = {'schemaVersion', 'kind', 'caseId', 'bundleDigest',
             'nonceDigest', 'actorUid', 'actorBefore', 'actorAfter',
             'senderStateBefore', 'senderStateAfter', 'targetBefore',
-            'targetAfter', 'targetPathDigest', 'attackStartedNs',
+            'targetAfter', 'workerControlBefore', 'workerControlAfter',
+            'targetPathDigest', 'attackStartedNs',
             'attackFinishedNs', 'kernelOpenResult', 'appResultDigest'}
         actor_fields = {'role', 'hostPid', 'namespacePid', 'namespacePids',
             'startTicks', 'executableDigest', 'mountNamespaceIdentity',
@@ -1063,9 +1064,15 @@ def _provider_authority_audit(root, deadline):
         target_fields = {'role', 'managerInvocation', 'bootId',
             'cgroupIdentity', 'mainPid', 'mainStartTicks',
             'resolverCanaryIdentity', 'resolverControlDigest',
-            'providerCanaryIdentity', 'observedMonotonicNs', 'controlDigest'}
+            'providerCanaryIdentity', 'credentialIdentity',
+            'credentialDigest', 'observedMonotonicNs', 'controlDigest'}
+        worker_fields = {'kind', 'ordinal', 'workerSourceDigest',
+            'jobAuthentication',
+            'credentialDigest', 'registrationDigest', 'resultDigest',
+            'handleDigest', 'bundleIdentity', 'callerUid',
+            'startedMonotonicNs', 'finishedMonotonicNs'}
         if (not isinstance(value, dict) or set(value) != fields
-                or value['schemaVersion'] != 1
+                or value['schemaVersion'] != 2
                 or value['kind'] != 'pr315-administrator-provider-authority-denial'
                 or value['caseId'] != 'provider-authority'
                 or not isinstance(value['bundleDigest'], str)
@@ -1085,11 +1092,48 @@ def _provider_authority_audit(root, deadline):
                 or any(not isinstance(value[key], dict)
                        or set(value[key]) != target_fields
                        for key in ('targetBefore', 'targetAfter'))
+                or any(not isinstance(value[key], dict)
+                       or set(value[key]) != worker_fields
+                       or value[key]['kind'] !=
+                           'pr315-installed-worker-synthetic-provider-control-v2'
+                       or value[key]['jobAuthentication'] !=
+                           'installed-policy-fixed-no-network-provider-stub'
+                       or value[key]['ordinal'] != ordinal
+                       or any(re.fullmatch('[0-9a-f]{64}',
+                           str(value[key][field])) is None for field in (
+                           'workerSourceDigest', 'credentialDigest',
+                           'registrationDigest', 'resultDigest',
+                           'handleDigest', 'bundleIdentity'))
+                       or type(value[key]['callerUid']) is not int
+                       or value[key]['callerUid'] <= 0
+                       or type(value[key]['startedMonotonicNs']) is not int
+                       or type(value[key]['finishedMonotonicNs']) is not int
+                       or value[key]['startedMonotonicNs'] >=
+                           value[key]['finishedMonotonicNs']
+                       for ordinal, key in ((1, 'workerControlBefore'),
+                                            (2, 'workerControlAfter')))
                 or any(value['targetBefore'][key] != value['targetAfter'][key]
                        for key in target_fields - {'observedMonotonicNs'})
                 or value['targetBefore']['role'] is not None
                 or value['targetBefore']['mainPid'] <= 1
                 or value['targetBefore']['mainStartTicks'] <= 0
+                or value['targetPathDigest'] != hashlib.sha256(
+                    b'/etc/cryptad-certification/restricted-provider.json').hexdigest()
+                or any(not isinstance(value[key]['credentialIdentity'], list)
+                       or len(value[key]['credentialIdentity']) != 2
+                       or any(type(part) is not int or part <= 0
+                              for part in value[key]['credentialIdentity'])
+                       for key in ('targetBefore', 'targetAfter'))
+                or value['targetBefore']['credentialDigest'] !=
+                    value['workerControlBefore']['credentialDigest']
+                or value['targetAfter']['credentialDigest'] !=
+                    value['workerControlAfter']['credentialDigest']
+                or value['workerControlBefore']['handleDigest'] ==
+                    value['workerControlAfter']['handleDigest']
+                or value['workerControlBefore']['finishedMonotonicNs'] >=
+                    value['targetBefore']['observedMonotonicNs']
+                or value['workerControlAfter']['startedMonotonicNs'] <=
+                    value['targetAfter']['observedMonotonicNs']
                 or value['kernelOpenResult'] not in (
                     {'opened': False, 'errno': 'ENOENT'},
                     {'opened': False, 'errno': 'EACCES'},

@@ -545,8 +545,14 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
             blockers.append(group_id + ':missing-or-excess-attempts')
             continue
         last = attempts[-1]
+        preparation = [row for row in attempts[:-1]
+                       if row['status'] == 'preparation-completed']
         if (last['status'] != 'completed'
-                or any(row['status'] != 'setup-failed'
+                or (group_id == 'authority'
+                    and len(preparation) != 1)
+                or (group_id != 'authority' and preparation)
+                or any(row['status'] not in
+                       ('setup-failed', 'preparation-completed')
                        for row in attempts[:-1])):
             blockers.append(group_id + ':not-completed')
             continue

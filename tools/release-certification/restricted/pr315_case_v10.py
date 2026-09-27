@@ -249,6 +249,30 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
             raise ValueError('pr315-v10-generic-observer-epoch-invalid')
     else:
         raise ValueError('pr315-v10-generic-actor-unsupported')
+    if case_id == 'provider-authority':
+        target = sidecar['targetEpoch']
+        first = target.get('installedWorkerBefore')
+        last = target.get('installedWorkerAfter')
+        worker_digest = sha256(Path(source_root) /
+            'tools/release-certification/protected/restricted_worker.py')
+        if (target.get('kind') !=
+                'installed-worker-synthetic-provider-credential'
+                or _DIGEST.fullmatch(str(target.get('credentialDigest'))) is None
+                or not isinstance(target.get('credentialIdentity'), list)
+                or len(target['credentialIdentity']) != 2
+                or not isinstance(first, dict) or not isinstance(last, dict)
+                or any(row.get('workerSourceDigest') != worker_digest
+                       or row.get('jobAuthentication') !=
+                           'installed-policy-fixed-no-network-provider-stub'
+                       or row.get('credentialDigest') != target['credentialDigest']
+                       or row.get('bundleIdentity') !=
+                           campaign['identity']['bundleIdentity']
+                       or row.get('callerUid') != attempt['principals']['runnerUid']
+                       for row in (first, last))
+                or first.get('ordinal') != 1 or last.get('ordinal') != 2
+                or first.get('handleDigest') == last.get('handleDigest')
+                or not isinstance(target.get('auxiliaryResolverEpoch'), dict)):
+            raise ValueError('pr315-v10-provider-worker-target-invalid')
     window = sidecar['operationWindow']
     stop_ns = sidecar.get('stopReceiptObservedNs')
     if (type(window.get('startedMonotonicNs')) is not int

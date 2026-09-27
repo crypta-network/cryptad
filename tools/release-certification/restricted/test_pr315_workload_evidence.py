@@ -1263,7 +1263,7 @@ class VolatileEvidenceTest(unittest.TestCase):
             'pid': 2, 'uid': os.geteuid(), 'gid': os.getegid(),
             'startedMonotonicNs': 50, 'finishedMonotonicNs': 60,
             'targetPathDigest': hashlib.sha256(
-                b'/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary').hexdigest(),
+                b'/etc/cryptad-certification/restricted-provider.json').hexdigest(),
             'outcome': {'opened': False, 'errno': 'ENOENT'}}
         app_result = app_data / 'pr315-provider-result.json'
         app_result.write_text(json.dumps(result))
@@ -1288,8 +1288,18 @@ class VolatileEvidenceTest(unittest.TestCase):
             'mainStartTicks': 42, 'resolverCanaryIdentity': [3, 6],
             'resolverControlDigest': 'a' * 64,
             'providerCanaryIdentity': [3, 7],
+            'credentialIdentity': [3, 8],
+            'credentialDigest': 'f' * 64,
             'observedMonotonicNs': 10, 'controlDigest': 'b' * 64}
-        audit = {'schemaVersion': 1,
+        worker = {'kind': 'pr315-installed-worker-synthetic-provider-control-v2',
+            'jobAuthentication': 'installed-policy-fixed-no-network-provider-stub',
+            'workerSourceDigest': '1' * 64,
+            'credentialDigest': 'f' * 64,
+            'registrationDigest': '2' * 64,
+            'resultDigest': '3' * 64,
+            'bundleIdentity': '4' * 64,
+            'callerUid': 1001}
+        audit = {'schemaVersion': 2,
             'kind': 'pr315-administrator-provider-authority-denial',
             'caseId': 'provider-authority', 'bundleDigest': 'sha256:' + '8' * 64,
             'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
@@ -1298,6 +1308,12 @@ class VolatileEvidenceTest(unittest.TestCase):
             'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
             'targetBefore': target,
             'targetAfter': dict(target, observedMonotonicNs=100),
+            'workerControlBefore': dict(worker, ordinal=1,
+                handleDigest='5' * 64,
+                startedMonotonicNs=1, finishedMonotonicNs=5),
+            'workerControlAfter': dict(worker, ordinal=2,
+                handleDigest='6' * 64,
+                startedMonotonicNs=110, finishedMonotonicNs=120),
             'targetPathDigest': result['targetPathDigest'],
             'attackStartedNs': 50, 'attackFinishedNs': 60,
             'kernelOpenResult': result['outcome'],

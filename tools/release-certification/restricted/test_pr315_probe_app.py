@@ -137,7 +137,7 @@ class ProbeWorkerTest(unittest.TestCase):
                     raise PermissionError(errno.EACCES, 'fixed-provider-denial')
                 return real_open(path, flags, *args, **kwargs)
 
-            with patch.object(probe, 'PROVIDER_CANARY', canary), \
+            with patch.object(probe, 'PROVIDER_CREDENTIAL', canary), \
                     patch.object(probe.os, 'open', side_effect=denied):
                 result = probe.provider_authority(data)
             self.assertEqual({'opened': False, 'errno': 'EACCES'}, result['outcome'])

@@ -16,7 +16,7 @@ import stat
 import time
 
 CLONE_NEWNS = 0x00020000
-PROVIDER_CANARY = Path('/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary')
+PROVIDER_CREDENTIAL = Path('/etc/cryptad-certification/restricted-provider.json')
 PROVIDER_TRIGGER = 'pr315-provider-trigger.json'
 PROVIDER_RESULT = 'pr315-provider-result.json'
 SIBLING_APP_TRIGGER = 'pr315-sibling-app-trigger.json'
@@ -46,7 +46,7 @@ def mount_escape():
 
 
 def provider_authority(data: Path) -> dict:
-    """Read only one root-triggered fixed provider canary from the signed child."""
+    """Attempt one fixed installed Worker credential from the signed child."""
     trigger = data / PROVIDER_TRIGGER
     descriptor = os.open(trigger, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
@@ -73,7 +73,7 @@ def provider_authority(data: Path) -> dict:
         raise ValueError('provider-result-already-published')
     started = time.monotonic_ns()
     try:
-        opened = os.open(PROVIDER_CANARY,
+        opened = os.open(PROVIDER_CREDENTIAL,
             os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     except OSError as error:
         outcome = {'opened': False,
@@ -86,7 +86,7 @@ def provider_authority(data: Path) -> dict:
               'pid': os.getpid(), 'uid': os.getuid(), 'gid': os.getgid(),
               'startedMonotonicNs': started,
               'finishedMonotonicNs': time.monotonic_ns(),
-              'targetPathDigest': hashlib.sha256(os.fsencode(PROVIDER_CANARY)).hexdigest(),
+              'targetPathDigest': hashlib.sha256(os.fsencode(PROVIDER_CREDENTIAL)).hexdigest(),
               'outcome': outcome}
     encoded = json.dumps(result, sort_keys=True, separators=(',', ':')).encode()
     if not 0 < len(encoded) <= 2048:

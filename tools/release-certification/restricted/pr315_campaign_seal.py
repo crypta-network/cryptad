@@ -128,11 +128,13 @@ def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
             or _ATTEMPT_ID.fullmatch(attempt_id) is None
             or _HEX40.fullmatch(str(source_commit)) is None
             or source_commit != campaign['identity']['helperSourceCommit']
-            or status not in ('setup-failed', 'failed', 'completed')
+            or status not in ('setup-failed', 'preparation-completed',
+                              'failed', 'completed')
             or type(sequence) is not int or sequence < 1
             or _HEX64.fullmatch(str(previous_digest)) is None
             or (sequence == 1) != (previous_digest == '0' * 64)
-            or type(probe_started) is not bool
+            or (probe_started is not None
+                and type(probe_started) is not bool)
             or not isinstance(case_digests, dict)
             or any(_HEX64.fullmatch(str(digest)) is None
                    for digest in case_digests.values())
@@ -148,9 +150,16 @@ def attempt_receipt(campaign, group_id, attempt_id, source_commit, status,
             or any(value is None for value in (evidence_digest, stop_digest,
                                               monitor_digest, archive_digest)))):
         raise ValueError('pr315-campaign-v2-completion-incomplete')
-    if (status == 'setup-failed' and (probe_started or case_digests)):
+    if (status == 'setup-failed'
+            and (probe_started is not False or case_digests)):
         raise ValueError('pr315-campaign-v2-setup-phase-invalid')
-    if status == 'failed' and not probe_started:
+    if (status == 'preparation-completed'
+            and (group_id != 'authority' or probe_started is not False
+                 or case_digests or any(value is None for value in
+                     (evidence_digest, stop_digest,
+                      monitor_digest, archive_digest)))):
+        raise ValueError('pr315-campaign-v2-authority-preparation-invalid')
+    if status == 'failed' and probe_started is False:
         raise ValueError('pr315-campaign-v2-failure-phase-invalid')
     value = {'schemaVersion': 2, 'kind': RECEIPT,
         'planDigest': campaign['planDigest'],
@@ -394,11 +403,18 @@ def verify_history(root, campaign, ledger, *, pinned_source_commit,
                 or receipt['previousReceiptDigest'] != previous
                 or receipt['attemptId'] in seen or index < last_group_index):
             raise ValueError('pr315-campaign-ledger-chain-invalid')
+        if (receipt['status'] == 'preparation-completed'
+                and (receipt['groupId'] != 'authority'
+                     or any(row['groupId'] == 'authority'
+                            and row['status'] == 'preparation-completed'
+                            for row in receipts))):
+            raise ValueError('pr315-campaign-retired-preparation-duplicate')
         if index != last_group_index:
             if receipts and receipts[-1]['status'] != 'completed':
                 raise ValueError('pr315-campaign-ledger-unfinished-group')
             attempts_in_group = 0
-        elif receipts and receipts[-1]['status'] != 'setup-failed':
+        elif receipts and receipts[-1]['status'] not in (
+                'setup-failed', 'preparation-completed'):
             raise ValueError('pr315-campaign-post-probe-retry')
         attempts_in_group += 1
         if attempts_in_group > 3:

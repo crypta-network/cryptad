@@ -123,6 +123,8 @@ def implementation_coverage(source_root):
             or fixtures.preparation.launcher_policy().get(
                 'providerAuthorityProbe') !=
                 'fixed-installed-worker-synthetic-provider-credential-v2'
+            or not {'run_campaign', 'main'} <= _functions(source_root /
+                'tools/release-certification/restricted/pr315_workload_coordinator.py')
             or set(runner.SUPPORTED_GROUPS) !=
                 {group for group, _ in campaign.GROUPS}
             or set(v10.POSITIVE) | {'output-symlink'} |

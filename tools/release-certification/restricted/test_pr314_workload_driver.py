@@ -1388,6 +1388,61 @@ class HostileOriginValidationTest(unittest.TestCase):
 
 
 class ProviderAuthorityProbeTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable native Linux root state')
+    def test_installed_worker_consumes_synthetic_credential_and_persists_two_results(self):
+        from datetime import datetime, timedelta, timezone
+        source = Path(__file__).resolve().parents[3]
+        sys.path.insert(0, str(source / 'tools/release-certification/protected'))
+        import restricted_registration as registration
+        import restricted_worker as worker
+        with tempfile.TemporaryDirectory(dir='/root',
+                                         prefix='pr315-provider-worker-') as directory:
+            base = Path(directory) / 'certification'
+            state = Path(directory) / 'state'
+            for path in (base, state, state / 'operations',
+                         state / 'reservations'):
+                path.mkdir(mode=0o700)
+            credential = base / 'restricted-provider.json'
+            token = 'pr315-synthetic-' + 'a' * 64
+            raw = worker.encode({'token': token,
+                'expiresAt': (datetime.now(timezone.utc) +
+                              timedelta(minutes=50)).isoformat()})
+            credential.write_bytes(raw)
+            credential.chmod(0o600)
+            revoked = state / 'revocations.json'
+            revoked.write_bytes(b'[]')
+            revoked.chmod(0o600)
+            identity = {'bundleIdentity': 'b' * 64}
+            with patch.object(driver, 'INSTALLED', source), \
+                    patch.object(driver, 'PROVIDER_CREDENTIAL_PATH',
+                                 str(credential)), \
+                    patch.object(driver, 'PROVIDER_CONTEXT_ROOT', base), \
+                    patch.object(worker, 'CREDENTIAL', credential), \
+                    patch.object(worker, 'STATE', state), \
+                    patch.object(worker, 'OPERATIONS', state / 'operations'), \
+                    patch.object(registration, 'OPERATIONS',
+                                 state / 'operations'), \
+                    patch.object(registration, 'RESERVATIONS',
+                                 state / 'reservations'), \
+                    patch.object(registration, 'installed_verifier',
+                                 return_value=(None, identity)), \
+                    patch.object(worker.pwd, 'getpwnam',
+                                 return_value=SimpleNamespace(pw_uid=62001)):
+                first = driver._installed_provider_worker_control(
+                    hashlib.sha256(raw).hexdigest(), 1)
+                second = driver._installed_provider_worker_control(
+                    hashlib.sha256(raw).hexdigest(), 2)
+            self.assertNotEqual(first['handleDigest'], second['handleDigest'])
+            self.assertEqual(first['credentialDigest'],
+                             second['credentialDigest'])
+            self.assertNotIn(token, json.dumps([first, second]))
+            handles = list((state / 'operations').iterdir())
+            self.assertEqual(2, len(handles))
+            self.assertTrue(all((path / 'intent.json').is_file()
+                                and (path / 'result.json').is_file()
+                                for path in handles))
+
     def test_signed_python_child_is_bound_without_a_fictitious_java_descendant(self):
         worker = {'hostPid': 301, 'namespacePid': 20, 'startTicks': 50,
                   'managerInvocation': 'a' * 32,
@@ -1417,6 +1472,8 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
                       'resolverCanaryIdentity': [3, 6],
                       'resolverControlDigest': 'a' * 64,
                       'providerCanaryIdentity': [3, 7],
+                      'credentialIdentity': [3, 8],
+                      'credentialDigest': 'f' * 64,
                       'controlDigest': 'b' * 64}
             actor = {'hostPid': 301, 'namespacePid': 20,
                      'namespacePids': [301, 20, 2], 'startTicks': 50,
@@ -1448,17 +1505,28 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
                     'startedMonotonicNs': started,
                     'finishedMonotonicNs': time.monotonic_ns() + 1,
                     'targetPathDigest': hashlib.sha256(
-                        driver.PROVIDER_PROBE_PATH.encode()).hexdigest(),
+                        driver.PROVIDER_CREDENTIAL_PATH.encode()).hexdigest(),
                     'outcome': {'opened': False, 'errno': 'ENOENT'}}
 
             with patch.object(driver, '_provider_target_control',
                               side_effect=provider_control), \
+                    patch.object(driver, '_installed_provider_worker_control',
+                        side_effect=lambda digest, ordinal: {
+                            'kind': 'pr315-installed-worker-synthetic-provider-control-v2',
+                            'ordinal': ordinal, 'credentialDigest': digest,
+                            'handleDigest': str(ordinal) * 64,
+                            'finishedMonotonicNs': 1 if ordinal == 1 else
+                                time.monotonic_ns(),
+                            'startedMonotonicNs': 1 if ordinal == 1 else
+                                time.monotonic_ns()}) as control, \
                     patch.object(driver, '_provider_app_actor',
                                  side_effect=app_control), \
                     patch.object(driver, '_wait_output_record',
                                  side_effect=read_result):
                 digest = driver.probe_provider_authority(workload, handoff,
-                    'b' * 64, 'a' * 64, 'sha256:' + '8' * 64, actor,
+                    {'providerDigest': 'b' * 64,
+                     'credentialDigest': 'f' * 64},
+                    'a' * 64, 'sha256:' + '8' * 64, actor,
                     time.monotonic_ns() + 30_000_000_000)
             self.assertEqual(1, len(audits))
             self.assertEqual('provider-authority', audits[0]['caseId'])
@@ -1479,6 +1547,8 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
                         'mainStartTicks': 42, 'canaryIdentity': [1, 23],
                         'observedMonotonicNs': 10, 'controlDigest': 'a' * 64}
             with patch.object(driver, 'PROVIDER_PROBE_PATH', str(path)), \
+                    patch.object(driver, 'PROVIDER_CREDENTIAL_PATH',
+                                 str(Path(directory) / 'restricted-provider.json')), \
                     patch.object(driver, 'prepare_resolver_canary', return_value='a' * 64), \
                     patch.object(driver, '_provider_target_control', return_value={}) as control:
                 selected = driver.prepare_provider_canary()
@@ -1489,7 +1559,8 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
             self.assertEqual(0o600, path.stat().st_mode & 0o777)
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
                              selected['providerDigest'])
-            control.assert_called_with(selected['providerDigest'], 'a' * 64)
+            control.assert_called_with(selected['providerDigest'], 'a' * 64,
+                selected['credentialDigest'])
             with patch.object(driver, 'PROVIDER_PROBE_PATH', str(path)), \
                     patch.object(driver, '_resolver_target_control', return_value=resolver):
                 observed = driver._provider_target_control(

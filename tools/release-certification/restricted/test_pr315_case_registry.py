@@ -7,16 +7,23 @@ import pr315_case_registry as registry
 
 
 class ClosedEmitterRegistryTest(unittest.TestCase):
-    def test_all_45_paths_require_the_real_worker_provider_contract(self):
+    def test_all_45_paths_require_real_provider_and_reachable_coordinator(self):
         source = Path(__file__).resolve().parents[3]
         self.assertEqual(set(registry.acceptance.CASES), set(registry.CASE_PATHS))
         self.assertEqual('incomplete', registry.implementation_coverage(source))
         policy = registry.fixtures.preparation.launcher_policy()
-        upgraded = {**policy,
-            'providerAuthorityProbe':
-                'fixed-installed-worker-synthetic-provider-credential-v2'}
-        with patch.object(registry.fixtures.preparation, 'launcher_policy',
-                          return_value=upgraded):
+        self.assertEqual('fixed-installed-worker-synthetic-provider-credential-v2',
+                         policy['providerAuthorityProbe'])
+        actual_functions = registry._functions
+
+        def completed_coordinator(path):
+            found = actual_functions(path)
+            if path.name == 'pr315_workload_coordinator.py':
+                return found | {'main', 'run_campaign'}
+            return found
+
+        with patch.object(registry, '_functions',
+                          side_effect=completed_coordinator):
             self.assertEqual('complete',
                              registry.implementation_coverage(source))
             with patch.dict(registry.CASE_PATHS, {}, clear=True):

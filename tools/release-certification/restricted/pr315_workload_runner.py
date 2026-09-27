@@ -3265,7 +3265,7 @@ def _hostile_origin_attempt(report, result, fixture, terminal, source, diagnosti
 
 
 def _provider_authority_attempt(report, result, fixture, terminal):
-    """Bind the signed AppHost child syscall to a live root provider canary."""
+    """Bind the signed AppHost syscall to real installed Worker credential ingress."""
     case_id = 'provider-authority'
     try:
         if (not group_prepared(report, result, terminal, 'network-app')
@@ -3290,6 +3290,8 @@ def _provider_authority_attempt(report, result, fixture, terminal):
                       if row['role'] == 'candidate-sender')
         before, after = audit['actorBefore'], audit['actorAfter']
         first, last = audit['targetBefore'], audit['targetAfter']
+        worker_before = audit['workerControlBefore']
+        worker_after = audit['workerControlAfter']
         receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
         host = report['hostVerifiedIdentity']
         stable_actor = ('role', 'hostPid', 'namespacePid', 'namespacePids',
@@ -3301,12 +3303,20 @@ def _provider_authority_attempt(report, result, fixture, terminal):
         stable_target = ('role', 'managerInvocation', 'bootId',
             'cgroupIdentity', 'mainPid', 'mainStartTicks',
             'resolverCanaryIdentity', 'resolverControlDigest',
-            'providerCanaryIdentity', 'controlDigest')
+            'providerCanaryIdentity', 'controlDigest',
+            'credentialIdentity', 'credentialDigest')
         provider_group = fixtures.runtime.canonical_digest({
             'role': 'original-provider', 'identity': first['cgroupIdentity']})[7:]
         worker = result['probeAppKernelProcess']
         measured = admin['worker']
-        if (audit['schemaVersion'] != 1
+        installed_worker_digest = hashlib.sha256((Path(__file__).resolve().parents[3] /
+            'tools/release-certification/protected/restricted_worker.py').read_bytes()).hexdigest()
+        worker_fields = {'kind', 'ordinal', 'workerSourceDigest',
+            'jobAuthentication',
+            'credentialDigest', 'registrationDigest', 'resultDigest',
+            'handleDigest', 'bundleIdentity', 'callerUid',
+            'startedMonotonicNs', 'finishedMonotonicNs'}
+        if (audit['schemaVersion'] != 2
                 or audit['kind'] != 'pr315-administrator-provider-authority-denial'
                 or audit['caseId'] != case_id
                 or audit['bundleDigest'] != fixture['probeDigest']
@@ -3321,7 +3331,34 @@ def _provider_authority_attempt(report, result, fixture, terminal):
                     app_result, sort_keys=True,
                     separators=(',', ':')).encode()).hexdigest()
                 or audit['targetPathDigest'] != hashlib.sha256(
-                    b'/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary').hexdigest()
+                    b'/etc/cryptad-certification/restricted-provider.json').hexdigest()
+                or any(not isinstance(proof, dict)
+                    or set(proof) != worker_fields
+                    or proof['kind'] !=
+                        'pr315-installed-worker-synthetic-provider-control-v2'
+                    or proof['jobAuthentication'] !=
+                        'installed-policy-fixed-no-network-provider-stub'
+                    or proof['ordinal'] != ordinal
+                    or proof['workerSourceDigest'] != installed_worker_digest
+                    or proof['credentialDigest'] != first['credentialDigest']
+                    or proof['bundleIdentity'] != host['bundleIdentity']
+                    or proof['callerUid'] !=
+                        result['roleKernelRoster']['runnerUid']
+                    or any(re.fullmatch('[0-9a-f]{64}',
+                        str(proof[key])) is None for key in (
+                        'registrationDigest', 'resultDigest',
+                        'handleDigest'))
+                    or type(proof['startedMonotonicNs']) is not int
+                    or type(proof['finishedMonotonicNs']) is not int
+                    or not 0 < proof['startedMonotonicNs'] <
+                        proof['finishedMonotonicNs']
+                    for ordinal, proof in ((1, worker_before),
+                                           (2, worker_after)))
+                or worker_before['handleDigest'] == worker_after['handleDigest']
+                or not worker_before['finishedMonotonicNs']
+                    < first['observedMonotonicNs']
+                or not last['observedMonotonicNs']
+                    < worker_after['startedMonotonicNs']
                 or app_result['targetPathDigest'] != audit['targetPathDigest']
                 or app_result['outcome'] != audit['kernelOpenResult']
                 or app_result['startedMonotonicNs'] != audit['attackStartedNs']
@@ -3415,14 +3452,19 @@ def _provider_authority_attempt(report, result, fixture, terminal):
                 'bundleDigest': fixture['probeDigest'],
                 'systemdInvocation': sender['invocationId'],
                 'cgroupDigest': sender['cgroupDigest']},
-            'targetEpoch': {'kind': 'active-synthetic-original-provider',
+            'targetEpoch': {'kind': 'installed-worker-synthetic-provider-credential',
                 'bootId': sender['bootId'],
-                'systemdInvocation': first['managerInvocation'],
-                'cgroupDigest': provider_group,
-                'mainPid': first['mainPid'],
-                'mainStartTicks': first['mainStartTicks'],
-                'canaryIdentity': first['providerCanaryIdentity'],
-                'canaryDigest': first['controlDigest']},
+                'credentialIdentity': first['credentialIdentity'],
+                'credentialDigest': first['credentialDigest'],
+                'installedWorkerBefore': worker_before,
+                'installedWorkerAfter': worker_after,
+                'auxiliaryResolverEpoch': {
+                    'systemdInvocation': first['managerInvocation'],
+                    'cgroupDigest': provider_group,
+                    'mainPid': first['mainPid'],
+                    'mainStartTicks': first['mainStartTicks'],
+                    'canaryIdentity': first['providerCanaryIdentity'],
+                    'canaryDigest': first['controlDigest']}},
             'operationWindow': {'startedMonotonicNs': audit['attackStartedNs'],
                                 'finishedMonotonicNs': audit['attackFinishedNs']},
             'attackDigest': attack_digest,

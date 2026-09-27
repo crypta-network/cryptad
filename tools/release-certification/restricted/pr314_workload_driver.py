@@ -56,6 +56,8 @@ PACKAGE_PROBE_PATH = '/package/lib/cryptad.jar'
 CGROUP_PROBE_PATH = '/sys/fs/cgroup/system.slice/cryptad-workload@candidate-recipient.service/cgroup.procs'
 RESOLVER_PROBE_PATH = '/var/lib/cryptad-restricted/resolver/pr315-workload-canary'
 PROVIDER_PROBE_PATH = '/var/lib/cryptad-restricted/pr315-provider/pr315-provider-canary'
+PROVIDER_CREDENTIAL_PATH = '/etc/cryptad-certification/restricted-provider.json'
+PROVIDER_CONTEXT_ROOT = Path('/etc/cryptad-certification')
 OUTPUT_CANARY = 'pr315-output-target-canary'
 OUTPUT_SYMLINK = 'pr315-output-symlink-artifact'
 OUTPUT_SYMLINK_READY = 'pr315-output-symlink-ready.json'
@@ -325,7 +327,8 @@ def prepare_resolver_canary():
     return digest
 
 
-def _provider_target_control(provider_digest, resolver_digest):
+def _provider_target_control(provider_digest, resolver_digest,
+                             credential_digest=None):
     """Bind one private synthetic provider subject to the live root service."""
     service = _resolver_target_control(resolver_digest)
     descriptor = os.open(PROVIDER_PROBE_PATH,
@@ -343,17 +346,38 @@ def _provider_target_control(provider_digest, resolver_digest):
                    for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))
             or hashlib.sha256(raw).hexdigest() != provider_digest):
         raise ValueError('workload-provider-target-invalid')
+    credential = None
+    if credential_digest is not None:
+        descriptor = os.open(PROVIDER_CREDENTIAL_PATH,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            first = os.fstat(descriptor)
+            encoded = os.read(descriptor, 32769)
+            last = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        if (not stat.S_ISREG(first.st_mode) or first.st_uid != 0
+                or first.st_nlink != 1 or first.st_mode & 0o077
+                or not 0 < first.st_size <= 32768
+                or len(encoded) != first.st_size
+                or any(getattr(first, key) != getattr(last, key)
+                       for key in ('st_dev', 'st_ino', 'st_size',
+                                   'st_mtime_ns', 'st_ctime_ns'))
+                or hashlib.sha256(encoded).hexdigest() != credential_digest):
+            raise ValueError('workload-provider-credential-target-invalid')
+        credential = {'credentialIdentity': [first.st_dev, first.st_ino],
+                      'credentialDigest': credential_digest}
     return {key: service[key] for key in ('role', 'managerInvocation',
             'bootId', 'cgroupIdentity', 'mainPid', 'mainStartTicks') } | {
         'resolverCanaryIdentity': service['canaryIdentity'],
         'resolverControlDigest': resolver_digest,
         'providerCanaryIdentity': [before.st_dev, before.st_ino],
         'observedMonotonicNs': time.monotonic_ns(),
-        'controlDigest': provider_digest}
+        'controlDigest': provider_digest} | (credential or {})
 
 
 def prepare_provider_canary():
-    """Add a root-only provider canary beside the active installed resolver."""
+    """Create only synthetic root inputs, including the installed Worker credential."""
     resolver_digest = prepare_resolver_canary()
     parent = Path(PROVIDER_PROBE_PATH).parent
     outer = parent.parent.lstat()
@@ -375,8 +399,162 @@ def prepare_provider_canary():
         os.close(descriptor)
     provider_digest = hashlib.sha256(raw).hexdigest()
     _provider_target_control(provider_digest, resolver_digest)
+    if Path(PROVIDER_CREDENTIAL_PATH).exists():
+        raise ValueError('workload-provider-credential-already-present')
+    from datetime import datetime, timedelta, timezone
+    credential = {'token': 'pr315-synthetic-' + secrets.token_hex(32),
+        'expiresAt': (datetime.now(timezone.utc) + timedelta(minutes=55)).isoformat()}
+    encoded = json.dumps(credential, sort_keys=True,
+        separators=(',', ':')).encode()
+    descriptor = os.open(PROVIDER_CREDENTIAL_PATH,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        if os.write(descriptor, encoded) != len(encoded):
+            raise ValueError('workload-provider-credential-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    credential_digest = hashlib.sha256(encoded).hexdigest()
+    _provider_target_control(provider_digest, resolver_digest,
+                             credential_digest)
     return {'providerDigest': provider_digest,
-            'resolverDigest': resolver_digest}
+            'resolverDigest': resolver_digest,
+            'credentialDigest': credential_digest}
+
+
+def _installed_provider_worker_control(credential_digest, ordinal):
+    """Exercise the installed Worker with a registered synthetic provider input.
+
+    Only external GitHub I/O and owner dispatch are fixed no-I/O stubs in this
+    administrator test process. Registration, job policy authentication,
+    credential ingress, input checks, intent and result persistence are real.
+    """
+    if ordinal not in (1, 2):
+        raise ValueError('workload-provider-control-ordinal-invalid')
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, str(INSTALLED / 'tools/release-certification/protected'))
+    import restricted_registration as registration
+    import restricted_worker as worker
+    import original_artifact_authentication as original_provider
+    if (Path(registration.__file__).resolve() != INSTALLED /
+            'tools/release-certification/protected/restricted_registration.py'
+            or Path(worker.__file__).resolve() != INSTALLED /
+            'tools/release-certification/protected/restricted_worker.py'
+            or worker.CREDENTIAL != Path(PROVIDER_CREDENTIAL_PATH)):
+        raise ValueError('workload-provider-installed-worker-required')
+    registration.installed_verifier()
+    raw_credential = worker.read(worker.CREDENTIAL, 32768)
+    if hashlib.sha256(raw_credential).hexdigest() != credential_digest:
+        raise ValueError('workload-provider-credential-changed')
+    selected_credential = worker.decode(raw_credential, 32768)
+    if (not isinstance(selected_credential, dict)
+            or set(selected_credential) != {'token', 'expiresAt'}
+            or not selected_credential['token'].startswith('pr315-synthetic-')):
+        raise ValueError('workload-provider-synthetic-credential-invalid')
+    base = PROVIDER_CONTEXT_ROOT
+    inputs = base / 'pr315-provider-inputs'
+    inputs.mkdir(mode=0o700, exist_ok=True)
+    if (inputs.stat().st_uid != 0 or inputs.stat().st_mode & 0o077
+            or any(inputs.iterdir())):
+        raise ValueError('workload-provider-input-root-invalid')
+    now = datetime.now(timezone.utc)
+    context = {'method': 'maintenance-prepare',
+        'context': {'sourceCommit': '0' * 40, 'runId': 1,
+                    'runAttempt': 1, 'jobId': 1},
+        'notBefore': (now - timedelta(minutes=1)).isoformat(),
+        'expiresAt': (now + timedelta(minutes=10)).isoformat(),
+        'collectUntil': (now + timedelta(days=1)).isoformat(),
+        'configurationFiles': []}
+    context_path = base / ('pr315-provider-context-' + str(ordinal) + '.json')
+    encoded = worker.encode(context)
+    descriptor = os.open(context_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600)
+    try:
+        if os.write(descriptor, encoded) != len(encoded):
+            raise ValueError('workload-provider-context-short-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    selected = registration.register(context_path, inputs)
+    handle = selected['handle']
+    operation = worker.OPERATIONS / handle
+    record_raw = worker.read(operation / 'registration.json')
+    record = worker.validate_record(worker.decode(record_raw, worker.MAX_RECORD))
+    expected = {'schemaVersion': 1,
+        'kind': 'pr315-synthetic-provider-no-network', 'status': 'complete'}
+    calls = []
+    workflow, _job = worker.POLICIES[record['method']]
+    run_path = (f'repos/{original_provider.REPOSITORY}/actions/runs/'
+                f'{record["context"]["runId"]}')
+    responses = {
+        run_path: {'run_attempt': 1},
+        run_path + '/attempts/1': {'id': 1, 'run_attempt': 1,
+            'path': workflow, 'head_sha': record['context']['sourceCommit'],
+            'event': 'workflow_dispatch',
+            'repository': {'full_name': original_provider.REPOSITORY},
+            'actor': {'login': 'leumor'},
+            'triggering_actor': {'login': 'leumor'}},
+        f'repos/{original_provider.REPOSITORY}/actions/jobs/1': {
+            'id': 1, 'run_id': 1, 'run_attempt': 1,
+            'name': worker.JOB_NAMES[record['method']],
+            'head_sha': record['context']['sourceCommit'],
+            'status': 'in_progress',
+            'started_at': record['notBefore']}}
+
+    def provider_io(arguments, environment):
+        if (arguments[:1] != ['api'] or len(arguments) != 2
+                or arguments[1] not in responses
+                or environment.get('GH_TOKEN') !=
+                    selected_credential['token']):
+            raise ValueError('workload-provider-worker-ingress-invalid')
+        calls.append(arguments[1])
+        return responses[arguments[1]]
+
+    def dispatch(actual, root):
+        if actual != record or root != operation:
+            raise ValueError('workload-provider-worker-dispatch-invalid')
+        calls.append('fixed-no-network-dispatch')
+        return expected
+
+    original_io, original_dispatch = (
+        original_provider._gh, worker.dispatch)
+    original_provider._gh, worker.dispatch = provider_io, dispatch
+    started = time.monotonic_ns()
+    try:
+        response = worker.Worker(record['bundleIdentity']).process(
+            {'method': record['method'], 'handle': handle},
+            record['callerUid'])
+    finally:
+        original_provider._gh, worker.dispatch = (
+            original_io, original_dispatch)
+    finished = time.monotonic_ns()
+    result_raw = worker.read(operation / 'result.json')
+    persisted = worker.decode(result_raw, worker.MAX_RESULT)
+    if (calls != [run_path, run_path + '/attempts/1',
+                  f'repos/{original_provider.REPOSITORY}/actions/jobs/1',
+                  'fixed-no-network-dispatch']
+            or response.get('status') != 'complete'
+            or response.get('result') != expected
+            or persisted.get('result') != expected
+            or persisted.get('receipt') != response.get('receipt')
+            or persisted.get('registrationDigest') !=
+                worker.digest(record_raw)):
+        raise ValueError('workload-provider-worker-control-invalid')
+    return {'kind': 'pr315-installed-worker-synthetic-provider-control-v2',
+        'ordinal': ordinal,
+        'workerSourceDigest': hashlib.sha256(
+            Path(worker.__file__).read_bytes()).hexdigest(),
+        'jobAuthentication': 'installed-policy-fixed-no-network-provider-stub',
+        'credentialDigest': credential_digest,
+        'registrationDigest': hashlib.sha256(record_raw).hexdigest(),
+        'resultDigest': hashlib.sha256(result_raw).hexdigest(),
+        'handleDigest': hashlib.sha256(handle.encode()).hexdigest(),
+        'bundleIdentity': record['bundleIdentity'],
+        'callerUid': record['callerUid'],
+        'startedMonotonicNs': started,
+        'finishedMonotonicNs': finished}
 
 
 def _candidate_probe_file(path, uid):
@@ -1021,16 +1199,20 @@ def _provider_app_actor(workload, handoff, expected_worker):
     return bound
 
 
-def probe_provider_authority(workload, handoff, provider_digest,
+def probe_provider_authority(workload, handoff, provider_setup,
                              resolver_digest, bundle_digest, expected_worker,
                              campaign_deadline_ns):
-    """Trigger only the signed AppHost child against the active private provider."""
+    """Bracket a signed AppHost denial with two real installed Worker reads."""
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-provider-campaign-expired')
     role = 'candidate-sender'
     account = workload.account(role)
     root = workload.ROOT / 'state/candidate-sender/data/node/apps/data/pr315-probe'
-    target_before = _provider_target_control(provider_digest, resolver_digest)
+    provider_digest = provider_setup['providerDigest']
+    credential_digest = provider_setup['credentialDigest']
+    worker_before = _installed_provider_worker_control(credential_digest, 1)
+    target_before = _provider_target_control(provider_digest, resolver_digest,
+                                             credential_digest)
     actor_before = _provider_app_actor(workload, handoff, expected_worker)
     nonce = secrets.token_hex(32)
     trigger = root / 'pr315-provider-trigger.json'
@@ -1054,14 +1236,17 @@ def probe_provider_authority(workload, handoff, provider_digest,
     finally:
         trigger.unlink(missing_ok=True)
     actor_after = _provider_app_actor(workload, handoff, expected_worker)
-    target_after = _provider_target_control(provider_digest, resolver_digest)
+    target_after = _provider_target_control(provider_digest, resolver_digest,
+                                            credential_digest)
+    worker_after = _installed_provider_worker_control(credential_digest, 2)
     stable_actor = ('hostPid', 'namespacePid', 'startTicks',
                     'managerInvocation', 'cgroupIdentity',
                     'sandboxLeader')
     stable_target = ('role', 'managerInvocation', 'bootId', 'cgroupIdentity',
                      'mainPid', 'mainStartTicks', 'resolverCanaryIdentity',
                      'resolverControlDigest', 'providerCanaryIdentity',
-                     'controlDigest')
+                     'controlDigest', 'credentialIdentity',
+                     'credentialDigest')
     if (not isinstance(result, dict) or set(result) != {
             'schemaVersion', 'kind', 'caseId', 'nonce', 'pid', 'uid', 'gid',
             'startedMonotonicNs', 'finishedMonotonicNs',
@@ -1072,13 +1257,20 @@ def probe_provider_authority(workload, handoff, provider_digest,
             or result['pid'] != actor_before['namespacePids'][-1]
             or result['uid'] != account.pw_uid or result['gid'] != account.pw_gid
             or result['targetPathDigest'] != hashlib.sha256(
-                PROVIDER_PROBE_PATH.encode()).hexdigest()
+                PROVIDER_CREDENTIAL_PATH.encode()).hexdigest()
             or result['outcome'] not in (
                 {'opened': False, 'errno': 'ENOENT'},
                 {'opened': False, 'errno': 'EACCES'},
                 {'opened': False, 'errno': 'EPERM'})
             or any(actor_before[key] != actor_after[key] for key in stable_actor)
             or any(target_before[key] != target_after[key] for key in stable_target)
+            or worker_before['credentialDigest'] != credential_digest
+            or worker_after['credentialDigest'] != credential_digest
+            or worker_before['handleDigest'] == worker_after['handleDigest']
+            or worker_before['finishedMonotonicNs'] >=
+                target_before['observedMonotonicNs']
+            or worker_after['startedMonotonicNs'] <=
+                target_after['observedMonotonicNs']
             or actor_before['stateDigest'] != actor_after['stateDigest']
             or not target_before['observedMonotonicNs']
                 < actor_before['observedMonotonicNs'] < trigger_ns
@@ -1086,7 +1278,7 @@ def probe_provider_authority(workload, handoff, provider_digest,
                 < actor_after['observedMonotonicNs']
                 < target_after['observedMonotonicNs']):
         raise ValueError('workload-provider-actor-target-or-denial-invalid')
-    audit = {'schemaVersion': 1,
+    audit = {'schemaVersion': 2,
         'kind': 'pr315-administrator-provider-authority-denial',
         'caseId': 'provider-authority', 'bundleDigest': bundle_digest,
         'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
@@ -1095,6 +1287,8 @@ def probe_provider_authority(workload, handoff, provider_digest,
         'senderStateBefore': actor_before['stateDigest'],
         'senderStateAfter': actor_after['stateDigest'],
         'targetBefore': target_before, 'targetAfter': target_after,
+        'workerControlBefore': worker_before,
+        'workerControlAfter': worker_after,
         'targetPathDigest': result['targetPathDigest'],
         'attackStartedNs': result['startedMonotonicNs'],
         'attackFinishedNs': result['finishedMonotonicNs'],
@@ -6056,7 +6250,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 'startedMonotonicNs': time.monotonic_ns()}
             try:
                 digest = probe_provider_authority(workload, handoff,
-                    provider_setup['providerDigest'], resolver_digest,
+                    provider_setup, resolver_digest,
                     probe_digest, result['probeAppKernelProcess'],
                     campaign_deadline)
                 diagnostics['providerAuthority'] = {'status': 'captured',
