@@ -25,10 +25,12 @@ def launcher_policy():
     """Closed prospective policy, included in every role's configuration identity.
 
     The historical product initializes its wrapper backend after crypto providers.
-    Its initial handshake needs a separate fixed allowance on the selected TCG guest;
-    candidate watchdogs, daemon readiness and the retained campaign deadline do not change.
+    The candidate sender also exhausted the 30-second wrapper handshake twice
+    under TCG before its JVM could signal startup, while its role had no OOM or
+    HotSpot fatal. Give only these two roles the measured startup allowance;
+    daemon readiness and the retained campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v34',
+    return {'revision': 'workload-launcher-policy-v35',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -48,7 +50,8 @@ def launcher_policy():
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
-                role: 60 if role == 'previous' else 30 for role in ROLES}}
+                role: 60 if role in ('candidate-sender', 'previous') else 30
+                for role in ROLES}}
 
 
 def _trusted_probe_request(spec):

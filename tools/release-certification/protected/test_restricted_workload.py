@@ -1297,14 +1297,17 @@ class LauncherTest(unittest.TestCase):
             self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
             self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])
 
-    def test_only_historical_role_gets_prospective_startup_allowance(self):
+    def test_sender_and_historical_roles_get_measured_startup_allowance(self):
         for role in workload.ROLES:
             command, _environment = launcher.command(role)
             properties = dict(item.split('=', 1) for item in command[command.index('--') + 2:])
-            self.assertEqual('60' if role == 'previous' else '30', properties['wrapper.startup.timeout'])
+            self.assertEqual('60' if role in ('candidate-sender', 'previous')
+                             else '30', properties['wrapper.startup.timeout'])
         changed = launcher.launcher_policy()
         changed['wrapperStartupTimeoutSeconds']['previous'] = 600
+        changed['wrapperStartupTimeoutSeconds']['candidate-sender'] = 600
         self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['previous'])
+        self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['candidate-sender'])
 
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:

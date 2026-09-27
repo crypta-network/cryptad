@@ -9,6 +9,8 @@ passed eight positive v10 cases on `a06d14dc21`; suite 121 on `ca15f28261`
 failed during Mail preparation before its selected network/AppHost probes.
 The frozen `d94b3bc9cc` campaign prepared its inputs, but suite 122 rejected
 the wrong local SSH host-key port before allocating a guest. It passed no case.
+The later `56895ba45` v40 campaign prepared correctly, but its first TCG
+positive guest, suite 124, failed sender readiness before any positive case.
 Neither result can be pooled with another commit or counted as final-source
 acceptance. The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
@@ -71,7 +73,8 @@ schema 2; v8 and v9 records keep their historical interpretations. The selected
 profile remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-The current launcher policy is v34. Earlier policy revisions, including suite
+The prospective launcher policy is v35; it has no installed result. Suite 124
+remains bound to v34. Earlier policy revisions, including suite
 81 v4 and the separate KVM v5 diagnostic, remain attached to their source and
 fixture bytes. Policy v34 and its signed probe require fresh TCG measurement;
 historical v8 records cannot be relabelled.
@@ -2940,7 +2943,7 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
-## Current cutoff after suite 122
+## Current cutoff after suite 124
 
 Source `a06d14dc21` suite 118 failed before role launch because its measured
 test kit omitted the lifecycle role probe. That packaging defect was corrected
@@ -3060,6 +3063,42 @@ campaign plan digest. The old snapshot and suite121's three remaining
 generated directories were copied to the Mac, checksum-verified and released
 from PVE only after separate explicit approval and stopped-instance checks.
 Neither preparation attempt grants a passed case.
+
+The corrected `56895ba45` campaign froze its v40 fixture, verified the
+per-campaign public key and passed the no-VM probe. Suite 124 then launched one
+formal `tcg-multi/qemu64` guest. Its positive driver failed while waiting for
+the candidate sender's FCP `GetNode` readiness; no positive case was emitted.
+Four current role stop receipts, guest exit 1, a completed PVE watcher and
+QEMU stop were observed. The Mac rehashed its complete 12,804-file failed
+attempt, including both QCOW2 files, source clone and all generated inputs.
+The sealed receipt marks the group failed with unknown probe-start phase;
+other groups cannot reuse that campaign.
+
+The sender wrapper twice reported no CPU time for 17 or 20 seconds. Each JVM
+startup then timed out waiting for its start signal, and the wrapper requested
+SIGKILL. No role had a captured HotSpot fatal or cgroup OOM event. At failure
+the sender still had its fixed one-CPU quota and recorded substantial CPU
+throttling; host memory/I/O full PSI did not reach watcher thresholds. The
+cleanup-time `jcmd` attempt was unavailable with `BlockingIOError`.
+These observations establish the immediate wrapper timeout mechanism, but do
+not establish why the sender lost CPU time under TCG. A separately identified
+v35 diagnostic changes only candidate-sender `wrapper.startup.timeout` from
+30 to 60 seconds, matching the existing previous-role allowance. Other role
+limits, QEMU/JDK/product bytes and workload-operation deadlines remain fixed.
+This diagnostic must show an installed effect before any new formal campaign
+can use the changed policy; it has no current case credit.
+
+After explicit approval and a fresh 71-QCOW backing scan, the seven
+Mac-archived suite124 guest/source/generated duplicates were released only
+from PVE. Its raw observation and watcher receipts remain there, while the
+Mac retains the full failed attempt. The Mac's additional work budget fell
+below its 224-GiB initial free-space admission after that archive. A separate
+approved, byte-verified cleanup removed only four reconstructible generated
+directories from each of fifteen older stopped failed attempts. Their guest
+and prepared QCOW2, source archive, report and other original observations
+remain on the Mac. The deleted generated contents have a private file-tree
+digest inventory for reconstruction checks. The resulting Mac free space was
+about 233.8 GiB, above the 224-GiB campaign initialization threshold.
 
 CT102 native Linux passed 338 focused PR-314/315/installation tests with 11
 skips, 178 protected-workload tests with 24 skips, 60 interop tests with nine
@@ -3425,7 +3464,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its selected network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`. None belongs to a later source identity |
+| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45` before a positive case. None belongs to the prospective v35 source identity |
 | `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
