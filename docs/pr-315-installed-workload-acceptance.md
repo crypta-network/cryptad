@@ -14,7 +14,8 @@ positive guest, suite 124, failed sender readiness before any positive case.
 The separate v35 diagnostics reached four-role readiness once on TCG and once
 on KVM; another TCG run failed after a relay JVM C1 `SIGILL`. None earns a case.
 The later v36 TCG diagnostics 127–128 both reached four-role FCP readiness
-without a captured HotSpot fatal, but declared no workload case. These results
+without a captured HotSpot fatal, but declared no workload case. Its formal
+positive suite 129 later failed before any case record. These results
 cannot be pooled with another commit or counted as final-source
 acceptance. The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
@@ -77,9 +78,9 @@ schema 2; v8 and v9 records keep their historical interpretations. The selected
 profile remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-The prospective launcher policy is v36; it has two installed startup-only
-diagnostics and no installed workload case result. Suite 124 remains bound to
-v34, and suites 125–126 and KVM19 remain bound to v35.
+The prospective launcher policy is v37 and has no installed result. V36 had
+two startup-only TCG diagnostics and one failed formal positive attempt.
+Suite 124 remains bound to v34, and suites 125–126 and KVM19 remain bound to v35.
 Earlier policy revisions, including suite
 81 v4 and the separate KVM v5 diagnostic, remain attached to their source and
 fixture bytes. Policy v34 and its signed probe require fresh TCG measurement;
@@ -2949,7 +2950,7 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
-## Current cutoff after suites 127–128
+## Current cutoff after suite 129 and the v37 correction
 
 Source `a06d14dc21` suite 118 failed before role launch because its measured
 test kit omitted the lifecycle role probe. That packaging defect was corrected
@@ -3148,6 +3149,46 @@ success-disk release and retained manifest are recorded separately. Both
 diagnostics declared zero workload cases. Two startup successes support
 further formal evaluation of this compilation policy, but they do not prove
 the historical C1 failure mechanism or establish 45-case acceptance.
+
+Source `79e6821d56` passed native Linux PR-315, PR-314, protected-workload
+and interop discoveries with 232/2, 105/10, 179/24 and 60/9
+tests/skips respectively. Root protected workload passed 179 tests without a
+skip, and the four certification self-tests passed 152, 247, 88 and 185 tests.
+The full Java run passed 17,411 tests with ten skips and no failure or error;
+its problems report had 50 warnings and zero errors. Its signed v43 fixture
+and no-VM campaign probe verified the frozen source and input identities.
+The first fixture preparation used a Mail-only trust file and was rejected
+because the synthetic probe key was absent. That partial fixture was fully
+copied, checksum-verified and compressed on the Mac before its exact remote
+duplicate was released. Repreparation used the previously verified Mail and
+probe trust file without changing either signed bundle.
+
+Formal v36 suite 129 then started under the sealed `79e6821d56` campaign.
+Guest boot and source transfer completed, but the positive driver failed
+before producing any acceptable case record. The sender role's Wrapper
+bootstrap JVM had a `SIGILL` in C1-compiled `SHA5.lf_delta1`; its fatal log
+identified the `WrapperBootstrap` invocation and still reported tiered
+compilation. The pinned Temurin binary independently reports tiered
+compilation disabled when given `-XX:-TieredCompilation` directly. The
+[Wrapper option-scope reference](https://wrapper.tanukisoftware.com/doc/english/prop-java-additional-n.html)
+states that the default additional-option scope is `DRYRUN_APP`, excluding
+the bootstrap invocation. V36 supplied the option without a scope, so it did
+not cover the JVM that crashed. This explains the ineffective diagnostic
+setting, not the underlying source of the intermittent illegal instruction.
+
+Suite 129 was sealed `failed` with probe-start phase unknown; its eight
+selected cases remain unexecuted and the other groups cannot reuse that
+campaign. The Mac independently rehashed all 12,813 files of the full failed
+attempt, including both QCOW2 originals; PVE watcher completion and QEMU
+stop were observed. Its seven PVE disk/source/generated duplicates were
+released only after exact-byte, ownership, open-file and 71-QCOW dependency
+checks. Original private failure observations remain on the Mac and PVE.
+The prospective v37 launcher policy now sets
+`wrapper.java.additional.11.scope=BOOTSTRAP_DRYRUN_APP` for every role and
+renames the compilation measurement. Focused native Linux protected and
+PR-315 tests passed 179/24 and 232/2 after this change. The selected TCG
+configuration, product/JDK bytes, role limits and operation deadlines remain
+fixed; v37 requires a new fixture, full source gates and installed execution.
 
 After explicit approval and a fresh 71-QCOW backing scan, the seven
 Mac-archived suite124 guest/source/generated duplicates were released only
@@ -3525,7 +3566,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45`. The v35 role-readiness diagnostics 125–126, KVM19, and v36 TCG diagnostics 127–128 declared no workload cases. None belongs to the eventual frozen final-source campaign identity |
+| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45`. The v35 role-readiness diagnostics 125–126, KVM19, and v36 TCG diagnostics 127–128 declared no workload cases; v36 suite 129 failed before any positive case record. None belongs to the prospective v37 source identity |
 | `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |

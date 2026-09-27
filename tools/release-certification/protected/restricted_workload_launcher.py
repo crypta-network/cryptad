@@ -29,10 +29,11 @@ def launcher_policy():
     under TCG before its JVM could signal startup, while its role had no OOM or
     HotSpot fatal. Give only these two roles the measured startup allowance.
     A separate TCG differential disables tiered C1 compilation after a relay
-    C1 SIGILL; the JDK binary, role limits, daemon readiness and retained
-    campaign deadline do not change.
+    C1 SIGILL. Apply that option to the Wrapper bootstrap as well: the default
+    option scope omitted the bootstrap JVM that crashed in suite 129. The JDK
+    binary, role limits, daemon readiness and campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v36',
+    return {'revision': 'workload-launcher-policy-v37',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -50,7 +51,7 @@ def launcher_policy():
             'cleanupRaceProbe': 'fixed-manager-replacement-stop-barrier-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
-            'jvmCompilationPolicy': 'untiered-server-diagnostic-v1',
+            'jvmCompilationPolicy': 'untiered-bootstrap-and-app-diagnostic-v2',
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role in ('candidate-sender', 'previous') else 30
@@ -243,7 +244,8 @@ def command(role):
              'wrapper.logfile=/node/logs/wrapper.log',
              'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
              'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs',
-             'wrapper.java.additional.11=-XX:-TieredCompilation']
+             'wrapper.java.additional.11=-XX:-TieredCompilation',
+             'wrapper.java.additional.11.scope=BOOTSTRAP_DRYRUN_APP']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]

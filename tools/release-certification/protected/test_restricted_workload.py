@@ -1309,10 +1309,11 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['previous'])
         self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['candidate-sender'])
 
-    def test_all_roles_pin_untiered_server_compilation_for_c1_diagnostic(self):
+    def test_all_roles_pin_untiered_bootstrap_and_app_compilation(self):
         policy = launcher.launcher_policy()
-        self.assertEqual('workload-launcher-policy-v36', policy['revision'])
-        self.assertEqual('untiered-server-diagnostic-v1', policy['jvmCompilationPolicy'])
+        self.assertEqual('workload-launcher-policy-v37', policy['revision'])
+        self.assertEqual('untiered-bootstrap-and-app-diagnostic-v2',
+                         policy['jvmCompilationPolicy'])
         for role in workload.ROLES:
             with self.subTest(role=role):
                 command, _environment = launcher.command(role)
@@ -1320,6 +1321,8 @@ class LauncherTest(unittest.TestCase):
                                   for item in command[command.index('--') + 2:])
                 self.assertEqual('-XX:-TieredCompilation',
                                  properties['wrapper.java.additional.11'])
+                self.assertEqual('BOOTSTRAP_DRYRUN_APP',
+                                 properties['wrapper.java.additional.11.scope'])
                 self.assertEqual('-Dcrypta.log.dir=/node/logs',
                                  properties['wrapper.java.additional.10'])
 
