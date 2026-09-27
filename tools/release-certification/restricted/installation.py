@@ -41,7 +41,8 @@ TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name
     'pr315_campaign_seal.py', 'pr315_case_v10.py',
     'pr315_case_registry.py', 'pr315_campaign_owner.py',
     'pr315_workload_coordinator.py', 'pr315_pve_attempt_inventory.py',
-    'pr315_pve_attempt_cleanup.py'))
+    'pr315_pve_attempt_cleanup.py', 'pr315_installed_case_validators.py',
+    'pr315_workload_fault_probes.py'))
 TEST_SEAM_PREFIXES = ('tools/release-certification/restricted/pr315-probe-app/',)
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',

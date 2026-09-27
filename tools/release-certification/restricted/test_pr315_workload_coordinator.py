@@ -14,7 +14,7 @@ import pr315_workload_coordinator as coordinator
 
 
 class CoordinatorSelectionTest(unittest.TestCase):
-    def test_mac_host_coordinator_is_test_kit_only(self):
+    def test_host_and_fault_helpers_are_test_kit_only(self):
         self.assertFalse(installation.production_member(
             'tools/release-certification/restricted/'
             'pr315_workload_coordinator.py'))
@@ -24,6 +24,10 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertFalse(installation.production_member(
             'tools/release-certification/restricted/'
             'pr315_pve_attempt_inventory.py'))
+        for name in ('pr315_installed_case_validators.py',
+                     'pr315_workload_fault_probes.py'):
+            self.assertFalse(installation.production_member(
+                'tools/release-certification/restricted/' + name))
 
     def test_authority_preparation_uses_one_of_three_group_attempts(self):
         groups = [group for group, _ in coordinator.campaign.GROUPS]

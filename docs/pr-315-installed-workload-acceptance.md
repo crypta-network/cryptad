@@ -3023,11 +3023,28 @@ package's nine reserved wrapper options; after fixing that test input, all
 Full root PR-315 discovery is not a valid single
 run because it also contains tests requiring a nonroot observer UID; the
 applicable root tests are selected separately. The new default coordinator,
-cleanup and runtime-policy code has further focused CT102 checks, but no
-current final-source Java full suite, static-analysis review, certification
-self-tests, hosted CI or independent security review. The source, fixture and
+cleanup and runtime-policy code had further focused CT102 checks at this
+cutoff, but no Java full suite or certification self-test had yet run for
+that source. Hosted CI and independent security review remain unexecuted.
+The source, fixture and
 test kit must be frozen again after documentation and code completion, then
 all 45 installed cases must be rerun within one campaign.
+
+Later source gates on `5becbfb120` completed `./gradlew test`: 17,411 JUnit
+tests, zero failures/errors and ten skips across 1,411 XML reports. The
+generated Gradle problems report contains 50 warning-severity diagnostic
+records, summarized as 129 Java compiler/Error Prone occurrences and 34
+Gradle deprecation occurrences; no Java source in this PR-315 increment was
+changed. Four focused certification self-tests passed with 152, 247, 88 and
+185 tests. A broader 2,395-test `self-test all` additionally exposed two
+source/test issues: a public-directory fixture inherited `umask 077`, and
+the expanded PR-315 driver and runner exceeded the repository's 5,000-line
+Python source boundary. The fixture now explicitly sets 0755; the real
+fault emitters and host validators have been split into measured test-kit
+modules without changing their public call sites. The targeted source-size
+test and affected CT102 Python checks pass. The broader all-suite and the
+four focused self-tests must be rerun on the final post-split commit; their
+earlier passing/failing statistics cannot be relabelled as that source.
 
 ## Requirement-to-emitter mapping
 
