@@ -289,6 +289,34 @@ class CoordinatorSelectionTest(unittest.TestCase):
                      'status': 'completed'}, [])
             remote.call.assert_not_called()
 
+    def test_stopped_guest_release_scan_has_separate_bounded_wait(self):
+        calls = []
+
+        def read(host, command, *, timeout):
+            calls.append((host, command, timeout))
+            if timeout < 1200:
+                raise AssertionError('stopped guest scan lost its host-only bound')
+            return SimpleNamespace(stdout=b'{"status":"checked"}')
+
+        remote = SimpleNamespace(call=read)
+        source_commit = 'a' * 40
+        common = ['--suite', 'suite-201', '--source-commit', source_commit]
+        for script in ('pr315_pve_attempt_inventory.py',
+                       'pr315_pve_attempt_cleanup.py'):
+            self.assertEqual({'status': 'checked'},
+                coordinator._pve_release_audit(remote, source_commit,
+                                               script, common))
+        self.assertEqual([1200, 1200], [call[2] for call in calls])
+        self.assertTrue(all(call[0] == coordinator.PVE for call in calls))
+        self.assertEqual([
+            'python3',
+            '/root/pr315-workload/campaign-' + source_commit[:12] +
+                '/pr315_pve_attempt_inventory.py', *common], calls[0][1])
+        with self.assertRaisesRegex(ValueError, 'release-script-invalid'):
+            coordinator._pve_release_audit(remote, source_commit,
+                                           'arbitrary.py', common)
+        self.assertEqual(2, len(calls))
+
     def test_pve_release_transfer_rejects_unpinned_destination(self):
         with tempfile.TemporaryDirectory(prefix='pr315-transfer-test-') as temp:
             source = Path(temp) / 'fixed.py'

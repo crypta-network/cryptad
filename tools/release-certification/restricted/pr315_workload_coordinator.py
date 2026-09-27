@@ -37,6 +37,9 @@ MAC_RESERVE = 64 * 1024**3
 MAC_ADDITIONAL_BUDGET = 160 * 1024**3
 MAC_FULL_ATTEMPT_RESERVATION = 8 * 1024**3
 THIN_POOL_RESERVE = 2 * 1024**3
+# A stopped guest's task-wide byte and QCOW scan can wait on PVE storage.
+# This host-only bound never extends the guest or workload-operation deadline.
+PVE_RELEASE_AUDIT_TIMEOUT_SECONDS = 1200
 _SUITE = re.compile(r'suite-[1-9][0-9]*\Z')
 
 
@@ -898,6 +901,15 @@ def _publish_pve_release_tools(remote, source, source_commit):
     return root, result
 
 
+def _pve_release_audit(remote, source_commit, script, common):
+    if script not in ('pr315_pve_attempt_inventory.py',
+                      'pr315_pve_attempt_cleanup.py'):
+        raise ValueError('pr315-pve-release-script-invalid')
+    return _json_command(remote, PVE, ['python3',
+        _pve_release_root(source_commit) + '/' + script, *common],
+        timeout=PVE_RELEASE_AUDIT_TIMEOUT_SECONDS)
+
+
 def _release_plan(root, plan, receipt, staging, staging_digest):
     files = staging['files']
     selected = {name: files['attempt-01/' + name]['sha256']
@@ -1007,7 +1019,7 @@ def release_completed_attempt(remote, root, source, plan, receipt,
         receipt, staging_digest, selected)
     if recovered is not None:
         return recovered
-    pve_root, _tool_digests = _publish_pve_release_tools(
+    _pve_root, _tool_digests = _publish_pve_release_tools(
         remote, source, receipt['sourceCommit'])
     remote.call(PVE, ['mkdir', '-p', '-m', '700',
         PVE_TASK + '/host-release'])
@@ -1018,8 +1030,8 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     _publish_pve_release_file(remote, local_plan, remote_plan, mode=0o400)
     common = ['--suite', receipt['attemptId'], '--source-commit',
               receipt['sourceCommit']]
-    checked = _json_command(remote, PVE, ['python3', pve_root +
-        '/pr315_pve_attempt_inventory.py', *common], timeout=180)
+    checked = _pve_release_audit(remote, receipt['sourceCommit'],
+        'pr315_pve_attempt_inventory.py', common)
     check_digest = checked.pop('checkDigest', None)
     if (checked.get('suite') != receipt['attemptId']
             or checked.get('sourceCommit') != receipt['sourceCommit']
@@ -1037,9 +1049,9 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     _write_or_verify_json(root / 'host-release' /
         (receipt['attemptId'] + '.check.private.json'),
         {**checked, 'checkDigest': check_digest})
-    completed = _json_command(remote, PVE, ['python3', pve_root +
-        '/pr315_pve_attempt_cleanup.py', *common,
-        '--check-digest', check_digest], timeout=180)
+    completed = _pve_release_audit(remote, receipt['sourceCommit'],
+        'pr315_pve_attempt_cleanup.py',
+        [*common, '--check-digest', check_digest])
     if (completed.get('release') !=
             'completed-remote-success-duplicates-only'
             or completed.get('checkDigest') != check_digest
