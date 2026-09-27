@@ -147,6 +147,45 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_frozen_campaign_policy_probe_and_product_are_checked_before_vm(self):
+        source = Path(__file__).resolve().parents[3]
+        commit = runner.subprocess.run(['git', '-C', str(source),
+            'rev-parse', 'HEAD'], capture_output=True, check=True,
+            text=True).stdout.strip()
+        tree = runner.subprocess.run(['git', '-C', str(source),
+            'rev-parse', 'HEAD^{tree}'], capture_output=True,
+            check=True, text=True).stdout.strip()
+        identity = {'helperSourceCommit': commit,
+            'helperSourceTree': tree,
+            'preparedImageDigest': 'a' * 64,
+            'fixtureManifestDigest': 'b' * 64,
+            'productSelectionDigest': 'c' * 64,
+            'admittedAppDigest': 'd' * 64}
+        plan = {'identity': identity,
+            'runtimePolicyDigest': runner.campaign_seal._digest(
+                runner.fixtures.preparation.launcher_policy()),
+            'probeDigest': 'e' * 64}
+        fixture = {'schemaVersion': 4, 'sourceCommit': commit,
+            'mailDigest': 'sha256:' + 'd' * 64,
+            'probeDigest': 'sha256:' + 'e' * 64}
+        args = SimpleNamespace(source=source, prepared_fixtures=source,
+            fixture_manifest_digest='b' * 64,
+            product_source_commit='f' * 40,
+            prepared_image_digest='a' * 64)
+        with patch.object(runner.fixtures, 'verify', return_value=fixture), \
+                patch.object(runner.reference, 'sha256',
+                             return_value='c' * 64):
+            self.assertEqual(fixture,
+                runner.verify_campaign_runtime_inputs(args, plan))
+            for changed in (
+                    {**plan, 'runtimePolicyDigest': '0' * 64},
+                    {**plan, 'probeDigest': '0' * 64},
+                    {**plan, 'identity': {**identity,
+                        'productSelectionDigest': '0' * 64}}):
+                with self.assertRaisesRegex(ValueError,
+                                            'frozen-input-mismatch'):
+                    runner.verify_campaign_runtime_inputs(args, changed)
+
     def test_lost_start_requires_first_invocation_before_retry_and_exact_stop(self):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)

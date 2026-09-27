@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 import pr314_acceptance as acceptance
+import installation
 import pr315_case_v10 as v10
 import pr315_workload_campaign as campaign
 import pr315_workload_fixtures as fixtures
@@ -54,7 +55,7 @@ CASE_PATHS = {
                           'two-installed-observers+dual-role-epoch-v9+v10'),
     'provider-authority': spec('probe_provider_authority',
                                '_provider_authority_attempt',
-                               'signed-probe-provider-v8+v9+v10'),
+                               'signed-app+installed-worker-credential-v2+v10'),
     **{case: spec('probe_network_app_roles', '_sibling_network_attempt',
                   'role-syn-drop-v8+v9+v10')
        for case in ('sibling-fcp', 'sibling-http')},
@@ -126,8 +127,23 @@ def implementation_coverage(source_root):
             or fixtures.preparation.launcher_policy().get(
                 'providerAuthorityProbe') !=
                 'fixed-installed-worker-synthetic-provider-credential-v2'
-            or not {'run_campaign', 'main'} <= _functions(source_root /
+            or not {'run_campaign', 'main', 'release_completed_attempt',
+                    'frozen_campaign_context', 'task_qemu_inventory',
+                    'stage_full_attempt', 'selected_group_complete'} <= _functions(source_root /
                 'tools/release-certification/restricted/pr315_workload_coordinator.py')
+            or 'verify_completed_cleanup_receipts' not in _functions(source_root /
+                'tools/release-certification/restricted/pr315_campaign_owner.py')
+            or 'verify_campaign_runtime_inputs' not in _functions(source_root /
+                'tools/release-certification/restricted/pr315_workload_runner.py')
+            or not {'inspect', 'main'} <= _functions(source_root /
+                'tools/release-certification/restricted/pr315_pve_attempt_inventory.py')
+            or not {'apply', 'main'} <= _functions(source_root /
+                'tools/release-certification/restricted/pr315_pve_attempt_cleanup.py')
+            or any(installation.production_member(
+                'tools/release-certification/restricted/' + name)
+                for name in ('pr315_workload_coordinator.py',
+                             'pr315_pve_attempt_inventory.py',
+                             'pr315_pve_attempt_cleanup.py'))
             or set(runner.SUPPORTED_GROUPS) !=
                 {group for group, _ in campaign.GROUPS}
             or set(v10.POSITIVE) | {'output-symlink'} |

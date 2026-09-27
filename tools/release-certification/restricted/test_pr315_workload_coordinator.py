@@ -1,5 +1,13 @@
 """Closed campaign selection and preparation accounting without allocating VMs."""
+from contextlib import redirect_stdout
+import hashlib
+import io
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import installation
 import pr315_workload_coordinator as coordinator
@@ -10,6 +18,12 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertFalse(installation.production_member(
             'tools/release-certification/restricted/'
             'pr315_workload_coordinator.py'))
+        self.assertFalse(installation.production_member(
+            'tools/release-certification/restricted/'
+            'pr315_pve_attempt_cleanup.py'))
+        self.assertFalse(installation.production_member(
+            'tools/release-certification/restricted/'
+            'pr315_pve_attempt_inventory.py'))
 
     def test_authority_preparation_uses_one_of_three_group_attempts(self):
         groups = [group for group, _ in coordinator.campaign.GROUPS]
@@ -80,6 +94,125 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertIsNone(coordinator.explicit_probe_phase(
             'network-app', {'probeStart': dict(marker,
                 caseId='authority')}))
+
+    def test_default_full_run_rejects_incomplete_emitters_before_remote_access(self):
+        import pr315_case_registry as registry
+        with patch.object(coordinator, 'frozen_campaign_context',
+                          return_value=('/private', '/source', {}, {}, {})), \
+                patch.object(registry, 'implementation_coverage',
+                             return_value='incomplete'), \
+                patch.object(coordinator, 'Remote') as remote:
+            with self.assertRaisesRegex(ValueError,
+                                        'emitter-coverage-incomplete'):
+                coordinator.run_campaign('/private', '/source')
+            remote.assert_not_called()
+
+    def test_probe_exits_78_without_remote_or_vm_when_start_is_missing(self):
+        with patch.object(coordinator, 'Remote') as remote, \
+                redirect_stdout(io.StringIO()) as output:
+            status = coordinator.main(['--probe',
+                '--campaign-root', '/nonexistent-pr315-campaign',
+                '--source', str(Path(__file__).resolve().parents[3])])
+        self.assertEqual(78, status)
+        self.assertIn('"installedWorkloadAcceptanceSatisfied": false',
+                      output.getvalue())
+        remote.assert_not_called()
+
+    def test_source_clone_requires_capacity_check_before_git_allocation(self):
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            side_effect=[SimpleNamespace(returncode=0),
+                         SimpleNamespace(returncode=1)]))
+        config = {'sourceSnapshot':
+            '/work/pr315-task/campaign-frozen/source-fixture'}
+        with self.assertRaisesRegex(ValueError,
+                                    'capacity-preflight-required'):
+            coordinator.prepare_source_snapshot(remote, config)
+        self.assertEqual(['mkdir', '-p', '-m', '700',
+                          '/work/pr315-task/campaign-frozen'],
+                         remote.call.call_args_list[0].args[1])
+        self.assertEqual(2, remote.call.call_count)
+
+    def test_full_staging_rehash_rejects_changed_or_extra_guest_bytes(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-full-stage-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            stage = root / 'full-attempt-staging/suite-201'
+            stage.mkdir(parents=True, mode=0o700)
+            stage.chmod(0o700)
+            files = {}
+            for relative in ('attempt-01/guest.qcow2',
+                             'attempt-01/prepared.qcow2',
+                             'attempt-01/source.tar.gz',
+                             'host-stop.private.json'):
+                path = stage / relative
+                path.parent.mkdir(mode=0o700, exist_ok=True)
+                path.write_bytes(relative.encode())
+                files[relative] = {'sha256': hashlib.sha256(
+                    relative.encode()).hexdigest(),
+                    'sizeBytes': len(relative)}
+            manifest = {'schemaVersion': 1,
+                'kind': 'pr315-mac-full-attempt-preservation-v1',
+                'attemptId': 'suite-201', 'sourceCommit': 'a' * 40,
+                'files': files, 'copyVerified': True,
+                'excludedReconstructible': []}
+            selected = stage / 'full-stage-manifest.private.json'
+            selected.write_text(json.dumps(manifest))
+            selected.chmod(0o600)
+            _stage, _manifest, digest = (
+                coordinator.verify_full_staging_copy(root, 'suite-201',
+                    'a' * 40))
+            self.assertEqual(coordinator.seal._digest(manifest), digest)
+            (stage / 'attempt-01/guest.qcow2').write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError, 'file-identity-changed'):
+                coordinator.verify_full_staging_copy(root, 'suite-201',
+                    'a' * 40)
+            (stage / 'attempt-01/guest.qcow2').write_bytes(
+                b'attempt-01/guest.qcow2')
+            (stage / 'unexpected').write_bytes(b'x')
+            with self.assertRaisesRegex(ValueError, 'file-set-changed'):
+                coordinator.verify_full_staging_copy(root, 'suite-201',
+                    'a' * 40)
+
+    def test_pve_release_refuses_unsealed_attempt_before_remote_access(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-release-order-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            remote = SimpleNamespace(call=unittest.mock.Mock())
+            with self.assertRaisesRegex(ValueError, 'unsealed-attempt'):
+                coordinator.release_completed_attempt(remote, root, root,
+                    {'identity': {'helperSourceCommit': 'a' * 40}},
+                    {'attemptId': 'suite-201', 'sourceCommit': 'a' * 40,
+                     'status': 'completed'}, [])
+            remote.call.assert_not_called()
+
+    def test_pve_release_transfer_rejects_unpinned_destination(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-transfer-test-') as temp:
+            source = Path(temp) / 'fixed.py'
+            source.write_bytes(b'fixed-source')
+            remote = SimpleNamespace(call=unittest.mock.Mock())
+            with self.assertRaisesRegex(ValueError, 'file-selection-invalid'):
+                coordinator._publish_pve_release_file(remote, source,
+                    '/root/unrelated.py', mode=0o400)
+            remote.call.assert_not_called()
+
+    def test_full_disk_copy_requires_mac_budget_before_rsync(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-mac-capacity-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            start = root / 'start.private.json'
+            start.write_text(json.dumps({
+                'macAvailableAtStartBytes': 225 * 1024**3}))
+            start.chmod(0o600)
+            suite = 'suite-201'
+            remote = SimpleNamespace(call=unittest.mock.Mock(
+                return_value=SimpleNamespace(stdout=(str(40 * 1024**3) +
+                    ' /work/pr315-task/' + suite + '\n').encode())))
+            with patch.object(coordinator.subprocess, 'run') as copied:
+                with self.assertRaisesRegex(ValueError,
+                                            'mac-capacity-unavailable'):
+                    coordinator.stage_full_attempt(remote,
+                        {'sourceCommit': 'a' * 40}, suite, root)
+                copied.assert_not_called()
 
 
 if __name__ == '__main__':

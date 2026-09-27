@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import pr315_campaign_owner as owner
 import pr315_campaign_seal as seal
@@ -27,6 +28,76 @@ class PrivateArchiveTest(unittest.TestCase):
         with os.fdopen(descriptor, 'wb') as stream:
             stream.write(raw)
         return path
+
+    def test_missing_mac_sealed_cleanup_cannot_satisfy_selected_group(self):
+        self.assertFalse(owner.verify_completed_cleanup_receipts(
+            self.root, self.root, {'planDigest': 'a' * 64},
+            {'attemptId': 'suite-201'}))
+
+    def test_cleanup_verifier_binds_sealed_attempt_and_pve_bytes(self):
+        source = Path(__file__).resolve().parents[3]
+        identity = {key: ('a' * 40 if key.endswith(('Commit', 'Tree'))
+                          else 'a' * 64)
+                    for key in seal.acceptance.IDENTITY_FIELDS}
+        fingerprint = seal.prepare_key(self.root)
+        campaign = seal.plan(identity, 'b' * 64,
+            'pve-tcg-swap-admission-v1', 'c' * 64,
+            'd' * 64, fingerprint)
+        attempt = seal.attempt_receipt(campaign, 'output-symlink',
+            'suite-201', 'a' * 40, 'completed', True,
+            {'output-symlink': '1' * 64}, '2' * 64,
+            '3' * 64, '4' * 64, '5' * 64)
+        full = '6' * 64
+        file_digests = {'guest.qcow2': '7' * 64,
+            'prepared.qcow2': '8' * 64,
+            'source.tar.gz': '9' * 64}
+        staged = {'files': {'attempt-01/' + name: {'sha256': digest}
+                             for name, digest in file_digests.items()}}
+        release_plan = {'schemaVersion': 1,
+            'kind': 'pr315-host-success-copy-release-plan-v1',
+            'suite': 'suite-201', 'sourceCommit': 'a' * 40,
+            'campaignPlanDigest': campaign['planDigest'],
+            'sealedReceiptDigest': seal._digest(attempt),
+            'macFullArchiveDigest': full,
+            'fileDigests': file_digests}
+        checked = {'schemaVersion': 1,
+            'kind': 'pr315-pve-success-copy-release-check-v1',
+            'suite': 'suite-201', 'sourceCommit': 'a' * 40,
+            'campaignPlanDigest': campaign['planDigest'],
+            'sealedReceiptDigest': seal._digest(attempt),
+            'macFullArchiveDigest': full,
+            'files': {name: {'sha256': digest}
+                      for name, digest in file_digests.items()},
+            'directories': {name: {} for name in (
+                'cryptad', 'expected-bundle', 'boot-runtime', 'tools')},
+            'taskQemuPids': [], 'openUserPids': [],
+            'externalBackingDependents': [], 'qcowMetadataScanned': 2}
+        check = {**checked, 'checkDigest': seal._digest(checked)}
+        complete = {**checked, 'checkDigest': check['checkDigest'],
+            'release': 'completed-remote-success-duplicates-only'}
+        tool_root = source / 'tools/release-certification/restricted'
+        inventory_digest = hashlib.sha256((tool_root /
+            'pr315_pve_attempt_inventory.py').read_bytes()).hexdigest()
+        cleanup_digest = hashlib.sha256((tool_root /
+            'pr315_pve_attempt_cleanup.py').read_bytes()).hexdigest()
+        cleanup = seal.cleanup_receipt(campaign, attempt, full,
+            check['checkDigest'], seal._digest(complete),
+            seal._digest(release_plan), inventory_digest, cleanup_digest)
+        signed = seal.sign_cleanup(self.root, campaign, attempt, cleanup)
+        for suffix, value in (('plan', release_plan), ('check', check),
+                              ('complete', complete), ('seal', signed)):
+            self.write('host-release/suite-201.' + suffix + '.private.json',
+                       seal._canonical(value))
+        with patch('pr315_workload_coordinator.verify_full_staging_copy',
+                   return_value=(self.root, staged, full)):
+            self.assertTrue(owner.verify_completed_cleanup_receipts(
+                self.root, source, campaign, attempt))
+            changed = dict(complete, release='not-completed')
+            (self.root / 'host-release/suite-201.complete.private.json').write_bytes(
+                seal._canonical(changed))
+            with self.assertRaises(ValueError):
+                owner.verify_completed_cleanup_receipts(
+                    self.root, source, campaign, attempt)
 
     def test_checksum_copy_and_manifest_reject_changed_or_extra_bytes(self):
         for name in owner._MANDATORY:

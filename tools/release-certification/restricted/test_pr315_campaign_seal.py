@@ -71,6 +71,27 @@ class CampaignSealTest(unittest.TestCase):
             seal.frozen_start(self.plan, SOURCE, 'e' * 64,
                 'f' * 64, 201, 223 * 1024**3)
 
+    def test_cleanup_seal_binds_signed_attempt_and_pve_completion(self):
+        attempt = self.receipt()
+        cleanup = seal.cleanup_receipt(self.plan, attempt,
+            '1' * 64, '2' * 64, '3' * 64, '4' * 64,
+            '5' * 64, '6' * 64)
+        signed = seal.sign_cleanup(self.root, self.plan, attempt, cleanup)
+        self.assertEqual((attempt, cleanup),
+            seal.verify_cleanup(self.root, self.plan, signed))
+        for path, changed in (
+                (('payload', 'attempt', 'caseDigests'),
+                 {'output-symlink': 'f' * 64}),
+                (('payload', 'cleanup', 'pveCompleteDigest'), 'f' * 64),
+                (('payload', 'cleanup', 'campaignNonce'), 'f' * 64)):
+            mutated = copy.deepcopy(signed)
+            target = mutated
+            for part in path[:-1]:
+                target = target[part]
+            target[path[-1]] = changed
+            with self.assertRaises(ValueError):
+                seal.verify_cleanup(self.root, self.plan, mutated)
+
     def test_retired_authority_handoff_is_signed_without_raw_handle(self):
         provenance = {'schemaVersion': 1,
             'kind': 'pr315-retired-authority-host-provenance',

@@ -491,6 +491,73 @@ def prepared_completed_receipt(campaign, group_id, attempt_id,
     return receipt
 
 
+def verify_completed_cleanup_receipts(root, source, campaign, receipt):
+    """Require the Mac-sealed actual PVE release for every selected guest."""
+    import pr315_workload_coordinator as coordinator
+
+    root = seal._private_directory(root)
+    suite = receipt['attemptId']
+    names = {suffix: 'host-release/' + suite + '.' + suffix + '.private.json'
+             for suffix in ('plan', 'check', 'complete', 'seal')}
+    if any(not (root / relative).exists() for relative in names.values()):
+        return False
+    planned = _json(root, names['plan'], 16384)
+    check = _json(root, names['check'], 16384)
+    complete = _json(root, names['complete'], 16384)
+    envelope = _json(root, names['seal'], 16384)
+    selected_attempt, signed = seal.verify_cleanup(root, campaign, envelope)
+    if selected_attempt != receipt:
+        raise ValueError('pr315-owner-cleanup-attempt-changed')
+    _stage, manifest, manifest_digest = coordinator.verify_full_staging_copy(
+        root, suite, receipt['sourceCommit'])
+    file_digests = {name: manifest['files'][
+        'attempt-01/' + name]['sha256'] for name in (
+        'guest.qcow2', 'prepared.qcow2', 'source.tar.gz')}
+    expected_plan = {'schemaVersion': 1,
+        'kind': 'pr315-host-success-copy-release-plan-v1',
+        'suite': suite, 'sourceCommit': receipt['sourceCommit'],
+        'campaignPlanDigest': campaign['planDigest'],
+        'sealedReceiptDigest': seal._digest(receipt),
+        'macFullArchiveDigest': manifest_digest,
+        'fileDigests': file_digests}
+    core = {key: value for key, value in check.items()
+            if key != 'checkDigest'}
+    expected_released = ['guest.qcow2', 'prepared.qcow2',
+        'source.tar.gz', 'cryptad', 'expected-bundle',
+        'boot-runtime', 'tools']
+    expected_tool_digests = {name: hashlib.sha256((Path(source) /
+        'tools/release-certification/restricted' / name).read_bytes()
+        ).hexdigest() for name in ('pr315_pve_attempt_inventory.py',
+                                  'pr315_pve_attempt_cleanup.py')}
+    if (planned != expected_plan
+            or check.get('checkDigest') != seal._digest(core)
+            or core.get('kind') !=
+                'pr315-pve-success-copy-release-check-v1'
+            or core.get('suite') != suite
+            or core.get('sourceCommit') != receipt['sourceCommit']
+            or core.get('campaignPlanDigest') != campaign['planDigest']
+            or core.get('sealedReceiptDigest') !=
+                expected_plan['sealedReceiptDigest']
+            or core.get('macFullArchiveDigest') != manifest_digest
+            or set(core.get('files', {})) != set(file_digests)
+            or any(core['files'][name].get('sha256') != digest
+                   for name, digest in file_digests.items())
+            or set(core.get('directories', {})) !=
+                set(expected_released) - set(file_digests)
+            or any(core.get(key) != [] for key in (
+                'taskQemuPids', 'openUserPids',
+                'externalBackingDependents'))
+            or complete != {**core, 'checkDigest': check['checkDigest'],
+                'release': 'completed-remote-success-duplicates-only'}
+            or signed != seal.cleanup_receipt(campaign, receipt,
+                manifest_digest, check['checkDigest'],
+                seal._digest(complete), seal._digest(planned),
+                expected_tool_digests['pr315_pve_attempt_inventory.py'],
+                expected_tool_digests['pr315_pve_attempt_cleanup.py'])):
+        raise ValueError('pr315-owner-cleanup-evidence-changed')
+    return True
+
+
 def recovered_campaign_verdict(root, source, *, expected_plan_digest,
                                expected_key_fingerprint):
     """Recover only fully signed and byte-reverified installed group receipts."""
@@ -564,6 +631,9 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
             history=history, campaign_root=root)
         if set(observed) != set(owned):
             raise ValueError('pr315-owner-group-case-set-changed')
+        if not verify_completed_cleanup_receipts(root, source, campaign, last):
+            blockers.append(group_id + ':cleanup-incomplete')
+            continue
         selected[group_id] = last['attemptId']
         statuses.update({case: 'passed' for case in owned})
     positive_executed = (selected.get('positive') is not None

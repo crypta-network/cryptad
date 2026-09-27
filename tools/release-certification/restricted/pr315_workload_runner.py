@@ -5018,6 +5018,37 @@ def _host_network_attempt(report, result, fixture, terminal, source):
         return None
 
 
+def verify_campaign_runtime_inputs(args, frozen_campaign):
+    """Bind v2 plan policy/app/product claims before any VM is allocated."""
+    source = Path(args.source)
+    tree = subprocess.run(['git', '-C', str(source),
+        'rev-parse', 'HEAD^{tree}'], check=True, capture_output=True,
+        text=True, timeout=10).stdout.strip()
+    fixture_plan = fixtures.verify(args.prepared_fixtures,
+        args.fixture_manifest_digest, source, args.product_source_commit)
+    candidate_jar = source / 'build/cryptad-dist/lib/cryptad.jar'
+    identity = frozen_campaign['identity']
+    if (fixture_plan.get('schemaVersion') != 4
+            or identity['helperSourceTree'] != tree
+            or fixture_plan['sourceCommit'] !=
+                identity['helperSourceCommit']
+            or identity['preparedImageDigest'] !=
+                args.prepared_image_digest
+            or identity['fixtureManifestDigest'] !=
+                args.fixture_manifest_digest
+            or identity['productSelectionDigest'] !=
+                reference.sha256(candidate_jar)
+            or identity['admittedAppDigest'] !=
+                fixture_plan['mailDigest'][7:]
+            or frozen_campaign['runtimePolicyDigest'] !=
+                campaign_seal._digest(
+                    fixtures.preparation.launcher_policy())
+            or frozen_campaign['probeDigest'] !=
+                fixture_plan['probeDigest'][7:]):
+        raise ValueError('workload-campaign-frozen-input-mismatch')
+    return fixture_plan
+
+
 def run(args):
     if os.geteuid() == 0:
         raise ValueError('reference-unprivileged-host-required')
@@ -5116,6 +5147,7 @@ def run(args):
             subprocess.run(['git', '-C', str(args.source), 'rev-parse', 'HEAD'],
                 check=True, capture_output=True, text=True,
                 timeout=10).stdout.strip(), fingerprint)
+        verify_campaign_runtime_inputs(args, frozen_campaign)
     if all(path is not None for path in retired_input_paths):
         for index, (path, limit) in enumerate(zip(retired_input_paths,
                                                    (8192, 8192, 512))):

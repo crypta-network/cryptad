@@ -1,10 +1,17 @@
 # Installed workload acceptance completion audit
 
-This page records the PR-315 workload inventory, executable-path gaps, and the remaining
-installed verification required for the finite four-role source-build profile.
-**Implementation is incomplete; the latest passing TCG attempt, `7db8122b`
-suite 108, passed eight positive, thirteen denial and `controller-restart` on one
-source-bound guest. Its 22 case IDs do not complete the 45-case contract.**
+This page records the PR-315 workload inventory, implementation history and
+installed verification for the finite four-role source-build profile.
+**The current source has a prospective 45/45 emitter and validator registry,
+but no complete installed 45-case campaign.** The best historical formal TCG
+result remains 22/45 at `7db8122b` suite 108. Later development suite 120
+passed eight positive v10 cases on `a06d14dc21`; suite 121 on `ca15f28261`
+failed during Mail preparation before its selected network/AppHost probes.
+Neither result can be pooled with another commit or counted as final-source
+acceptance. The following attempt narrative is chronological; descriptions of
+what was “current” or “remaining” within an earlier attempt refer to that
+historical checkpoint. The current cutoff and remaining gates are recorded
+near the end of this page.
 The first three installed
 attempts failed before role staging; the next
 two failed network setup. The sixth and seventh prepared the fabric but timed out waiting for
@@ -55,17 +62,17 @@ GitHub #1416 (project PR-314), immediately after PR-313 integration
 containing integration tree, not the originally inspected PR-314 feature head.
 This source identity is an audit cutoff, not an assertion about final-source CI or execution.
 
-The current [verifier](../tools/release-certification/restricted/pr314_acceptance.py) declares
-`pr314-workload-roles-v8`, preserving the original 45 IDs and meanings. The selected profile
-remains `debian13-systemd257-workload-v1`. Consult the
+The [v8 verifier](../tools/release-certification/restricted/pr314_acceptance.py) preserves
+the original 45 IDs and meanings. Formal prospective per-case evidence uses
+`pr314-workload-roles-v10`, campaign `pr315-workload-campaign-v2` and public
+schema 2; v8 and v9 records keep their historical interpretations. The selected
+profile remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-Suite 81 used `workload-launcher-policy-v4` for its measured candidate-role
-read/write pair. A separate KVM diagnostic exercised v5. The prospective
-`workload-launcher-policy-v6` adds three more fixed role boundary
-operations within the same TCG guest profile family. Its test-kit and TCG
-results must be measured anew; historical v8 record interpretation remains
-unchanged.
+The current launcher policy is v34. Earlier policy revisions, including suite
+81 v4 and the separate KVM v5 diagnostic, remain attached to their source and
+fixture bytes. Policy v34 and its signed probe require fresh TCG measurement;
+historical v8 records cannot be relabelled.
 
 ## Implemented preparation and positive orchestration
 
@@ -85,10 +92,12 @@ fresh preparation.
 
 The separate installed guest entry materializes the fixed selection only after production/test-kit
 installation and binds the actual installed `runner_identity()`. `pr315_workload_runner.py`
-uses the existing PR-312 copied reference transport, private SSH pin and boot closure. It has
-one predeclared 45-case plan, but currently invokes only the positive aggregate driver. No
-individual case or complete acceptance is granted from that aggregate. Missing hostile and
-lifecycle emitters remain visible; there is no report-import or force-complete option.
+uses the existing PR-312 copied reference transport, private SSH pin and boot closure. Its closed
+`--case-group` selector covers the 21 declared groups; the Mac host coordinator supplies the
+serial default whole-campaign path, admission, full failed-disk staging and sealed recovery.
+Each selected group remains a partial result until all 45 cases are rebuilt from the same
+frozen campaign and the PVE stop and cleanup receipts verify. There is no report-import or
+force-complete option.
 
 The runner requires all reference/fixture inputs below its private task storage root, an explicit
 total disk budget and free-space reserve, and a separate memory budget/reserve. It counts retained
@@ -2929,13 +2938,102 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
+## Current cutoff after suite 121
+
+Source `a06d14dc21` suite 118 failed before role launch because its measured
+test kit omitted the lifecycle role probe. That packaging defect was corrected
+and covered by CT102 native Linux tests. Suite 119 then passed four real role
+FCP readiness operations under `tcg-multi/qemu64` but declared no workload
+case. Suite 120 on the same source passed all eight positive v10 cases: normal
+signed Mail, two-sided byte-checked CHK, sender restart and durable state.
+The Mac reverified its 54-file private archive and sealed a development
+receipt. These eight cases belong only to the a06 source and its fixed input
+and host-policy identity.
+
+KVM diagnostics 14–16 ended before guest launch: a stale private import path
+shadowed the then-current launcher policy. KVM17 reached QEMU launch but task
+UID101000 lacked access to host `/dev/kvm` GID994. KVM18 used a separately
+identified fixed group, reached four-role readiness, had no HotSpot fatal,
+stopped its guest and completed the watcher. Its 44 nonreconstructible private
+files and host receipts were checksum archived; the two successful guest disks
+were released only after stop, open-file and 71-QCOW dependency checks. The
+KVM result has no TCG case credit and does not explain the earlier intermittent
+C1 SIGILL/SIGSEGV failures.
+
+The first v34 signed-probe TCG attempt, source `ca15f28261` suite 121, failed
+during installed group preparation. The sender Mail and signed probe child had
+started, then recipient Mail `bootstrap-mail` received the controller's generic
+rejection. `provider-authority` and the other network/AppHost operations had
+not begun; all six selected cases are setup-failed or inconclusive, none passed.
+There was no role HotSpot fatal. Four exact role stop receipts, the synthetic
+sentinel, watcher completion and a separate PVE QEMU-stop observation were
+captured. The Mac holds a verified 47-file archive with full failed guest and
+backing QCOW2, source archive and raw observations, plus a checksum-matched
+source clone. An isolated Docker read of a diagnostic QCOW2 copy verified its
+8-MiB system journal; that journal records service lifecycle but does not
+identify the rejected bootstrap substep. The temporary raw diagnostic copies
+were then removed while the original failed disks and extracted private
+journal remained. A later source revision adds a closed root-private failure
+phase receipt before cleanup; it has offline coverage, not an installed result.
+
+The current prospective path binds `provider-authority` to the actual installed
+Worker credential `/etc/cryptad-certification/restricted-provider.json`.
+The administrator registers synthetic input and calls real `Worker.process`
+twice around a normally signed AppHost denied open. Installed job policy and
+credential ingress execute; only external GitHub I/O and owner dispatch use
+fixed no-network test responses. The adjacent resolver canary is auxiliary.
+The PVE host-network listener, independent resource-child exit proof,
+old-authority handoff, old/new observer epochs, and lifecycle barriers each
+have source paths and host validators. This is prospective implementation
+coverage, not evidence that their selected installed groups pass.
+
+Campaign v2 pins source, tree, tracked bytes, product, fixture, signed probe,
+runtime policy, host key and 21-group order. A Mac-only Ed25519 key seals
+startup, per-attempt and PVE cleanup receipts. Recovery rehashes complete case
+archives and the full Mac attempt copy; a missing, changed or unsealed cleanup
+cannot produce the final verdict. The coordinator serializes attempts, checks
+task-wide storage, Mac reserve, swap/PSI, QEMU absence and the ready watcher
+before each VM. The authority retired guest consumes one of its group's three
+preparation slots. Missing probe-start evidence remains unknown and cannot be
+treated as permission to retry. Its fixed SSH/SCP paths do not expand the
+production control socket. The coordinator and PVE inventory/cleanup helpers
+are excluded from the production bundle by `installation.TEST_SEAMS`.
+
+After suite 121, the last measured PVE task allocation was 215,024,977,440
+bytes before the subsequent fixture copy. The next measured VM reservation
+was 29,167,850,750 bytes against the 240,518,168,576-byte task cap, already
+over by 3,674,659,614 bytes at that cutoff. Every future allocation requires
+a new actual-block, filesystem, thin-pool, memory/swap and PSI inventory.
+The full suite121 failed disk and source archive are retained on the Mac. A
+pure read-only PVE scan matched their SHA-256 values and found no running QEMU,
+open users or external backing dependents. Automatic approval review rejected
+the proposed PVE deletion of their remote duplicates pending explicit scope
+authorization; no such deletion has occurred. It separately rejected removal
+of KVM18's generated source and runtime directories, which also remain. This
+capacity/retention decision currently blocks another guest under the fixed cap.
+
+CT102 native Linux passed 338 focused PR-314/315/installation tests with 11
+skips, 178 protected-workload tests with 24 skips, 60 interop tests with nine
+skips, and the separate PR-314 and PR-315 discoveries with 105/10 and 223/2
+respectively. Seven selected root-only provider/PVE checks passed; the
+controller's 76 tests passed with four skips. Later root PR-314 discovery
+passed 105 with two skips. Full root PR-315 discovery is not a valid single
+run because it also contains tests requiring a nonroot observer UID; the
+applicable root tests are selected separately. The new default coordinator,
+cleanup and runtime-policy code has further focused CT102 checks, but no
+current final-source Java full suite, static-analysis review, certification
+self-tests, hosted CI or independent security review. The source, fixture and
+test kit must be frozen again after documentation and code completion, then
+all 45 installed cases must be rerun within one campaign.
+
 ## Requirement-to-emitter mapping
 
 In the following tables, “positive path” identifies production actions reached by
 `pr314_workload_driver.py` and `InstalledWorkloadAdapter.run_positive()`. The third
 column names the evidence required for each row; suite 70 passed those eight rows.
-The denial and lifecycle tables retain the missing installed emitters. Synthetic
-verifier tests are not emitters.
+The denial and lifecycle tables retain each fixed actor/target contract.
+All 45 have prospective source emitters and host validators; most still lack
+current-source installed results. Synthetic verifier tests are not emitters.
 
 | Positive ID | Existing path | Required evidence (passed in suite 70) |
 | --- | --- | --- |
@@ -2954,8 +3052,8 @@ The denial rows below retain their fixed actor and target requirements.
 `package-expectation`, `forged-runtime-identity`,
 `namespace-mount-escape`, `cgroup-migration`, `forged-counters`,
 `sibling-fcp` and `sibling-http` have passing installed witnesses on
-`7db8122b` suite 108; the other thirteen still lack passing installed
-emitters. The actor column preserves the
+`7db8122b` suite 108; the other thirteen still lack passing formal TCG
+observations on that source. The actor column preserves the
 contract; it must not be replaced with a root probe or a same-UID process outside the asserted
 role/AppHost boundary.
 
@@ -2964,12 +3062,12 @@ role/AppHost boundary.
 | `observer-private-read` | candidate | Existing observer canary; measured role process read and root/host audit passed in suite 78 |
 | `observer-private-write` | candidate | Same active canary; measured role write attempt, unchanged bytes and independent root/host audit passed in suite 81 |
 | `resolver-authority` | candidate | Prospective fixed role read against active installed resolver's root canary, with root/host process, file and stop checks; no installed result yet |
-| `provider-authority` | app | Active synthetic provider fixture; normal signed AppHost child attempts authority access |
+| `provider-authority` | app | Synthetic credential and registration consumed by installed Worker; signed AppHost child attempts the exact credential path between two successful root controls |
 | `sibling-data` | candidate | Existing recipient sentinel; sender process attempts access |
 | `sibling-fcp` | candidate | Suite 108 sender SYN, active recipient `NodeHello` controls and own named nft DROP delta passed TCG |
 | `sibling-http` | candidate | Suite 108 sender SYN, active recipient HTTP HEAD controls and own named nft DROP delta passed TCG |
 | `sibling-app` | app | Active recipient AppHost endpoint; sender AppHost probe |
-| `host-network` | candidate | Active synthetic host canary; emitted probe and attributed filter evidence |
+| `host-network` | candidate | Guest host-namespace listener bound to its assigned fixed address; live target control, emitted SYN and its own DROP increment |
 | `runner-control` | runner | Fixed vmadmin `systemctl` stop request against the active controller unit; policy denial and root/host audit passed in suite 70 |
 | `observer-control` | observer | Installed system manager; valid disallowed control request |
 | `arbitrary-endpoint` | observer | Active recipient FCP `NodeHello` controls and one fixed disallowed connector selection; root/observer/host checks passed on TCG suite 102 |
@@ -2978,14 +3076,14 @@ role/AppHost boundary.
 | `forged-runtime-identity` | candidate | Process observer; fixed false claim compared with independent kernel identity |
 | `namespace-mount-escape` | app | Outer role boundary; bounded nested namespace/mount escape attempt |
 | `cgroup-migration` | candidate | Existing fixed cgroup target; actual migration attempt and unchanged ownership |
-| `resource-exhaustion` | app | Role resource cap; finite allocation/task probe and actual cgroup events |
+| `resource-exhaustion` | app | Signed AppHost finite pressure, independent child ownership/exit, cgroup limit events and sibling FCP progress |
 | `output-symlink` | candidate | Prospective isolated role-created symlink to active canary, actual bounded descriptor collector, root/host epoch and stop checks; no installed result yet |
 | `output-fifo` | candidate | Descriptor-based collector; role-created FIFO and bounded rejection |
 | `output-hardlink` | candidate | Descriptor-based collector; actual multiply linked file |
 | `output-replacement` | candidate | Descriptor-based collector; coordinated replacement during pinned read |
 | `output-flood` | candidate | Descriptor-based collector; finite cap-exceeding growth/output |
-| `stale-handle` | observer | Controller; retired handle against successor authority |
-| `stale-pid-uid` | observer | Process observer; retired invocation versus actual new process |
+| `stale-handle` | observer | Signed old authority from a stopped preparation guest; successor observer executes current-good, old-denied, current-good |
+| `stale-pid-uid` | observer | Actual sender restart and two observer processes; old invocation rejected while new process remains valid |
 | `forged-counters` | candidate | Kernel metrics; false candidate values versus actual cgroup measurements |
 
 The lifecycle rows below retain their fixed triggers and terminal evidence.
@@ -3008,7 +3106,7 @@ installed behavior.
 | `cancellation` | Send existing stop operation for exact current handle; observe owned terminal state |
 | `partial-launch` | Fail one owned role at a measured launch transition; reconcile all already started roles |
 | `stuck-output` | Fixed owned process retains output channel; enforce collection deadline and descendant cleanup |
-| `cleanup-race` | Synchronize stop with owned invocation/cgroup change; retain uncertainty and preserve siblings |
+| `cleanup-race` | Root barrier at stop identity check; real manager invocation/cgroup replacement, retained reconciliation and sibling progress |
 
 ## Finite driver strategy
 
@@ -3021,8 +3119,8 @@ belongs on the production socket.
 Retain the ordinary Mail positive profile and the separately signed `pr315-probe`
 cohort. Preparation and AppHost installation now admit both exact bundles; the
 synthetic AppHost child has one installed mount-namespace denial witness. The
-other app-origin denial operations still need fixed probe modes and installed
-evidence. Do not modify either bundle after signing or label a candidate-UID
+other app-origin denials have fixed prospective probe modes but still need
+current-source installed evidence. Do not modify either bundle after signing or label a candidate-UID
 helper as an AppHost attack.
 
 Use fixed bounded probe operations for file access, immutable-input mutation, namespace escape,
@@ -3031,9 +3129,9 @@ current role invocation before and after each operation. For app actors, also ca
 AppHost parent/child and exact admitted bundle relationships. Administrator orchestration controls
 only the declared disposable resources and cannot substitute for the asserted attack actor.
 
-For network probes, keep DROP semantics. The six approved FNP links already have
-named bridge counters; the denied scenarios still need fixed scenario-attributed
-counters or an equivalent bounded kernel observer. Record the actual emitted probe,
+For network probes, keep DROP semantics. The six approved FNP links and the
+implemented denial scenarios have named, scenario-attributed counters or
+equivalent bounded kernel observation. Record the actual emitted probe,
 exact ruleset/namespace identity, counter delta and causal interval, with an authorized active
 target control before and after. A recipient loopback
 listener does not prove that the recipient namespace address is the same valid endpoint; bind
@@ -3053,8 +3151,8 @@ in the original role cgroup, no descendant cgroup, and unchanged process epoch a
 A successful stop-post invocation alone is insufficient; systemd can reach that phase after a
 kill timeout. The owner additionally requires matching start/stop identities, completed manager
 state, and an absent original group or the same empty group. A replacement or missing receipt
-retains reconciliation-required state. These checks have offline regressions but await installed
-execution; the cleanup-race driver remains unimplemented.
+retains reconciliation-required state. These checks and the cleanup-race
+driver have offline regressions; current-source installed execution remains open.
 
 ## Records, budgets and private evidence
 
@@ -3063,8 +3161,8 @@ v8 attempt has one role roster, so it cannot faithfully bind both pre-restart op
 post-restart observations to different epochs. Its generic denial actor proof is UID-only;
 the five passing denial emitters have additional fixed root audits. It also
 requires complete target/principal maps even for setup failures that never observed those
-subjects. A small successor must represent these failures honestly and bind each passed case to
-its actual process and invocation epoch; it must not invent missing target identities.
+subjects. V10 represents these failures separately and binds a passed case to
+its actual process and invocation epoch; it cannot invent missing target identities.
 
 Predeclare the complete 45-case group plan and retain every failed, setup-failed, inconclusive or
 unexecuted row. Compute operational acceptance only through pinned host transport and measured
@@ -3077,6 +3175,17 @@ dependencies. Require stopped exact ownership before deleting disposable resourc
 task-wide disk budget plus minimum free-space reserve, including reference/private copies,
 staging, growth, snapshots and failed-attempt retention. Stop allocation when that total cannot
 fit; leave remaining cases unexecuted/setup-blocked.
+
+The fixed PVE task budget is 224 GiB with a 16-GiB filesystem reserve and a
+separate thin-pool check. The Mac records its available bytes before the
+campaign, requires at least 64 GiB plus 160 GiB at startup, limits additional
+work to 160 GiB, and reserves 8 GiB for the next full attempt archive.
+Completed attempts keep a byte-reverified Mac copy, including the guest and
+backing disks and generated source/runtime files, until the signed PVE cleanup
+receipt is retained. Failed attempts keep their full Mac copy; remote
+duplicates can be considered only after explicit stop, ownership, open-file,
+dependency and complete-copy checks. An auto-review refusal is not permission
+to switch transport or deletion method.
 
 The guest remains 5632 MiB with the explicitly selected CPU/accelerator and pinned boot closure.
 Each of four roles has a 1-GiB memory limit, zero swap and 512-task cap. Each role's 512-MiB,
@@ -3095,24 +3204,24 @@ ready first and must finish normally after the guest; it selects only the exact
 suite QEMU and signals through a pidfd. This policy has offline tests but has
 not yet produced installed acceptance evidence.
 
-The new `observer-private-read` test-kit path stages a measured fixed Python
+The `observer-private-read` test-kit path stages a measured fixed Python
 actor into the candidate sender's actual service cgroup and role sandbox. The
 administrator creates an observer-owned canary, proves the observer can read it,
 observes the role child and current invocation before triggering one bounded
 open, then checks the child, target and stop receipt. Its fixed root audit is
 copied into bounded private evidence and checked by the host. An absent path in
 the candidate mount namespace is retained as the actual `ENOENT` result; it is
-not relabelled `EACCES`. The v9 per-case record remains prospective until an
-installed run validates this path. The 21-group v9 campaign ledger partitions
-the unchanged 45 IDs and permits only bounded preparation-stage retries; its
-offline structural result cannot set installed acceptance.
-The runner now writes the same 21 exclusive declarations and accepts a closed
-development `--case-group` selector. Selected public results project only
-their owned case IDs and cannot set complete acceptance; unsupported emitters
-return without a VM. This is scaffolding: the current guest driver still
-runs its aggregate preparation/probes for supported groups, and the default
-runner has not yet become a 21-group installed scheduler. Cross-group
-preparation must be narrowed before final campaign execution.
+not relabelled `EACCES`. V9 retains its historical interpretation; v10 binds
+the actual actor, target and operation epoch to one case. Campaign v2
+partitions the unchanged 45 IDs into 21 exclusive groups, uses at most three
+preparation attempts per group, and stops after any uncertain or failed probe.
+The authority group spends one of those slots on a separate stopped old guest.
+The Mac coordinator's default path runs the declared groups serially and
+rebuilds every complete case from raw private files before sealing it.
+`--case-group` remains a partial development selection; `--probe` allocates
+no VM and exits 78. Signed startup, attempt and cleanup records are necessary
+for the reachable final verdict, while imported JSON and unit fixtures cannot
+set it.
 A native CT102 `output-fifo` selection probe exited 78 with no guest
 allocation, zero passed rows, and both installed verdict fields false.
 
@@ -3150,6 +3259,39 @@ python3 -m unittest discover -s tools/release-certification/protected -p 'test_r
 python3 -m unittest discover -s tools/interop -p 'test_cross_version_workload.py'
 python3 -m unittest discover -s tools/release-certification/restricted -p 'test_pr314*.py'
 ```
+
+After final-source gates and an uncredited identity preflight, freeze the Mac
+campaign with the measured private config and exact source checkout. The
+following variables refer to private local files and are intentionally not
+expanded in this public page:
+
+```bash
+python3 tools/release-certification/restricted/pr315_workload_coordinator.py \
+  --campaign-root "$PRIVATE_CAMPAIGN" --source "$FROZEN_SOURCE" \
+  --initialize-config "$PRIVATE_CONFIG" --identity "$PRIVATE_IDENTITY" \
+  --remote-known-hosts "$PINNED_HOST_KEYS" --first-suite-number "$FIRST_SUITE"
+python3 tools/release-certification/restricted/pr315_workload_coordinator.py \
+  --campaign-root "$PRIVATE_CAMPAIGN" --source "$FROZEN_SOURCE" --prepare-remote
+python3 tools/release-certification/restricted/pr315_workload_coordinator.py \
+  --campaign-root "$PRIVATE_CAMPAIGN" --source "$FROZEN_SOURCE" --probe
+python3 tools/release-certification/restricted/pr315_workload_coordinator.py \
+  --campaign-root "$PRIVATE_CAMPAIGN" --source "$FROZEN_SOURCE"
+```
+
+Initialization, remote preparation and `--probe` return 78 without allocating
+a guest. The default invocation runs the 21 fixed groups in order and uses an
+extra old-authority preparation guest. `--case-group` selects only a partial
+development run. Before every allocation, the coordinator rechecks the
+frozen CT102 source, existing QEMU inventory, PVE/Mac capacity, PVE swap/PSI
+admission and watcher readiness. It archives the full guest and generated
+bytes to the Mac, verifies each case from raw observations, seals the group,
+then obtains a separate PVE read-only release inventory and sealed cleanup
+completion. A failed or uncertain probe stops that campaign. Recovery accepts
+only previously sealed complete groups and rehashes their private archives.
+The private audit records each command, attempt ID, checksum and actual exit
+status; temporary Git bundles, PVE scripts, source snapshots and successful
+remote duplicates are cleaned only after all dependencies and retention
+requirements are checked.
 
 For the fixed bridge-table correction, the independent table-name regression failed on
 the old reader and passed on the corrected reader. Native Linux protected discovery passed
@@ -3213,9 +3355,9 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Incomplete: prospective v10 records exist for the eight positive cases, all five output emitters, five role-boundary emitters, seven authority emitters including resolver and hostile Origin, six network/AppHost emitters including synthetic provider, sibling AppHost and the guest-local host canary, the bounded `resource-exhaustion` emitter, and ten standalone lifecycle groups including `partial-launch`, `stuck-output` and `late-child`. The remaining two denial emitters (`stale-handle`, `stale-pid-uid`), `cleanup-race`, semantic strengthening and default full scheduler/trusted complete verdict remain absent. Historical `7db8122b` suite 108 passed eight positive, thirteen denial and `controller-restart` on one TCG guest; `cancellation` passed only on earlier `04a09267` |
-| `installedPositiveExecuted` | False on `0fa798d7` TCG suite 115: all eight selected positive cases were inconclusive after previous-role FCP/JVM failure. Prospective v24 has no installed run. Historical `7db8122b` suite 108 passed its eight-case positive aggregate. KVM diagnostics 12 and 13 are excluded |
-| `installedWorkloadAcceptanceSatisfied` | False; no final-source 45-case TCG campaign passed. The best historical source-bound TCG suite has 22/45, and KVM diagnostics cannot raise that count |
+| `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
+| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its selected network/AppHost probes on `ca15f28261`. Neither belongs to a later source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
