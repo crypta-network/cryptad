@@ -218,6 +218,69 @@ class CoordinatorSelectionTest(unittest.TestCase):
                         {'sourceCommit': 'a' * 40}, suite, root)
                 copied.assert_not_called()
 
+    def test_initialize_seals_private_start_without_remote_allocation(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-init-test-') as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            source = root / 'source'
+            source.mkdir(mode=0o700)
+            (source / 'tracked.txt').write_text('source fixture\n')
+            for command in (['init', '--quiet'], ['add', 'tracked.txt'],
+                    ['-c', 'user.name=Fixture',
+                     '-c', 'user.email=fixture@example.invalid',
+                     'commit', '--quiet', '-m', 'fixture']):
+                coordinator.subprocess.run(['git', *command], cwd=source,
+                    check=True, capture_output=True)
+            commit = coordinator.subprocess.run(['git', 'rev-parse', 'HEAD'],
+                cwd=source, check=True, capture_output=True,
+                text=True).stdout.strip()
+            tree = coordinator.subprocess.run(['git', 'rev-parse',
+                'HEAD^{tree}'], cwd=source, check=True,
+                capture_output=True, text=True).stdout.strip()
+            fixture = root / 'fixture.private.json'
+            fixture.write_text(json.dumps({'sourceCommit': commit,
+                'probeDigest': 'sha256:' + 'd' * 64}))
+            fixture.chmod(0o600)
+            pin = root / 'known-hosts.private'
+            pin.write_bytes(b'fixture ssh-ed25519 AAAA\n')
+            pin.chmod(0o600)
+            identity = {key: (commit if key.endswith(('Commit', 'Tree'))
+                              else 'a' * 64)
+                        for key in coordinator.seal.acceptance.IDENTITY_FIELDS}
+            identity.update(helperSourceTree=tree,
+                fixtureManifestDigest=hashlib.sha256(
+                    fixture.read_bytes()).hexdigest(),
+                preparedImageDigest='b' * 64,
+                productSelectionDigest='a' * 64)
+            task = coordinator.CT_TASK
+            config = {'sourceCommit': commit, 'sourceTree': tree,
+                'trackedByteDigest': coordinator.owner.tracked_byte_digest(source),
+                'productSelectionDigest': 'a' * 64,
+                'fixtureManifestDigest': identity['fixtureManifestDigest'],
+                'preparedImageDigest': 'b' * 64,
+                'productSourceCommit': 'f' * 40,
+                'sourceSnapshot': task + '/campaign-frozen/source-' + commit[:12],
+                'campaignPlanPath': task + '/campaign-frozen/plan.private.json',
+                'fixturePath': task + '/fixture', 'qemuRoot': task + '/qemu',
+                'preparedImage': task + '/prepared', 'seed': task + '/seed',
+                'sshKey': task + '/key', 'knownHosts': task + '/pin',
+                'port': 23113, 'localFixtureManifest': str(fixture),
+                'probeDigest': 'd' * 64}
+            destination = root / 'campaign'
+            with patch.object(coordinator.os, 'statvfs', return_value=
+                    SimpleNamespace(f_bavail=225 * 1024**3, f_frsize=1)), \
+                    patch.object(coordinator, 'Remote') as remote:
+                plan = coordinator.initialize_campaign(destination, source,
+                    config, identity, pin, 201)
+                remote.assert_not_called()
+            start = coordinator.owner._json(destination, 'start.private.json')
+            sealed = coordinator.owner._json(destination,
+                'start-seal.private.json')
+            self.assertEqual(start,
+                coordinator.seal.verify_start(destination, plan, sealed))
+            self.assertEqual(201, start['firstSuiteNumber'])
+            self.assertEqual([], list((destination / 'attempts').iterdir()))
+
 
 if __name__ == '__main__':
     unittest.main()
