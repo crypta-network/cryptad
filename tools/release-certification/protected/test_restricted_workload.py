@@ -1309,6 +1309,20 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['previous'])
         self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['candidate-sender'])
 
+    def test_all_roles_pin_untiered_server_compilation_for_c1_diagnostic(self):
+        policy = launcher.launcher_policy()
+        self.assertEqual('workload-launcher-policy-v36', policy['revision'])
+        self.assertEqual('untiered-server-diagnostic-v1', policy['jvmCompilationPolicy'])
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                command, _environment = launcher.command(role)
+                properties = dict(item.split('=', 1)
+                                  for item in command[command.index('--') + 2:])
+                self.assertEqual('-XX:-TieredCompilation',
+                                 properties['wrapper.java.additional.11'])
+                self.assertEqual('-Dcrypta.log.dir=/node/logs',
+                                 properties['wrapper.java.additional.10'])
+
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:
             with self.subTest(role=role):

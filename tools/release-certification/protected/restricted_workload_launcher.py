@@ -27,10 +27,12 @@ def launcher_policy():
     The historical product initializes its wrapper backend after crypto providers.
     The candidate sender also exhausted the 30-second wrapper handshake twice
     under TCG before its JVM could signal startup, while its role had no OOM or
-    HotSpot fatal. Give only these two roles the measured startup allowance;
-    daemon readiness and the retained campaign deadline do not change.
+    HotSpot fatal. Give only these two roles the measured startup allowance.
+    A separate TCG differential disables tiered C1 compilation after a relay
+    C1 SIGILL; the JDK binary, role limits, daemon readiness and retained
+    campaign deadline do not change.
     """
-    return {'revision': 'workload-launcher-policy-v35',
+    return {'revision': 'workload-launcher-policy-v36',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -48,6 +50,7 @@ def launcher_policy():
             'cleanupRaceProbe': 'fixed-manager-replacement-stop-barrier-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
+            'jvmCompilationPolicy': 'untiered-server-diagnostic-v1',
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role in ('candidate-sender', 'previous') else 30
@@ -239,7 +242,8 @@ def command(role):
              'wrapper.startup.timeout=' + str(launcher_policy()['wrapperStartupTimeoutSeconds'][role]),
              'wrapper.logfile=/node/logs/wrapper.log',
              'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
-             'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs']
+             'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs',
+             'wrapper.java.additional.11=-XX:-TieredCompilation']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]
