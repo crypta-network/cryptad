@@ -533,6 +533,9 @@ class CrossVersionEvidenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             public = Path(directory).resolve() / "public"
             public.mkdir(mode=0o755)
+            # Earlier self-tests may leave umask 077 in this shared process.
+            # Exercise an actually public directory, not the requested mode.
+            public.chmod(0o755)
             link = Path(directory).resolve() / "link"
             link.symlink_to(public)
             for path in (public, link):
