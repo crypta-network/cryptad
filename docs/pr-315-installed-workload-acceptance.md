@@ -3017,7 +3017,10 @@ skips, 178 protected-workload tests with 24 skips, 60 interop tests with nine
 skips, and the separate PR-314 and PR-315 discoveries with 105/10 and 223/2
 respectively. Seven selected root-only provider/PVE checks passed; the
 controller's 76 tests passed with four skips. Later root PR-314 discovery
-passed 105 with two skips. Full root PR-315 discovery is not a valid single
+passed 105 with two skips. A root-only protected fixture initially lacked the
+package's nine reserved wrapper options; after fixing that test input, all
+178 protected workload tests passed as root. Root interop passed all 60.
+Full root PR-315 discovery is not a valid single
 run because it also contains tests requiring a nonroot observer UID; the
 applicable root tests are selected separately. The new default coordinator,
 cleanup and runtime-policy code has further focused CT102 checks, but no

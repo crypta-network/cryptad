@@ -1386,6 +1386,12 @@ class PreparationTest(unittest.TestCase):
             trust.write_bytes(b'')
             def extract(_source, destination, *_args):
                 destination.mkdir()
+                if destination.name == 'package':
+                    conf = destination / 'conf'
+                    conf.mkdir()
+                    (conf / 'wrapper.conf').write_text(''.join(
+                        f'wrapper.java.additional.{index}=fixture\n'
+                        for index in range(1, 10)))
                 return destination
             stack.enter_context(patch.object(runtime, 'extract_package', side_effect=extract))
             stack.enter_context(patch.object(runtime, 'extract_app_bundle', side_effect=extract))
