@@ -13,7 +13,9 @@ The later `56895ba45` v40 campaign prepared correctly, but its first TCG
 positive guest, suite 124, failed sender readiness before any positive case.
 The separate v35 diagnostics reached four-role readiness once on TCG and once
 on KVM; another TCG run failed after a relay JVM C1 `SIGILL`. None earns a case.
-Neither result can be pooled with another commit or counted as final-source
+The later v36 TCG diagnostics 127–128 both reached four-role FCP readiness
+without a captured HotSpot fatal, but declared no workload case. These results
+cannot be pooled with another commit or counted as final-source
 acceptance. The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
 historical checkpoint. The current cutoff and remaining gates are recorded
@@ -75,8 +77,9 @@ schema 2; v8 and v9 records keep their historical interpretations. The selected
 profile remains `debian13-systemd257-workload-v1`. Consult the
 [PR-314 runbook](pr-314-controller-owned-workload-role-isolation.md) for the installed owners
 and the [PR-313 runbook](pr-313-installed-native-acceptance.md) for copied-reference transport.
-The prospective launcher policy is v36; it has no installed result. Suite 124
-remains bound to v34, and suites 125–126 and KVM19 remain bound to v35.
+The prospective launcher policy is v36; it has two installed startup-only
+diagnostics and no installed workload case result. Suite 124 remains bound to
+v34, and suites 125–126 and KVM19 remain bound to v35.
 Earlier policy revisions, including suite
 81 v4 and the separate KVM v5 diagnostic, remain attached to their source and
 fixture bytes. Policy v34 and its signed probe require fresh TCG measurement;
@@ -2946,7 +2949,7 @@ cleanup, before shutdown. The sentinel starts before role launch and is compared
 this does not yet provide the independently captured immediate before/after restart epochs
 required by `restart-durable-state`. The snapshot is diagnostic-only and cannot restore a runtime.
 
-## Current cutoff after suite 126 and KVM19
+## Current cutoff after suites 127–128
 
 Source `a06d14dc21` suite 118 failed before role launch because its measured
 test kit omitted the lifecycle role probe. That packaging defect was corrected
@@ -3127,7 +3130,24 @@ to the same pinned JDK 25.0.4.1. The v35 sender startup allowance, QEMU,
 product, CPU model, role limits and workload-operation deadlines remain fixed.
 This tests C1 involvement; it is not a claimed QEMU or JDK root-cause fix and
 grants no installed case result. The private bounded diagnostic matrix has
-three of at most six new guests used at this cutoff.
+five of at most six new guests used at this cutoff.
+
+The two separately identified v36 TCG role-readiness diagnostics, suites 127
+and 128 on source `ac2dc1199e`, both completed the original four-role FCP
+readiness operations. Each guest exited zero, the task watcher completed,
+the PVE host recorded QEMU stopped, and all four roles had zero captured
+HotSpot fatal files. The same pinned QEMU, JDK binary, product, four-vCPU
+guest, 5632-MiB memory and role limits were used; the fixed compilation
+option was bound into the measured launcher policy. The Mac verified complete
+12,810-file copies of each attempt before releasing their seven PVE success
+duplicates after fresh stopped-QEMU, open-file, exact-byte and 71-QCOW
+dependency checks. Suite 127's two local reconstructible success disks were
+also released after a separate full-copy rehash and stop/open-file check;
+12,808 files remain under a new private retained manifest. Suite 128's local
+success-disk release and retained manifest are recorded separately. Both
+diagnostics declared zero workload cases. Two startup successes support
+further formal evaluation of this compilation policy, but they do not prove
+the historical C1 failure mechanism or establish 45-case acceptance.
 
 After explicit approval and a fresh 71-QCOW backing scan, the seven
 Mac-archived suite124 guest/source/generated duplicates were released only
@@ -3505,7 +3525,7 @@ No 45-case installed workload campaign or hosted CI has run against the latest s
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45`. The v35 role-readiness diagnostics 125–126 and KVM19 declared no workload cases. None belongs to the prospective v36 source identity |
+| `installedPositiveExecuted` | False for the current source. Development suite 120 passed eight v10 positives on `a06d14dc21`; suite 121 failed before its network/AppHost probes on `ca15f28261`; suite 122 allocated no guest on `d94b3bc9cc`; suite 124 failed sender readiness on `56895ba45`. The v35 role-readiness diagnostics 125–126, KVM19, and v36 TCG diagnostics 127–128 declared no workload cases. None belongs to the eventual frozen final-source campaign identity |
 | `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The best historical same-source TCG result remains 22/45. KVM diagnostics do not increase TCG case credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
