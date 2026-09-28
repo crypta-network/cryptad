@@ -37,6 +37,7 @@ RESOURCE_CHILDREN = Path('/root/pr315-resource-children.private.json')
 VOLATILE_MAX = 128 * 1024
 DIAGNOSTICS = Path('/root/pr315-workload-memory.private.json')
 READINESS_JCMD = Path('/root/pr315-readiness-jcmd.private.json')
+CONTROLLER_REQUEST_PROGRESS = Path('/run/cryptad-workload/request-progress.private.json')
 REVOCATION_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
 OBSERVER_DEATH_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
@@ -3861,6 +3862,66 @@ def capture_controller_journal_at_failure():
             'stderrBase64': base64.b64encode(captured['stderr']).decode()}
 
 
+def capture_controller_request_at_failure(workload):
+    """Read one fixed root-owned in-flight RPC checkpoint before controller stop."""
+    from runtime_snapshot import read_file
+    try:
+        raw = read_file(CONTROLLER_REQUEST_PROGRESS.parent,
+            CONTROLLER_REQUEST_PROGRESS.name, maximum=2048, timeout=2)
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise ValueError('workload-controller-request-record-invalid')
+        required = {'schemaVersion', 'kind', 'classification', 'pid',
+            'processStartTicks',
+            'bootId', 'method', 'phase', 'startedMonotonicNs',
+            'observedMonotonicNs'}
+        if (set(value) != required | ({'exceptionType'} if value.get('phase') == 'failed'
+                                     else set())
+                or value['schemaVersion'] != 1
+                or value['kind'] != 'pr315-controller-request-progress'
+                or value['classification'] != 'private-runtime-diagnostic-not-acceptance'
+                or type(value['pid']) is not int or value['pid'] <= 0
+                or type(value['processStartTicks']) is not int
+                or value['processStartTicks'] <= 0
+                or re.fullmatch('[0-9a-f-]{36}', str(value['bootId'])) is None
+                or value['method'] not in ('start', 'observe', 'stop',
+                    'connect-fcp', 'connect-http', 'bootstrap-mail')
+                or value['phase'] not in ('executing', 'replied', 'failed')
+                or any(type(value[key]) is not int or value[key] <= 0
+                       for key in ('startedMonotonicNs', 'observedMonotonicNs'))
+                or value['observedMonotonicNs'] < value['startedMonotonicNs']
+                or (value['phase'] == 'failed' and
+                    re.fullmatch('[A-Za-z][A-Za-z0-9_]{0,63}',
+                                 str(value['exceptionType'])) is None)):
+            raise ValueError('workload-controller-request-record-invalid')
+        digest = hashlib.sha256(raw).hexdigest()
+        try:
+            identity = controller_unit_identity(workload)
+        except (OSError, ValueError, KeyError, TypeError,
+                subprocess.SubprocessError):
+            return {'status': 'unbound',
+                    'classification': 'private-diagnostic-not-acceptance',
+                    'reason': 'controller-identity-unavailable',
+                    'record': value, 'privateDigest': digest}
+        if (value['pid'] != identity['mainPid']
+                or value['processStartTicks'] != identity['mainStartTicks']
+                or value['bootId'] != identity['bootId']
+                or value['observedMonotonicNs'] >
+                    identity['observedMonotonicNs']):
+            return {'status': 'unbound',
+                    'classification': 'private-diagnostic-not-acceptance',
+                    'reason': 'controller-epoch-mismatch',
+                    'record': value, 'privateDigest': digest}
+        return {'status': 'captured',
+                'classification': 'private-diagnostic-not-acceptance',
+                'record': value,
+                'kernelController': identity,
+                'privateDigest': digest}
+    except (OSError, ValueError, KeyError, TypeError,
+            subprocess.SubprocessError):
+        return {'status': 'unavailable-or-unsafe'}
+
+
 def controller_unit_identity(workload):
     """Measure the active installed controller unit from the administrator process."""
     unit = 'cryptad-workload-controller.service'
@@ -4216,6 +4277,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if status != 0:
             diagnostics['observerFailure'] = {'exitStatus': status,
                 'privateTranscript': raw[:4096].decode('utf-8', errors='replace')}
+            diagnostics['controllerRequestAtFailure'] = capture_controller_request_at_failure(workload)
             diagnostics['controllerJournalAtFailure'] = capture_controller_journal_at_failure()
             try:
                 failure = json.loads(raw)

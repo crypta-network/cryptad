@@ -3745,11 +3745,37 @@ not extend the 180-second FCP readiness window, the original campaign
 deadline or any role resource limit. Another frozen source and complete
 45-case campaign are required.
 
+At frozen helper `48035d5b99513c1ad30e26b7d3b5912e9687e54f`, the v50
+campaign passed its no-VM probe and allocated suite 147. The positive guest
+stopped with exit one while provisioning signed apps. Its observer's outer
+30-second operation deadline fired inside the fixed controller `observe`
+request's Unix response read; the root controller itself permits up to
+45 seconds for one request. No complete response, role OOM or HotSpot fatal
+was observed. The administrator's controller journal contained only service
+startup, and existing controller audits do not expose an unfinished request.
+Suite 147's full Mac failure staging, signed failed receipt and host stop
+observations remain private; seven byte-verified PVE failure duplicates were
+released only after a fresh no-QEMU, no-open-user and 71-QCOW dependency audit.
+The v50 campaign terminated at 0/45. This failure does not establish whether
+the controller received this `observe`, remained busy with an earlier request,
+or replied after the observer deadline.
+
+The next prospective test-kit revision retains the fixed controller method,
+phase and monotonic timestamps in a root-only private in-flight checkpoint.
+The administrator copies it before cleanup and binds its PID/start time to
+the current systemd/kernel controller instance; unavailable or mismatched
+identity retains the bytes explicitly as `unbound` private diagnostics.
+The observer also retains the method and response-read phase when its SIGALRM
+deadline fires. Neither record contains an opaque handle, grants a case pass,
+extends the 30/45-second deadlines, or adds a production socket method.
+Another source identity and complete 45-case campaign are required before
+an installed verdict.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives, while the SSD campaign terminated after suite 146. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `c3d41a7337` SSD campaign stopped at 8/45 after the role-boundary guest failure; its earlier G1 campaign remains a separate partial 8/45. KVM diagnostics and other source commits do not increase either campaign's credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `48035d5b99` campaign completed zero cases after suite 147. None transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `48035d5b99` campaign stopped at 0/45 following a positive-group controller response deadline. KVM diagnostics and other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

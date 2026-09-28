@@ -773,6 +773,40 @@ class ControllerExchangeAuditTest(unittest.TestCase):
         written.assert_called_once()
 
 
+class ControllerRequestProgressTest(unittest.TestCase):
+    def test_root_checkpoint_retains_fixed_phase_without_handle_or_response(self):
+        boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        with patch.object(controller.os, 'geteuid', return_value=0), \
+                patch.object(controller, '_own_start_ticks', return_value=42), \
+                patch.object(workload, 'boot', return_value=boot_id), \
+                patch.object(workload, 'write') as written:
+            controller._request_progress('observe', 'executing', 123)
+            path, record = written.call_args.args
+            self.assertEqual(controller.REQUEST_PROGRESS, path)
+            self.assertEqual(0o600, written.call_args.kwargs['mode'])
+            self.assertEqual('observe', record['method'])
+            self.assertEqual('executing', record['phase'])
+            self.assertEqual(123, record['startedMonotonicNs'])
+            self.assertEqual(42, record['processStartTicks'])
+            self.assertEqual(boot_id, record['bootId'])
+            self.assertNotIn(HANDLE, json.dumps(record))
+            controller._request_progress('observe', 'failed', 123,
+                                         TimeoutError('private request detail'))
+            failed = written.call_args.args[1]
+            self.assertEqual('TimeoutError', failed['exceptionType'])
+            self.assertNotIn('private request detail', json.dumps(failed))
+            written.reset_mock()
+            controller._request_progress('execute', 'executing', 123)
+            written.assert_not_called()
+
+    def test_checkpoint_write_failure_cannot_change_request_result(self):
+        with patch.object(controller.os, 'geteuid', return_value=0), \
+                patch.object(controller, '_own_start_ticks', return_value=42), \
+                patch.object(workload, 'boot', return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), \
+                patch.object(workload, 'write', side_effect=OSError('unavailable')):
+            self.assertIsNone(controller._request_progress('observe', 'executing', 123))
+
+
 class FnpBoundaryTest(unittest.TestCase):
     def test_counter_sampling_is_not_a_controller_method(self):
         self.assertNotIn('observe-fnp', controller.METHODS)
@@ -876,6 +910,22 @@ class ControllerRequestTest(unittest.TestCase):
             self.assertEqual('start', controller.serve(connection, 1000))
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
+
+    def test_observe_progress_brackets_real_dispatch_and_preserves_failure(self):
+        request = json.dumps({'method': 'observe', 'handle': HANDLE}).encode() + b'\n'
+        with patch.object(controller, '_request_progress') as progress, \
+                patch.object(workload, 'observe', return_value={'state': 'running'}):
+            self.assertEqual('observe', controller.serve(FakeConnection(request), 1000))
+        self.assertEqual(['executing', 'replied'],
+                         [call.args[1] for call in progress.call_args_list])
+        self.assertEqual(progress.call_args_list[0].args[2],
+                         progress.call_args_list[1].args[2])
+        with patch.object(controller, '_request_progress') as progress, \
+                patch.object(workload, 'observe', side_effect=ValueError('stalled')):
+            with self.assertRaisesRegex(ValueError, 'stalled'):
+                controller.serve(FakeConnection(request), 1000)
+        self.assertEqual(['executing', 'failed'],
+                         [call.args[1] for call in progress.call_args_list])
 
     def test_only_exact_observer_control_probe_routes_to_denied_fixed_method(self):
         raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'

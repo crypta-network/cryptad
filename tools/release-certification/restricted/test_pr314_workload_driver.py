@@ -230,6 +230,51 @@ class ObserverFailureTest(unittest.TestCase):
         self.assertEqual('cryptad-workload-controller.service',
                          commands[0][0][-2].split('=', 1)[1])
 
+    def test_controller_request_checkpoint_is_closed_and_bound_to_fixed_path(self):
+        record = {'schemaVersion': 1,
+            'kind': 'pr315-controller-request-progress',
+            'classification': 'private-runtime-diagnostic-not-acceptance',
+            'pid': 12, 'processStartTicks': 42,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'method': 'observe', 'phase': 'executing',
+            'startedMonotonicNs': 100, 'observedMonotonicNs': 101}
+        raw = json.dumps(record).encode()
+        identity = {'mainPid': 12, 'mainStartTicks': 42,
+            'bootId': record['bootId'], 'observedMonotonicNs': 102,
+            'invocationId': 'b' * 32, 'cgroupIdentity': [1, 2]}
+        with patch('runtime_snapshot.read_file', return_value=raw) as read, \
+                patch.object(driver, 'controller_unit_identity',
+                             return_value=identity):
+            captured = driver.capture_controller_request_at_failure(object())
+        self.assertEqual('captured', captured['status'])
+        self.assertEqual(record, captured['record'])
+        self.assertEqual(identity, captured['kernelController'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                         captured['privateDigest'])
+        read.assert_called_once_with(driver.CONTROLLER_REQUEST_PROGRESS.parent,
+                                     driver.CONTROLLER_REQUEST_PROGRESS.name,
+                                     maximum=2048, timeout=2)
+        with patch('runtime_snapshot.read_file', return_value=json.dumps(
+                {**record, 'handle': 'a' * 64}).encode()), \
+                patch.object(driver, 'controller_unit_identity',
+                             return_value=identity):
+            self.assertEqual({'status': 'unavailable-or-unsafe'},
+                             driver.capture_controller_request_at_failure(object()))
+        with patch('runtime_snapshot.read_file', return_value=raw), \
+                patch.object(driver, 'controller_unit_identity',
+                             return_value={**identity, 'mainStartTicks': 43}):
+            stale = driver.capture_controller_request_at_failure(object())
+        self.assertEqual('unbound', stale['status'])
+        self.assertEqual('controller-epoch-mismatch', stale['reason'])
+        self.assertNotIn('kernelController', stale)
+        with patch('runtime_snapshot.read_file', return_value=raw), \
+                patch.object(driver, 'controller_unit_identity',
+                             side_effect=TimeoutError('systemd busy')):
+            unavailable = driver.capture_controller_request_at_failure(object())
+        self.assertEqual('unbound', unavailable['status'])
+        self.assertEqual('controller-identity-unavailable', unavailable['reason'])
+        self.assertNotIn('systemd busy', json.dumps(unavailable))
+
     def test_unicode_and_cycles_cannot_overrun_retained_child_transcript(self):
         error = ValueError('😀' * 10000)
         error.__cause__ = RuntimeError('😀' * 10000)

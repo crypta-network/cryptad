@@ -124,6 +124,13 @@ class WorkloadClient:
             if descriptors:
                 fail('controller-unexpected-connection')
             return value
+        except runtime.RuntimeFailure as error:
+            if str(error) == 'operation-deadline-exceeded':
+                error.transport_diagnostic = {
+                    'method': method, 'phase': phase,
+                    'elapsedNs': max(0, time.monotonic_ns() - started),
+                    'causeType': type(error).__name__, 'errno': None}
+            raise
         except (OSError, ValueError, UnicodeError) as error:
             failure = runtime.RuntimeFailure('workload-controller-transport-failed')
             failure.transport_diagnostic = {

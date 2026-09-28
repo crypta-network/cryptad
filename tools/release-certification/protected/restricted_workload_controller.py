@@ -28,6 +28,7 @@ import restricted_workload as workload
 
 SOCKET = Path('/run/cryptad-workload/control.sock')
 STARTUP = Path('/run/cryptad-workload/startup.json')
+REQUEST_PROGRESS = Path('/run/cryptad-workload/request-progress.private.json')
 BOOTSTRAP_FAILURE = Path('/run/cryptad-workload/bootstrap-failure.private.json')
 BOOTSTRAP_STAGES = frozenset({'authority', 'installed-app',
     'launch-redirect', 'origin-parse', 'app-runtime',
@@ -35,6 +36,7 @@ BOOTSTRAP_STAGES = frozenset({'authority', 'installed-app',
 STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp',
                      'connect-http', 'bootstrap-mail'})
+REQUEST_PHASES = frozenset({'executing', 'replied', 'failed'})
 EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
 OBSERVER_CONTROL_REQUEST = re.compile(rb'\{"method":"pr315-observer-control","handle":"([0-9a-f]{64})"\}\n')
 OBSERVER_ENDPOINT_REQUEST = re.compile(rb'\{"method":"pr315-arbitrary-endpoint","handle":"([0-9a-f]{64})"\}\n')
@@ -99,6 +101,32 @@ def _audit_exchange(method, handle, request_raw, response_raw, started, finished
     except (OSError, ValueError, KeyError, TypeError):
         # Audit absence cannot turn a successful existing connection into an error.
         # The host verifier will leave the case inconclusive without this root record.
+        pass
+
+
+def _own_start_ticks():
+    return int(Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()[19])
+
+
+def _request_progress(method, phase, started, error=None):
+    """Keep one root-only latest RPC phase without exposing a handle or granting credit."""
+    if (os.geteuid() != 0 or method not in METHODS or phase not in REQUEST_PHASES
+            or type(started) is not int or started <= 0):
+        return
+    try:
+        value = {'schemaVersion': 1,
+            'kind': 'pr315-controller-request-progress',
+            'classification': 'private-runtime-diagnostic-not-acceptance',
+            'pid': os.getpid(), 'processStartTicks': _own_start_ticks(),
+            'bootId': workload.boot(),
+            'method': method, 'phase': phase,
+            'startedMonotonicNs': started,
+            'observedMonotonicNs': time.monotonic_ns()}
+        if error is not None:
+            value['exceptionType'] = type(error).__name__[:64]
+        workload.write(REQUEST_PROGRESS, value, mode=0o600)
+    except (OSError, ValueError, TypeError, IndexError):
+        # This diagnostic cannot change a controller response or its deadline.
         pass
 
 
@@ -503,21 +531,27 @@ def serve(connection, expected_uid):
     method, handle = selected['method'], selected['handle']
     request_raw = bytes(raw)
     started = time.monotonic_ns()
-    if method.startswith('connect-'):
-        with workload.connect(handle, method.removeprefix('connect-')) as stream:
-            rights = array.array('i', [stream.fileno()])
-            response_raw = b'{"status":"connected"}\n'
-            connection.sendmsg([response_raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
-    else:
-        operation = {'start': workload.start, 'stop': workload.stop, 'observe': workload.observe,
-                     'bootstrap-mail': bootstrap}[method]
-        result = operation(handle)
-        response_raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'
-        if len(response_raw) > 1024 * 1024:
-            workload.reject('response-limit')
-        connection.sendall(response_raw)
-    _audit_exchange(method, handle, request_raw, response_raw, started, time.monotonic_ns())
-    return method
+    _request_progress(method, 'executing', started)
+    try:
+        if method.startswith('connect-'):
+            with workload.connect(handle, method.removeprefix('connect-')) as stream:
+                rights = array.array('i', [stream.fileno()])
+                response_raw = b'{"status":"connected"}\n'
+                connection.sendmsg([response_raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
+        else:
+            operation = {'start': workload.start, 'stop': workload.stop, 'observe': workload.observe,
+                         'bootstrap-mail': bootstrap}[method]
+            result = operation(handle)
+            response_raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'
+            if len(response_raw) > 1024 * 1024:
+                workload.reject('response-limit')
+            connection.sendall(response_raw)
+        _request_progress(method, 'replied', started)
+        _audit_exchange(method, handle, request_raw, response_raw, started, time.monotonic_ns())
+        return method
+    except Exception as error:
+        _request_progress(method, 'failed', started, error)
+        raise
 
 
 def handle_request(connection, observer_uid):

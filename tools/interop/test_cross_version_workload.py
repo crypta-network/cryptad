@@ -954,6 +954,23 @@ class ObserverPolicyTests(unittest.TestCase):
                 self.assertGreaterEqual(error.transport_diagnostic['elapsedNs'], 0)
                 self.assertNotIn(HANDLE, json.dumps(error.transport_diagnostic))
 
+    def test_outer_deadline_preserves_controller_method_and_recv_stage(self):
+        channel = mock.Mock()
+        channel.getsockopt.return_value = struct.pack('3i', 123, 0, 0)
+        timeout = workload.runtime.RuntimeFailure('operation-deadline-exceeded')
+        channel.recvmsg.side_effect = timeout
+        with mock.patch.object(workload.socket, 'SO_PEERCRED', 17, create=True), \
+                mock.patch.object(workload.socket, 'MSG_CMSG_CLOEXEC', 0,
+                                  create=True), \
+                mock.patch.object(workload.socket, 'socket', return_value=channel):
+            with self.assertRaises(workload.runtime.RuntimeFailure) as raised:
+                workload.WorkloadClient().request('observe', HANDLE)
+        self.assertIs(timeout, raised.exception)
+        self.assertEqual('observe', timeout.transport_diagnostic['method'])
+        self.assertEqual('response-read', timeout.transport_diagnostic['phase'])
+        self.assertGreaterEqual(timeout.transport_diagnostic['elapsedNs'], 0)
+        self.assertNotIn(HANDLE, json.dumps(timeout.transport_diagnostic))
+
     def test_denied_observe_retains_exact_controller_exchange_digest(self):
         denied = b'{"error":"restricted-workload-request-failed"}\n'
         sent = []
