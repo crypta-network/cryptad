@@ -3712,11 +3712,44 @@ acceptance case, and a real formal denial still consumes a unique suite and
 the same preparation allowance. This prospective change requires another
 source identity and complete 45-case campaign.
 
+At helper `c3d41a73373e1eab98bde97fb47351f977d1e0dd`, the first v49
+campaign on encrypted G1 sealed all eight positive cases and signed host
+cleanup in suite 143. Suite 144 was selected but had no capacity file, CT102
+attempt directory, PVE admission, watcher or VM. Its read-only preflight was
+stopped after CCC released the project SSD's temporary APFS snapshot; the G1
+campaign and its eight cases remain a separately sealed partial history. A
+second v49 campaign with a different nonce, key and plan then started on the
+SSD. Suite 145 independently completed the eight positive cases with full
+host cleanup. Suite 146 failed during the role/file-boundary group while the
+recipient was in `fcp-get-node`. The guest stopped, the PVE watcher completed,
+and the complete Mac failure staging and signed failed attempt remain. The
+SSD campaign therefore terminated at 8/45; its five boundary cases cannot
+be inherited from either the earlier G1 campaign or v48.
+
+Suite 146's private observer failure reported `workload-daemon-readiness-timeout`
+after an `operation-deadline-exceeded` cause. The recipient JVM and service
+cgroup were still present; no role OOM or HotSpot fatal was observed. Both
+bounded jcmd requests timed out. The wrapper recorded node initialization
+about 130 seconds after its own initialization, compared with about 65 seconds
+for the successful suite 145; the failure observation followed node
+initialization by roughly ten seconds. Both attempts logged initial entropy
+warnings, so those warnings alone do not establish the delay's cause. A
+stopped-disk, read-only qemu-img/debugfs diagnostic confirmed that role
+cleanup emptied the persisted recipient state directory. Its reconstructible
+raw copy was released after recording the partition observation and verifying
+that no loop, task QEMU or open user remained. The complete middle of the
+wrapper's JVM thread dump was absent from the existing 8-KiB excerpt and
+4-KiB tail. The next prospective test-kit revision retains selected fixed
+thread blocks and bounded FCP readiness timing in private evidence; it does
+not extend the 180-second FCP readiness window, the original campaign
+deadline or any role resource limit. Another frozen source and complete
+45-case campaign are required.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; `a1132835fb` completed zero cases. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `c8e183c2f1` campaign stopped at 13/45 after two no-VM authority admission refusals exhausted its three preparation slots. KVM diagnostics and other source commits do not increase its credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives, while the SSD campaign terminated after suite 146. None transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `c3d41a7337` SSD campaign stopped at 8/45 after the role-boundary guest failure; its earlier G1 campaign remains a separate partial 8/45. KVM diagnostics and other source commits do not increase either campaign's credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

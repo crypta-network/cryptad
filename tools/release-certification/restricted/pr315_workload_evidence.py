@@ -177,6 +177,56 @@ def _wrapper_excerpt(raw, deadline):
             'contentBase64': base64.b64encode(b''.join(chunks)).decode('ascii')}
 
 
+def _wrapper_thread_dump(raw, deadline):
+    """Keep fixed thread blocks from the last JVM dump omitted by head and tail."""
+    marker = raw.rfind(b'Full thread dump OpenJDK')
+    if marker < 0:
+        return {'status': 'not-found'}
+    beginning = raw.rfind(b'\n', 0, marker) + 1
+    blocks = {}
+    active = None
+    truncated = False
+    expired = False
+    for line in raw[beginning:].splitlines(keepends=True):
+        if time.monotonic() >= deadline:
+            expired = True
+            break
+        if re.search(rb'\b(?:Command|JavaCommandLine)\b', line):
+            continue
+        parts = line.split(b'|', 3)
+        if len(parts) != 4 or not re.fullmatch(rb' *[A-Z]{1,16} *', parts[0]):
+            continue
+        content = parts[3].lstrip()
+        if content.startswith((b'JNI global refs:', b'Heap')):
+            break
+        named = re.match(rb'"([^"\r\n]{1,80})"', content)
+        if named:
+            name = named[1]
+            active = ('wrapper' if name == b'WrapperListener_start_runner' else
+                      'main' if name == b'main' else
+                      'entropy' if name == b'Entropy Gathering Thread' else
+                      'fcp' if b'fcp' in name.lower() else None)
+            if active is not None:
+                blocks[active] = bytearray()
+        if active is not None:
+            block = blocks[active]
+            available = 4096 - len(block)
+            block.extend(line[:available])
+            truncated |= len(line) > available
+    selected = bytearray()
+    for key in ('wrapper', 'main', 'entropy', 'fcp'):
+        if key not in blocks:
+            continue
+        available = 16384 - len(selected)
+        selected.extend(blocks[key][:available])
+        truncated |= len(blocks[key]) > available
+    return {'status': 'capture-deadline' if expired else
+                      'captured' if selected else 'not-found',
+            'classification': 'candidate-origin-private-diagnostic-not-acceptance',
+            'sizeBytes': len(selected), 'truncated': truncated or expired,
+            'contentBase64': base64.b64encode(selected).decode('ascii')}
+
+
 def _wrapper_log(root, role, deadline):
     """Snapshot one fixed candidate-origin log safely; retain only its bounded private tail."""
     remaining = deadline - time.monotonic()
@@ -189,7 +239,8 @@ def _wrapper_log(root, role, deadline):
         return {'status': 'captured', 'classification': 'candidate-origin-private-diagnostic-not-acceptance',
             'sizeBytes': len(raw), 'tailBytes': len(tail), 'truncated': len(tail) < len(raw),
             'tailBase64': base64.b64encode(tail).decode('ascii'),
-            'excerpt': _wrapper_excerpt(raw, deadline)}
+            'excerpt': _wrapper_excerpt(raw, deadline),
+            'threadDump': _wrapper_thread_dump(raw, deadline)}
     except (OSError, ValueError):
         return {'status': 'unavailable-or-unsafe'}
 
@@ -2105,6 +2156,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             if (len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256
                     and 'excerpt' in result['wrapperLogs'][role]):
                 result['wrapperLogs'][role]['excerpt'] = {'status': 'not-captured-output-budget'}
+            if (len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256
+                    and 'threadDump' in result['wrapperLogs'][role]):
+                result['wrapperLogs'][role]['threadDump'] = {'status': 'not-captured-output-budget'}
             if len(json.dumps(result, sort_keys=True, allow_nan=False).encode()) > MAX_OUTPUT - 256:
                 result['wrapperLogs'][role] = {'status': 'not-captured-output-budget'}
     else:

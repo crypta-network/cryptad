@@ -856,6 +856,31 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn(error, base64.b64decode(log['tailBase64']))
         self.assertFalse(excerpt['truncated'])
 
+    def test_wrapper_thread_dump_retains_middle_startup_stack_without_command_line(self):
+        prefix = b'INFO | jvm 1 | time | routine\n' * 400
+        dump = (b'INFO | jvm 1 | time | Full thread dump OpenJDK:\n'
+                b'INFO | jvm 1 | time | "main" #1 runnable\n'
+                b'INFO | jvm 1 | time |   at network.crypta.node.Node.start(Node.java:1)\n'
+                b'INFO | jvm 1 | time | "WrapperListener_start_runner" #2 runnable\n'
+                b'INFO | jvm 1 | time |   at network.crypta.crypt.ECDH.blockingInit(ECDH.java:1)\n'
+                b'INFO | jvm 1 | time | JavaCommandLine: private-command-value\n'
+                b'INFO | jvm 1 | time | "Entropy Gathering Thread" #3 runnable\n'
+                b'INFO | jvm 1 | time |   at network.crypta.crypt.Yarrow.readSeed(Yarrow.java:1)\n'
+                b'INFO | jvm 1 | time | JNI global refs: 22\n')
+        raw = prefix + dump + b'INFO | jvm 1 | time | routine tail\n' * 400
+        self.assertNotIn(b'ECDH.blockingInit', base64.b64decode(
+            evidence._wrapper_excerpt(raw, float('inf'))['contentBase64']))
+        self.assertNotIn(b'ECDH.blockingInit', raw[-evidence.WRAPPER_TAIL:])
+        captured = evidence._wrapper_thread_dump(raw, float('inf'))
+        selected = base64.b64decode(captured['contentBase64'])
+        self.assertEqual('captured', captured['status'])
+        self.assertIn(b'ECDH.blockingInit', selected)
+        self.assertIn(b'Yarrow.readSeed', selected)
+        self.assertNotIn(b'private-command-value', selected)
+        self.assertLessEqual(captured['sizeBytes'], 16384)
+        self.assertEqual({'status': 'not-found'},
+                         evidence._wrapper_thread_dump(prefix, float('inf')))
+
     def test_wrapper_excerpt_yields_output_budget_to_existing_tail(self):
         self.wrapper().write_bytes(b'ERROR | wrapper | failure ' + b'x' * 10000)
         with patch.object(evidence, 'MAX_OUTPUT', 10000):

@@ -3797,6 +3797,26 @@ def observer_failure(error):
                  type(transport['errno']) is int and
                  0 <= transport['errno'] <= 4096)):
         result['transportDiagnostic'] = dict(transport)
+    readiness = getattr(error, 'readiness_diagnostic', None)
+    if (isinstance(readiness, dict)
+            and set(readiness) == {'role', 'stage', 'startRequestNs',
+                'startResponseNs', 'readinessDeadlineNs', 'attemptCount',
+                'lastAttemptStartedNs', 'failedAtNs', 'causeType'}
+            and readiness['role'] in ROLE_NAMES
+            and readiness['stage'] == 'fcp-get-node'
+            and all(type(readiness[key]) is int and readiness[key] > 0
+                    for key in ('startRequestNs', 'startResponseNs',
+                                'readinessDeadlineNs', 'attemptCount',
+                                'lastAttemptStartedNs', 'failedAtNs'))
+            and readiness['attemptCount'] <= 100000
+            and readiness['startRequestNs'] <= readiness['startResponseNs']
+                < readiness['readinessDeadlineNs']
+            and readiness['startResponseNs'] <=
+                readiness['lastAttemptStartedNs'] <= readiness['failedAtNs']
+            and isinstance(readiness['causeType'], str)
+            and re.fullmatch('[A-Za-z][A-Za-z0-9_]{0,63}',
+                             readiness['causeType']) is not None):
+        result['readinessDiagnostic'] = dict(readiness)
     # A shared deadline exception alone cannot locate the expired operation. Retain
     # bounded code locations, never frame locals, source lines or absolute paths.
     components = {'cross_version_workload.py', 'cross_version_runtime.py',

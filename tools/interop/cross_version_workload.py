@@ -669,7 +669,9 @@ class InstalledWorkloadAdapter:
         self.active_start_role = role
         self.active_start_stage = 'start-request'
         self.remaining()
+        start_request_ns = time.monotonic_ns()
         value = self.control.request('start', self.handles[role])
+        start_response_ns = time.monotonic_ns()
         if (value.get('handle') != self.handles[role] or value.get('state') != 'running'
                 or not re.fullmatch('[a-f0-9]{64}', str(value.get('generation')))
                 or not re.fullmatch('[a-f0-9]{32}', str(value.get('managerInvocation')))
@@ -678,7 +680,10 @@ class InstalledWorkloadAdapter:
         self.nodes[role] = value
         self.active_start_stage = 'fcp-get-node'
         deadline = time.monotonic() + self.remaining(180)
+        attempts = 0
         while True:
+            attempts += 1
+            attempt_started_ns = time.monotonic_ns()
             try:
                 # FCP's general GetNode timeout is longer than this startup budget. Bound
                 # the complete attempt, including observation, handshake and trickled frames.
@@ -688,7 +693,17 @@ class InstalledWorkloadAdapter:
                 break
             except (OSError, runtime.RuntimeFailure, runtime.interop.InteropFailure) as error:
                 if time.monotonic() >= deadline:
-                    raise runtime.RuntimeFailure('workload-daemon-readiness-timeout') from error
+                    failure = runtime.RuntimeFailure('workload-daemon-readiness-timeout')
+                    failure.readiness_diagnostic = {
+                        'role': role, 'stage': 'fcp-get-node',
+                        'startRequestNs': start_request_ns,
+                        'startResponseNs': start_response_ns,
+                        'readinessDeadlineNs': int(deadline * 10**9),
+                        'attemptCount': attempts,
+                        'lastAttemptStartedNs': attempt_started_ns,
+                        'failedAtNs': time.monotonic_ns(),
+                        'causeType': type(error).__name__}
+                    raise failure from error
                 time.sleep(min(.2, max(0, deadline - time.monotonic())))
         self.active_start_stage = 'daemon-epoch'
         self.daemon_epochs[role] = bind_daemon(self.observe(role), self.expected_jdk_digests[role])

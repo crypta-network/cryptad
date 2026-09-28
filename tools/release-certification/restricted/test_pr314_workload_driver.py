@@ -196,6 +196,20 @@ class ObserverFailureTest(unittest.TestCase):
         error.transport_diagnostic['privateHandle'] = 'a' * 64
         self.assertNotIn('transportDiagnostic', driver.observer_failure(error))
 
+    def test_readiness_timing_diagnostic_has_closed_private_fields(self):
+        error = ValueError('workload-daemon-readiness-timeout')
+        error.readiness_diagnostic = {'role': 'candidate-recipient',
+            'stage': 'fcp-get-node', 'startRequestNs': 10,
+            'startResponseNs': 20, 'readinessDeadlineNs': 200,
+            'attemptCount': 2, 'lastAttemptStartedNs': 120,
+            'failedAtNs': 210, 'causeType': 'RuntimeFailure'}
+        result = driver.observer_failure(error)
+        self.assertEqual(error.readiness_diagnostic,
+                         result['readinessDiagnostic'])
+        self.assertLess(len(json.dumps(result).encode()), 4096)
+        error.readiness_diagnostic['privateHandle'] = 'a' * 64
+        self.assertNotIn('readinessDiagnostic', driver.observer_failure(error))
+
     def test_controller_journal_diagnostic_is_fixed_bounded_and_private(self):
         commands = []
 
