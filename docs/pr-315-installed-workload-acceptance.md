@@ -3771,11 +3771,36 @@ extends the 30/45-second deadlines, or adds a production socket method.
 Another source identity and complete 45-case campaign are required before
 an installed verdict.
 
+At frozen helper `1bc8c81018e178167e1e8a714bdf7df49b6f537b`, the v51
+campaign completed suite 148's eight positive cases and suite 149's five
+role-boundary cases with signed host cleanup. Suite 150 completed the real
+retired-authority preparation guest and sealed no case. Suite 151 reached
+the successor authority group's formal probe. The guest stopped with exit
+zero and the host watcher completed, but all nine authority cases were
+`inconclusive`: four shared authority observations raised `KeyError`, and
+`stale-pid-uid` raised `ValueError` before its audit was written. The suite
+was sealed as failed after the probe-start marker, so the v51 campaign
+terminated at 13/45. Its full Mac staging, original guest disks, volatile
+observations and signed receipts remain private. Guest exit zero does not
+override the failed installed assessment.
+
+The shared `KeyError` has a demonstrated driver cause. The administrator's
+Mail control compared the guest report's `mailAppKernelProcess` with a
+`cgroupIdentity` field that this fixed report does not contain; the actual
+worker's cgroup is independently available in the controller's kernel
+observation. The next helper revision compares the report's real process and
+epoch fields, and separately binds the worker to the before/after controller
+cgroup observations. The stale PID/UID exception cannot be assigned a cause
+from the v51 type-only diagnostic. The next revision retains a fixed phase
+and allowlisted test-kit error code in private diagnostics without granting
+acceptance or changing the restart/FCP deadlines. Both changes require a new
+source identity and complete 45-case campaign.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `48035d5b99` campaign completed zero cases after suite 147. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `48035d5b99` campaign stopped at 0/45 following a positive-group controller response deadline. KVM diagnostics and other source commits do not increase its credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `48035d5b99` campaign completed zero cases after suite 147. None transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `1bc8c81018` campaign stopped at 13/45 after suite 151's inconclusive authority probes. KVM diagnostics and other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

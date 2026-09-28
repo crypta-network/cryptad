@@ -162,6 +162,25 @@ def _private_role_probe_code(error):
     return code if code in ROLE_PROBE_CODES else None
 
 
+STALE_PID_DIAGNOSTIC_CODES = frozenset({
+    'workload-stale-pid-deadline',
+    'workload-stale-pid-manager-transition-invalid',
+    'workload-stale-pid-new-fcp-unavailable',
+    'workload-stale-pid-new-not-ready',
+    'workload-stale-pid-new-observer-failed',
+    'workload-stale-pid-observer-proof-invalid',
+    'workload-stale-pid-old-instance-changed',
+    'workload-stale-pid-old-not-ready',
+    'workload-stale-pid-old-observer-failed',
+})
+
+
+def _private_stale_pid_code(error):
+    """Retain only fixed test-kit reasons, never an exception's raw message."""
+    code = str(error)
+    return code if type(error) is ValueError and code in STALE_PID_DIAGNOSTIC_CODES else None
+
+
 def prerequisites():
     reasons = []
     if os.geteuid() != 0:
@@ -2112,9 +2131,11 @@ def _mail_browser_control(workload, handoff, session, origin, expected_worker):
         raise ValueError('workload-hostile-origin-app-worker-invalid')
     before = workload.observe(handle)
     worker_before = bind_worker(before, expected_worker['namespacePid'], jdk)
-    stable_worker = ('hostPid', 'namespacePid', 'startTicks', 'javaHostPid',
-                     'javaStartTicks', 'managerInvocation', 'cgroupIdentity')
-    if any(worker_before[key] != expected_worker[key] for key in stable_worker):
+    stable_worker = ('handle', 'generation', 'bootId', 'hostPid',
+                     'namespacePid', 'startTicks', 'javaHostPid',
+                     'javaStartTicks', 'managerInvocation')
+    if (any(worker_before[key] != expected_worker[key] for key in stable_worker)
+            or worker_before['cgroupIdentity'] != before['cgroupIdentity']):
         raise ValueError('workload-hostile-origin-app-worker-changed')
     with workload.connect(handle, 'http') as channel:
         status, _headers, body = _http(channel, '/api/v1/app-data/status', {
@@ -2129,6 +2150,8 @@ def _mail_browser_control(workload, handoff, session, origin, expected_worker):
     after = workload.observe(handle)
     worker_after = bind_worker(after, expected_worker['namespacePid'], jdk)
     if (any(worker_before[key] != worker_after[key] for key in stable_worker)
+            or worker_after['cgroupIdentity'] != after['cgroupIdentity']
+            or before['cgroupIdentity'] != after['cgroupIdentity']
             or before['stateDigest'] != after['stateDigest']):
         raise ValueError('workload-hostile-origin-app-worker-changed')
     return {'role': role, 'managerInvocation': after['managerInvocation'],
@@ -4454,14 +4477,23 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostics['staleHandle'] = {
                         'status': 'unavailable-or-unsafe',
                         'exceptionType': type(error).__name__[:128]}
+            stale_pid_phase = {}
             try:
                 digest = probe_stale_pid_uid(workload, handoff, result,
-                    campaign_deadline)
+                    campaign_deadline, stale_pid_phase)
                 diagnostics['stalePidUid'] = {'status': 'captured',
                     'caseId': 'stale-pid-uid', 'auditDigest': digest}
             except Exception as error:
                 diagnostics['stalePidUid'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+                if stale_pid_phase.get('phase') in {
+                        'old-observer', 'sender-stop', 'sender-start',
+                        'new-fcp', 'manager-transition', 'new-observer',
+                        'old-rejection', 'final-roster', 'audit'}:
+                    diagnostics['stalePidUid']['phase'] = stale_pid_phase['phase']
+                code = _private_stale_pid_code(error)
+                if code is not None:
+                    diagnostics['stalePidUid']['code'] = code
         if not startup_measurement and workload_group == 'network-app':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

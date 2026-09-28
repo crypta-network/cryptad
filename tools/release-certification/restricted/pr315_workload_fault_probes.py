@@ -1882,7 +1882,8 @@ def probe_setsid_double_fork(workload, handoff, source_digest,
     return audit
 
 
-def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
+def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns,
+                        phase_state=None):
     """Keep the old observer alive across a real sender manager restart."""
     from cross_version_workload import principal_row
     from restricted_workload_controller import _recipient_fcp_control
@@ -1890,6 +1891,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
     handle = handoff['handles'][role]
     expected_jdk = handoff['expectedJdkDigests'][role]
     observer = pwd.getpwnam('cryptad-soak')
+    if phase_state is not None:
+        phase_state['phase'] = 'old-observer'
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-stale-pid-deadline')
     sender_before = workload.observe(handle)
@@ -1908,13 +1911,19 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
         if (old_first['target']['managerInvocation'] !=
                 sender_before['managerInvocation']):
             raise ValueError('workload-stale-pid-old-instance-changed')
+        if phase_state is not None:
+            phase_state['phase'] = 'sender-stop'
         stop_started = time.monotonic_ns()
         stopped = workload.stop(handle)
         old_quiescent = workload.read(workload.ROOT /
             'authority/candidate-sender.json')
         old_receipt = workload.stop_receipt(role, old_quiescent)
+        if phase_state is not None:
+            phase_state['phase'] = 'sender-start'
         restart_started = time.monotonic_ns()
         started = workload.start(handle)
+        if phase_state is not None:
+            phase_state['phase'] = 'new-fcp'
         until = min(time.monotonic() + 180, campaign_deadline_ns / 1e9)
         while True:
             try:
@@ -1925,6 +1934,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
                     raise ValueError('workload-stale-pid-new-fcp-unavailable') from None
                 time.sleep(.2)
         sender_after = workload.observe(handle)
+        if phase_state is not None:
+            phase_state['phase'] = 'manager-transition'
         old_actor_after = _positive_observer_epoch(old_pid, observer.pw_uid,
                                                     campaign_deadline_ns)
         if (any(old_actor[key] != old_actor_after[key] for key in
@@ -1939,6 +1950,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
                 or started['managerInvocation'] !=
                     sender_after['managerInvocation']):
             raise ValueError('workload-stale-pid-manager-transition-invalid')
+        if phase_state is not None:
+            phase_state['phase'] = 'new-observer'
         new_parent, new_pid = _stale_pid_observer_process(
             handle, expected_jdk, False, observer)
         new_parent.settimeout(min(5, max(.001,
@@ -1954,6 +1967,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
         if new_status != 0 or not 0 < len(new_raw) <= 4096:
             raise ValueError('workload-stale-pid-new-observer-failed')
         new_result = json.loads(new_raw)
+        if phase_state is not None:
+            phase_state['phase'] = 'old-rejection'
         old_parent.sendall(b'G')
         old_raw, old_status = collect_child(old_parent, old_pid,
             min(time.monotonic() + 50, campaign_deadline_ns / 1e9))
@@ -1961,6 +1976,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
         if old_status != 0 or not 0 < len(old_raw) <= 4096:
             raise ValueError('workload-stale-pid-old-observer-failed')
         rejected = json.loads(old_raw)
+        if phase_state is not None:
+            phase_state['phase'] = 'final-roster'
         roster_started = time.monotonic_ns()
         samples = {selected_role: workload.observe(handoff['handles'][selected_role])
                    for selected_role in driver.ROLE_NAMES}
@@ -1989,6 +2006,8 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns):
         result['authorityFinalRosterWindow'] = {
             'startedMonotonicNs': roster_started,
             'finishedMonotonicNs': roster_finished}
+        if phase_state is not None:
+            phase_state['phase'] = 'audit'
         audit = {'schemaVersion': 1,
             'kind': 'pr315-administrator-stale-pid-uid-denial',
             'caseId': 'stale-pid-uid',

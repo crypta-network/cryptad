@@ -1407,10 +1407,12 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
 
 class HostileOriginValidationTest(unittest.TestCase):
     def test_root_control_binds_current_app_child_and_valid_browser_response(self):
-        worker = {'hostPid': 211, 'namespacePid': 3, 'startTicks': 42,
+        worker = {'handle': 'e' * 64, 'generation': 'f' * 64,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'hostPid': 211, 'namespacePid': 3, 'startTicks': 42,
                   'javaHostPid': 212, 'javaStartTicks': 43,
-                  'managerInvocation': 'a' * 32,
-                  'cgroupIdentity': [1, 99]}
+                  'managerInvocation': 'a' * 32}
+        bound = dict(worker, cgroupIdentity=[1, 99])
         observed = {'managerInvocation': 'a' * 32,
                     'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                     'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
@@ -1420,7 +1422,7 @@ class HostileOriginValidationTest(unittest.TestCase):
             connect=Mock(return_value=nullcontext(SimpleNamespace())))
         handoff = {'handles': {'candidate-sender': 'e' * 64},
                    'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
-        with patch('cross_version_workload.bind_worker', return_value=worker), \
+        with patch('cross_version_workload.bind_worker', return_value=bound), \
                 patch('restricted_workload_controller._http', return_value=(
                     200, {}, b'{"status":{"appId":"mail-prototype",'
                               b'"storeAvailable":true}}')) as request:
@@ -1433,7 +1435,7 @@ class HostileOriginValidationTest(unittest.TestCase):
         self.assertNotIn('private-session', json.dumps(control))
         workload.observe = Mock(side_effect=[observed,
             dict(observed, observedMonotonicNs=20)])
-        with patch('cross_version_workload.bind_worker', return_value=worker), \
+        with patch('cross_version_workload.bind_worker', return_value=bound), \
                 patch('restricted_workload_controller._http', return_value=(
                     403, {}, b'{"error":"origin_mismatch"}')), \
                 self.assertRaisesRegex(ValueError, 'valid-target-unavailable'):
@@ -1441,13 +1443,39 @@ class HostileOriginValidationTest(unittest.TestCase):
                 'private-session', 'http://127.0.0.1:12345', worker)
         workload.observe = Mock(side_effect=[observed,
             dict(observed, observedMonotonicNs=20)])
-        with patch('cross_version_workload.bind_worker', return_value=worker), \
+        with patch('cross_version_workload.bind_worker', return_value=bound), \
                 patch('restricted_workload_controller._http', return_value=(
                     200, {}, b'{"status":{"appId":"other",'
                               b'"storeAvailable":true}}')), \
                 self.assertRaisesRegex(ValueError, 'valid-target-unavailable'):
             driver._mail_browser_control(workload, handoff,
                 'private-session', 'http://127.0.0.1:12345', worker)
+
+    def test_root_control_rejects_changed_worker_cgroup(self):
+        worker = {'handle': 'e' * 64, 'generation': 'f' * 64,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'hostPid': 211, 'namespacePid': 3, 'startTicks': 42,
+                  'javaHostPid': 212, 'javaStartTicks': 43,
+                  'managerInvocation': 'a' * 32}
+        observed = {'managerInvocation': 'a' * 32,
+                    'bootId': worker['bootId'], 'cgroupIdentity': [1, 99],
+                    'stateDigest': 'd' * 64, 'observedMonotonicNs': 10}
+        workload = SimpleNamespace(observe=Mock(return_value=observed))
+        handoff = {'handles': {'candidate-sender': worker['handle']},
+                   'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
+        with patch('cross_version_workload.bind_worker',
+                   return_value=dict(worker, cgroupIdentity=[1, 100])), \
+                self.assertRaisesRegex(ValueError, 'app-worker-changed'):
+            driver._mail_browser_control(workload, handoff,
+                'private-session', 'http://127.0.0.1:12345', worker)
+
+    def test_stale_pid_diagnostic_only_retains_fixed_test_kit_code(self):
+        self.assertEqual('workload-stale-pid-new-fcp-unavailable',
+            driver._private_stale_pid_code(
+                ValueError('workload-stale-pid-new-fcp-unavailable')))
+        self.assertIsNone(driver._private_stale_pid_code(
+            ValueError('workload-stale-pid-new-fcp-unavailable secret')))
+        self.assertIsNone(driver._private_stale_pid_code(KeyError('handle')))
 
     def test_browser_secret_is_removed_before_retention_and_exchange_is_bounded(self):
         import pr315_role_probe as probe
