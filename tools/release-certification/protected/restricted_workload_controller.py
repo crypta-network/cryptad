@@ -125,7 +125,7 @@ def _request_progress(method, phase, started, error=None):
         if error is not None:
             value['exceptionType'] = type(error).__name__[:64]
         workload.write(REQUEST_PROGRESS, value, mode=0o600)
-    except (OSError, ValueError, TypeError, IndexError):
+    except Exception:
         # This diagnostic cannot change a controller response or its deadline.
         pass
 

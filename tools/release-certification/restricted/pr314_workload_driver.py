@@ -3897,7 +3897,7 @@ def capture_controller_request_at_failure(workload):
         digest = hashlib.sha256(raw).hexdigest()
         try:
             identity = controller_unit_identity(workload)
-        except (OSError, ValueError, KeyError, TypeError,
+        except (OSError, ValueError, KeyError, TypeError, IndexError,
                 subprocess.SubprocessError):
             return {'status': 'unbound',
                     'classification': 'private-diagnostic-not-acceptance',
@@ -3917,7 +3917,7 @@ def capture_controller_request_at_failure(workload):
                 'record': value,
                 'kernelController': identity,
                 'privateDigest': digest}
-    except (OSError, ValueError, KeyError, TypeError,
+    except (OSError, ValueError, KeyError, TypeError, IndexError,
             subprocess.SubprocessError):
         return {'status': 'unavailable-or-unsafe'}
 

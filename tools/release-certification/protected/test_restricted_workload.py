@@ -800,11 +800,13 @@ class ControllerRequestProgressTest(unittest.TestCase):
             written.assert_not_called()
 
     def test_checkpoint_write_failure_cannot_change_request_result(self):
-        with patch.object(controller.os, 'geteuid', return_value=0), \
-                patch.object(controller, '_own_start_ticks', return_value=42), \
-                patch.object(workload, 'boot', return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), \
-                patch.object(workload, 'write', side_effect=OSError('unavailable')):
-            self.assertIsNone(controller._request_progress('observe', 'executing', 123))
+        for failure in (OSError('unavailable'), RuntimeError('diagnostic broken')):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(controller.os, 'geteuid', return_value=0), \
+                    patch.object(controller, '_own_start_ticks', return_value=42), \
+                    patch.object(workload, 'boot', return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), \
+                    patch.object(workload, 'write', side_effect=failure):
+                self.assertIsNone(controller._request_progress('observe', 'executing', 123))
 
 
 class FnpBoundaryTest(unittest.TestCase):
