@@ -4,8 +4,11 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -164,6 +167,135 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertIsNone(coordinator.explicit_probe_phase(
             'network-app', {'probeStart': dict(marker,
                 caseId='authority')}))
+
+    def test_pressure_stop_requires_fixed_action_and_no_remaining_disk_users(self):
+        value = {'schemaVersion': 1,
+                 'kind': 'pr315-pve-task-qemu-pressure-stopped-v1',
+                 'attemptId': 'suite-201', 'sourceCommit': 'a' * 40,
+                 'watcherAction': 'pressure-memoryPressure',
+                 'watcherReceiptDigest': 'b' * 64,
+                 'watcherFinishedMonotonicNs': 10,
+                 'observedMonotonicNs': 11,
+                 'pveBootId': 'boot', 'taskQemuProcesses': [],
+                 'openDiskUserPids': []}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(stdout=json.dumps(value).encode())))
+        self.assertEqual(value, coordinator.pressure_stopped_observation(
+            remote, 'suite-201', 'a' * 40, 'pressure-memoryPressure'))
+        with self.assertRaisesRegex(ValueError, 'selection-invalid'):
+            coordinator.pressure_stopped_observation(
+                remote, 'suite-201', 'a' * 40, 'completed')
+        remote.call.return_value = SimpleNamespace(stdout=json.dumps(
+            dict(value, openDiskUserPids=[500])).encode())
+        with self.assertRaisesRegex(ValueError, 'observation-invalid'):
+            coordinator.pressure_stopped_observation(
+                remote, 'suite-201', 'a' * 40, 'pressure-memoryPressure')
+
+    def test_finished_watcher_never_accepts_an_unlisted_action(self):
+        record = {'suite': 'suite-201', 'sourceCommit': 'a' * 40,
+                  'action': 'pressure-memoryPressure',
+                  'seenTaskQemu': True}
+        config = {'sourceCommit': 'a' * 40,
+                  'sourceSnapshot': coordinator.CT_TASK +
+                    '/campaign-frozen/source-test'}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=0,
+                stdout=json.dumps(record).encode())))
+        self.assertEqual(record, coordinator.finished_watcher(
+            remote, config, 'suite-201', {}))
+        remote.call.return_value = SimpleNamespace(returncode=0,
+            stdout=json.dumps(dict(record, action='untrusted-pass')).encode())
+        with patch.object(coordinator.time, 'monotonic', side_effect=[0, 31]), \
+                self.assertRaisesRegex(ValueError, 'watcher-incomplete'):
+            coordinator.finished_watcher(remote,
+                config, 'suite-201', {})
+
+    @unittest.skipUnless(Path('/proc/self/fd').is_dir(),
+                         'Linux procfs is required for descriptor ownership')
+    def test_pressure_stop_code_rejects_an_open_failed_guest_disk(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-pressure-stop-') as temp:
+            root = Path(temp)
+            monitor = root / 'host-monitor'
+            attempt = root / 'suite-201/attempt-01'
+            monitor.mkdir()
+            attempt.mkdir(parents=True)
+            guest = attempt / 'guest.qcow2'
+            guest.write_bytes(b'guest-disk')
+            (attempt / 'prepared.qcow2').write_bytes(b'prepared-disk')
+            watcher = Path(coordinator.__file__).with_name(
+                'pr315_pve_pressure_watch.py')
+            receipt = monitor / 'suite-201.finished.json'
+            receipt.write_text(json.dumps({
+                'suite': 'suite-201', 'sourceCommit': 'a' * 40,
+                'action': 'pressure-memoryPressure',
+                'seenTaskQemu': True,
+                'moduleDigest': hashlib.sha256(watcher.read_bytes()).hexdigest(),
+                'finishedMonotonicNs': time.monotonic_ns() - 10**9}))
+            receipt.chmod(0o444)
+            script = coordinator._PVE_PRESSURE_STOP_CODE.replace(
+                coordinator.PVE_TASK, str(root)).replace(
+                '/root/pr315-workload/source-0fa', str(watcher.parent))
+            # The production path's root and mapped-UID gates are exercised
+            # on PVE; this unprivileged Linux test exercises the live-FD gate.
+            for pinned, fixture in (('os.geteuid()!=0', 'False'),
+                                    ('info.st_uid!=0', 'False'),
+                                    ('disk.st_uid!=101000', 'False')):
+                self.assertEqual(1, script.count(pinned))
+                script = script.replace(pinned, fixture)
+            command = [sys.executable, '-c', script, 'suite-201',
+                       'a' * 40, 'pressure-memoryPressure']
+            with guest.open('rb'):
+                held = subprocess.run(command, capture_output=True, timeout=10)
+            self.assertNotEqual(0, held.returncode)
+            stopped = subprocess.run(command, capture_output=True, timeout=10)
+            self.assertEqual(0, stopped.returncode,
+                             stopped.stderr.decode(errors='replace'))
+            self.assertEqual([], json.loads(stopped.stdout)['openDiskUserPids'])
+
+    def test_pressure_terminal_seals_failure_before_any_next_guest(self):
+        import pr315_case_registry as registry
+        plan = {'hostKeyFingerprint': 'b' * 64, 'planDigest': 'c' * 64}
+        config = {'sourceCommit': 'a' * 40,
+                  'hostKeyFingerprint': plan['hostKeyFingerprint']}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=0)))
+        selected = {'status': 'ready', 'groupId': 'positive',
+                    'action': 'selected-group'}
+        verdict = {'status': 'incomplete',
+                   'installedWorkloadAcceptanceSatisfied': False}
+        with patch.object(coordinator, 'frozen_campaign_context',
+                          return_value=(Path('/private'), Path('/source'), plan,
+                                        {'firstSuiteNumber': 201}, config)), \
+                patch.object(registry, 'implementation_coverage',
+                             return_value='complete'), \
+                patch.object(coordinator, 'Remote', return_value=remote), \
+                patch.object(coordinator, 'source_preflight'), \
+                patch.object(coordinator, 'publish_frozen_campaign'), \
+                patch.object(coordinator.owner, 'recovered_campaign_verdict',
+                             return_value=verdict), \
+                patch.object(coordinator.seal, 'load_verified_history',
+                             return_value=[]), \
+                patch.object(coordinator, 'next_campaign_selection',
+                             return_value=selected), \
+                patch.object(coordinator, 'prelaunch_admission',
+                             return_value=({}, {'admitted': True})), \
+                patch.object(coordinator, 'run_selected_attempt',
+                             return_value={'assessment': {
+                                 'status': 'monitor-incomplete'}}), \
+                patch.object(coordinator, 'finished_watcher',
+                             return_value={'action':
+                                 'pressure-memoryPressure'}), \
+                patch.object(coordinator, 'stage_full_attempt',
+                             return_value=('/stage', 'd' * 64)) as stage, \
+                patch.object(coordinator, '_seal_failed_attempt') as failed, \
+                patch.object(coordinator, '_archive_case_group') as completed:
+            self.assertEqual(verdict, coordinator.run_campaign(
+                '/private', '/source'))
+        stage.assert_called_once_with(remote, config, 'suite-201', Path('/private'),
+            pressure_action='pressure-memoryPressure')
+        failed.assert_called_once_with(Path('/private'), config, plan,
+            'suite-201', 'positive', '/stage', 'd' * 64)
+        completed.assert_not_called()
 
     def test_default_full_run_rejects_incomplete_emitters_before_remote_access(self):
         import pr315_case_registry as registry

@@ -3796,11 +3796,45 @@ and allowlisted test-kit error code in private diagnostics without granting
 acceptance or changing the restart/FCP deadlines. Both changes require a new
 source identity and complete 45-case campaign.
 
+At frozen helper `c0eb6925b13b1079c5dad47aa2f534f741937646`, the v52
+campaign passed its no-VM probe and launched suite 152 for the positive group.
+The PVE watcher terminated the task QEMU under its unchanged
+`pressure-memoryPressure` rule. Its 413 original samples included 16 with
+memory full PSI above 20%; the rule fires after 15 consecutive such samples.
+The maximum memory full PSI was 35.24% and maximum I/O full PSI was 50.44%.
+The minimum observed physical available memory was 1,256,046,592 bytes and
+minimum swap free was 11,394,863,104 bytes, so the memory-PSI rule, not the
+physical or swap floor, explains the watcher action. The guest exited 255
+without a complete workload report. No positive case passed.
+
+The coordinator's normal watcher and stop-proof helpers recognized only
+`completed`, so it stopped before making its usual archive and signed failed
+receipt. The host recovery copied and checksum-checked all 12,667 original
+files, including both failed guest disks, preserved the PVE watcher records,
+independently established no task QEMU and no open disk user, and sealed
+suite 152 as `failed` with unknown probe phase. The v52 campaign is terminal
+at 0/45. The retained pressure-stop proof is explicitly distinct from a
+normal watcher completion; it grants no case pass. A prospective coordinator
+revision accepts only the four fixed pressure-stop actions for failure
+archiving and requires the original watcher digest and an independent PVE
+stop observation before sealing failure. This fixes evidence retention after
+a real pressure kill; it does not change admission thresholds, QEMU/JDK,
+guest memory, role limits, or the host pressure itself.
+
+For `c0eb6925b1`, CT102 Linux restricted, protected, and workload interop
+checks passed 615/13, 549/77, and 62/9 tests/skips respectively. Four
+additional certification self-test groups completed successfully. A Mac
+`./gradlew test` run was red in platform app UI, catalog and AppHost process,
+file-permission and sandbox tests; its full log and XML remain private. A
+native CT102 Java full run and analyzer inspection are still required for a
+final source. Neither a Mac failure nor historical Java results are reported
+as a green c0eb final-source gate.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `48035d5b99` campaign completed zero cases after suite 147. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `1bc8c81018` campaign stopped at 13/45 after suite 151's inconclusive authority probes. KVM diagnostics and other source commits do not increase its credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `c0eb6925b1` campaign stopped at 0/45 following suite 152's real host pressure kill and sealed failed recovery. KVM diagnostics and other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

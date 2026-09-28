@@ -48,6 +48,10 @@ RETRYABLE_ADMISSION_REASONS = frozenset({
     'pve-admission-ct-memory-unavailable',
     'pve-admission-ct-swap-unavailable',
 })
+PRESSURE_WATCH_ACTIONS = frozenset({
+    'pressure-physical', 'pressure-swap',
+    'pressure-memoryPressure', 'pressure-ioPressure',
+})
 _SUITE = re.compile(r'suite-[1-9][0-9]*\Z')
 _SCHEDULING_PSI_CODE = '''import json,time
 from pathlib import Path
@@ -519,15 +523,29 @@ def retired_preparation_complete(execution):
                 'retired-authority-preparation-executed')
 
 
-_FINISHED_CODE = (
-    'import sys,json;sys.path.insert(0,sys.argv[4]+"/tools/release-certification/restricted");'
-    'import pr315_pve_pressure_watch as w;'
-    'ready=json.loads(sys.argv[3]);'
-    'print(json.dumps(w.verify_finished(sys.argv[1],sys.argv[2],ready)))')
+_FINISHED_CODE = '''import json,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[4]+"/tools/release-certification/restricted")
+import pr315_pve_pressure_watch as w
+suite,source=sys.argv[1:3];ready=json.loads(sys.argv[3])
+root=Path("/work/pr315-task/host-monitor")
+observed_ready=w._ct_record(root/(suite+".ready.json"),suite,"pr315-pve-watch-ready")
+finished=w._ct_record(root/(suite+".finished.json"),suite,"pr315-pve-watch-finished")
+actions={"completed","pressure-physical","pressure-swap",
+         "pressure-memoryPressure","pressure-ioPressure"}
+if (observed_ready!=ready or ready.get("sourceCommit")!=source
+    or set(finished)!={"schemaVersion","kind","suite","sourceCommit",
+                      "moduleDigest","action","seenTaskQemu","finishedMonotonicNs"}
+    or finished["sourceCommit"]!=source or finished["action"] not in actions
+    or finished["seenTaskQemu"] is not True
+    or type(finished["finishedMonotonicNs"]) is not int
+    or finished["finishedMonotonicNs"]<=ready["observedMonotonicNs"]):
+ raise ValueError("pr315-pressure-watch-terminal-invalid")
+print(json.dumps(finished,sort_keys=True))'''
 
 
 def finished_watcher(remote, config, suite, ready):
-    """Recheck the root-owned watcher receipt through CT102 after QEMU stops."""
+    """Authenticate a completed or pressure-stopped watcher through CT102."""
     until = time.monotonic() + 30
     while True:
         result = remote.call(CT, ['python3', '-c', _FINISHED_CODE,
@@ -538,7 +556,8 @@ def finished_watcher(remote, config, suite, ready):
             record = json.loads(result.stdout)
             if (record.get('suite') == suite
                     and record.get('sourceCommit') == config['sourceCommit']
-                    and record.get('action') == 'completed'
+                    and record.get('action') in
+                        PRESSURE_WATCH_ACTIONS | {'completed'}
                     and record.get('seenTaskQemu') is True):
                 return record
         if time.monotonic() >= until:
@@ -626,6 +645,83 @@ def stopped_observation(remote, suite, source_commit):
             or value.get('sourceCommit') != source_commit
             or value.get('taskQemuProcesses') != []):
         raise ValueError('pr315-pve-stopped-observation-invalid')
+    return value
+
+
+_PVE_PRESSURE_STOP_CODE = '''import hashlib,json,os,stat,sys,time
+from pathlib import Path
+sys.path.insert(0,"/root/pr315-workload/source-0fa")
+import pr315_pve_pressure_watch as watch
+task=Path("/mnt/tank1/files/pr315-workload-acceptance")
+suite,source,action=sys.argv[1:4]
+if action not in {"pressure-physical","pressure-swap",
+                  "pressure-memoryPressure","pressure-ioPressure"}:
+ raise RuntimeError("pressure-action-invalid")
+receipt=task/"host-monitor"/(suite+".finished.json")
+info=receipt.lstat()
+if (os.geteuid()!=0 or not stat.S_ISREG(info.st_mode)
+    or info.st_uid!=0 or info.st_mode&0o222 or info.st_nlink!=1
+    or not 0<info.st_size<=2048):
+ raise RuntimeError("pressure-receipt-invalid")
+raw=receipt.read_bytes();finished=json.loads(raw)
+if (finished.get("suite")!=suite or finished.get("sourceCommit")!=source
+    or finished.get("action")!=action or finished.get("seenTaskQemu") is not True
+    or finished.get("moduleDigest")!=hashlib.sha256(
+        Path(watch.__file__).read_bytes()).hexdigest()):
+ raise RuntimeError("pressure-receipt-changed")
+attempt=task/suite/"attempt-01"
+ids=set()
+for name in ("guest.qcow2","prepared.qcow2"):
+ disk=(attempt/name).lstat()
+ if (not stat.S_ISREG(disk.st_mode) or disk.st_uid!=101000
+     or disk.st_nlink!=1 or disk.st_size<=0):
+  raise RuntimeError("pressure-disk-invalid")
+ ids.add((disk.st_dev,disk.st_ino))
+qemu=watch._processes(suite);users=[]
+for entry in Path("/proc").iterdir():
+ if not entry.name.isdecimal():continue
+ try:
+  for fd in (entry/"fd").iterdir():
+   try:
+    held=fd.stat()
+    if (held.st_dev,held.st_ino) in ids:users.append(int(entry.name));break
+   except (OSError,PermissionError):continue
+ except (OSError,PermissionError):continue
+observed=time.monotonic_ns()
+if qemu or users or observed<=finished["finishedMonotonicNs"]:
+ raise RuntimeError("pressure-task-still-running")
+print(json.dumps({"schemaVersion":1,
+ "kind":"pr315-pve-task-qemu-pressure-stopped-v1",
+ "attemptId":suite,"sourceCommit":source,"watcherAction":action,
+ "watcherReceiptDigest":hashlib.sha256(raw).hexdigest(),
+ "watcherFinishedMonotonicNs":finished["finishedMonotonicNs"],
+ "observedMonotonicNs":observed,
+ "pveBootId":Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+ "taskQemuProcesses":qemu,"openDiskUserPids":users},sort_keys=True))'''
+
+
+def pressure_stopped_observation(remote, suite, source_commit, action):
+    """Prove a watcher-killed guest stopped without claiming normal completion."""
+    if _SUITE.fullmatch(suite) is None or action not in PRESSURE_WATCH_ACTIONS:
+        raise ValueError('pr315-pressure-stop-selection-invalid')
+    value = _json_command(remote, PVE, ['python3', '-c',
+        _PVE_PRESSURE_STOP_CODE, suite, source_commit, action], timeout=20)
+    if (set(value) != {'schemaVersion', 'kind', 'attemptId',
+                       'sourceCommit', 'watcherAction', 'watcherReceiptDigest',
+                       'watcherFinishedMonotonicNs', 'observedMonotonicNs',
+                       'pveBootId', 'taskQemuProcesses', 'openDiskUserPids'}
+            or value['schemaVersion'] != 1
+            or value['kind'] != 'pr315-pve-task-qemu-pressure-stopped-v1'
+            or value['attemptId'] != suite
+            or value['sourceCommit'] != source_commit
+            or value['watcherAction'] != action
+            or not re.fullmatch('[0-9a-f]{64}', str(value['watcherReceiptDigest']))
+            or value['taskQemuProcesses'] != []
+            or value['openDiskUserPids'] != []
+            or type(value['observedMonotonicNs']) is not int
+            or type(value['watcherFinishedMonotonicNs']) is not int
+            or value['observedMonotonicNs'] <= value['watcherFinishedMonotonicNs']):
+        raise ValueError('pr315-pve-pressure-stop-observation-invalid')
     return value
 
 
@@ -795,7 +891,8 @@ def archive_selected_attempt(remote, config, suite, group_id, mac_root,
     return destination, manifest_digest
 
 
-def stage_full_attempt(remote, config, suite, campaign_root):
+def stage_full_attempt(remote, config, suite, campaign_root, *,
+                       pressure_action=None):
     """Keep a complete attempt copy until case and remote cleanup are verified.
 
     A public `passed` field does not authorize omitting failure disks. This
@@ -848,8 +945,16 @@ def stage_full_attempt(remote, config, suite, campaign_root):
             (PVE, PVE_TASK + '/host-monitor/' + suite + '.private.jsonl',
              'host-monitor-samples.private.jsonl')):
         _scp(remote, host, source, receipts / name)
-    _exclusive_json(destination / 'host-stop.private.json',
-        stopped_observation(remote, suite, config['sourceCommit']))
+    if pressure_action is None:
+        stopped = stopped_observation(remote, suite, config['sourceCommit'])
+    else:
+        stopped = pressure_stopped_observation(remote, suite,
+                                               config['sourceCommit'], pressure_action)
+        watcher = receipts / 'host-monitor-finished.private.json'
+        if stopped['watcherReceiptDigest'] != hashlib.sha256(
+                watcher.read_bytes()).hexdigest():
+            raise ValueError('pr315-pressure-stop-watcher-bytes-changed')
+    _exclusive_json(destination / 'host-stop.private.json', stopped)
     rows = {}
     for path in destination.rglob('*'):
         if path.is_symlink():
@@ -1897,9 +2002,14 @@ def run_campaign(root, source, *, case_group=None):
             archive_unlaunched_setup_failure(remote, root, config, plan,
                                              suite, group_id, execution)
             continue
-        finished_watcher(remote, config, suite, ready)
+        terminal = finished_watcher(remote, config, suite, ready)
         staging, stage_digest = stage_full_attempt(remote, config, suite,
-                                                     root)
+            root, pressure_action=(terminal['action']
+                if terminal['action'] in PRESSURE_WATCH_ACTIONS else None))
+        if terminal['action'] in PRESSURE_WATCH_ACTIONS:
+            _seal_failed_attempt(root, config, plan, suite,
+                                 group_id, staging, stage_digest)
+            return owner.recovered_campaign_verdict(root, source, **pin)
         if selected['action'] == 'retired-authority-preparation':
             if not retired_preparation_complete(execution):
                 _seal_failed_attempt(root, config, plan, suite,
