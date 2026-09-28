@@ -49,6 +49,16 @@ RETRYABLE_ADMISSION_REASONS = frozenset({
     'pve-admission-ct-swap-unavailable',
 })
 _SUITE = re.compile(r'suite-[1-9][0-9]*\Z')
+_SCHEDULING_PSI_CODE = '''import json,time
+from pathlib import Path
+result={}
+for name in ('memory','io'):
+ line=next(row for row in Path('/proc/pressure',name).read_text().splitlines()
+           if row.startswith('full '))
+ result[name]=float(next(part.split('=')[1] for part in line.split()
+                         if part.startswith('avg10=')))
+result['hostTimeNs']=time.time_ns()
+print(json.dumps(result,sort_keys=True))'''
 
 
 class Remote:
@@ -420,6 +430,62 @@ def task_qemu_inventory(remote):
     if not isinstance(found, list) or found:
         raise ValueError('pr315-existing-task-qemu-active')
     return found
+
+
+def wait_for_launch_margin(remote, root, suite):
+    """Sample PVE after archive rechecks, immediately before formal admission."""
+    if _SUITE.fullmatch(suite) is None:
+        raise ValueError('pr315-scheduling-suite-invalid')
+    path = Path(root) / 'pre-admission-psi.private.jsonl'
+    consecutive = 0
+    previous = None
+    while consecutive < 3:
+        if previous is not None:
+            time.sleep(max(0, 30 - (time.monotonic() - previous)))
+        value = _json_command(remote, PVE,
+            ['python3', '-c', _SCHEDULING_PSI_CODE], timeout=15)
+        if (not isinstance(value, dict)
+                or set(value) != {'memory', 'io', 'hostTimeNs'}
+                or any(type(value[name]) is not float or
+                       not 0 <= value[name] <= 100 for name in ('memory', 'io'))
+                or type(value['hostTimeNs']) is not int
+                or value['hostTimeNs'] <= 0):
+            raise ValueError('pr315-scheduling-psi-invalid')
+        previous = time.monotonic()
+        consecutive = (consecutive + 1 if value['memory'] <= 2
+                       and value['io'] <= 5 else 0)
+        row = {'suite': suite, 'consecutiveLowSamples': consecutive,
+               'ioFullAvg10Pct': value['io'],
+               'memoryFullAvg10Pct': value['memory'],
+               'hostTimeNs': value['hostTimeNs']}
+        raw = (json.dumps(row, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT |
+                             os.O_NOFOLLOW, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or info.st_nlink != 1 or info.st_mode & 0o077
+                    or info.st_size + len(raw) > 8 * 1024 * 1024
+                    or os.write(descriptor, raw) != len(raw)):
+                raise ValueError('pr315-scheduling-evidence-invalid')
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    return row
+
+
+def prelaunch_admission(remote, root, config, suite, start):
+    """Fresh PSI, QEMU and capacity checks precede one formal PVE decision."""
+    task_qemu_inventory(remote)
+    wait_for_launch_margin(remote, root, suite)
+    task_qemu_inventory(remote)
+    required = required_attempt_bytes(remote, config)
+    capacity = capacity_preflight(remote, config, root, required,
+        start['macAvailableAtStartBytes'])
+    _exclusive_json(root / ('capacity-' + suite + '.private.json'), capacity)
+    ready = admit_and_watch(remote, suite, config['sourceCommit'],
+                            config['sourceSnapshot'])
+    return capacity, ready
 
 
 def run_selected_attempt(remote, config, suite, group_id, *,
@@ -1804,14 +1870,8 @@ def run_campaign(root, source, *, case_group=None):
             ['test', '!', '-e', CT_TASK + '/' + suite], check=False)
         if absent.returncode != 0:
             raise ValueError('pr315-coordinator-unsealed-attempt-reconciliation-required')
-        task_qemu_inventory(remote)
-        required = required_attempt_bytes(remote, config)
-        capacity = capacity_preflight(remote, config, root, required,
-            start['macAvailableAtStartBytes'])
-        _exclusive_json(root / ('capacity-' + suite + '.private.json'),
-                        capacity)
-        ready = admit_and_watch(remote, suite, config['sourceCommit'],
-                                config['sourceSnapshot'])
+        capacity, ready = prelaunch_admission(remote, root, config, suite,
+                                              start)
         if ready.get('admitted') is False:
             archive_pre_admission_failure(remote, root, config,
                                           plan, suite, group_id, capacity,

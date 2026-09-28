@@ -61,6 +61,53 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertFalse(coordinator.retired_preparation_complete({
             **observed, 'assessment': None}))
 
+    def test_launch_margin_resets_on_high_psi_and_retains_actual_samples(self):
+        values = [(4.0, 1.0), (6.0, 0.0), (4.0, 0.0),
+                  (4.0, 1.0), (5.0, 2.0)]
+        remote = SimpleNamespace(call=unittest.mock.Mock(side_effect=[
+            SimpleNamespace(stdout=json.dumps({'io': io, 'memory': memory,
+                'hostTimeNs': index + 1}).encode())
+            for index, (io, memory) in enumerate(values)]))
+        with tempfile.TemporaryDirectory(prefix='pr315-margin-') as temp, \
+                patch.object(coordinator.time, 'sleep') as sleep:
+            selected = coordinator.wait_for_launch_margin(
+                remote, Path(temp), 'suite-201')
+            rows = [json.loads(line) for line in
+                (Path(temp) / 'pre-admission-psi.private.jsonl').read_text().splitlines()]
+        self.assertEqual(3, selected['consecutiveLowSamples'])
+        self.assertEqual([1, 0, 1, 2, 3],
+                         [row['consecutiveLowSamples'] for row in rows])
+        self.assertEqual(4, sleep.call_count)
+        self.assertEqual(5, remote.call.call_count)
+
+    def test_fresh_margin_and_capacity_occur_after_history_before_formal_admission(self):
+        ordered = []
+        def record(name, value=None):
+            ordered.append(name)
+            return value
+        config = {'sourceCommit': 'a' * 40,
+                  'sourceSnapshot': coordinator.CT_TASK +
+                    '/campaign-frozen/source-test'}
+        with patch.object(coordinator, 'task_qemu_inventory',
+                          side_effect=lambda remote: record('inventory')), \
+                patch.object(coordinator, 'wait_for_launch_margin',
+                             side_effect=lambda *args: record('margin')), \
+                patch.object(coordinator, 'required_attempt_bytes',
+                             side_effect=lambda *args: record('required', 100)), \
+                patch.object(coordinator, 'capacity_preflight',
+                             side_effect=lambda *args: record('capacity', {'free': 200})), \
+                patch.object(coordinator, '_exclusive_json',
+                             side_effect=lambda *args: record('persist')), \
+                patch.object(coordinator, 'admit_and_watch',
+                             side_effect=lambda *args: record('formal',
+                                 {'admitted': False})):
+            result = coordinator.prelaunch_admission(object(),
+                Path('/private/campaign'), config, 'suite-201',
+                {'macAvailableAtStartBytes': 1000})
+        self.assertEqual(({'free': 200}, {'admitted': False}), result)
+        self.assertEqual(['inventory', 'margin', 'inventory', 'required',
+                          'capacity', 'persist', 'formal'], ordered)
+
     def test_unknown_or_post_probe_failure_cannot_be_retried(self):
         history = [{'groupId': 'positive', 'status': 'failed'}]
         self.assertEqual('failed',

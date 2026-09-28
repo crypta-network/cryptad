@@ -3688,11 +3688,35 @@ request phase and controller journal before cleanup without changing the
 socket timeout, workload deadline, role limits or acceptance decision. Its
 diagnostic result still requires a new frozen campaign and fresh execution.
 
+At frozen helper `c8e183c2f15a0bcfec21becb76d034e8f0655940`, the v48
+campaign passed the complete eight-case positive group in suite 138 and the
+five-case role/file-boundary group in suite 139. Both attempts retain signed
+case and host cleanup receipts, full Mac staging and verified PVE duplicate
+release. Suite 140 was a sealed PSI admission refusal with no VM. Suite 141
+successfully created and retired a real old authority; its provenance,
+guest stop, Mac archive and signed host cleanup were complete, but that
+preparation claims no case. Suite 142 was a second sealed PSI admission
+refusal with no VM, exhausting the authority group's shared three-attempt
+preparation allowance. The v48 campaign therefore terminated at 13/45;
+the nine authority probes never ran. These records remain immutable.
+
+The private scheduling samples show that the third low-I/O observation
+preceded the formal PVE admission refusal by about 167 seconds in suite 140
+and 192 seconds in suite 142. The host coordinator spent that interval
+rechecking already sealed source and attempt archives, allowing host pressure
+to change. The next prospective coordinator revision waits for three
+30-second-spaced low-pressure samples after those archive rechecks and
+rechecks task QEMU and capacity immediately before the unchanged formal
+admission. Samples are retained privately; waiting creates no guest or
+acceptance case, and a real formal denial still consumes a unique suite and
+the same preparation allowance. This prospective change requires another
+source identity and complete 45-case campaign.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. The terminal `69db1fe0df` campaign has eight sealed positive passes and 13/45 total; the separate terminal `a1132835fb` campaign has zero passed cases after suite 137. Neither result transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `69db1fe0df` campaign stopped at 13/45 after suite 136, and `a1132835fb` stopped at 0/45 after suite 137. KVM diagnostics and results from other source commits do not increase either campaign's credit |
+| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df` and `c8e183c2f1` campaigns each completed 13/45 including all eight positives; `a1132835fb` completed zero cases. None transfers to a new source identity |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The terminal `c8e183c2f1` campaign stopped at 13/45 after two no-VM authority admission refusals exhausted its three preparation slots. KVM diagnostics and other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
