@@ -35,6 +35,30 @@ before deletion, and syncs the request directory. Its policy field is
 at the existing v37 values. This is a prospective fix until the authority
 group has a new real installed result.
 
+Source `16e39a5e28` v54 exercised the new development entry directly.
+Suite 157 completed the real retired authority preparation, archived its
+full guest bytes and obtained signed PVE cleanup, declaring zero cases.
+Suite 158 reached the authority probes and completed guest exit 0 and host
+stop, but its selected group was verification-inconclusive and sealed failed.
+All nine cases remain inconclusive. Captured diagnostics include the Mail
+origin, stale-handle, resolver, runner and forged-identity/counter operations;
+these partial raw observations do not establish a complete authority result.
+
+The stale-instance diagnostic reached `audit` with a `KeyError`. The fixed
+control flow reaches that boundary after the sender restart, new FCP control,
+new observer, old observer rejection and final roster checks. The sender
+unit was still running when the private failure journal was captured, and
+no role HotSpot fatal log was captured. This distinguishes the failure from
+the earlier sender startup failure without establishing a global JVM root
+cause. The first quiescent authority lacks `previousStopGeneration`: the
+production controller adds that link to the new record during its next
+start. The prospective audit projection now retains the required stopped
+epoch and includes the older link only when it actually exists. A regression
+exercises the production stop transition and that absent-first-link shape.
+The missing suite158 audit is not reconstructed or promoted; its failure
+and original disks remain required evidence. A new source-bound development
+context must rerun both authority guests.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

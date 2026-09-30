@@ -1966,6 +1966,18 @@ def _retire_verified_probe_request(selection):
         os.close(directory)
 
 
+def _quiescent_sender_audit(record):
+    """Keep the first stopped epoch without inventing a preceding stop link."""
+    fields = ('generation', 'bootId', 'state', 'managerInvocation',
+              'cgroupIdentity', 'stopReason')
+    value = {key: record[key] for key in fields}
+    # The controller adds this link to the restarted record, after archiving
+    # the first stop. It is absent from that first quiescent record.
+    if 'previousStopGeneration' in record:
+        value['previousStopGeneration'] = record['previousStopGeneration']
+    return value
+
+
 def probe_stale_pid_uid(workload, handoff, result, source_digest,
                         campaign_deadline_ns, phase_state=None):
     """Keep the old observer alive across a real sender manager restart."""
@@ -2116,10 +2128,7 @@ def probe_stale_pid_uid(workload, handoff, result, source_digest,
             'newSenderInvocation': sender_after['managerInvocation'],
             'oldSenderCgroup': sender_before['cgroupIdentity'],
             'newSenderCgroup': sender_after['cgroupIdentity'],
-            'oldQuiescentAuthority': {key: old_quiescent[key]
-                for key in ('generation', 'bootId', 'state',
-                            'managerInvocation', 'cgroupIdentity',
-                            'previousStopGeneration', 'stopReason')},
+            'oldQuiescentAuthority': _quiescent_sender_audit(old_quiescent),
             'oldStopReceipt': old_receipt,
             'oldSenderState': sender_before['stateDigest'],
             'newSenderState': sender_after['stateDigest'],

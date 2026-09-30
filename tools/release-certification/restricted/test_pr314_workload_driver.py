@@ -1642,6 +1642,33 @@ class StalePidProbeRetirementTest(unittest.TestCase):
             self.assertTrue(request_path.exists())
 
 
+class StalePidAuthorityProjectionTest(unittest.TestCase):
+    def test_first_real_stop_shape_has_no_previous_generation_link(self):
+        import restricted_workload as workload
+        import pr315_workload_fault_probes as faults
+        record = {'handle': 'a' * 64, 'generation': 'b' * 64,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'state': 'running', 'managerInvocation': 'c' * 32,
+                  'cgroupIdentity': [1, 99]}
+        state = {'ActiveState': 'inactive'}
+        with patch.object(workload, 'manager', return_value=state), \
+                patch.object(workload, 'terminal_role', return_value={}), \
+                patch.object(workload, 'write'):
+            workload._stop('candidate-sender', record, 'requested')
+        projected = faults._quiescent_sender_audit(record)
+        self.assertEqual('quiescent', projected['state'])
+        self.assertEqual('b' * 64, projected['generation'])
+        self.assertEqual('requested', projected['stopReason'])
+        self.assertNotIn('previousStopGeneration', projected)
+        # A later stop may have a genuine older link, which must be retained.
+        record['previousStopGeneration'] = 'd' * 64
+        self.assertEqual('d' * 64, faults._quiescent_sender_audit(record)[
+            'previousStopGeneration'])
+        del record['managerInvocation']
+        with self.assertRaises(KeyError):
+            faults._quiescent_sender_audit(record)
+
+
 class SenderRestartDiagnosticTest(unittest.TestCase):
     def test_fixed_sender_state_preserves_original_deadline_and_exit_status(self):
         import bounded_process
