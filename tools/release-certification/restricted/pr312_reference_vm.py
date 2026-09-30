@@ -271,6 +271,17 @@ def expected_installation(source, output, commit):
     return expected_bundle, hashlib.sha256(json.dumps(kit, sort_keys=True).encode()).hexdigest()
 
 
+def boot_closure_digest(boot_record):
+    """Identify the exact runtime bytes and fixed machine, independent of a guest run."""
+    import installation
+    closure = {'files': boot_record['files'],
+               'privateInputs': {key: boot_record['bootInputs'][key] for key in
+                   ('seedDigest', 'sshHostKeyPinDigest', 'sshKeyDigest')},
+               'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
+               'accelerator': ACCELERATOR, 'vcpus': 4, 'memoryMiB': 5632}
+    return installation.digest(installation.encode(closure))
+
+
 def verified_attempt_identity(report, attempt, expected_bundle, expected_kit):
     """Pinned SSH transports installed verification; local bytes bind the helper and kit."""
     import installation
@@ -284,15 +295,11 @@ def verified_attempt_identity(report, attempt, expected_bundle, expected_kit):
                 'executionClosureDigest': 'sha256:' + installation.digest(installation.encode(execution['dependencies']))}):
         raise ValueError('installed-identity-substituted')
     boot_record = installation.read_json(attempt / 'boot-inputs.private.json')
-    closure = {'files': boot_record['files'],
-               'privateInputs': {key: boot_record['bootInputs'][key] for key in
-                   ('seedDigest', 'sshHostKeyPinDigest', 'sshKeyDigest')}, 'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
-               'accelerator': ACCELERATOR, 'vcpus': 4, 'memoryMiB': 5632}
     return {key: report[key] for key in ('helperSourceCommit', 'helperSourceTree', 'productSourceCommit',
         'productDigest', 'preparedImageDigest', 'fixtureManifestDigest')} | {
         'bundleIdentity': expected_bundle, 'testKitDigest': expected_kit,
         'profileDigest': installation.digest(installation.encode(execution['dependencies'])),
-        'bootClosureDigest': installation.digest(installation.encode(closure))}
+        'bootClosureDigest': boot_closure_digest(boot_record)}
 
 
 def identity_observations(identity):

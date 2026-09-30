@@ -8,6 +8,7 @@ checks the pinned source and capacity, then verifies and seals the archive.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 from decimal import Decimal, InvalidOperation
@@ -172,6 +173,49 @@ def source_preflight(remote, config):
         raise ValueError('pr315-ct-product-byte-identity-changed')
     remote_runner_prerequisites(remote, config)
     return head, tree, raw
+
+
+_BOOT_MEASUREMENT_CODE = '''import json,sys,tempfile
+from pathlib import Path
+source,qemu,seed,key,pin=map(Path,sys.argv[1:6])
+sys.path.insert(0,str(source/"tools/release-certification/restricted"))
+import pr312_reference_vm as reference
+import pr313_boot_inputs as boot
+with tempfile.TemporaryDirectory(prefix="pr315-boot-measure-",dir="/work/pr315-task") as temporary:
+ output=Path(temporary)
+ executables=reference.snapshot_executables({name:qemu/"usr/bin"/name
+     for name in ("qemu-system-x86_64","qemu-img")},output)
+ boot.snapshot_runtime(qemu,output,executables)
+ boot.record_private_inputs(output,seedDigest=reference.sha256(seed),
+     sshHostKeyPinDigest=reference.sha256(pin),sshKeyDigest=reference.sha256(key))
+ record=json.loads((output/"boot-inputs.private.json").read_bytes())
+ print(json.dumps({"bootClosureDigest":reference.boot_closure_digest(record),
+     "fileCount":len(record["files"])},sort_keys=True))'''
+
+
+def measured_boot_closure(remote, config, *, source_override=None):
+    """Measure copied emulator dependencies and fixed private inputs without a VM."""
+    source = config['sourceSnapshot'] if source_override is None else source_override
+    if source not in (config['sourceSnapshot'], CT_LIVE_SOURCE):
+        raise ValueError('pr315-boot-measurement-source-invalid')
+    measured = _json_command(remote, CT, ['python3', '-c', _BOOT_MEASUREMENT_CODE,
+        source, config['qemuRoot'], config['seed'], config['sshKey'],
+        config['knownHosts']], timeout=180)
+    if (not isinstance(measured, dict)
+            or set(measured) != {'bootClosureDigest', 'fileCount'}
+            or re.fullmatch('[0-9a-f]{64}', str(measured['bootClosureDigest'])) is None
+            or type(measured['fileCount']) is not int
+            or not 1 <= measured['fileCount'] <= 8192):
+        raise ValueError('pr315-boot-measurement-invalid')
+    return measured
+
+
+def boot_preflight(remote, config, plan, *, source_override=None):
+    """Refuse dependency drift before watcher or guest allocation."""
+    measured = measured_boot_closure(remote, config, source_override=source_override)
+    if measured['bootClosureDigest'] != plan['identity']['bootClosureDigest']:
+        raise ValueError('pr315-frozen-boot-closure-changed')
+    return measured
 
 
 _RUNNER_PREREQUISITES_CODE = (
@@ -478,7 +522,7 @@ def wait_for_launch_margin(remote, root, suite):
     return row
 
 
-def prelaunch_admission(remote, root, config, suite, start):
+def prelaunch_admission(remote, root, config, suite, start, *, plan):
     """Fresh PSI, QEMU and capacity checks precede one formal PVE decision."""
     task_qemu_inventory(remote)
     wait_for_launch_margin(remote, root, suite)
@@ -486,6 +530,7 @@ def prelaunch_admission(remote, root, config, suite, start):
     required = required_attempt_bytes(remote, config)
     capacity = capacity_preflight(remote, config, root, required,
         start['macAvailableAtStartBytes'])
+    boot_preflight(remote, config, plan)
     _exclusive_json(root / ('capacity-' + suite + '.private.json'), capacity)
     ready = admit_and_watch(remote, suite, config['sourceCommit'],
                             config['sourceSnapshot'])
@@ -493,11 +538,20 @@ def prelaunch_admission(remote, root, config, suite, start):
 
 
 def run_selected_attempt(remote, config, suite, group_id, *,
-                         retired_prep=False, retired_files=None):
+                         retired_prep=False, retired_files=None, diagnostic_root=None):
     """One CT runner only; the caller separately verifies, archives and seals."""
     command = runner_arguments(config, suite, group_id,
         retired_prep=retired_prep, retired_files=retired_files)
     completed = remote.call(CT, command, timeout=4500, check=False)
+    if diagnostic_root is not None:
+        root = seal._private_directory(Path(diagnostic_root))
+        _exclusive_json(root / (suite + '-ct-outcome.private.json'), {
+            'schemaVersion': 1, 'kind': 'pr315-fixed-ct-runner-outcome',
+            'suite': suite, 'groupId': group_id,
+            'sourceCommit': config['sourceCommit'],
+            'exitCode': completed.returncode,
+            'stdoutBase64': base64.b64encode(completed.stdout).decode('ascii'),
+            'stderrBase64': base64.b64encode(completed.stderr).decode('ascii')})
     if completed.returncode not in (0, 2, 78):
         raise ValueError('pr315-ct-runner-unexpected-exit')
     assessment_path = CT_TASK + '/' + suite + '/assessment.json'
@@ -1576,11 +1630,25 @@ def _archive_retired_preparation(remote, root, config, plan, suite):
 
 
 def _seal_failed_attempt(root, config, plan, suite, group_id,
-                         staging, stage_digest):
+                         staging, stage_digest, *, host_failure=None):
     """Preserve unknown probe phase as failure, never as a setup retry."""
+    if host_failure is not None and (
+            not isinstance(host_failure, dict)
+            or set(host_failure) != {'schemaVersion', 'kind', 'campaignPlanDigest',
+                'attemptId', 'groupId', 'sourceCommit', 'reason', 'ctOutcomeDigest',
+                'installedWorkloadAcceptanceSatisfied'}
+            or host_failure['schemaVersion'] != 1
+            or host_failure['kind'] != 'pr315-trusted-host-assessment-failure'
+            or host_failure['sourceCommit'] != config['sourceCommit']
+            or host_failure['attemptId'] != suite
+            or host_failure['groupId'] != group_id
+            or host_failure['installedWorkloadAcceptanceSatisfied'] is not False
+            or re.fullmatch('[0-9a-f]{64}', str(host_failure['ctOutcomeDigest'])) is None):
+        raise ValueError('pr315-host-failure-premise-invalid')
     manifest = owner._json(staging,
         'full-stage-manifest.private.json', 8 * 1024 * 1024)
-    assessment = owner._json(staging, 'assessment.json')
+    assessment = (owner._json(staging, 'assessment.json')
+                  if host_failure is None else host_failure)
     report = owner._json(staging, 'attempt-01/attempt.private.json')
     if (seal._digest(manifest) != stage_digest
             or report.get('guestStopped') is not True
@@ -1594,8 +1662,9 @@ def _seal_failed_attempt(root, config, plan, suite, group_id,
         diagnostic = None
     phase = explicit_probe_phase(group_id, diagnostic)
     files = manifest['files']
-    assessment_digest = hashlib.sha256(owner._read(
-        staging, 'assessment.json')).hexdigest()
+    assessment_digest = (hashlib.sha256(owner._read(
+        staging, 'assessment.json')).hexdigest() if host_failure is None
+        else seal._digest(host_failure))
     return seal.append_verified_attempt(root, plan,
         pinned_source_commit=config['sourceCommit'],
         pinned_fingerprint=config['hostKeyFingerprint'],
@@ -1996,7 +2065,7 @@ def run_campaign(root, source, *, case_group=None, development_group=None):
         if absent.returncode != 0:
             raise ValueError('pr315-coordinator-unsealed-attempt-reconciliation-required')
         capacity, ready = prelaunch_admission(remote, root, config, suite,
-                                              start)
+                                              start, plan=plan)
         if ready.get('admitted') is False:
             archive_pre_admission_failure(remote, root, config,
                                           plan, suite, group_id, capacity,
@@ -2013,10 +2082,34 @@ def run_campaign(root, source, *, case_group=None, development_group=None):
                     root / (seal.KEY_NAME + '.pub')),
                     retired_files, (True, True, False)):
                 _put_frozen_input(remote, local, target, private=private)
-        execution = run_selected_attempt(remote, config, suite, group_id,
-            retired_prep=(selected['action'] ==
-                          'retired-authority-preparation'),
-            retired_files=retired_files)
+        try:
+            execution = run_selected_attempt(remote, config, suite, group_id,
+                retired_prep=(selected['action'] ==
+                              'retired-authority-preparation'),
+                retired_files=retired_files, diagnostic_root=root)
+        except (OSError, ValueError, KeyError, TypeError,
+                subprocess.SubprocessError) as error:
+            # A missing assessment is a failed attempt, not permission to retry.
+            # Do not claim stopped ownership if the authenticated watcher or
+            # fresh host stop observation cannot establish it.
+            terminal = finished_watcher(remote, config, suite, ready)
+            staging, stage_digest = stage_full_attempt(remote, config, suite,
+                root, pressure_action=(terminal['action']
+                    if terminal['action'] in PRESSURE_WATCH_ACTIONS else None))
+            outcome = owner._read(root, suite + '-ct-outcome.private.json', 98304)
+            detail = str(error)
+            reason = detail if re.fullmatch(r'pr315-[a-z0-9-]{1,126}', detail) else type(error).__name__
+            failure = {'schemaVersion': 1,
+                'kind': 'pr315-trusted-host-assessment-failure',
+                'campaignPlanDigest': plan['planDigest'],
+                'attemptId': suite, 'groupId': group_id,
+                'sourceCommit': config['sourceCommit'], 'reason': reason,
+                'ctOutcomeDigest': hashlib.sha256(outcome).hexdigest(),
+                'installedWorkloadAcceptanceSatisfied': False}
+            _exclusive_json(root / (suite + '-host-failure.private.json'), failure)
+            _seal_failed_attempt(root, config, plan, suite, group_id,
+                staging, stage_digest, host_failure=failure)
+            return recover(root, source, **pin)
         if execution['assessment'].get('status') == 'setup-blocked':
             stop_unlaunched_watcher(remote, config, suite, ready)
             archive_unlaunched_setup_failure(remote, root, config, plan,
@@ -2107,6 +2200,8 @@ def main(argv=None):
                 required += source_snapshot_reservation_bytes(remote)
             capacity_preflight(remote, config, root, required,
                 start['macAvailableAtStartBytes'])
+            boot_preflight(remote, config, plan,
+                source_override=CT_LIVE_SOURCE if exists.returncode == 1 else None)
             prepare_source_snapshot(remote, config, capacity_checked=True)
             published = publish_frozen_campaign(remote, root, config)
             print(json.dumps({'schemaVersion': 2,
@@ -2122,6 +2217,7 @@ def main(argv=None):
             required = required_attempt_bytes(remote, config)
             capacity_preflight(remote, config, root, required,
                 start['macAvailableAtStartBytes'])
+            boot_preflight(remote, config, plan)
             print(json.dumps({'schemaVersion': 2,
                 'status': 'prerequisites-present-not-executed',
                 'campaignPlanDigest': plan['planDigest'],

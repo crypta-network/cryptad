@@ -59,6 +59,37 @@ The missing suite158 audit is not reconstructed or promoted; its failure
 and original disks remain required evidence. A new source-bound development
 context must rerun both authority guests.
 
+On source `c9c81b1b88`, suite 159 again completed real retired preparation
+with full Mac preservation and signed PVE cleanup. Suite 160 exited its guest
+with code 0 and captured the stale-instance audit, including the fixed first
+quiescent record projection. Its root diagnostics also captured the origin
+and old-handle operations. This is emitter progress, not a passed group.
+The host runner stopped while normalizing the first observer-control v10
+record; no `assessment.json` was published. The coordinator reported
+`pr315-ct-assessment-unavailable`. Complete guest/backing/source bytes,
+original observations, watcher and fresh host stop evidence were preserved;
+a host-signed failure receipt declares probe-started with zero accepted cases.
+
+A read-only reproduction on the frozen source identifies the exact rejected
+identity: both suite159 and suite160 measured boot closure `f79ea84b5f19`,
+while their frozen plan incorrectly retained historical `513712e35a9e`.
+Comparing all 204 boot files against suite153 finds only
+`boot-runtime/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0` changed; seed and both
+SSH input digests are unchanged. No claim about a JVM root cause follows
+from that dependency change. The v10 equality check remains strict. These
+historical results cannot be relabelled under a corrected plan.
+
+Prospective preparation and per-attempt admission now independently measure
+the complete copied emulator/firmware/dependency closure and the three fixed
+private inputs without allocating a VM. The same canonical closure function
+is used by the post-run installed identity verifier. A mismatch rejects
+before watcher/guest allocation. The next campaign must pin its freshly
+measured runtime identity, keep all other selected constraints, and rerun all
+installed cases. Runner stdout and stderr are retained privately before
+reading its assessment; missing or malformed assessments preserve the real
+stopped attempt and produce a failed host receipt. Neither a missing file nor
+an imported JSON assessment can authorize preparation retry or acceptance.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

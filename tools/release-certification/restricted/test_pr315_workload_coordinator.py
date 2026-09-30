@@ -142,6 +142,8 @@ class CoordinatorSelectionTest(unittest.TestCase):
                              side_effect=lambda *args: record('required', 100)), \
                 patch.object(coordinator, 'capacity_preflight',
                              side_effect=lambda *args: record('capacity', {'free': 200})), \
+                patch.object(coordinator, 'boot_preflight',
+                             side_effect=lambda *args: record('boot')), \
                 patch.object(coordinator, '_exclusive_json',
                              side_effect=lambda *args: record('persist')), \
                 patch.object(coordinator, 'admit_and_watch',
@@ -149,10 +151,45 @@ class CoordinatorSelectionTest(unittest.TestCase):
                                  {'admitted': False})):
             result = coordinator.prelaunch_admission(object(),
                 Path('/private/campaign'), config, 'suite-201',
-                {'macAvailableAtStartBytes': 1000})
+                {'macAvailableAtStartBytes': 1000}, plan={'identity': {}})
         self.assertEqual(({'free': 200}, {'admitted': False}), result)
         self.assertEqual(['inventory', 'margin', 'inventory', 'required',
-                          'capacity', 'persist', 'formal'], ordered)
+                          'capacity', 'boot', 'persist', 'formal'], ordered)
+
+    def test_boot_dependency_drift_refuses_admission_before_watcher(self):
+        with patch.object(coordinator, 'task_qemu_inventory'), \
+                patch.object(coordinator, 'wait_for_launch_margin'), \
+                patch.object(coordinator, 'required_attempt_bytes', return_value=100), \
+                patch.object(coordinator, 'capacity_preflight', return_value={}), \
+                patch.object(coordinator, 'measured_boot_closure', return_value={
+                    'bootClosureDigest': 'b' * 64, 'fileCount': 204}), \
+                patch.object(coordinator, 'admit_and_watch') as admit, \
+                patch.object(coordinator, '_exclusive_json') as publish:
+            with self.assertRaisesRegex(ValueError, 'frozen-boot-closure-changed'):
+                coordinator.prelaunch_admission(object(), Path('/private'), {},
+                    'suite-201', {'macAvailableAtStartBytes': 1000},
+                    plan={'identity': {'bootClosureDigest': 'a' * 64}})
+            admit.assert_not_called()
+            publish.assert_not_called()
+
+    def test_runner_streams_survive_missing_assessment_before_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); root.chmod(0o700)
+            config = {'sourceCommit': 'a' * 40}
+            remote = SimpleNamespace(call=unittest.mock.Mock(side_effect=[
+                SimpleNamespace(returncode=2, stdout=b'bounded-failure', stderr=b'diagnostic'),
+                SimpleNamespace(returncode=1, stdout=b'', stderr=b'')]))
+            with patch.object(coordinator, 'runner_arguments', return_value=['fixed']), \
+                    self.assertRaisesRegex(ValueError, 'ct-assessment-unavailable'):
+                coordinator.run_selected_attempt(remote, config, 'suite-201',
+                    'authority', diagnostic_root=root)
+            value = json.loads((root / 'suite-201-ct-outcome.private.json').read_bytes())
+            self.assertEqual('a' * 40, value['sourceCommit'])
+            self.assertEqual(2, value['exitCode'])
+            import base64
+            self.assertEqual(b'bounded-failure', base64.b64decode(value['stdoutBase64']))
+            self.assertEqual(b'diagnostic', base64.b64decode(value['stderrBase64']))
+            self.assertNotIn('passed', value)
 
     def test_unknown_or_post_probe_failure_cannot_be_retried(self):
         history = [{'groupId': 'positive', 'status': 'failed'}]
@@ -339,6 +376,40 @@ class CoordinatorSelectionTest(unittest.TestCase):
         failed.assert_called_once_with(Path('/private'), config, plan,
             'suite-201', 'positive', '/stage', 'd' * 64)
         completed.assert_not_called()
+
+    def test_missing_assessment_archives_real_stopped_attempt_and_seals_failure(self):
+        import pr315_case_registry as registry
+        plan = {'hostKeyFingerprint': 'b' * 64, 'planDigest': 'c' * 64}
+        config = {'sourceCommit': 'a' * 40, 'hostKeyFingerprint': 'b' * 64}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=0)))
+        verdict = {'installedWorkloadAcceptanceSatisfied': False}
+        with patch.object(coordinator, 'frozen_campaign_context', return_value=(
+                Path('/private'), Path('/source'), plan,
+                {'firstSuiteNumber': 201}, config)), \
+                patch.object(registry, 'implementation_coverage', return_value='complete'), \
+                patch.object(coordinator, 'Remote', return_value=remote), \
+                patch.object(coordinator, 'source_preflight'), \
+                patch.object(coordinator, 'publish_frozen_campaign'), \
+                patch.object(coordinator.owner, 'recovered_campaign_verdict', return_value=verdict), \
+                patch.object(coordinator.seal, 'load_verified_history', return_value=[]), \
+                patch.object(coordinator, 'prelaunch_admission', return_value=({}, {'admitted': True})), \
+                patch.object(coordinator, 'run_selected_attempt', side_effect=ValueError(
+                    'pr315-ct-assessment-unavailable')), \
+                patch.object(coordinator, 'finished_watcher', return_value={'action': 'completed'}), \
+                patch.object(coordinator, 'stage_full_attempt', return_value=('/stage', 'd' * 64)) as stage, \
+                patch.object(coordinator.owner, '_read', return_value=b'real-outcome'), \
+                patch.object(coordinator, '_exclusive_json'), \
+                patch.object(coordinator, '_seal_failed_attempt') as failed, \
+                patch.object(coordinator, '_archive_case_group') as passed:
+            self.assertEqual(verdict, coordinator.run_campaign('/private', '/source'))
+        stage.assert_called_once_with(remote, config, 'suite-201', Path('/private'),
+                                      pressure_action=None)
+        self.assertEqual('pr315-ct-assessment-unavailable',
+                         failed.call_args.kwargs['host_failure']['reason'])
+        self.assertFalse(failed.call_args.kwargs['host_failure'][
+            'installedWorkloadAcceptanceSatisfied'])
+        passed.assert_not_called()
 
     def test_default_full_run_rejects_incomplete_emitters_before_remote_access(self):
         import pr315_case_registry as registry

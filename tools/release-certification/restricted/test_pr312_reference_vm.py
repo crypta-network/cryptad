@@ -11,6 +11,18 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_boot_closure_includes_emulator_dependency_and_private_inputs(self):
+        record = {'files': {'boot-runtime/libpcre2-8.so.0': 'a' * 64},
+                  'bootInputs': {'seedDigest': 'b' * 64,
+                    'sshHostKeyPinDigest': 'c' * 64, 'sshKeyDigest': 'd' * 64}}
+        original = driver.boot_closure_digest(record)
+        for changed in (
+                {**record, 'files': {'boot-runtime/libpcre2-8.so.0': 'e' * 64}},
+                {**record, 'bootInputs': {**record['bootInputs'], 'sshKeyDigest': 'e' * 64}}):
+            self.assertNotEqual(original, driver.boot_closure_digest(changed))
+        with self.assertRaises(KeyError):
+            driver.boot_closure_digest({'files': record['files'], 'bootInputs': {}})
+
     def test_fixed_workload_command_preserves_measurement_selection(self):
         import shlex
         base = ['sudo', '/usr/bin/python3',
