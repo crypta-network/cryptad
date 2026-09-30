@@ -561,6 +561,25 @@ def verify_completed_cleanup_receipts(root, source, campaign, receipt):
 def recovered_campaign_verdict(root, source, *, expected_plan_digest,
                                expected_key_fingerprint):
     """Recover only fully signed and byte-reverified installed group receipts."""
+    return _recovered_verdict(root, source,
+        expected_plan_digest=expected_plan_digest,
+        expected_key_fingerprint=expected_key_fingerprint)
+
+
+def recovered_development_verdict(root, source, *, development_group,
+                                  expected_plan_digest, expected_key_fingerprint):
+    """Revalidate one sealed development group without granting full acceptance."""
+    if development_group not in dict(groups.GROUPS):
+        raise ValueError('pr315-development-group-invalid')
+    return _recovered_verdict(root, source,
+        expected_plan_digest=expected_plan_digest,
+        expected_key_fingerprint=expected_key_fingerprint,
+        development_group=development_group)
+
+
+def _recovered_verdict(root, source, *, expected_plan_digest,
+                       expected_key_fingerprint, development_group=None):
+    """Share archive verification while keeping formal and development pins distinct."""
     root = seal._private_directory(root)
     source = Path(source)
     campaign = _json(root, 'campaign-plan.private.json', 16384)
@@ -574,8 +593,10 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
         '--porcelain', '--untracked-files=normal'], check=True,
         capture_output=True, timeout=10).stdout
     if (dirty or startup.get('schemaVersion') != 1
-            or startup.get('kind') != 'pr315-frozen-campaign-start-v1'
-            or startup.get('groupCount') != 21
+            or startup.get('kind') != (seal.DEVELOPMENT_START_KIND
+                if development_group is not None else seal.START_KIND)
+            or startup.get('groupCount') != (1 if development_group is not None else 21)
+            or startup.get('developmentGroup') != development_group
             or startup.get('planDigest') != expected_plan_digest
             or startup.get('sourceCommit') != commit
             or startup.get('sourceTree') != tree
@@ -598,18 +619,24 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
         raise ValueError('pr315-owner-frozen-source-or-startup-pin-changed')
     seal._check_plan(campaign, commit, expected_key_fingerprint)
     envelope = _json(root, 'start-seal.private.json', 8192)
-    if seal.verify_start(root, campaign, envelope) != startup:
+    if seal.verify_start(root, campaign, envelope,
+                         development_group=development_group) != startup:
         raise ValueError('pr315-owner-frozen-start-signature-changed')
     history = seal.load_verified_history(root, campaign,
         pinned_source_commit=commit,
         pinned_fingerprint=expected_key_fingerprint)
     by_group = {name: [] for name, _ in groups.GROUPS}
     for receipt in history:
+        if (development_group is not None
+                and receipt['groupId'] != development_group):
+            raise ValueError('pr315-development-history-group-changed')
         by_group[receipt['groupId']].append(receipt)
     selected = {}
     statuses = {}
     blockers = []
     for group_id, owned in groups.GROUPS:
+        if development_group is not None and group_id != development_group:
+            continue
         attempts = by_group[group_id]
         if not attempts or len(attempts) > 3:
             blockers.append(group_id + ':missing-or-excess-attempts')
@@ -645,7 +672,7 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
     accepted = complete and coverage == 'complete'
     if coverage != 'complete':
         blockers.append('emitter-registry-incomplete')
-    return {'schemaVersion': 2, 'kind': 'pr315-workload-suite',
+    result = {'schemaVersion': 2, 'kind': 'pr315-workload-suite',
         'contract': seal.CONTRACT,
         'campaignPlanDigest': campaign['planDigest'],
         'campaignNonce': campaign['campaignNonce'],
@@ -660,3 +687,13 @@ def recovered_campaign_verdict(root, source, *, expected_plan_digest,
         'status': 'installed-accepted' if accepted else 'incomplete',
         'reasons': blockers,
         'cases': acceptance.inventory(statuses)}
+    if development_group is not None:
+        terminal_failure = any(row['status'] == 'failed' for row in history)
+        result.update(kind='pr315-development-group-result-v1',
+            developmentGroup=development_group,
+            groupSatisfied=development_group in selected and not blockers,
+            installedWorkloadAcceptanceSatisfied=False,
+            status=('development-group-failed' if terminal_failure else
+                    'development-group-passed' if development_group in selected
+                    and not blockers else 'development-group-incomplete'))
+    return result

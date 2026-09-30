@@ -28,6 +28,8 @@ RECEIPT = 'pr315-host-attempt-receipt-v2'
 SIGNATURE_DOMAIN = 'pr315-campaign-v2'
 START_DOMAIN = 'pr315-campaign-start-v1'
 START_KIND = 'pr315-frozen-campaign-start-v1'
+DEVELOPMENT_START_DOMAIN = 'pr315-development-start-v1'
+DEVELOPMENT_START_KIND = 'pr315-development-start-v1'
 CLEANUP_DOMAIN = 'pr315-host-success-cleanup-v1'
 CLEANUP_KIND = 'pr315-host-success-cleanup-receipt-v1'
 AUTHORITY_HANDOFF = 'pr315-retired-authority-handoff-v1'
@@ -264,7 +266,7 @@ def verify(root, campaign, envelope, *, pinned_source_commit, pinned_fingerprint
 
 def frozen_start(campaign, source_tree, tracked_byte_digest,
                  remote_known_hosts_digest, first_suite_number,
-                 mac_available_at_start_bytes):
+                 mac_available_at_start_bytes, *, development_group=None):
     """Pin the host-owned campaign launch before allocating any guest."""
     if (not isinstance(campaign, dict) or campaign.get('kind') != CAMPAIGN
             or _HEX40.fullmatch(str(source_tree)) is None
@@ -276,7 +278,10 @@ def frozen_start(campaign, source_tree, tracked_byte_digest,
             or type(mac_available_at_start_bytes) is not int
             or mac_available_at_start_bytes < 224 * 1024**3):
         raise ValueError('pr315-campaign-start-input-invalid')
-    return {'schemaVersion': 1, 'kind': START_KIND,
+    if (development_group is not None
+            and development_group not in dict(historical.GROUPS)):
+        raise ValueError('pr315-development-group-invalid')
+    result = {'schemaVersion': 1, 'kind': START_KIND,
         'planDigest': campaign['planDigest'],
         'sourceCommit': campaign['identity']['helperSourceCommit'],
         'sourceTree': source_tree,
@@ -289,15 +294,20 @@ def frozen_start(campaign, source_tree, tracked_byte_digest,
         'groupCount': len(historical.GROUPS),
         'firstSuiteNumber': first_suite_number,
         'macAvailableAtStartBytes': mac_available_at_start_bytes}
+    if development_group is not None:
+        result.update(kind=DEVELOPMENT_START_KIND, groupCount=1,
+                      developmentGroup=development_group)
+    return result
 
 
-def _verified_start_shape(campaign, value):
+def _verified_start_shape(campaign, value, *, development_group=None):
     if not isinstance(value, dict):
         raise ValueError('pr315-campaign-start-invalid')
     try:
         expected = frozen_start(campaign, value['sourceTree'],
             value['trackedByteDigest'], value['remoteKnownHostsDigest'],
-            value['firstSuiteNumber'], value['macAvailableAtStartBytes'])
+            value['firstSuiteNumber'], value['macAvailableAtStartBytes'],
+            development_group=development_group)
     except KeyError as error:
         raise ValueError('pr315-campaign-start-invalid') from error
     if value != expected:
@@ -305,12 +315,12 @@ def _verified_start_shape(campaign, value):
     return value
 
 
-def sign_start(root, campaign, start):
+def sign_start(root, campaign, start, *, development_group=None):
     """Seal the frozen launch identity using the Mac-only campaign key."""
     root = _private_directory(root)
     _check_plan(campaign, campaign['identity']['helperSourceCommit'],
                 campaign['hostKeyFingerprint'])
-    _verified_start_shape(campaign, start)
+    _verified_start_shape(campaign, start, development_group=development_group)
     key = root / KEY_NAME
     info = key.lstat()
     public = _public_key((root / (KEY_NAME + '.pub')).read_bytes())
@@ -320,7 +330,8 @@ def sign_start(root, campaign, start):
                 campaign['hostKeyFingerprint']):
         raise ValueError('pr315-campaign-start-key-invalid')
     signed = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign',
-        '-f', str(key), '-n', START_DOMAIN], input=_canonical(start),
+        '-f', str(key), '-n', DEVELOPMENT_START_DOMAIN
+        if development_group is not None else START_DOMAIN], input=_canonical(start),
         capture_output=True, timeout=15, check=True)
     signature = signed.stdout.decode('ascii')
     if (not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')
@@ -328,11 +339,11 @@ def sign_start(root, campaign, start):
             or len(signature) > 4096):
         raise ValueError('pr315-campaign-start-signature-invalid')
     envelope = {'start': start, 'signature': signature}
-    verify_start(root, campaign, envelope)
+    verify_start(root, campaign, envelope, development_group=development_group)
     return envelope
 
 
-def verify_start(root, campaign, envelope):
+def verify_start(root, campaign, envelope, *, development_group=None):
     """Authenticate frozen start bytes before resume or resource allocation."""
     root = _private_directory(root)
     _check_plan(campaign, campaign['identity']['helperSourceCommit'],
@@ -340,7 +351,8 @@ def verify_start(root, campaign, envelope):
     if (not isinstance(envelope, dict)
             or set(envelope) != {'start', 'signature'}):
         raise ValueError('pr315-campaign-start-envelope-invalid')
-    start = _verified_start_shape(campaign, envelope['start'])
+    start = _verified_start_shape(campaign, envelope['start'],
+                                  development_group=development_group)
     signature = envelope['signature']
     public = _public_key((root / (KEY_NAME + '.pub')).read_bytes())
     if (not isinstance(signature, str) or len(signature) > 4096
@@ -355,7 +367,8 @@ def verify_start(root, campaign, envelope):
         allowed.write_bytes(b'pr315-campaign ' + public + b'\n')
         sig.write_text(signature, encoding='ascii')
         checked = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'verify',
-            '-f', str(allowed), '-I', 'pr315-campaign', '-n', START_DOMAIN,
+            '-f', str(allowed), '-I', 'pr315-campaign', '-n',
+            DEVELOPMENT_START_DOMAIN if development_group is not None else START_DOMAIN,
             '-s', str(sig)], input=_canonical(start), capture_output=True,
             timeout=15)
     if checked.returncode:

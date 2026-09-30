@@ -2,26 +2,61 @@
 
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
-**The current source has a prospective 45/45 emitter and validator registry,
-but no complete installed 45-case campaign.** The best historical formal TCG
-result remains 22/45 at `7db8122b` suite 108. Later development suite 120
-passed eight positive v10 cases on `a06d14dc21`; suite 121 on `ca15f28261`
-failed during Mail preparation before its selected network/AppHost probes.
-The frozen `d94b3bc9cc` campaign prepared its inputs, but suite 122 rejected
-the wrong local SSH host-key port before allocating a guest. It passed no case.
-The later `56895ba45` v40 campaign prepared correctly, but its first TCG
-positive guest, suite 124, failed sender readiness before any positive case.
-The separate v35 diagnostics reached four-role readiness once on TCG and once
-on KVM; another TCG run failed after a relay JVM C1 `SIGILL`. None earns a case.
-The later v36 TCG diagnostics 127–128 both reached four-role FCP readiness
-without a captured HotSpot fatal, but declared no workload case. Its formal
-positive suite 129 later failed before any case record. These results
-cannot be pooled with another commit or counted as final-source
-acceptance. The v37 suite 130 sealed eight positive case results, but its
-post-run PVE copy-release receipt did not finish within the old host wait.
-Suite 131 on the next helper source passed all eight positives with a signed
-cleanup receipt; suite 132 then stopped before a VM on a measured PVE PSI
-admission denial. Neither source has a complete 45-case result.
+**There is no complete installed 45-case campaign.** The best historical formal TCG
+result remains 22/45 at `7db8122b` suite 108. The latest frozen source,
+`bd51eea94f`, passed eight positives in suite 153 and five role/file cases in
+suite 154, with sealed host cleanup. Suite 155 completed and retired the
+extra authority preparation guest. Suite 156 began the formal authority
+probes but produced nine inconclusive results; its campaign is sealed failed
+at 13/45. These results cannot transfer to the next source revision.
+
+## Cutoff after suite 156 and development group preparation
+
+Suite 156's guest and watcher completed, and its full 12,697-file failed
+attempt was archived and checksum verified on the Mac and private external
+archive. It is not a successful authority group. Its private diagnostics
+show a Mail control `KeyError` and a stale-instance failure during the
+restarted sender's FCP readiness. The stopped guest's system journal records
+the new sender exiting with status 1 before readiness; no new JVM output was
+available for that short invocation. This does not establish a new JVM
+crash or resolve the historical TCG C1 failures.
+
+The Worker binding producer returns process and invocation fields, without
+a `cgroupIdentity` field. Both Mail and sibling-App control consumers now
+compare that actual binding shape and obtain cgroup continuity from separate
+administrator observations. The stale-instance test pins the root-owned
+probe request and the live role-owned ready record, stops the old role,
+verifies its stop receipt and retires only that exact request before starting
+the new daemon. Replaying the old request would rerun the exclusive probe
+publisher against preserved tmpfs output. The new path uses the bounded
+role-file reader, checks request inode, owner, permissions, links and bytes
+before deletion, and syncs the request directory. Its policy field is
+`fixed-sender-restart-retired-probe-request-v2`; wrapper and role limits stay
+at the existing v37 values. This is a prospective fix until the authority
+group has a new real installed result.
+
+The coordinator now supports `--development-group` with the existing closed
+group names. Initialization pins one group in `pr315-development-start-v1`,
+with its own signature domain, private key, nonce, ledger and archive root.
+The normal 21-group campaign and `--case-group` keep their formal meanings.
+Development runs share transport, admission, watcher, archive verification
+and cleanup, including the authority group's shared three-attempt allowance
+for its retired and successor guests. Recovery rejects a changed group or
+foreign-group history. Formal recovery rejects development starts, and a
+complete development group always reports
+`installedWorkloadAcceptanceSatisfied=false`. Successful partial execution
+returns 78; a sealed development probe failure returns 2. `--probe` remains
+unexecuted and returns 78 without allocating a VM.
+
+Next run authority directly, then network/AppHost, independent output and
+resource groups, and the lifecycle groups. Development results verify the
+drivers; the final source still requires new source gates and all 45 cases in
+one newly frozen formal campaign. PR-313 and production authorization remain
+independent. Keep the bd51 failure and its raw observations; release only
+verified remote duplicates and reconstructible diagnostic scratch. Reports
+after a final freeze must identify the accepted commit without modifying its
+tracked source.
+
 The following attempt narrative is chronological; descriptions of
 what was “current” or “remaining” within an earlier attempt refer to that
 historical checkpoint. The current cutoff and remaining gates are recorded

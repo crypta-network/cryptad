@@ -71,6 +71,26 @@ class CampaignSealTest(unittest.TestCase):
             seal.frozen_start(self.plan, SOURCE, 'e' * 64,
                 'f' * 64, 201, 223 * 1024**3)
 
+    def test_development_start_binds_group_and_cannot_enter_formal_domain(self):
+        start = seal.frozen_start(self.plan, SOURCE, 'e' * 64,
+            'f' * 64, 201, 225 * 1024**3, development_group='authority')
+        signed = seal.sign_start(self.root, self.plan, start,
+                                  development_group='authority')
+        self.assertEqual(start, seal.verify_start(self.root, self.plan, signed,
+                                                  development_group='authority'))
+        for group in (None, 'network-apphost'):
+            with self.subTest(group=group), self.assertRaises(ValueError):
+                seal.verify_start(self.root, self.plan, signed, development_group=group)
+        mutated = copy.deepcopy(signed)
+        mutated['start'].pop('developmentGroup')
+        mutated['start'].update(kind=seal.START_KIND, groupCount=21)
+        with self.assertRaisesRegex(ValueError, 'signature-mismatch'):
+            seal.verify_start(self.root, self.plan, mutated)
+        formal = seal.frozen_start(self.plan, SOURCE, 'e' * 64,
+            'f' * 64, 201, 225 * 1024**3)
+        with self.assertRaises(ValueError):
+            seal.sign_start(self.root, self.plan, formal, development_group='authority')
+
     def test_cleanup_seal_binds_signed_attempt_and_pve_completion(self):
         attempt = self.receipt()
         cleanup = seal.cleanup_receipt(self.plan, attempt,

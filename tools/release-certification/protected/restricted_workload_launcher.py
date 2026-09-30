@@ -47,7 +47,7 @@ def launcher_policy():
             'stuckOutputProbe': 'fixed-role-fifo-held-writer-bounded-collector-v1',
             'lateChildProbe': 'fixed-role-child-after-root-stop-intent-v1',
             'retiredAuthorityProbe': 'sealed-stopped-guest-observer-good-bad-good-v1',
-            'stalePidUidProbe': 'fixed-sender-restart-two-observer-epochs-v1',
+            'stalePidUidProbe': 'fixed-sender-restart-retired-probe-request-v2',
             'cleanupRaceProbe': 'fixed-manager-replacement-stop-barrier-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',

@@ -1412,7 +1412,9 @@ class HostileOriginValidationTest(unittest.TestCase):
                   'hostPid': 211, 'namespacePid': 3, 'startTicks': 42,
                   'javaHostPid': 212, 'javaStartTicks': 43,
                   'managerInvocation': 'a' * 32}
-        bound = dict(worker, cgroupIdentity=[1, 99])
+        # bind_worker() projects process and invocation identity from the
+        # controller sample; the cgroup belongs to the outer observation.
+        bound = dict(worker)
         observed = {'managerInvocation': 'a' * 32,
                     'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                     'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64,
@@ -1460,11 +1462,15 @@ class HostileOriginValidationTest(unittest.TestCase):
         observed = {'managerInvocation': 'a' * 32,
                     'bootId': worker['bootId'], 'cgroupIdentity': [1, 99],
                     'stateDigest': 'd' * 64, 'observedMonotonicNs': 10}
-        workload = SimpleNamespace(observe=Mock(return_value=observed))
+        workload = SimpleNamespace(observe=Mock(side_effect=[observed,
+            dict(observed, cgroupIdentity=[1, 100], observedMonotonicNs=20)]),
+            connect=Mock(return_value=nullcontext(SimpleNamespace())))
         handoff = {'handles': {'candidate-sender': worker['handle']},
                    'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
-        with patch('cross_version_workload.bind_worker',
-                   return_value=dict(worker, cgroupIdentity=[1, 100])), \
+        with patch('cross_version_workload.bind_worker', return_value=worker), \
+                patch('restricted_workload_controller._http', return_value=(
+                    200, {}, b'{"status":{"appId":"mail-prototype",'
+                              b'"storeAvailable":true}}')), \
                 self.assertRaisesRegex(ValueError, 'app-worker-changed'):
             driver._mail_browser_control(workload, handoff,
                 'private-session', 'http://127.0.0.1:12345', worker)
@@ -1532,6 +1538,131 @@ class HostileOriginValidationTest(unittest.TestCase):
             driver._verify_hostile_origin_handoff(
                 injected, 'authority', sampler, {})
         self.assertNotIn('hostileOriginSecret', injected)
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                     'requires isolated Linux root-owned probe files')
+class StalePidProbeRetirementTest(unittest.TestCase):
+    def _fixture(self, root):
+        root = Path(root)
+        request_path = root / 'probe-requests/candidate-sender.json'
+        ready_path = root / 'state/candidate-sender/tmp/pr315-authority-ready.json'
+        launch_path = root / 'roles/candidate-sender/launch.json'
+        source_path = root / 'probe-source/pr315_role_probe.py'
+        for path in (request_path, ready_path, launch_path, source_path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(b'# fixed candidate probe\n')
+        source_path.chmod(0o444)
+        digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        java = 'sha256:' + 'b' * 64
+        nonce = 'c' * 64
+        request = {'schemaVersion': 1, 'caseId': 'authority',
+                   'nonce': nonce, 'bootId': boot, 'javaDigest': java,
+                   'sourceDigest': digest}
+        request_path.write_text(json.dumps(request))
+        request_path.chmod(0o444)
+        ready_path.write_text(json.dumps({'schemaVersion': 1,
+            'kind': 'pr315-candidate-role-probe-ready',
+            'caseId': 'authority', 'nonce': nonce, 'pid': 37,
+            'startedMonotonicNs': 100}))
+        ready_path.chmod(0o600)
+        os.chown(ready_path, 65534, 65534)
+        launch_path.write_text(json.dumps({'javaDigest': java}))
+        workload = SimpleNamespace(ROOT=root, boot=lambda: boot,
+            account=lambda role: SimpleNamespace(pw_uid=65534),
+            read=lambda path: json.loads(path.read_text()))
+        return request_path, ready_path, source_path, request, workload, digest
+
+    def test_stopped_role_retires_only_bound_request_before_same_sender_restart(self):
+        import pr315_workload_fault_probes as faults
+        import restricted_workload_launcher as launcher
+        with tempfile.TemporaryDirectory(prefix='pr315-stale-pid-') as temp:
+            request_path, _ready, source, request, workload, digest = self._fixture(temp)
+            observation = {'observedMonotonicNs': 200}
+            spec = {'bootId': request['bootId'], 'javaDigest': request['javaDigest']}
+            with patch.object(launcher, 'PROBE_REQUEST', request_path), \
+                    patch.object(launcher, 'PROBE_SOURCE', source), \
+                    patch.object(faults, '_role_probe_actor',
+                                 return_value={'namespacePids': [100, 37]}):
+                self.assertEqual(request, launcher._trusted_probe_request(spec))
+                selected = faults._authority_probe_request_for_restart(
+                    workload, observation, digest)
+                faults._retire_verified_probe_request(selected)
+                self.assertIsNone(launcher._trusted_probe_request(spec))
+            self.assertFalse(request_path.exists())
+
+    def test_mismatched_live_probe_cannot_retire_request(self):
+        import pr315_workload_fault_probes as faults
+        with tempfile.TemporaryDirectory(prefix='pr315-stale-pid-') as temp:
+            request_path, ready_path, _source, request, workload, digest = self._fixture(temp)
+            ready = json.loads(ready_path.read_text())
+            ready['nonce'] = 'd' * 64
+            ready_path.write_text(json.dumps(ready))
+            with patch.object(faults, '_role_probe_actor',
+                              return_value={'namespacePids': [100, 37]}), \
+                    self.assertRaisesRegex(ValueError, 'probe-request-invalid'):
+                faults._authority_probe_request_for_restart(
+                    workload, {'observedMonotonicNs': 200}, digest)
+            self.assertTrue(request_path.exists())
+
+    def test_changed_request_is_preserved_after_stop(self):
+        import pr315_workload_fault_probes as faults
+        for mutation in ('replacement', 'contents', 'writable', 'link', 'oversize'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temp:
+                request_path, _ready, _source, _request, workload, digest = self._fixture(temp)
+                with patch.object(faults, '_role_probe_actor',
+                                  return_value={'namespacePids': [100, 37]}):
+                    selected = faults._authority_probe_request_for_restart(
+                        workload, {'observedMonotonicNs': 200}, digest)
+                if mutation == 'replacement':
+                    request_path.rename(request_path.with_suffix('.retained'))
+                    request_path.write_bytes(b'{}')
+                    request_path.chmod(0o444)
+                elif mutation == 'contents':
+                    request_path.write_bytes(b'{}')
+                elif mutation == 'writable':
+                    request_path.chmod(0o644)
+                elif mutation == 'link':
+                    os.link(request_path, request_path.with_suffix('.retained'))
+                else:
+                    request_path.write_bytes(b' ' * 8192)
+                with self.assertRaisesRegex(ValueError, 'request-changed'):
+                    faults._retire_verified_probe_request(selected)
+                self.assertTrue(request_path.exists())
+
+    def test_ready_file_wrong_owner_cannot_authorize_retirement(self):
+        import pr315_workload_fault_probes as faults
+        with tempfile.TemporaryDirectory() as temp:
+            request_path, ready_path, _source, _request, workload, digest = self._fixture(temp)
+            os.chown(ready_path, 0, 0)
+            with self.assertRaisesRegex(ValueError, 'probe-request-invalid'):
+                faults._authority_probe_request_for_restart(
+                    workload, {'observedMonotonicNs': 200}, digest)
+            self.assertTrue(request_path.exists())
+
+
+class SenderRestartDiagnosticTest(unittest.TestCase):
+    def test_fixed_sender_state_preserves_original_deadline_and_exit_status(self):
+        import bounded_process
+        fields = {'InvocationID': 'a' * 32, 'ActiveState': 'failed',
+                  'SubState': 'failed', 'MainPID': '0', 'Result': 'exit-code',
+                  'ExecMainCode': '1', 'ExecMainStatus': '1', 'NRestarts': '0'}
+        raw = ''.join(key + '=' + value + '\n' for key, value in fields.items()).encode()
+        with patch.object(driver.time, 'monotonic', return_value=99), \
+                patch.object(bounded_process, 'run', return_value=raw) as run:
+            self.assertEqual(fields, driver.restarted_sender_state(100))
+            self.assertEqual(1, run.call_args.kwargs['timeout'])
+            self.assertIn('cryptad-workload@candidate-sender.service',
+                          run.call_args.args[0])
+            run.reset_mock()
+            self.assertIsNone(driver.restarted_sender_state(99))
+            run.assert_not_called()
+        with patch.object(driver.time, 'monotonic', return_value=100), \
+                patch.object(bounded_process, 'run') as run:
+            captured = driver.capture_sender_restart_failure(100)
+            self.assertEqual('original-deadline-expired', captured['status'])
+            run.assert_not_called()
 
 
 class ProviderAuthorityProbeTest(unittest.TestCase):
@@ -1722,7 +1853,8 @@ class SiblingAppProbeTest(unittest.TestCase):
         worker = {'hostPid': 311, 'namespacePid': 21,
                   'startTicks': 52, 'javaHostPid': 312,
                   'javaStartTicks': 53, 'managerInvocation': 'a' * 32,
-                  'cgroupIdentity': [1, 100]}
+                  'handle': 'e' * 64, 'generation': 1,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'}
         observed = {'managerInvocation': 'a' * 32,
                     'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                     'cgroupIdentity': [1, 100], 'stateDigest': 'd' * 64,

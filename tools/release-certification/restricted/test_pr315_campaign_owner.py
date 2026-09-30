@@ -192,6 +192,30 @@ class PrivateArchiveTest(unittest.TestCase):
             expected_plan_digest=campaign['planDigest'],
             expected_key_fingerprint=fingerprint)
         self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+        development = seal.frozen_start(campaign, tree,
+            owner.tracked_byte_digest(source),
+            hashlib.sha256(b'pinned-fixture-host\n').hexdigest(),
+            201, 225 * 1024**3, development_group='authority')
+        development_seal = seal.sign_start(self.root, campaign, development,
+                                           development_group='authority')
+        (self.root / 'start.private.json').write_bytes(seal._canonical(development))
+        (self.root / 'start-seal.private.json').write_bytes(seal._canonical(development_seal))
+        with self.assertRaisesRegex(ValueError, 'startup-pin-changed'):
+            owner.recovered_campaign_verdict(self.root, source,
+                expected_plan_digest=campaign['planDigest'],
+                expected_key_fingerprint=fingerprint)
+        observed = owner.recovered_development_verdict(self.root, source,
+            development_group='authority', expected_plan_digest=campaign['planDigest'],
+            expected_key_fingerprint=fingerprint)
+        self.assertFalse(observed['groupSatisfied'])
+        self.assertFalse(observed['installedWorkloadAcceptanceSatisfied'])
+        self.assertEqual({'authority:missing-or-excess-attempts',
+                          'emitter-registry-incomplete'}, set(observed['reasons']))
+        with self.assertRaises(ValueError):
+            owner.recovered_development_verdict(self.root, source,
+                development_group='network-app', expected_plan_digest=campaign['planDigest'],
+                expected_key_fingerprint=fingerprint)
+        (self.root / 'start.private.json').write_bytes(seal._canonical(start))
         signed['signature'] = signed['signature'].replace(
             'SSH SIGNATURE', 'SSH SIGNAFURE')
         (self.root / 'start-seal.private.json').write_bytes(

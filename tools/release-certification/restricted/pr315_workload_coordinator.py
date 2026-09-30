@@ -1267,17 +1267,23 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     return completed
 
 
-def next_campaign_selection(verified_history):
+def next_campaign_selection(verified_history, *, development_group=None):
     """Consume one of at most three preparation slots, with no post-probe retry."""
     if not isinstance(verified_history, list):
         raise ValueError('pr315-verified-history-required')
     by_group = {group: [] for group, _ in campaign.GROUPS}
+    if development_group is not None and development_group not in by_group:
+        raise ValueError('pr315-development-group-invalid')
     for receipt in verified_history:
         if (not isinstance(receipt, dict)
                 or receipt.get('groupId') not in by_group):
             raise ValueError('pr315-verified-receipt-invalid')
         by_group[receipt['groupId']].append(receipt)
+        if development_group is not None and receipt['groupId'] != development_group:
+            raise ValueError('pr315-development-history-group-changed')
     for group_id, _cases in campaign.GROUPS:
+        if development_group is not None and group_id != development_group:
+            continue
         rows = by_group[group_id]
         if sum(row['status'] == 'preparation-completed' for row in rows) > 1:
             return {'status': 'failed', 'groupId': group_id,
@@ -1353,9 +1359,12 @@ def explicit_probe_phase(group_id, diagnostic):
 
 
 def initialize_campaign(root, source, config, identity, remote_known_hosts,
-                        first_suite_number):
+                        first_suite_number, *, development_group=None):
     """Freeze the Mac key, measured source and fixed 21-group plan before VM use."""
     root, source = Path(root), Path(source)
+    if (development_group is not None
+            and development_group not in dict(campaign.GROUPS)):
+        raise ValueError('pr315-development-group-invalid')
     if not isinstance(config, dict):
         raise ValueError('pr315-campaign-config-invalid')
     fixed_config({**config, 'campaignPlanDigest': '0' * 64,
@@ -1426,17 +1435,17 @@ def initialize_campaign(root, source, config, identity, remote_known_hosts,
         os.fsync(stream.fileno())
     start = seal.frozen_start(planned, tree, config['trackedByteDigest'],
         hashlib.sha256(raw_pin).hexdigest(), first_suite_number,
-        mac_available)
+        mac_available, development_group=development_group)
     _exclusive_json(root / 'start.private.json', start)
     _exclusive_json(root / 'start-seal.private.json',
-        seal.sign_start(root, planned, start))
+        seal.sign_start(root, planned, start, development_group=development_group))
     _exclusive_json(root / 'coordinator-config.private.json', frozen_config)
     (root / 'attempts').mkdir(mode=0o700)
     (root / 'full-attempt-staging').mkdir(mode=0o700)
     return planned
 
 
-def frozen_campaign_context(root, source):
+def frozen_campaign_context(root, source, *, development_group=None):
     """Authenticate the Mac start seal and exact source before any remote work."""
     root = seal._private_directory(Path(root).resolve(strict=True))
     source = Path(source).resolve(strict=True)
@@ -1445,7 +1454,8 @@ def frozen_campaign_context(root, source):
     signed = owner._json(root, 'start-seal.private.json', 8192)
     config = fixed_config(owner._json(root,
         'coordinator-config.private.json', 16384))
-    if seal.verify_start(root, plan, signed) != start:
+    if seal.verify_start(root, plan, signed,
+                         development_group=development_group) != start:
         raise ValueError('pr315-coordinator-start-seal-changed')
     head = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'],
         capture_output=True, check=True, text=True, timeout=10).stdout.strip()
@@ -1926,19 +1936,23 @@ def verify_retired_preparation_for_resume(root, plan, history):
     return handoff
 
 
-def run_campaign(root, source, *, case_group=None):
+def run_campaign(root, source, *, case_group=None, development_group=None):
     """Run the 21 groups serially from host-sealed, byte-reverified state.
 
-    A selected development group is still a partial campaign. Any failed or
+    Development starts pin one group in a separate signature domain. Any failed or
     uncertain operation stops this invocation after preserving its full guest
     copy and sealing a failed receipt. A later source fix starts a new campaign.
     """
     import pr315_case_registry as registry
 
-    root, source, plan, start, config = frozen_campaign_context(root, source)
+    if development_group is not None and case_group is not None:
+        raise ValueError('pr315-coordinator-group-selection-conflict')
+    root, source, plan, start, config = frozen_campaign_context(root, source,
+        **({'development_group': development_group}
+           if development_group is not None else {}))
     if case_group is not None and case_group not in dict(campaign.GROUPS):
         raise ValueError('pr315-coordinator-case-group-invalid')
-    if (case_group is None
+    if (case_group is None and development_group is None
             and registry.implementation_coverage(source) != 'complete'):
         raise ValueError('pr315-coordinator-emitter-coverage-incomplete')
     remote = Remote(root / 'remote-known-hosts.private')
@@ -1946,8 +1960,12 @@ def run_campaign(root, source, *, case_group=None):
     publish_frozen_campaign(remote, root, config)
     pin = {'expected_plan_digest': plan['planDigest'],
            'expected_key_fingerprint': plan['hostKeyFingerprint']}
+    recover = owner.recovered_campaign_verdict
+    if development_group is not None:
+        recover = owner.recovered_development_verdict
+        pin['development_group'] = development_group
     # This rebuilds every already-completed case from the private archives.
-    owner.recovered_campaign_verdict(root, source, **pin)
+    recover(root, source, **pin)
     while True:
         history = seal.load_verified_history(root, plan,
             pinned_source_commit=config['sourceCommit'],
@@ -1960,14 +1978,16 @@ def run_campaign(root, source, *, case_group=None):
                         root, source, plan, prior)):
                 release_completed_attempt(remote, root, source, plan,
                                           prior, history)
-        selected = next_campaign_selection(history)
+        selected = next_campaign_selection(history,
+            **({'development_group': development_group}
+               if development_group is not None else {}))
         if selected['status'] == 'complete':
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         if selected['status'] != 'ready':
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         group_id = selected['groupId']
         if case_group is not None and group_id != case_group:
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         suite = 'suite-' + str(start['firstSuiteNumber'] + len(history))
         if _SUITE.fullmatch(suite) is None:
             raise ValueError('pr315-coordinator-suite-id-invalid')
@@ -1982,7 +2002,7 @@ def run_campaign(root, source, *, case_group=None):
                                           plan, suite, group_id, capacity,
                                           ready)
             # Host PSI or memory must change before another unique suite ID.
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         retired_files = None
         if group_id == 'authority' and selected['action'] == 'selected-group':
             verify_retired_preparation_for_resume(root, plan, history)
@@ -2009,12 +2029,12 @@ def run_campaign(root, source, *, case_group=None):
         if terminal['action'] in PRESSURE_WATCH_ACTIONS:
             _seal_failed_attempt(root, config, plan, suite,
                                  group_id, staging, stage_digest)
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         if selected['action'] == 'retired-authority-preparation':
             if not retired_preparation_complete(execution):
                 _seal_failed_attempt(root, config, plan, suite,
                     group_id, staging, stage_digest)
-                return owner.recovered_campaign_verdict(root, source, **pin)
+                return recover(root, source, **pin)
             completed_receipt = _archive_retired_preparation(
                 remote, root, config, plan, suite)
         elif selected_group_complete(plan, group_id,
@@ -2024,16 +2044,16 @@ def run_campaign(root, source, *, case_group=None):
         else:
             _seal_failed_attempt(root, config, plan, suite,
                 group_id, staging, stage_digest)
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
         sealed_history = seal.load_verified_history(root, plan,
             pinned_source_commit=config['sourceCommit'],
             pinned_fingerprint=config['hostKeyFingerprint'])
         release_completed_attempt(remote, root, source, plan,
                                   completed_receipt, sealed_history)
         # Refuse to continue if any sealed case/archive changed during the run.
-        owner.recovered_campaign_verdict(root, source, **pin)
+        recover(root, source, **pin)
         if case_group == group_id:
-            return owner.recovered_campaign_verdict(root, source, **pin)
+            return recover(root, source, **pin)
 
 
 def main(argv=None):
@@ -2048,7 +2068,9 @@ def main(argv=None):
     parser.add_argument('--identity', type=Path)
     parser.add_argument('--remote-known-hosts', type=Path)
     parser.add_argument('--first-suite-number', type=int)
-    parser.add_argument('--case-group', choices=tuple(dict(campaign.GROUPS)))
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--case-group', choices=tuple(dict(campaign.GROUPS)))
+    selection.add_argument('--development-group', choices=tuple(dict(campaign.GROUPS)))
     args = parser.parse_args(argv)
     try:
         if args.initialize_config is not None:
@@ -2060,7 +2082,7 @@ def main(argv=None):
             identity = json.loads(args.identity.read_bytes())
             planned = initialize_campaign(args.campaign_root, args.source,
                 config, identity, args.remote_known_hosts,
-                args.first_suite_number)
+                args.first_suite_number, development_group=args.development_group)
             print(json.dumps({'schemaVersion': 2,
                 'status': 'frozen-campaign-prepared-not-executed',
                 'campaignPlanDigest': planned['planDigest'],
@@ -2068,7 +2090,7 @@ def main(argv=None):
                 sort_keys=True))
             return 78
         root, source, plan, start, config = frozen_campaign_context(
-            args.campaign_root, args.source)
+            args.campaign_root, args.source, development_group=args.development_group)
         remote = Remote(root / 'remote-known-hosts.private')
         if args.prepare_remote:
             if args.case_group is not None:
@@ -2106,8 +2128,11 @@ def main(argv=None):
                 'installedWorkloadAcceptanceSatisfied': False},
                 sort_keys=True))
             return 78
-        result = run_campaign(root, source, case_group=args.case_group)
+        result = run_campaign(root, source, case_group=args.case_group,
+                              development_group=args.development_group)
         print(json.dumps(result, sort_keys=True))
+        if result.get('status') == 'development-group-failed':
+            return 2
         return 0 if result['installedWorkloadAcceptanceSatisfied'] is True else 78
     except (OSError, ValueError, KeyError, TypeError,
             subprocess.SubprocessError, json.JSONDecodeError) as error:

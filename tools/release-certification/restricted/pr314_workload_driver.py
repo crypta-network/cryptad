@@ -166,12 +166,15 @@ STALE_PID_DIAGNOSTIC_CODES = frozenset({
     'workload-stale-pid-deadline',
     'workload-stale-pid-manager-transition-invalid',
     'workload-stale-pid-new-fcp-unavailable',
+    'workload-stale-pid-new-sender-exited',
     'workload-stale-pid-new-not-ready',
     'workload-stale-pid-new-observer-failed',
     'workload-stale-pid-observer-proof-invalid',
     'workload-stale-pid-old-instance-changed',
     'workload-stale-pid-old-not-ready',
     'workload-stale-pid-old-observer-failed',
+    'workload-stale-pid-probe-request-invalid',
+    'workload-stale-pid-probe-request-changed',
 })
 
 
@@ -1335,7 +1338,8 @@ def _sibling_app_target_control(workload, handoff, expected_worker):
     worker_before = bind_worker(before, expected_worker['namespacePid'],
                                 handoff['expectedJdkDigests'][role])
     stable = ('hostPid', 'namespacePid', 'startTicks', 'javaHostPid',
-              'javaStartTicks', 'managerInvocation', 'cgroupIdentity')
+              'javaStartTicks', 'handle', 'generation', 'bootId',
+              'managerInvocation')
     if any(worker_before[key] != expected_worker[key] for key in stable):
         raise ValueError('workload-sibling-app-worker-changed')
     selected = bootstrap(handle)
@@ -2134,8 +2138,7 @@ def _mail_browser_control(workload, handoff, session, origin, expected_worker):
     stable_worker = ('handle', 'generation', 'bootId', 'hostPid',
                      'namespacePid', 'startTicks', 'javaHostPid',
                      'javaStartTicks', 'managerInvocation')
-    if (any(worker_before[key] != expected_worker[key] for key in stable_worker)
-            or worker_before['cgroupIdentity'] != before['cgroupIdentity']):
+    if any(worker_before[key] != expected_worker[key] for key in stable_worker):
         raise ValueError('workload-hostile-origin-app-worker-changed')
     with workload.connect(handle, 'http') as channel:
         status, _headers, body = _http(channel, '/api/v1/app-data/status', {
@@ -2150,7 +2153,6 @@ def _mail_browser_control(workload, handoff, session, origin, expected_worker):
     after = workload.observe(handle)
     worker_after = bind_worker(after, expected_worker['namespacePid'], jdk)
     if (any(worker_before[key] != worker_after[key] for key in stable_worker)
-            or worker_after['cgroupIdentity'] != after['cgroupIdentity']
             or before['cgroupIdentity'] != after['cgroupIdentity']
             or before['stateDigest'] != after['stateDigest']):
         raise ValueError('workload-hostile-origin-app-worker-changed')
@@ -3885,6 +3887,55 @@ def capture_controller_journal_at_failure():
             'stderrBase64': base64.b64encode(captured['stderr']).decode()}
 
 
+def restarted_sender_state(until):
+    """Read the fixed sender unit within the original FCP operation deadline."""
+    from bounded_process import run
+    remaining = until - time.monotonic()
+    if remaining <= 0:
+        return None
+    fields = {'InvocationID', 'ActiveState', 'SubState', 'MainPID', 'Result',
+              'ExecMainCode', 'ExecMainStatus', 'NRestarts'}
+    try:
+        raw = run(['/usr/bin/systemctl', 'show',
+            'cryptad-workload@candidate-sender.service', '--no-pager',
+            '--property=' + ','.join(sorted(fields))], environment=ENV,
+            timeout=min(2, remaining), output_limit=2048)
+        values = dict(line.split('=', 1) for line in raw.decode().splitlines()
+                      if '=' in line)
+        if (set(values) != fields
+                or any(len(value) > 128 for value in values.values())
+                or values['ActiveState'] not in {
+                    'active', 'inactive', 'failed', 'activating', 'deactivating'}):
+            return None
+        return values
+    except (OSError, ValueError, subprocess.SubprocessError, UnicodeError):
+        return None
+
+
+def capture_sender_restart_failure(until):
+    """Retain fixed-unit exit and journal diagnostics before cleanup, privately."""
+    from bounded_process import run
+    captured = {'stdout': b'', 'stderr': b''}
+    state = restarted_sender_state(until)
+    remaining = until - time.monotonic()
+    if remaining <= 0:
+        return {'classification': 'private-diagnostic-not-acceptance',
+                'status': 'original-deadline-expired', 'unitState': state}
+    try:
+        run(['/usr/bin/journalctl', '--boot', '--no-pager',
+             '--output=short-monotonic',
+             '--unit=cryptad-workload@candidate-sender.service', '--lines=30'],
+            environment=ENV, timeout=min(3, remaining), output_limit=8192,
+            diagnostic_sink=lambda out, err: captured.update(stdout=out, stderr=err))
+        status = 'captured'
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        status = type(error).__name__
+    return {'classification': 'private-diagnostic-not-acceptance',
+            'status': status, 'unitState': state,
+            'stdoutBase64': base64.b64encode(captured['stdout']).decode(),
+            'stderrBase64': base64.b64encode(captured['stderr']).decode()}
+
+
 def capture_controller_request_at_failure(workload):
     """Read one fixed root-owned in-flight RPC checkpoint before controller stop."""
     from runtime_snapshot import read_file
@@ -4480,20 +4531,23 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             stale_pid_phase = {}
             try:
                 digest = probe_stale_pid_uid(workload, handoff, result,
-                    campaign_deadline, stale_pid_phase)
+                    role_probe_digest, campaign_deadline, stale_pid_phase)
                 diagnostics['stalePidUid'] = {'status': 'captured',
                     'caseId': 'stale-pid-uid', 'auditDigest': digest}
             except Exception as error:
                 diagnostics['stalePidUid'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
                 if stale_pid_phase.get('phase') in {
-                        'old-observer', 'sender-stop', 'sender-start',
+                        'old-observer', 'probe-request-retirement',
+                        'sender-stop', 'sender-start',
                         'new-fcp', 'manager-transition', 'new-observer',
                         'old-rejection', 'final-roster', 'audit'}:
                     diagnostics['stalePidUid']['phase'] = stale_pid_phase['phase']
                 code = _private_stale_pid_code(error)
                 if code is not None:
                     diagnostics['stalePidUid']['code'] = code
+                diagnostics['stalePidUid']['senderFailure'] = capture_sender_restart_failure(
+                    campaign_deadline / 1e9)
         if not startup_measurement and workload_group == 'network-app':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

@@ -52,6 +52,49 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertEqual('failed',
             coordinator.next_campaign_selection(history)['status'])
 
+    def test_development_authority_runs_directly_with_shared_preparation_budget(self):
+        selected = coordinator.next_campaign_selection([], development_group='authority')
+        self.assertEqual('authority', selected['groupId'])
+        self.assertEqual('retired-authority-preparation', selected['action'])
+        history = [{'groupId': 'authority', 'status': 'preparation-completed'}]
+        self.assertEqual('selected-group', coordinator.next_campaign_selection(
+            history, development_group='authority')['action'])
+        history.append({'groupId': 'authority', 'status': 'setup-failed'})
+        self.assertEqual(3, coordinator.next_campaign_selection(
+            history, development_group='authority')['attemptOrdinal'])
+        history.append({'groupId': 'authority', 'status': 'failed'})
+        self.assertEqual('failed', coordinator.next_campaign_selection(
+            history, development_group='authority')['status'])
+        with self.assertRaisesRegex(ValueError, 'history-group-changed'):
+            coordinator.next_campaign_selection(
+                [{'groupId': 'positive', 'status': 'completed'}],
+                development_group='authority')
+
+    def test_development_selected_group_reaches_admission_without_positive_groups(self):
+        root = Path('/private/campaign')
+        source = Path('/source')
+        plan = {'planDigest': 'a' * 64, 'hostKeyFingerprint': 'b' * 64}
+        config = {'sourceCommit': 'c' * 40, 'hostKeyFingerprint': 'b' * 64}
+        verdict = {'installedWorkloadAcceptanceSatisfied': False,
+                   'groupSatisfied': False}
+        remote = SimpleNamespace(call=unittest.mock.Mock(
+            return_value=SimpleNamespace(returncode=0)))
+        with patch.object(coordinator, 'frozen_campaign_context', return_value=(
+                root, source, plan, {'firstSuiteNumber': 201}, config)), \
+                patch.object(coordinator, 'Remote', return_value=remote), \
+                patch.object(coordinator, 'source_preflight'), \
+                patch.object(coordinator, 'publish_frozen_campaign'), \
+                patch.object(coordinator.owner, 'recovered_development_verdict',
+                             return_value=verdict), \
+                patch.object(coordinator.seal, 'load_verified_history', return_value=[]), \
+                patch.object(coordinator, 'prelaunch_admission',
+                             return_value=({}, {'admitted': False})), \
+                patch.object(coordinator, 'archive_pre_admission_failure') as archive:
+            self.assertEqual(verdict, coordinator.run_campaign(
+                root, source, development_group='output-symlink'))
+            self.assertEqual('output-symlink', archive.call_args.args[5])
+            self.assertEqual('suite-201', archive.call_args.args[4])
+
     def test_retired_preparation_requires_partial_exit_and_exact_status(self):
         observed = {'runnerExitCode': 2, 'assessment': {
             'status': 'retired-authority-preparation-executed'}}

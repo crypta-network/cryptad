@@ -1882,8 +1882,92 @@ def probe_setsid_double_fork(workload, handoff, source_digest,
     return audit
 
 
-def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns,
-                        phase_state=None):
+def _authority_probe_request_for_restart(workload, observation, source_digest):
+    """Pin the fixed old probe request and its live role actor before restart."""
+    role = 'candidate-sender'
+    path = workload.ROOT / 'probe-requests/candidate-sender.json'
+    info = path.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+            or info.st_mode & 0o222 or info.st_nlink != 1
+            or not 0 < info.st_size <= 4096):
+        raise ValueError('workload-stale-pid-probe-request-invalid')
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        current = os.fstat(descriptor)
+        if (info.st_dev, info.st_ino, info.st_size) != (
+                current.st_dev, current.st_ino, current.st_size):
+            raise ValueError('workload-stale-pid-probe-request-invalid')
+        raw = os.read(descriptor, 4097)
+    finally:
+        os.close(descriptor)
+    request = json.loads(raw)
+    launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
+    if (not isinstance(request, dict) or set(request) != {
+            'schemaVersion', 'caseId', 'nonce', 'bootId',
+            'javaDigest', 'sourceDigest'}
+            or request['schemaVersion'] != 1 or request['caseId'] != 'authority'
+            or request['bootId'] != workload.boot()
+            or request['javaDigest'] != launch['javaDigest']
+            or request['sourceDigest'] != source_digest
+            or re.fullmatch('[0-9a-f]{64}', str(request['nonce'])) is None):
+        raise ValueError('workload-stale-pid-probe-request-invalid')
+    ready_path = workload.ROOT / 'state/candidate-sender/tmp/pr315-authority-ready.json'
+    ready_info = ready_path.lstat()
+    if (not stat.S_ISREG(ready_info.st_mode)
+            or ready_info.st_uid != workload.account(role).pw_uid
+            or ready_info.st_mode & 0o077 or ready_info.st_nlink != 1
+            or not 0 < ready_info.st_size <= 4096):
+        raise ValueError('workload-stale-pid-probe-request-invalid')
+    ready = driver._candidate_probe_file(ready_path, workload.account(role).pw_uid)
+    actor = _role_probe_actor(observation, request['nonce'], 'authority')
+    if (not isinstance(ready, dict) or set(ready) != {
+            'schemaVersion', 'kind', 'caseId', 'nonce', 'pid',
+            'startedMonotonicNs'}
+            or ready['schemaVersion'] != 1
+            or ready['kind'] != 'pr315-candidate-role-probe-ready'
+            or ready['caseId'] != 'authority'
+            or ready['nonce'] != request['nonce']
+            or ready['pid'] != actor['namespacePids'][-1]
+            or type(ready['startedMonotonicNs']) is not int
+            or not 0 < ready['startedMonotonicNs']
+                < observation['observedMonotonicNs']):
+        raise ValueError('workload-stale-pid-probe-request-invalid')
+    return path, (info.st_dev, info.st_ino, info.st_size), hashlib.sha256(raw).hexdigest()
+
+
+def _retire_verified_probe_request(selection):
+    """Remove only the pinned request after the old role has stopped."""
+    path, identity, expected_digest = selection
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                             dir_fd=directory)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
+                    or info.st_mode & 0o222 or info.st_nlink != 1
+                    or not 0 < info.st_size <= 4096
+                    or (info.st_dev, info.st_ino, info.st_size) != identity):
+                raise ValueError('workload-stale-pid-probe-request-changed')
+            raw = os.read(descriptor, 4097)
+            selected = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+            if (len(raw) != info.st_size
+                    or hashlib.sha256(raw).hexdigest() != expected_digest
+                    or (selected.st_dev, selected.st_ino, selected.st_size,
+                        selected.st_uid, selected.st_mode, selected.st_nlink) !=
+                       (info.st_dev, info.st_ino, info.st_size,
+                        info.st_uid, info.st_mode, info.st_nlink)):
+                raise ValueError('workload-stale-pid-probe-request-changed')
+        finally:
+            os.close(descriptor)
+        os.unlink(path.name, dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def probe_stale_pid_uid(workload, handoff, result, source_digest,
+                        campaign_deadline_ns, phase_state=None):
     """Keep the old observer alive across a real sender manager restart."""
     from cross_version_workload import principal_row
     from restricted_workload_controller import _recipient_fcp_control
@@ -1912,12 +1996,21 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns,
                 sender_before['managerInvocation']):
             raise ValueError('workload-stale-pid-old-instance-changed')
         if phase_state is not None:
+            phase_state['phase'] = 'probe-request-retirement'
+        old_probe = workload.observe(handle)
+        if any(old_probe[key] != sender_before[key] for key in
+               ('managerInvocation', 'cgroupIdentity', 'stateDigest')):
+            raise ValueError('workload-stale-pid-old-instance-changed')
+        request = _authority_probe_request_for_restart(
+            workload, old_probe, source_digest)
+        if phase_state is not None:
             phase_state['phase'] = 'sender-stop'
         stop_started = time.monotonic_ns()
         stopped = workload.stop(handle)
         old_quiescent = workload.read(workload.ROOT /
             'authority/candidate-sender.json')
         old_receipt = workload.stop_receipt(role, old_quiescent)
+        _retire_verified_probe_request(request)
         if phase_state is not None:
             phase_state['phase'] = 'sender-start'
         restart_started = time.monotonic_ns()
@@ -1932,6 +2025,9 @@ def probe_stale_pid_uid(workload, handoff, result, campaign_deadline_ns,
             except (OSError, ValueError):
                 if time.monotonic() >= until:
                     raise ValueError('workload-stale-pid-new-fcp-unavailable') from None
+                state = driver.restarted_sender_state(until)
+                if state is not None and state['ActiveState'] in {'failed', 'inactive'}:
+                    raise ValueError('workload-stale-pid-new-sender-exited') from None
                 time.sleep(.2)
         sender_after = workload.observe(handle)
         if phase_state is not None:
