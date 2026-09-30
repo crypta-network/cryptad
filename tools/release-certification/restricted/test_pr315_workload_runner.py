@@ -778,7 +778,9 @@ class RunnerTests(unittest.TestCase):
         worker = {'provenance': 'controller-kernel-sample',
                   'hostPid': 211, 'startTicks': 42,
                   'managerInvocation': sender['invocationId'],
-                  'cgroupIdentity': [1, 99],
+                  'bootId': target['bootId'],
+                  'handle': 'a' * 64, 'generation': 'b' * 64,
+                  'namespacePid': 21,
                   'javaHostPid': 212, 'javaStartTicks': 43}
         result = {'identity': {'sourceCommit': 'b' * 40},
                   'roleKernelRoster': roster,
@@ -799,6 +801,8 @@ class RunnerTests(unittest.TestCase):
                         'actorAfter'].update(startTicks=46),
                     lambda row: row['hostileAppOriginAudit']['record'][
                         'targetAfter'].update(workerStartTicks=43),
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'targetBefore'].update(cgroupIdentity=[1, 199]),
                     lambda row: row['hostileAppOriginAudit']['record'].update(
                         denialCode='invalid_app_browser_session'),
                     lambda row: row['stopReceipts']['candidate-sender']['current'][
@@ -810,6 +814,13 @@ class RunnerTests(unittest.TestCase):
             self.assertIsNone(runner._hostile_origin_attempt(
                 report, result, fixture, terminal, source,
                 {'hostileOriginSessionDigest': '0' * 64}))
+            for changed_worker in (
+                    dict(worker, bootId='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+                    dict(worker, hostPid=999),
+                    dict(worker, managerInvocation='0' * 32)):
+                self.assertIsNone(runner._hostile_origin_attempt(report,
+                    dict(result, mailAppKernelProcess=changed_worker),
+                    fixture, terminal, source, diagnostics))
 
     def test_provider_authority_requires_signed_app_child_live_root_canary_and_stop(self):
         roster = synthetic_role_kernel_roster()

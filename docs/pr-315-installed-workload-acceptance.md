@@ -109,6 +109,15 @@ CT102 native restricted checks passed 632 tests with 17 root/environment
 skips; those skips and final-source gates still require separate execution.
 Both authority guests must run again under the new source identity.
 
+Read-only replay of suite 162 also identifies the remaining Worker-shape
+assumption in the host hostile-origin verifier. Its real binding has no
+`cgroupIdentity`; cgroup scope is checked independently against administrator
+target observations and the measured role roster. The prospective comparison
+uses the binding's actual boot ID, invocation and process epochs and retains
+those independent cgroup checks. Tests use the producer's binding shape and
+reject wrong boot, PID, invocation and target cgroup. This diagnostic replay
+does not grant installed credit or alter the sealed failed campaign.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

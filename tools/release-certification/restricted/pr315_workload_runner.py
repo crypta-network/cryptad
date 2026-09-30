@@ -3172,7 +3172,7 @@ def _hostile_origin_attempt(report, result, fixture, terminal, source, diagnosti
                 or worker['javaHostPid'] != first['javaHostPid']
                 or worker['javaStartTicks'] != first['javaStartTicks']
                 or worker['managerInvocation'] != sender['invocationId']
-                or worker['cgroupIdentity'] != first['cgroupIdentity']
+                or worker['bootId'] != first['bootId']
                 or type(worker['javaHostPid']) is not int
                 or worker['javaHostPid'] <= 1
                 or type(worker['javaStartTicks']) is not int
