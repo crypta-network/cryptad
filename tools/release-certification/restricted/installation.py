@@ -27,6 +27,8 @@ APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
 EXECUTION = PREFIX / 'restricted-execution.json'
 MANIFEST = '.restricted-manifest.json'
 EXPORT_POLICY = 'production-without-test-seams-v1'
+# The dedicated image's approved job caller differs from workload vmadmin.
+REFERENCE_RUNNER_UID = 62001
 TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name in (
     'disposable_integration.py', 'baseline_workspace_probe.py', 'native_cleanup_probe.py',
     'pr312_reference_vm.py', 'pr312_native_faults.py', 'pr312_prepare_reference.py',
@@ -369,7 +371,7 @@ def host_plan(bundle_identity):
     """Draft the exact image inventory; only out-of-band root installation confers approval."""
     return {'schemaVersion': 1, 'bundleIdentity': bundle_identity,
             'dependencies': dependency_inventory(), 'profile': 'debian13-systemd257-dedicated-v1',
-            'runnerUid': 62001, 'runnerGroups': [62001, 62005], 'revokedVersions': []}
+            'runnerUid': REFERENCE_RUNNER_UID, 'runnerGroups': [REFERENCE_RUNNER_UID, 62005], 'revokedVersions': []}
 
 
 def valid_revocations(value):

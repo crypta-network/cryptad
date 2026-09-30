@@ -118,6 +118,30 @@ those independent cgroup checks. Tests use the producer's binding shape and
 reject wrong boot, PID, invocation and target cgroup. This diagnostic replay
 does not grant installed credit or alter the sealed failed campaign.
 
+On `dfca65b598d`, suite 163 completed real retired authority preparation and
+signed host cleanup. Suite 164 was a genuine no-VM admission rejection:
+I/O full PSI was 10.59%, above the unchanged 10% formal limit. Suite 165 used
+the final shared preparation slot, passed all nine authority cases, and
+completed archive, stop, watcher and signed cleanup verification. Its
+development verdict is `groupSatisfied=true`, with full installed acceptance
+still false. The complete context, including both guest disks and the
+admission rejection, was checksum verified and revalidated in the private
+Mac external archive before removing the duplicate SSD staging copy.
+
+Suite 166's network/AppHost guest exited 0 with the namespace, provider,
+sibling network/AppHost and host-network audits captured. The host rejected
+the provider control before publishing an assessment; its complete original
+attempt and empty CT stderr were retained, and a probe-started failure was
+sealed with zero accepted cases. Read-only replay identifies the mismatch:
+the real installed registration uses `cryptad-runner` UID 62001, while the
+workload roster's runner is `vmadmin` UID 1000. The host validator and v10
+converter had incorrectly equated these separate principals. The prospective
+fix binds the control to the same fixed reference-image job UID used by the
+installation host plan; it does not accept a process-provided arbitrary UID.
+Regression fixtures now represent those different principals and reject root,
+vmadmin and another job UID at both Worker control epochs. Successful replay
+does not change suite 166's failure or transfer suite 165 to a new source.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

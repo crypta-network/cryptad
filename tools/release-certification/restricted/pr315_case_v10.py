@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 
+import installation
 import pr314_acceptance as acceptance
 import pr315_campaign_seal as seal
 import pr315_workload_campaign as historical
@@ -268,7 +269,7 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
                        or row.get('credentialDigest') != target['credentialDigest']
                        or row.get('bundleIdentity') !=
                            campaign['identity']['bundleIdentity']
-                       or row.get('callerUid') != attempt['principals']['runnerUid']
+                       or row.get('callerUid') != installation.REFERENCE_RUNNER_UID
                        for row in (first, last))
                 or first.get('ordinal') != 1 or last.get('ordinal') != 2
                 or first.get('handleDigest') == last.get('handleDigest')

@@ -867,7 +867,7 @@ class RunnerTests(unittest.TestCase):
             'registrationDigest': '1' * 64,
             'resultDigest': '2' * 64,
             'bundleIdentity': synthetic_host_identity()['bundleIdentity'],
-            'callerUid': roster['runnerUid']}
+            'callerUid': installation.REFERENCE_RUNNER_UID}
         audit = {'schemaVersion': 2,
             'kind': 'pr315-administrator-provider-authority-denial',
             'caseId': 'provider-authority',
@@ -929,6 +929,8 @@ class RunnerTests(unittest.TestCase):
                     lambda row: row['providerAuthorityAudit']['record'][
                         'workerControlBefore'].update(credentialDigest='0' * 64),
                     lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlBefore'].update(callerUid=roster['runnerUid']),
+                    lambda row: row['providerAuthorityAudit']['record'][
                         'workerControlAfter'].update(handleDigest='3' * 64),
                     lambda row: row['providerAppResult']['record'].update(
                         outcome={'opened': True, 'errno': None}),
@@ -954,6 +956,14 @@ class RunnerTests(unittest.TestCase):
             Path(__file__).resolve().parents[3], raw)
         self.assertEqual('normally-signed-apphost-child',
                          v10['actorEpoch']['kind'])
+        for label in ('installedWorkerBefore', 'installedWorkerAfter'):
+            for uid in (0, roster['runnerUid'], installation.REFERENCE_RUNNER_UID + 1):
+                changed = copy.deepcopy(sidecar)
+                changed['targetEpoch'][label]['callerUid'] = uid
+                with self.subTest(label=label, uid=uid), self.assertRaisesRegex(
+                        ValueError, 'provider-worker-target-invalid'):
+                    case_v10.generic_case_record(frozen, 'suite-204', identity,
+                        attempt, changed, Path(__file__).resolve().parents[3], raw)
 
     def test_sibling_app_requires_signed_actor_active_mail_and_own_drop_counter(self):
         roster = synthetic_role_kernel_roster()

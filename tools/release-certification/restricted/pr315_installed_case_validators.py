@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 
+import installation
 import pr315_workload_runner as runner
 
 acceptance = runner.acceptance
@@ -116,8 +117,9 @@ def _provider_authority_attempt(report, result, fixture, terminal):
                     or proof['workerSourceDigest'] != installed_worker_digest
                     or proof['credentialDigest'] != first['credentialDigest']
                     or proof['bundleIdentity'] != host['bundleIdentity']
-                    or proof['callerUid'] !=
-                        result['roleKernelRoster']['runnerUid']
+                    # Registration authenticates cryptad-runner; the workload
+                    # roster's runner identifies the separate vmadmin actor.
+                    or proof['callerUid'] != installation.REFERENCE_RUNNER_UID
                     or any(re.fullmatch('[0-9a-f]{64}',
                         str(proof[key])) is None for key in (
                         'registrationDigest', 'resultDigest',
