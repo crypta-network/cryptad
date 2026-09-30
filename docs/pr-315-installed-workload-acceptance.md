@@ -90,6 +90,25 @@ reading its assessment; missing or malformed assessments preserve the real
 stopped attempt and produce a failed host receipt. Neither a missing file nor
 an imported JSON assessment can authorize preparation retry or acceptance.
 
+Source `006073c9a8` v56 freshly pinned boot closure `f79ea84b5f19`.
+Suite 161 completed retired authority preparation and signed host cleanup.
+Suite 162 completed guest shutdown but its host runner exited with a retained
+`TypeError` while converting the stale-handle sidecar to v10. The sidecar-only
+path has no v8 attempt; the converter incorrectly read observer UID from that
+absent object instead of the validated administrator roster. The coordinator
+preserved the bounded CT error stream and complete failed attempt and sealed
+a probe-started failure with no accepted cases. No suite 162 observation is
+promoted into a passed group.
+
+The prospective converter now takes role and observer/runner identities from
+the validated roster for sidecar-only records and from the validated v8
+principals for legacy records. Regression tests pass both actual old-handle
+and old-instance sidecar producers through v10 conversion, retaining their
+epochs, and reject an incorrect observer UID and malformed principal roster.
+CT102 native restricted checks passed 632 tests with 17 root/environment
+skips; those skips and final-source gates still require separate execution.
+Both authority guests must run again under the new source identity.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

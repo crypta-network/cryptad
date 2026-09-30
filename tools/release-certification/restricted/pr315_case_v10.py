@@ -176,7 +176,7 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
     if attempt is None:
         if (case_id not in SIDECAR_ONLY or not acceptance._principals(roster)):
             raise ValueError('pr315-v10-generic-sidecar-source-invalid')
-        principals = roster['roles']
+        principal_record = roster
         observation = None
     else:
         if (not isinstance(attempt, dict)
@@ -191,8 +191,9 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
                          if row['caseId'] == case_id), None) != 'passed'
                 or checked['installedWorkloadAcceptanceSatisfied'] is not False):
             raise ValueError('pr315-v10-generic-v8-verification-failed')
-        principals = attempt['principals']['roles']
+        principal_record = attempt['principals']
         observation = attempt['observations'][0]
+    principals = principal_record['roles']
     host = sidecar.get('hostVerifiedIdentity')
     if (not isinstance(host, dict)
             or host.get('helperSourceCommit') != identity['helperSourceCommit']
@@ -231,9 +232,9 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
                 or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0):
             raise ValueError('pr315-v10-generic-administrator-epoch-invalid')
     elif spec.actor in ('observer', 'runner'):
-        expected_uid = (attempt['principals']['observerUid']
+        expected_uid = (principal_record['observerUid']
                         if spec.actor == 'observer' else
-                        attempt['principals']['runnerUid'])
+                        principal_record['runnerUid'])
         expected_kind = ('installed-observer-process' if spec.actor == 'observer'
                          else 'installed-runner-process')
         source_digest = sha256(Path(source_root) /

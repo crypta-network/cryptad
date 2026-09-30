@@ -147,6 +147,38 @@ def synthetic_fnp_observation(roster, helper_commit):
 
 
 class RunnerTests(unittest.TestCase):
+    def assert_observer_sidecar_normalizes_with_measured_roster(self, sidecar, host, roster):
+        """Exercise the host conversion used by the installed authority group."""
+        from pr315_case_v10 import generic_case_record
+
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity.update(productSelectionDigest=host['productDigest'],
+                        admittedAppDigest='a' * 64)
+        frozen = runner.campaign_seal.plan(identity, '1' * 64,
+            runner.host_admission.POLICY, '2' * 64, '3' * 64, '4' * 64)
+        raw = {'guestReport': '5' * 64, 'volatile': '6' * 64,
+               'hostMonitor': '7' * 64}
+        source = Path(__file__).resolve().parents[3]
+        record = generic_case_record(frozen, 'suite-203', identity, None,
+                                    sidecar, source, raw, roster=roster)
+        self.assertEqual(sidecar['actorEpoch'], record['actorEpoch'])
+        self.assertEqual(sidecar['targetEpoch'], record['targetEpoch'])
+        for field in ('observerUid', 'runnerUid'):
+            changed = copy.deepcopy(roster)
+            changed[field] = changed['roles'][0]['uid']
+            with self.subTest(field=field), self.assertRaisesRegex(
+                    ValueError, 'sidecar-source-invalid'):
+                generic_case_record(frozen, 'suite-203', identity, None,
+                    sidecar, source, raw, roster=changed)
+        changed = copy.deepcopy(sidecar)
+        changed['actorEpoch']['uid'] = roster['runnerUid']
+        with self.assertRaisesRegex(ValueError, 'observer-epoch-invalid'):
+            generic_case_record(frozen, 'suite-203', identity, None,
+                changed, source, raw, roster=roster)
+
     def test_frozen_campaign_policy_probe_and_product_are_checked_before_vm(self):
         source = Path(__file__).resolve().parents[3]
         commit = runner.subprocess.run(['git', '-C', str(source),
@@ -2967,6 +2999,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual('stale-handle', selected['caseId'])
         self.assertEqual('installed-observer-process',
             selected['actorEpoch']['kind'])
+        self.assert_observer_sidecar_normalizes_with_measured_roster(
+            selected, host, roster)
         changed = copy.deepcopy(terminal)
         changed['staleHandleAudit']['record']['replies'][1]['exchange'][
             'responseDigest'] = '0' * 64
@@ -3082,6 +3116,8 @@ class RunnerTests(unittest.TestCase):
             diagnostics, source)
         self.assertIsNotNone(selected)
         self.assertEqual('stale-pid-uid', selected['caseId'])
+        self.assert_observer_sidecar_normalizes_with_measured_roster(
+            selected, host, initial)
         changed = copy.deepcopy(terminal)
         changed['stopReceipts']['candidate-sender']['previous']['record'][
             'managerInvocation'] = '0' * 32
