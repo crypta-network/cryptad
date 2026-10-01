@@ -1739,6 +1739,26 @@ class SenderRestartDiagnosticTest(unittest.TestCase):
 
 
 class ProviderAuthorityProbeTest(unittest.TestCase):
+    def test_disappeared_probe_keeps_current_kernel_sample_before_cleanup(self):
+        from cross_version_runtime import RuntimeFailure
+        expected = {'hostPid': 301, 'namespacePid': 20, 'startTicks': 50}
+        observed = {'provenance': 'controller-kernel-sample', 'state': 'running',
+                    'managerInvocation': 'a' * 32, 'cgroupIdentity': [1, 99],
+                    'processes': [], 'privateHandle': 'do-not-retain'}
+        workload = SimpleNamespace(observe=Mock(return_value=observed))
+        handoff = {'handles': {'candidate-sender': 'd' * 64},
+                   'expectedJdkDigests': {'candidate-sender': 'sha256:' + 'b' * 64}}
+        diagnostics = {}
+        with self.assertRaisesRegex(RuntimeFailure, 'probe-process-outside-role'):
+            driver._provider_app_actor(workload, handoff, expected,
+                                       diagnostics=diagnostics)
+        captured = diagnostics['providerActorBindingAttempt']
+        self.assertEqual([], captured['processes'])
+        self.assertEqual(expected, captured['expectedWorker'])
+        self.assertEqual('a' * 32, captured['observed']['managerInvocation'])
+        self.assertEqual('private-diagnostic-not-acceptance', captured['classification'])
+        self.assertNotIn('do-not-retain', json.dumps(captured))
+
     @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
                          'requires disposable native Linux root state')
     def test_installed_worker_consumes_synthetic_credential_and_persists_two_results(self):
@@ -1841,7 +1861,7 @@ class ProviderAuthorityProbeTest(unittest.TestCase):
             def provider_control(*_args):
                 return dict(target, observedMonotonicNs=time.monotonic_ns())
 
-            def app_control(*_args):
+            def app_control(*_args, **_kwargs):
                 return dict(actor, observedMonotonicNs=time.monotonic_ns())
 
             def read_result(path, uid, until, error):

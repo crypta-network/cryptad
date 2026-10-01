@@ -1204,7 +1204,7 @@ def probe_network_app_roles(workload, handoff, source_digest, campaign_deadline_
     return audits
 
 
-def _provider_app_actor(workload, handoff, expected_worker):
+def _provider_app_actor(workload, handoff, expected_worker, *, diagnostics=None):
     """Resolve the actual signed probe AppHost child in the current role cgroup."""
     from cross_version_workload import bind_probe_worker
     role = 'candidate-sender'
@@ -1213,6 +1213,28 @@ def _provider_app_actor(workload, handoff, expected_worker):
             or expected_worker['namespacePid'] <= 1):
         raise ValueError('workload-provider-app-worker-invalid')
     observed = workload.observe(handoff['handles'][role])
+    if diagnostics is not None:
+        # Retain the actual sample before binding can reject a disappeared or
+        # changed process. Cleanup otherwise destroys this volatile premise.
+        fields = ('hostPid', 'hostParentPid', 'startTicks', 'namespacePid',
+                  'namespacePids', 'pidNamespace', 'executableDigest',
+                  'mountNamespaceIdentity', 'userNamespaceIdentity',
+                  'networkNamespaceIdentity', 'noNewPrivileges',
+                  'effectiveCapabilities')
+        rows = observed.get('processes')
+        if isinstance(rows, list) and len(rows) <= 512:
+            record = {'classification': 'private-diagnostic-not-acceptance',
+                'role': role,
+                'expectedWorker': {key: expected_worker[key] for key in fields
+                                   if key in expected_worker},
+                'observed': {key: observed[key] for key in (
+                    'provenance', 'state', 'bootId', 'managerInvocation',
+                    'cgroupIdentity', 'networkNamespaceIdentity', 'observedMonotonicNs')
+                    if key in observed},
+                'processes': [{key: row[key] for key in fields if key in row}
+                              for row in rows if isinstance(row, dict)]}
+            if len(json.dumps(record, sort_keys=True).encode()) <= 262144:
+                diagnostics['providerActorBindingAttempt'] = record
     bound = bind_probe_worker(observed, expected_worker['namespacePid'],
                               handoff['expectedJdkDigests'][role])
     stable = ('hostPid', 'namespacePid', 'startTicks',
@@ -1224,7 +1246,7 @@ def _provider_app_actor(workload, handoff, expected_worker):
 
 def probe_provider_authority(workload, handoff, provider_setup,
                              resolver_digest, bundle_digest, expected_worker,
-                             campaign_deadline_ns):
+                             campaign_deadline_ns, *, diagnostics=None):
     """Bracket a signed AppHost denial with two real installed Worker reads."""
     if time.monotonic_ns() >= campaign_deadline_ns:
         raise ValueError('workload-provider-campaign-expired')
@@ -1236,7 +1258,8 @@ def probe_provider_authority(workload, handoff, provider_setup,
     worker_before = _installed_provider_worker_control(credential_digest, 1)
     target_before = _provider_target_control(provider_digest, resolver_digest,
                                              credential_digest)
-    actor_before = _provider_app_actor(workload, handoff, expected_worker)
+    actor_before = _provider_app_actor(workload, handoff, expected_worker,
+                                       diagnostics=diagnostics)
     nonce = secrets.token_hex(32)
     trigger = root / 'pr315-provider-trigger.json'
     request = {'schemaVersion': 1, 'kind': 'pr315-provider-trigger', 'nonce': nonce}
@@ -1258,7 +1281,8 @@ def probe_provider_authority(workload, handoff, provider_setup,
             account.pw_uid, until, 'workload-provider-result-timeout')
     finally:
         trigger.unlink(missing_ok=True)
-    actor_after = _provider_app_actor(workload, handoff, expected_worker)
+    actor_after = _provider_app_actor(workload, handoff, expected_worker,
+                                      diagnostics=diagnostics)
     target_after = _provider_target_control(provider_digest, resolver_digest,
                                             credential_digest)
     worker_after = _installed_provider_worker_control(credential_digest, 2)
@@ -4580,7 +4604,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 digest = probe_provider_authority(workload, handoff,
                     provider_setup, resolver_digest,
                     probe_digest, result['probeAppKernelProcess'],
-                    campaign_deadline)
+                    campaign_deadline, diagnostics=diagnostics)
                 diagnostics['providerAuthority'] = {'status': 'captured',
                     'caseId': 'provider-authority', 'auditDigest': digest}
             except (OSError, ValueError, KeyError, TypeError, AttributeError,

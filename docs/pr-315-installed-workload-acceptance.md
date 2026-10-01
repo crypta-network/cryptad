@@ -188,6 +188,37 @@ Those runs resolve the 17 discovery skips without repairing or writing to
 the failed CT102 root. They do not establish installed acceptance or replace
 the remaining final-source gates.
 
+The user subsequently repaired CT102's root. Independent root and source
+write checks passed, and Mac/CT102 commit, tree and tracked bytes were
+synchronized to `b40b6e83d3`. The two terminal failure contexts, suites 166
+and 167, were fully checksum verified in the private Mac external archive
+before releasing the duplicate SSD staging copies. The old 761 source and
+fixture were separately archived and their unused remote copies released.
+
+Post-repair boot measurement rejected ambient dependency drift before any
+guest allocation: only `libcrypto.so.3` differed among 204 boot files, with
+the seed and SSH commitments unchanged. A separate task-private runtime
+directory was reconstructed from the verified suite 167 original. Its
+remeasured complete closure exactly matches the existing `f79` identity.
+The QEMU/JDK/product bytes, TCG machine, vCPUs, memory, role limits and
+admission thresholds remain those of the selected profile.
+
+Suite 168 on `b40b6e83d3` completed four-role and signed AppHost preparation,
+then entered the network/AppHost probe group. Rebinding the signed Python
+probe raised `workload-probe-process-outside-role`; the guest exited 1,
+the watcher completed and the host observed QEMU stopped. The campaign is
+sealed failed with `probeStarted=true` and zero accepted cases; the serial
+development scheduler stopped without allocating suite 169.
+
+The first successful AppHost/kernel binding is retained, but the failure-time
+process sample was not captured before cleanup. The available records do
+not distinguish process disappearance from a changed namespace or instance.
+The prospective diagnostic fix retains a bounded projection of the expected
+binding and current administrator kernel sample before rebinding, while
+preserving the existing rejection. Its regression requires that a missing
+probe still fails and that unrelated private fields are excluded. This
+diagnostic snapshot grants no installed result or instance proof.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.
