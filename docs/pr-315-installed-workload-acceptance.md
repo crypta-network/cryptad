@@ -142,6 +142,48 @@ Regression fixtures now represent those different principals and reject root,
 vmadmin and another job UID at both Worker control epochs. Successful replay
 does not change suite 166's failure or transfer suite 165 to a new source.
 
+On `761ec7e116`, suite 167 failed during the recipient's initial FCP GetNode
+readiness, before a complete network/AppHost case result. The unchanged
+180-second readiness budget ended after 12 attempts. The guest exited 1;
+the host observed the task QEMU stopped and the watcher completed. The full
+failed attempt remains in the private Mac staging archive. Its sealed receipt
+has `probeStarted=null` and zero accepted cases; this unknown phase cannot be
+converted into a retryable preparation failure.
+
+The failure-time role cgroup counters show no OOM events, and guest available
+memory was approximately 4.3 GiB. No HotSpot fatal file was captured. The
+recipient wrapper recorded completed node initialization, but its observer
+FCP log was unavailable and the administrator JVM diagnostic failed with
+`BlockingIOError`. These observations do not establish a JVM crash or the
+cause of the readiness failure.
+
+Two demonstrated diagnostic gaps are corrected prospectively: a wrapped
+readiness exception now retains the immediate cause's closed transport-phase
+fields, and the administrator captures controller request progress while the
+observer awaits the readiness response, before its cleanup can replace the
+request with a stop operation. Regressions preserve the outer failure class,
+reject additional private fields, and require that early checkpoint before
+slow JVM diagnostics. The original workload deadline, role limits and runtime
+identity are unchanged; the source change requires fresh installed evidence.
+
+After suite 167, CT102's root volume reported write I/O errors, an aborted
+ext4 journal and remounting read-only. Source writes fail with `EROFS`; the
+separate task ZFS mount remains writable. This later host condition cannot
+explain the earlier readiness timeout. Further guest allocation is paused
+until the shared CT102 root is recovered with the required stop/repair
+authorization. No suite 168 VM has been allocated.
+
+The prospective diagnostic fix passed 14 focused Mac tests. The full driver
+module on Mac still reports its Linux-only peer-credential and `/proc`
+environment failures; that run is retained and is not a passing gate. In an
+isolated native CT102 environment with the changed files mounted read-only
+and a writable tmpfs, restricted discovery passed 634 tests with 17 skips.
+The corresponding 16 root checks passed separately in a disposable tmpfs
+root and PID namespace, and the pinned QEMU-img check passed separately.
+Those runs resolve the 17 discovery skips without repairing or writing to
+the failed CT102 root. They do not establish installed acceptance or replace
+the remaining final-source gates.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.

@@ -210,6 +210,21 @@ class ObserverFailureTest(unittest.TestCase):
         error.readiness_diagnostic['privateHandle'] = 'a' * 64
         self.assertNotIn('readinessDiagnostic', driver.observer_failure(error))
 
+    def test_readiness_wrapper_retains_immediate_transport_phase_without_promoting_it(self):
+        cause = ValueError('operation-deadline-exceeded')
+        cause.transport_diagnostic = {'method': 'observe', 'phase': 'response-read',
+            'elapsedNs': 8_000_000_000, 'causeType': 'RuntimeFailure', 'errno': None}
+        error = ValueError('workload-daemon-readiness-timeout')
+        error.__cause__ = cause
+        result = driver.observer_failure(error)
+        self.assertEqual(cause.transport_diagnostic,
+                         result['immediateCause']['transportDiagnostic'])
+        self.assertNotIn('transportDiagnostic', result)
+        self.assertLess(len(json.dumps(result).encode()), 4096)
+        cause.transport_diagnostic['privateHandle'] = 'a' * 64
+        self.assertNotIn('transportDiagnostic',
+                         driver.observer_failure(error)['immediateCause'])
+
     def test_controller_journal_diagnostic_is_fixed_bounded_and_private(self):
         commands = []
 
@@ -1304,6 +1319,23 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
 
 
 class ReadinessJcmdDiagnosticTest(unittest.TestCase):
+    def test_inflight_request_is_retained_before_slow_jvm_diagnostics(self):
+        diagnostics = {}
+        original = {'status': 'captured', 'record': {'method': 'observe',
+                    'phase': 'executing'}}
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', diagnostics,
+            handoff={'handles': {}}, observer_root=Path('/nonexistent-test-observer'))
+        def collect_jcmd(*_args):
+            self.assertEqual(original, diagnostics['controllerRequestBeforeObserverCleanup'])
+            return {'status': 'unavailable-or-unsafe', 'exceptionType': 'BlockingIOError'}
+        with patch.object(driver, 'capture_controller_request_at_failure',
+                          return_value=original), \
+                patch.object(driver, 'memory_snapshot', return_value={'guest': {}}), \
+                patch.object(driver, 'capture_readiness_jcmd', side_effect=collect_jcmd):
+            sampler.readiness('candidate-recipient', 'fcp-get-node')
+        self.assertEqual('observe',
+                         diagnostics['controllerRequestBeforeObserverCleanup']['record']['method'])
+
     def test_root_captures_bounded_selected_role_log_before_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1315,10 +1347,15 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
                 handoff={'handles': {}}, observer_root=root)
             with patch.object(driver.pwd, 'getpwnam', return_value=SimpleNamespace(
                     pw_uid=os.geteuid())), \
+                    patch.object(driver, 'capture_controller_request_at_failure',
+                                 return_value={'status': 'captured'}) as checkpoint, \
                     patch.object(driver, 'memory_snapshot', return_value={'guest': {}}), \
                     patch.object(driver, 'capture_readiness_jcmd', return_value={
                         'status': 'unavailable-or-unsafe'}):
                 reply = sampler.readiness('candidate-recipient', 'fcp-get-node')
+                checkpoint.assert_called_once_with(sampler.workload)
+                self.assertEqual({'status': 'captured'},
+                    diagnostic['controllerRequestBeforeObserverCleanup'])
                 self.assertEqual('captured', reply['status'])
                 self.assertEqual('fcp-get-node', diagnostic['readinessAtFailure']['stage'])
                 captured = diagnostic['readinessAtFailure']['fcpLog']

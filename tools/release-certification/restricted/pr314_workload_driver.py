@@ -3206,6 +3206,10 @@ class AdministratorFnpSampler:
         if (role not in ROLE_NAMES or stage not in READINESS_STAGES
                 or self.handoff is None or self.observer_root is None):
             raise ValueError('workload-admin-readiness-selection-invalid')
+        # The observer is waiting on this administrator response. Capture the
+        # in-flight request before its finally block can replace it with stop.
+        self.diagnostics['controllerRequestBeforeObserverCleanup'] = (
+            capture_controller_request_at_failure(self.workload))
         try:
             memory = memory_snapshot()
         except (OSError, ValueError, KeyError, TypeError):
@@ -3796,16 +3800,8 @@ def sample_memory(diagnostics):
                                       'finishedMonotonicNs': snapshot['finishedMonotonicNs']}
 
 
-def observer_failure(error):
-    """Keep a bounded immediate propagation cause in the existing private child response."""
-    from pr315_workload_guest import _bounded_text
-    result = {'observerFailure': _bounded_text(type(error).__name__, 128),
-              'privateDetail': _bounded_text(str(error), 1024)}
-    cause = error.__cause__
-    if cause is not None and cause is not error:
-        result['immediateCause'] = {'exceptionType': _bounded_text(type(cause).__name__, 128),
-            'privateDetail': _bounded_text(str(cause), 512),
-            'meaning': 'python-explicit-cause-not-acceptance'}
+def _private_transport_diagnostic(error):
+    """Project only closed transport fields, including a wrapped immediate cause."""
     transport = getattr(error, 'transport_diagnostic', None)
     if (isinstance(transport, dict)
             and set(transport) == {'method', 'phase', 'elapsedNs',
@@ -3822,7 +3818,27 @@ def observer_failure(error):
             and (transport['errno'] is None or
                  type(transport['errno']) is int and
                  0 <= transport['errno'] <= 4096)):
-        result['transportDiagnostic'] = dict(transport)
+        return dict(transport)
+    return None
+
+
+def observer_failure(error):
+    """Keep a bounded immediate propagation cause in the existing private child response."""
+    from pr315_workload_guest import _bounded_text
+    result = {'observerFailure': _bounded_text(type(error).__name__, 128),
+              'privateDetail': _bounded_text(str(error), 1024)}
+    cause = error.__cause__
+    if cause is not None and cause is not error:
+        result['immediateCause'] = {'exceptionType': _bounded_text(type(cause).__name__, 128),
+            'privateDetail': _bounded_text(str(cause), 512),
+            'meaning': 'python-explicit-cause-not-acceptance'}
+    transport = _private_transport_diagnostic(error)
+    if transport is not None:
+        result['transportDiagnostic'] = transport
+    if cause is not None and cause is not error:
+        transport = _private_transport_diagnostic(cause)
+        if transport is not None:
+            result['immediateCause']['transportDiagnostic'] = transport
     readiness = getattr(error, 'readiness_diagnostic', None)
     if (isinstance(readiness, dict)
             and set(readiness) == {'role', 'stage', 'startRequestNs',
