@@ -1192,7 +1192,7 @@ public final class LocalProcessAppHost implements AppHost {
     builder.environment().putAll(launchPlan.environment());
 
     Instant startedAt = Instant.now();
-    Process process = builder.start();
+    Process process = AppProcessStarter.start(builder);
     discardChildInput(process, normalizedAppId);
     List<ProcessHandle> startupProcessTree = observeStartupProcessTree(process, normalizedAppId);
     if (startupProcessTree.isEmpty()) {

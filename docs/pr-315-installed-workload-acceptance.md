@@ -219,6 +219,41 @@ preserving the existing rejection. Its regression requires that a missing
 probe still fails and that unrelated private fields are excluded. This
 diagnostic snapshot grants no installed result or instance proof.
 
+Suite 169 on `4df9404703` again entered the network/AppHost probes and
+failed the strict signed-probe rebinding. The new failure-time administrator
+sample distinguishes this from an absent diagnostic field: the previously
+bound probe and its sandbox processes disappeared from the sender cgroup,
+while the same daemon JVM remained alive. The guest exited 1, the watcher
+completed and QEMU stopped. The signed failure declares `probeStarted=true`
+and zero accepted cases. No observation from this attempt grants a pass.
+
+A native CT102 Java/bubblewrap experiment reproduces a concrete AppHost
+launch defect: a sandbox with `--die-with-parent` exits with status 137 when
+its creating Java platform thread ends, although the parent JVM remains
+alive. Linux associates this signal with the creating thread. The installed
+HTTP executor expires idle workers after one minute; AppHost previously
+created the sandbox directly on that request worker. The prospective fix
+creates processes on one daemon platform worker retained for the JVM
+lifetime, preserving `--die-with-parent`, command construction, sandbox
+policy, process tracking and cleanup. Interrupted callers still receive the
+real launch result and retain their interrupt flag. The same native
+experiment with the fixed launcher keeps the sandbox alive after its caller
+thread exits and then explicitly reaps it.
+
+The changed AppHost module's native CT102 test run completed 319 tests with
+zero failures/errors and two Windows junction tests skipped. Its new Linux
+bubblewrap lifetime regression executed, alongside launch-error and
+interrupted-caller checks. The Mac focused run retained four process/path
+environment failures and is not reported as a passing gate. Formatting and
+the new helper's SonarLint report passed with zero reported issues. The
+module SpotBugs report contains 11 findings, including three existing
+nullable Path operations in AppHost; none concerns the new helper or the
+changed process-start call. These findings remain recorded for final-source
+review. This demonstrated launch defect does not resolve the separate
+historical TCG C1 failures. The Java change requires a newly source-built
+candidate and fresh installed results under a new identity; the old candidate
+product cannot demonstrate this fix.
+
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
 with its own signature domain, private key, nonce, ledger and archive root.
