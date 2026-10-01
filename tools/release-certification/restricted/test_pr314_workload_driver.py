@@ -289,6 +289,15 @@ class ObserverFailureTest(unittest.TestCase):
         self.assertEqual('unbound', unavailable['status'])
         self.assertEqual('controller-identity-unavailable', unavailable['reason'])
         self.assertNotIn('systemd busy', json.dumps(unavailable))
+        with patch('runtime_snapshot.read_file', return_value=raw) as read, \
+                patch.object(driver, 'controller_unit_identity') as query:
+            early = driver.capture_controller_request_at_failure(
+                object(), bind_instance=False)
+        query.assert_not_called()
+        self.assertEqual('unbound', early['status'])
+        self.assertNotIn('kernelController', early)
+        self.assertEqual(record, early['record'])
+        self.assertEqual(2, read.call_args.kwargs['timeout'])
 
     def test_unicode_and_cycles_cannot_overrun_retained_child_transcript(self):
         error = ValueError('😀' * 10000)
@@ -1353,7 +1362,7 @@ class ReadinessJcmdDiagnosticTest(unittest.TestCase):
                     patch.object(driver, 'capture_readiness_jcmd', return_value={
                         'status': 'unavailable-or-unsafe'}):
                 reply = sampler.readiness('candidate-recipient', 'fcp-get-node')
-                checkpoint.assert_called_once_with(sampler.workload)
+                checkpoint.assert_called_once_with(sampler.workload, bind_instance=False)
                 self.assertEqual({'status': 'captured'},
                     diagnostic['controllerRequestBeforeObserverCleanup'])
                 self.assertEqual('captured', reply['status'])

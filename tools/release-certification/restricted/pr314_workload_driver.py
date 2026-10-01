@@ -3209,7 +3209,7 @@ class AdministratorFnpSampler:
         # The observer is waiting on this administrator response. Capture the
         # in-flight request before its finally block can replace it with stop.
         self.diagnostics['controllerRequestBeforeObserverCleanup'] = (
-            capture_controller_request_at_failure(self.workload))
+            capture_controller_request_at_failure(self.workload, bind_instance=False))
         try:
             memory = memory_snapshot()
         except (OSError, ValueError, KeyError, TypeError):
@@ -3952,7 +3952,7 @@ def capture_sender_restart_failure(until):
             'stderrBase64': base64.b64encode(captured['stderr']).decode()}
 
 
-def capture_controller_request_at_failure(workload):
+def capture_controller_request_at_failure(workload, *, bind_instance=True):
     """Read one fixed root-owned in-flight RPC checkpoint before controller stop."""
     from runtime_snapshot import read_file
     try:
@@ -3985,6 +3985,14 @@ def capture_controller_request_at_failure(workload):
                                  str(value['exceptionType'])) is None)):
             raise ValueError('workload-controller-request-record-invalid')
         digest = hashlib.sha256(raw).hexdigest()
+        if not bind_instance:
+            # Keep the early file read within its existing two-second bound.
+            # A systemd identity query could consume the observer's diagnostic
+            # response budget. This record explicitly grants no instance proof.
+            return {'status': 'unbound',
+                    'classification': 'private-diagnostic-not-acceptance',
+                    'reason': 'controller-binding-deferred-before-observer-cleanup',
+                    'record': value, 'privateDigest': digest}
         try:
             identity = controller_unit_identity(workload)
         except (OSError, ValueError, KeyError, TypeError, IndexError,

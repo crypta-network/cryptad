@@ -161,7 +161,11 @@ Two demonstrated diagnostic gaps are corrected prospectively: a wrapped
 readiness exception now retains the immediate cause's closed transport-phase
 fields, and the administrator captures controller request progress while the
 observer awaits the readiness response, before its cleanup can replace the
-request with a stop operation. Regressions preserve the outer failure class,
+request with a stop operation. This early read keeps the existing two-second
+file-read bound and marks instance binding as deferred; it grants no process
+proof and adds no systemd query to the observer's diagnostic response budget.
+The separate later capture still checks the controller's current kernel
+identity. Regressions preserve the outer failure class,
 reject additional private fields, and require that early checkpoint before
 slow JVM diagnostics. The original workload deadline, role limits and runtime
 identity are unchanged; the source change requires fresh installed evidence.
