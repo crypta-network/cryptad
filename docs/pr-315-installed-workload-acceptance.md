@@ -3,8 +3,11 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 **There is no complete installed 45-case campaign.** The best historical formal TCG
-result remains 22/45 at `7db8122b` suite 108. The latest frozen source,
-`bd51eea94f`, passed eight positives in suite 153 and five role/file cases in
+result remains 22/45 at `7db8122b` suite 108. The latest source-built candidate,
+`7cec00fde0`, reached four-role and signed-app preparation in suite 170 but
+failed the later recipient Mail runtime observation. Its development group
+is terminal at zero accepted cases. Earlier `bd51eea94f` passed eight
+positives in suite 153 and five role/file cases in
 suite 154, with sealed host cleanup. Suite 155 completed and retired the
 extra authority preparation guest. Suite 156 began the formal authority
 probes but produced nine inconclusive results; its campaign is sealed failed
@@ -253,6 +256,51 @@ review. This demonstrated launch defect does not resolve the separate
 historical TCG C1 failures. The Java change requires a newly source-built
 candidate and fresh installed results under a new identity; the old candidate
 product cannot demonstrate this fix.
+
+At `7cec00fde0`, the candidate was rebuilt using the pinned native CT102 JDK.
+Its JAR contains the durable AppHost process starter and has SHA-256
+`3823588861f840ee210d6765ae2f156bbe1f12a1cc5c302637f990e7f2b3f05f`.
+Mac/CT102 commit, tree and tracked bytes matched before freezing v62's
+independent snapshot and normally signed fixture. The unchanged private
+runtime closure still measured `f79`. Prepare/probe exited 78 without a VM.
+The complete fixed inputs were checksum verified in the private external
+archive; required remote runtime inputs remained available.
+
+The native full Java run passed 17,414 tests with zero failures/errors and
+10 skips after removing inherited forced-color environment variables.
+The earlier red run is retained: its single devtools help assertion expected
+plain `Usage: crypta-app`, while actual output contained forced ANSI bytes.
+No source, JVM argument or guest setting was changed to obtain the passing
+run. Restricted discovery passed 635/17 tests/skips, followed by all 16
+applicable disposable root checks and the pinned QEMU-img check. Interop
+passed 62/9 with its nine transport root checks executed separately.
+Protected checks passed 549/77 as non-root and 549/3 as root; the remaining
+three root-run skips require the non-root principal and executed in that
+separate run. The four certification self-tests passed 2,395, 2, 50 and
+20 tests respectively. These offline gates grant no installed case credit.
+
+Suite 170 passed three low-pressure samples, formal admission and watcher
+readiness, then started its TCG guest. Four-role readiness and signed-app
+preparation reached the network group. The sender probe observation
+returned, but the second recipient Mail runtime observation failed with
+`workload-real-app-sandbox-not-observed`, after its earlier startup observation
+had passed. Guest exit 1, completed cleanup, watcher completion and QEMU stop
+were retained. The host signed a failed receipt with `probeStarted=null`
+and zero case digests. Missing formal probe-start evidence cannot authorize
+preparation retry; suite 171 was not allocated. No role HotSpot fatal file
+was captured, which does not identify the Mail worker's exit cause.
+
+The failure projection retained neither the failing runtime response nor
+the Mail process-log tail. Writable role state is tmpfs, so a stopped guest
+disk cannot reconstruct those missing bytes. A prospective private diagnostic
+now preserves only closed runtime/exit fields and reads the existing fixed
+app logs API with `maxBytes=1024`, an 8-KiB response bound, and a two-second
+cap bounded by the original remaining deadline. The API's token-redacted
+log tail is kept as at most 1,024 bytes. Unavailable logs record their status
+or exception class. Extra runtime/identity fields are excluded. The original
+sandbox rejection remains; these candidate HTTP diagnostics grant no kernel
+proof or acceptance and introduce no controller socket method. A new helper,
+fixture/test-kit identity and fresh installed group are required.
 
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,
@@ -4088,7 +4136,7 @@ as a green c0eb final-source gate.
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
 | `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest terminal `c0eb6925b1` campaign stopped at 0/45 following suite 152's real host pressure kill and sealed failed recovery. KVM diagnostics and other source commits do not increase its credit |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest `7cec00fde0` network development group is sealed failed with zero accepted cases after suite 170; it is separate from the historical terminal formal campaigns. KVM diagnostics and other source commits do not increase its credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

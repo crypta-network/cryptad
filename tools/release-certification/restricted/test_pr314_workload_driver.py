@@ -175,6 +175,25 @@ class SiblingNetworkCounterTest(unittest.TestCase):
 
 
 class ObserverFailureTest(unittest.TestCase):
+    def test_bounded_app_failure_projection_survives_private_child_response(self):
+        from cross_version_workload import private_app_runtime_diagnostic
+        error = RuntimeError('workload-real-app-sandbox-not-observed')
+        error.app_runtime_diagnostic = {'schemaVersion': 1,
+            'kind': 'pr315-private-app-runtime-failure', 'role': 'candidate-recipient',
+            'appId': 'mail-prototype', 'observedMonotonicNs': 1, 'httpStatus': 200,
+            'state': 'STOPPED', 'running': False, 'pid': None, 'lastExitCode': 137,
+            'sandboxProvider': 'bubblewrap', 'sandboxActive': False,
+            'log': {'httpStatus': 200, 'available': True,
+                    'textBase64': base64.b64encode(b'exited').decode(),
+                    'errorClass': None}}
+
+        result = driver.observer_failure(error)
+
+        self.assertEqual(private_app_runtime_diagnostic(error), result['appRuntimeDiagnostic'])
+        self.assertLess(len(json.dumps(result).encode()), 4096)
+        error.app_runtime_diagnostic['arbitraryPrivateValue'] = 'must-not-cross'
+        self.assertNotIn('appRuntimeDiagnostic', driver.observer_failure(error))
+
     def test_immediate_cause_survives_private_child_response(self):
         error = ValueError('workload-daemon-readiness-timeout')
         error.__cause__ = RuntimeError('controller-request-rejected')

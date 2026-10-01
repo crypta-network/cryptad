@@ -1,5 +1,6 @@
 """Bounded protocol, invocation, and current scoped-process mapping regressions."""
 import array
+import base64
 from contextlib import contextmanager, nullcontext
 import copy
 import hashlib
@@ -1298,6 +1299,82 @@ class FcpParserTests(unittest.TestCase):
             finally:
                 client.close()
                 daemon.close()
+
+
+class AppRuntimeFailureTests(unittest.TestCase):
+    def handle(self):
+        supervisor = types.SimpleNamespace(
+            private={'nodes': {'candidate-recipient': {'httpPort': 19402}}},
+            remaining=mock.Mock(return_value=2), next_operation=mock.Mock(), observe=mock.Mock())
+        handle = workload.InstalledAppHandle(supervisor, 'candidate-recipient')
+        handle.request = mock.Mock(return_value=(200, {'runtime': {
+            'state': 'STOPPED', 'running': False, 'lastExitCode': 137, 'pid': None,
+            'sandbox': {'provider': 'bubblewrap', 'active': False},
+            'browserSessionToken': 'opaque-secret'}}))
+        response = types.SimpleNamespace(status=200, read=mock.Mock(return_value=json.dumps(
+            {'logs': {'available': True, 'text': 'worker exited',
+                      'unrelatedSecret': 'opaque-secret'}}).encode()))
+        handle.opener = types.SimpleNamespace(open=mock.Mock(return_value=nullcontext(response)))
+        return handle, response
+
+    def failure(self, handle):
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'real-app-sandbox-not-observed') as raised:
+            handle.observe_worker()
+        handle.supervisor.observe.assert_not_called()
+        return raised.exception
+
+    def test_failed_worker_retains_bounded_runtime_and_existing_redacted_log(self):
+        handle, response = self.handle()
+
+        value = workload.private_app_runtime_diagnostic(self.failure(handle))
+
+        self.assertEqual(137, value['lastExitCode'])
+        self.assertEqual('candidate-recipient', value['role'])
+        self.assertFalse(value['running'])
+        self.assertTrue(value['log']['available'])
+        self.assertEqual(b'worker exited', base64.b64decode(value['log']['textBase64']))
+        self.assertNotIn('opaque-secret', json.dumps(value))
+        request = handle.opener.open.call_args.args[0]
+        self.assertEqual('GET', request.get_method())
+        self.assertEqual('http://127.0.0.1:19402/api/v1/apps/mail-prototype/logs?maxBytes=1024',
+                         request.full_url)
+        response.read.assert_called_once_with(8193)
+        handle.supervisor.remaining.assert_called_once_with(2)
+
+    def test_oversized_log_response_does_not_replace_the_original_failure(self):
+        handle, response = self.handle()
+        response.read.return_value = b'x' * 8193
+
+        value = workload.private_app_runtime_diagnostic(self.failure(handle))
+
+        self.assertEqual('ValueError', value['log']['errorClass'])
+        self.assertEqual('', value['log']['textBase64'])
+        self.assertFalse(value['running'])
+
+    def test_slow_log_read_obeys_remaining_original_deadline(self):
+        handle, response = self.handle()
+        handle.supervisor.remaining.return_value = .03
+        response.read.side_effect = lambda _: time.sleep(.3)
+        started = time.monotonic()
+
+        value = workload.private_app_runtime_diagnostic(self.failure(handle))
+
+        self.assertLess(time.monotonic() - started, .2)
+        self.assertEqual('RuntimeFailure', value['log']['errorClass'])
+
+    def test_private_projection_rejects_extra_fields_and_unapproved_actor(self):
+        handle, _ = self.handle()
+        error = self.failure(handle)
+        original = copy.deepcopy(error.app_runtime_diagnostic)
+        for changed in ({**original, 'secret': 'opaque-secret'},
+                        {**original, 'role': 'relay-no-apps'},
+                        {**original, 'appId': []},
+                        {**original, 'log': {**original['log'], 'path': '/arbitrary'}},
+                        {**original, 'log': {**original['log'], 'textBase64': '*' }}):
+            error.app_runtime_diagnostic = changed
+            with self.subTest(changed=changed):
+                self.assertIsNone(workload.private_app_runtime_diagnostic(error))
 
 
 if __name__ == '__main__':

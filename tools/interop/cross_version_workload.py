@@ -7,6 +7,7 @@ same-UID observations, or establish original protected authority.
 from __future__ import annotations
 
 import array
+import base64
 from contextlib import contextmanager
 import hashlib
 import http.client
@@ -20,6 +21,7 @@ import stat
 import struct
 import time
 import urllib.parse
+import urllib.request
 import uuid
 
 import cross_version_runtime as runtime
@@ -34,6 +36,94 @@ EPOCH = ('handle', 'generation', 'managerInvocation', 'bootId')
 
 def fail(code):
     raise runtime.RuntimeFailure('workload-' + code)
+
+
+def private_app_runtime_diagnostic(error):
+    """Accept only the bounded private projection, never process or acceptance proof."""
+    value = getattr(error, 'app_runtime_diagnostic', None)
+    fields = {'schemaVersion', 'kind', 'role', 'appId', 'observedMonotonicNs',
+              'httpStatus', 'state', 'running', 'pid', 'lastExitCode',
+              'sandboxProvider', 'sandboxActive', 'log'}
+    if (not isinstance(value, dict) or set(value) != fields
+            or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+            or value['kind'] != 'pr315-private-app-runtime-failure'
+            or any(not isinstance(value[k], str) for k in ('role', 'appId'))
+            or (value['role'], value['appId']) not in {
+                ('candidate-sender', 'mail-prototype'),
+                ('candidate-recipient', 'mail-prototype'),
+                ('previous', 'mail-prototype'), ('candidate-sender', 'pr315-probe')}
+            or type(value['observedMonotonicNs']) is not int
+            or value['observedMonotonicNs'] <= 0
+            or type(value['httpStatus']) is not int
+            or not 100 <= value['httpStatus'] <= 599
+            or any(value[k] is not None and type(value[k]) is not bool
+                   for k in ('running', 'sandboxActive'))
+            or any(value[k] is not None and (type(value[k]) is not int
+                       or not -2**31 <= value[k] < 2**31)
+                   for k in ('pid', 'lastExitCode'))
+            or any(value[k] is not None and (not isinstance(value[k], str)
+                       or re.fullmatch('[A-Za-z0-9_-]{1,64}', value[k]) is None)
+                   for k in ('state', 'sandboxProvider'))
+            or not isinstance(value['log'], dict)
+            or set(value['log']) != {'httpStatus', 'available', 'textBase64', 'errorClass'}):
+        return None
+    log = value['log']
+    if (log['httpStatus'] is not None and (type(log['httpStatus']) is not int
+            or not 100 <= log['httpStatus'] <= 599)
+            or log['available'] is not None and type(log['available']) is not bool
+            or log['errorClass'] is not None and (not isinstance(log['errorClass'], str)
+                or re.fullmatch('[A-Za-z][A-Za-z0-9_]{0,63}', log['errorClass']) is None)
+            or not isinstance(log['textBase64'], str) or len(log['textBase64']) > 1368):
+        return None
+    try:
+        if len(base64.b64decode(log['textBase64'], validate=True)) > 1024:
+            return None
+    except ValueError:
+        return None
+    return {**value, 'log': dict(log)}
+
+
+def _app_sandbox_failure(handle, status, reported, code):
+    """Preserve failed runtime and redacted log while the role tmpfs still exists."""
+    def text(value):
+        return value if isinstance(value, str) and re.fullmatch('[A-Za-z0-9_-]{1,64}', value) else None
+    def integer(value):
+        return value if type(value) is int and -2**31 <= value < 2**31 else None
+    sandbox = reported.get('sandbox')
+    sandbox = sandbox if isinstance(sandbox, dict) else {}
+    value = {'schemaVersion': 1, 'kind': 'pr315-private-app-runtime-failure',
+        'role': handle.role, 'appId': handle.app_id, 'observedMonotonicNs': time.monotonic_ns(),
+        'httpStatus': status, 'state': text(reported.get('state')),
+        'running': reported.get('running') if type(reported.get('running')) is bool else None,
+        'pid': integer(reported.get('pid')), 'lastExitCode': integer(reported.get('lastExitCode')),
+        'sandboxProvider': text(sandbox.get('provider')),
+        'sandboxActive': sandbox.get('active') if type(sandbox.get('active')) is bool else None,
+        'log': {'httpStatus': None, 'available': None, 'textBase64': '', 'errorClass': None}}
+    error = runtime.RuntimeFailure('workload-' + code)
+    error.app_runtime_diagnostic = value
+    # The fixed already-supported logs API redacts tokens. The original absolute
+    # workload deadline still applies; this diagnostic has a separate two-second cap.
+    if private_app_runtime_diagnostic(error) is not None:
+        try:
+            with runtime.absolute_deadline(handle.supervisor.remaining(2)):
+                handle.supervisor.next_operation()
+                request = urllib.request.Request(handle.base + '/api/v1/apps/' + handle.app_id
+                    + '/logs?maxBytes=1024', headers={'Accept': 'application/json'}, method='GET')
+                with handle.opener.open(request, timeout=2) as response:
+                    value['log']['httpStatus'] = response.status
+                    raw = response.read(8193)
+                    if len(raw) > 8192:
+                        raise ValueError('app-log-response-budget')
+                    logged = json.loads(raw).get('logs', {})
+                    if not isinstance(logged, dict) or not isinstance(logged.get('text'), str):
+                        raise ValueError('app-log-response-shape')
+                    value['log']['available'] = (logged.get('available')
+                        if type(logged.get('available')) is bool else None)
+                    value['log']['textBase64'] = base64.b64encode(
+                        logged['text'].encode('utf-8')[-1024:]).decode('ascii')
+        except Exception as failure:
+            value['log']['errorClass'] = type(failure).__name__[:64]
+    raise error
 
 
 def retained_deadline(handoff, maximum):
@@ -297,7 +387,7 @@ class InstalledAppHandle(runtime.AppHandle):
         if (status != 200 or reported.get('running') is not True
                 or reported.get('sandbox', {}).get('provider') != 'bubblewrap'
                 or reported.get('sandbox', {}).get('active') is not True):
-            fail('real-app-sandbox-not-observed')
+            _app_sandbox_failure(self, status, reported, 'real-app-sandbox-not-observed')
         observation = self.supervisor.observe(self.role)
         self.worker_identity = bind_worker(observation, reported.get('pid'),
                                           self.supervisor.expected_jdk_digests[self.role])
@@ -324,7 +414,7 @@ class InstalledProbeAppHandle(runtime.AppHandle):
         if (status != 200 or reported.get('running') is not True
                 or reported.get('sandbox', {}).get('provider') != 'bubblewrap'
                 or reported.get('sandbox', {}).get('active') is not True):
-            fail('real-probe-sandbox-not-observed')
+            _app_sandbox_failure(self, status, reported, 'real-probe-sandbox-not-observed')
         observation = self.supervisor.observe(self.role)
         self.worker_identity = bind_probe_worker(observation, reported.get('pid'),
             self.supervisor.expected_jdk_digests[self.role])

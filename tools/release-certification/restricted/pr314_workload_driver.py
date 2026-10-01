@@ -3859,6 +3859,10 @@ def observer_failure(error):
     transport = _private_transport_diagnostic(error)
     if transport is not None:
         result['transportDiagnostic'] = transport
+    from cross_version_workload import private_app_runtime_diagnostic
+    app_runtime = private_app_runtime_diagnostic(error)
+    if app_runtime is not None:
+        result['appRuntimeDiagnostic'] = app_runtime
     if cause is not None and cause is not error:
         transport = _private_transport_diagnostic(cause)
         if transport is not None:
