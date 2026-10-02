@@ -47,6 +47,19 @@ def synthetic_terminal_roster(roster):
             'controllerRecords': records, 'stopReceipts': receipts}
 
 
+def synthetic_daemon_epochs(roster, observed_ns=120):
+    """Full offline daemon fixture; synthetic JSON never grants installed acceptance."""
+    return {row['role']: {
+        'kind': 'installed-role-daemon-kernel-v1', 'uid': row['uid'], 'gid': row['gid'],
+        'bootId': row['bootId'], 'hostPid': 1200 + index, 'startTicks': row['processEpoch'],
+        'managerInvocation': row['invocationId'], 'namespacePids': [1200 + index, 2],
+        'pidNamespace': 'pid:[4000]', 'networkNamespaceIdentity': [1, row['networkNamespace']],
+        'mountNamespaceIdentity': [1, 300 + index], 'userNamespaceIdentity': [1, 400 + index],
+        'cgroupIdentity': [1, 99 + index], 'executableDigest': 'sha256:' + 'e' * 64,
+        'pidfdObserved': True, 'observedMonotonicNs': observed_ns}
+        for index, row in enumerate(roster['roles'])}
+
+
 def synthetic_host_identity():
     return {'helperSourceCommit': 'b' * 40, 'helperSourceTree': 'c' * 40,
             'productSourceCommit': 'd' * 40, 'productDigest': 'e' * 64,
@@ -65,7 +78,9 @@ def synthetic_lifecycle_actor(source, observed_ns):
         'startTicks': 33, 'cgroupIdentity': cgroup,
         'sourceDigest': digest}, sort_keys=True,
         separators=(',', ':')).encode()).hexdigest()[:32]
-    return {'pid': 500, 'uid': 0, 'startTicks': 33, 'bootId': boot,
+    return {'pid': 500, 'uid': 0, 'gid': 0, 'startTicks': 33, 'bootId': boot,
+            'namespacePids': [500],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
             'cgroupIdentity': cgroup, 'cgroupDigest':
                 runner.fixtures.runtime.canonical_digest({
                     'role': 'lifecycle-administrator', 'identity': cgroup})[7:],
@@ -260,6 +275,7 @@ class RunnerTests(unittest.TestCase):
             'campaignDeadlineMonotonicNs': 1000}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'lost-start-response', report, result, fixture, private, terminal, source)
             self.assertEqual('passed', next(row['status'] for row in
@@ -1107,7 +1123,9 @@ class RunnerTests(unittest.TestCase):
             'startTicks': 42, 'cgroupIdentity': cgroup,
             'sourceDigest': source_digest}, sort_keys=True,
             separators=(',', ':')).encode()).hexdigest()[:32]
-        collector = {'pid': 211, 'uid': 0, 'startTicks': 42, 'bootId': boot,
+        collector = {'pid': 211, 'uid': 0, 'gid': 0, 'startTicks': 42, 'bootId': boot,
+                     'namespacePids': [211],
+                     'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
                      'cgroupIdentity': cgroup,
                      'cgroupDigest': runner.fixtures.runtime.canonical_digest({
                          'role': 'output-collector', 'identity': cgroup})[7:],
@@ -2439,6 +2457,7 @@ class RunnerTests(unittest.TestCase):
                    'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'cancellation', report, result, dict(fixture, schemaVersion=4),
                 private, terminal, source)
@@ -2481,19 +2500,30 @@ class RunnerTests(unittest.TestCase):
         before = {'InvocationID': 'b' * 32, 'ActiveState': 'active',
                   'SubState': 'running', 'MainPID': '100', 'Result': 'success'}
         after = dict(before, InvocationID='c' * 32, MainPID='200')
+        def kernel(state, ticks, observed):
+            return {'kind': 'fixed-controller-kernel-epoch-v1',
+                'pid': int(state['MainPID']), 'uid': 0, 'gid': 0,
+                'startTicks': ticks, 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'invocationId': state['InvocationID'],
+                'cgroupPath': '/system.slice/cryptad-workload-controller.service',
+                'cgroupIdentity': [1, 71], 'namespacePids': [int(state['MainPID'])],
+                'namespaces': {'pid': 21, 'net': 22, 'mnt': 23, 'user': 24},
+                'pidfdObserved': True, 'observedMonotonicNs': observed}
         event = {'kind': 'controller-restart', 'roles': rows,
                  'campaignDeadlineNs': 1000, 'oldControllerInvocation': before['InvocationID']}
         context = {'schemaVersion': 1, 'kind': 'pr315-administrator-controller-restart',
                    'triggerStartedNs': 200, 'triggerEventDigest':
                        runner.fixtures.runtime.canonical_digest(event)[7:],
                    'campaignDeadlineNs': 1000, 'preRoles': rows,
-                   'beforeController': before, 'killReturnCode': 0,
+                   'beforeController': before,
+                   'beforeControllerKernel': kernel(before, 31, 190), 'killReturnCode': 0,
                    'preStartBoundRoles': [{'role': role['role'], 'activeState': 'inactive',
                        'subState': 'dead', 'mainPid': 0,
                        'receiptObservedMonotonicNs': 220 + index}
                        for index, role in enumerate(rows)],
                    'newControllerStartRequestedNs': 240, 'startReturnCode': 0,
-                   'afterController': after, 'terminalObservedNs': 300,
+                   'afterController': after,
+                   'afterControllerKernel': kernel(after, 32, 250), 'terminalObservedNs': 300,
                    'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
         report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
         result = {'roleKernelRoster': roster,
@@ -2514,6 +2544,7 @@ class RunnerTests(unittest.TestCase):
                    'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'controller-restart', report, result, dict(fixture, schemaVersion=4),
                 private, terminal, source)
@@ -2537,6 +2568,41 @@ class RunnerTests(unittest.TestCase):
         _, rejected = runner.positive_case_attempt(
             report, result, fixture, 10, 20, {'controllerRestart': context}, invalid_terminal)
         self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        for field, changed in (('uid', 1001), ('startTicks', 0),
+                               ('namespaces', {}), ('pidfdObserved', False),
+                               ('pid', 999), ('invocationId', 'f' * 32),
+                               ('observedMonotonicNs', 230)):
+            with self.subTest(kernelField=field):
+                invalid = copy.deepcopy(context)
+                invalid['afterControllerKernel'][field] = changed
+                _, rejected = runner.positive_case_attempt(
+                    report, result, fixture, 10, 20,
+                    {'controllerRestart': invalid}, terminal)
+                self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        inactive_successor = copy.deepcopy(context)
+        inactive_successor['afterController'].update(
+            MainPID='0', ActiveState='inactive', SubState='dead')
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20,
+            {'controllerRestart': inactive_successor}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        with patch.object(runner, 'group_prepared', return_value=True):
+            for key, value in (('hostPid', 0), ('uid', 1001),
+                               ('mountNamespaceIdentity', []), ('pidfdObserved', False),
+                               ('observedMonotonicNs', 400)):
+                changed = copy.deepcopy(result)
+                changed['roleDaemonEpochs']['candidate-sender'][key] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'controller-restart', report, changed, dict(fixture, schemaVersion=4),
+                    private, terminal, source))
+            missing = copy.deepcopy(result)
+            del missing['roleDaemonEpochs']
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'controller-restart', report, missing, dict(fixture, schemaVersion=4),
+                private, terminal, source))
 
     def test_deadline_group_requires_original_expiry_and_each_prior_stop_receipt(self):
         roster = synthetic_role_kernel_roster()
@@ -2574,6 +2640,7 @@ class RunnerTests(unittest.TestCase):
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 1150)}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'deadline', report, result, fixture, private, terminal, source)
             self.assertEqual('passed', next(row['status'] for row in
@@ -2637,6 +2704,7 @@ class RunnerTests(unittest.TestCase):
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'revocation-running', report, result, fixture, private, terminal, source)
             self.assertEqual('passed', next(row['status'] for row in
@@ -2706,6 +2774,7 @@ class RunnerTests(unittest.TestCase):
                                              'finishedMonotonicNs': 80}}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster, observed_ns=85)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'setsid-double-fork', report, result, fixture, private, terminal, source)
             self.assertEqual('passed', next(row['status'] for row in
@@ -2782,6 +2851,7 @@ class RunnerTests(unittest.TestCase):
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 270 * unit)}
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
             identity, selected, sidecar = runner._lifecycle_group_attempt(
                 'observer-death', report, result, fixture, private, terminal, source)
             self.assertEqual('passed', next(row['status'] for row in
@@ -3427,7 +3497,9 @@ class RunnerTests(unittest.TestCase):
         diagnostics = synthetic_resource_diagnostics(roster)
         driver_digest = runner.reference.sha256(source /
             'tools/release-certification/restricted/pr314_workload_driver.py')
-        admin = {'pid': 500, 'uid': 0, 'startTicks': 44,
+        admin = {'pid': 500, 'uid': 0, 'gid': 0, 'startTicks': 44,
+            'namespacePids': [500],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
             'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
             'cgroupIdentity': [1, 50], 'cgroupDigest': 'a' * 64,
             'invocationId': 'c' * 32, 'sourceDigest': driver_digest,

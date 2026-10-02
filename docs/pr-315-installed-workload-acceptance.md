@@ -12,6 +12,16 @@ Suite 175 began the replacement probe and is sealed failed with zero accepted
 cases. Helper `b68b433c7b` subsequently passed replacement, flood and resource
 development groups in suites 176–178 with full host cleanup. Suite 179 began
 the lost-start-response probe and is sealed failed with zero accepted cases.
+Helper `f7ce824289` completed the lost-start-response, observer-death and
+controller-restart development groups in suites 180–182 under the existing
+validator, with full original archives and signed host cleanup. Contract
+review then found that controller restart retained manager PID/invocation
+properties without the complete before/after kernel instances, and that the
+validator could accept an inactive PID-zero successor. These development
+results are retained with their original source and interpretation; they do
+not satisfy the strengthened prospective instance contract or transfer to a
+new helper. The scheduler was retired after suite 182 completed cleanup and
+full external archival; suite 183 was not allocated by that scheduler.
 Stopped failure guests and original diagnostics remain retained. Earlier
 `bd51eea94f` passed eight
 positives in suite 153 and five role/file cases in
@@ -19,6 +29,48 @@ suite 154, with sealed host cleanup. Suite 155 completed and retired the
 extra authority preparation guest. Suite 156 began the formal authority
 probes but produced nine inconclusive results; its campaign is sealed failed
 at 13/45. These results cannot transfer to the next source revision.
+
+## Prospective complete kernel instance binding after suite 182
+
+The actual suite 182 controller manager invocation and MainPID changed, and
+both manager samples reported active/running. That successful execution does
+not repair an incomplete evidence validator. An offline regression changes the
+successor sample to inactive/dead with MainPID zero and demonstrates that the
+old predicate still declares controller restart passed. The strengthened path
+requires both actual live controller kernel instances: PID, UID/GID, start
+ticks, boot ID, PID mapping, PID/net/mount/user namespace identities, cgroup
+identity and manager invocation. Each collection observes a pidfd, verifies
+root ownership and fixed-unit cgroup membership, and rereads process and
+manager identity before publishing. A missing, replaced or dead instance is
+rejected. No new production control socket method, arbitrary PID interface,
+role limit or deadline is introduced.
+
+The administrator collector now records its actual namespaces and GID, and
+the case validators preserve and compare those fields across the operation.
+Group preparation also retains the complete daemon kernel records instead of
+projecting away the daemon PID. Namespace identities originate in the fixed
+privileged kernel sampler; the observer independently verifies UID/GID, start
+ticks and lifetime through proc/pidfd. Lifecycle records bind those complete
+instances to the corresponding role roster and operation window. A prepared
+or unstarted role remains explicitly unobserved; no PID is manufactured.
+
+The native Linux controller-focused checks passed seven tests, including real
+pidfd/namespace observations and wrong-UID/replaced-invocation rejection. The
+systemd/cgroup mapping in those tests is an explicit offline fixture, not an
+installed controller result. The expanded restricted suite passed 643 checks
+with 21 environment skips; all 20 applicable root checks and one pinned QEMU
+check were run separately and passed. Interop passed 68 checks with nine root
+transport skips; all nine were executed separately in the native disposable
+root environment and passed. The final affected operation-window checks and native restricted discovery
+were rerun successfully after the timing predicates changed. These prospective source results grant no installed case.
+
+All three `f7ce824289` development contexts retain their complete 12,807-file
+copies, keys, raw observations and host cleanup receipts in the private
+external archive. Their remote reconstructible duplicates and exact SSD
+working duplicates were released only after ownership, stop, dependency and
+full-copy verification. Final acceptance requires a fresh helper/test-kit
+identity and one complete, frozen 45-case TCG campaign. PR-313 and production
+or phase authorization remain separate.
 
 ## Cutoff after suite 156 and development group preparation
 
@@ -4224,7 +4276,7 @@ as a green c0eb final-source gate.
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
 | `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. The latest `7cec00fde0` network development group is sealed failed with zero accepted cases after suite 170; it is separate from the historical terminal formal campaigns. KVM diagnostics and other source commits do not increase its credit |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; the subsequent kernel-instance contract review requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

@@ -46,6 +46,60 @@ def _digest(value):
         allow_nan=False).encode('ascii')).hexdigest()
 
 
+def _administrator_namespaces(epoch):
+    """Require the live administrator's actual guest namespace identity."""
+    return (isinstance(epoch, dict)
+        and type(epoch.get('pid')) is int and epoch['pid'] > 1
+        and type(epoch.get('uid')) is int and epoch['uid'] == 0
+        and type(epoch.get('gid')) is int and epoch['gid'] == 0
+        and isinstance(epoch.get('namespaces'), dict)
+        and set(epoch['namespaces']) == {'pid', 'net', 'mnt', 'user'}
+        and all(type(value) is int and value > 0 for value in epoch['namespaces'].values())
+        and isinstance(epoch.get('namespacePids'), list)
+        and 1 <= len(epoch['namespacePids']) <= 32
+        and epoch['namespacePids'][0] == epoch.get('pid')
+        and all(type(value) is int and value > 0 for value in epoch['namespacePids']))
+
+
+def role_daemon_bindings(principals, epochs):
+    """Validate full daemon instances against the independently verified role roster."""
+    if (not isinstance(epochs, dict)
+            or set(epochs) != {row['role'] for row in principals}):
+        raise ValueError('pr315-v10-daemon-roster-invalid')
+    for row in principals:
+        epoch = epochs[row['role']]
+        if (not isinstance(epoch, dict)
+                or epoch.get('kind') != 'installed-role-daemon-kernel-v1'
+                or epoch.get('uid') != row['uid'] or epoch.get('gid') != row['gid']
+                or epoch.get('bootId') != row['bootId']
+                or epoch.get('managerInvocation') != row['invocationId']
+                or epoch.get('startTicks') != row['processEpoch']
+                or type(epoch.get('hostPid')) is not int or epoch['hostPid'] <= 1
+                or type(epoch.get('startTicks')) is not int or epoch['startTicks'] <= 0
+                or type(epoch.get('uid')) is not int or type(epoch.get('gid')) is not int
+                or epoch.get('pidfdObserved') is not True
+                or type(epoch.get('observedMonotonicNs')) is not int
+                or epoch['observedMonotonicNs'] <= 0
+                or not isinstance(epoch.get('namespacePids'), (list, tuple))
+                or len(epoch['namespacePids']) != 2
+                or epoch['namespacePids'][0] != epoch['hostPid']
+                or any(type(value) is not int or value <= 0 for value in epoch['namespacePids'])
+                or re.fullmatch(r'pid:\[[1-9][0-9]*\]', str(epoch.get('pidNamespace'))) is None
+                or _DIGEST.fullmatch(str(epoch.get('executableDigest', '')).removeprefix('sha256:')) is None):
+            raise ValueError('pr315-v10-daemon-instance-invalid')
+        for field in ('networkNamespaceIdentity', 'mountNamespaceIdentity',
+                      'userNamespaceIdentity', 'cgroupIdentity'):
+            identity = epoch.get(field)
+            if (not isinstance(identity, (list, tuple)) or len(identity) != 2
+                    or any(type(value) is not int or value <= 0 for value in identity)):
+                raise ValueError('pr315-v10-daemon-namespace-invalid')
+        if (epoch['networkNamespaceIdentity'][1] != row['networkNamespace']
+                or fixtures.runtime.canonical_digest({'role': row['role'],
+                    'identity': epoch['cgroupIdentity']})[7:] != row['cgroupDigest']):
+            raise ValueError('pr315-v10-daemon-role-binding-invalid')
+    return epochs
+
+
 def output_symlink_record(campaign, attempt_id, identity, attempt, sidecar,
                           raw_evidence_digests):
     """Bind one real installed descriptor denial to pinned host observations."""
@@ -104,6 +158,7 @@ def output_symlink_record(campaign, attempt_id, identity, attempt, sidecar,
             or target.get('kind') != 'administrator-descriptor-collector'
             or type(target.get('pid')) is not int or target['pid'] <= 1
             or target.get('uid') != 0
+            or not _administrator_namespaces(target)
             or type(target.get('startTicks')) is not int or target['startTicks'] <= 0
             or target.get('bootId') != sender['bootId']
             or _DIGEST.fullmatch(str(target.get('cgroupDigest'))) is None
@@ -227,6 +282,7 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
             'tools/release-certification/restricted/pr314_workload_driver.py')
         if (actor.get('kind') != 'administrator-test-kit'
                 or actor.get('uid') != 0
+                or not _administrator_namespaces(actor)
                 or actor.get('bootId', '').replace('-', '').lower() != sender['bootId']
                 or actor.get('sourceDigest') != source_digest
                 or type(actor.get('pid')) is not int or actor['pid'] <= 1
@@ -275,6 +331,28 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
                 or first.get('handleDigest') == last.get('handleDigest')
                 or not isinstance(target.get('auxiliaryResolverEpoch'), dict)):
             raise ValueError('pr315-v10-provider-worker-target-invalid')
+    if case_id == 'controller-restart':
+        from pr315_workload_runner import _controller_restart_kernel_valid
+        target = sidecar['targetEpoch']
+        first, last = target.get('controllerKernelBefore'), target.get('controllerKernelAfter')
+        try:
+            valid = (_controller_restart_kernel_valid(first, target['controllerBefore'], sender['bootId'])
+                and _controller_restart_kernel_valid(last, target['controllerAfter'], sender['bootId'])
+                and first['invocationId'] != last['invocationId']
+                and (first['pid'], first['startTicks']) != (last['pid'], last['startTicks']))
+        except (KeyError, TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError('pr315-v10-controller-restart-kernel-target-invalid')
+    if case_id in ('observer-death', 'revocation-running'):
+        before_controller = sidecar['targetEpoch'].get('controllerBefore')
+        if (not isinstance(before_controller, dict)
+                or not _administrator_namespaces({**before_controller,
+                    'pid': before_controller.get('mainPid')})
+                or type(before_controller.get('mainStartTicks')) is not int
+                or before_controller['mainStartTicks'] <= 0
+                or before_controller.get('pidfdObserved') is not True):
+            raise ValueError('pr315-v10-controller-active-kernel-target-invalid')
     window = sidecar['operationWindow']
     stop_ns = sidecar.get('stopReceiptObservedNs')
     if (type(window.get('startedMonotonicNs')) is not int
@@ -287,6 +365,14 @@ def generic_case_record(campaign, attempt_id, identity, attempt, sidecar,
         if (stop_ns > window['finishedMonotonicNs']
                 or sidecar['targetEpoch'].get('roles') != principals):
             raise ValueError('pr315-v10-generic-lifecycle-target-invalid')
+        if case_id in ('lost-start-response', 'observer-death', 'controller-restart',
+                       'cancellation', 'deadline', 'revocation-running', 'setsid-double-fork'):
+            role_daemon_bindings(principals, sidecar['targetEpoch'].get('daemonEpochs'))
+            if any(epoch['observedMonotonicNs'] >= window['finishedMonotonicNs']
+                   or (case_id != 'lost-start-response' and
+                       epoch['observedMonotonicNs'] >= window['startedMonotonicNs'])
+                   for epoch in sidecar['targetEpoch']['daemonEpochs'].values()):
+                raise ValueError('pr315-v10-daemon-operation-epoch-invalid')
     elif window['finishedMonotonicNs'] >= stop_ns:
         raise ValueError('pr315-v10-generic-stop-window-invalid')
     record = {'schemaVersion': 10, 'kind': KIND,
@@ -434,8 +520,11 @@ def positive_records(campaign, attempt_id, identity, attempt, report,
             or any(type(value) is not int or value <= 0
                    for value in observer['namespaces'].values())
             or before['uid'] != after['uid'] or before['uid'] != 0
+            or not _administrator_namespaces(before)
+            or not _administrator_namespaces(after)
             or any(before[key] != after[key] for key in
-                   ('pid', 'startTicks', 'bootId', 'cgroupIdentity',
+                   ('pid', 'gid', 'startTicks', 'bootId', 'cgroupIdentity',
+                    'namespaces', 'namespacePids',
                     'cgroupDigest', 'invocationId', 'sourceDigest'))
             or before['bootId'].replace('-', '').lower() != roles['candidate-sender']['bootId']
             or before['sourceDigest'] != source_digest

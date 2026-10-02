@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import select
 import socket
 import stat
 import struct
@@ -604,6 +605,52 @@ def principal_row(role, observation, expected_jdk_digest, daemon=None):
                 'networkNamespace': daemon['networkNamespaceIdentity'][1]}
     except (KeyError, TypeError, ValueError):
         fail('kernel-roster-invalid')
+
+
+def daemon_kernel_record(role, observation, daemon):
+    """Retain the actual daemon PID and namespace proof instead of only its start tick.
+
+    Namespace identities come from the fixed privileged kernel sampler. UID,
+    GID and the process lifetime are independently checked through proc/pidfd.
+    This helper is test-kit observation and adds no production socket method.
+    """
+    if role not in runtime.ROLES:
+        fail('daemon-kernel-record-role-invalid')
+    account = pwd.getpwnam('cryptad-wl-' + role)
+    pid = daemon['hostPid']
+    descriptor = os.pidfd_open(pid)
+    try:
+        proc = Path('/proc') / str(pid)
+        first = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        status = dict(line.split(':', 1) for line in
+                      (proc / 'status').read_text().splitlines() if ':' in line)
+        rows = [row for row in observation['processes']
+                if row.get('hostPid') == pid and row.get('startTicks') == daemon['startTicks']]
+        if (len(rows) != 1 or int(first[19]) != daemon['startTicks']
+                or set(map(int, status['Uid'].split())) != {account.pw_uid}
+                or set(map(int, status['Gid'].split())) != {account.pw_gid}
+                or list(map(int, status['NSpid'].split())) != list(daemon['namespacePids'])):
+            fail('daemon-kernel-record-identity-invalid')
+        row = rows[0]
+        for name in ('mountNamespaceIdentity', 'userNamespaceIdentity'):
+            value = row.get(name)
+            if (not isinstance(value, list) or len(value) != 2
+                    or any(type(part) is not int or part <= 0 for part in value)):
+                fail('daemon-kernel-record-namespace-invalid')
+        if re.fullmatch(r'pid:\[[1-9][0-9]*\]', str(row.get('pidNamespace'))) is None:
+            fail('daemon-kernel-record-namespace-invalid')
+        second = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        if first[19] != second[19] or select.select([descriptor], [], [], 0)[0]:
+            fail('daemon-kernel-record-process-changed')
+        return {**daemon, 'kind': 'installed-role-daemon-kernel-v1',
+            'uid': account.pw_uid, 'gid': account.pw_gid,
+            'bootId': uuid.UUID(observation['bootId']).hex,
+            'pidNamespace': row['pidNamespace'],
+            'mountNamespaceIdentity': row['mountNamespaceIdentity'],
+            'userNamespaceIdentity': row['userNamespaceIdentity'],
+            'pidfdObserved': True, 'observedMonotonicNs': time.monotonic_ns()}
+    finally:
+        os.close(descriptor)
 
 
 def kernel_roster(samples, expected_jdk_digests):
@@ -1223,6 +1270,8 @@ class InstalledWorkloadAdapter:
                       'newEpoch': False, 'contentRetrieval': 'not-executed-group',
                       'roleKernelRosterWindow': {'startedMonotonicNs': started,
                                                  'finishedMonotonicNs': finished}}
+            result['roleDaemonEpochs'] = {role: daemon_kernel_record(
+                role, samples[role], self.daemon_epochs[role]) for role in samples}
             if group == 'partial-launch':
                 result['partialRoleRoster'] = [principal_row(role, samples[role],
                     self.expected_jdk_digests[role], self.daemon_epochs[role])

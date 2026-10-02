@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import socket
 import struct
+import sys
 import tempfile
 import threading
 import time
@@ -36,6 +37,46 @@ def sample():
         row(101, 100, [101, 2], JDK),
         row(102, 101, [102, 3], 'sha256:' + '1' * 64),
         row(103, 102, [103, 4, 1], JDK)]}
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and hasattr(os, 'pidfd_open'),
+                     'native Linux proc/pidfd required')
+class DaemonKernelRecordTests(unittest.TestCase):
+    """Actual process identity checks; these fixtures never claim an installed daemon."""
+
+    def capture(self, expected_uid=None):
+        pid = os.getpid()
+        proc = Path('/proc') / str(pid)
+        status = dict(line.split(':', 1) for line in
+                      (proc / 'status').read_text().splitlines() if ':' in line)
+        ticks = int((proc / 'stat').read_text().rsplit(')', 1)[1].split()[19])
+        namespace_pids = list(map(int, status['NSpid'].split()))
+        account = types.SimpleNamespace(pw_uid=os.geteuid() if expected_uid is None
+                                        else expected_uid, pw_gid=os.getegid())
+        row = {'hostPid': pid, 'startTicks': ticks,
+            'pidNamespace': os.readlink(proc / 'ns/pid'),
+            'mountNamespaceIdentity': [1, (proc / 'ns/mnt').stat().st_ino],
+            'userNamespaceIdentity': [1, (proc / 'ns/user').stat().st_ino]}
+        observed = {'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                    'processes': [row]}
+        daemon = {'hostPid': pid, 'startTicks': ticks,
+                  'namespacePids': namespace_pids}
+        with mock.patch.object(workload.pwd, 'getpwnam', return_value=account):
+            return workload.daemon_kernel_record('candidate-sender', observed, daemon)
+
+    def test_keeps_real_pid_uid_start_ticks_and_namespace_mapping(self):
+        result = self.capture()
+        self.assertEqual(os.getpid(), result['hostPid'])
+        self.assertEqual(os.geteuid(), result['uid'])
+        self.assertEqual(os.getegid(), result['gid'])
+        self.assertEqual(os.getpid(), result['namespacePids'][0])
+        self.assertTrue(result['pidfdObserved'])
+        self.assertEqual('installed-role-daemon-kernel-v1', result['kind'])
+
+    def test_rejects_account_claim_that_disagrees_with_actual_kernel_uid(self):
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'daemon-kernel-record-identity-invalid'):
+            self.capture(os.geteuid() + 1)
 
 
 class ScopedWorkerTests(unittest.TestCase):
@@ -199,6 +240,17 @@ class KernelRosterTests(unittest.TestCase):
 
 
 class ObserverPolicyTests(unittest.TestCase):
+    def setUp(self):
+        # These tests exercise scheduling only. The kernel collector has separate
+        # real Linux tests, and the host verifier rejects this placeholder.
+        collector = mock.patch.object(workload, 'daemon_kernel_record',
+                                      return_value={'offlineSchedulingFixture': True})
+        collector.start()
+        self.addCleanup(collector.stop)
+        defaults = mock.patch.object(workload.InstalledWorkloadAdapter, 'daemon_epochs',
+                                     {role: {} for role in workload.runtime.ROLES}, create=True)
+        defaults.start()
+        self.addCleanup(defaults.stop)
     @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED') and Path('/proc/self/stat').is_file(),
                          'Linux peer credentials and process epoch required')
     def test_fixed_observer_control_denial_checkpoint_excludes_handle(self):

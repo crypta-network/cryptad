@@ -1018,6 +1018,68 @@ class RevocationRequestTest(unittest.TestCase):
             self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
 
 
+@unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0
+                     and hasattr(os, 'pidfd_open'), 'native Linux root/pidfd required')
+class ControllerKernelEpochTest(unittest.TestCase):
+    """Real pidfd and namespace observations; the systemd/cgroup mapping is a fixture."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='pr315-controller-kernel-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.pid = os.getpid()
+        self.proc = self.root / 'proc' / str(self.pid)
+        self.proc.mkdir(parents=True)
+        live = Path('/proc') / str(self.pid)
+        for name in ('stat', 'status'):
+            (self.proc / name).write_bytes((live / name).read_bytes())
+        (self.proc / 'ns').symlink_to(live / 'ns', target_is_directory=True)
+        (self.proc / 'cgroup').write_text('0::/system.slice/cryptad-workload-controller.service\n')
+        self.group = self.root / 'sys-cgroup/system.slice/cryptad-workload-controller.service'
+        self.group.mkdir(parents=True)
+        self.state = {'InvocationID': 'a' * 32, 'ActiveState': 'active',
+                      'SubState': 'running', 'MainPID': str(self.pid), 'Result': 'success'}
+        self.workload = SimpleNamespace(boot=lambda:
+            Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+
+    def capture(self, confirmed=None):
+        def mapped(value):
+            if str(value) == '/proc':
+                return self.root / 'proc'
+            if str(value) == '/sys/fs/cgroup':
+                return self.root / 'sys-cgroup'
+            if str(value) == '/sys/fs/cgroup/system.slice/cryptad-workload-controller.service':
+                return self.group
+            return Path(value)
+        with patch.object(driver, 'Path', side_effect=mapped), \
+                patch.object(driver, 'controller_unit_state',
+                             return_value=confirmed or self.state):
+            return driver.controller_restart_kernel_epoch(self.workload, self.state)
+
+    def test_reads_live_pid_start_uid_namespaces_and_observes_pidfd(self):
+        epoch = self.capture()
+        self.assertEqual(self.pid, epoch['pid'])
+        self.assertEqual(0, epoch['uid'])
+        self.assertEqual(0, epoch['gid'])
+        self.assertEqual(self.pid, epoch['namespacePids'][0])
+        self.assertEqual({name: Path('/proc/self/ns', name).stat().st_ino
+                          for name in ('pid', 'net', 'mnt', 'user')}, epoch['namespaces'])
+        self.assertTrue(epoch['pidfdObserved'])
+        self.assertEqual('a' * 32, epoch['invocationId'])
+
+    def test_rejects_claimed_root_when_kernel_uid_is_another_account(self):
+        status = (self.proc / 'status').read_text().splitlines()
+        (self.proc / 'status').write_text('\n'.join(
+            'Uid:\t1000\t1000\t1000\t1000' if row.startswith('Uid:') else row
+            for row in status) + '\n')
+        with self.assertRaisesRegex(ValueError, 'kernel-scope-invalid'):
+            self.capture()
+
+    def test_rejects_manager_invocation_replaced_during_kernel_observation(self):
+        with self.assertRaisesRegex(ValueError, 'kernel-epoch-changed'):
+            self.capture(dict(self.state, InvocationID='b' * 32))
+
+
 class ControllerRestartObservationTest(unittest.TestCase):
     def test_waits_for_all_bound_roles_and_exact_stop_receipts_before_new_start(self):
         rows = [{'role': role, 'managerInvocation': format(index + 1, '032x'),
@@ -1046,6 +1108,8 @@ class ControllerRestartObservationTest(unittest.TestCase):
         after = dict(before, InvocationID='b' * 32, MainPID='200')
         with patch.object(driver, 'begin_cancellation', return_value=active), \
                 patch.object(driver, 'controller_unit_state', side_effect=[before, after]) as observed, \
+                patch.object(driver, 'controller_restart_kernel_epoch', side_effect=[
+                    {'pid': 100, 'startTicks': 11}, {'pid': 200, 'startTicks': 12}]) as kernel, \
                 patch.object(driver, 'wait_bound_roles_stopped', return_value=[
                     {'role': row['role'], 'activeState': 'inactive', 'subState': 'dead',
                      'mainPid': 0, 'receiptObservedMonotonicNs': 20} for row in active['preRoles']]), \
@@ -1055,6 +1119,9 @@ class ControllerRestartObservationTest(unittest.TestCase):
         self.assertEqual('pr315-administrator-controller-restart', result['kind'])
         self.assertEqual('b' * 32, result['afterController']['InvocationID'])
         self.assertEqual(2, observed.call_count)
+        self.assertEqual(2, kernel.call_count)
+        self.assertEqual({'pid': 100, 'startTicks': 11}, result['beforeControllerKernel'])
+        self.assertEqual({'pid': 200, 'startTicks': 12}, result['afterControllerKernel'])
         self.assertEqual(['/usr/bin/systemctl', 'kill', '--kill-who=main', '--signal=SIGKILL',
                           'cryptad-workload-controller.service'], run.call_args_list[0].args[0])
         self.assertEqual(['/usr/bin/systemctl', 'start',

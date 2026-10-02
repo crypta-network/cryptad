@@ -1985,11 +1985,22 @@ def _administrator_collector_epoch(case_id):
     identity = [group.st_dev, group.st_ino]
     boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     start = int(fields[19])
+    status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines()
+                  if ':' in line)
+    namespace_pids = list(map(int, status['NSpid'].split()))
+    namespaces = {name: (proc / 'ns' / name).stat().st_ino
+                  for name in ('pid', 'net', 'mnt', 'user')}
+    if (set(map(int, status['Uid'].split())) != {0}
+            or set(map(int, status['Gid'].split())) != {0}
+            or not namespace_pids or namespace_pids[0] != pid
+            or any(value <= 0 for value in namespaces.values())):
+        raise ValueError('workload-' + case_id + '-collector-namespace-invalid')
     source = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': pid,
         'startTicks': start, 'cgroupIdentity': identity, 'sourceDigest': source},
         sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
-    return {'pid': pid, 'uid': 0, 'startTicks': start, 'bootId': boot,
+    return {'pid': pid, 'uid': 0, 'gid': 0, 'startTicks': start, 'bootId': boot,
+            'namespacePids': namespace_pids, 'namespaces': namespaces,
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
                 'role': ('positive-administrator' if case_id == 'positive'
@@ -2990,6 +3001,7 @@ def begin_controller_restart(workload, handoff, result):
     if (before['ActiveState'] != 'active' or before['SubState'] != 'running'
             or int(before['MainPID']) <= 0):
         raise ValueError('workload-controller-restart-not-active')
+    before_kernel = controller_restart_kernel_epoch(workload, before)
     event = {'kind': 'controller-restart', 'roles': active['preRoles'],
              'campaignDeadlineNs': active['campaignDeadlineNs'],
              'oldControllerInvocation': before['InvocationID']}
@@ -3000,7 +3012,55 @@ def begin_controller_restart(workload, handoff, result):
             'triggerStartedNs': started,
             'triggerEventDigest': canonical_digest(event)[7:],
             'campaignDeadlineNs': active['campaignDeadlineNs'],
-            'preRoles': active['preRoles'], 'beforeController': before}
+            'preRoles': active['preRoles'], 'beforeController': before,
+            'beforeControllerKernel': before_kernel}
+
+
+def controller_restart_kernel_epoch(workload, state):
+    """Pin the fixed active controller through kernel observations and a pidfd.
+
+    The PID is selected by the actual fixed systemd unit. No tested process
+    supplies the UID, namespaces, cgroup, start ticks, or invocation binding.
+    """
+    if (state.get('ActiveState') != 'active' or state.get('SubState') != 'running'
+            or not str(state.get('MainPID', '')).isdecimal()
+            or int(state['MainPID']) <= 1
+            or re.fullmatch('[0-9a-f]{32}', str(state.get('InvocationID'))) is None):
+        raise ValueError('workload-controller-restart-kernel-target-inactive')
+    pid = int(state['MainPID'])
+    descriptor = os.pidfd_open(pid)
+    try:
+        proc = Path('/proc') / str(pid)
+        first = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        status = dict(line.split(':', 1) for line in
+                      (proc / 'status').read_text().splitlines() if ':' in line)
+        group_path = '/system.slice/cryptad-workload-controller.service'
+        group = (Path('/sys/fs/cgroup') / group_path.lstrip('/')).stat()
+        namespace_pids = list(map(int, status['NSpid'].split()))
+        namespaces = {name: (proc / 'ns' / name).stat().st_ino
+                      for name in ('pid', 'net', 'mnt', 'user')}
+        if (len(first) <= 19 or not first[19].isdecimal() or int(first[19]) <= 0
+                or set(map(int, status['Uid'].split())) != {0}
+                or set(map(int, status['Gid'].split())) != {0}
+                or not namespace_pids or namespace_pids[0] != pid
+                or any(value <= 0 for value in namespaces.values())
+                or (proc / 'cgroup').read_text().strip() != '0::' + group_path):
+            raise ValueError('workload-controller-restart-kernel-scope-invalid')
+        second = (proc / 'stat').read_text().rsplit(')', 1)[1].split()
+        confirmed = controller_unit_state()
+        if (first[19] != second[19]
+                or any(confirmed[key] != state[key] for key in
+                       ('InvocationID', 'MainPID', 'ActiveState', 'SubState'))
+                or select.select([descriptor], [], [], 0)[0]):
+            raise ValueError('workload-controller-restart-kernel-epoch-changed')
+        return {'kind': 'fixed-controller-kernel-epoch-v1',
+            'pid': pid, 'uid': 0, 'gid': 0, 'startTicks': int(first[19]),
+            'bootId': workload.boot(), 'invocationId': state['InvocationID'],
+            'cgroupPath': group_path, 'cgroupIdentity': [group.st_dev, group.st_ino],
+            'namespacePids': namespace_pids, 'namespaces': namespaces,
+            'pidfdObserved': True, 'observedMonotonicNs': time.monotonic_ns()}
+    finally:
+        os.close(descriptor)
 
 
 def wait_bound_roles_stopped(workload, context):
@@ -3044,11 +3104,12 @@ def trigger_controller_restart(workload, context):
     after = controller_unit_state()
     if after['InvocationID'] == context['beforeController']['InvocationID']:
         raise ValueError('workload-controller-restart-invocation-unchanged')
+    after_kernel = controller_restart_kernel_epoch(workload, after)
     return {**context, 'killReturnCode': killed.returncode,
             'preStartBoundRoles': bound_roles,
             'newControllerStartRequestedNs': requested,
             'startReturnCode': started.returncode,
-            'afterController': after}
+            'afterController': after, 'afterControllerKernel': after_kernel}
 
 
 def complete_controller_restart(workload, context):
@@ -4077,16 +4138,15 @@ def controller_unit_identity(workload):
             or not state['MainPID'].isdecimal() or int(state['MainPID']) <= 1
             or state['ControlGroup'] != group):
         raise ValueError('runner-control-target-inactive')
-    pid = int(state['MainPID'])
-    process = Path('/proc') / str(pid)
-    if process.joinpath('cgroup').read_text().strip() != '0::' + group:
-        raise ValueError('runner-control-target-cgroup-changed')
-    start_ticks = int(process.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
-    identity = (Path('/sys/fs/cgroup') / group.removeprefix('/')).stat()
-    return {'invocationId': state['InvocationID'],
-            'cgroupIdentity': [identity.st_dev, identity.st_ino],
-            'bootId': workload.boot(), 'mainPid': pid, 'mainStartTicks': start_ticks,
-            'observedMonotonicNs': time.monotonic_ns()}
+    epoch = controller_restart_kernel_epoch(workload, state)
+    return {'invocationId': epoch['invocationId'],
+            'cgroupIdentity': epoch['cgroupIdentity'],
+            'bootId': epoch['bootId'], 'mainPid': epoch['pid'],
+            'mainStartTicks': epoch['startTicks'],
+            'uid': epoch['uid'], 'gid': epoch['gid'],
+            'namespacePids': epoch['namespacePids'], 'namespaces': epoch['namespaces'],
+            'pidfdObserved': epoch['pidfdObserved'],
+            'observedMonotonicNs': epoch['observedMonotonicNs']}
 
 
 def bounded_runner_control_output(process):

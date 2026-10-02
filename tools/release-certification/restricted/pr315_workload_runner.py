@@ -1758,6 +1758,36 @@ def _observer_death_case(report, diagnostics, terminal, principals):
                      'finishedMonotonicNs': context['terminalObservedNs']}, commitment
 
 
+def _controller_restart_kernel_valid(epoch, state, boot):
+    """Validate the administrator's closed, independently sampled live unit epoch."""
+    fields = {'kind', 'pid', 'uid', 'gid', 'startTicks', 'bootId', 'invocationId',
+              'cgroupPath', 'cgroupIdentity', 'namespacePids', 'namespaces',
+              'pidfdObserved', 'observedMonotonicNs'}
+    return (isinstance(epoch, dict) and set(epoch) == fields
+        and epoch['kind'] == 'fixed-controller-kernel-epoch-v1'
+        and type(epoch['pid']) is int and epoch['pid'] > 1
+        and epoch['pid'] == int(state['MainPID'])
+        and type(epoch['uid']) is int and epoch['uid'] == 0
+        and type(epoch['gid']) is int and epoch['gid'] == 0
+        and type(epoch['startTicks']) is int and epoch['startTicks'] > 0
+        and isinstance(epoch['bootId'], str)
+        and epoch['bootId'].replace('-', '').lower() == boot
+        and epoch['invocationId'] == state['InvocationID']
+        and epoch['cgroupPath'] == '/system.slice/cryptad-workload-controller.service'
+        and isinstance(epoch['cgroupIdentity'], list)
+        and len(epoch['cgroupIdentity']) == 2
+        and all(type(value) is int and value > 0 for value in epoch['cgroupIdentity'])
+        and isinstance(epoch['namespacePids'], list)
+        and 1 <= len(epoch['namespacePids']) <= 32
+        and epoch['namespacePids'][0] == epoch['pid']
+        and all(type(value) is int and value > 0 for value in epoch['namespacePids'])
+        and isinstance(epoch['namespaces'], dict)
+        and set(epoch['namespaces']) == {'pid', 'net', 'mnt', 'user'}
+        and all(type(value) is int and value > 0 for value in epoch['namespaces'].values())
+        and epoch['pidfdObserved'] is True
+        and type(epoch['observedMonotonicNs']) is int and epoch['observedMonotonicNs'] > 0)
+
+
 def _controller_restart_case(report, diagnostics, terminal, principals):
     """Bind actual controller invocation replacement to all four terminal role receipts."""
     if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
@@ -1769,9 +1799,10 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
         if (not isinstance(context, dict)
                 or set(context) != {'schemaVersion', 'kind', 'triggerStartedNs',
                                     'triggerEventDigest', 'campaignDeadlineNs', 'preRoles',
-                                    'beforeController', 'killReturnCode', 'preStartBoundRoles',
+                                    'beforeController', 'beforeControllerKernel',
+                                    'killReturnCode', 'preStartBoundRoles',
                                     'newControllerStartRequestedNs', 'startReturnCode',
-                                    'afterController',
+                                    'afterController', 'afterControllerKernel',
                                     'terminalObservedNs', 'populatedCgroups',
                                     'remainingDescendants', 'retention'}
                 or context['schemaVersion'] != 1
@@ -1795,7 +1826,20 @@ def _controller_restart_case(report, diagnostics, terminal, principals):
                 or re.fullmatch('[0-9a-f]{32}', after['InvocationID']) is None
                 or before['InvocationID'] == after['InvocationID']
                 or before['ActiveState'] != 'active' or before['SubState'] != 'running'
-                or not before['MainPID'].isdecimal() or int(before['MainPID']) <= 0):
+                or not before['MainPID'].isdecimal() or int(before['MainPID']) <= 1
+                or after['ActiveState'] != 'active' or after['SubState'] != 'running'
+                or not after['MainPID'].isdecimal() or int(after['MainPID']) <= 1):
+            return None
+        before_kernel = context['beforeControllerKernel']
+        after_kernel = context['afterControllerKernel']
+        boot = principals['roles'][0]['bootId']
+        if (not _controller_restart_kernel_valid(before_kernel, before, boot)
+                or not _controller_restart_kernel_valid(after_kernel, after, boot)
+                or (before_kernel['pid'], before_kernel['startTicks']) ==
+                   (after_kernel['pid'], after_kernel['startTicks'])
+                or not before_kernel['observedMonotonicNs'] < context['triggerStartedNs']
+                or not context['newControllerStartRequestedNs'] <=
+                       after_kernel['observedMonotonicNs'] < context['terminalObservedNs']):
             return None
         campaign = terminal['controllerRecords']['campaign']
         if (campaign['status'] != 'captured'
@@ -1999,10 +2043,19 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                 _observer_death_case(report, diagnostics, terminal, principals))
         if case is None:
             return None
+        import pr315_case_v10 as current_case
+        daemon_epochs = current_case.role_daemon_bindings(
+            principals['roles'], result.get('roleDaemonEpochs'))
         witness, window, commitment = case
+        if any(epoch['observedMonotonicNs'] >= window['finishedMonotonicNs']
+               or (group != 'lost-start-response' and
+                   epoch['observedMonotonicNs'] >= window['startedMonotonicNs'])
+               for epoch in daemon_epochs.values()):
+            return None
         before, after = (diagnostics['lifecycleActorBefore'],
                          diagnostics['lifecycleActorAfter'])
-        stable = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+        stable = ('pid', 'uid', 'gid', 'startTicks', 'bootId', 'cgroupIdentity',
+                  'namespaces', 'namespacePids',
                   'cgroupDigest', 'invocationId', 'sourceDigest')
         source_digest = reference.sha256(source /
             'tools/release-certification/restricted/pr314_workload_driver.py')
@@ -2017,7 +2070,13 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
             separators=(',', ':')).encode()).hexdigest()[:32]
         if (any(before[key] != after[key] for key in stable)
                 or before['pid'] <= 1 or before['uid'] != 0
-                or before['startTicks'] <= 0
+                or before['startTicks'] <= 0 or before['gid'] != 0
+                or not isinstance(before['namespaces'], dict)
+                or set(before['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                or any(type(value) is not int or value <= 0
+                       for value in before['namespaces'].values())
+                or not isinstance(before['namespacePids'], list)
+                or not before['namespacePids'] or before['namespacePids'][0] != before['pid']
                 or before['sourceDigest'] != source_digest
                 or before['cgroupDigest'] != cgroup_digest
                 or before['invocationId'] != invocation
@@ -2051,16 +2110,21 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
         sidecar = {'contract': campaign.CONTRACT, 'caseId': group,
                    'status': 'passed',
                    'actorEpoch': {'kind': 'administrator-test-kit',
-                                  'pid': before['pid'], 'uid': before['uid'],
+                                  'pid': before['pid'], 'uid': before['uid'], 'gid': before['gid'],
                                   'startTicks': before['startTicks'],
                                   'bootId': before['bootId'],
+                                  'namespaces': before['namespaces'],
+                                  'namespacePids': before['namespacePids'],
                                   'cgroupDigest': cgroup_digest,
                                   'systemdInvocation': None,
                                   'testKitInvocation': invocation,
                                   'sourceDigest': source_digest},
                    'targetEpoch': {'roles': principals['roles'],
-                                   'controllerBefore': context.get('beforeController'),
-                                   'controllerAfter': context.get('afterController'),
+                                   'daemonEpochs': daemon_epochs,
+                                   'controllerBefore': context.get('beforeController', context.get('controllerBefore')),
+                                   'controllerAfter': context.get('afterController', context.get('controllerAfter')),
+                                   'controllerKernelBefore': context.get('beforeControllerKernel'),
+                                   'controllerKernelAfter': context.get('afterControllerKernel'),
                                    'roleStops': context.get('roleStops'),
                                    'revocationMarkerDigest': context.get('markerDigest'),
                                    'revocationActor': context.get('actor'),

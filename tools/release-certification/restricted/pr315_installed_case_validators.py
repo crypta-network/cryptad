@@ -761,7 +761,8 @@ def _output_artifact_attempt(report, result, fixture, terminal, source, case_id)
                         'mountNamespaceIdentity', 'userNamespaceIdentity',
                         'executableDigest', 'noNewPrivileges',
                         'effectiveCapabilities')
-        collector_stable = ('pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
+        collector_stable = ('pid', 'uid', 'gid', 'startTicks', 'bootId', 'cgroupIdentity',
+                            'namespaces', 'namespacePids',
                             'cgroupDigest', 'invocationId', 'sourceDigest')
         actor_group = fixtures.runtime.canonical_digest({
             'role': 'candidate-sender', 'identity': audit['actorCgroupBefore']})[7:]
@@ -912,6 +913,9 @@ def _output_artifact_attempt(report, result, fixture, terminal, source, case_id)
                                    'testKitInvocation': collector_invocation,
                                    'systemdInvocation': None,
                                    'pid': collector['pid'], 'uid': collector['uid'],
+                                   'gid': collector['gid'],
+                                   'namespaces': collector['namespaces'],
+                                   'namespacePids': collector['namespacePids'],
                                    'startTicks': collector['startTicks'],
                                    'cgroupDigest': collector_group,
                                    'canaryDigestBefore': target_before['controlDigest'],
