@@ -2,7 +2,14 @@
 
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
-**There is no complete installed 45-case campaign.** Helper `3b6677eec2` passed five archived development groups in suites 183–187; suite 188 is sealed failed after premature role stops before the original deadline. The subsequent bounded observer-activity fix requires a new identity and fresh installed execution. The best historical formal TCG
+**There is no complete installed 45-case campaign.** Helper `3b6677eec2`
+passed five archived development groups in suites 183–187; suite 188 is sealed
+failed after premature role stops before the original deadline. Helper
+`2a996b73e7` then passed the actual deadline development group in suite 189,
+with complete original archival and signed host cleanup. Its certification
+source-size gate failed and required the fixed observer transport extraction;
+that extraction requires a new measured identity and fresh installed execution.
+The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
 source-built `7cec00fde0` candidate completed six network/AppHost cases in
 suite 171 and symlink, FIFO and hardlink cases in suites 172–174. All four
@@ -29,6 +36,44 @@ suite 154, with sealed host cleanup. Suite 155 completed and retired the
 extra authority preparation guest. Suite 156 began the formal authority
 probes but produced nine inconclusive results; its campaign is sealed failed
 at 13/45. These results cannot transfer to the next source revision.
+
+## Certification source-size gate and fixed observer transport extraction
+
+The current-helper certification self-test for `2a996b73e7` ran 2,395 checks
+and remained red: `restricted/pr314_workload_driver.py` had 5,076 lines,
+exceeding the existing 5,000-line source boundary. Three additional Mac errors
+were loopback HTTP `socket.bind` permission errors under the execution sandbox;
+all three actual HTTP checks passed when rerun with local listening permitted.
+The complete failed log is retained. Its 12 Linux owned-journal skips are
+unexecuted on Mac, not installed or native Linux passes.
+
+The prospective extraction moves only fixed revocation, observer-death and
+deadline observer transport into `pr315_observer_transport.py`. The facade
+passes its actual driver module explicitly, preserving the installed kernel,
+clock, child-cleanup and source hooks without circular imports or hidden
+callback globals. Production socket methods, paths, role limits, the original
+deadline, the 240-second inactivity policy and case proof requirements remain
+unchanged. The helper is an explicitly excluded production test seam included
+in the measured administrator test kit. The resulting driver is 4,862 lines
+and the helper 243 lines. The existing source-boundary check, original-deadline
+interaction checks and installation export checks passed as 23 portable tests.
+Native Linux restricted checks then passed 645 tests with 22 environment
+skips; all 21 applicable root checks and the pinned QEMU check passed
+separately, including actual observer UID, peer, namespace and pidfd behavior
+through the new module. The source-size gate also passed natively. Full
+final-source certification and a new installed identity remain required.
+
+Suite 189 completed its actual deadline probe under frozen `2a996b73e7`: 45
+real observer activities exited normally under one controller instance, and
+the four stop receipts began 0.805–0.923 seconds after the unchanged expiry.
+The complete context contains 12,813 files, including both original disks,
+and has a checksum-verified private external archive and signed host cleanup.
+The development group is passed; complete installed acceptance remains false.
+
+A private allocation hold retired that development batch after suite 189's
+complete host cleanup and full original archival, before its next allocation. The extraction
+creates a new helper/test-kit identity; suite 189 cannot transfer a case
+pass to it, and no development group grants complete installed acceptance.
 
 ## Original deadline and fixed observer activity after suite 188
 
@@ -4327,7 +4372,7 @@ as a green c0eb final-source gate.
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
 | `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; the subsequent kernel-instance contract review requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; suites 183–187 passed the strengthened kernel contract under `3b6677eec2`, and suite 189 passed deadline under `2a996b73e7`. The subsequent source-size extraction requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
