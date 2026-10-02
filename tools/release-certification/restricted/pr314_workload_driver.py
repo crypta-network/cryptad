@@ -2553,7 +2553,16 @@ def complete_deadline(workload, context):
     deadline_ns = context['campaignDeadlineNs']
     if type(deadline_ns) is not int or context['armedMonotonicNs'] >= deadline_ns:
         raise ValueError('workload-deadline-selection-invalid')
+    heartbeats = []
+    next_activity_ns = context['armedMonotonicNs']
     while time.monotonic_ns() < deadline_ns:
+        if (time.monotonic_ns() >= next_activity_ns
+                and deadline_ns - time.monotonic_ns() > 120 * 10**9):
+            if len(heartbeats) >= 64:
+                raise ValueError('workload-deadline-heartbeat-limit')
+            activity = _deadline_observer_activity(workload, context)
+            heartbeats.append(activity)
+            next_activity_ns = activity['responseObservedNs'] + 60 * 10**9
         time.sleep(min(.2, max(0, (deadline_ns - time.monotonic_ns()) / 1e9)))
     until = time.monotonic() + 40
     while time.monotonic() < until:
@@ -2586,6 +2595,8 @@ def complete_deadline(workload, context):
             if finished <= deadline_ns:
                 raise ValueError('workload-deadline-clock-invalid')
             return {**context, 'terminalObservedNs': finished,
+                    'observerHeartbeatPolicy': 'fixed-observer-deadline-60s-v1',
+                    'observerHeartbeats': heartbeats,
                     'roleStops': observed, 'populatedCgroups': [],
                     'remainingDescendants': 0, 'retention': 'retained'}
         time.sleep(.05)
@@ -2676,8 +2687,12 @@ def _revocation_request(observer, handle, controller_pid):
             stop_child(pid)
 
 
-def _observer_death_request(observer, handle, controller_pid, invocation):
-    """Kill the exact observer after one successful installed controller request."""
+def _observer_death_request(observer, handle, controller_pid, invocation, *,
+                            normal_exit=False, deadline_ns=None):
+    """Complete one fixed real observer request, then prove death or normal exit."""
+    if (type(normal_exit) is not bool or normal_exit and
+            (type(deadline_ns) is not int or deadline_ns <= time.monotonic_ns())):
+        raise ValueError('workload-deadline-observer-budget-invalid')
     if (observer.pw_uid <= 0 or observer.pw_gid <= 0
             or re.fullmatch('[0-9a-f]{64}', handle) is None
             or type(controller_pid) is not int or controller_pid <= 1
@@ -2731,6 +2746,8 @@ def _observer_death_request(observer, handle, controller_pid, invocation):
                     raise ValueError('workload-observer-death-response-invalid')
             child.sendall(b'1' + hashlib.sha256(raw).hexdigest().encode())
             child.settimeout(None)
+            if normal_exit:
+                os._exit(0 if child.recv(1) == b'E' else 1)
             while child.recv(1):
                 pass
             os._exit(1)
@@ -2753,6 +2770,8 @@ def _observer_death_request(observer, handle, controller_pid, invocation):
         if set(map(int, status.split()[1:])) != {observer.pw_uid}:
             raise ValueError('workload-observer-death-child-uid-invalid')
         start_ticks = int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        epoch = (_positive_observer_epoch(pid, observer.pw_uid, deadline_ns)
+                 if normal_exit else None)
         started = time.monotonic_ns()
         parent.sendall(b'G')
         parent.settimeout(40)
@@ -2765,6 +2784,19 @@ def _observer_death_request(observer, handle, controller_pid, invocation):
         pidfd = os.pidfd_open(pid)
         if int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19]) != start_ticks:
             raise ValueError('workload-observer-death-child-replaced')
+        if normal_exit:
+            exit_started = time.monotonic_ns()
+            parent.sendall(b'E')
+            status = wait_child(pid, min(time.monotonic() + 5, deadline_ns / 1e9 + 5))
+            reaped = True
+            exit_finished = time.monotonic_ns()
+            if status != 0 or exit_finished <= exit_started:
+                raise ValueError('workload-deadline-observer-exit-invalid')
+            return {'actor': epoch, 'requestDigest': hashlib.sha256(request).hexdigest(),
+                'responseDigest': response[1:].decode(),
+                'requestStartedNs': started, 'responseObservedNs': finished,
+                'exitStartedNs': exit_started, 'exitObservedNs': exit_finished,
+                'pidfdUsed': True, 'exitStatus': 0}
         kill_started = time.monotonic_ns()
         signal.pidfd_send_signal(pidfd, signal.SIGTERM)
         status = wait_child(pid, time.monotonic() + 5)
@@ -2786,6 +2818,23 @@ def _observer_death_request(observer, handle, controller_pid, invocation):
         parent.close()
         if not reaped:
             stop_child(pid)
+
+
+def _deadline_observer_activity(workload, context):
+    """Perform one fixed real observer request while preserving the original expiry."""
+    campaign = workload.read(workload.ROOT / 'campaign.json')
+    if (campaign['deadlineMonotonicNs'] != context['campaignDeadlineNs']
+            or time.monotonic_ns() >= context['campaignDeadlineNs']):
+        raise ValueError('workload-deadline-heartbeat-expired')
+    sender = next(row for row in context['preRoles'] if row['role'] == 'candidate-sender')
+    controller = controller_unit_identity(workload)
+    result = _observer_death_request(pwd.getpwnam('cryptad-soak'),
+        campaign['handles']['candidate-sender'], controller['mainPid'],
+        sender['managerInvocation'], normal_exit=True,
+        deadline_ns=context['campaignDeadlineNs'])
+    return {**result, 'controllerInvocation': controller['invocationId'],
+            'controllerPid': controller['mainPid'],
+            'controllerStartTicks': controller['mainStartTicks']}
 
 
 def begin_revocation_running(workload, handoff, result, observer):

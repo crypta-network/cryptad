@@ -2638,6 +2638,15 @@ class RunnerTests(unittest.TestCase):
         private = {'deadline': context,
                    'lifecycleActorBefore': synthetic_lifecycle_actor(source, 850),
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 1150)}
+        actor = {'kind': 'installed-observer-process', 'pid': 501, 'uid': roster['observerUid'],
+            'startTicks': 44, 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'sourceDigest': private['lifecycleActorBefore']['sourceDigest'],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14}}
+        context['observerHeartbeatPolicy'] = 'fixed-observer-deadline-60s-v1'
+        context['observerHeartbeats'] = [{'actor': actor, 'requestDigest': 'd' * 64,
+            'responseDigest': 'e' * 64, 'requestStartedNs': 910, 'responseObservedNs': 920,
+            'exitStartedNs': 930, 'exitObservedNs': 940, 'pidfdUsed': True, 'exitStatus': 0,
+            'controllerInvocation': 'f' * 32, 'controllerPid': 600, 'controllerStartTicks': 45}]
         fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
         with patch.object(runner, 'group_prepared', return_value=True):
             result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
@@ -2656,6 +2665,17 @@ class RunnerTests(unittest.TestCase):
             stale['lifecycleActorAfter']['startTicks'] = 34
             self.assertIsNone(runner._lifecycle_group_attempt(
                 'deadline', report, result, fixture, stale, terminal, source))
+            for field, value in (('observerHeartbeats', []),
+                                 ('observerHeartbeatPolicy', 'untrusted')):
+                changed = copy.deepcopy(private)
+                changed['deadline'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'deadline', report, result, fixture, changed, terminal, source))
+            for field, value in (('uid', 0), ('pid', 0), ('namespaces', {})):
+                changed = copy.deepcopy(private)
+                changed['deadline']['observerHeartbeats'][0]['actor'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'deadline', report, result, fixture, changed, terminal, source))
 
     def test_revocation_group_needs_live_denial_and_owned_terminal_receipts(self):
         roster = synthetic_role_kernel_roster()

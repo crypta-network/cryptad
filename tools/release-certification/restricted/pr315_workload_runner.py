@@ -1338,6 +1338,61 @@ def _cancellation_case(report, result, diagnostics, terminal, principals):
                      'finishedMonotonicNs': context['terminalObservedNs']}, commitment
 
 
+def _deadline_heartbeat_proof(context, diagnostics, principals):
+    """Require real fixed-observer activity through the original wait, not a timer claim."""
+    beats = context.get('observerHeartbeats')
+    if (context.get('observerHeartbeatPolicy') != 'fixed-observer-deadline-60s-v1'
+            or not isinstance(beats, list) or not 1 <= len(beats) <= 64):
+        return None
+    source = diagnostics['lifecycleActorBefore']['sourceDigest']
+    deadline = context['campaignDeadlineNs']
+    previous = context['armedMonotonicNs']
+    first_controller = None
+    request_digest = None
+    for beat in beats:
+        fields = {'actor', 'requestDigest', 'responseDigest', 'requestStartedNs',
+            'responseObservedNs', 'exitStartedNs', 'exitObservedNs', 'pidfdUsed',
+            'exitStatus', 'controllerInvocation', 'controllerPid', 'controllerStartTicks'}
+        if not isinstance(beat, dict) or set(beat) != fields:
+            return None
+        actor = beat['actor']
+        controller = (beat['controllerInvocation'], beat['controllerPid'], beat['controllerStartTicks'])
+        if (not isinstance(actor, dict) or actor.get('kind') != 'installed-observer-process'
+                or actor.get('uid') != principals['observerUid']
+                or type(actor.get('pid')) is not int or actor['pid'] <= 1
+                or type(actor.get('startTicks')) is not int or actor['startTicks'] <= 0
+                or actor.get('sourceDigest') != source
+                or actor.get('bootId', '').replace('-', '').lower() != principals['roles'][0]['bootId']
+                or not isinstance(actor.get('namespaces'), dict)
+                or set(actor['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                or any(type(value) is not int or value <= 0 for value in actor['namespaces'].values())
+                or beat['pidfdUsed'] is not True or beat['exitStatus'] != 0
+                or re.fullmatch('[0-9a-f]{64}', str(beat['requestDigest'])) is None
+                or re.fullmatch('[0-9a-f]{64}', str(beat['responseDigest'])) is None
+                or re.fullmatch('[0-9a-f]{32}', str(beat['controllerInvocation'])) is None
+                or type(beat['controllerPid']) is not int or beat['controllerPid'] <= 1
+                or type(beat['controllerStartTicks']) is not int or beat['controllerStartTicks'] <= 0
+                or any(type(beat[key]) is not int for key in ('requestStartedNs',
+                    'responseObservedNs', 'exitStartedNs', 'exitObservedNs'))
+                or not previous <= beat['requestStartedNs'] < beat['responseObservedNs']
+                    < beat['exitStartedNs'] < beat['exitObservedNs'] < deadline
+                or beat['responseObservedNs'] - previous >= 240 * 10**9):
+            return None
+        if first_controller is None:
+            first_controller, request_digest = controller, beat['requestDigest']
+        elif controller != first_controller or beat['requestDigest'] != request_digest:
+            return None
+        previous = beat['responseObservedNs']
+    if deadline - previous >= 240 * 10**9:
+        return None
+    return {'policy': context['observerHeartbeatPolicy'], 'count': len(beats),
+        'recordsDigest': fixtures.runtime.canonical_digest(beats)[7:],
+        'firstObserver': beats[0]['actor'], 'lastObserver': beats[-1]['actor'],
+        'firstResponseNs': beats[0]['responseObservedNs'], 'lastResponseNs': previous,
+        'controllerInvocation': first_controller[0], 'controllerPid': first_controller[1],
+        'controllerStartTicks': first_controller[2]}
+
+
 def _deadline_case(report, diagnostics, terminal, principals):
     """Require each role's own stop receipt after the unmodified campaign deadline."""
     if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
@@ -1349,7 +1404,8 @@ def _deadline_case(report, diagnostics, terminal, principals):
         if (not isinstance(context, dict) or set(context) != {
                 'schemaVersion', 'kind', 'armedMonotonicNs', 'triggerEventDigest',
                 'campaignDeadlineNs', 'preRoles', 'terminalObservedNs',
-                'roleStops', 'populatedCgroups', 'remainingDescendants', 'retention'}
+                'roleStops', 'populatedCgroups', 'remainingDescendants', 'retention',
+                'observerHeartbeatPolicy', 'observerHeartbeats'}
                 or context['schemaVersion'] != 1
                 or context['kind'] != 'pr315-administrator-deadline'
                 or context['populatedCgroups'] != []
@@ -1359,6 +1415,8 @@ def _deadline_case(report, diagnostics, terminal, principals):
                     < context['terminalObservedNs']
                 or len(context['preRoles']) != len(acceptance.ROLES)
                 or len(context['roleStops']) != len(acceptance.ROLES)):
+            return None
+        if _deadline_heartbeat_proof(context, diagnostics, principals) is None:
             return None
         campaign = terminal['controllerRecords']['campaign']
         if (campaign['status'] != 'captured'
@@ -2136,6 +2194,8 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                                        if group == 'observer-death' else None,
                                    'observerPolicyThresholdNs': context.get(
                                        'policyThresholdNs'),
+                                   'deadlineHeartbeat': _deadline_heartbeat_proof(context,
+                                       diagnostics, principals) if group == 'deadline' else None,
                                    'lostStartBefore': context.get('before'),
                                    'lostStartFirst': context.get('first'),
                                    'lostStartRetry': context.get('retry'),

@@ -924,7 +924,7 @@ class DeadlineObservationTest(unittest.TestCase):
                                               'SubState': 'dead', 'MainPID': '0'},
             quiescent=lambda role: True,
             read=lambda path: receipts[path.name.removesuffix('-stop.json')])
-        with patch.object(driver.time, 'monotonic_ns', side_effect=[900, 900, 1000, 1100]), \
+        with patch.object(driver.time, 'monotonic_ns', side_effect=[900, 900, 900, 900, 1000, 1100]), \
                 patch.object(driver.time, 'sleep') as slept:
             completed = driver.complete_deadline(workload, armed)
         slept.assert_called_once()
@@ -934,6 +934,43 @@ class DeadlineObservationTest(unittest.TestCase):
         receipts['candidate-sender']['startedMonotonicNs'] = 999
         with self.assertRaisesRegex(ValueError, 'receipt-invalid'):
             driver.complete_deadline(workload, armed)
+
+    def test_original_deadline_wait_keeps_real_observer_policy_active(self):
+        # Logical clock only: driver/guard regression, never installed credit.
+        now = [100.0]
+        last_activity = [100.0]
+        premature_stop = [None]
+        deadline = 600 * 10**9
+        rows = [{'role': role, 'managerInvocation': str(index + 1) * 32,
+                 'bootId': 'boot', 'cgroupIdentity': [1, index + 1], 'mainPid': 1000 + index}
+                for index, role in enumerate(driver.ROLE_NAMES)]
+        def sleep(seconds):
+            now[0] += max(.01, seconds)
+            if now[0] - last_activity[0] > 240 and premature_stop[0] is None:
+                premature_stop[0] = int(now[0] * 10**9)
+        def activity(*_args):
+            last_activity[0] = now[0]
+            return {'requestStartedNs': int(now[0] * 10**9),
+                    'responseObservedNs': int(now[0] * 10**9) + 1}
+        def read(path):
+            row = next(row for row in rows if path.name == row['role'] + '-stop.json')
+            started = premature_stop[0] or deadline + 1
+            return {**row, 'startedMonotonicNs': started,
+                    'observedMonotonicNs': started + 1,
+                    'membership': 'only-stop-helper', 'descendantCgroups': 0}
+        workload = SimpleNamespace(ROOT=Path('/fixed-private-root'),read=read,
+            manager=lambda *_: {'ActiveState':'inactive','SubState':'dead','MainPID':'0'},
+            quiescent=lambda *_: True)
+        context = {'campaignDeadlineNs': deadline, 'armedMonotonicNs': 100 * 10**9,
+                   'preRoles': rows}
+        with patch.object(driver.time, 'monotonic_ns', side_effect=lambda: int(now[0] * 10**9)), \
+                patch.object(driver.time, 'monotonic', side_effect=lambda: now[0]), \
+                patch.object(driver.time, 'sleep', side_effect=sleep), \
+                patch.object(driver, '_deadline_observer_activity', side_effect=activity, create=True):
+            completed = driver.complete_deadline(workload, context)
+        self.assertIsNone(premature_stop[0])
+        self.assertEqual(deadline, completed['campaignDeadlineNs'])
+        self.assertGreater(completed['terminalObservedNs'], deadline)
 
 
 class RevocationRequestTest(unittest.TestCase):
@@ -1016,6 +1053,35 @@ class RevocationRequestTest(unittest.TestCase):
             self.assertEqual(hashlib.sha256(response).hexdigest(),
                              record['responseDigest'])
             self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                     'requires native Linux root for real observer UID')
+class DeadlineKeepaliveTransportTest(unittest.TestCase):
+    def test_real_observer_request_exits_normally_with_full_kernel_epoch(self):
+        handle, invocation = 'a' * 64, 'b' * 32
+        response = json.dumps({'handle': handle, 'state': 'running',
+            'managerInvocation': invocation, 'provenance': 'controller-kernel-sample'}).encode() + b'\n'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'controller.sock'
+            path.parent.chmod(0o755)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(path));path.chmod(0o777);listener.listen(1)
+                seen = []
+                def serve():
+                    with listener.accept()[0] as channel:
+                        seen.append(channel.recv(256));channel.sendall(response)
+                worker = threading.Thread(target=serve, daemon=True);worker.start()
+                with patch.object(driver, 'OBSERVER_DEATH_CONTROL_SOCKET', str(path)):
+                    record = driver._observer_death_request(pwd.getpwnam('nobody'),
+                        handle, os.getpid(), invocation, normal_exit=True,
+                        deadline_ns=time.monotonic_ns() + 10 * 10**9)
+                worker.join(timeout=2);self.assertFalse(worker.is_alive())
+        self.assertEqual([b'{"method":"observe","handle":"' + handle.encode() + b'"}\n'], seen)
+        self.assertEqual(0, record['exitStatus'])
+        self.assertEqual(pwd.getpwnam('nobody').pw_uid, record['actor']['uid'])
+        self.assertEqual(4, len(record['actor']['namespaces']))
+        self.assertTrue(record['pidfdUsed']);self.assertNotIn('killStartedNs', record)
 
 
 @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0

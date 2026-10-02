@@ -2,7 +2,7 @@
 
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
-**There is no complete installed 45-case campaign.** The best historical formal TCG
+**There is no complete installed 45-case campaign.** Helper `3b6677eec2` passed five archived development groups in suites 183–187; suite 188 is sealed failed after premature role stops before the original deadline. The subsequent bounded observer-activity fix requires a new identity and fresh installed execution. The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
 source-built `7cec00fde0` candidate completed six network/AppHost cases in
 suite 171 and symlink, FIFO and hardlink cases in suites 172–174. All four
@@ -29,6 +29,57 @@ suite 154, with sealed host cleanup. Suite 155 completed and retired the
 extra authority preparation guest. Suite 156 began the formal authority
 probes but produced nine inconclusive results; its campaign is sealed failed
 at 13/45. These results cannot transfer to the next source revision.
+
+## Original deadline and fixed observer activity after suite 188
+
+Helper `3b6677eec2` completed five independent development groups in suites
+183–187: controller restart, lost start response, observer death, late child
+and setsid/double fork. Each passed the strengthened per-case kernel checks,
+full original archive recovery and signed host cleanup. These results remain
+separate development keys and cannot grant a complete formal campaign.
+
+Suite 188 reached four real role readiness and the deadline probe. The actual
+controller terminalized while the original deadline still had about 2,509
+seconds remaining. The four administrator stop receipts started 2,604–2,608
+seconds before that deadline. The driver then waited the original expiry and
+captured its normal failure/cleanup evidence; guest exit zero does not override
+the failed installed case. Suite 188 is sealed `failed`, with probe started and
+zero accepted cases; its scheduler did not allocate suite 189. The complete
+12,754-file failed context, original guest/prepared disks, raw observations and
+failure receipt were checksum verified in the private external archive before
+releasing exact SSD and verified remote duplicates. The fixed controller journal
+did not log a distinct guard exception; that limitation remains recorded.
+
+A focused logical-clock regression reproduces the driver/policy conflict.
+The old deadline driver sleeps without observer requests while the installed
+controller retains its fixed 240-second inactivity guard. The simulated guard
+therefore stops the roles before the unchanged expiry, and the old driver
+rejects those early receipts. The regression is an offline interaction check,
+not installed evidence. The prospective fix issues only the fixed installed
+`observe` request as actual `cryptad-soak` children at a bounded 60-second
+cadence. Root independently records each actor epoch through proc/pidfd,
+checks the exact root controller peer and role invocation, observes the successful
+response and reaps a normal child exit. At most 64 requests are retained; no
+request is initiated in the last 120 seconds, which keeps final observer inactivity
+below the original guard without risking an expiry-crossing transaction.
+
+The original campaign deadline, controller 240-second policy, service/role
+limits and production socket methods are unchanged. Each case requires the
+actual bounded request records, stable controller instance, observer UID and
+namespace/source bindings, normal exits and activity through the expiry window.
+The v10 record retains a digest and bounded first/last actor summary of the raw
+private activity records. Empty activity, wrong actors, a different policy or
+premature stop receipts cannot grant installed acceptance.
+
+The logical interaction regression passed after the fix. Native Linux checks
+include the actual observer UID, Unix root peer, pidfd/namespace collection and
+normal child exit. The affected restricted suite passed 645 checks with 22
+environment skips; all 21 applicable root checks and the pinned QEMU check ran
+separately and passed. Those checks remain prospective until a fresh source,
+fixture and test-kit identity obtains real installed results, followed by one
+frozen final 45-case campaign. The five `3b6677eec2` development results do not
+transfer to that next identity. PR-313 and production/phase authorization remain
+independent.
 
 ## Prospective complete kernel instance binding after suite 182
 
