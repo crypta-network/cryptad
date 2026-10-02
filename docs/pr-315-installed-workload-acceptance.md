@@ -3,10 +3,14 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 **There is no complete installed 45-case campaign.** The best historical formal TCG
-result remains 22/45 at `7db8122b` suite 108. The latest source-built candidate,
-`7cec00fde0`, reached four-role and signed-app preparation in suite 170 but
-failed the later recipient Mail runtime observation. Its development group
-is terminal at zero accepted cases. Earlier `bd51eea94f` passed eight
+result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
+source-built `7cec00fde0` candidate completed six network/AppHost cases in
+suite 171 and symlink, FIFO and hardlink cases in suites 172–174. All four
+development groups have verified full archives and signed host cleanup.
+These nine development results do not form a complete formal campaign.
+Suite 175 began the replacement probe and is sealed failed with zero accepted
+cases; its stopped guest and original diagnostics are retained. Earlier
+`bd51eea94f` passed eight
 positives in suite 153 and five role/file cases in
 suite 154, with sealed host cleanup. Suite 155 completed and retired the
 extra authority preparation guest. Suite 156 began the formal authority
@@ -301,6 +305,40 @@ or exception class. Extra runtime/identity fields are excluded. The original
 sandbox rejection remains; these candidate HTTP diagnostics grant no kernel
 proof or acceptance and introduce no controller socket method. A new helper,
 fixture/test-kit identity and fresh installed group are required.
+
+On `09553dffaa`, suite 171 passed the six network/AppHost cases after four-role
+readiness, normal signed AppHost startup, real probes, v10 host verification,
+full copying and signed cleanup. Suites 172, 173 and 174 respectively passed
+`output-symlink`, `output-fifo` and `output-hardlink` in separate guests with
+the same helper, product, fixture and runtime. Their complete contexts were
+checksum verified and recovered in the private external archive before
+releasing duplicate Mac staging. Independent development keys remain distinct
+from the final campaign; these nine cases grant no final installed verdict.
+The intermittent Mail exit in suite 170 remains unexplained by these successful
+runs and is not described as a resolved JVM root cause.
+
+Suite 175 began `output-replacement`, then exited 1 with a demonstrated
+`NameError`: the delegated emitter's descriptor-pin callback referenced
+`OUTPUT_REPLACEMENT_SWAP_TRIGGER` outside the driver namespace. The host
+retained cleanup and stop evidence and signed a failed, probe-started receipt
+with zero case digests. No subsequent guest was allocated by that scheduler.
+
+A native regression exercises the exported driver facade, real descriptor
+reader, both fixed barriers and an actual atomic file replacement. Before
+the fix it reproduces the same callback `NameError`; afterward the collector
+rejects the changed inode and the complete audit retains the original and
+replacement identities, byte digests and operation ordering. The two swap
+constants are now qualified through the driver owner. Symbol analysis of the
+same extracted module also finds a missing collector-epoch reference in the
+`stuck-output` callback; that reference now resolves through its existing
+driver owner. A regression checks all deferred callbacks' global bindings.
+This does not alter the collector, barriers, actor proofs or deadlines. The
+native restricted suite passed 638 tests with 17 skips; the 16 applicable
+root checks passed separately in a disposable mount/PID environment. The
+remaining pinned QEMU-img skip retains its separate prior result and must
+be covered by the final-source gates. A new source/test-kit identity must rerun affected
+groups, and final acceptance still requires all 45 cases under one frozen
+campaign.
 
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,

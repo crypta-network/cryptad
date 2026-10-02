@@ -514,8 +514,8 @@ def _probe_output_artifact(workload, handoff, source_digest, campaign_deadline_n
     def after_pin():
         nonlocal swap_record, swap_trigger_ns
         swap_trigger_ns = time.monotonic_ns()
-        _publish_output_trigger(root, OUTPUT_REPLACEMENT_SWAP_TRIGGER, case_id, nonce)
-        swap_path = root / OUTPUT_REPLACEMENT_SWAP_RESULT
+        _publish_output_trigger(root, driver.OUTPUT_REPLACEMENT_SWAP_TRIGGER, case_id, nonce)
+        swap_path = root / driver.OUTPUT_REPLACEMENT_SWAP_RESULT
         swap_until = min(time.monotonic() + 20, campaign_deadline_ns / 1e9)
         swap_record = _wait_output_record(swap_path, uid, swap_until,
                                           'workload-output-replacement-swap-timeout')
@@ -2209,7 +2209,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
     def on_start(pid):
         nonlocal collector_fd, collector
         collector_fd = os.pidfd_open(pid)
-        collector = _stuck_collector_epoch(pid)
+        collector = driver._stuck_collector_epoch(pid)
 
     def retain(stdout, stderr):
         output.append((stdout, stderr))
