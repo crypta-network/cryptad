@@ -240,4 +240,3 @@ def deadline_activity(driver, workload, context):
     return {**result, 'controllerInvocation': controller['invocationId'],
             'controllerPid': controller['mainPid'],
             'controllerStartTicks': controller['mainStartTicks']}
-

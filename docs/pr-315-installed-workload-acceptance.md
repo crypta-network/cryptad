@@ -55,7 +55,7 @@ callback globals. Production socket methods, paths, role limits, the original
 deadline, the 240-second inactivity policy and case proof requirements remain
 unchanged. The helper is an explicitly excluded production test seam included
 in the measured administrator test kit. The resulting driver is 4,862 lines
-and the helper 243 lines. The existing source-boundary check, original-deadline
+and the helper 242 lines. The existing source-boundary check, original-deadline
 interaction checks and installation export checks passed as 23 portable tests.
 Native Linux restricted checks then passed 645 tests with 22 environment
 skips; all 21 applicable root checks and the pinned QEMU check passed
