@@ -9,7 +9,10 @@ suite 171 and symlink, FIFO and hardlink cases in suites 172–174. All four
 development groups have verified full archives and signed host cleanup.
 These nine development results do not form a complete formal campaign.
 Suite 175 began the replacement probe and is sealed failed with zero accepted
-cases; its stopped guest and original diagnostics are retained. Earlier
+cases. Helper `b68b433c7b` subsequently passed replacement, flood and resource
+development groups in suites 176–178 with full host cleanup. Suite 179 began
+the lost-start-response probe and is sealed failed with zero accepted cases.
+Stopped failure guests and original diagnostics remain retained. Earlier
 `bd51eea94f` passed eight
 positives in suite 153 and five role/file cases in
 suite 154, with sealed host cleanup. Suite 155 completed and retired the
@@ -339,6 +342,53 @@ remaining pinned QEMU-img skip retains its separate prior result and must
 be covered by the final-source gates. A new source/test-kit identity must rerun affected
 groups, and final acceptance still requires all 45 cases under one frozen
 campaign.
+
+On helper `b68b433c7b`, suite 176 passed the real `output-replacement` group,
+including descriptor pinning, the role's atomic replacement and the collector's
+rejection. Suites 177 and 178 passed `output-flood` and `resource-exhaustion`
+in independent guests. The resource group includes administrator child
+ownership/exit proof, kernel limit events and sibling FCP progress. Each group
+completed full original copying, watcher/stop verification and signed host
+cleanup, and was recovered after checksum copying into the private external
+archive. These three development results cannot be combined with another
+helper or independent keys to grant the final 45-case verdict.
+
+Suite 179 began the formal `lost-start-response` probe and failed its
+administrator first-invocation barrier. The retained sender authority remained
+`prepared`, with no generation, manager invocation or cgroup. The administrator
+failure record contains only `ValueError` and `lost-start-intent`; its exact
+error code was lost. Controller progress captured later already reflects
+observer cleanup's `stop`, so it cannot establish the first start request's
+earlier outcome. Guest exit 1 and completed cleanup/host stop were retained;
+the signed failed receipt has `probeStarted=true` and no case digest. No next
+guest was allocated by that scheduler. The complete 12,748-file failure
+context was checksum verified in the private external archive before releasing
+duplicate Mac staging.
+
+A native disposable-root regression demonstrates a concrete driver race
+consistent with those observations. The administrator polling loop takes the
+same real nonblocking lease as production `start()`. When the sole controller
+start arrives during that sample, the production operation fails to acquire
+the lease, leaving the authority prepared. The regression executes the actual
+lease, atomic authority files and production start transition; approval and
+systemd are explicitly offline fixtures, not installed witnesses. The old
+sampler fails its first-invocation wait. The prospective sampler reads the
+atomic authority/marker epoch without taking the mutation lease, retains exact
+manager and authority checks, and rereads the epoch before returning. The
+controller's mutation lease, authorization and original deadlines remain
+unchanged. The same regression then obtains the one real start transition,
+and an epoch-change regression still rejects a mismatched invocation.
+
+This reproducible race does not retroactively prove the sole cause of suite
+179. The prospective failure path additionally retains only a closed error
+code and captures the existing private controller progress before replying
+to the observer, using its two-second file bound with instance binding deferred.
+Later capture retains independent kernel binding. These diagnostics grant no
+case result and add no controller socket operation. Native restricted discovery
+passed 640 tests with 18 skips; all 17 applicable root checks and the pinned
+QEMU-img check passed separately. The native sampler regression group passed
+all ten tests. A new helper/test-kit identity and fresh installed lifecycle
+result are required before the complete frozen campaign.
 
 The coordinator now supports `--development-group` with the existing closed
 group names. Initialization pins one group in `pr315-development-start-v1`,

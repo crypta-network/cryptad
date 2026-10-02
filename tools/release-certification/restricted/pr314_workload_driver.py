@@ -3184,42 +3184,49 @@ class AdministratorFnpSampler:
         until = min(time.monotonic() + 45, deadline_ns / 1e9)
         while time.monotonic() < until:
             try:
-                with workload.locked():
-                    campaign, role, record = workload.retained(self.sender_handle)
-                    state = workload.manager(role, 'show')
-                    if (role == 'candidate-sender' and record.get('state') == 'running'
-                            and state.get('ActiveState') == 'active'):
-                        workload.exact(role, record, state)
-                        workload.current(campaign)
-                        marker = workload.read(workload.ROOT / 'authority' /
-                                               (role + '-start.json'))
-                        if (record.get('generation') == before.get('generation')
-                                or record.get('bootId') != before.get('bootId')
-                                or record.get('previousStopGeneration') is not None
-                                or any(marker.get(key) != record.get(key) for key in
-                                       ('generation', 'bootId', 'managerInvocation',
-                                        'cgroupIdentity'))):
-                            raise ValueError('workload-lost-start-first-invocation-invalid')
-                        observed = time.monotonic_ns()
-                        if observed <= before['observedMonotonicNs']:
-                            raise ValueError('workload-lost-start-clock-invalid')
-                        request = (b'{"method":"start","handle":"'
-                                   + self.sender_handle.encode('ascii') + b'"}\n')
-                        reply = {'phase': 'lost-start-intent', 'role': role,
-                                 'generation': record['generation'],
-                                 'managerInvocation': record['managerInvocation'],
-                                 'observedMonotonicNs': observed}
-                        self.diagnostics['lostStartIntent'] = {
-                            'schemaVersion': 1,
-                            'kind': 'pr315-administrator-lost-start-intent',
-                            'before': before, 'requestDigest': hashlib.sha256(request).hexdigest(),
-                            'first': {'role': role, 'generation': record['generation'],
-                                      'managerInvocation': record['managerInvocation'],
-                                      'bootId': record['bootId'],
-                                      'cgroupIdentity': record['cgroupIdentity'],
-                                      'mainPid': int(state['MainPID']),
-                                      'observedMonotonicNs': observed}}
-                        return reply
+                # A sampler taking this nonblocking lease can reject the sole
+                # real start request. Only controller mutations own that lease.
+                # Pin the atomic authority/marker epoch and exact manager instead.
+                campaign, role, record = workload.retained(self.sender_handle)
+                state = workload.manager(role, 'show')
+                if (role == 'candidate-sender' and record.get('state') == 'running'
+                        and state.get('ActiveState') == 'active'):
+                    workload.exact(role, record, state)
+                    workload.current(campaign)
+                    marker = workload.read(workload.ROOT / 'authority' /
+                                           (role + '-start.json'))
+                    if (record.get('generation') == before.get('generation')
+                            or record.get('bootId') != before.get('bootId')
+                            or record.get('previousStopGeneration') is not None
+                            or any(marker.get(key) != record.get(key) for key in
+                                   ('generation', 'bootId', 'managerInvocation',
+                                    'cgroupIdentity'))):
+                        raise ValueError('workload-lost-start-first-invocation-invalid')
+                    _campaign, confirmed_role, confirmed = workload.retained(self.sender_handle)
+                    if (confirmed_role != role or any(confirmed.get(key) != record.get(key)
+                            for key in ('state', 'generation', 'bootId', 'managerInvocation',
+                                        'cgroupIdentity', 'previousStopGeneration'))):
+                        raise ValueError('workload-lost-start-first-invocation-changed')
+                    observed = time.monotonic_ns()
+                    if observed <= before['observedMonotonicNs']:
+                        raise ValueError('workload-lost-start-clock-invalid')
+                    request = (b'{"method":"start","handle":"'
+                               + self.sender_handle.encode('ascii') + b'"}\n')
+                    reply = {'phase': 'lost-start-intent', 'role': role,
+                             'generation': record['generation'],
+                             'managerInvocation': record['managerInvocation'],
+                             'observedMonotonicNs': observed}
+                    self.diagnostics['lostStartIntent'] = {
+                        'schemaVersion': 1,
+                        'kind': 'pr315-administrator-lost-start-intent',
+                        'before': before, 'requestDigest': hashlib.sha256(request).hexdigest(),
+                        'first': {'role': role, 'generation': record['generation'],
+                                  'managerInvocation': record['managerInvocation'],
+                                  'bootId': record['bootId'],
+                                  'cgroupIdentity': record['cgroupIdentity'],
+                                  'mainPid': int(state['MainPID']),
+                                  'observedMonotonicNs': observed}}
+                    return reply
             except (BlockingIOError, FileNotFoundError):
                 pass
             time.sleep(.05)
@@ -3456,9 +3463,15 @@ class AdministratorFnpSampler:
                     'exceptionType': type(error).__name__[:128]}
                 result = {'error': 'pr315-admin-hostile-origin-handoff-failed'}
             elif message in (b'Q', b'L'):
+                detail = str(error)
                 self.diagnostics['lostStartAdminFailure'] = {
                     'phase': 'lost-start-before' if message == b'Q' else 'lost-start-intent',
-                    'exceptionType': type(error).__name__[:128]}
+                    'exceptionType': type(error).__name__[:128],
+                    'errorCode': detail if re.fullmatch(
+                        '(?:workload-lost-start-|restricted-workload-)[a-z0-9-]{1,96}', detail)
+                        else 'unclassified'}
+                self.diagnostics['controllerRequestBeforeObserverCleanup'] = (
+                    capture_controller_request_at_failure(self.workload, bind_instance=False))
                 result = {'error': 'pr315-admin-lost-start-sample-failed'}
             else:
                 self.diagnostics['fnpAdminFailure'] = {

@@ -414,6 +414,75 @@ class RunnerControlProbeTest(unittest.TestCase):
 
 
 class AdministratorFnpSamplerTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for real authority lease')
+    def test_lost_start_sampling_does_not_reject_the_real_controller_start_lock(self):
+        import restricted_workload as actual
+        # Real lease, atomic authority files and production start transition;
+        # manager and approval are offline fixtures, never installed witnesses.
+        with tempfile.TemporaryDirectory(dir='/var/lib') as directory:
+            root = Path(directory)
+            (root / 'authority').mkdir()
+            (root / 'roles/candidate-sender').mkdir(parents=True)
+            group = root / 'group'
+            group.mkdir()
+            boot = actual.boot()
+            handle = 'd' * 64
+            campaign = {'state': 'prepared', 'generation': 'a' * 64,
+                'handles': {'candidate-sender': handle}, 'maxOperations': 3,
+                'deadlineMonotonicNs': time.monotonic_ns() + 5 * 10**9}
+            record = {'handle': handle, 'campaign': campaign['generation'],
+                'bootId': boot, 'state': 'prepared', 'generation': None,
+                'managerInvocation': None, 'cgroupIdentity': None, 'stopReason': None}
+            state = {'ActiveState': 'inactive', 'MainPID': '0',
+                'InvocationID': '', 'ControlGroup': '/system.slice/' + actual.unit('candidate-sender')}
+            before = {'role': 'candidate-sender', 'state': 'prepared',
+                'generation': None, 'managerInvocation': None, 'cgroupIdentity': None,
+                'bootId': boot, 'mainPid': 0, 'observedMonotonicNs': time.monotonic_ns()}
+            diagnostics = {'lostStartBefore': before, 'probeStart': {
+                'caseId': 'lost-start-response', 'startedMonotonicNs': time.monotonic_ns()}}
+            triggered = False
+            collisions, replies = [], []
+
+            def manager(role, operation):
+                nonlocal triggered
+                if operation == 'show' and not triggered:
+                    triggered = True
+                    try:
+                        replies.append(actual.start(handle))
+                    except BlockingIOError:
+                        collisions.append('controller-start-lease-rejected')
+                if operation == 'start':
+                    current = actual.read(root / 'authority/candidate-sender.json')
+                    state.update(ActiveState='active', MainPID='123', InvocationID='c' * 32)
+                    info = group.stat()
+                    actual.write(root / 'authority/candidate-sender-start.json', {
+                        'generation': current['generation'], 'bootId': boot,
+                        'managerInvocation': state['InvocationID'],
+                        'cgroupIdentity': [info.st_dev, info.st_ino]}, create=True)
+                return dict(state)
+
+            with patch.object(actual, 'ROOT', root), \
+                    patch.object(actual, 'manager', side_effect=manager), \
+                    patch.object(actual, 'group', return_value=group), \
+                    patch.object(actual, 'quiescent', return_value=True), \
+                    patch.object(actual, 'current'):
+                actual.write(root / 'campaign.json', campaign, create=True)
+                actual.write(root / 'authority/candidate-sender.json', record, create=True)
+                actual.write(root / 'roles/candidate-sender/launch.json', {'inputs': {}}, create=True)
+                sampler = driver.AdministratorFnpSampler(actual, 'recipient', diagnostics,
+                    sender_handle=handle, handoff={'handles': {'candidate-sender': handle},
+                        'deadlineMonotonicNs': time.monotonic_ns() + 250_000_000},
+                    lost_start_before=before)
+
+                observed = sampler.lost_start_intent()
+
+            self.assertEqual([], collisions)
+            self.assertEqual(1, len(replies))
+            self.assertEqual(replies[0]['generation'], observed['generation'])
+            self.assertEqual(replies[0]['managerInvocation'], observed['managerInvocation'])
+            self.assertEqual('running', replies[0]['state'])
+
     def test_lost_start_barrier_observes_original_invocation_before_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -468,12 +537,46 @@ class AdministratorFnpSamplerTest(unittest.TestCase):
             context = driver.complete_lost_start_before_cleanup(
                 workload, handoff, result, diagnostics)
             self.assertEqual(first['managerInvocation'], context['retry']['managerInvocation'])
+            original_retained = workload.retained
+            workload.retained = Mock(side_effect=[
+                ({}, 'candidate-sender', dict(record)),
+                ({}, 'candidate-sender', dict(record, generation='f' * 64))])
+            with self.assertRaisesRegex(ValueError, 'first-invocation-changed'):
+                sampler.lost_start_intent()
+            workload.retained = original_retained
             workload.read = lambda path: dict(marker, generation='f' * 64)
             with self.assertRaisesRegex(ValueError, 'first-invocation-invalid'):
                 sampler.lost_start_intent()
             with self.assertRaisesRegex(ValueError, 'duplicate-invocation'):
                 driver.complete_lost_start_before_cleanup(
                     workload, handoff, result, diagnostics)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux packet socket required')
+    def test_lost_start_failure_retains_closed_code_before_observer_cleanup(self):
+        parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        try:
+            sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'recipient', {})
+            code = 'workload-lost-start-first-invocation-unobserved'
+            sampler.lost_start_intent = Mock(side_effect=ValueError(code))
+            snapshot = {'status': 'captured', 'classification': 'private-diagnostic-not-acceptance'}
+            with patch.object(driver, 'capture_controller_request_at_failure',
+                              return_value=snapshot) as capture:
+                child.sendall(b'L')
+                self.assertTrue(sampler.serve(parent))
+                self.assertEqual({'error': 'pr315-admin-lost-start-sample-failed'},
+                                 json.loads(child.recv(8192)))
+                self.assertEqual(code, sampler.diagnostics['lostStartAdminFailure']['errorCode'])
+                self.assertEqual(snapshot, sampler.diagnostics['controllerRequestBeforeObserverCleanup'])
+                capture.assert_called_once_with(sampler.workload, bind_instance=False)
+                sampler.lost_start_intent = Mock(side_effect=ValueError('private-token-and-path'))
+                child.sendall(b'L')
+                self.assertTrue(sampler.serve(parent))
+                child.recv(8192)
+                self.assertEqual('unclassified', sampler.diagnostics['lostStartAdminFailure']['errorCode'])
+                self.assertNotIn('private-token-and-path', json.dumps(sampler.diagnostics))
+        finally:
+            parent.close()
+            child.close()
 
     def test_probe_root_record_requires_current_kernel_child_and_verified_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
