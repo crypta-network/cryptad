@@ -2338,8 +2338,65 @@ def _readiness_java_process_retry(workload, handoff, role=None):
         except BlockingIOError:
             remaining_ns = until_ns - time.monotonic_ns()
             if remaining_ns <= 0:
-                raise
+                return _readiness_java_process_without_lease(workload, handoff, role)
             time.sleep(min(.05, remaining_ns / 1e9))
+
+
+def _readiness_java_process_without_lease(workload, handoff, selected_role=None):
+    """Read one stable kernel JVM for diagnostics without consuming control authority.
+
+    An in-flight connect holds the controller lease. Diagnostic selection must
+    neither acquire that lease nor update its operation budget. Recheck the
+    retained authority, manager and cgroup after the bounded kernel sample;
+    any transition or ambiguous JVM makes this private diagnostic unavailable.
+    """
+    if selected_role is not None and selected_role not in ROLE_NAMES:
+        raise ValueError('workload-readiness-role-invalid')
+    sample_deadline = min(handoff['deadlineMonotonicNs'],
+                          time.monotonic_ns() + 2_000_000_000)
+    for role in ((selected_role,) if selected_role is not None else reversed(ROLE_NAMES)):
+        if time.monotonic_ns() >= sample_deadline:
+            raise ValueError('workload-readiness-jcmd-deadline-unavailable')
+        before = workload.manager(role, 'show')
+        if before['ActiveState'] != 'active' or before['SubState'] != 'running':
+            continue
+        campaign, retained_role, record = workload.retained(handoff['handles'][role])
+        if (retained_role != role or record.get('state') != 'running'
+                or campaign['deadlineMonotonicNs'] != handoff['deadlineMonotonicNs']):
+            raise ValueError('workload-readiness-authority-changed')
+        workload.exact(role, record, before)
+        group = workload.group(role)
+        if any(path.is_dir() for path in group.iterdir()):
+            raise ValueError('workload-readiness-descendant-cgroup')
+        pids = (group / 'cgroup.procs').read_text().split()
+        if len(pids) > 512:
+            raise ValueError('workload-readiness-task-limit')
+        expected = handoff['expectedJdkDigests'][role]
+        processes = []
+        for pid in sorted(set(map(int, pids))):
+            if time.monotonic_ns() >= sample_deadline:
+                raise ValueError('workload-readiness-jcmd-deadline-unavailable')
+            try:
+                process = workload._process(pid, role, workload.account(role).pw_uid)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            if process['executableDigest'] == expected:
+                processes.append(process)
+        after = workload.manager(role, 'show')
+        workload.exact(role, record, after)
+        later_campaign, later_role, later_record = workload.retained(handoff['handles'][role])
+        if (later_role != role or later_record != record
+                or later_campaign['generation'] != campaign['generation']
+                or later_campaign['bootId'] != campaign['bootId']
+                or later_campaign['deadlineMonotonicNs'] != campaign['deadlineMonotonicNs']
+                or any(after[key] != before[key] for key in
+                       ('ActiveState', 'SubState', 'MainPID', 'InvocationID', 'ControlGroup'))
+                or time.monotonic_ns() >= sample_deadline):
+            raise ValueError('workload-readiness-authority-changed')
+        if len(processes) != 1:
+            raise ValueError('workload-readiness-jvm-ambiguous-or-absent')
+        return role, record['managerInvocation'], processes[0]
+    raise ValueError('workload-readiness-no-active-role')
 
 
 def cleanup(workload):

@@ -9,6 +9,13 @@ failed after premature role stops before the original deadline. Helper
 with complete original archival and signed host cleanup. Its certification
 source-size gate failed and required the fixed observer transport extraction;
 that extraction requires a new measured identity and fresh installed execution.
+Helper `63870d2ebf` passed independent revocation-running (suite 191),
+lost-start-response (192), observer-death (193) and controller-restart (194)
+development groups with complete original archives and signed host cleanup.
+Suite 190 was a sealed PSI admission rejection without a VM. Suite 195 failed
+relay FCP readiness and has no proven probe-start phase; its campaign is
+terminally failed with zero accepted cases. The following allocation was
+blocked. These independent development results do not grant final acceptance.
 The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
 source-built `7cec00fde0` candidate completed six network/AppHost cases in
@@ -60,8 +67,14 @@ interaction checks and installation export checks passed as 23 portable tests.
 Native Linux restricted checks then passed 645 tests with 22 environment
 skips; all 21 applicable root checks and the pinned QEMU check passed
 separately, including actual observer UID, peer, namespace and pidfd behavior
-through the new module. The source-size gate also passed natively. Full
-final-source certification and a new installed identity remain required.
+through the new module. The source-size gate also passed natively. Frozen `63870d2ebf` subsequently passed native restricted checks (645, 22
+environment skips), all 21 applicable root checks and the pinned QEMU check,
+protected and interop checks with their applicable root/non-root complements,
+and all four certification self-tests. Its fresh native Java XML contains
+17,414 tests, zero failures/errors and ten declared skips. Static reports have
+zero findings for AppProcessStarter and an empty focused Sonar report; eleven
+unchanged AppHost SpotBugs findings remain. These are source gates, not installed
+acceptance, and later tracked changes need their own measured source gates.
 
 Suite 189 completed its actual deadline probe under frozen `2a996b73e7`: 45
 real observer activities exited normally under one controller instance, and
@@ -74,6 +87,33 @@ A private allocation hold retired that development batch after suite 189's
 complete host cleanup and full original archival, before its next allocation. The extraction
 creates a new helper/test-kit identity; suite 189 cannot transfer a case
 pass to it, and no development group grants complete installed acceptance.
+
+## Relay readiness and unavailable JVM diagnostics in suite 195
+
+Under frozen `63870d2ebf`, sender, recipient and predecessor completed their
+FCP readiness exchanges. Relay's first JVM was killed by Wrapper after its
+startup signal timed out. Its second JVM logged initialization completion near
+the unchanged 180-second role readiness boundary, but the observer's original
+FCP GetNode operation did not complete within that boundary. The failed
+observer transcript identifies relay, request stage, original deadline and
+14 attempts. No HotSpot fatal record or role cgroup OOM was captured. This
+does not establish the general cause of intermittent TCG startup failures.
+
+Before observer cleanup, the administrator retained an executing connect-fcp
+controller request. JVM diagnostics independently failed with BlockingIOError:
+the read path tried to acquire the authority lease still held by that request,
+then exhausted its existing two-second retry budget. A prospective diagnostic
+fix reads only the fixed retained role, manager and cgroup, samples kernel
+processes using the installed UID/namespace/executable/pidfd checks, and
+rechecks authority and service identity. It does not acquire the control lease
+or consume operations. Any changed instance, scope violation, absent/ambiguous
+JVM or expired original campaign makes diagnostics unavailable. The diagnostic
+output cannot grant acceptance or reclassify suite 195 as a safe setup retry.
+The old frozen helper reproduces BlockingIOError in the regression; all ten
+focused diagnostic checks pass with the fix. The driver is now 4,919 lines,
+within the unchanged 5,000-line boundary. New helper/test-kit measurement and
+fresh installed execution are required; deadlines and resource limits remain
+unchanged.
 
 ## Original deadline and fixed observer activity after suite 188
 
@@ -4372,7 +4412,7 @@ as a green c0eb final-source gate.
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
 | `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; suites 183–187 passed the strengthened kernel contract under `3b6677eec2`, and suite 189 passed deadline under `2a996b73e7`. The subsequent source-size extraction requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; suites 183–187 passed the strengthened kernel contract under `3b6677eec2`, and suite 189 passed deadline under `2a996b73e7`. Suites 191–194 passed four independent development groups under `63870d2ebf`; suite 195 failed relay readiness with unknown probe phase. The prospective diagnostic fix requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

@@ -1583,6 +1583,73 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
 
 
 class ReadinessJcmdDiagnosticTest(unittest.TestCase):
+    @contextmanager
+    def busy_readiness_role(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'cgroup.procs').write_text('123\n')
+            deadline = time.monotonic_ns() + 10_000_000_000
+            campaign = {'generation': 'c' * 64, 'bootId': 'fixed-boot',
+                        'deadlineMonotonicNs': deadline, 'usedOperations': 98}
+            record = {'state': 'running', 'managerInvocation': 'a' * 32}
+            state = {'ActiveState': 'active', 'SubState': 'running',
+                     'MainPID': '100', 'InvocationID': 'a' * 32,
+                     'ControlGroup': '/system.slice/cryptad-workload@previous.service'}
+            process = {'hostPid': 123, 'startTicks': 45,
+                       'executableDigest': 'sha256:' + 'b' * 64}
+            workload = SimpleNamespace(
+                observe=Mock(side_effect=BlockingIOError()),
+                manager=Mock(return_value=state),
+                retained=Mock(return_value=(campaign, 'previous', record)),
+                exact=Mock(), group=Mock(return_value=root),
+                account=Mock(return_value=SimpleNamespace(pw_uid=1000)),
+                _process=Mock(return_value=process), admit=Mock(), locked=Mock())
+            handoff = {'handles': {'previous': 'e' * 64},
+                       'expectedJdkDigests': {'previous': process['executableDigest']},
+                       'deadlineMonotonicNs': deadline}
+            yield workload, handoff, campaign, state, process
+
+    def test_busy_connect_lease_allows_readonly_kernel_diagnostic(self):
+        with self.busy_readiness_role() as (workload, handoff, campaign, state, process):
+            now = time.monotonic_ns()
+            # Exhaust only the existing two-second lease retry budget.
+            with patch.object(driver.time, 'monotonic_ns', side_effect=[
+                    now, now + 2_000_000_001, now + 2_000_000_002,
+                    now + 2_000_000_003, now + 2_000_000_004,
+                    now + 2_000_000_005]):
+                selected = driver._readiness_java_process_retry(workload, handoff, 'previous')
+            self.assertEqual(('previous', state['InvocationID'], process), selected)
+            workload.observe.assert_called_once_with(handoff['handles']['previous'])
+            workload._process.assert_called_once_with(123, 'previous', 1000)
+            workload.admit.assert_not_called()
+            workload.locked.assert_not_called()
+            self.assertEqual(98, campaign['usedOperations'])
+
+    def test_readonly_diagnostic_rejects_invocation_change_and_ambiguous_jvm(self):
+        with self.busy_readiness_role() as (workload, handoff, _, state, _):
+            workload.manager.side_effect = [state, dict(state, InvocationID='f' * 32)]
+            with self.assertRaisesRegex(ValueError, 'authority-changed'):
+                driver._readiness_java_process_without_lease(workload, handoff, 'previous')
+        with self.busy_readiness_role() as (workload, handoff, _, _, _):
+            (workload.group('previous') / 'cgroup.procs').write_text('123\n124\n')
+            with self.assertRaisesRegex(ValueError, 'ambiguous-or-absent'):
+                driver._readiness_java_process_without_lease(workload, handoff, 'previous')
+
+    def test_readonly_diagnostic_rejects_process_scope_change(self):
+        with self.busy_readiness_role() as (workload, handoff, _, _, _):
+            workload._process.side_effect = ValueError('process-scope-changed')
+            with self.assertRaisesRegex(ValueError, 'process-scope-changed'):
+                driver._readiness_java_process_without_lease(workload, handoff, 'previous')
+
+    def test_readonly_diagnostic_bounds_kernel_sampling_before_attach(self):
+        with self.busy_readiness_role() as (workload, handoff, _, _, _):
+            now = time.monotonic_ns()
+            with patch.object(driver.time, 'monotonic_ns', side_effect=[
+                    now, now + 1, now + 2_000_000_001]):
+                with self.assertRaisesRegex(ValueError, 'deadline-unavailable'):
+                    driver._readiness_java_process_without_lease(workload, handoff, 'previous')
+            workload._process.assert_not_called()
+
     def test_inflight_request_is_retained_before_slow_jvm_diagnostics(self):
         diagnostics = {}
         original = {'status': 'captured', 'record': {'method': 'observe',
