@@ -137,7 +137,9 @@ class InstallationArtifactTests(unittest.TestCase):
             'tools/example/test/provider.py',
             'tools/release-certification/restricted/pr315-probe-app/bin/probe.py'})
         resource = 'platform-devtools/src/test/resources/runtime.db'
-        for name in [*excluded, resource]:
+        controller_dependency = ('tools/release-certification/protected/'
+                                 'restricted_workload_revocation_barrier.py')
+        for name in [*excluded, resource, controller_dependency]:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'REVIEWED-FIXTURE\x00\xff')
@@ -154,9 +156,10 @@ class InstallationArtifactTests(unittest.TestCase):
         self.assertEqual(2, manifest['schemaVersion'])
         self.assertEqual(installation.EXPORT_POLICY, manifest['exportPolicy'])
         self.assertEqual(revision, manifest['sourceCommit'])
-        self.assertEqual({'module.py', resource}, set(manifest['files']))
+        self.assertEqual({'module.py', resource, controller_dependency}, set(manifest['files']))
         self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
         self.assertEqual(b'REVIEWED-FIXTURE\x00\xff', (output / resource).read_bytes())
+        self.assertEqual(b'REVIEWED-FIXTURE\x00\xff', (output / controller_dependency).read_bytes())
         for name in excluded:
             self.assertFalse((output / name).exists(), name)
 

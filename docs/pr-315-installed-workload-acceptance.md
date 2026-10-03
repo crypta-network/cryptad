@@ -30,6 +30,10 @@ Suite 204 used a new independent revocation key and reached the actual probe,
 but its guest revocation diagnostic was unavailable with ValueError and the
 host verifier did not publish assessment.json. That campaign is sealed failed
 with zero accepted cases; normal guest exit does not override this failure.
+Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
+private diagnostic identifies a TimeoutError in the begin phase. That campaign
+is sealed failed with zero accepted cases; its complete 12,767-file failure
+context was externally archived before releasing verified remote duplicates.
 The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
 source-built `7cec00fde0` candidate completed six network/AppHost cases in
@@ -149,6 +153,57 @@ check passed with the driver at 4,931 lines and runner at 4,993, under the
 unchanged 5,000-line boundary. A new helper/test-kit identity and actual installed
 diagnostic run are required before identifying a functional fix. Source-built
 products, guest/role limits, QEMU/JDK and original time bounds are unchanged.
+
+## Accepted-request synchronization after suite 205
+
+The retained begin timeout is consistent with a concrete controller/driver
+ordering defect. The driver published the revoked marker before its observer
+connected. The controller checks current authority before accepting requests;
+on revocation it fences and reconciles the four roles before exiting. A queued
+observer connection can therefore wait without its request being served. The
+earlier independent successes do not establish that this ordering was safe.
+This diagnosis does not explain unrelated intermittent TCG JVM failures.
+
+The prospective fixed administrator mode `pr315-revocation-accepted-rpc-v1`
+uses the existing fixed `P`/`R` readiness exchange to enter the actual controller
+handler before root publishes the marker. A private root-owned request record
+binds the campaign, boot, actual controller and observer PID/start time, marker,
+nonce and measured synchronization module. The real fixed start operation must
+fail with the existing revoked-authority error. Its public response remains the
+existing generic denial. The controller publishes a private denial proof and
+waits for the matching root release while the administrator verifies the original
+controller and active roles. This wait is at most five seconds, remains inside
+the existing 45-second request allowance and cannot cross the original campaign
+deadline. The original guard then performs normal reconciliation.
+
+No request record means no synchronization barrier. Changed root records, wrong
+peer/epoch, wrong denial, wrong release nonce, or absent release fail closed.
+The host verifier requires the measured mode and exact peer/source commitments;
+role stops must begin after both the denial observation and the root release.
+Normal JSON records and offline fixtures cannot grant installed acceptance.
+The production protocol gains no method or caller-selected path, process, port
+or systemd property. The administrator and host helper extractions are measured
+test-kit seams, excluded from the production export; the fixed controller
+dependency is included in that export.
+
+Disposable native Linux regressions exercised the real observer UID/socket,
+root record validation and the actual controller handler's revoked-authority
+rejection and successful release. The handler test substitutes only its missing
+systemd snapshot; it is not an installed result. A request-record mutation test
+first exposed Python's equality between Boolean true and integer one; the
+immutable-record check now compares canonical serialized records. Original
+failed checks remain private. The new source requires a fresh frozen identity,
+source gates and installed execution before any case can be accepted.
+
+After the final synchronization checks, native restricted tests passed 654
+checks with 23 declared environment skips; all 21 selected applicable root
+checks and seven actual transport/barrier checks passed separately. Protected
+tests passed 553 checks both as the disposable non-root account (80 skips) and
+as root (three skips). Interop passed 68 checks with nine root skips, and all
+nine root transport checks passed separately. The fixed QEMU image check and
+certification source-size check passed. The driver is 4,860 lines and runner
+4,899. These results do not replace the final frozen-source Java and four
+certification gates or the complete installed campaign.
 
 ## Original deadline and fixed observer activity after suite 188
 

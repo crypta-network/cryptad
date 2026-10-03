@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -159,6 +160,38 @@ def synthetic_fnp_observation(roster, helper_commit):
                'responseDigest': hashlib.sha256(payload).hexdigest(), 'bytes': len(payload),
                'startedMonotonicNs': 20, 'finishedMonotonicNs': 80}
     return root, observed, content, text
+
+
+class HostFailureDiagnosticCliTests(unittest.TestCase):
+    def test_real_probe_cli_failure_keeps_private_diagnostic_and_never_allocates(self):
+        source = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'attempt'
+            command = [sys.executable, str(Path(runner.__file__)), '--probe',
+                '--startup-measurement', '--role-readiness-measurement',
+                '--source', str(source), '--output', str(output),
+                '--storage-root', str(root), '--profile', 'tcg-multi',
+                '--host-key-pin-origin', 'preselected-host-key',
+                '--storage-budget-bytes', str(224 * 1024**3),
+                '--min-free-bytes', str(16 * 1024**3),
+                '--memory-budget-bytes', str(7 * 1024**3),
+                '--min-host-memory-bytes', str(1024**3),
+                '--product-source-commit', 'a' * 40,
+                '--prepared-image-digest', 'b' * 64,
+                '--fixture-manifest-digest', 'c' * 64]
+            for name in ('prepared-image', 'qemu-root', 'seed', 'ssh-key',
+                         'known-hosts', 'prepared-fixtures'):
+                command.extend(['--' + name, str(root / name)])
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(2, result.returncode, result.stderr)
+            public = json.loads(result.stdout)
+            private = json.loads(result.stderr)
+            self.assertFalse(public['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual('pr315-private-host-assessment-failure', private['kind'])
+            self.assertEqual('private-diagnostic-not-acceptance', private['classification'])
+            self.assertNotIn('Traceback', result.stderr)
+            self.assertFalse(output.exists())
 
 
 class RunnerTests(unittest.TestCase):
@@ -2681,7 +2714,7 @@ class RunnerTests(unittest.TestCase):
         roster = synthetic_role_kernel_roster()
         terminal = synthetic_terminal_roster(roster)
         terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
-            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000, 'generation': 'a' * 64}}
         rows = []
         for index, principal in enumerate(roster['roles']):
             role = principal['role']
@@ -2699,7 +2732,7 @@ class RunnerTests(unittest.TestCase):
                       'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                       'mainPid': 100, 'mainStartTicks': 40,
                       'observedMonotonicNs': 190}
-        context = {'schemaVersion': 1,
+        context = {'schemaVersion': 2,
             'kind': 'pr315-administrator-revocation-running',
             'triggerStartedNs': 200,
             'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
@@ -2719,6 +2752,17 @@ class RunnerTests(unittest.TestCase):
                   'roleKernelRosterWindow': {'startedMonotonicNs': 50,
                                              'finishedMonotonicNs': 100}}
         source = Path(__file__).resolve().parents[3]
+        context['controllerSynchronization'] = {'schemaVersion': 1,
+            'policy': 'pr315-revocation-accepted-rpc-v1', 'caseId': 'revocation-running',
+            'kind': 'pr315-fixed-revocation-denial', 'nonceDigest': 'c' * 64,
+            'campaign': 'a' * 64, 'bootId': controller['bootId'],
+            'controllerPid': controller['mainPid'], 'controllerStartTicks': controller['mainStartTicks'],
+            'observerPid': 501, 'observerStartTicks': 45, 'markerDigest': 'e' * 64,
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/protected/restricted_workload_revocation_barrier.py'),
+            'acceptedMonotonicNs': 195, 'replyEnqueuedMonotonicNs': 229,
+            'releaseObservedMonotonicNs': 245, 'requestDigest': 'd' * 64,
+            'errorCode': 'authority-expired-or-revoked'}
         private = {'revocationRunning': context,
                    'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
                    'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
@@ -2741,6 +2785,20 @@ class RunnerTests(unittest.TestCase):
                 'record']['startedMonotonicNs'] = 220
             self.assertIsNone(runner._lifecycle_group_attempt(
                 'revocation-running', report, result, fixture, private, early, source))
+            for field, value in (('controllerPid', 0), ('observerStartTicks', 0),
+                                 ('sourceDigest', 'f' * 64), ('errorCode', 'different-denial'),
+                                 ('campaign', '0' * 64), ('bootId', 'wrong-boot'),
+                                 ('requestDigest', '0' * 64), ('markerDigest', '0' * 64),
+                                 ('acceptedMonotonicNs', 225), ('policy', 'unmeasured-mode'),
+                                 ('releaseObservedMonotonicNs', 230)):
+                changed = copy.deepcopy(private)
+                changed['revocationRunning']['controllerSynchronization'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'revocation-running', report, result, fixture, changed, terminal, source))
+            before_release = copy.deepcopy(terminal)
+            before_release['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 240
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, before_release, source))
 
     def test_setsid_group_binds_detached_child_and_preserves_siblings(self):
         roster = synthetic_role_kernel_roster()

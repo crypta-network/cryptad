@@ -488,13 +488,15 @@ def bootstrap(handle):
         return {key: value.get(key) for key in ('uiOrigin', 'browserSessionToken', 'browserSessionExpiresAt')}
 
 
-def serve(connection, expected_uid):
+def serve(connection, expected_uid, *, revocation_token=None):
     credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
     pid, uid, _gid = struct.unpack('3i', credentials)
     if uid != expected_uid:
         workload.reject('peer-denied')
     connection.settimeout(5)
     first = connection.recv(1)
+    if revocation_token is not None and first != b'P':
+        workload.reject('revocation-barrier-handshake-required')
     target_before = None
     if first == b'P':
         # A fixed test-only readiness byte establishes an active controller
@@ -530,6 +532,11 @@ def serve(connection, expected_uid):
     selected = request(bytes(raw[:-1]))
     method, handle = selected['method'], selected['handle']
     request_raw = bytes(raw)
+    if revocation_token is not None:
+        campaign = workload.read(workload.ROOT / 'campaign.json')
+        if method != 'start' or handle != campaign['handles']['candidate-sender']:
+            workload.reject('revocation-barrier-method-invalid')
+        revocation_token['requestDigest'] = hashlib.sha256(request_raw).hexdigest()
     started = time.monotonic_ns()
     _request_progress(method, 'executing', started)
     try:
@@ -556,16 +563,23 @@ def serve(connection, expected_uid):
 
 def handle_request(connection, observer_uid):
     """Contain adversarial protocol errors to this request, preserving owned siblings."""
-    try:
-        with deadline(45):
-            serve(connection, observer_uid)
-        return True
-    except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
+    from restricted_workload_revocation_barrier import prepare, refused
+    with deadline(45):
+        token = None
         try:
-            connection.sendall(b'{"error":"restricted-workload-request-failed"}\n')
-        except OSError:
-            pass
-        return False
+            token = prepare(connection, observer_uid)
+            if token is None:
+                serve(connection, observer_uid)
+            else:
+                serve(connection, observer_uid, revocation_token=token)
+            return True
+        except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException) as error:
+            try:
+                connection.sendall(b'{"error":"restricted-workload-request-failed"}\n')
+            except OSError:
+                pass
+            refused(token, error)
+            return False
 
 
 def startup_checkpoint(stage, started, reached, error=None):

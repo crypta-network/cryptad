@@ -6,11 +6,12 @@ process hooks therefore retain the same installed or offline execution epoch;
 this helper adds no controller methods, caller-selected paths or authority.
 """
 
-def revocation_request(driver, observer, handle, controller_pid):
+def revocation_request(driver, observer, handle, controller_pid, *, prepare_peer=None, publish=None):
     """Use one exact observer UID and fixed controller method after root revocation."""
     if (observer.pw_uid <= 0 or observer.pw_gid <= 0
             or driver.re.fullmatch('[0-9a-f]{64}', handle) is None
-            or type(controller_pid) is not int or controller_pid <= 1):
+            or type(controller_pid) is not int or controller_pid <= 1
+            or (prepare_peer is None) != (publish is None)):
         raise ValueError('workload-revocation-observer-selection-invalid')
     request = (b'{"method":"start","handle":"' + handle.encode() + b'"}\n')
     response = b'{"error":"restricted-workload-request-failed"}\n'
@@ -42,6 +43,13 @@ def revocation_request(driver, observer, handle, controller_pid):
                     driver.socket.SOL_SOCKET, driver.socket.SO_PEERCRED, driver.struct.calcsize('3i')))
                 if peer != controller_pid or uid != 0:
                     raise ValueError('workload-revocation-controller-peer-invalid')
+                if prepare_peer is not None:
+                    channel.sendall(b'P')
+                    if channel.recv(1) != b'R':
+                        raise ValueError('workload-revocation-controller-not-accepted')
+                    child.sendall(b'A')
+                    if child.recv(1) != b'G':
+                        raise ValueError('workload-revocation-barrier-invalid')
                 channel.sendall(request)
                 raw = bytearray()
                 while len(raw) <= len(response) and not raw.endswith(b'\n'):
@@ -71,16 +79,24 @@ def revocation_request(driver, observer, handle, controller_pid):
         if set(map(int, status.split()[1:])) != {observer.pw_uid}:
             raise ValueError('workload-revocation-observer-uid-invalid')
         start_ticks = int(proc.joinpath('stat').read_text().rsplit(')', 1)[1].split()[19])
+        actor = {'pid': pid, 'uid': observer.pw_uid, 'startTicks': start_ticks}
+        if prepare_peer is not None:
+            prepare_peer(actor)
         started = driver.time.monotonic_ns()
         parent.sendall(b'G')
+        if publish is not None:
+            if parent.recv(1) != b'A':
+                raise ValueError('workload-revocation-controller-not-accepted')
+            publish()
+            started = driver.time.monotonic_ns()
+            parent.sendall(b'G')
         observed = parent.recv(1)
         finished = driver.time.monotonic_ns()
         status = driver.wait_child(pid, driver.time.monotonic() + 5)
         reaped = True
         if observed != b'1' or status != 0 or start_ticks <= 0 or finished <= started:
             raise ValueError('workload-revocation-denial-not-observed')
-        return {'actor': {'pid': pid, 'uid': observer.pw_uid,
-                          'startTicks': start_ticks},
+        return {'actor': actor,
                 'requestDigest': driver.hashlib.sha256(request).hexdigest(),
                 'responseDigest': driver.hashlib.sha256(response).hexdigest(),
                 'requestStartedNs': started, 'responseObservedNs': finished}

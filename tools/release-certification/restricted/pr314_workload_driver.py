@@ -2660,10 +2660,10 @@ def complete_deadline(workload, context):
     raise ValueError('workload-deadline-service-stop-unobserved')
 
 
-def _revocation_request(observer, handle, controller_pid):
+def _revocation_request(observer, handle, controller_pid, **barrier):
     """Delegate fixed observer transport through the measured test-kit module."""
     from pr315_observer_transport import revocation_request
-    return revocation_request(sys.modules[__name__], observer, handle, controller_pid)
+    return revocation_request(sys.modules[__name__], observer, handle, controller_pid, **barrier)
 
 
 def _observer_death_request(observer, handle, controller_pid, invocation, *,
@@ -2688,7 +2688,9 @@ def revocation_failure_diagnostic(error, phase):
         'marker-short-write', 'marker-invalid', 'marker-changed',
         'target-changed', 'sibling-changed', 'terminal-mismatch',
         'observer-selection-invalid', 'barrier-invalid', 'controller-peer-invalid',
-        'denial-not-observed', 'observer-not-ready', 'observer-uid-invalid')}
+        'denial-not-observed', 'observer-not-ready', 'observer-uid-invalid',
+        'campaign-changed', 'controller-not-accepted',
+        'denial-proof-unavailable', 'denial-proof-invalid')}
     return {'status': 'unavailable-or-unsafe',
             'exceptionType': type(error).__name__[:128], 'phase': phase,
             'privateErrorCode': str(error) if str(error) in codes else None,
@@ -2696,88 +2698,15 @@ def revocation_failure_diagnostic(error, phase):
 
 
 def begin_revocation_running(workload, handoff, result, observer):
-    """Revoke one live campaign and observe the installed controller refuse work."""
-    from cross_version_runtime import canonical_digest
-    import runtime_snapshot as snapshot
-    active = begin_cancellation(workload, handoff, result)
-    before = controller_unit_identity(workload)
-    marker = workload.ROOT / 'revoked'
-    raw = secrets.token_bytes(32)
-    descriptor = os.open(marker,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    try:
-        if os.write(descriptor, raw) != len(raw):
-            raise ValueError('workload-revocation-marker-short-write')
-        os.fsync(descriptor)
-        info = os.fstat(descriptor)
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0
-                or info.st_nlink != 1 or info.st_mode & 0o077):
-            raise ValueError('workload-revocation-marker-invalid')
-    finally:
-        os.close(descriptor)
-    trigger = time.monotonic_ns()
-    digest = hashlib.sha256(raw).hexdigest()
-    denial = _revocation_request(observer,
-        handoff['handles']['candidate-sender'], before['mainPid'])
-    after = controller_unit_identity(workload)
-    stable = ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
-              'mainStartTicks')
-    if (any(before[key] != after[key] for key in stable)
-            or not before['observedMonotonicNs'] < trigger
-                < denial['requestStartedNs'] < denial['responseObservedNs']
-                < after['observedMonotonicNs']
-            or snapshot.read_file(workload.ROOT, 'revoked', maximum=32,
-                                  timeout=2) != raw):
-        raise ValueError('workload-revocation-target-changed')
-    marker_after = marker.lstat()
-    if ((marker_after.st_dev, marker_after.st_ino, marker_after.st_size)
-            != (info.st_dev, info.st_ino, info.st_size)):
-        raise ValueError('workload-revocation-marker-changed')
-    for row in active['preRoles']:
-        state = workload.manager(row['role'], 'show')
-        if (state['ActiveState'] != 'active' or state['SubState'] != 'running'
-                or state['MainPID'] != str(row['mainPid'])
-                or state['InvocationID'] != row['managerInvocation']):
-            raise ValueError('workload-revocation-sibling-changed')
-    event = {'kind': 'revocation-running', 'roles': active['preRoles'],
-             'campaignDeadlineNs': active['campaignDeadlineNs'],
-             'markerDigest': digest}
-    return {'schemaVersion': 1, 'kind': 'pr315-administrator-revocation-running',
-        'triggerStartedNs': trigger,
-        'triggerEventDigest': canonical_digest(event)[7:],
-        'campaignDeadlineNs': active['campaignDeadlineNs'],
-        'preRoles': active['preRoles'],
-        'markerIdentity': [info.st_dev, info.st_ino, info.st_size],
-        'markerDigest': digest, 'controllerBefore': before,
-        'controllerAfter': after, **denial}
+    """Use the measured fixed accepted-request revocation test kit."""
+    from pr315_revocation_probe import begin
+    return begin(sys.modules[__name__], workload, handoff, result, observer)
 
 
 def complete_revocation_running(workload, context):
-    """Bind the refusal to exact owned termination and unchanged revocation."""
-    import runtime_snapshot as snapshot
-    marker = workload.ROOT / 'revoked'
-    info = marker.lstat()
-    if ([info.st_dev, info.st_ino, info.st_size] != context['markerIdentity']
-            or hashlib.sha256(snapshot.read_file(workload.ROOT, 'revoked',
-                maximum=32, timeout=2)).hexdigest() != context['markerDigest']):
-        raise ValueError('workload-revocation-marker-changed')
-    for row in context['preRoles']:
-        role = row['role']
-        state = workload.manager(role, 'show')
-        receipt = workload.read(workload.ROOT / 'authority' / (role + '-stop.json'))
-        if (state['ActiveState'] not in {'inactive', 'failed'}
-                or state['SubState'] not in {'dead', 'failed'}
-                or state['MainPID'] != '0' or not workload.quiescent(role)
-                or any(receipt[key] != row[key] for key in
-                       ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
-                or receipt['membership'] != 'only-stop-helper'
-                or receipt['descendantCgroups'] != 0
-                or receipt['startedMonotonicNs'] <= context['responseObservedNs']):
-            raise ValueError('workload-revocation-terminal-mismatch')
-    finished = time.monotonic_ns()
-    return {**context, 'terminalObservedNs': finished,
-            'populatedCgroups': [], 'remainingDescendants': 0,
-            'retention': 'retained'}
+    """Use the measured fixed accepted-request revocation test kit."""
+    from pr315_revocation_probe import complete
+    return complete(sys.modules[__name__], workload, context)
 
 
 def _observer_death_controller_state():

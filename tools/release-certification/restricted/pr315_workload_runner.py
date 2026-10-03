@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import time
 from types import SimpleNamespace
 
@@ -1479,107 +1480,11 @@ def _deadline_case(report, diagnostics, terminal, principals):
                      'finishedMonotonicNs': context['terminalObservedNs']}, commitment
 
 
-def _revocation_case(report, diagnostics, terminal, principals):
-    """Bind the live revocation marker and refused controller request to owned cleanup."""
-    if (not isinstance(diagnostics, dict) or not isinstance(terminal, dict)
-            or report.get('guestStopped') is not True
-            or terminal.get('cleanupReportedByCaller') is not True):
-        return None
-    context = diagnostics.get('revocationRunning')
-    try:
-        fields = {'schemaVersion', 'kind', 'triggerStartedNs', 'triggerEventDigest',
-            'campaignDeadlineNs', 'preRoles', 'markerIdentity', 'markerDigest',
-            'controllerBefore', 'controllerAfter', 'actor', 'requestDigest',
-            'responseDigest', 'requestStartedNs', 'responseObservedNs',
-            'terminalObservedNs', 'populatedCgroups', 'remainingDescendants',
-            'retention'}
-        if (not isinstance(context, dict) or set(context) != fields
-                or context['schemaVersion'] != 1
-                or context['kind'] != 'pr315-administrator-revocation-running'
-                or context['populatedCgroups'] != []
-                or context['remainingDescendants'] != 0
-                or context['retention'] != 'retained'
-                or not 0 < context['triggerStartedNs'] < context['campaignDeadlineNs']
-                or not context['triggerStartedNs'] < context['requestStartedNs']
-                    < context['responseObservedNs'] < context['terminalObservedNs']
-                or re.fullmatch('[0-9a-f]{64}', context['markerDigest']) is None
-                or not isinstance(context['markerIdentity'], list)
-                or len(context['markerIdentity']) != 3
-                or any(type(part) is not int or part <= 0
-                       for part in context['markerIdentity'])
-                or context['markerIdentity'][2] != 32
-                or len(context['preRoles']) != len(acceptance.ROLES)):
-            return None
-        campaign = terminal['controllerRecords']['campaign']
-        if (campaign['status'] != 'captured'
-                or campaign['record']['state'] != 'terminalizing'
-                or campaign['record']['deadlineMonotonicNs'] !=
-                    context['campaignDeadlineNs']):
-            return None
-        before, after = context['controllerBefore'], context['controllerAfter']
-        stable = ('invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
-                  'mainStartTicks')
-        actor = context['actor']
-        if (any(before[key] != after[key] for key in stable)
-                or not before['observedMonotonicNs'] < context['triggerStartedNs']
-                    < context['requestStartedNs'] < context['responseObservedNs']
-                    < after['observedMonotonicNs']
-                or actor['uid'] != principals['observerUid']
-                or type(actor['pid']) is not int or actor['pid'] <= 1
-                or type(actor['startTicks']) is not int or actor['startTicks'] <= 0
-                or context['responseDigest'] != hashlib.sha256(
-                    b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
-                or re.fullmatch('[0-9a-f]{64}', context['requestDigest']) is None):
-            return None
-        rows = context['preRoles']
-        if (not all(isinstance(row, dict) and set(row) == {
-                'role', 'managerInvocation', 'bootId', 'cgroupIdentity', 'mainPid'}
-                for row in rows)
-                or {row['role'] for row in rows} != set(acceptance.ROLES)):
-            return None
-        event = {'kind': 'revocation-running', 'roles': rows,
-                 'campaignDeadlineNs': context['campaignDeadlineNs'],
-                 'markerDigest': context['markerDigest']}
-        if context['triggerEventDigest'] != fixtures.runtime.canonical_digest(event)[7:]:
-            return None
-        for row in rows:
-            role = row['role']
-            principal = next(item for item in principals['roles']
-                             if item['role'] == role)
-            receipt = terminal['stopReceipts'][role]['current']
-            record = terminal['controllerRecords'][role]
-            if (type(row['mainPid']) is not int or row['mainPid'] <= 0
-                    or row['managerInvocation'] != principal['invocationId']
-                    or row['bootId'].replace('-', '').lower() != principal['bootId']
-                    or fixtures.runtime.canonical_digest({
-                        'role': role, 'identity': row['cgroupIdentity']})[7:] !=
-                        principal['cgroupDigest']
-                    or receipt['status'] != 'captured'
-                    or record['status'] != 'captured'
-                    or record['record']['stopReason'] != 'controller-reconciliation'):
-                return None
-            stopped = receipt['record']
-            if (any(stopped[key] != row[key] for key in
-                    ('role', 'managerInvocation', 'bootId', 'cgroupIdentity'))
-                    or stopped['membership'] != 'only-stop-helper'
-                    or stopped['descendantCgroups'] != 0
-                    or not context['responseObservedNs'] < stopped['startedMonotonicNs']
-                        <= stopped['observedMonotonicNs']
-                        <= context['terminalObservedNs']):
-                return None
-    except (AttributeError, KeyError, StopIteration, TypeError, ValueError):
-        return None
-    witness = {'caseId': 'revocation-running', 'triggerDigest': '',
-        'trigger': {'kind': 'revocation-running',
-                    'eventDigest': context['triggerEventDigest']},
-        'triggerStartedNs': context['triggerStartedNs'],
-        'terminalObservedNs': context['terminalObservedNs'],
-        'roles': principals['roles'], 'populatedCgroups': [],
-        'remainingDescendants': 0, 'retention': 'retained'}
-    commitment = acceptance.payload_commitment('revocation-running', witness)
-    witness['triggerDigest'] = commitment
-    return witness, {'startedMonotonicNs': context['triggerStartedNs'],
-                     'finishedMonotonicNs': context['terminalObservedNs']}, commitment
+def _revocation_case(report, diagnostics, terminal, principals, source=None):
+    """Validate the measured accepted-request revocation witness."""
+    from pr315_revocation_evidence import case
+    return case(sys.modules[__name__], report, diagnostics, terminal, principals,
+                source or Path(__file__).resolve().parents[3])
 
 
 def _setsid_case(report, diagnostics, terminal, principals, source):
@@ -2094,7 +1999,7 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                 if group == 'controller-restart' else
                 _deadline_case(report, diagnostics, terminal, principals)
                 if group == 'deadline' else
-                _revocation_case(report, diagnostics, terminal, principals)
+                _revocation_case(report, diagnostics, terminal, principals, source)
                 if group == 'revocation-running' else
                 _setsid_case(report, diagnostics, terminal, principals, source)
                 if group == 'setsid-double-fork' else
@@ -2187,6 +2092,7 @@ def _lifecycle_group_attempt(group, report, result, fixture, diagnostics,
                                    'revocationMarkerDigest': context.get('markerDigest'),
                                    'revocationActor': context.get('actor'),
                                    'revocationRequestDigest': context.get('requestDigest'),
+                                   'revocationSynchronization': context.get('controllerSynchronization'),
                                    'detachedChildEpoch': context.get('childEpoch'),
                                    'detachedChildSession': context.get('childSession'),
                                    'originalParentSession': context.get('parentSession'),
