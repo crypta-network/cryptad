@@ -16,6 +16,20 @@ Suite 190 was a sealed PSI admission rejection without a VM. Suite 195 failed
 relay FCP readiness and has no proven probe-start phase; its campaign is
 terminally failed with zero accepted cases. The following allocation was
 blocked. These independent development results do not grant final acceptance.
+Helper `6d197fa741` subsequently passed six independent development groups:
+late-child (196), lost-start-response (197), observer-death (199, following
+the no-VM PSI rejection in 198), controller-restart (200), setsid-double-fork
+(201) and deadline (202). All six have complete private external archives and
+signed host cleanup. Deadline retained 45 normally exited observer activities
+under one controller; role stop receipts began 0.724–0.870 seconds after the
+unchanged expiry. These results cannot be combined into a formal campaign.
+Suite 203 was interrupted in Mac host coordination before sealing; the original
+remote runner finished, but its original SSH outcome was unavailable. Its full
+12,768-file context was retained and sealed failed with zero accepted cases.
+Suite 204 used a new independent revocation key and reached the actual probe,
+but its guest revocation diagnostic was unavailable with ValueError and the
+host verifier did not publish assessment.json. That campaign is sealed failed
+with zero accepted cases; normal guest exit does not override this failure.
 The best historical formal TCG
 result remains 22/45 at `7db8122b` suite 108. Helper `09553dffaa` with the
 source-built `7cec00fde0` candidate completed six network/AppHost cases in
@@ -114,6 +128,27 @@ focused diagnostic checks pass with the fix. The driver is now 4,919 lines,
 within the unchanged 5,000-line boundary. New helper/test-kit measurement and
 fresh installed execution are required; deadlines and resource limits remain
 unchanged.
+
+## Private failure diagnostics after suite 204
+
+The retained guest driver completed its selected sequence and normal cleanup,
+but revocationRunning contained only an unavailable status and exception type.
+The host runner caught its verification failure, emitted the historical v8
+fallback and returned 2 without an assessment. The host coordinator preserved
+the missing-assessment failure with a real probe-start record. The exact
+revocation failure phase and cause are not established by these records.
+
+A prospective diagnostic change retains the fixed begin/complete phase and
+only a closed set of revocation error identifiers. Unknown error strings and
+private values remain excluded. The host runner also emits only three fixed
+private assessment error identifiers on its bounded captured stderr. These
+diagnostics cannot supply case witnesses or grant acceptance. Thirteen focused
+regressions passed; native restricted checks passed 652 tests with 22 environment
+skips, and all 21 applicable root checks passed separately. The source-size
+check passed with the driver at 4,931 lines and runner at 4,993, under the
+unchanged 5,000-line boundary. A new helper/test-kit identity and actual installed
+diagnostic run are required before identifying a functional fix. Source-built
+products, guest/role limits, QEMU/JDK and original time bounds are unchanged.
 
 ## Original deadline and fixed observer activity after suite 188
 

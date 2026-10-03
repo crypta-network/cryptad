@@ -1582,6 +1582,34 @@ class MeasuredRoleProbeStagingTest(unittest.TestCase):
             self.assertEqual(0, selected.stat().st_mode & 0o222)
 
 
+class RevocationFailureDiagnosticTest(unittest.TestCase):
+    def test_fixed_failure_code_keeps_the_actual_operation_phase(self):
+        before = driver.revocation_failure_diagnostic(
+            ValueError('workload-revocation-controller-peer-invalid'), 'begin')
+        after = driver.revocation_failure_diagnostic(
+            ValueError('workload-revocation-terminal-mismatch'), 'complete')
+        self.assertEqual('begin', before['phase'])
+        self.assertEqual('complete', after['phase'])
+        self.assertEqual('workload-revocation-controller-peer-invalid', before['privateErrorCode'])
+        self.assertEqual('workload-revocation-terminal-mismatch', after['privateErrorCode'])
+        for value in (before, after):
+            self.assertEqual('unavailable-or-unsafe', value['status'])
+            self.assertEqual('private-diagnostic-not-acceptance', value['classification'])
+
+    def test_unknown_errors_and_private_values_are_not_retained(self):
+        secret = 'workload-revocation-private-token-0123456789abcdef'
+        result = driver.revocation_failure_diagnostic(ValueError(secret), 'begin')
+        self.assertIsNone(result['privateErrorCode'])
+        self.assertNotIn(secret, json.dumps(result))
+        self.assertEqual('ValueError', result['exceptionType'])
+        self.assertIsNone(driver.revocation_failure_diagnostic(
+            OSError('private filesystem path'), 'complete')['privateErrorCode'])
+
+    def test_caller_cannot_add_an_arbitrary_diagnostic_phase(self):
+        with self.assertRaisesRegex(ValueError, 'diagnostic-phase-invalid'):
+            driver.revocation_failure_diagnostic(ValueError('private'), 'claim-passed')
+
+
 class ReadinessJcmdDiagnosticTest(unittest.TestCase):
     @contextmanager
     def busy_readiness_role(self):

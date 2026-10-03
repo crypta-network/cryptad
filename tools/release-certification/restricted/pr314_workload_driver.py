@@ -2680,6 +2680,21 @@ def _deadline_observer_activity(workload, context):
     return deadline_activity(sys.modules[__name__], workload, context)
 
 
+def revocation_failure_diagnostic(error, phase):
+    """Retain only fixed private failure identifiers; this is never case evidence."""
+    if phase not in ('begin', 'complete'):
+        raise ValueError('workload-revocation-diagnostic-phase-invalid')
+    codes = {'workload-revocation-' + suffix for suffix in (
+        'marker-short-write', 'marker-invalid', 'marker-changed',
+        'target-changed', 'sibling-changed', 'terminal-mismatch',
+        'observer-selection-invalid', 'barrier-invalid', 'controller-peer-invalid',
+        'denial-not-observed', 'observer-not-ready', 'observer-uid-invalid')}
+    return {'status': 'unavailable-or-unsafe',
+            'exceptionType': type(error).__name__[:128], 'phase': phase,
+            'privateErrorCode': str(error) if str(error) in codes else None,
+            'classification': 'private-diagnostic-not-acceptance'}
+
+
 def begin_revocation_running(workload, handoff, result, observer):
     """Revoke one live campaign and observe the installed controller refuse work."""
     from cross_version_runtime import canonical_digest
@@ -4746,8 +4761,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['revocationRunning'] = revocation
             except (OSError, ValueError, KeyError, TypeError, AttributeError,
                     subprocess.SubprocessError) as error:
-                diagnostics['revocationRunning'] = {'status': 'unavailable-or-unsafe',
-                                                    'exceptionType': type(error).__name__[:128]}
+                diagnostics['revocationRunning'] = revocation_failure_diagnostic(error, 'begin')
         if not startup_measurement and workload_group == 'setsid-double-fork':
             try:
                 diagnostics['setsidDoubleFork'] = {'status': 'captured',
@@ -4809,9 +4823,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                             workload, revocation)
                     except (OSError, ValueError, KeyError, TypeError, AttributeError,
                             subprocess.SubprocessError) as error:
-                        diagnostics['revocationRunning'] = {
-                            'status': 'unavailable-or-unsafe',
-                            'exceptionType': type(error).__name__[:128]}
+                        diagnostics['revocationRunning'] = revocation_failure_diagnostic(error, 'complete')
                 if workload_group in ('lost-start-response', 'cancellation',
                                       'controller-restart', 'deadline',
                                       'revocation-running', 'setsid-double-fork',

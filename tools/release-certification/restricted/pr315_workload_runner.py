@@ -4980,7 +4980,14 @@ def main():
 if __name__ == '__main__':
     try:
         exit_code = main()
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        code = str(error) if str(error) in {
+            'workload-lifecycle-group-verification-failed',
+            'workload-lifecycle-group-case-invalid',
+            'workload-group-host-identity-changed'} else None
+        print(json.dumps({'kind': 'pr315-private-host-assessment-failure',
+            'exceptionType': type(error).__name__[:128], 'privateErrorCode': code,
+            'classification': 'private-diagnostic-not-acceptance'}), file=sys.stderr)
         print(json.dumps(public_result('setup-or-execution-failed')))
         exit_code = 2
     raise SystemExit(exit_code)
