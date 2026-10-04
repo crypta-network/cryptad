@@ -72,7 +72,7 @@ class NodeStarterTest {
   }
 
   @Test
-  void main_whenStarting_initializesWrapperBeforePriorityAndCryptoProviders() {
+  void main_whenStarting_registersLifecycleBeforeCryptoProviderInitialization() {
     // Arrange
     String[] args = {"--config-file", "cryptad.ini"};
     List<String> calls = new ArrayList<>();
@@ -117,10 +117,46 @@ class NodeStarterTest {
       NodeStarter.main(args);
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "priority", "providers", "start"), calls);
+      assertEquals(List.of("wrapper-initialized", "priority", "start"), calls);
       assertNotNull(listener.get());
       assertSame(args, forwardedArgs.get());
       wrapper.verify(() -> WrapperManager.start(listener.get(), args), times(1));
+      providers.verify(JceLoader::dumpLoaded, times(0));
+    }
+  }
+
+  @Test
+  void start_whenEnteringLifecycle_notifiesWrapperBeforeCryptoProviderInitialization()
+      throws ReflectiveOperationException {
+    // Arrange
+    List<String> calls = new ArrayList<>();
+    try (MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
+        MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class)) {
+      NodeStarter listener = newNodeStarterViaReflection();
+      calls.clear();
+      wrapper
+          .when(() -> WrapperManager.signalStarting(500000))
+          .thenAnswer(
+              _ -> {
+                calls.add("startup-signal");
+                return null;
+              });
+      providers
+          .when(JceLoader::dumpLoaded)
+          .thenAnswer(
+              _ -> {
+                calls.add("providers");
+                return null;
+              });
+
+      // Act
+      Integer exitCode = listener.start(new String[] {"--help"});
+
+      // Assert
+      assertEquals(0, exitCode);
+      assertEquals(List.of("startup-signal", "providers"), calls);
+      wrapper.verify(() -> WrapperManager.signalStarting(500000), times(1));
+      providers.verify(JceLoader::dumpLoaded, times(1));
     }
   }
 

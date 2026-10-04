@@ -66,8 +66,7 @@ public class NodeStarter implements WrapperListener {
    * Constructors
    *-------------------------------------------------------------*/
   private NodeStarter() {
-    // Force it to load right now and log what exactly is loaded.
-    JceLoader.dumpLoaded();
+    // Provider initialization runs after the registered lifecycle's startup notification.
   }
 
   /**
@@ -525,6 +524,10 @@ public class NodeStarter implements WrapperListener {
   public Integer start(String[] args) {
     markStarted(false);
 
+    // Notify the wrapper before provider and configuration initialization can delay startup.
+    WrapperManager.signalStarting(500000);
+    JceLoader.dumpLoaded();
+
     NodeCli cli = new NodeCli();
     CommandLine cmd = new CommandLine(cli);
     cmd.setExecutionExceptionHandler(new NodeCli.PrettyExceptionHandler());
@@ -570,9 +573,6 @@ public class NodeStarter implements WrapperListener {
     }
 
     PooledExecutor executor = startExecutor();
-
-    // Extend wrapper startup timeout to 500,000 ms. Diffie-Hellman init can be slow on some hosts.
-    WrapperManager.signalStarting(500000);
 
     startKeepAliveNativePlugThread();
     warmGlobalSecureRandom();

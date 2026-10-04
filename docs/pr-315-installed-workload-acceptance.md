@@ -174,6 +174,49 @@ they do not reinterpret suite 224 or grant an installed pass. A new frozen
 helper and fresh installed output execution are required, followed by the
 complete final-source campaign and gates.
 
+Frozen `94404b8e76` then launched suite 225 to rerun output-symlink with that
+reader. It failed during relay-no-apps preparation: the original FCP GetNode
+readiness operation exhausted its unchanged 180-second window after fourteen
+attempts. The actual transport diagnostic was connect-fcp/response-read.
+No formal output probe was reached. The guest exited one, its watcher
+completed, the host established no task QEMU, and the campaign was sealed
+failed without case credit. The complete 12,789-file staging and 12,803-file
+campaign copy, original disks, deadline, kernel/cgroup observations and failure
+history are retained privately. No role cgroup OOM or HotSpot fatal was
+captured. The observed failure does not establish a root cause for the earlier
+intermittent JVM faults.
+
+The retained relay wrapper excerpt identifies a specific earlier startup
+transition: its first JVM initialized crypto providers, then the native
+wrapper timed out waiting for the JVM signal and terminated it. A second JVM
+was still bootstrapping when readiness expired; the retained startup thread
+was parsing localization data. Bounded jcmd command-line and thread requests
+expired, and their failure statuses are preserved. Read-only stopped-disk
+forensics created a prospectively admitted sparse partition through the
+existing isolated Docker image, verified the original QCOW hashes unchanged,
+and started no guest or filesystem mount. The requested wrapper paths were
+absent after shutdown; empty debugfs output is not a successful full-log
+recovery. The failure-time wrapper excerpt and thread diagnostic remain the
+available observations.
+
+Source inspection confirms an ordering defect: argument evaluation constructs
+NodeStarter and forces JceLoader.dumpLoaded before WrapperManager.start can
+register the listener. The existing signalStarting(500000) occurs later in
+start, after configuration setup. The prospective correction makes listener
+construction side-effect-free, sends that same notification immediately after
+entering start, and then initializes providers. It changes neither the
+notification value nor the installed workload deadlines, wrapper settings,
+QEMU/JDK or resource limits. The two lifecycle/provider ordering regressions
+fail on the prior source and pass after the correction. Focused NodeStarter
+XML records 22 tests, zero failures/errors/skips; actual owning-module/root
+format checks pass, and production-file SonarLint reports no findings. A new
+test-file SonarLint run retains eight existing Mockito static-import
+informational findings in unchanged methods; these are not hidden by the
+analyzer's successful exit. A new
+source-built product, measured helper/fixture identity and fresh installed
+execution are required. This source fix does not retroactively validate suite
+225 or claim to solve all remaining startup latency or JVM failures.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure
