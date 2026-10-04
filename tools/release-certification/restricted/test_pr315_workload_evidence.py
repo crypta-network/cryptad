@@ -89,16 +89,17 @@ class VolatileEvidenceTest(unittest.TestCase):
                              retained['resolverAuthorityAudit']['status'])
             self.assertNotIn('must-not-copy', json.dumps(retained))
 
-    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
-    def test_output_symlink_audit_requires_real_collector_epoch_and_bounded_denial(self):
+    def _output_symlink_audit(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',
                  'networkNamespaceIdentity': [1, 2], 'mountNamespaceIdentity': [1, 3],
                  'userNamespaceIdentity': [1, 4], 'namespacePids': [123, 2],
                  'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
                  'rssBytes': 1024, 'processThreads': 1,
                  'noNewPrivileges': True, 'effectiveCapabilities': 0}
-        collector = {'pid': 211, 'uid': 0, 'startTicks': 30,
+        collector = {'pid': 211, 'uid': 0, 'gid': 0, 'startTicks': 30,
                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                     'namespacePids': [211],
+                     'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
                      'cgroupIdentity': [1, 20], 'cgroupDigest': 'b' * 64,
                      'invocationId': 'c' * 32, 'sourceDigest': 'd' * 64,
                      'observedMonotonicNs': 20}
@@ -123,12 +124,27 @@ class VolatileEvidenceTest(unittest.TestCase):
                  'linkTargetDigest': '2' * 64,
                  'triggerMonotonicNs': 30,
                  'attackStartedNs': 40, 'attackFinishedNs': 50}
+        return audit
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
+    def test_output_symlink_audit_requires_real_collector_epoch_and_bounded_denial(self):
+        audit = self._output_symlink_audit()
+        target = audit['targetBefore']
         path = self.root / 'authority/output-symlink-denial.json'
         path.write_text(json.dumps(audit))
         self.assertEqual(audit, evidence._capture(
             self.root, self.expected, True)['outputSymlinkAudit']['record'])
         for changed in (
                 dict(audit, collectorDenial='timeout'),
+                dict(audit, collectorBefore=dict(audit['collectorBefore'], gid=1001)),
+                dict(audit, collectorAfter=dict(audit['collectorAfter'], uid=False)),
+                dict(audit, collectorBefore=dict(audit['collectorBefore'], namespacePids=[212])),
+                dict(audit, collectorBefore=dict(audit['collectorBefore'], namespaces={'pid': 11})),
+                dict(audit, collectorAfter=dict(audit['collectorAfter'],
+                    namespaces=dict(audit['collectorAfter']['namespaces'], net=99))),
+                dict(audit, collectorBefore={key:value for key,value in
+                    audit['collectorBefore'].items()
+                    if key not in ('gid', 'namespacePids', 'namespaces')}),
                 dict(audit, targetAfter=dict(target, controlDigest='3' * 64,
                                               observedMonotonicNs=70)),
                 dict(audit, privateToken='must-not-copy')):
@@ -199,6 +215,33 @@ class VolatileEvidenceTest(unittest.TestCase):
             replacement_path.write_text(json.dumps(changed))
             self.assertEqual('unavailable-or-unsafe', evidence._capture(
                 self.root, self.expected, True)['outputReplacementAudit']['status'])
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'Native Linux root collector process required')
+    def test_actual_administrator_collector_epoch_survives_output_descriptor_capture(self):
+        import pr314_workload_driver as driver
+        audit = self._output_symlink_audit()
+        audit['targetBefore']['observedMonotonicNs'] = time.monotonic_ns()
+        audit['collectorBefore'] = driver._administrator_collector_epoch('output-symlink')
+        for key in ('triggerMonotonicNs', 'attackStartedNs', 'attackFinishedNs',
+                    'collectorStartedNs', 'collectorFinishedNs'):
+            audit[key] = time.monotonic_ns()
+        audit['targetAfter']['observedMonotonicNs'] = time.monotonic_ns()
+        audit['collectorAfter'] = driver._administrator_collector_epoch('output-symlink')
+        self.assertEqual(os.getpid(), audit['collectorBefore']['pid'])
+        self.assertEqual(os.getpid(), audit['collectorBefore']['namespacePids'][0])
+        path = self.root / 'authority/output-symlink-denial.json'
+        path.write_text(json.dumps(audit))
+        retained = evidence._output_symlink_audit(self.root, time.monotonic()+5)
+        self.assertEqual('captured', retained['status'])
+        self.assertEqual(audit, retained['record'])
+        self.assertEqual({'pid', 'net', 'mnt', 'user'},
+                         set(retained['record']['collectorBefore']['namespaces']))
+        changed = dict(audit, collectorAfter=dict(audit['collectorAfter'],
+            namespaces=dict(audit['collectorAfter']['namespaces'], user=1)))
+        path.write_text(json.dumps(changed))
+        self.assertEqual('unavailable-or-unsafe', evidence._output_symlink_audit(
+            self.root, time.monotonic()+5)['status'])
 
     def test_private_read_audit_keeps_only_fixed_root_process_evidence(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',

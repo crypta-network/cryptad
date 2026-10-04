@@ -1836,7 +1836,7 @@ def _output_artifact_audit(root, deadline, case_id):
                     'swapStartedNs', 'swapFinishedNs'})
         collector_fields = {'pid', 'uid', 'startTicks', 'bootId', 'cgroupIdentity',
                             'cgroupDigest', 'invocationId', 'sourceDigest',
-                            'observedMonotonicNs'}
+                            'observedMonotonicNs', 'gid', 'namespacePids', 'namespaces'}
         target_fields = {'controlDigest', 'fileIdentity', 'observedMonotonicNs'}
         if case_id == 'output-hardlink':
             target_fields.add('linkCount')
@@ -1898,7 +1898,17 @@ def _output_artifact_audit(root, deadline, case_id):
                        for key in ('actorInvocationBefore', 'actorInvocationAfter'))
                 or any(not isinstance(value[key], dict)
                        or set(value[key]) != collector_fields
-                       or value[key]['uid'] != 0
+                       or type(value[key]['uid']) is not int or value[key]['uid'] != 0
+                       or type(value[key]['gid']) is not int or value[key]['gid'] != 0
+                       or not isinstance(value[key]['namespacePids'], list)
+                       or not 1 <= len(value[key]['namespacePids']) <= 32
+                       or value[key]['namespacePids'][0] != value[key]['pid']
+                       or any(type(pid) is not int or pid <= 0
+                              for pid in value[key]['namespacePids'])
+                       or not isinstance(value[key]['namespaces'], dict)
+                       or set(value[key]['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                       or any(type(inode) is not int or inode <= 0
+                              for inode in value[key]['namespaces'].values())
                        or any(type(value[key][name]) is not int or value[key][name] <= 0
                               for name in ('pid', 'startTicks', 'observedMonotonicNs'))
                        or not isinstance(value[key]['cgroupIdentity'], list)

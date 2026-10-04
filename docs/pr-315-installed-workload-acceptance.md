@@ -133,6 +133,47 @@ Those offline results do not change suite 217's verdict. Another frozen
 identity, new retired preparation and fresh installed authority execution
 are required before an authority group can receive credit.
 
+Frozen `676f7fa894` completed four independent development groups with
+original evidence recovery and signed cleanup: authority (suite 220, nine
+cases), positive (221, eight), role-boundary (222, five), and network/AppHost
+(223, six). Suite 218 completed the genuine retired-authority preparation
+and signed cleanup without case credit. Suite 219 was a real pre-launch PSI
+rejection: I/O full PSI was 12.49%, above the unchanged 10% formal threshold;
+no VM was allocated. The authority preparation, rejection and successor share
+the same three-attempt allowance. Complete campaigns were copied to the
+private external archive and byte-verified before releasing stopped, verified
+duplicates. The four separate development keys cannot form a formal 28/45
+campaign or supply results for another source identity.
+
+Suite 224 then executed the genuine output-symlink operation under that
+helper. The driver retained `outputSymlink.status=captured` and its original
+audit digest, but volatile capture reported `unavailable-or-unsafe`. The
+installed assessment was inconclusive, the group was sealed failed, and the
+development scheduler stopped before another allocation. The guest exited
+zero, its watcher completed, and independent host observation found no task
+QEMU; those stop facts do not override the failed assessment. The complete
+12,786-file failure staging, both guest disks and original volatile evidence
+remain private. No case receives credit from this terminal campaign.
+
+The mismatch is demonstrated in the collector evidence contract. The actual
+administrator emitter supplies twelve fields, including root GID, namespace
+PID mapping and four namespace inodes; the shared five-output-case reader
+still required the earlier nine-field shape. A native x86 regression with the
+emitted shape reproduced the rejection before the fix. The prospective
+reader now requires exactly the twelve emitted fields, validates root UID/GID
+and the namespace data, and rejects any before/after collector change. It
+preserves the original descriptor, size, time, object and denial checks.
+The output cases retain their fixed meanings and production socket methods.
+An actual native root collector-to-descriptor-reader check passed; wrong GID,
+wrong namespace PID, missing or changed namespaces, noninteger UID and the
+old incomplete shape remain rejected. Native evidence checks passed 61 tests
+with one root-only skip, followed by that actual root check passing separately;
+the restricted suite passed 665 tests with 27 environment skips, and the
+source-size gate passed. These checks diagnose and regress the reader defect;
+they do not reinterpret suite 224 or grant an installed pass. A new frozen
+helper and fresh installed output execution are required, followed by the
+complete final-source campaign and gates.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure
