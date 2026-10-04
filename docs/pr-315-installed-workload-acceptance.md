@@ -58,6 +58,24 @@ original collector and campaign deadlines. Diagnostics cannot supply a case
 witness or change a failed verdict. A new measured identity and fresh installed
 execution are required to establish the actual failure cause.
 
+Frozen `804847e9c3` provided that direct observation in suite 212. The real
+stuck-output probe failed in `actor-binding` with
+`workload-role-probe-actor-unavailable`; its ready and child records were
+captured before cleanup and retained in volatile evidence. The parent probe
+and its FIFO writer have the same command line because the writer forks
+without exec. The previous unique-command selector therefore rejects the
+two genuine processes. A disposable native Linux regression reproduced the
+identical command lines under a real non-root principal and the old selector's
+failure. The narrow correction selects the probe through the writer's
+administrator-observed kernel parent PID, then retains the unchanged exact
+command, NoNewPrivileges, capability, nonce and parent/child checks. It does
+not trust a candidate's declared parent PID as the binding authority. The
+same real-fork regression passes and rejects an absent parent, a changed
+kernel parent and a privileged actor. Collector and campaign limits are
+unchanged. Suite 212 remains sealed failed with zero accepted cases and a
+complete 12,775-file staging original; a new identity must rerun the installed
+group before any acceptance can be credited.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure

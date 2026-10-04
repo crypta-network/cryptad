@@ -2153,6 +2153,22 @@ def probe_stale_pid_uid(workload, handoff, result, source_digest,
                     pass
 
 
+def _stuck_output_actor(observation, child, nonce):
+    """Disambiguate forked identical argv by the observed writer's kernel parent."""
+    writer_pid = child.get('writerPid')
+    if type(writer_pid) is not int or writer_pid <= 1:
+        raise ValueError('workload-stuck-output-writer-invalid')
+    writers = [row for row in observation['processes']
+               if row['namespacePids'][-1] == writer_pid]
+    if len(writers) != 1:
+        raise ValueError('workload-stuck-output-writer-invalid')
+    writer = writers[0]
+    parents = [row for row in observation['processes']
+               if row['hostPid'] == writer['hostParentPid']]
+    actor = _role_probe_actor({'processes': parents}, nonce, 'stuck-output')
+    return actor, writer
+
+
 def probe_stuck_output(workload, handoff, result, role_probe_digest,
                        campaign_deadline_ns):
     """Keep the failing operation's phase before role tmpfs is reclaimed."""
@@ -2202,9 +2218,7 @@ def _probe_stuck_output(workload, handoff, result, role_probe_digest,
         'workload-stuck-output-child-ready-timeout')
     trace.step('actor-binding')
     before = workload.observe(handle)
-    actor = _role_probe_actor(before, nonce, 'stuck-output')
-    writer = next((row for row in before['processes']
-                   if row['namespacePids'][-1] == child['writerPid']), None)
+    actor, writer = _stuck_output_actor(before, child, nonce)
     fifo = state / role_probe.STUCK_OUTPUT_FIFO.name
     info = fifo.lstat()
     if (not isinstance(ready, dict) or ready.get('nonce') != nonce
