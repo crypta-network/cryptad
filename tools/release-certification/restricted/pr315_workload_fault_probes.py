@@ -852,6 +852,22 @@ def probe_authority_claims(workload, handoff, source_digest, resolver_digest,
 
 def probe_partial_launch(workload, handoff, result, observer_uid,
                          campaign_deadline_ns):
+    """Retain bounded failure phases without changing the installed operation."""
+    from pr315_partial_launch_diagnostics import Trace
+    trace = Trace(workload, campaign_deadline_ns)
+    try:
+        return _probe_partial_launch(workload, handoff, result, observer_uid,
+                                     campaign_deadline_ns, trace)
+    except Exception as error:
+        try:
+            trace.capture(error)
+        except Exception:
+            pass
+        raise
+
+
+def _probe_partial_launch(workload, handoff, result, observer_uid,
+                          campaign_deadline_ns, trace):
     """Fail previous after its real start marker while two roles remain live."""
     import restricted_workload_launcher as launcher
     from cross_version_workload import WorkloadClient, runtime
@@ -862,6 +878,8 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
                 != ['candidate-sender', 'candidate-recipient']):
         raise ValueError('workload-partial-launch-preparation-invalid')
     administrator_before = _administrator_collector_epoch('partial-launch')
+    trace.administrator = administrator_before
+    trace.step('sibling-controls')
     sender = _partial_role_projection(workload, handoff['handles']['candidate-sender'])
     recipient = _partial_role_projection(workload, handoff['handles']['candidate-recipient'])
     root = workload.ROOT
@@ -879,6 +897,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
     spec = workload.read(root / 'roles/previous/launch.json')
     nonce = secrets.token_hex(32)
     source_digest = hashlib.sha256(Path(launcher.__file__).read_bytes()).hexdigest()
+    trace.step('request-publication')
     workload.write(launcher.PARTIAL_LAUNCH_REQUEST,
         {'schemaVersion': 1, 'caseId': 'partial-launch', 'nonce': nonce,
          'bootId': workload.boot(), 'javaDigest': spec['javaDigest'],
@@ -889,6 +908,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
     if observer.pw_uid != observer_uid or observer_uid <= 0:
         raise ValueError('workload-partial-launch-observer-invalid')
     parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    trace.step('observer-start')
     try:
         pid = os.fork()
     except BaseException:
@@ -923,6 +943,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
     sample_error = None
     try:
         until = min(time.monotonic() + 9, campaign_deadline_ns / 1e9)
+        trace.step('fault-sampling', wait_until_ns=int(until * 1e9))
         fault = _wait_output_record(launcher.PARTIAL_LAUNCH_RECORD,
             previous_uid, until, 'workload-partial-launch-fault-timeout')
         marker = workload.read(root / 'authority/previous-start.json')
@@ -931,6 +952,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
         actor = workload._process(fault['pid'], 'previous', previous_uid)
         actor['cgroupIdentity'] = [info.st_dev, info.st_ino]
         actor['observedMonotonicNs'] = time.monotonic_ns()
+        trace.step('observer-sampling')
         observer_actor = _positive_observer_epoch(
             pid, observer_uid, campaign_deadline_ns)
         if (not isinstance(fault, dict) or set(fault) != {
@@ -950,9 +972,11 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
                     <= actor['observedMonotonicNs']):
             raise ValueError('workload-partial-launch-fault-epoch-invalid')
     except BaseException as error:
+        trace.failed()
         sample_error = error
     finally:
         try:
+            trace.step('release')
             release = launcher.PARTIAL_LAUNCH_RELEASE
             pending = release.with_name('.pr315-partial-launch-release.pending')
             raw = json.dumps({'schemaVersion': 1,
@@ -975,6 +999,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
         except (OSError, ValueError):
             pass
     try:
+        trace.step('response-collection')
         raw, status = collect_child(parent, pid,
             min(time.monotonic() + 45, campaign_deadline_ns / 1e9))
     except BaseException:
@@ -994,9 +1019,11 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
             'controller-rejected-launch', 'transient-start-response')
             or released_ns is None or actor is None or observer_actor is None):
         raise ValueError('workload-partial-launch-transition-invalid')
+    trace.step('previous-stop')
     stopped = workload.stop(handoff['handles']['previous'])
     current = workload.read(root / 'authority/previous.json')
     receipt = workload.stop_receipt('previous', current)
+    trace.step('sibling-recheck')
     sender_after = _partial_role_projection(workload,
         handoff['handles']['candidate-sender'])
     recipient_after = _partial_role_projection(workload,
@@ -1036,6 +1063,7 @@ def probe_partial_launch(workload, handoff, result, observer_uid,
         'probeStartedNs': ready_ns, 'releasePublishedNs': released_ns,
         'terminalObservedNs': time.monotonic_ns(),
         'launcherSourceDigest': source_digest}
+    trace.step('audit-publication')
     workload.write(root / 'authority/partial-launch.json', audit, create=True)
     return hashlib.sha256(json.dumps(audit, sort_keys=True,
         separators=(',', ':')).encode()).hexdigest()

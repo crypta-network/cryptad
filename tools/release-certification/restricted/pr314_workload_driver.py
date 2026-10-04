@@ -4582,6 +4582,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['partialLaunch'] = {
                     'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+                from pr315_partial_launch_diagnostics import summary
+                diagnostics['partialLaunch'].update(summary(workload))
         if not startup_measurement and workload_group == 'stuck-output':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

@@ -30,6 +30,12 @@ Suite 204 used a new independent revocation key and reached the actual probe,
 but its guest revocation diagnostic was unavailable with ValueError and the
 host verifier did not publish assessment.json. That campaign is sealed failed
 with zero accepted cases; normal guest exit does not override this failure.
+Helper `88f87c0151` then passed independent revocation-running (suite 206)
+and cancellation (suite 207) development groups, both with complete private
+external archives and signed host cleanup. Suite 208 reached the genuine
+partial-launch probe but retained only unavailable-or-unsafe with ValueError;
+its campaign is sealed failed with zero accepted cases. The scheduler stopped
+before another allocation. These separate keys cannot form a formal campaign.
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure
@@ -204,6 +210,57 @@ nine root transport checks passed separately. The fixed QEMU image check and
 certification source-size check passed. The driver is 4,860 lines and runner
 4,899. These results do not replace the final frozen-source Java and four
 certification gates or the complete installed campaign.
+
+Frozen `88f87c0151` subsequently completed those source gates. Its native Java
+XML contains 17,414 tests, zero failures/errors, ten declared skips and 1,412
+reports. All four certification self-tests passed (2,395, two, 50 and 20 checks);
+the 12 Mac journal skips passed separately on native Linux. Actual static XML
+has zero Sonar and AppProcessStarter findings and eleven unchanged AppHost
+SpotBugs findings. The owned Gradle daemon was normally stopped and independently
+observed absent. These gates apply to that source, not a later revision.
+
+## Partial-launch failure and private diagnostic retention after suite 208
+
+The partial-launch guest exited normally and retained a matching sender
+sentinel, but the administrator probe returned unavailable-or-unsafe with
+ValueError. No successful partial-launch audit existed, and the host verifier
+did not publish assessment.json. The real probe-start record makes this a
+terminal functional/evidence failure, not a safe preparation retry.
+
+All 12,775 original context files were copied and checksum verified externally;
+the Mac original remains retained. Automatic approval review rejected deleting
+this specific Mac failed context after relocation, so the completed operation
+only copied and verified it. No local failed original was deleted.
+
+A separately identified stopped-disk diagnostic reserved the full 24-GiB
+virtual size before conversion, rechecked the 224-GiB task cap, 16-GiB filesystem
+reserve and thin pool, and confirmed no task emulator or open image users.
+Its independent raw copy used the pinned F79 image decoder, and both original
+QCOW2 hashes remained unchanged. A dedicated read-only loop exposed the copy
+to debugfs without a mounted filesystem; the loop was detached after extraction.
+This diagnostic did not start a guest or grant acceptance.
+
+The disk retains the real previous start marker, root fault request, launch
+selection, authority and persistent journal. Previous began starting 14.227
+seconds after the probe-start record, was reported Started at 15.223 seconds,
+and began stopping at 15.932 seconds. Sender, recipient and previous have
+matching owned stop receipts; relay has none. Fault and release records live
+inside the role's finite tmpfs, so their absence from the stopped disk cannot
+establish whether they existed before cleanup. The retained evidence does not
+identify the exact ValueError or prove a functional fix.
+
+The prospective diagnostic records only fixed partial-launch stages and a
+closed set of error identifiers. It preserves the first failure phase through
+release/response collection, captures bounded private fault/release bytes,
+start marker and controller progress before tmpfs cleanup, and retains them
+as diagnostic volatile evidence. These records are explicitly not case witnesses.
+Unknown exception messages are excluded, and capture failure cannot replace
+the original probe exception. The nine-second sample wait, ten-second launcher
+barrier, original campaign deadline and all service/resource limits are unchanged.
+Three focused retention/privacy regressions passed; native restricted checks
+passed 657 tests with 23 environment skips, all 21 selected applicable root
+checks passed, and the source-size gate passed. A new helper/test-kit identity
+and actual diagnostic execution are required next.
 
 ## Original deadline and fixed observer activity after suite 188
 
