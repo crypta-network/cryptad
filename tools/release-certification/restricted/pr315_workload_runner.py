@@ -3419,8 +3419,9 @@ def _partial_launch_record(campaign_plan, attempt_id, report, result,
         administrator = audit['administratorBefore']
         administrator_after = audit['administratorAfter']
         previous_receipt = audit['previousStopReceipt']
-        if (audit['schemaVersion'] != 1
+        if (audit['schemaVersion'] != 2
                 or audit['kind'] != 'pr315-administrator-partial-launch'
+                or audit.get('synchronizationPolicy') != 'pr315-partial-launch-start-response-v2'
                 or audit['caseId'] != 'partial-launch'
                 or audit_digest != diagnostics['partialLaunch']['auditDigest']
                 or audit['launcherSourceDigest'] != reference.sha256(source /
@@ -3459,6 +3460,11 @@ def _partial_launch_record(campaign_plan, attempt_id, report, result,
                 or previous_receipt['descendantCgroups'] != 0
                 or audit['controllerResponse'] not in (
                     'controller-rejected-launch', 'transient-start-response')
+                or not audit['probeStartedNs'] <= audit['startResponseStartedNs']
+                    < audit['startResponseObservedNs'] <= audit['faultWaitStartedNs']
+                    < actor['observedMonotonicNs'] < audit['faultWaitUntilNs']
+                or not 0 < audit['faultWaitUntilNs']-audit['faultWaitStartedNs']
+                    <= 9*10**9
                 or not diagnostics['probeStart']['startedMonotonicNs']
                     <= administrator['observedMonotonicNs']
                     < audit['probeStartedNs'] < fault['observedMonotonicNs']

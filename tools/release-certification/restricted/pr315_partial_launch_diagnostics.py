@@ -8,12 +8,12 @@ import time
 POLICY = 'pr315-partial-launch-diagnostic-v1'
 NAME = 'partial-launch-diagnostic.json'
 PHASES = frozenset(('preconditions', 'sibling-controls', 'request-publication',
-    'observer-start', 'fault-sampling', 'observer-sampling', 'release',
+    'observer-start', 'start-response', 'fault-sampling', 'observer-sampling', 'release',
     'response-collection', 'previous-stop', 'sibling-recheck', 'audit-publication'))
 CODES = frozenset('workload-partial-launch-' + suffix for suffix in (
     'preparation-invalid', 'roles-not-prepared', 'observer-invalid', 'fault-timeout',
     'fault-epoch-invalid', 'release-short-write', 'release-already-published',
-    'start-response-invalid', 'transition-invalid', 'reconciliation-invalid',
+    'start-response-invalid', 'start-response-timeout', 'transition-invalid', 'reconciliation-invalid',
     'sibling-inactive')) | frozenset(('workload-positive-observer-exited',
     'workload-positive-observer-uid-unavailable', 'workload-positive-observer-epoch-changed',
     'restricted-workload-process-scope-changed', 'restricted-workload-preparation-incomplete'))

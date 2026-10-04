@@ -870,7 +870,7 @@ def _probe_partial_launch(workload, handoff, result, observer_uid,
                           campaign_deadline_ns, trace):
     """Fail previous after its real start marker while two roles remain live."""
     import restricted_workload_launcher as launcher
-    from cross_version_workload import WorkloadClient, runtime
+    from pr315_partial_start_transport import POLICY, start, finish
 
     if (result.get('groupPreparation') != 'partial-launch'
             or result.get('topologyRoles') != 2
@@ -907,42 +907,17 @@ def _probe_partial_launch(workload, handoff, result, observer_uid,
     observer = pwd.getpwnam('cryptad-soak')
     if observer.pw_uid != observer_uid or observer_uid <= 0:
         raise ValueError('workload-partial-launch-observer-invalid')
-    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     trace.step('observer-start')
-    try:
-        pid = os.fork()
-    except BaseException:
-        parent.close()
-        child.close()
-        raise
-    if pid == 0:
-        parent.close()
-        try:
-            os.setgroups([])
-            os.setgid(observer.pw_gid)
-            os.setuid(observer.pw_uid)
-            os.environ.clear()
-            os.environ.update(driver.ENV)
-            try:
-                response = WorkloadClient().request('start',
-                    handoff['handles']['previous'])
-                classification = ('transient-start-response'
-                    if response.get('state') == 'running' else
-                    'unexpected-start-response')
-            except runtime.RuntimeFailure:
-                classification = 'controller-rejected-launch'
-            child.sendall(json.dumps({'classification': classification},
-                separators=(',', ':')).encode())
-            os._exit(0)
-        except BaseException:
-            os._exit(1)
-    child.close()
+    trace.step('start-response')
+    parent, pid, response, response_started_ns, response_ns = start(
+        driver, observer, handoff['handles']['previous'], campaign_deadline_ns)
     actor = None
     observer_actor = None
     released_ns = None
     sample_error = None
     try:
         until = min(time.monotonic() + 9, campaign_deadline_ns / 1e9)
+        fault_wait_started_ns = time.monotonic_ns()
         trace.step('fault-sampling', wait_until_ns=int(until * 1e9))
         fault = _wait_output_record(launcher.PARTIAL_LAUNCH_RECORD,
             previous_uid, until, 'workload-partial-launch-fault-timeout')
@@ -998,23 +973,15 @@ def _probe_partial_launch(workload, handoff, result, observer_uid,
             released_ns = time.monotonic_ns()
         except (OSError, ValueError):
             pass
+    trace.step('response-collection')
     try:
-        trace.step('response-collection')
-        raw, status = collect_child(parent, pid,
-            min(time.monotonic() + 45, campaign_deadline_ns / 1e9))
-    except BaseException:
-        try:
-            stop_child(pid)
-        except ChildProcessError:
-            pass
+        finish(driver, parent, pid, campaign_deadline_ns)
+    except Exception:
+        if sample_error is not None:
+            raise sample_error
         raise
-    finally:
-        parent.close()
     if sample_error is not None:
         raise sample_error
-    if status != 0 or len(raw) > 512:
-        raise ValueError('workload-partial-launch-start-response-invalid')
-    response = json.loads(raw)
     if (response.get('classification') not in (
             'controller-rejected-launch', 'transient-start-response')
             or released_ns is None or actor is None or observer_actor is None):
@@ -1043,7 +1010,7 @@ def _probe_partial_launch(workload, handoff, result, observer_uid,
                    for key in ('managerInvocation', 'cgroupIdentity',
                                'bootId', 'stateDigest'))):
         raise ValueError('workload-partial-launch-reconciliation-invalid')
-    audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-partial-launch',
+    audit = {'schemaVersion': 2, 'kind': 'pr315-administrator-partial-launch',
         'caseId': 'partial-launch', 'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
         'administratorBefore': administrator_before,
         'administratorAfter': _administrator_collector_epoch('partial-launch'),
@@ -1060,6 +1027,11 @@ def _probe_partial_launch(workload, handoff, result, observer_uid,
         'relayAfter': {key: relay_after[key] for key in
             ('state', 'generation', 'managerInvocation', 'cgroupIdentity', 'bootId')},
         'controllerResponse': response['classification'],
+        'synchronizationPolicy': POLICY,
+        'startResponseStartedNs': response_started_ns,
+        'startResponseObservedNs': response_ns,
+        'faultWaitStartedNs': fault_wait_started_ns,
+        'faultWaitUntilNs': int(until*1e9),
         'probeStartedNs': ready_ns, 'releasePublishedNs': released_ns,
         'terminalObservedNs': time.monotonic_ns(),
         'launcherSourceDigest': source_digest}

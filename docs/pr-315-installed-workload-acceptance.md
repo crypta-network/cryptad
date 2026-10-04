@@ -262,6 +262,50 @@ passed 657 tests with 23 environment skips, all 21 selected applicable root
 checks passed, and the source-size gate passed. A new helper/test-kit identity
 and actual diagnostic execution are required next.
 
+Suite 209 used frozen diagnostic helper `8521dcefc7` with the original waits
+and recorded the direct failure: `workload-partial-launch-fault-timeout` during
+fault-sampling. The nine-second wait began at 1,163,509,693,398 ns; its original
+expiry was 1,172,509,369,359 ns. Actual controller start progress was replied
+at 1,177,110,557,907 ns, about 4.6 seconds after that expiry. Before tmpfs
+cleanup, the diagnostic retained the real start marker and release, found no
+fault record, and retained the first failure phase. Guest exit zero does not
+override this failed probe. All 12,780 context files were externally copied
+and verified; the Mac original remains retained.
+
+The controller validates selected input trees before its manager start. The
+old probe began its short fault timer before that real operation completed.
+The prospective v2 transport uses the existing start method and 30-second
+client allowance, waits under the existing 45-second collection allowance
+for the actual response, then starts the same nine-second sampling window.
+The real observer remains alive until root independently samples its
+UID/PID/start/cgroup/namespaces and authorizes normal exit. Invalid responses
+or abnormal child exit fail closed. The original campaign deadline bounds
+every phase.
+
+The measured fault mode is prospectively
+`fixed-previous-after-controller-validation-before-daemon-v2`. Its fixed abort
+is after the real manager start marker and launcher UID/cgroup/capability,
+boot and original-deadline checks, before a daemon or repeating the controller's
+expensive tree validation. It can only publish the bound fault, wait for the
+matching bounded release and return failure; it cannot reach product execution.
+Every normal launcher still performs complete independent input-tree validation
+before executing a product. Root selection, source/boot/JDK commitments,
+service limits, ten-second release barrier, production socket methods and
+QEMU/JDK identities remain unchanged.
+
+The private audit upgrades to schema 2 and binds
+`pr315-partial-launch-start-response-v2`, actual response timing and the sample
+window. The host rejects unknown policy, reversed timing, empty windows and
+windows longer than nine seconds. Native restricted checks passed 659 tests
+with 25 environment skips and all 21 selected applicable root checks; two
+additional real UID/pidfd transport tests passed. Protected checks passed
+554 tests as both non-root (80 skips) and root (three skips). The first root
+run exposed a new test's un-restored umask; fixture cleanup was corrected and
+the affected complete root group passed. Original failed logs remain private;
+production permission checks were not changed. The final four affected checks
+and source-size gate passed. A new frozen identity and installed rerun are
+required; these offline records grant no installed acceptance.
+
 ## Original deadline and fixed observer activity after suite 188
 
 Helper `3b6677eec2` completed five independent development groups in suites

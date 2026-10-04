@@ -1390,7 +1390,9 @@ def _partial_launch_audit(root, deadline):
             'previousStartMarker', 'previousFault', 'previousActor',
             'previousStopReceipt', 'relayBefore', 'relayAfter',
             'controllerResponse', 'probeStartedNs', 'releasePublishedNs',
-            'terminalObservedNs', 'launcherSourceDigest'}
+            'terminalObservedNs', 'launcherSourceDigest', 'synchronizationPolicy',
+            'startResponseStartedNs', 'startResponseObservedNs',
+            'faultWaitStartedNs', 'faultWaitUntilNs'}
         prepared = {'state': 'prepared', 'generation': None,
                     'managerInvocation': None, 'cgroupIdentity': None}
         before = value['previousBefore']
@@ -1400,8 +1402,9 @@ def _partial_launch_audit(root, deadline):
         marker = value['previousStartMarker']
         receipt = value['previousStopReceipt']
         if (not isinstance(value, dict) or set(value) != fields
-                or value['schemaVersion'] != 1
+                or value['schemaVersion'] != 2
                 or value['kind'] != 'pr315-administrator-partial-launch'
+                or value['synchronizationPolicy'] != 'pr315-partial-launch-start-response-v2'
                 or value['caseId'] != 'partial-launch'
                 or any(re.fullmatch('[0-9a-f]{64}', str(value[key])) is None
                        for key in ('nonceDigest', 'launcherSourceDigest'))
@@ -1430,6 +1433,11 @@ def _partial_launch_audit(root, deadline):
                 or marker.get('cgroupIdentity') != receipt.get('cgroupIdentity')
                 or receipt.get('membership') != 'only-stop-helper'
                 or receipt.get('descendantCgroups') != 0
+                or not value['probeStartedNs'] <= value['startResponseStartedNs']
+                    < value['startResponseObservedNs'] <= value['faultWaitStartedNs']
+                    < actor['observedMonotonicNs'] < value['faultWaitUntilNs']
+                or not 0 < value['faultWaitUntilNs']-value['faultWaitStartedNs']
+                    <= 9*10**9
                 or not 0 < value['probeStartedNs']
                     < fault['observedMonotonicNs']
                     <= actor['observedMonotonicNs']

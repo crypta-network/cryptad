@@ -43,7 +43,7 @@ def launcher_policy():
             'providerAuthorityProbe': 'fixed-installed-worker-synthetic-provider-credential-v2',
             'siblingAppProbe': 'fixed-signed-apphost-source-port-drop-v1',
             'resourceExhaustionProbe': 'fixed-signed-apphost-pids-admin-child-epochs-v2',
-            'partialLaunchFault': 'fixed-previous-after-start-marker-before-daemon-v1',
+            'partialLaunchFault': 'fixed-previous-after-controller-validation-before-daemon-v2',
             'stuckOutputProbe': 'fixed-role-fifo-held-writer-bounded-collector-v1',
             'lateChildProbe': 'fixed-role-child-after-root-stop-intent-v1',
             'retiredAuthorityProbe': 'sealed-stopped-guest-observer-good-bad-good-v1',
@@ -203,6 +203,21 @@ def _wait_partial_launch_release(nonce, deadline_ns):
         raise ValueError('workload-partial-launch-release-mismatch')
 
 
+def _fixed_previous_fault(role, spec, expected_uid):
+    """Abort one root-selected launch before daemon execution, never run unchecked inputs.
+
+    The controller validates the selected input trees before its real manager start.
+    Normal launches still perform the full independent launcher validation below.
+    This fixed abort cannot reach a product executable or caller-selected command.
+    """
+    nonce = _partial_launch_request(role, spec)
+    if nonce is None:
+        return False
+    _publish_partial_launch_fault(nonce, expected_uid)
+    _wait_partial_launch_release(nonce, spec['deadlineMonotonicNs'])
+    return True
+
+
 def verify_wrapper_options(package):
     """Reserve one fixed JVM option without overwriting a selected product's options."""
     with (Path(package) / 'conf/wrapper.conf').open('rb') as stream:
@@ -278,6 +293,10 @@ def main():
     if (spec['role'] != role or spec['bootId'] != Path('/proc/sys/kernel/random/boot_id').read_text().strip()
             or not 0 < remaining <= 3600):
         raise ValueError('workload-expired')
+    # ExecStartPre already recorded the real launch. The root-selected fault is
+    # before a daemon and before repeating the controller's expensive tree scan.
+    if _fixed_previous_fault(role, spec, user.pw_uid):
+        return 73
     for name, expected in spec['inputs'].items():
         if name not in {'package', 'jdk', 'apps', 'public'} or tree_identity(
                 ROOT / 'roles' / role / name, deadline=spec['deadlineMonotonicNs'] / 1e9) != expected:
@@ -291,11 +310,6 @@ def main():
     arguments, environment = command(role)
     if spec['deadlineMonotonicNs'] <= time.monotonic_ns():
         raise ValueError('workload-expired')
-    fault_nonce = _partial_launch_request(role, spec)
-    if fault_nonce is not None:
-        _publish_partial_launch_fault(fault_nonce, user.pw_uid)
-        _wait_partial_launch_release(fault_nonce, spec['deadlineMonotonicNs'])
-        return 73
     # A main-process exit causes systemd to terminate the entire nondelegated role cgroup.
     # Candidate stdout/stderr are discarded, avoiding a privileged candidate-file collector.
     process = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,

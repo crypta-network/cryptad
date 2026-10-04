@@ -2097,7 +2097,7 @@ class RunnerTests(unittest.TestCase):
             'bootId': boot, 'cgroupIdentity': [1, 50],
             'cgroupDigest': 'a' * 64, 'invocationId': 'f' * 32,
             'sourceDigest': driver_digest, 'observedMonotonicNs': 10}
-        audit = {'schemaVersion': 1,
+        audit = {'schemaVersion': 2,
             'kind': 'pr315-administrator-partial-launch',
             'caseId': 'partial-launch', 'nonceDigest': hashlib.sha256(
                 ('c' * 64).encode()).hexdigest(),
@@ -2126,6 +2126,9 @@ class RunnerTests(unittest.TestCase):
             'relayBefore': prepared, 'relayAfter': dict(prepared),
             'controllerResponse': 'controller-rejected-launch',
             'probeStartedNs': 40, 'releasePublishedNs': 100,
+            'synchronizationPolicy': 'pr315-partial-launch-start-response-v2',
+            'startResponseStartedNs': 45, 'startResponseObservedNs': 55,
+            'faultWaitStartedNs': 56, 'faultWaitUntilNs': 90,
             'terminalObservedNs': 310,
             'launcherSourceDigest': launcher_digest}
         terminal = synthetic_terminal_roster(roster)
@@ -2170,6 +2173,18 @@ class RunnerTests(unittest.TestCase):
         self.assertIsNotNone(record)
         self.assertEqual('partial-launch', record['caseId'])
         self.assertTrue(record['targetEpoch']['relayNeverStarted'])
+        for field, value in (('synchronizationPolicy', 'unmeasured-policy'),
+                             ('startResponseObservedNs', 91),
+                             ('faultWaitUntilNs', 56),
+                             ('faultWaitUntilNs', 10*10**9)):
+            changed = copy.deepcopy(terminal)
+            changed['partialLaunchAudit']['record'][field] = value
+            updated_diagnostics = copy.deepcopy(diagnostics)
+            updated_diagnostics['partialLaunch']['auditDigest'] = hashlib.sha256(
+                json.dumps(changed['partialLaunchAudit']['record'], sort_keys=True,
+                           separators=(',', ':')).encode()).hexdigest()
+            self.assertIsNone(runner._partial_launch_record(frozen, 'suite-210',
+                report, result, changed, updated_diagnostics, source, raw))
         if sys.platform.startswith('linux'):
             import pr315_workload_evidence as evidence
             with tempfile.TemporaryDirectory() as directory:
@@ -2190,6 +2205,7 @@ class RunnerTests(unittest.TestCase):
             mutate(changed)
             self.assertIsNone(runner._partial_launch_record(frozen,
                 'suite-210', report, result, changed, diagnostics, source, raw))
+
 
     def test_stuck_output_v10_requires_live_role_writer_bounded_collector_and_stop(self):
         import pr315_campaign_seal as seal

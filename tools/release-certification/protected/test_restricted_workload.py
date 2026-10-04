@@ -1223,6 +1223,50 @@ class LifecycleStopBarrierTest(unittest.TestCase):
 
 
 class LauncherTest(unittest.TestCase):
+    def test_fixed_abort_never_executes_inputs_and_normal_launch_still_rejects_changed_tree(self):
+        from types import SimpleNamespace
+        original_umask = os.umask(0o022)
+        self.addCleanup(os.umask, original_umask)
+        original_read = Path.read_text
+        def read(path, *args, **kwargs):
+            if str(path) == '/proc/self/status':
+                return 'NoNewPrivs: 1\nCapEff: 0\nCapPrm: 0\nCapInh: 0\nCapAmb: 0\nCapBnd: 0\n'
+            if str(path) == '/proc/self/cgroup':
+                return '0::/system.slice/cryptad-workload@previous.service'
+            if str(path) == '/proc/sys/kernel/random/boot_id':
+                return 'a'*36
+            return original_read(path,*args,**kwargs)
+        flags = SimpleNamespace(isolated=True,no_site=True)
+        account = SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())
+        spec = {'role':'previous','bootId':'a'*36,
+            'deadlineMonotonicNs':time.monotonic_ns()+20*10**9,
+            'inputs':{'package':'expected'}}
+        with patch.object(launcher.sys,'argv',['launcher','previous']), \
+                patch.object(launcher.sys,'flags',flags), \
+                patch.object(launcher.pwd,'getpwnam',return_value=account), \
+                patch.object(launcher.os,'getgroups',return_value=[]), \
+                patch.dict(launcher.os.environ,dict(launcher.os.environ)), \
+                patch.object(Path,'read_text',read), \
+                patch('restricted_native_launcher._trusted_read',return_value=spec), \
+                patch('restricted_native_launcher.tree_identity',return_value='changed') as trees, \
+                patch.object(launcher,'_partial_launch_request',return_value='c'*64) as request, \
+                patch.object(launcher,'_publish_partial_launch_fault') as published, \
+                patch.object(launcher,'_wait_partial_launch_release') as released, \
+                patch.object(launcher,'command') as command, \
+                patch.object(launcher.subprocess,'Popen') as executed:
+            self.assertEqual(73,launcher.main())
+            published.assert_called_once_with('c'*64,account.pw_uid)
+            released.assert_called_once_with('c'*64,spec['deadlineMonotonicNs'])
+            trees.assert_not_called()
+            command.assert_not_called()
+            executed.assert_not_called()
+            request.return_value=None
+            with self.assertRaisesRegex(ValueError,'input-changed'):
+                launcher.main()
+            trees.assert_called_once()
+            command.assert_not_called()
+            executed.assert_not_called()
+
     @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
                          'requires disposable Linux root for fixed launch request')
     def test_previous_launch_fault_is_one_use_and_source_bound(self):
