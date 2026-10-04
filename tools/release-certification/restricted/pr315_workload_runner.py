@@ -4896,6 +4896,8 @@ if __name__ == '__main__':
         code = str(error) if str(error) in {
             'workload-lifecycle-group-verification-failed',
             'workload-lifecycle-group-case-invalid',
+            'workload-stuck-output-verification-failed',
+            'workload-stuck-output-host-policy-required',
             'workload-group-host-identity-changed'} else None
         print(json.dumps({'kind': 'pr315-private-host-assessment-failure',
             'exceptionType': type(error).__name__[:128], 'privateErrorCode': code,

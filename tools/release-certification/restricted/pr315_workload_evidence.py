@@ -2113,6 +2113,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['partialLaunchDiagnostic'] = retained(root, deadline)
         if os.path.lexists(root / 'authority/stuck-output.json'):
             result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stuck-output-diagnostic.json'):
+            from pr315_stuck_output_diagnostics import retained
+            result['stuckOutputDiagnostic'] = retained(root, deadline)
         if os.path.lexists(root / 'authority/late-child.json'):
             result['lateChildAudit'] = _late_child_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):
@@ -2214,6 +2217,9 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             result['partialLaunchDiagnostic'] = retained(root, deadline)
         if os.path.lexists(root / 'authority/stuck-output.json'):
             result['stuckOutputAudit'] = _stuck_output_audit(root, deadline)
+        if os.path.lexists(root / 'authority/stuck-output-diagnostic.json'):
+            from pr315_stuck_output_diagnostics import retained
+            result['stuckOutputDiagnostic'] = retained(root, deadline)
         if os.path.lexists(root / 'authority/late-child.json'):
             result['lateChildAudit'] = _late_child_audit(root, deadline)
         if os.path.lexists(root / 'authority/hostile-app-origin-denial.json'):

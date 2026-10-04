@@ -4597,6 +4597,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     subprocess.SubprocessError) as error:
                 diagnostics['stuckOutput'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
+                from pr315_stuck_output_diagnostics import summary
+                diagnostics['stuckOutput'].update(summary(workload))
         if not startup_measurement and workload_group == 'late-child':
             diagnostics['probeStart'] = {'schemaVersion': 1,
                 'kind': 'pr315-workload-probe-start', 'caseId': workload_group,

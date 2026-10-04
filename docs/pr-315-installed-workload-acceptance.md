@@ -36,6 +36,28 @@ external archives and signed host cleanup. Suite 208 reached the genuine
 partial-launch probe but retained only unavailable-or-unsafe with ValueError;
 its campaign is sealed failed with zero accepted cases. The scheduler stopped
 before another allocation. These separate keys cannot form a formal campaign.
+Helper `8521dcefc7` retained the actual suite 209 partial-launch failure phase:
+the original nine-second sampling window expired before the real controller
+start response. The v2 start transport waits for that unchanged RPC before
+starting the unchanged sampling window and keeps the real observer alive
+through administrator sampling. Frozen `814e2ed3f4` then passed the
+partial-launch development group in suite 210, with complete 12,772-file
+archival and signed host cleanup. Its actual start response took 11.932 seconds;
+sampling began afterwards with 9 seconds available. This verifies the narrow
+driver correction, not a root cause for historical JVM failures.
+
+Suite 211 under that same helper reached the genuine stuck-output probe, then
+reported unavailable-or-unsafe with ValueError. No success audit was published;
+the host assessment was unavailable and the campaign was sealed failed with
+zero accepted cases despite a normal, stopped guest. Its complete 12,770-file
+original archive is retained. The development scheduler and final-gate waiter
+terminated before another allocation. The following diagnostic-only helper
+records closed stuck-output failure phases, fixed error codes and bounded
+private ready/child/controller bytes before tmpfs cleanup, preserving the
+original collector and campaign deadlines. Diagnostics cannot supply a case
+witness or change a failed verdict. A new measured identity and fresh installed
+execution are required to establish the actual failure cause.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure

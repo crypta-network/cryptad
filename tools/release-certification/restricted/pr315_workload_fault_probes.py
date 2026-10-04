@@ -2155,6 +2155,22 @@ def probe_stale_pid_uid(workload, handoff, result, source_digest,
 
 def probe_stuck_output(workload, handoff, result, role_probe_digest,
                        campaign_deadline_ns):
+    """Keep the failing operation's phase before role tmpfs is reclaimed."""
+    from pr315_stuck_output_diagnostics import Trace
+    trace = Trace(workload, campaign_deadline_ns)
+    try:
+        return _probe_stuck_output(workload, handoff, result, role_probe_digest,
+                                   campaign_deadline_ns, trace)
+    except Exception as error:
+        try:
+            trace.capture(error)
+        except Exception:
+            pass
+        raise
+
+
+def _probe_stuck_output(workload, handoff, result, role_probe_digest,
+                        campaign_deadline_ns, trace):
     """Time out the installed pipe collector while an owned role writer lives."""
     import pr315_role_probe as role_probe
     from bounded_process import run as bounded_run
@@ -2164,22 +2180,27 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
             or time.monotonic_ns() >= campaign_deadline_ns):
         raise ValueError('workload-stuck-output-preparation-invalid')
     administrator_before = _administrator_collector_epoch('stuck-output')
+    trace.administrator = administrator_before
     role = 'candidate-sender'
     handle = handoff['handles'][role]
     account = workload.account(role)
     launch = workload.read(workload.ROOT / 'roles/candidate-sender/launch.json')
     nonce = secrets.token_hex(32)
+    trace.step('request-publication')
     workload.write(workload.ROOT / 'probe-requests/candidate-sender.json',
         {'schemaVersion': 1, 'caseId': 'stuck-output', 'nonce': nonce,
          'bootId': workload.boot(), 'javaDigest': launch['javaDigest'],
          'sourceDigest': role_probe_digest}, create=True, mode=0o444)
     state = workload.ROOT / 'state/candidate-sender/tmp'
+    trace.step('role-ready')
     ready = _wait_output_record(state / role_probe.STUCK_OUTPUT_READY.name,
         account.pw_uid, min(time.monotonic() + 25, campaign_deadline_ns / 1e9),
         'workload-stuck-output-role-ready-timeout')
+    trace.step('child-ready')
     child = _wait_output_record(state / role_probe.STUCK_OUTPUT_CHILD.name,
         account.pw_uid, min(time.monotonic() + 25, campaign_deadline_ns / 1e9),
         'workload-stuck-output-child-ready-timeout')
+    trace.step('actor-binding')
     before = workload.observe(handle)
     actor = _role_probe_actor(before, nonce, 'stuck-output')
     writer = next((row for row in before['processes']
@@ -2200,6 +2221,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
             or info.st_mode & 0o777 != 0o600 or info.st_nlink != 1
             or child.get('fifoIdentity') != [info.st_dev, info.st_ino]):
         raise ValueError('workload-stuck-output-writer-invalid')
+    trace.step('sibling-controls')
     siblings_before = _resource_sibling_controls(workload, handoff)
     writer_fd = os.pidfd_open(writer['hostPid'])
     collector_fd = None
@@ -2208,6 +2230,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
     started_ns = time.monotonic_ns()
     def on_start(pid):
         nonlocal collector_fd, collector
+        trace.step('collector-epoch')
         collector_fd = os.pidfd_open(pid)
         collector = driver._stuck_collector_epoch(pid)
 
@@ -2218,6 +2241,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
         if select.select([writer_fd], [], [], 0)[0]:
             raise ValueError('workload-stuck-output-writer-exited')
         try:
+            trace.step('collector-start')
             bounded_run(['/usr/bin/cat', str(fifo)], environment=driver.ENV,
                 timeout=5, output_limit=4096, diagnostic_sink=retain,
                 start_observer=on_start)
@@ -2227,6 +2251,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
         else:
             raise ValueError('workload-stuck-output-collector-finished')
         finished_ns = time.monotonic_ns()
+        trace.step('collector-proof')
         if (collector is None or collector_fd is None
                 or not select.select([collector_fd], [], [], 0)[0]
                 or select.select([writer_fd], [], [], 0)[0]
@@ -2235,6 +2260,7 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
                     < started_ns + 5 * 10**9 < finished_ns
                 or finished_ns - started_ns > 16 * 10**9):
             raise ValueError('workload-stuck-output-collector-proof-invalid')
+        trace.step('writer-recheck')
         after = workload.observe(handle)
         writer_after = next((row for row in after['processes']
             if row['hostPid'] == writer['hostPid']), None)
@@ -2244,8 +2270,10 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
                 or before['cgroupIdentity'] != after['cgroupIdentity']
                 or before['stateDigest'] != after['stateDigest']):
             raise ValueError('workload-stuck-output-role-changed')
+        trace.step('observer-stop')
         stopped, stop_actor = _installed_observer_stop(handle,
             pwd.getpwnam('cryptad-soak').pw_uid, campaign_deadline_ns)
+        trace.step('stop-receipt')
         current = workload.read(workload.ROOT / 'authority/candidate-sender.json')
         receipt = workload.stop_receipt(role, current)
         if (stopped['state'] != 'quiescent'
@@ -2255,11 +2283,13 @@ def probe_stuck_output(workload, handoff, result, role_probe_digest,
                 or receipt['descendantCgroups'] != 0
                 or not select.select([writer_fd], [], [], 0)[0]):
             raise ValueError('workload-stuck-output-writer-not-stopped')
+        trace.step('sibling-recheck')
         siblings_after = _resource_sibling_controls(workload, handoff)
         if any(first['managerInvocation'] != last['managerInvocation']
                or first['stateDigest'] != last['stateDigest']
                for first, last in zip(siblings_before, siblings_after)):
             raise ValueError('workload-stuck-output-sibling-changed')
+        trace.step('audit-publication')
         audit = {'schemaVersion': 1,
             'kind': 'pr315-administrator-stuck-output',
             'caseId': 'stuck-output',
