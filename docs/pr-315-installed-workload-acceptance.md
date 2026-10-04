@@ -98,6 +98,41 @@ the correction, while a roster object, missing roles and reordered roles are
 still rejected. Diagnostic replay under new code cannot change suite 214's
 original verdict; fresh installed execution requires a new measured identity.
 
+Frozen `231ac935bd` passed the actual cleanup-race development group in
+suite 215, with a complete 12,785-file staging original and signed host
+cleanup. Its administrator audit contains the four observed role instances
+in the closed v10 role list. The archived development result confirms the
+emitter correction; it does not grant a complete installed campaign.
+
+The separate authority development campaign under that helper completed and
+retired suite 216's genuine preparation guest, archived all 12,784 staging
+files, and verified the signed cleanup and private old-authority handoff.
+Preparation grants no case credit. Suite 217 then executed the successor
+authority probes and the actual sender restart. Eight authority cases passed;
+`runner-control` remained inconclusive. The guest exited normally, the watcher
+completed, and independent host observations found no task QEMU. The group
+and campaign are terminally failed. The full 12,804-file successor staging,
+preparation context, signing key, old-authority input and original observations
+are retained privately. These results cannot be continued or transferred to
+another helper identity.
+
+The runner-control failure has a demonstrated evidence-reader cause. The
+actual controller identity emitter supplies eleven fields, including root
+UID/GID, namespace PID mapping, namespace inodes and pidfd observation. The
+descriptor reader still required the earlier six-field shape and rejected
+the richer genuine audit. The prospective reader accepts exactly the emitted
+eleven-field shape, checks every kernel field and rejects a changed controller
+instance between the operation's before/after samples. It retains the bounded
+read and policy-denial response checks. A native x86 regression reproduces the
+old rejection; the corrected real actor emitter-to-reader check passes.
+Wrong UID/GID, absent pidfd proof, wrong namespace PID, missing namespace
+inodes, a changed namespace and the old incomplete shape remain rejected.
+The native focused checks passed 62 tests; the restricted suite passed 664
+tests with 26 environment skips, and the existing source-size check passed.
+Those offline results do not change suite 217's verdict. Another frozen
+identity, new retired preparation and fresh installed authority execution
+are required before an authority group can receive credit.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure
@@ -4665,7 +4700,7 @@ as a green c0eb final-source gate.
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
 | `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Suites 180–182 are archived development results under `f7ce824289`; suites 183–187 passed the strengthened kernel contract under `3b6677eec2`, and suite 189 passed deadline under `2a996b73e7`. Suites 191–194 passed four independent development groups under `63870d2ebf`; suite 195 failed relay readiness with unknown probe phase. The prospective diagnostic fix requires a new helper identity and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
+| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Independent development results through suite 215 remain bound to their original helpers and keys. Under `231ac935bd`, suite 216 completed retired preparation and suite 217 passed eight authority cases but left runner-control inconclusive; that campaign is terminally failed. The prospective evidence-reader fix requires a new helper identity, new retired preparation and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |

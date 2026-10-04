@@ -800,7 +800,8 @@ def _runner_control_audit(root, deadline):
                   'responseObservedNs', 'requestDigest', 'responseDigest',
                   'responseBase64', 'exitCode', 'stdoutBytes'}
         target_fields = {'invocationId', 'cgroupIdentity', 'bootId', 'mainPid',
-                         'mainStartTicks', 'observedMonotonicNs'}
+                         'mainStartTicks', 'observedMonotonicNs', 'uid', 'gid',
+                         'namespacePids', 'namespaces', 'pidfdObserved'}
         if (not isinstance(value, dict) or set(value) != fields
                 or value['schemaVersion'] != 1
                 or value['kind'] != 'pr315-administrator-runner-control-denial'
@@ -816,6 +817,36 @@ def _runner_control_audit(root, deadline):
                 or any(type(value['actor'][key]) is not int or value['actor'][key] <= 0
                        for key in ('pid', 'uid', 'startTicks'))):
             raise ValueError('runner-control-audit-invalid')
+        stable = target_fields - {'observedMonotonicNs'}
+        for target in (value['targetBefore'], value['targetAfter']):
+            if (type(target['uid']) is not int or target['uid'] != 0
+                    or type(target['gid']) is not int or target['gid'] != 0
+                    or target['pidfdObserved'] is not True
+                    or type(target['mainPid']) is not int or target['mainPid'] <= 1
+                    or type(target['mainStartTicks']) is not int
+                    or target['mainStartTicks'] <= 0
+                    or type(target['observedMonotonicNs']) is not int
+                    or target['observedMonotonicNs'] <= 0
+                    or re.fullmatch('[0-9a-f]{32}', str(target['invocationId'])) is None
+                    or re.fullmatch('[0-9a-f]{32}',
+                        str(target['bootId']).replace('-', '').lower()) is None
+                    or not isinstance(target['cgroupIdentity'], list)
+                    or len(target['cgroupIdentity']) != 2
+                    or any(type(part) is not int or part <= 0
+                           for part in target['cgroupIdentity'])
+                    or not isinstance(target['namespacePids'], list)
+                    or not 1 <= len(target['namespacePids']) <= 32
+                    or target['namespacePids'][0] != target['mainPid']
+                    or any(type(pid) is not int or pid <= 0
+                           for pid in target['namespacePids'])
+                    or not isinstance(target['namespaces'], dict)
+                    or set(target['namespaces']) != {'pid', 'net', 'mnt', 'user'}
+                    or any(type(inode) is not int or inode <= 0
+                           for inode in target['namespaces'].values())):
+                raise ValueError('runner-control-kernel-target-invalid')
+        if any(value['targetBefore'][key] != value['targetAfter'][key]
+               for key in stable):
+            raise ValueError('runner-control-kernel-target-changed')
         response = base64.b64decode(value['responseBase64'], validate=True)
         if (not 1 <= len(response) <= 2048
                 or value['responseDigest'] != hashlib.sha256(response).hexdigest()

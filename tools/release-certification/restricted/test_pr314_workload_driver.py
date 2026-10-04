@@ -351,7 +351,11 @@ class RunnerControlProbeTest(unittest.TestCase):
     def test_vmadmin_policy_denial_is_bound_to_actor_epoch_and_unchanged_unit(self):
         now = time.monotonic_ns()
         before = {'invocationId': 'a' * 32, 'cgroupIdentity': [1, 25],
-                  'bootId': 'boot', 'mainPid': 200, 'mainStartTicks': 300,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'mainPid': 200, 'mainStartTicks': 300, 'uid': 0, 'gid': 0,
+                  'namespacePids': [200],
+                  'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
+                  'pidfdObserved': True,
                   'observedMonotonicNs': now - 500}
         after = dict(before, observedMonotonicNs=now + 10**9)
         sender = {'state': 'running', 'stateDigest': 'd' * 64,
@@ -383,6 +387,15 @@ class RunnerControlProbeTest(unittest.TestCase):
         self.assertEqual(os.getpid(), audit['actor']['pid'])
         self.assertEqual(hashlib.sha256(denied).hexdigest(), audit['responseDigest'])
         self.assertEqual(sender['stateDigest'], audit['senderStateAfter'])
+        import pr315_workload_evidence as evidence
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'authority').mkdir()
+            (root / 'authority/runner-control-denial.json').write_text(json.dumps(audit))
+            retained = evidence._runner_control_audit(root, time.monotonic()+5)
+            self.assertEqual('captured', retained['status'])
+            self.assertEqual(audit, retained['record'])
+            self.assertEqual(before['namespaces'], retained['record']['targetBefore']['namespaces'])
 
         process.returncode = 0
         workload.write.reset_mock()

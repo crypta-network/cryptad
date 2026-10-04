@@ -550,7 +550,11 @@ class VolatileEvidenceTest(unittest.TestCase):
     def test_runner_control_denial_requires_bounded_real_policy_response(self):
         response = b'Failed to stop fixed unit: Interactive authentication required.\n'
         target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
-                  'bootId': 'boot', 'mainPid': 100, 'mainStartTicks': 200,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'mainPid': 100, 'mainStartTicks': 200, 'uid': 0, 'gid': 0,
+                  'namespacePids': [100],
+                  'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
+                  'pidfdObserved': True,
                   'observedMonotonicNs': 10}
         audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-runner-control-denial',
                  'caseId': 'runner-control',
@@ -570,6 +574,15 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual(audit, evidence._capture(
             self.root, self.expected, True)['runnerControlAudit']['record'])
         for changed in (dict(audit, exitCode=0),
+                        dict(audit, targetBefore=dict(target, uid=1000)),
+                        dict(audit, targetAfter=dict(audit['targetAfter'], gid=1000)),
+                        dict(audit, targetBefore=dict(target, pidfdObserved=False)),
+                        dict(audit, targetBefore=dict(target, namespacePids=[101])),
+                        dict(audit, targetBefore=dict(target, namespaces={'pid': 11})),
+                        dict(audit, targetAfter=dict(audit['targetAfter'],
+                            namespaces=dict(target['namespaces'], net=99))),
+                        dict(audit, targetBefore={k:v for k,v in target.items()
+                            if k not in ('uid','gid','namespacePids','namespaces','pidfdObserved')}),
                         dict(audit, responseBase64='@@@'),
                         dict(audit, browserToken='must-not-copy')):
             path.write_text(json.dumps(changed))
