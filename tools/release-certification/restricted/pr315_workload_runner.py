@@ -859,7 +859,7 @@ def cleanup_race_attempt(report, result, terminal, diagnostics, source):
             'caseId': 'cleanup-race', 'status': 'passed',
             'actorEpoch': {**admin, 'kind': 'administrator-test-kit'},
             'targetEpoch': {'kind': 'owned-roles-reconciled-after-manager-replacement',
-                'roles': result['roleKernelRoster'],
+                'roles': result['roleKernelRoster']['roles'],
                 'oldInvocation': sender['invocationId'],
                 'replacementInvocation': replacement['InvocationID'],
                 'oldStopReceiptDigest': hashlib.sha256(json.dumps(
@@ -4898,6 +4898,8 @@ if __name__ == '__main__':
             'workload-lifecycle-group-case-invalid',
             'workload-stuck-output-verification-failed',
             'workload-stuck-output-host-policy-required',
+            'workload-cleanup-race-verification-failed',
+            'pr315-v10-generic-lifecycle-target-invalid',
             'workload-group-host-identity-changed'} else None
         print(json.dumps({'kind': 'pr315-private-host-assessment-failure',
             'exceptionType': type(error).__name__[:128], 'privateErrorCode': code,

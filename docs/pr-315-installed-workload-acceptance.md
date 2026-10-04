@@ -76,6 +76,28 @@ unchanged. Suite 212 remains sealed failed with zero accepted cases and a
 complete 12,775-file staging original; a new identity must rerun the installed
 group before any acceptance can be credited.
 
+Frozen `3e7875edbe` subsequently passed the real stuck-output development
+group in suite 213, including independent recovery, a complete 12,781-file
+staging original and signed host cleanup. Administrator observations bound
+probe PID 3388 to FIFO writer PID 3389 through the actual kernel parent PID.
+The real collector PID 3412 hit the unchanged deadline in 5.00499069 seconds;
+the role stop receipt retained only the stop helper. The complete campaign
+copy was externally archived before releasing verified success duplicates.
+This one development result does not grant full 45-case acceptance.
+
+Suite 214 reached the genuine cleanup-race transition and captured its success
+audit, but host normalization failed. The complete 12,780-file staging and
+sealed failed campaign remain retained with zero accepted cases. Replaying
+the exact original records passed the case's kernel, instance, time and stop
+checks, then reproduced `pr315-v10-generic-lifecycle-target-invalid`: the
+emitter placed the entire roster object in `targetEpoch.roles`, where the
+closed v10 lifecycle contract requires the actual role list. The narrow
+emitter correction uses that list without changing any validator or limits.
+The emitter-to-v10 regression fails under the original shape and passes after
+the correction, while a roster object, missing roles and reordered roles are
+still rejected. Diagnostic replay under new code cannot change suite 214's
+original verdict; fresh installed execution requires a new measured identity.
+
 Helper `831b64b5d6` then reached the revocation probe in suite 205. Its bounded
 private diagnostic identifies a TimeoutError in the begin phase. That campaign
 is sealed failed with zero accepted cases; its complete 12,767-file failure

@@ -3326,12 +3326,7 @@ class RunnerTests(unittest.TestCase):
         barrier_digest = runner.reference.sha256(source /
             'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py')
         boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-        admin = {'pid': 500, 'uid': 0, 'startTicks': 55,
-            'bootId': boot, 'cgroupIdentity': [1, 50],
-            'cgroupDigest': runner.fixtures.runtime.canonical_digest({
-                'role': 'lifecycle-administrator', 'identity': [1, 50]})[7:],
-            'invocationId': 'b' * 32,
-            'sourceDigest': source_digest, 'observedMonotonicNs': 15}
+        admin = synthetic_lifecycle_actor(source, 15)
         siblings = [{'role': row['role'],
             'managerInvocation': row['invocationId'],
             'bootId': boot, 'cgroupIdentity': [1, 100 + index],
@@ -3424,6 +3419,28 @@ class RunnerTests(unittest.TestCase):
             diagnostics, source)
         self.assertIsNotNone(selected)
         self.assertEqual('cleanup-race', selected['caseId'])
+        from pr315_case_v10 import generic_case_record
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity.update(productSelectionDigest=host['productDigest'],
+                        admittedAppDigest='a' * 64)
+        frozen = runner.campaign_seal.plan(identity, '1' * 64,
+            runner.host_admission.POLICY, '2' * 64, '3' * 64, '4' * 64)
+        raw = {'guestReport': '5' * 64, 'volatile': '6' * 64,
+               'hostMonitor': '7' * 64}
+        normalized = generic_case_record(frozen, 'suite-214', identity,
+            None, selected, source, raw, roster=roster)
+        self.assertEqual(roster['roles'], normalized['targetEpoch']['roles'])
+        self.assertEqual('passed', normalized['status'])
+        for invalid_roles in (roster, roster['roles'][:-1],
+                              list(reversed(roster['roles']))):
+            changed_sidecar = copy.deepcopy(selected)
+            changed_sidecar['targetEpoch']['roles'] = invalid_roles
+            with self.assertRaisesRegex(ValueError, 'lifecycle-target-invalid'):
+                generic_case_record(frozen, 'suite-214', identity, None,
+                    changed_sidecar, source, raw, roster=roster)
         changed = copy.deepcopy(terminal)
         changed['cleanupRaceAudit']['record']['managerReplacement'][
             'InvocationID'] = sender['invocationId']
