@@ -4780,6 +4780,73 @@ native CT102 Java full run and analyzer inspection are still required for a
 final source. Neither a Mac failure nor historical Java results are reported
 as a green c0eb final-source gate.
 
+## Controller verification cost after suites 226–236
+
+Helper `423dadf5528d885e73a7380c2c05197c7c8e8e3f` moved the existing
+Wrapper startup notification before crypto-provider initialization. Independent
+TCG development campaigns then completed output-symlink (suite 226), authority
+(retired preparation 227 and successor 228), positive (229), role-boundary (230),
+and network/AppHost (233): 29 unique cases across five different campaign keys.
+These results are development observations, not one accepted 45-case campaign.
+
+Suite 234 failed sender's original 180-second FCP readiness operation before
+the output-FIFO probe. Its latest controller `connect-fcp` request failed with
+`NetworkBoundaryError` after approximately 12.33 seconds. The FCP transcript
+was unavailable or unsafe, and both bounded jcmd operations expired. A captured
+FCP accept-loop stack does not independently establish the listener's address
+or the connection child's namespace. The retained evidence establishes no
+causal JVM crash, namespace error, or connector exception beyond that boundary.
+
+Independent diagnostics 235 and 236 failed earlier, during the original
+90-second controller readiness window. Controller startup remained at `entry`,
+before `installation-verified`; no sender or FIFO probe started. Read-only
+kernel sampling observed the controller using CPU and reading installed source
+and Python dependency files under its unchanged half-core quota. Recorded
+memory events contained no OOM event. Both guests stopped normally and their
+watchers completed. Their failed campaign receipts retain unknown probe phase;
+the absence of a probe marker does not authorize a retry in either campaign.
+
+Complete private archives preserve the original observations, failed QCOW2
+files, source inputs and campaign signing keys. The compressed suite 235 and
+236 archives were checked against all 12,830 and 12,835 original files,
+respectively. Verified duplicate release leaves the failure verdicts unchanged.
+Historical replay must restore and verify the complete archived bytes first.
+
+A separately owned, read-only TCG comparison of 512 installed small files
+found only about four percent median CPU improvement from sizing the hash
+scratch buffer to each file. That candidate was not applied and does not
+explain the overall readiness failure. Native profiling instead identified
+repeated `pathlib` object construction in ancestor traversal and per-file
+relative-name calculation. A prospective comparison over 5,873 software
+template files produced exactly the same records while lowering median CPU
+time from 1.476 to 1.085 seconds, approximately 26 percent. This template
+includes 72 materialized build files beyond its source-export manifest; the
+comparison is against the original inventory function, not a passing installed
+bundle verification. Native timings do not establish the TCG improvement.
+
+The next helper walks the same lexical ancestors with string paths and computes
+the relative directory prefix once per directory. Every ancestor is still
+checked with lstat on every call; ownership, writable modes, links, private
+permissions, full content hashes and file-change checks retain their previous
+requirements. There is no metadata or digest cache. No production socket method,
+QEMU/JDK setting, CPU or memory limit, or workload deadline changes.
+
+The regression uses a 3,370-byte deep path within the 4,096-byte Linux path
+bound. The original ancestor tuple allocated approximately 232 KB of temporary
+memory and failed its 128 KB scratch bound; the new walk passes. Additional
+checks cover every absolute and relative ancestor, writable or linked entries,
+ownership changes between calls, private permissions, Unicode and literal
+backslash names, and nested manifest handling. The complete installation-tool
+suite passed 86 tests without skips in native CT102 mount/PID/network isolation.
+The five Mac environment errors were reproduced against the original source;
+they are not reported as passing Linux checks.
+
+This prospective helper needs new source/product/fixture identities, the final
+source gates, and fresh installed execution under the unchanged TCG limits.
+The controller optimization remains unproven in that installed environment, and
+suite 234's connection failure remains unresolved. The earlier 29 development
+cases cannot transfer to the next source or supply a complete verdict.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
 | `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |

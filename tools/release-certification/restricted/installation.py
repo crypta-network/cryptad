@@ -110,10 +110,15 @@ def read_json(path):
 def secured(path, *, private=False):
     """Reject writable or linked installation components, including ancestors."""
     path = Path(path)
-    for entry in (path, *path.parents):
-        info = entry.lstat()
+    entry = os.fspath(path)
+    while True:
+        info = os.lstat(entry)
         if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise InstallationError('restricted-installation-not-root-owned')
+        parent = os.path.dirname(entry) or '.'
+        if parent == entry:
+            break
+        entry = parent
     if private and path.stat().st_mode & 0o077:
         raise InstallationError('restricted-approval-not-private')
     return path
@@ -143,6 +148,8 @@ def inventory(root, *, protected=False):
         raise InstallationError('restricted-bundle-root-invalid')
     for directory, names, files in os.walk(root, followlinks=False):
         current = Path(directory)
+        relative_directory = os.path.relpath(directory, root)
+        relative_prefix = '' if relative_directory == '.' else relative_directory.replace(os.sep, '/') + '/'
         if protected:
             secured(current)
         for name in names:
@@ -150,7 +157,7 @@ def inventory(root, *, protected=False):
                 raise InstallationError('restricted-bundle-link')
         for name in sorted(files):
             path = current / name
-            relative = path.relative_to(root).as_posix()
+            relative = relative_prefix + name
             if relative == MANIFEST:
                 continue
             if protected:
