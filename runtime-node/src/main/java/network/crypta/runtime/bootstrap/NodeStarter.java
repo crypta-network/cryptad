@@ -58,7 +58,15 @@ import static java.util.concurrent.TimeUnit.MINUTES;
  * @author nextgens
  */
 public class NodeStarter implements WrapperListener {
-  private static final Logger LOG = LoggerFactory.getLogger(NodeStarter.class);
+  private static Logger logger() {
+    return LoggerHolder.INSTANCE;
+  }
+
+  private static final class LoggerHolder {
+    // Logging providers must not delay the native Wrapper's initial handshake.
+    @SuppressWarnings("java:S3416") // The holder preserves NodeStarter's existing logger category.
+    private static final Logger INSTANCE = LoggerFactory.getLogger(NodeStarter.class);
+  }
 
   // Platform-dependent legacy constant removed; source control retains history.
 
@@ -167,7 +175,7 @@ public class NodeStarter implements WrapperListener {
 
   private static void ensureDirectoryExists(File dir) {
     if (!dir.mkdir() && (!dir.exists() || !dir.isDirectory())) {
-      LOG.error("Test base directory creation failed");
+      logger().error("Test base directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
   }
@@ -178,11 +186,12 @@ public class NodeStarter implements WrapperListener {
 
   private static void warmGlobalSecureRandom() {
     SecureRandom globalSecureRandom = getGlobalSecureRandom();
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "Global secure random ready (algorithm={}, provider={})",
-          globalSecureRandom.getAlgorithm(),
-          globalSecureRandom.getProvider().getName());
+    if (logger().isDebugEnabled()) {
+      logger()
+          .debug(
+              "Global secure random ready (algorithm={}, provider={})",
+              globalSecureRandom.getAlgorithm(),
+              globalSecureRandom.getProvider().getName());
     }
   }
 
@@ -199,7 +208,7 @@ public class NodeStarter implements WrapperListener {
               return;
             } catch (Exception t) {
               try {
-                LOG.error("Keep-alive plug thread error: {}", t, t);
+                logger().error("Keep-alive plug thread error: {}", t, t);
               } catch (Throwable _) {
                 // Ignore
               }
@@ -229,7 +238,7 @@ public class NodeStarter implements WrapperListener {
     File baseDir = params.getBaseDirectory();
     File portDir = new File(baseDir, Integer.toString(params.getPort()));
     if (!portDir.mkdir() && (!portDir.exists() || !portDir.isDirectory())) {
-      LOG.error("Test port directory creation failed");
+      logger().error("Test port directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
@@ -456,23 +465,24 @@ public class NodeStarter implements WrapperListener {
    */
   private static void printResolvedDirectories(Resolved r, File configFile, boolean serviceMode) {
     try {
-      LOG.info(
-          """
-          Resolved directories ({} mode):
-            Config file:  {}
-            Config dir:   {}
-            Data dir:     {}
-            Cache dir:    {}
-            Run dir:      {}
-            Logs dir:     {}
-          """,
-          (serviceMode ? "service" : "user"),
-          configFile.getAbsolutePath(),
-          r.configDir(),
-          r.dataDir(),
-          r.cacheDir(),
-          r.runDir(),
-          r.logsDir());
+      logger()
+          .info(
+              """
+              Resolved directories ({} mode):
+                Config file:  {}
+                Config dir:   {}
+                Data dir:     {}
+                Cache dir:    {}
+                Run dir:      {}
+                Logs dir:     {}
+              """,
+              (serviceMode ? "service" : "user"),
+              configFile.getAbsolutePath(),
+              r.configDir(),
+              r.dataDir(),
+              r.cacheDir(),
+              r.runDir(),
+              r.logsDir());
     } catch (Exception _) {
       // Do not fail to start up due to logging
     }
@@ -558,17 +568,17 @@ public class NodeStarter implements WrapperListener {
 
     FreenetFilePersistentConfig cfg;
     try {
-      LOG.info("Loading configuration from {}", configFilename);
+      logger().info("Loading configuration from {}", configFilename);
       cfg = loadConfig(configFilename, overrides, serviceMode, appEnv);
     } catch (IOException e) {
-      LOG.error("Configuration load failed: {}", e, e);
+      logger().error("Configuration load failed: {}", e, e);
       return -1;
     }
 
     try {
       setupLogging(cfg);
     } catch (InvalidConfigValueException e) {
-      LOG.error("Logging setup failed: {}", e.getMessage(), e);
+      logger().error("Logging setup failed: {}", e.getMessage(), e);
       return -2;
     }
 
@@ -584,10 +594,10 @@ public class NodeStarter implements WrapperListener {
           Node.createForBootstrap(cfg, null, null, this, executor, defaultRuntimeBridgeFactories());
       installSeednodesIfMissing(node);
       node.start(false);
-      LOG.info("Node initialization completed");
+      logger().info("Node initialization completed");
       emitLauncherStartupCompletionCompatibilityLine();
     } catch (NodeInitException e) {
-      LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
+      logger().error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
       // Return the exit code so WrapperManager handles process termination without re-entering
       // stop() while startup may still be partially initialized.
       return e.exitCode;
@@ -653,7 +663,7 @@ public class NodeStarter implements WrapperListener {
       Path exeDir = getExecutableDir();
       ConfigMigrator.migrateIfNeeded(ar, exeDir);
     } catch (Exception e) {
-      LOG.warn("Config migration error: {}", e.getMessage());
+      logger().warn("Config migration error: {}", e.getMessage());
     }
   }
 
@@ -693,13 +703,13 @@ public class NodeStarter implements WrapperListener {
 
   private static void setupLogging(FreenetFilePersistentConfig cfg)
       throws InvalidConfigValueException {
-    LOG.info("Creating logger configuration...");
+    logger().info("Creating logger configuration...");
     SubConfig loggingConfig = cfg.createSubConfig("logger");
     new LoggingConfigHandler(loggingConfig);
   }
 
   private static PooledExecutor startExecutor() {
-    LOG.info("Starting executor");
+    logger().info("Starting executor");
     PooledExecutor executor = new PooledExecutor();
     executor.start();
     return executor;
@@ -721,7 +731,7 @@ public class NodeStarter implements WrapperListener {
               return;
             } catch (Exception t) {
               try {
-                LOG.error("Keep-alive native plug thread error: {}", t, t);
+                logger().error("Keep-alive native plug thread error: {}", t, t);
               } catch (Throwable _) {
                 // Ignore
               }
@@ -758,16 +768,20 @@ public class NodeStarter implements WrapperListener {
           if (in != null) {
             java.nio.file.Files.createDirectories(seedFile.getParentFile().toPath());
             java.nio.file.Files.copy(in, seedFile.toPath());
-            LOG.info("Installed default seednodes from resource at {}", seedFile.getAbsolutePath());
+            logger()
+                .info(
+                    "Installed default seednodes from resource at {}", seedFile.getAbsolutePath());
           } else {
-            LOG.warn(
-                "No default seednodes.fref found in resources; opennet bootstrap may be delayed.");
+            logger()
+                .warn(
+                    "No default seednodes.fref found in resources; opennet bootstrap may be"
+                        + " delayed.");
           }
         }
       }
     } catch (Throwable t) {
       try {
-        LOG.error("Default seednodes install failed", t);
+        logger().error("Default seednodes install failed", t);
       } catch (Throwable _) {
         // ignored
       }
@@ -801,11 +815,11 @@ public class NodeStarter implements WrapperListener {
    */
   @Override
   public int stop(int exitCode) {
-    LOG.info("Shutting down with exit code {}", exitCode);
+    logger().info("Shutting down with exit code {}", exitCode);
     if (node != null) {
       node.park();
     } else {
-      LOG.warn("Node was not initialized; skipping park during shutdown.");
+      logger().warn("Node was not initialized; skipping park during shutdown.");
     }
     stopKeepAliveNativePlugThread();
     // Extend the wrapper shutdown timeout to 120,000 ms (see #354).

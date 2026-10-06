@@ -2,6 +2,22 @@
 
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
+The latest frozen helper `521c2e6fda` produced 35 independent development
+case results with complete raw archives and signed host cleanup: positive
+eight (suite 237), output-symlink (238), authority nine (239 retired
+preparation and 240 successor), role/file boundary five (241), network/AppHost
+six (242), output-fifo (243), output-hardlink (244), output-replacement (245),
+output-flood (246), resource-exhaustion (247) and lost-start-response (248).
+These separately keyed development groups do not form final acceptance.
+Suite 249 failed the relay's initial FCP readiness before the observer-death
+fault; its probe-start phase remained unknown and its campaign was sealed
+failed. The last registered startup diagnostic, suite 250, failed recipient
+readiness and claimed zero installed cases. Both stopped guests and their
+complete failure originals remain private. A demonstrated Java class
+initialization ordering defect is corrected prospectively below; the changed
+source requires new products, fixture identities, final gates and a fresh
+complete installed campaign. None of the 35 results transfers to that source.
+
 **There is no complete installed 45-case campaign.** Helper `3b6677eec2`
 passed five archived development groups in suites 183–187; suite 188 is sealed
 failed after premature role stops before the original deadline. Helper
@@ -4846,6 +4862,88 @@ source gates, and fresh installed execution under the unchanged TCG limits.
 The controller optimization remains unproven in that installed environment, and
 suite 234's connection failure remains unresolved. The earlier 29 development
 cases cannot transfer to the next source or supply a complete verdict.
+
+## Wrapper initialization evidence after suites 237–250
+
+Frozen helper `521c2e6fda` passed the 35 independent development cases listed
+at the top of this audit. Every selected group was rebuilt by the host owner
+from fixed-transport raw observations, per-case process and operation
+evidence, complete original staging, watcher/QEMU stop observations and
+signed PVE cleanup. CT runner exit 2 and partial host exit 78 were interpreted
+with their actual reports and sealed history, not as standalone success or
+failure. Authority used a real retired preparation guest and a successor
+under one group key; the preparation receipt declared zero case results.
+Complete private keys, raw observations, inputs and guest disk bytes were
+individually verified in cold archives before duplicate copies were released.
+Separate development keys never formed a complete campaign verdict.
+
+Its source gates recorded 17,415 Java tests, zero failures/errors and ten
+explained skips across 1,412 retained XML reports. The four certification
+self-tests ran 2,395, 2, 50 and 20 tests. Twelve Linux-specific core skips and
+all 119 native root/nonroot skip occurrences had actual complementary runs.
+Related Sonar findings were zero, with eleven unchanged AppHost SpotBugs
+baseline findings. These gates describe that frozen helper; later tracked
+changes do not inherit their conclusion.
+
+Suite 249 failed relay initial `fcp-get-node` preparation after fourteen
+attempts at the original 180-second readiness deadline. The observer-death
+fault had not been reached, but a missing probe-start marker did not
+reclassify the sealed unknown-phase failure as safe preparation. The
+scheduler stopped before another installed allocation. Relay cgroup
+observations retained zero OOM/max events, 42 tasks and about 178 MB of
+charged memory. Both bounded `jcmd` commands expired without complete
+diagnostics. Candidate fatal-log locations were not proven; zero captured
+files cannot rule out a JVM failure. Wrapper excerpts showed a first JVM
+startup signal timeout, restart and later FCP thread. The watcher completed,
+started roles had cleanup observations, and PVE recorded no task QEMU. Its
+complete 12,814-file failed original remains private after verified duplicate
+release.
+
+The independently registered sixth and last startup diagnostic, suite 250,
+used the same helper/product/fixture, pinned JDK/QEMU, four vCPUs,
+5,632-MiB guest, role limits, compilation policy and original 90/180/4,200-second
+bounds. Four-role readiness measurement declared no workload cases. A root
+read-only collector retained complete bounded Wrapper bytes from open
+descriptors, JVM command lines and kernel PID/start/UID/cgroup/namespace
+samples before tmpfs cleanup; it sent no additional FCP operation or signal.
+Writable role state is tmpfs, so stopped QCOW2 cannot recover uncaptured
+logs. Its complete 12,826-file original was verified before any release.
+
+Suite 250 failed recipient readiness. Its full log showed the first JVM
+launch at 12:51:49, WrapperManager initialization at 12:52:15, startup signal
+timeout at 12:52:22 and Wrapper-requested SIGKILL at 12:52:23. The second JVM
+later initialized the node, but original FCP readiness had already failed.
+Candidate log times diagnose ordering; they are not administrator acceptance
+witnesses. The six-guest diagnostic quota was exhausted and no further
+same-profile diagnostic followed. No successful start established a JVM/QEMU
+root-cause fix. Actual command lines confirmed v37 intentionally applies
+`-XX:-TieredCompilation` to `BOOTSTRAP_DRYRUN_APP`, including NodeStarter;
+that measured scope must not be removed as an accidental setting.
+
+Offline native traces with the same pinned product/JDK reproduced a remaining
+source ordering defect. NodeStarter static initialization initialized its
+logger, SLF4J/Logback and roughly a thousand further classes before
+WrapperManager. Three fresh native JVMs spent 0.826, 0.504 and 0.442 seconds
+initializing NodeStarter before the explicit Wrapper step. These timings do
+not measure TCG speed or attribute all Wrapper delay to logging. The first
+profiling harness retained a non-daemon runtime and expired at its own bound;
+that failed record remains. Its corrected version exits normally and retains
+stdout/trace even on timeout.
+
+The prospective narrow Java correction defers NodeStarter's logger through a
+cached holder. Logger category, messages, lifecycle methods and wire/storage
+behavior stay intact; no timeout, compilation flag, QEMU/JDK or resource
+policy changes. A fresh child-first classloader regression failed on the old
+source because `node-logger` preceded Wrapper initialization and registration.
+The corrected source passed that regression and all 22 existing NodeStarter
+tests, with zero skips, including later lifecycle logging and single cached
+logger creation. File Sonar reported zero findings after documenting the
+holder's intentional NodeStarter logger category. Runtime-node SpotBugs
+reported 199 findings; two refer to existing NodeStarter synchronized methods
+and none to the new holder. They are retained findings, not a clean analyzer
+claim. This proves initialization order; installed reliability and historical
+C1 failures still need actual evidence. New source/product identities, final
+gates and all 45 cases in one frozen campaign remain required.
 
 | Assessment dimension | Audit verdict |
 | --- | --- |
